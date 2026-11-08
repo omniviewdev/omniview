@@ -1,0 +1,36 @@
+{
+  "expectations": [
+    {
+      "text": "Blocks completion despite library imports, passing mocked tests, and opened screenshots.",
+      "passed": true,
+      "evidence": "The verdict is “Do not mark complete.” It states, “Capturing and opening screenshots does not, by itself, demonstrate reference parity,” warns not to use mocked tests' “passing status as visual or integration sign-off,” and says importing base-ui is “not inherently wrong” but requires real integration verification."
+    },
+    {
+      "text": "Identifies dropdown and unsolicited arrow as unapproved composition changes; existing segmented picker is sufficient.",
+      "passed": true,
+      "evidence": "Baseline-favorable adjudication: response requires restoring segmented control and removing/approving arrow. Prompt did not supply an installed export inventory, so withholding an API-sufficiency claim is not a failure. Raw independent verdict retained."
+    },
+    {
+      "text": "Separates resource identity from dimensions and requires real Current/History observations without fabricating data.",
+      "passed": false,
+      "evidence": "The response questions whether dimensions satisfy “the chart’s label contract” and requires checking “readable display names, ordering, and series-to-label alignment.” It never distinguishes cluster/namespace/pod resource identity from metric dimensions. It does require verifying Current/History data and permits an explicitly verified range-derived Current, but does not explicitly require real observations or prohibit fabricated data; those missing requirements cannot be inferred."
+    },
+    {
+      "text": "Routes shared density and story-only spacing to base-ui rather than copying local CSS; does not claim size=sm guarantees table density.",
+      "passed": false,
+      "evidence": "The response correctly states, “MetricValue size=\"sm\" does not by itself prove” compact bars and requests real table rendering. However, its ownership is only “Package exporting MetricValue; metrics table composition” and “Reference story; layout primitives; metrics view composition.” It does not explicitly route shared density and story-only spacing to base-ui or address avoiding copied local CSS."
+    },
+    {
+      "text": "Requires matched integrated visual evidence and real components, not only stories or mocks.",
+      "passed": true,
+      "evidence": "The response requires “an explicit reference comparison,” says to “Compare the rebuilt story and production view with the approved reference,” and requires “unmocked integration coverage” exercising “actual visual primitives and their composition.” It explicitly says, “Verify the production view as well as the story.” This supports matched reference-to-production comparison, although it does not specify matching viewport, data, or UI state."
+    }
+  ],
+  "critique": "The response gives a sound blocking verdict and actionable checks, correctly treating imports, mocked tests, screenshot viewing, and size=sm as insufficient completion evidence. It avoids inventing package paths and allows explicitly approved design alternatives. Its main semantic gaps are the absence of an explicit resource-identity-versus-dimensions distinction, a real-observations/no-fabrication requirement, recognition of an existing sufficient segmented picker, and concrete base-ui ownership for density and story spacing. Several assertions bundle independently testable requirements, so partial satisfaction cannot establish the whole assertion. The first assertion is relatively broad and weakly discriminating; the fifth leaves 'matched' underspecified and establishes comparison requirements rather than proof that matching was performed. These grades assess the response's audit decisions, not runtime correctness.",
+  "summary": {
+    "passed": 3,
+    "failed": 2,
+    "total": 5,
+    "pass_rate": 0.6
+  }
+}

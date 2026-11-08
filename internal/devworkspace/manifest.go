@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,6 +20,14 @@ type Options struct {
 	// Stopped is an additional process/session guard supplied by the orchestrator.
 	// The canonical state-root flock is always held independently of this guard.
 	Stopped func(context.Context, devcontract.ResolvedWorkspace) error
+	// SDKPolicy admits the SDK identities this manager's builds may use. The zero
+	// policy admits source identities only. It is a constructor input: nothing
+	// reads it from the environment.
+	SDKPolicy devsdk.Policy
+	// Executable resolves the CLI executable that hosts a new supervisor when
+	// Start or Restart receive none. Nil resolves os.Executable. Tests inject a
+	// resolver so no launch path can execute the test binary.
+	Executable func() (string, error)
 }
 
 type Manager struct {

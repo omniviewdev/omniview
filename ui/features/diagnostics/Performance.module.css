@@ -1,0 +1,27 @@
+.Page { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; }
+.Toolbar button, .Toolbar span { white-space: nowrap; }
+.Toolbar { flex: 0 0 auto; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--ov-color-border-default); background: var(--ov-color-bg-surface); }
+.Heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 16px 10px; }
+.Metadata { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 5px 12px; }
+.Page h2 { margin: 8px 0; }
+.Muted { overflow-wrap: anywhere; }
+small.Muted { display: block; margin-top: 3px; }
+.Content { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px 20px; }
+.Grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.Grid > * { min-width: 0; }
+.Filter { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.Filter > :first-child { width: 270px; max-width: 100%; }
+.Scope { width: 200px; max-width: 100%; flex: 0 1 200px; }
+.Captures { display: flex; flex-direction: column; gap: 12px; }
+.Form { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(160px, 1fr) 90px auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--ov-color-border-default); background: var(--ov-color-bg-surface); }
+.Form label { display: flex; flex-direction: column; gap: 6px; }
+.Compare { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-block: 8px; border-block: 1px solid var(--ov-color-border-default); }
+.Compare > :not(:last-child) { min-width: 160px; }
+.Dashboard { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.Tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: start; }
+.Charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.Tiles > *, .Charts > * { min-width: 0; }
+.Chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+@media (min-width: 1700px) { .Grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 850px) { .Grid { grid-template-columns: minmax(0, 1fr); } .Form { grid-template-columns: 1fr 1fr; } .Heading { padding: 10px 12px; } .Content { padding: 10px 12px; } }
+.NoWrap { white-space: nowrap; }

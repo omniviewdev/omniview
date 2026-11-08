@@ -1,0 +1,11 @@
+{
+  "eval_id": 3,
+  "eval_name": "valid-near-misses",
+  "prompt": "Audit an Omniview change. It retains semantic main/section/form markup, uses base-ui TextField, renders ANSI log colors as domain data, and shows a native-only metric with Current but no History. Capacity is unknown, so it does not display a utilization percentage. A URL input fills a bounded form column. User explicitly approved switching one chart from segmented buttons to a menu. Evidence was compared at the same theme/pane width with real components. Should these facts themselves be blocked? State any remaining verification needed; do not invent defects or demand extra features.",
+  "assertions": [
+    "Does not ban semantic structural HTML or domain ANSI colors.",
+    "Does not fabricate History or utilization percentages for unsupported shapes/unknown capacity.",
+    "Does not blanket-ban full-width URL input or explicitly approved menu presentation.",
+    "Separates remaining actual verification from invented defects and does not claim unobserved screenshots were personally inspected."
+  ]
+}

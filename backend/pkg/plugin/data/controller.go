@@ -43,17 +43,27 @@ type Controller interface {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	mu           sync.Mutex
-	logger       logging.Logger
-	pluginDataFn func(pluginID string) (*appstate.ScopedRoot, error)
+	mu     sync.Mutex
+	logger logging.Logger
+	state  PluginDataState
 }
 
-// NewController creates a new data store controller.
-// pluginDataFn returns a ScopedRoot for the given plugin's data directory.
-func NewController(logger logging.Logger, pluginDataFn func(string) (*appstate.ScopedRoot, error)) Controller {
+// PluginDataState is the app state surface the controller needs.
+type PluginDataState interface {
+	// PluginData opens, creating on demand, a plugin's data directory. Used by writes.
+	PluginData(id string) (*appstate.ScopedRoot, error)
+	// PluginDataIfExists opens a plugin's data directory only if it exists. Used by reads.
+	PluginDataIfExists(id string) (*appstate.ScopedRoot, bool, error)
+}
+
+// NewController creates a new data store controller. Writes (Set, Delete,
+// CompareAndSwap) create plugin data directories on demand; reads (Get,
+// GetSnapshot, Keys) only open directories that already exist, so a missing
+// directory reads as an empty store.
+func NewController(logger logging.Logger, state PluginDataState) Controller {
 	return &controller{
-		logger:       logger.Named("DataController"),
-		pluginDataFn: pluginDataFn,
+		logger: logger.Named("DataController"),
+		state:  state,
 	}
 }
 
@@ -97,9 +107,12 @@ func revisionBytes(data []byte) [sha256.Size * 2]byte {
 func (c *controller) read(pluginID, key string) (any, []byte, error) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
-	root, err := c.pluginDataFn(pluginID)
+	root, ok, err := c.state.PluginDataIfExists(pluginID)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !ok {
+		return nil, nil, nil
 	}
 	data, err := root.ReadFile(key + ".json")
 	if err != nil {
@@ -153,7 +166,7 @@ func (c *controller) CompareAndSwap(pluginID, key, expectedRevision string, valu
 func (c *controller) write(pluginID, key string, value any) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
-	root, err := c.pluginDataFn(pluginID)
+	root, err := c.state.PluginData(pluginID)
 	if err != nil {
 		return err
 	}
@@ -182,7 +195,7 @@ func (c *controller) Delete(pluginID, key string) error {
 	defer c.mu.Unlock()
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
-	root, err := c.pluginDataFn(pluginID)
+	root, err := c.state.PluginData(pluginID)
 	if err != nil {
 		return err
 	}
@@ -202,9 +215,12 @@ func (c *controller) Keys(pluginID string) ([]string, error) {
 	defer c.mu.Unlock()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 
-	root, err := c.pluginDataFn(pluginID)
+	root, ok, err := c.state.PluginDataIfExists(pluginID)
 	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return []string{}, nil
 	}
 	entries, err := root.ReadDir(".")
 	if err != nil {

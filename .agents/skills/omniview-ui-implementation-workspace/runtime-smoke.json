@@ -1,0 +1,279 @@
+{
+  "passed": true,
+  "scope": "Actual OMP project discovery, snapshot tool, parent-submission rejection, blocking session_stop continuation, independent high-effort child submission rejected for missing visual evidence, restored baseline. Not browser/native visual acceptance or successful independent approval.",
+  "events": [
+    {
+      "event": "tool_result",
+      "name": "smoke_change",
+      "isError": false,
+      "result": {
+        "type": "tool_result",
+        "toolName": "smoke_change",
+        "toolCallId": "call_257ac6aafe4543d597acb96907bcabf9|fc_08d93c4dc8cefa5e016aee08151e2c87d2a8a43e90a2ce40da",
+        "input": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "Fixture changed. Follow scenario steps; the driver checks restoration permission."
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "event": "tool_result",
+      "name": "ui_audit_snapshot",
+      "isError": false,
+      "result": {
+        "type": "tool_result",
+        "toolName": "ui_audit_snapshot",
+        "toolCallId": "call_ad5af814ec2e4c37b83be20f041951b0|fc_08d93c4dc8cefa5e016aee0817575087d2b749c06b0b76254b",
+        "input": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6\",\n  \"roots\": [\n    {\n      \"id\": \"root\",\n      \"root\": \"/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6\",\n      \"prefix\": \"\"\n    }\n  ],\n  \"baseline\": \"c41891cf0e2447af2a5c1b30483c2c96f7badd5f1eeebe5262f70c4c00c35112\",\n  \"snapshot\": \"a00738250b1364f7a218bac3d9db2a721ef96583a4ec2150c4fabc0d5d2bb235\",\n  \"changed\": [\n    \"ui/example.css\"\n  ],\n  \"findings\": [],\n  \"required\": true,\n  \"approved\": false,\n  \"instructions\": \"UI audit required. Read skill omniview-ui-implementation. Dispatch task with agent: \\\"omniview-ui-auditor\\\" as a direct independent child using effective high/xhigh/max thinking. Auditor: call ui_audit_snapshot({}), use returned roots mapping to inspect changed files and actual browser UI using read/grep/glob/eval/browser only; never edit source. Submit ui_audit_submit({report: {snapshot: \\\"<snapshot returned by ui_audit_snapshot>\\\", libraryCompliance: \\\"pass\\\"|\\\"fail\\\", compositionParity: \\\"pass\\\"|\\\"fail\\\", informationPreservation: \\\"pass\\\"|\\\"fail\\\", visualAcceptance: \\\"pass\\\"|\\\"fail\\\", findings: [], libraryRequests: [], unverified: [], evidence: [{path: \\\"<existing artifact path>\\\", kind: \\\"source\\\"|\\\"screenshot\\\"|\\\"log\\\", verdicts: [\\\"libraryCompliance\\\", \\\"compositionParity\\\", \\\"informationPreservation\\\", \\\"visualAcceptance\\\"]}]}}). Each ledger entry defaults to blocking. Retain resolved entries only with {status: \\\"resolved\\\"|\\\"approved-exception\\\", blocking: false, approvalReference: \\\"<actual resolution or approval reference>\\\", ...findingDetails}. Every verdict needs existing artifact evidence; visualAcceptance requires a real PNG/JPEG/WebP capture. Report failures honestly; missing runtime/browser access blocks approval. Parent cannot submit. Resolve failures then dispatch a fresh audit only after a material fix; do not repeatedly audit an unchanged failed snapshot. No workaround is authorized by findings or libraryRequests.\"\n}"
+          }
+        ],
+        "details": {
+          "root": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6",
+          "roots": [
+            {
+              "id": "root",
+              "root": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6",
+              "prefix": ""
+            }
+          ],
+          "baseline": "c41891cf0e2447af2a5c1b30483c2c96f7badd5f1eeebe5262f70c4c00c35112",
+          "snapshot": "a00738250b1364f7a218bac3d9db2a721ef96583a4ec2150c4fabc0d5d2bb235",
+          "changed": [
+            "ui/example.css"
+          ],
+          "findings": [],
+          "required": true,
+          "approved": false,
+          "instructions": "UI audit required. Read skill omniview-ui-implementation. Dispatch task with agent: \"omniview-ui-auditor\" as a direct independent child using effective high/xhigh/max thinking. Auditor: call ui_audit_snapshot({}), use returned roots mapping to inspect changed files and actual browser UI using read/grep/glob/eval/browser only; never edit source. Submit ui_audit_submit({report: {snapshot: \"<snapshot returned by ui_audit_snapshot>\", libraryCompliance: \"pass\"|\"fail\", compositionParity: \"pass\"|\"fail\", informationPreservation: \"pass\"|\"fail\", visualAcceptance: \"pass\"|\"fail\", findings: [], libraryRequests: [], unverified: [], evidence: [{path: \"<existing artifact path>\", kind: \"source\"|\"screenshot\"|\"log\", verdicts: [\"libraryCompliance\", \"compositionParity\", \"informationPreservation\", \"visualAcceptance\"]}]}}). Each ledger entry defaults to blocking. Retain resolved entries only with {status: \"resolved\"|\"approved-exception\", blocking: false, approvalReference: \"<actual resolution or approval reference>\", ...findingDetails}. Every verdict needs existing artifact evidence; visualAcceptance requires a real PNG/JPEG/WebP capture. Report failures honestly; missing runtime/browser access blocks approval. Parent cannot submit. Resolve failures then dispatch a fresh audit only after a material fix; do not repeatedly audit an unchanged failed snapshot. No workaround is authorized by findings or libraryRequests."
+        },
+        "isError": false
+      }
+    },
+    {
+      "event": "submit_result",
+      "name": "ui_audit_submit",
+      "isError": true,
+      "result": {
+        "type": "tool_result",
+        "toolName": "ui_audit_submit",
+        "toolCallId": "call_93f790cc24fe412892a42bb5007f48b0|fc_08d93c4dc8cefa5e016aee08192b4087d29dbd515d37992f71",
+        "input": {
+          "report": {
+            "snapshot": "a00738250b1364f7a218bac3d9db2a721ef96583a4ec2150c4fabc0d5d2bb235",
+            "libraryCompliance": "pass",
+            "compositionParity": "pass",
+            "informationPreservation": "pass",
+            "visualAcceptance": "pass",
+            "findings": [],
+            "libraryRequests": [],
+            "unverified": [],
+            "evidence": []
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Only a direct omniview-ui-auditor child may inspect or submit this audit."
+          }
+        ],
+        "isError": true
+      }
+    },
+    {
+      "event": "session_stop",
+      "changed": true
+    },
+    {
+      "event": "tool_result",
+      "name": "smoke_restore",
+      "isError": false,
+      "result": {
+        "type": "tool_result",
+        "toolName": "smoke_restore",
+        "toolCallId": "call_5634609e924c4748bd02733125b12b4d|fc_08d93c4dc8cefa5e016aee081d93ec87d287ccf2c7096df904",
+        "input": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "Owned fixture restored; no UI changes remain."
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "event": "tool_result",
+      "name": "ui_audit_snapshot",
+      "isError": false,
+      "result": {
+        "type": "tool_result",
+        "toolName": "ui_audit_snapshot",
+        "toolCallId": "call_1997eceda72d431ebfa7c9a565d076d0|fc_08d93c4dc8cefa5e016aee081f0a4c87d2920e4b5c4c9c47ec",
+        "input": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6\",\n  \"roots\": [\n    {\n      \"id\": \"root\",\n      \"root\": \"/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6\",\n      \"prefix\": \"\"\n    }\n  ],\n  \"baseline\": \"c41891cf0e2447af2a5c1b30483c2c96f7badd5f1eeebe5262f70c4c00c35112\",\n  \"snapshot\": \"c41891cf0e2447af2a5c1b30483c2c96f7badd5f1eeebe5262f70c4c00c35112\",\n  \"changed\": [],\n  \"findings\": [],\n  \"required\": false,\n  \"approved\": false,\n  \"instructions\": \"UI audit required. Read skill omniview-ui-implementation. Dispatch task with agent: \\\"omniview-ui-auditor\\\" as a direct independent child using effective high/xhigh/max thinking. Auditor: call ui_audit_snapshot({}), use returned roots mapping to inspect changed files and actual browser UI using read/grep/glob/eval/browser only; never edit source. Submit ui_audit_submit({report: {snapshot: \\\"<snapshot returned by ui_audit_snapshot>\\\", libraryCompliance: \\\"pass\\\"|\\\"fail\\\", compositionParity: \\\"pass\\\"|\\\"fail\\\", informationPreservation: \\\"pass\\\"|\\\"fail\\\", visualAcceptance: \\\"pass\\\"|\\\"fail\\\", findings: [], libraryRequests: [], unverified: [], evidence: [{path: \\\"<existing artifact path>\\\", kind: \\\"source\\\"|\\\"screenshot\\\"|\\\"log\\\", verdicts: [\\\"libraryCompliance\\\", \\\"compositionParity\\\", \\\"informationPreservation\\\", \\\"visualAcceptance\\\"]}]}}). Each ledger entry defaults to blocking. Retain resolved entries only with {status: \\\"resolved\\\"|\\\"approved-exception\\\", blocking: false, approvalReference: \\\"<actual resolution or approval reference>\\\", ...findingDetails}. Every verdict needs existing artifact evidence; visualAcceptance requires a real PNG/JPEG/WebP capture. Report failures honestly; missing runtime/browser access blocks approval. Parent cannot submit. Resolve failures then dispatch a fresh audit only after a material fix; do not repeatedly audit an unchanged failed snapshot. No workaround is authorized by findings or libraryRequests.\"\n}"
+          }
+        ],
+        "details": {
+          "root": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6",
+          "roots": [
+            {
+              "id": "root",
+              "root": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6",
+              "prefix": ""
+            }
+          ],
+          "baseline": "c41891cf0e2447af2a5c1b30483c2c96f7badd5f1eeebe5262f70c4c00c35112",
+          "snapshot": "c41891cf0e2447af2a5c1b30483c2c96f7badd5f1eeebe5262f70c4c00c35112",
+          "changed": [],
+          "findings": [],
+          "required": false,
+          "approved": false,
+          "instructions": "UI audit required. Read skill omniview-ui-implementation. Dispatch task with agent: \"omniview-ui-auditor\" as a direct independent child using effective high/xhigh/max thinking. Auditor: call ui_audit_snapshot({}), use returned roots mapping to inspect changed files and actual browser UI using read/grep/glob/eval/browser only; never edit source. Submit ui_audit_submit({report: {snapshot: \"<snapshot returned by ui_audit_snapshot>\", libraryCompliance: \"pass\"|\"fail\", compositionParity: \"pass\"|\"fail\", informationPreservation: \"pass\"|\"fail\", visualAcceptance: \"pass\"|\"fail\", findings: [], libraryRequests: [], unverified: [], evidence: [{path: \"<existing artifact path>\", kind: \"source\"|\"screenshot\"|\"log\", verdicts: [\"libraryCompliance\", \"compositionParity\", \"informationPreservation\", \"visualAcceptance\"]}]}}). Each ledger entry defaults to blocking. Retain resolved entries only with {status: \"resolved\"|\"approved-exception\", blocking: false, approvalReference: \"<actual resolution or approval reference>\", ...findingDetails}. Every verdict needs existing artifact evidence; visualAcceptance requires a real PNG/JPEG/WebP capture. Report failures honestly; missing runtime/browser access blocks approval. Parent cannot submit. Resolve failures then dispatch a fresh audit only after a material fix; do not repeatedly audit an unchanged failed snapshot. No workaround is authorized by findings or libraryRequests."
+        },
+        "isError": false
+      }
+    },
+    {
+      "event": "session_stop",
+      "changed": false
+    }
+  ],
+  "stdout": "Restored. No UI changes remain. No visual approval claimed.\n",
+  "stderr": "Working...\n",
+  "independent": {
+    "stdout": "Independent missing-evidence rejection exercised: `accepted: false`. Visual acceptance remained unverified; no application or baseline existed.\n\nFixture restored. Final snapshot confirms no changed files.\n",
+    "stderr": "Working...\n",
+    "receipt": {
+      "version": 1,
+      "sessionId": "01a1b1cf-c018-7300-8e7e-92eba0c9d013",
+      "auditor": {
+        "kind": "sub",
+        "id": "IndependentUiAudit",
+        "name": "omniview-ui-auditor",
+        "depth": 1,
+        "parentId": "Main",
+        "thinkingLevel": "high",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6.1-sol"
+        }
+      },
+      "snapshot": "a00738250b1364f7a218bac3d9db2a721ef96583a4ec2150c4fabc0d5d2bb235",
+      "roots": [
+        {
+          "id": "root",
+          "root": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6",
+          "prefix": ""
+        }
+      ],
+      "submittedAt": "2026-11-06T17:03:04.909Z",
+      "report": {
+        "snapshot": "a00738250b1364f7a218bac3d9db2a721ef96583a4ec2150c4fabc0d5d2bb235",
+        "libraryCompliance": "fail",
+        "compositionParity": "fail",
+        "informationPreservation": "fail",
+        "visualAcceptance": "fail",
+        "findings": [],
+        "libraryRequests": [],
+        "unverified": [
+          {
+            "verdict": "libraryCompliance",
+            "blocking": true,
+            "owner": "fixture consumer (ui/example.css); no UI package identified",
+            "reason": "Source review found only main { display: grid; } and main { color: currentColor; }. Structural selectors and currentColor do not establish misuse. Installed UI package versions, component documentation, and consumer bindings are absent from the inspected fixture inventory. Full library compliance remains unverified; fail means missing evidence, not a proven library defect."
+          },
+          {
+            "verdict": "compositionParity",
+            "blocking": true,
+            "owner": "fixture consumer (ui/example.css)",
+            "reason": "No approved composition, parity contract, or visual baseline exists. Source alone cannot establish geometry or density parity. No redesign or regression is asserted."
+          },
+          {
+            "verdict": "informationPreservation",
+            "blocking": true,
+            "owner": "fixture consumer (ui/example.css)",
+            "reason": "No consumer markup, matched data, or running browser application exists for checking identity, provenance, states, focus, or keyboard behavior. Preservation remains unverified; no information loss is asserted."
+          },
+          {
+            "verdict": "visualAcceptance",
+            "blocking": true,
+            "owner": "fixture consumer (ui/example.css)",
+            "reason": "Visual acceptance is UNVERIFIED. Missing browser application and approved baseline are blocking evidence gaps. No current or baseline screenshot exists. No application was launched, browser interaction performed, or pixels inspected. Source evidence is not visual proof. Schema permits only pass/fail, so fail records this unverified boundary."
+          }
+        ],
+        "evidence": [
+          {
+            "path": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6/ui/example.css",
+            "kind": "source",
+            "verdicts": [
+              "libraryCompliance",
+              "compositionParity",
+              "informationPreservation",
+              "visualAcceptance"
+            ]
+          },
+          {
+            "path": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6/.agents/skills/omniview-ui-implementation/references/audit-protocol.md",
+            "kind": "source",
+            "verdicts": [
+              "libraryCompliance",
+              "compositionParity",
+              "informationPreservation",
+              "visualAcceptance"
+            ]
+          }
+        ]
+      },
+      "evidence": [
+        {
+          "path": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6/ui/example.css",
+          "kind": "source",
+          "verdicts": [
+            "libraryCompliance",
+            "compositionParity",
+            "informationPreservation",
+            "visualAcceptance"
+          ],
+          "sha256": "1709c21e64b2cf8d665d4cd72894b1bb442538a7485fcbea7dbd271d4941ee76"
+        },
+        {
+          "path": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6/.agents/skills/omniview-ui-implementation/references/audit-protocol.md",
+          "kind": "source",
+          "verdicts": [
+            "libraryCompliance",
+            "compositionParity",
+            "informationPreservation",
+            "visualAcceptance"
+          ],
+          "sha256": "af9c141d2c560b98ff8539ec2c41e35ba0fb428180c700f52bd698aad7df2131"
+        }
+      ],
+      "accepted": false,
+      "errors": [
+        "libraryCompliance must be pass.",
+        "compositionParity must be pass.",
+        "informationPreservation must be pass.",
+        "visualAcceptance must be pass.",
+        "Unverified acceptance checks block completion.",
+        "Missing existing artifact evidence for visualAcceptance."
+      ],
+      "trustLimits": [
+        "Same-user filesystem is not tamper-proof.",
+        "Artifact hashes bind bytes, not capture provenance.",
+        "Independent auditor judgment is not mechanically provable."
+      ],
+      "receiptPath": "/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/omniview-ui-audit-smoke-mN13s6/.git/ui-audit/58f34eb354fbedfb77cd4d2ab67ff9516cb70252c316c092f74ad7604d2e9827/1793984584917-1bbafb9342a6.json"
+    }
+  }
+}

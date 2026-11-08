@@ -1,0 +1,36 @@
+{
+  "expectations": [
+    {
+      "text": "Rejects local trigger styling and routes gap/icon sizing fix to shared base-ui primitives.",
+      "passed": true,
+      "evidence": "Explicitly says “Do not add application CSS overrides. Fix the shared trigger styling so icon sizing and spacing align with the approved Button treatment” and assigns “base-ui” ownership of “shared trigger chrome.”"
+    },
+    {
+      "text": "Recognizes Input.Control datetime-local as browser-native behavior despite approved import and chooses existing themed date/time capabilities.",
+      "passed": true,
+      "evidence": "States “A base-ui wrapper still forwards browser-native temporal interaction; its provenance does not make it the themed picker” and directs use of “the installed, supported DateTimePicker/date-time primitives.”"
+    },
+    {
+      "text": "Does not restore invented CPU capacity or silently accept bare-number parity loss; requires explicit dense metric capability/design disposition.",
+      "passed": true,
+      "evidence": "Says “Remove the false one-core capacity assumption, but do not silently remove the approved visual encoding,” requires preserving honest semantics or “explicit approval for a value-only redesign,” and prohibits “another arbitrary bound or observed maximum.” It also calls for a compact metric gap record, “if confirmed,” documenting “required table density and honest unknown-bound behavior.”"
+    },
+    {
+      "text": "Requires actionable library request before substitution, including owner, existing API gap, and acceptance evidence.",
+      "passed": true,
+      "evidence": "Under “Record issues before accepting any workaround,” requires records identifying “APIs inspected, the specific missing behavior” and “existing APIs evaluated and why they fail.” “Each record needs an owner, requested capability or fix, evidence, acceptance criteria,” with an actionable local record if external tracking is unavailable. It further states “A ticket does not authorize a workaround” and requires explicit exception approval."
+    },
+    {
+      "text": "Requires actual popup date/time keyboard/focus and narrow table-density verification before completion.",
+      "passed": true,
+      "evidence": "Requires verification of “the real settings form and CPU table with actual components and CSS” under matched “density, viewport, and pane width.” Acceptance checks include “picker date/time entry, labels, focus, keyboard and popup behavior,” table “compact rendering,” and “narrow-layout states.” It explicitly says “Any failed or unverified required verdict blocks completion.”"
+    }
+  ],
+  "critique": "All five assertions are supported by explicit decisions and acceptance requirements. The response distinguishes package ownership, native browser behavior versus themed controls, honest CPU semantics, conditional capability gaps, and runtime acceptance without claiming checks were performed. These are decision-level passes, not proof of implementation or runtime correctness. The assertions are discriminating in this context; the fourth bundles several requirements and could more sharply distinguish acceptance criteria from collected acceptance evidence, but the response explicitly requires both evidence in records and subsequent real-component verification. The response adds process details not established by the prompt—particularly a named auditor and runtime-gate terminology—which are unnecessary and potentially assume unavailable infrastructure, but do not negate the evaluated decisions.",
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "total": 5,
+    "pass_rate": 1
+  }
+}

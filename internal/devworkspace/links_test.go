@@ -94,7 +94,9 @@ func TestLinkPlanIncludesRuntimeAndEverySelectedPlugin(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, plan.Roots, 4)
 	require.Len(t, plan.GoRoots, 3)
-	require.Equal(t, filepath.Join(root, "sdk"), plan.SDK)
+	selected, ok := plan.SDK.Directory()
+	require.True(t, ok, "a linked SDK repository selects its checkout")
+	require.Equal(t, filepath.Join(root, "sdk"), selected)
 	for _, r := range plan.Roots {
 		require.Equal(t, filepath.Join(root, "ui/packages/base-ui"), r.Targets["@omniviewdev/base-ui"])
 		require.NotContains(t, r.Targets, "react")

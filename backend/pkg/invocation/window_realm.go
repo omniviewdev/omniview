@@ -2,12 +2,26 @@ package invocation
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
+
+// WindowIdentity names one window by concrete kind and numeric ID. Wails numbers
+// native windows and server-mode browser windows from separate counters that both
+// start at 1, so the ID alone is not unique.
+type WindowIdentity struct {
+	kind reflect.Type
+	id   uint
+}
+
+// IdentityOf reads only ID() and the dynamic type; it never calls other window methods.
+func IdentityOf(window application.Window) WindowIdentity {
+	return WindowIdentity{kind: reflect.TypeOf(window), id: window.ID()}
+}
 
 // ContextScope supplies host-issued provenance at a binding boundary.
 // A fixed Scope also implements this contract for native and agent callers.
@@ -19,13 +33,13 @@ type ContextScope interface {
 // window. Different windows never share source observations or operation handles.
 type WindowRealm struct {
 	mu       sync.Mutex
-	scopes   map[uint]*Scope
-	closed   map[uint]time.Time
+	scopes   map[WindowIdentity]*Scope
+	closed   map[WindowIdentity]time.Time
 	onRetire func(string)
 }
 
 func NewWindowRealm(onRetire func(string)) *WindowRealm {
-	return &WindowRealm{scopes: make(map[uint]*Scope), closed: make(map[uint]time.Time), onRetire: onRetire}
+	return &WindowRealm{scopes: make(map[WindowIdentity]*Scope), closed: make(map[WindowIdentity]time.Time), onRetire: onRetire}
 }
 
 // ScopeForWindow accepts only the native window object, never a caller-supplied ID.
@@ -33,6 +47,7 @@ func (r *WindowRealm) ScopeForWindow(window application.Window) *Scope {
 	if window == nil {
 		return nil
 	}
+	key := IdentityOf(window)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := time.Now()
@@ -41,23 +56,23 @@ func (r *WindowRealm) ScopeForWindow(window application.Window) *Scope {
 			delete(r.closed, id)
 		}
 	}
-	if _, closed := r.closed[window.ID()]; closed {
+	if _, closed := r.closed[key]; closed {
 		return nil
 	}
-	if scope := r.scopes[window.ID()]; scope != nil {
+	if scope := r.scopes[key]; scope != nil {
 		return scope
 	}
 	if len(r.scopes) >= 64 || len(r.closed) >= 1024 {
 		return nil
 	}
 	scope := NewScope(TrustedUI)
-	r.scopes[window.ID()] = scope
+	r.scopes[key] = scope
 	window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		r.mu.Lock()
-		retired := r.scopes[window.ID()] == scope
+		retired := r.scopes[key] == scope
 		if retired {
-			delete(r.scopes, window.ID())
-			r.closed[window.ID()] = time.Now().Add(time.Minute)
+			delete(r.scopes, key)
+			r.closed[key] = time.Now().Add(time.Minute)
 		}
 		r.mu.Unlock()
 		if retired && r.onRetire != nil {

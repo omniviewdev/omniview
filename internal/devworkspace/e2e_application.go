@@ -18,8 +18,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/devsource"
 )
 
 type ApplicationFixtureCommand struct {
@@ -225,7 +225,7 @@ func (m *Manager) BuildApplicationFixture(ctx context.Context, target, artifacts
 		return fmt.Errorf("application artifact directory must be private")
 	}
 	g.options.GoBuildCacheDirectory = scoped.Value(linkBuildCacheKey{}).(string)
-	g.options.VerifySDKSource = devsource.Verify
+	g.options.VerifySDK = devsdk.NewVerifier(m.options.SDKPolicy)
 	g.options.Output = os.Stderr
 	g.run = g.command
 	g.runProducer = g.commandWithEnvironment
@@ -299,6 +299,10 @@ func (g *BuildGraph) applicationFixtureBindings(ctx context.Context, node BuildN
 	if err != nil {
 		return err
 	}
+	sdk, ok := g.plan.SDK.Directory()
+	if !ok {
+		return fmt.Errorf("the application fixture requires a selected local SDK source")
+	}
 	stage, err := devoutputs.Prepare(ctx, g.workspace.ResolvedWorkspace, node.Directory, devoutputs.Bindings)
 	if err != nil {
 		return err
@@ -309,7 +313,7 @@ func (g *BuildGraph) applicationFixtureBindings(ctx context.Context, node BuildN
 			resultErr = errors.Join(resultErr, stage.Abort(context.WithoutCancel(ctx)))
 		}
 	}()
-	_, err = g.run(ctx, node.Directory, "task", "bindings", "DEV=true", "SERVER=true", "EXTRA_TAGS=devcontrol,e2eapplication", "SDK_SOURCE="+g.plan.SDK, "BINDINGS_OUTPUT_DIRECTORY="+stage.Directory, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
+	_, err = g.run(ctx, node.Directory, "task", "bindings", "DEV=true", "SERVER=true", "EXTRA_TAGS=devcontrol,e2eapplication", sdkSourceEnv+"="+sdk, "BINDINGS_OUTPUT_DIRECTORY="+stage.Directory, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
 	if err != nil {
 		return err
 	}
@@ -410,7 +414,11 @@ func (g *BuildGraph) applicationFixtureServer(ctx context.Context, node BuildNod
 	if err != nil {
 		return err
 	}
-	modfile, err := g.run(ctx, node.Directory, "task", "--silent", "host:prepare", "SDK_SOURCE="+g.plan.SDK, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
+	sdk, ok := g.plan.SDK.Directory()
+	if !ok {
+		return fmt.Errorf("the application fixture requires a selected local SDK source")
+	}
+	modfile, err := g.run(ctx, node.Directory, "task", "--silent", "host:prepare", sdkSourceEnv+"="+sdk, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
 	if err != nil {
 		return err
 	}

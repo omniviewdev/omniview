@@ -11,7 +11,18 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/internal/devsdk"
+	"github.com/omniviewdev/omniview/internal/devsource"
 )
+
+// sourceOf unwraps the source evidence of a verified identity.
+func sourceOf(t testing.TB, identity devsdk.Identity) devsource.Identity {
+	t.Helper()
+	source, ok := identity.Source()
+	require.True(t, ok, "verifying a selected checkout must yield source evidence")
+	return source
+}
 
 func sdkSourceFixture(t *testing.T) (source, sdk, revision, goPath string) {
 	t.Helper()
@@ -50,20 +61,27 @@ func sdkSourceFixture(t *testing.T) (source, sdk, revision, goPath string) {
 
 func TestVerifySelectedSDKUsesActualGoModuleAndDirtySourceDigest(t *testing.T) {
 	source, sdk, revision, goPath := sdkSourceFixture(t)
-	identity, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
+	typed, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
+	identity := sourceOf(t, typed)
 	canonical, err := filepath.EvalSymlinks(sdk)
 	require.NoError(t, err)
 	require.Equal(t, canonical, identity.Directory)
 	require.Equal(t, revision, identity.Revision)
 	require.Len(t, identity.SourceDigest, 64)
+	observed, err := devsource.Verify(context.Background(), canonical)
+	require.NoError(t, err)
+	require.Equal(t, observed, identity, "typed managed verification must report exactly the devsource identity")
 	require.NoError(t, os.WriteFile(filepath.Join(sdk, "settings", "value.go"), []byte("package settings\nconst Value=2\n"), 0600))
-	dirty, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
+	dirtyTyped, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
+	dirty := sourceOf(t, dirtyTyped)
 	require.NotEqual(t, identity.SourceDigest, dirty.SourceDigest, "ordinary dirty SDK API edits must receive fresh source evidence")
+	require.False(t, typed == dirtyTyped, "dirty edits must change the comparable identity")
 	require.NoError(t, os.WriteFile(filepath.Join(sdk, "pkg", "state", "root.go"), []byte("package state\n// containment changed\n"), 0600))
-	isolationDirty, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
+	isolationTyped, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
+	isolationDirty := sourceOf(t, isolationTyped)
 	require.Equal(t, revision, isolationDirty.Revision)
 	require.NotEqual(t, dirty.SourceDigest, isolationDirty.SourceDigest,
 		"dirty isolation edits must receive fresh source evidence")
@@ -75,8 +93,9 @@ func TestVerifySelectedSDKIgnoresYAMLAndFollowsReplacement(t *testing.T) {
 	_, foreign, foreignRevision, _ := sdkSourceFixture(t)
 	require.NoError(t, os.WriteFile(filepath.Join(foreign, "settings", "value.go"), []byte("package settings\nconst Value=99\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(source, "go.mod"), []byte(fmt.Sprintf("module fixture\n\ngo 1.24.0\nrequire github.com/omniviewdev/plugin-sdk v0.0.0\nreplace github.com/omniviewdev/plugin-sdk => %q\n", foreign)), 0600))
-	actual, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
+	typed, err := VerifySelectedSDK(context.Background(), goPath, source, os.Environ())
 	require.NoError(t, err)
+	actual := sourceOf(t, typed)
 	canonical, err := filepath.EvalSymlinks(foreign)
 	require.NoError(t, err)
 	require.Equal(t, canonical, actual.Directory)

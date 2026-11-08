@@ -121,6 +121,9 @@ jobs:
       - name: Test
         run: task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
+      - name: Test development control (devcontrol tag)
+        run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
       - name: Generate fresh C02 error transport corpus
         id: c02-corpus
         run: |

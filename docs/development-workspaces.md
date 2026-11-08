@@ -20,11 +20,18 @@ not require launch evidence. Before launching, run:
 Preflight reports all missing launch inputs together and exits 3 when blocked.
 Supply `--link-evidence /path/to/probe.json` with a successful pinned protocol
 probe. Saved launch options and retained protocol evidence are reused.
-Launching requires selecting `--repo plugin-sdk` even when you do not intend
-to develop the SDK. For an existing workspace, use
-`workspace edit FEATURE --root "$COLLECTION" --add-repo plugin-sdk`.
+Selecting `--repo plugin-sdk` is optional. Without it the workspace is in
+published SDK mode: the host and each plugin build against the plugin SDK release
+their own `go.mod` declares (a released tag at or above the controller's pinned
+SDK; see the CLI guide), and preflight reports each consumer's declared
+requirement as `unresolved` in its `sdk` object. Select `--repo plugin-sdk` to
+build every consumer against explicit SDK source instead; native mode requires it.
 
-Preflight does not install dependencies or start processes. A ready report covers
+Preflight runs no installs, no network, no writes and no process; in published
+mode it reads the Go environment file (`GOENV`, default `<user config dir>/go/env`)
+and reports a non-empty `GOFLAGS` there, so the refusal appears at preflight as
+well as at launch; module-cache integrity, checksums and capability are verified
+only at launch. A ready report covers
 launch inputs only; launch still validates source identity, strict peer dependencies,
 and runtime compatibility.
 
@@ -115,7 +122,7 @@ Each source is an explicit local normal or bare Git repository. Use repeatable `
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-Managed workspaces require a linked local SDK checkout. Select a source compatible with the host's declared SDK dependency. Workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox.
+Selecting the `plugin-sdk` repository is optional. With it the workspace is in source mode (required for native): select a source compatible with the host's declared SDK dependency; workspace builds observe the checkout's HEAD and source digest, including dirty edits, to bind artifact provenance to the actual source. This identification is not a sandbox. Without it the workspace is in published SDK mode (browser mode only) and builds against the released SDK each consumer's `go.mod` declares.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 
@@ -477,7 +484,7 @@ fallback termination.
 
 ## Output and references
 
-`--json` emits one machine-readable result on stdout, except foreground `workspace follow --json`, which streams one JSON diagnostic object per observation. Process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Follow diagnostics include apply consent, owner, observation/schedule times, active operation, pending cohort, plan, result, blocker and next command. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout. A successful check can report available or blocked updates without claiming they were applied.
+`--json` emits one machine-readable result on stdout, except foreground `workspace follow --json`, which streams one JSON diagnostic object per observation. Process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Follow diagnostics include apply consent, owner, observation/schedule times, active operation, pending cohort, plan, result, blocker and next command. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout. A typed error keeps its code and exit across the supervisor boundary: the exit is not serialized, so the controller restores it from the code through one table (a test scans every typed constructor so a new code cannot be missed); an unlisted code is a failure (exit 5). When one failure carries several typed errors, the one reported is chosen by consequence, not join order: conflicts, ownership and trust refusals (exit 4), then failed commands (5), then any other code, with the first in chain order winning within a rank. A successful check can report available or blocked updates without claiming they were applied.
 
 ## Application E2E
 

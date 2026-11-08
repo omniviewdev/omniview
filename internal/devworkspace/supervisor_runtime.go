@@ -226,11 +226,17 @@ func (s *workspaceSupervisor) startVite(ctx context.Context) error {
 		return err
 	}
 	for {
+		// Resolve the environment before opening the output writer: a failure
+		// here must not leave an unfinished Vite output transaction behind.
+		baseEnvironment, err := s.environment()
+		if err != nil {
+			return err
+		}
 		writer, err := devoutputs.BeginVite(ctx, s.workspace.ResolvedWorkspace, host)
 		if err != nil {
 			return err
 		}
-		env := append(s.environment(), allowed...)
+		env := append(baseEnvironment, allowed...)
 		env = append(env, devcompose.RootEnvironment+"="+composition.Root, "WAILS_VITE_PORT="+strconv.Itoa(lease.Port))
 		env = append(env, writer.Environment...)
 		output := &childOutput{output: s.output}
@@ -364,7 +370,10 @@ func (s *workspaceSupervisor) startHost(ctx context.Context) error {
 		s.mu.Lock()
 		s.hostCaptureReady = make(chan struct{})
 		s.mu.Unlock()
-		env := s.environment()
+		env, err := s.environment()
+		if err != nil {
+			return err
+		}
 		env = append(env, "OMNIVIEW_PROCESS_BRIDGE_ENDPOINT="+strings.TrimSuffix(s.record.Endpoint, "/v1/supervisor")+"/v1/process", "OMNIVIEW_PROCESS_BRIDGE_TOKEN_FILE="+s.record.TokenFile)
 		allowed, err := s.graphInstance.ViteEnvironment()
 		if err != nil {

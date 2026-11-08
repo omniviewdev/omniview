@@ -16,6 +16,7 @@ import (
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -269,6 +270,16 @@ func workspaceCollectionRoot(explicit string) (string, error) {
 	}
 	return "", devcontract.Fail(3, "missing_registry", "select --root COLLECTION or run inside an initialized collection; discover known roots with workspace collections from a host checkout")
 }
+
+// workspaceManagerOptions are the options every CLI verb opens a collection
+// with: lifecycle operations require a stopped workspace, and builds judge a
+// published plugin SDK under the production release policy (a released tag at
+// or above the controller's own pinned SDK). The policy is a constructor input;
+// nothing reads it from the environment.
+func workspaceManagerOptions() devworkspace.Options {
+	return devworkspace.Options{Stopped: devworkspace.RequireStopped, SDKPolicy: devsdk.ReleasePolicy()}
+}
+
 func resolveWorkspaceCLI(ctx context.Context, c workspaceCommand) (devworkspace.Workspace, *devworkspace.Manager, error) {
 	// An explicit manifest/path is authoritative; an invalid explicit context can
 	// never fall through to another registry workspace or production state.
@@ -292,7 +303,7 @@ func resolveWorkspaceCLI(ctx context.Context, c workspaceCommand) (devworkspace.
 		if root == "" {
 			root = filepath.Dir(filepath.Dir(resolved.Root))
 		}
-		manager, err := devworkspace.Open(root, devworkspace.Options{Stopped: devworkspace.RequireStopped})
+		manager, err := devworkspace.Open(root, workspaceManagerOptions())
 		if err != nil {
 			var typed *devcontract.Error
 			if c.root == "" && (c.verb == "inspect" || c.verb == "paths") && errors.As(err, &typed) && typed.Code == "missing_registry" {
@@ -310,7 +321,7 @@ func resolveWorkspaceCLI(ctx context.Context, c workspaceCommand) (devworkspace.
 	if err != nil {
 		return devworkspace.Workspace{}, nil, err
 	}
-	manager, err := devworkspace.Open(root, devworkspace.Options{Stopped: devworkspace.RequireStopped})
+	manager, err := devworkspace.Open(root, workspaceManagerOptions())
 	if err != nil {
 		return devworkspace.Workspace{}, nil, err
 	}
@@ -488,7 +499,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		if rootErr != nil {
 			return fail(rootErr)
 		}
-		manager, openErr := devworkspace.Open(root, devworkspace.Options{Stopped: devworkspace.RequireStopped})
+		manager, openErr := devworkspace.Open(root, workspaceManagerOptions())
 		if openErr != nil {
 			return fail(openErr)
 		}
@@ -553,7 +564,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		if rootErr != nil {
 			return fail(rootErr)
 		}
-		manager, openErr := devworkspace.Open(root, devworkspace.Options{Stopped: devworkspace.RequireStopped})
+		manager, openErr := devworkspace.Open(root, workspaceManagerOptions())
 		if openErr != nil {
 			return fail(openErr)
 		}
@@ -617,7 +628,7 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 		switch c.verb {
 		case "preflight":
 			options, optionErr := workspaceLaunchOptions(c, w)
-			report := devworkspace.PreflightLaunch(ctx, w, options)
+			report := devworkspace.PreflightLaunch(ctx, w, options, devsdk.ReleasePolicy())
 			report.OwnershipChecked = c.ownership
 			if c.ownership {
 				inspection, inspectionErr := devworkspace.InspectOwnership(ctx, w)
@@ -652,6 +663,9 @@ func executeWorkspaceCommand(ctx context.Context, c workspaceCommand, out, diagn
 			} else {
 				for _, issue := range report.Issues {
 					fmt.Fprintf(out, "%s: %s\n", issue.Code, issue.Message)
+				}
+				if report.SDK != nil {
+					printSDKStatus(out, *report.SDK)
 				}
 				if report.Ready {
 					fmt.Fprintln(out, "Launch inputs ready; launch still checks source trust, dependencies and runtime compatibility.")
@@ -990,6 +1004,9 @@ func printWorkspaceValue(out io.Writer, value any) {
 			fmt.Fprintf(out, "Seed policy: %s\nCopied scope: %s\nExcluded: %s\nSeed is not a profile clone or integration-readiness proof.\n", status.Seed.Policy, strings.Join(status.Seed.CopiedScope, ", "), strings.Join(status.Seed.Exclusions, ", "))
 		}
 		fmt.Fprintf(out, "Health: process=%s build=%s dependencies=%s served-source=%s checkout-since-ready=%s readiness=%s hmr=%s reload=%s\n", status.Health.Liveness, status.Health.Build, status.Health.Dependencies, status.Health.ServedSource, status.Health.CheckoutSinceReady, status.Health.Readiness, status.Health.HMR, status.Health.SourceReload)
+		if status.SDK != nil {
+			printSDKStatus(out, *status.SDK)
+		}
 		if status.FailedStage != "" {
 			fmt.Fprintf(out, "Failed stage: %s\n", status.FailedStage)
 		}
@@ -1025,6 +1042,24 @@ func printWorkspaceValue(out io.Writer, value any) {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 	_ = encoder.Encode(value)
+}
+
+// printSDKStatus names the SDK mode a workspace builds against and, in
+// published mode, each Go consumer's declared requirement, the effective
+// version a launch verified (when one did) and how that was established.
+func printSDKStatus(out io.Writer, sdk devworkspace.SDKStatus) {
+	if sdk.Mode == devsdk.ModeSource {
+		fmt.Fprintf(out, "SDK: source (selected repository %s)\n", sdk.RepositoryID)
+		return
+	}
+	fmt.Fprintln(out, "SDK: published (each Go consumer builds against the plugin SDK its own go.mod requires; no SDK checkout)")
+	for _, consumer := range sdk.Consumers {
+		resolved := "not resolved"
+		if consumer.ResolvedVersion != "" {
+			resolved = "resolved " + consumer.ResolvedVersion
+		}
+		fmt.Fprintf(out, "  %s: requires %s, %s (%s)\n", consumer.RepositoryID, consumer.RequiredVersion, resolved, consumer.Verification)
+	}
 }
 
 func printWorkspaceUpdatePlan(out io.Writer, plan devworkspace.UpdatePlan) {
