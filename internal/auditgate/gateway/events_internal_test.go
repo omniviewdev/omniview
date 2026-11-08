@@ -182,30 +182,27 @@ func TestBrowserWindowNamesAreRecognized(t *testing.T) {
 	}
 }
 
-func TestTunnelQueueIsBoundedInBytesMessagesAndAge(t *testing.T) {
+func TestTunnelQueueIsBoundedInBytesAndAge(t *testing.T) {
 	now := time.Now()
 	ctx := context.Background()
 
-	byBytes := newTunnelQueue(10, 100, time.Hour)
+	// A message costs its payload and the fixed overhead: this bound holds
+	// the first two messages below and exactly 10 bytes of payload.
+	byBytes := newTunnelQueue(2*perMessageOverhead+10, time.Hour)
 	if !byBytes.push([]byte("123456"), now) || byBytes.push([]byte("12345"), now) {
 		t.Fatal("the byte bound is not enforced exactly")
 	}
 	if !byBytes.push([]byte("1234"), now) {
 		t.Fatal("a message that fits was refused")
 	}
-
-	byCount := newTunnelQueue(1<<20, 2, time.Hour)
-	if !byCount.push([]byte("a"), now) || !byCount.push([]byte("b"), now) || byCount.push([]byte("c"), now) {
-		t.Fatal("the message bound is not enforced exactly")
-	}
-	if got, _, ok := byCount.pop(ctx); !ok || string(got) != "a" {
+	if got, _, ok := byBytes.pop(ctx); !ok || string(got) != "123456" {
 		t.Fatalf("pop = %q %v, want the oldest first", got, ok)
 	}
-	if !byCount.push([]byte("c"), now) {
+	if !byBytes.push([]byte("12345"), now) {
 		t.Fatal("a popped message did not free its place")
 	}
 
-	byAge := newTunnelQueue(1<<20, 100, time.Second)
+	byAge := newTunnelQueue(1<<20, time.Second)
 	if !byAge.push([]byte("old"), now) {
 		t.Fatal("first push refused")
 	}
@@ -220,8 +217,79 @@ func TestTunnelQueueIsBoundedInBytesMessagesAndAge(t *testing.T) {
 	}
 }
 
+// The filter admits events far larger than any sensible queue bound, and one
+// broadcast reaches every tunnel. A queue that refused such a message even when
+// empty would cut every page off for the same event.
+func TestAnEmptyQueueTakesOneMessageOfAnySize(t *testing.T) {
+	now := time.Now()
+	ctx := context.Background()
+	queue := newTunnelQueue(1000, time.Hour)
+	big := make([]byte, 50_000)
+	if !queue.push(big, now) {
+		t.Fatal("an empty queue refused a message larger than its bound")
+	}
+	if queue.push([]byte("a"), now) {
+		t.Fatal("a queue past its bound took another message")
+	}
+	if got, _, ok := queue.pop(ctx); !ok || len(got) != len(big) {
+		t.Fatalf("pop returned %d bytes, ok=%v", len(got), ok)
+	}
+	if !queue.push(big, now) {
+		t.Fatal("the queue, empty again, refused an oversized message")
+	}
+}
+
+// A burst of small events is bounded by the memory it takes and not by how
+// many there are: a page that keeps up with more than a few thousand of them
+// must not be cut off for it.
+func TestManySmallMessagesAreBoundedByTheirMemoryNotTheirCount(t *testing.T) {
+	const bound = 16 << 20
+	queue := newTunnelQueue(bound, time.Hour)
+	now := time.Now()
+	accepted := 0
+	for queue.push(make([]byte, 10), now) {
+		accepted++
+		if accepted > bound {
+			t.Fatal("the queue never filled")
+		}
+	}
+	if accepted <= 4096 {
+		t.Fatalf("only %d small messages fit: a count cap is cutting a page that keeps up", accepted)
+	}
+	// Each message is charged well over the 10 bytes it carries, so what
+	// bounds the queue is memory and not payload size. The bound is a literal
+	// and not perMessageOverhead, so that a charge of zero cannot pass.
+	if accepted*(10+64) > bound {
+		t.Fatalf("%d small messages fit in %d bytes: the per-message overhead is not charged", accepted, bound)
+	}
+}
+
+// Compacting the queue must not leave the payloads of messages already sent
+// reachable in the slots it vacated.
+func TestPoppingAndCompactingKeepNoPayloadAlive(t *testing.T) {
+	queue := newTunnelQueue(1<<30, time.Hour)
+	now := time.Now()
+	for range 10 {
+		queue.push(make([]byte, 1000), now)
+	}
+	for range 7 {
+		if _, _, ok := queue.pop(context.Background()); !ok {
+			t.Fatal("pop failed")
+		}
+	}
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	all := queue.items[:cap(queue.items)]
+	for i, item := range all {
+		live := i >= queue.head && i < len(queue.items)
+		if !live && item.payload != nil {
+			t.Fatalf("slot %d outside the live range still holds a payload of %d bytes", i, len(item.payload))
+		}
+	}
+}
+
 func TestTunnelQueueWakesAndEnds(t *testing.T) {
-	queue := newTunnelQueue(1<<20, 100, time.Hour)
+	queue := newTunnelQueue(1<<20, time.Hour)
 	got := make(chan string, 1)
 	go func() {
 		payload, _, ok := queue.pop(context.Background())
@@ -252,7 +320,10 @@ func TestTunnelQueueWakesAndEnds(t *testing.T) {
 	if _, _, ok := queue.pop(context.Background()); ok {
 		t.Fatal("pop returned a message from a closed queue")
 	}
-	if messages, bytes := queue.queued(); messages != 0 || bytes != 0 {
-		t.Fatalf("closed queue holds %d messages, %d bytes", messages, bytes)
+	queue.mu.Lock()
+	held, bytes := len(queue.items), queue.bytes
+	queue.mu.Unlock()
+	if held != 0 || bytes != 0 {
+		t.Fatalf("closed queue holds %d messages, %d bytes", held, bytes)
 	}
 }

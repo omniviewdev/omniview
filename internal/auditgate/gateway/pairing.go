@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -59,14 +61,12 @@ type IssuedCredential struct {
 	ExpiresAt time.Time
 }
 
-// String formats the credential without its secret, so printing one with %v or
-// %+v never writes the password to a log.
-func (c IssuedCredential) String() string {
-	return "audit credential " + c.CredentialID + " (secret withheld)"
+// Format prints the credential without its secret under every verb, %v, %+v,
+// %#v, %s, %q, %x and %d included, so no fmt call writes the password to a
+// log.
+func (c IssuedCredential) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, "audit credential "+c.CredentialID+" (secret withheld)")
 }
-
-// GoString is String for %#v.
-func (c IssuedCredential) GoString() string { return c.String() }
 
 // CredentialInfo describes a credential without its secret.
 type CredentialInfo struct {

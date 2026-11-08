@@ -93,11 +93,23 @@ var (
 	// ErrShutdownIncomplete reports that closure of tunnels or in-flight
 	// requests could not be confirmed before the deadline.
 	ErrShutdownIncomplete = &Error{Code: CodeShutdownIncomplete, Message: "closure could not be confirmed in time"}
+	// ErrServe reports that the listener Serve was given, or the server on
+	// it, failed before the audit ended. The cause is wrapped.
+	ErrServe = &Error{Code: CodeUnavailable, Message: "the audit's listener failed"}
 )
 
 func invalidOption(message string) error {
 	return &Error{Code: CodeInvalidOptions, Message: message}
 }
+
+// listenerError is a failure of the listener or server behind Serve. It is
+// [ErrServe] and carries the cause, so both match errors.Is and CodeOf finds
+// the code.
+type listenerError struct{ err error }
+
+func (e *listenerError) Error() string { return ErrServe.Error() + ": " + e.err.Error() }
+
+func (e *listenerError) Unwrap() []error { return []error{ErrServe, e.err} }
 
 // EndReason says why an audit ended. The values are bounded codes safe for
 // diagnostics.

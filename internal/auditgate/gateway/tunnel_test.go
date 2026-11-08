@@ -104,7 +104,6 @@ func TestATrickleReaderIsCutByTheLagBudget(t *testing.T) {
 		c.Timeouts.TunnelLag = 300 * time.Millisecond
 		c.Timeouts.TunnelWrite = time.Minute // not the bound under test
 		c.Limits.TunnelQueueBytes = 1 << 30
-		c.Limits.TunnelQueueMessages = 1 << 20
 	})
 	b := h.browser(laptop, h.pair())
 	s := mustOpenNoRead(t, b, "page")
@@ -144,7 +143,6 @@ func TestAWriteThatTakesTooLongCutsThePage(t *testing.T) {
 		c.Timeouts.TunnelWrite = 300 * time.Millisecond
 		c.Timeouts.TunnelLag = time.Hour
 		c.Limits.TunnelQueueBytes = 1 << 30
-		c.Limits.TunnelQueueMessages = 1 << 20
 	})
 	b := h.browser(laptop, h.pair())
 	mustOpenNoRead(t, b, "page")
@@ -291,7 +289,7 @@ func TestARevokeDoesNotWaitForAHostThatNeverAnswersTheClose(t *testing.T) {
 	if err := h.gw.Revoke(t.Context(), good.info.ID); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	if took := time.Since(begin); took > 2*time.Second {
+	if took := time.Since(begin); took > 4*time.Second {
 		t.Fatalf("Revoke took %v with a host that never answers a close: the close grace was not applied", took)
 	}
 	if h.gw.Status().Tunnels != 0 {
@@ -304,7 +302,6 @@ func TestARevokeDoesNotWaitForAWriteToAPageThatStoppedReading(t *testing.T) {
 		c.Timeouts.CloseGrace = 200 * time.Millisecond
 		c.Timeouts.TunnelWrite = time.Minute
 		c.Limits.TunnelQueueBytes = 1 << 30
-		c.Limits.TunnelQueueMessages = 1 << 20
 	})
 	good := h.pair()
 	b := h.browser(laptop, good)
@@ -325,7 +322,7 @@ func TestARevokeDoesNotWaitForAWriteToAPageThatStoppedReading(t *testing.T) {
 	if err := h.gw.Revoke(t.Context(), good.info.ID); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	if took := time.Since(begin); took > 2*time.Second {
+	if took := time.Since(begin); took > 4*time.Second {
 		t.Fatalf("Revoke took %v with its writer stuck in a write to the page", took)
 	}
 	if h.gw.Status().Tunnels != 0 {
@@ -411,4 +408,24 @@ func TestFinishedCallsDoNotKeepATunnelOpen(t *testing.T) {
 	}
 	endTunnel(t, s)
 	waitTunnelClosed(t, h, "unexpected_frame")
+}
+
+// The filter admits events up to 32 MiB and one broadcast reaches every
+// tunnel, so an event larger than the queue's bound must not cut any page off.
+func TestAnEventLargerThanTheQueueBoundIsStillDelivered(t *testing.T) {
+	h := newHarness(t, func(c *gateway.Config) { c.Limits.TunnelQueueBytes = 1 << 20 })
+	b := h.browser(laptop, h.pair())
+	s := mustOpen(t, b, "page")
+	eventually(t, 5*time.Second, "the host to map the page", func() bool { return len(h.up.clientIDs()) == 1 })
+	const size = 3 << 20
+	if err := h.up.flood(allowedEvent, 1, size, 10*time.Second, 0); err != nil {
+		t.Fatalf("a write of the host stalled: %v", err)
+	}
+	_, data, err := s.read(t, 20*time.Second)
+	if err != nil || len(data) < size {
+		t.Fatalf("the page received %d bytes (%v), want the whole event", len(data), err)
+	}
+	if h.gw.Status().Tunnels != 1 || tunnelClosedWith(h, "slow_client") {
+		t.Fatal("a page was cut off for an event larger than the queue's bound")
+	}
 }

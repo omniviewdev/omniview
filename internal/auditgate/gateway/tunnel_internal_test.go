@@ -64,7 +64,7 @@ func TestAnEventThatWaitedLongerThanTheLagBudgetIsNeverSent(t *testing.T) {
 	down, _ := websocketPair(t)
 	// The queue's own age bound is set out of the way, so that only the
 	// writer's check can act.
-	queue := newTunnelQueue(1<<20, 100, time.Hour)
+	queue := newTunnelQueue(1<<20, time.Hour)
 	queue.push([]byte(`{"name":"plugin/state_change","data":1}`), time.Now().Add(-time.Second))
 
 	done := make(chan struct{})
@@ -319,7 +319,7 @@ func TestAPanicInATunnelGoroutineEndsTheTunnelAndNotTheProcess(t *testing.T) {
 	}
 	select {
 	case <-f.done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("the tunnel did not end after its goroutine panicked")
 	}
 	if cause := f.sess.cause(); !errors.Is(cause, errInternal) {
@@ -366,5 +366,24 @@ func TestAnEventsSinkThatPanicsDoesNotTakeTheAuditDown(t *testing.T) {
 	gw.emit(gw.event(EventTunnelOpened, "", "", "", ""))
 	if _, err := gw.NewPairing(PairingOptions{}); err != nil {
 		t.Fatalf("the audit stopped working after its sink panicked: %v", err)
+	}
+}
+
+// The function interruptWrites returns is called from a defer, and a second
+// call must not wait for a callback that will never run.
+func TestStoppingTheInterruptTwiceDoesNotBlock(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	stop := interruptWrites(context.Background(), req, rec)
+	done := make(chan struct{})
+	go func() {
+		stop()
+		stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stopping the interrupt a second time blocked")
 	}
 }

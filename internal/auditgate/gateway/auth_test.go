@@ -52,10 +52,16 @@ func TestEveryCredentialDenialIsTheSameResponse(t *testing.T) {
 
 	valid := b.basic()
 	zeroUser := "0123456789abcdef"
+	// The last character of a secret carries only four of its bits, so "A" is
+	// the real one for one secret in sixteen: use another character then.
+	lastOff := "A"
+	if strings.HasSuffix(good.secret, "A") {
+		lastOff = "E"
+	}
 	cases := map[string]http.Header{
 		"unknown user":            {"Authorization": {basicHeader(zeroUser, good.secret)}},
 		"wrong secret":            {"Authorization": {basicHeader(good.username, strings.Repeat("A", 43))}},
-		"last character off":      {"Authorization": {basicHeader(good.username, good.secret[:42]+"A")}},
+		"last character off":      {"Authorization": {basicHeader(good.username, good.secret[:42]+lastOff)}},
 		"upper case user":         {"Authorization": {basicHeader(strings.ToUpper(good.username), good.secret)}},
 		"secret outside alphabet": {"Authorization": {basicHeader(good.username, strings.Repeat("+", 43))}},
 		"short secret":            {"Authorization": {basicHeader(good.username, good.secret[:20])}},

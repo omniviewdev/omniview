@@ -238,6 +238,13 @@ func TestAHostThatNeverMapsTheIDLeavesNoTunnelAndCostsNoBudget(t *testing.T) {
 	if got := h.gw.Status(); got.Tunnels != 0 || got.EventSocketOpens != 0 {
 		t.Fatalf("status %+v: a tunnel that never opened must cost nothing", got)
 	}
+	// The socket the gateway opened to the host for the refused page is
+	// closed, not left behind.
+	// The host only sees the socket once its mapping delay has passed; it must
+	// then find it already closed, and not left open.
+	eventually(t, 10*time.Second, "the host to find the abandoned socket closed", func() bool {
+		return h.up.windowsOpened() >= 1 && len(h.up.openSockets()) == 0
+	})
 	// With the host mapping at once the same budget of one still serves a page.
 	h.up.mappingDelay.Store(0)
 	mustOpen(t, b, "page")
@@ -302,5 +309,97 @@ func TestOnlyABoundedNumberOfCallsWaitForTheirSocket(t *testing.T) {
 	}
 	if quick != 1 || slow != 2 {
 		t.Fatalf("%d calls answered at once and %d after the wait; want 1 and 2 with two places to wait", quick, slow)
+	}
+}
+
+// A call sent while the host is still mapping the tunnel's client ID finds the
+// tunnel bound but not ready, and waits for it. Let through, it would reach the
+// host before the host knew the ID and run as its first window.
+func TestACallSentWhileTheHostIsStillMappingWaitsForTheTunnelToBeReady(t *testing.T) {
+	h := newHarness(t, func(c *gateway.Config) { c.Timeouts.BindWait = 2 * time.Second })
+	h.up.mappingDelay.Store(int64(400 * time.Millisecond))
+	b := h.browser(laptop, h.pair())
+	opened := make(chan *socket, 1)
+	go func() {
+		s, err := b.openEvents("page", false)
+		if err != nil {
+			s = nil
+		}
+		opened <- s
+	}()
+	time.Sleep(100 * time.Millisecond)
+	res := b.call("page", callBody("c1", instanceInfo, ""))
+	if res.status != http.StatusOK {
+		t.Fatalf("the call = %d %q", res.status, res.body)
+	}
+	records := h.up.runtimeRecords()
+	if len(records) != 1 || !strings.HasPrefix(records[0].Window, "browser-") {
+		t.Fatalf("records %+v: the call must run as the page's browser window", records)
+	}
+	if h.up.callsAsMain() != 0 {
+		t.Fatal("a call ran as the host's first window")
+	}
+	if h.up.probeCount() < 2 {
+		t.Fatalf("%d probes: the host had not yet mapped the ID when the tunnel was first probed", h.up.probeCount())
+	}
+	s := <-opened
+	if s == nil {
+		t.Fatal("the tunnel did not open")
+	}
+	t.Cleanup(func() { _ = s.conn.CloseNow() })
+}
+
+// A call holds its tunnel from the moment it is dispatched until it returns,
+// which is what keeps the host's socket open for it.
+func TestACallHoldsItsTunnelFromDispatchUntilItReturns(t *testing.T) {
+	h := newHarness(t)
+	h.up.blockCalls.Store(true)
+	cred := h.pair()
+	b := h.browser(laptop, cred)
+	s := mustOpen(t, b, "page")
+	answered := make(chan response, 1)
+	go func() { answered <- b.call("page", callBody("c1", instanceInfo, "")) }()
+	select {
+	case <-h.up.callStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the call never reached the host")
+	}
+	if held := h.gw.HeldCalls(cred.info.ID, "page"); held != 1 {
+		t.Fatalf("%d holds while the call is in flight, want 1", held)
+	}
+	endTunnel(t, s)
+	select {
+	case <-answered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the call did not return after its tunnel ended")
+	}
+	waitTunnelClosed(t, h, "unexpected_frame")
+}
+
+// The host's socket outlives the last call by CallSettle, but only for a tunnel
+// that served one.
+func TestATunnelThatServedCallsSettlesBeforeClosingTheHostSocket(t *testing.T) {
+	h := newHarness(t, func(c *gateway.Config) {
+		c.Timeouts.CallSettle = time.Second
+		c.Timeouts.CloseGrace = 200 * time.Millisecond
+	})
+	b := h.browser(laptop, h.pair())
+	idle := mustOpen(t, b, "idle")
+	busy := mustOpen(t, b, "busy")
+	if res := b.call("busy", callBody("c1", instanceInfo, "")); res.status != http.StatusOK {
+		t.Fatalf("the call = %d %q", res.status, res.body)
+	}
+	closing := func(s *socket) time.Duration {
+		begin := time.Now()
+		endTunnel(t, s)
+		s.expectClosed(t, 15*time.Second)
+		return time.Since(begin)
+	}
+	idleTook, busyTook := closing(idle), closing(busy)
+	if busyTook < 900*time.Millisecond {
+		t.Fatalf("a tunnel that served a call closed after %v, before the settle", busyTook)
+	}
+	if idleTook+500*time.Millisecond > busyTook {
+		t.Fatalf("a tunnel that served no call closed after %v, as slowly as one that did (%v)", idleTook, busyTook)
 	}
 }

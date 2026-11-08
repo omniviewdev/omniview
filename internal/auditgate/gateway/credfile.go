@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -23,18 +22,54 @@ var ErrCredentialFileExists = errors.New("gateway: credential file already exist
 type FileChannel struct {
 	dir string
 
-	mu   sync.Mutex
-	path string
+	mu sync.Mutex
+	// delivered maps every credential this channel wrote to its file, so that
+	// Discard can remove any of them and not only the last.
+	delivered map[string]string
+	path      string
 }
 
 // NewFileChannel returns a channel that writes into dir. dir must already be a
 // private directory of the current user (see devsession.EnsurePrivateDirectory)
 // that is not redirected through a link. It is not created or repaired here.
+//
+// It also checks that dir supports hard links, which publishing a credential
+// file depends on, so that a directory that cannot is found here and not by
+// the first exchange, after its pairing code was spent.
 func NewFileChannel(dir string) (*FileChannel, error) {
 	if err := devsession.ValidatePrivateDirectory(dir); err != nil {
 		return nil, fmt.Errorf("credential directory is not private: %w", err)
 	}
-	return &FileChannel{dir: dir, mu: sync.Mutex{}, path: ""}, nil
+	if err := probeHardLinks(dir); err != nil {
+		return nil, err
+	}
+	return &FileChannel{dir: dir, mu: sync.Mutex{}, delivered: make(map[string]string), path: ""}, nil
+}
+
+// probeHardLinks creates a file in dir, links it under a second name and
+// removes both.
+func probeHardLinks(dir string) error {
+	suffix, err := randomHex(idBytes)
+	if err != nil {
+		return err
+	}
+	probe := filepath.Join(dir, ".audit-probe-"+suffix)
+	if err = devsession.WritePrivateFile(probe, []byte("probe")); err != nil {
+		return fmt.Errorf("credential directory is not writable: %w", err)
+	}
+	link := probe + ".link"
+	linkErr := os.Link(probe, link)
+	removeErr := os.Remove(probe)
+	if linkErr == nil {
+		removeErr = errors.Join(removeErr, os.Remove(link))
+	}
+	if linkErr != nil {
+		return fmt.Errorf("credential directory does not support hard links: %w", linkErr)
+	}
+	if removeErr != nil {
+		return fmt.Errorf("remove the credential directory's probe files: %w", removeErr)
+	}
+	return nil
 }
 
 // Deliver writes the secret, and nothing else, to
@@ -48,21 +83,22 @@ func (c *FileChannel) Deliver(ctx context.Context, credential IssuedCredential) 
 		return err
 	}
 	c.mu.Lock()
+	c.delivered[credential.CredentialID] = path
 	c.path = path
 	c.mu.Unlock()
 	return nil
 }
 
-// Discard removes the file Deliver wrote for credentialID, if any. It leaves a
-// file that belongs to another credential alone.
+// Discard removes the file Deliver wrote for credentialID, if any. It leaves
+// the files of other credentials alone.
 func (c *FileChannel) Discard(_ context.Context, credentialID string) {
 	c.mu.Lock()
-	path := c.path
+	path := c.delivered[credentialID]
+	delete(c.delivered, credentialID)
 	c.mu.Unlock()
-	if path == "" || !strings.HasSuffix(filepath.Base(path), "-"+credentialID+".secret") {
-		return
+	if path != "" {
+		_ = os.Remove(path)
 	}
-	_ = os.Remove(path)
 }
 
 // Path is the file the credential was written to, or "" before delivery.
@@ -121,12 +157,19 @@ func WriteCredentialFile(dir string, credential IssuedCredential) (string, error
 	if err = devsession.WritePrivateFile(temporary, credential.Secret); err != nil {
 		return "", err
 	}
-	defer func() { _ = os.Remove(temporary) }()
 	if err = os.Link(temporary, path); err != nil {
+		_ = os.Remove(temporary)
 		if errors.Is(err, fs.ErrExist) {
 			return "", ErrCredentialFileExists
 		}
 		return "", fmt.Errorf("publish credential file: %w", err)
+	}
+	// The secret is now under two names. If the temporary one cannot be
+	// removed, say so and take the published one away again, so that the
+	// caller does not believe in a delivery that left a copy behind.
+	if err = os.Remove(temporary); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("remove the temporary credential file: %w", err)
 	}
 	if err = devsession.ValidatePrivateFile(path); err != nil {
 		_ = os.Remove(path)

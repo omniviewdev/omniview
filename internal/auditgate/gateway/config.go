@@ -130,15 +130,25 @@ type Timeouts struct {
 	// CloseGrace is how long a WebSocket close handshake may take before the
 	// socket is cut. Default 1s.
 	CloseGrace time.Duration
-	// BindWait is how long a runtime call that names no open events socket
-	// waits for its page to open one. The page's first calls race its events
-	// socket; the wait lets the call run after the socket binds, never
-	// without it. Zero is the default 2s; a negative value disables the wait.
+	// BindWait is how long a runtime call waits for its page's tunnel to
+	// become ready. The page's first calls race its events socket, and a
+	// tunnel is ready only once its upstream socket is open and the host has
+	// mapped its client ID, which can take UpstreamDial plus MappingWait. The
+	// wait lets the call run after that, never without it. Zero is the
+	// default, UpstreamDial plus MappingWait (5s); a negative value disables
+	// the wait.
 	BindWait time.Duration
 	// CallDrain bounds how long a tunnel that has ended waits for the runtime
 	// calls that still hold it (they are cancelled when it ends) before it
 	// closes its upstream socket. Default 2s.
 	CallDrain time.Duration
+	// CallSettle is how long a tunnel that served calls keeps its upstream
+	// socket open after the last of them has returned. A request the host has
+	// received but not yet started when its call was cancelled can still look
+	// its client ID up, and the host forgets the ID when the socket closes.
+	// It narrows that window; it cannot close it. Zero is the default, 150ms;
+	// a negative value disables it.
+	CallSettle time.Duration
 	// MappingWait bounds how long a new tunnel waits for the host to map its
 	// issued client ID to a browser window. Default 2s.
 	MappingWait time.Duration
@@ -165,7 +175,7 @@ const (
 	defaultPeerCache    = time.Second
 	defaultPeerRecheck  = time.Second
 	defaultCloseGrace   = time.Second
-	defaultBindWait     = 2 * time.Second
+	defaultCallSettle   = 150 * time.Millisecond
 	defaultCallDrain    = 2 * time.Second
 	defaultMappingWait  = 2 * time.Second
 	defaultShutdown     = 5 * time.Second
@@ -200,14 +210,20 @@ func (t Timeouts) withDefaults() Timeouts {
 	}
 	t.PeerRecheck = orDefault(t.PeerRecheck, defaultPeerRecheck)
 	t.CloseGrace = orDefault(t.CloseGrace, defaultCloseGrace)
+	t.CallDrain = orDefault(t.CallDrain, defaultCallDrain)
+	switch {
+	case t.CallSettle == 0:
+		t.CallSettle = defaultCallSettle
+	case t.CallSettle < 0:
+		t.CallSettle = 0
+	}
+	t.MappingWait = orDefault(t.MappingWait, defaultMappingWait)
 	switch {
 	case t.BindWait == 0:
-		t.BindWait = defaultBindWait
+		t.BindWait = t.UpstreamDial + t.MappingWait
 	case t.BindWait < 0:
 		t.BindWait = 0
 	}
-	t.CallDrain = orDefault(t.CallDrain, defaultCallDrain)
-	t.MappingWait = orDefault(t.MappingWait, defaultMappingWait)
 	t.Shutdown = orDefault(t.Shutdown, defaultShutdown)
 	return t
 }

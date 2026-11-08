@@ -39,12 +39,13 @@ type Limits struct {
 	// wearing out MaxEventSocketOpens. Defaults 3 and 5s.
 	TunnelOpenBurst  int
 	TunnelOpenRefill time.Duration
-	// TunnelQueueBytes and TunnelQueueMessages bound what one tunnel may hold
-	// for a page that reads slower than the host sends; a page that falls
-	// behind either bound, or by more than Timeouts.TunnelLag, is cut off.
-	// Defaults 16 MiB and 4096.
-	TunnelQueueBytes    int
-	TunnelQueueMessages int
+	// TunnelQueueBytes bounds what one tunnel may hold for a page that reads
+	// slower than the host sends. A message counts its payload and a fixed
+	// overhead, so many small messages cost what they cost in memory. A page
+	// that falls behind the bound, or by more than Timeouts.TunnelLag, is cut
+	// off. An empty queue takes one message of any size the filter admits, so
+	// a single large event never cuts a page off by itself. Default 16 MiB.
+	TunnelQueueBytes int
 	// MaxConnections bounds TCP connections accepted by [Gateway.Serve],
 	// handshakes included. Default 128.
 	MaxConnections int
@@ -88,7 +89,6 @@ const (
 	defaultTunnelOpenBurst              = 3
 	defaultTunnelOpenRefill             = 5 * time.Second
 	defaultTunnelQueueBytes             = 16 << 20
-	defaultTunnelQueueMessages          = 4096
 	defaultMaxConnections               = 128
 	defaultMaxConnectionsPerAddress     = 16
 	defaultAcceptBurst                  = 20
@@ -128,7 +128,6 @@ func (l Limits) withDefaults() Limits {
 	l.TunnelOpenBurst = orInt(l.TunnelOpenBurst, defaultTunnelOpenBurst)
 	l.TunnelOpenRefill = orDefault(l.TunnelOpenRefill, defaultTunnelOpenRefill)
 	l.TunnelQueueBytes = orInt(l.TunnelQueueBytes, defaultTunnelQueueBytes)
-	l.TunnelQueueMessages = orInt(l.TunnelQueueMessages, defaultTunnelQueueMessages)
 	l.MaxConnections = orInt(l.MaxConnections, defaultMaxConnections)
 	l.MaxConnectionsPerAddress = orInt(l.MaxConnectionsPerAddress, defaultMaxConnectionsPerAddress)
 	l.AcceptBurst = orInt(l.AcceptBurst, defaultAcceptBurst)

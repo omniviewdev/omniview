@@ -166,16 +166,16 @@ func (g *Gateway) cancelAllLocked(cause error) {
 type boundClient struct {
 	key clientKey
 	// issued is the client ID registered upstream for this socket.
-	issued string
-	// prefix scopes the page's call IDs and ends in a terminator that no call
-	// ID contains.
-	prefix  string
+	issued  string
 	session *session
 	ready   bool
 	// calls is the number of holds; drained is closed when it reaches zero
-	// while a teardown waits. Both are guarded by Gateway.mu.
-	calls   int
-	drained chan struct{}
+	// while a teardown waits. admitted counts every hold ever taken, which
+	// tells a teardown whether any call was sent under this ID at all. All
+	// three are guarded by Gateway.mu.
+	calls    int
+	admitted int
+	drained  chan struct{}
 }
 
 type clientKey struct {
@@ -256,8 +256,8 @@ func (g *Gateway) openTunnel(
 	}
 	sess := g.registerLocked(parent, sessionTunnel, p)
 	client := &boundClient{
-		key: key, issued: issued, prefix: g.clientPrefix(key), session: sess,
-		ready: false, calls: 0, drained: nil,
+		key: key, issued: issued, session: sess,
+		ready: false, calls: 0, admitted: 0, drained: nil,
 	}
 	g.clients[key] = client
 	return sess, client, openOK
@@ -314,6 +314,7 @@ func (g *Gateway) acquireLocked(key clientKey) *boundClient {
 		return nil
 	}
 	c.calls++
+	c.admitted++
 	return c
 }
 

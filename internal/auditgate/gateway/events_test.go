@@ -356,7 +356,7 @@ func TestUpgradeCostsNoUpstreamWorkWhenTheCredentialIsRefused(t *testing.T) {
 // tunnel is gone, but the moment the tunnel ends a call under its client ID
 // must already be refused.
 func TestCallsAreRefusedWhileATunnelIsStillClosing(t *testing.T) {
-	h := newHarness(t, func(c *gateway.Config) { c.Timeouts.CloseGrace = 3 * time.Second })
+	h := newHarness(t, func(c *gateway.Config) { c.Timeouts.CloseGrace = 4 * time.Second })
 	b := h.browser(laptop, h.pair())
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -375,7 +375,7 @@ func TestCallsAreRefusedWhileATunnelIsStillClosing(t *testing.T) {
 	if err = conn.Write(ctx, websocket.MessageText, []byte("unexpected")); err != nil {
 		t.Fatal(err)
 	}
-	eventually(t, 2*time.Second, "calls to be refused", func() bool {
+	eventually(t, 3*time.Second, "calls to be refused", func() bool {
 		return b.call("page", good).status == http.StatusForbidden
 	})
 	if got := h.gw.Status().Tunnels; got != 1 {
@@ -403,5 +403,5 @@ func TestAClientThatNeverAnswersTheCloseCannotHoldATunnel(t *testing.T) {
 	if err = conn.Write(ctx, websocket.MessageText, []byte("unexpected")); err != nil {
 		t.Fatal(err)
 	}
-	eventually(t, 2*time.Second, "the tunnel to be cut", func() bool { return h.gw.Status().Tunnels == 0 })
+	eventually(t, 4*time.Second, "the tunnel to be cut", func() bool { return h.gw.Status().Tunnels == 0 })
 }

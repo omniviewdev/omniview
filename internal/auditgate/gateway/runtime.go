@@ -87,10 +87,13 @@ func (g *Gateway) serveRuntime(w http.ResponseWriter, r *http.Request, p princip
 
 	callCtx, cancel := context.WithTimeout(sess.ctx, g.cfg.Timeouts.RuntimeCall)
 	defer cancel()
-	// A tunnel that ends takes its admitted calls with it, and the upstream
+	// A tunnel that ends takes its admitted calls with it, and its upstream
 	// socket stays open until they have returned (see runTunnel). The tie runs
-	// on its own goroutine, so check the tunnel once more, synchronously,
-	// before the call leaves.
+	// on its own goroutine, so a tunnel that ended a moment ago may not have
+	// cancelled this call yet: check once more before the call goes. The check
+	// narrows the window and cannot close it. A tunnel that ends after it
+	// cancels the call in flight, and the hold keeps the upstream socket open
+	// until the call has returned.
 	stopTie := context.AfterFunc(client.session.ctx, cancel)
 	defer stopTie()
 	if client.session.ctx.Err() != nil {
@@ -238,7 +241,9 @@ func rawConnection(ctx context.Context) net.Conn {
 // TCP connection itself: once a write has failed, net/http closes the TLS
 // connection, and crypto/tls then tries to send its close_notify alert into
 // the full buffer of the dead peer and waits up to five seconds for it. Call
-// the returned function before the handler returns.
+// the returned function before the handler returns; calling it again does
+// nothing. It is for the handler's goroutine and is not safe for concurrent
+// use.
 func interruptWrites(ctx context.Context, r *http.Request, w http.ResponseWriter) func() {
 	controller := http.NewResponseController(w)
 	raw := rawConnection(r.Context())
@@ -250,7 +255,12 @@ func interruptWrites(ctx context.Context, r *http.Request, w http.ResponseWriter
 			_ = raw.Close()
 		}
 	})
+	stopped := false
 	return func() {
+		if stopped {
+			return
+		}
+		stopped = true
 		if !cancel() {
 			<-finished
 		}

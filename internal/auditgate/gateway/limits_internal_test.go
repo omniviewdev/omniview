@@ -124,7 +124,7 @@ func TestLimitsDefaults(t *testing.T) {
 	if got.MaxUnauthenticatedPerAddress >= got.MaxUnauthenticated || got.MaxConnectionsPerAddress >= got.MaxConnections {
 		t.Fatalf("per-address defaults %+v must be a share of the overall limits", got)
 	}
-	if got.TunnelQueueBytes <= 0 || got.TunnelQueueMessages <= 0 || got.AcceptBurst <= 0 || got.AcceptRefill <= 0 {
+	if got.TunnelQueueBytes <= 0 || got.AcceptBurst <= 0 || got.AcceptRefill <= 0 {
 		t.Fatalf("a bound defaults to zero, which would mean no bound: %+v", got)
 	}
 	kept := Limits{MaxTunnels: 9}.withDefaults()
@@ -264,10 +264,9 @@ func TestAddressListenerLimitsHowFastAnAddressMayConnect(t *testing.T) {
 		c, _ := listener.Accept()
 		accepted <- c
 	}()
-	time.Sleep(50 * time.Millisecond)
-	if !conns[3].isClosed() || !conns[4].isClosed() {
-		t.Fatal("connections over the accept rate were not closed")
-	}
+	eventually(t, 5*time.Second, "the connections over the accept rate to be closed", func() bool {
+		return conns[3].isClosed() && conns[4].isClosed()
+	})
 	// After the allowance refills, the next connection is served.
 	clock.advance(2 * time.Second)
 	next := newFakeConn("100.64.0.1", 9)

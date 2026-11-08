@@ -41,7 +41,8 @@ func TestAuthorityOmitsOnlyTheDefaultPort(t *testing.T) {
 
 func TestTimeoutDefaultsAndSpecialValues(t *testing.T) {
 	got := Timeouts{}.withDefaults()
-	if got.BindWait != 2*time.Second || got.PeerCache != time.Second || got.Watch != time.Second {
+	if got.BindWait != 5*time.Second || got.CallSettle != 150*time.Millisecond || got.PeerCache != time.Second ||
+		got.Watch != time.Second {
 		t.Fatalf("defaults %+v", got)
 	}
 	if got = (Timeouts{BindWait: -1, PeerCache: -1}).withDefaults(); got.BindWait != 0 || got.PeerCache != 0 {
@@ -49,6 +50,12 @@ func TestTimeoutDefaultsAndSpecialValues(t *testing.T) {
 	}
 	if got = (Timeouts{BindWait: time.Second, PeerCache: time.Minute}).withDefaults(); got.BindWait != time.Second || got.PeerCache != time.Minute {
 		t.Fatalf("explicit values overwritten: %+v", got)
+	}
+	if got = (Timeouts{UpstreamDial: time.Second, MappingWait: time.Second}).withDefaults(); got.BindWait != 2*time.Second {
+		t.Fatalf("BindWait = %v, want the time a tunnel may need to become ready (2s here)", got.BindWait)
+	}
+	if got = (Timeouts{CallSettle: -1}).withDefaults(); got.CallSettle != 0 {
+		t.Fatalf("a negative CallSettle must switch the settle off, got %v", got.CallSettle)
 	}
 }
 

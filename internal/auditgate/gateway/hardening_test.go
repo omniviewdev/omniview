@@ -125,7 +125,7 @@ func TestAnIssuedCredentialNeverPrintsItsSecret(t *testing.T) {
 		AuditID: "a1", CredentialID: "c1", Username: "u1", Secret: []byte("correct-horse-battery-staple"),
 		Realm: "realm", Origin: "https://laptop.example.ts.net",
 	}
-	for _, format := range []string{"%v", "%+v", "%#v", "%s"} {
+	for _, format := range []string{"%v", "%+v", "%#v", "%s", "%d", "%x", "%X", "%q"} {
 		for name, value := range map[string]any{"value": credential, "pointer": &credential} {
 			if out := fmt.Sprintf(format, value); strings.Contains(out, "correct-horse") {
 				t.Errorf("%s of a %s prints the secret: %s", format, name, out)
@@ -242,4 +242,46 @@ func (c failAfterWriting) Deliver(ctx context.Context, credential gateway.Issued
 		return err
 	}
 	return io.ErrClosedPipe
+}
+
+// Finding out that a directory takes hard links leaves nothing in it, and a
+// channel that delivered several credentials can discard any of them.
+func TestAFileChannelDiscardsEveryCredentialItDelivered(t *testing.T) {
+	dir := privateDir(t)
+	channel, err := gateway.NewFileChannel(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries, readErr := os.ReadDir(dir); readErr != nil || len(entries) != 0 {
+		t.Fatalf("a new channel left %d entries in its directory (%v)", len(entries), readErr)
+	}
+	first, second := issued(), issued()
+	second.CredentialID = "0011223344556677"
+	for _, credential := range []gateway.IssuedCredential{first, second} {
+		if err = channel.Deliver(t.Context(), credential); err != nil {
+			t.Fatal(err)
+		}
+	}
+	channel.Discard(t.Context(), first.CredentialID) // not the last one delivered
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("%d files left after discarding the first credential, want the second's alone", len(entries))
+	}
+	channel.Discard(t.Context(), second.CredentialID)
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("%d files left after discarding both credentials", len(entries))
+	}
+}
+
+func TestServeReportsItsFailuresWithACode(t *testing.T) {
+	h := newHarness(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ln.Close()
+	getCert := func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, errors.New("not used") }
+	err = h.gw.Serve(ln, getCert)
+	if !errors.Is(err, gateway.ErrServe) || gateway.CodeOf(err) != gateway.CodeUnavailable {
+		t.Fatalf("Serve on a closed listener = %v, want an error wrapping ErrServe (audit_unavailable)", err)
+	}
 }

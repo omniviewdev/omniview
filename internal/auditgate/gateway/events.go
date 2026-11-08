@@ -252,7 +252,7 @@ func (g *Gateway) runTunnel(sess *session, client *boundClient, up, down *websoc
 	defer stopReads()
 
 	limits := g.cfg.Limits
-	queue := newTunnelQueue(limits.TunnelQueueBytes, limits.TunnelQueueMessages, g.cfg.Timeouts.TunnelLag)
+	queue := newTunnelQueue(limits.TunnelQueueBytes, g.cfg.Timeouts.TunnelLag)
 	g.markReady(client)
 	g.emit(g.event(EventTunnelOpened, "", sess.principal.credential, sess.principal.node, ""))
 
@@ -271,11 +271,31 @@ func (g *Gateway) runTunnel(sess *session, client *boundClient, up, down *websoc
 	cause := sess.cause()
 	g.unbind(client)
 	queue.close()
-	g.waitCalls(client, g.cfg.Timeouts.CallDrain)
+	if g.waitCalls(client, g.cfg.Timeouts.CallDrain) {
+		g.settle(client)
+	}
 	g.closeSockets(cause, up, down, stopReads)
 	stopReads()
 	wg.Wait()
 	g.emit(g.event(EventTunnelClosed, causeCode(cause), sess.principal.credential, sess.principal.node, ""))
+}
+
+// settle waits CallSettle after the last call that held the client has
+// returned, if any call did. A call that was cancelled has gone from the
+// gateway, but its request may still be on its way to the host: in the
+// kernel's accept backlog, or in a handler that has not been scheduled yet.
+// The host looks the issued client ID up when that handler starts, and forgets
+// it when the socket closes, so the socket is kept a little longer. It is a
+// delay and not a proof: a request held up for longer than CallSettle can
+// still be handled after the socket has closed. When the drain timed out
+// there is nothing to settle after, and the socket closes at once.
+func (g *Gateway) settle(c *boundClient) {
+	g.mu.Lock()
+	admitted := c.admitted
+	g.mu.Unlock()
+	if admitted > 0 && g.cfg.Timeouts.CallSettle > 0 {
+		time.Sleep(g.cfg.Timeouts.CallSettle)
+	}
 }
 
 // guarded runs one of a tunnel's goroutines. A panic in it, from a bug or from

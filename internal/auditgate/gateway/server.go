@@ -34,7 +34,8 @@ const maxHeaderBytes = 32 << 10
 // reachable only by the owner's own devices with the tailnet's access
 // controls.
 //
-// Serve returns nil when the audit ended.
+// Serve returns nil when the audit ended, and an error wrapping [ErrServe]
+// (code audit_unavailable) when the listener or the server failed first.
 func (g *Gateway) Serve(ln net.Listener, getCertificate GetCertificate) error {
 	srv := g.newServer(getCertificate)
 	serving := make(chan struct{})
@@ -49,10 +50,10 @@ func (g *Gateway) Serve(ln net.Listener, getCertificate GetCertificate) error {
 	guarded := newAddressListener(ln, g.cfg.Clock, g.cfg.Limits)
 	limited := netutil.LimitListener(guarded, g.cfg.Limits.MaxConnections)
 	err := srv.ServeTLS(limited, "", "")
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return &listenerError{err: err}
 	}
-	return err
+	return nil
 }
 
 func (g *Gateway) newServer(getCertificate GetCertificate) *http.Server {
