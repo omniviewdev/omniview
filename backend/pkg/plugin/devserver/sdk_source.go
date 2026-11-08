@@ -8,17 +8,15 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 // goDiagnosticLimit bounds the Go command stderr carried in a runner error.
 const goDiagnosticLimit = 4096
-
-var credentialURL = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@`)
 
 // VerifySelectedSDK identifies the SDK module selected by Go, including
 // replacements, and binds managed workspaces to their selected checkout. A
@@ -124,11 +122,7 @@ func goRunner(goPath string, environment []string) devsdk.Runner {
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		if err := cmd.Run(); err != nil {
-			diagnostic := stderr.Bytes()
-			if len(diagnostic) > goDiagnosticLimit {
-				diagnostic = diagnostic[len(diagnostic)-goDiagnosticLimit:]
-			}
-			text := credentialURL.ReplaceAllString(strings.TrimSpace(string(diagnostic)), "${1}***@")
+			text := devdiag.Tail(devdiag.Safe(strings.TrimSpace(stderr.String()), directory), goDiagnosticLimit)
 			return nil, fmt.Errorf("go %s: %w: %s", strings.Join(args[:min(len(args), 2)], " "), err, text)
 		}
 		return stdout.Bytes(), nil

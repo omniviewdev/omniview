@@ -60,6 +60,12 @@ func newPublishedBuild(t *testing.T, mutateSDK func(tree string), extraVersions 
 	// The pinned releases are derived from the controller's own module graph, so
 	// the hermetic environment applies only after they are published.
 	t.Setenv("HOME", home)
+	// Go's telemetry counters are written under the user config directory by a
+	// process that can outlive the command; keep the scratch HOME inert.
+	config, err := os.UserConfigDir()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(config, "go", "telemetry"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(config, "go", "telemetry", "mode"), []byte("off 2024-01-01\n"), 0o600))
 	for _, entry := range world.Environment() {
 		key, value, _ := strings.Cut(entry, "=")
 		t.Setenv(key, value)
@@ -211,7 +217,8 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 					b.sdk.Module, b.sdk.Version, wrong, b.sdk.Module, b.sdk.Version, b.sdk.GoModSum,
 					b.uuid.Module, b.uuid.Version, b.uuid.ModuleSum, b.uuid.Module, b.uuid.Version, b.uuid.GoModSum))
 			},
-			code: devsdk.CodeIntegrityMismatch,
+			// The recorded tuple is not the reviewed one: a branch's go.sum cannot attest itself.
+			code: devsdk.CodeReleaseUntrusted,
 		},
 		"tampered module cache": {
 			prepare: func(b *publishedBuild, t *testing.T) {
@@ -240,7 +247,9 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 			if test.prepare != nil {
 				test.prepare(build, t)
 			}
-			watcher := build.watcher(t, build.goPath, devsdk.ReleasePolicy())
+			// A mutated floor release has synthetic checksums: the world's rows
+			// make the capability check, not the reviewed table, the subject.
+			watcher := build.watcher(t, build.goPath, build.world.Policy(build.sdk))
 			err := watcher.buildPlugin(true, "", time.Now())
 			requireTyped(t, err, test.code)
 			require.NoFileExists(t, build.installed())
@@ -266,7 +275,7 @@ func TestPublishedManagedBuildRefusesAnSDKChangedDuringTheBuild(t *testing.T) {
 	script := fmt.Sprintf("#!/bin/sh\n%q \"$@\"\nstatus=$?\nif [ \"$1\" = build ]; then cp %q go.mod; fi\nexit $status\n", build.goPath, alternate)
 	require.NoError(t, os.WriteFile(wrapper, []byte(script), 0o700))
 
-	watcher := build.watcher(t, wrapper, devsdk.ReleasePolicy())
+	watcher := build.watcher(t, wrapper, build.world.Policy(build.sdk, second))
 	err = watcher.buildPlugin(true, "", time.Now())
 	typed := requireTyped(t, err, devsdk.CodeIdentityChanged)
 	require.Equal(t, 4, typed.Exit)

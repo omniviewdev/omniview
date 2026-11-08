@@ -23,6 +23,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -227,7 +228,7 @@ func (gw *goWatcherProcess) watchWorkspaceModules(watcher *fsnotify.Watcher, wat
 		arguments = []string{"list", "-mod=readonly", "-m", "-json", "all"}
 	}
 	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
-	cmd.Dir, cmd.Env = gw.devPath, goBuildEnv(gw.buildOpts.Environment)
+	cmd.Dir, cmd.Env = gw.devPath, gw.goCommandEnvironment()
 	data, err := cmd.Output()
 	if err != nil {
 		gw.appendLog(newLogEntry(logSourceGoWatch, logLevelError, fmt.Sprintf("Resolve dependency watches: %v", err)))
@@ -559,6 +560,17 @@ func (gw *goWatcherProcess) publishedBuild() bool {
 	return err == nil && selection.Mode() == devsdk.ModePublished
 }
 
+// goCommandEnvironment is the environment of the build's own go commands. A
+// published build runs in the same neutral module environment its SDK was
+// verified in; source and unmanaged builds keep the inherited environment.
+func (gw *goWatcherProcess) goCommandEnvironment() []string {
+	environment := goBuildEnv(gw.buildOpts.Environment)
+	if gw.publishedBuild() {
+		environment = append(environment, devsdk.ModuleEnvironment()...)
+	}
+	return environment
+}
+
 // verifyBuiltSDK checks a managed build's evidence after the compile: the SDK
 // observed before it is unchanged and the binary includes the SDK module.
 func (gw *goWatcherProcess) verifyBuiltSDK(goPath, binaryPath string) error {
@@ -646,13 +658,17 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	}
 	cmd := exec.CommandContext(gw.ctx, goPath, arguments...)
 	cmd.Dir = gw.devPath
-	cmd.Env = goBuildEnv(gw.buildOpts.Environment)
+	cmd.Env = gw.goCommandEnvironment()
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		// Parse build errors from stderr.
 		errOutput := stderr.String()
+		if gw.sdk.Mode() == devsdk.ModePublished {
+			// A failed module download names its proxy URL.
+			errOutput = devdiag.Redact(errOutput)
+		}
 		buildErrors := parseBuildErrors(errOutput, gw.devPath)
 		if len(buildErrors) > 0 {
 			gw.emitErrors(gw.pluginID, buildErrors)
