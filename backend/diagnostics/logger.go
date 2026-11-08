@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,6 +20,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 const (
@@ -32,17 +35,28 @@ const (
 
 	// maxReadLogBytes caps the bytes ReadLog returns (from the end of the file).
 	maxReadLogBytes = 8 << 20
+
+	// maxTails is how many files a BackendLogger follows at once. Every tail costs
+	// two goroutines and a file handle, and the UI log is the only log served.
+	maxTails = 1
 )
 
 type BackendLogger struct {
 	Sugared   *zap.SugaredLogger
 	app       *application.App
 	logDir    string
-	watchers  map[string]*tail.Tail
+	watchers  map[string]*runningTail
 	watchLock sync.Mutex
 	// emitLine, when set, receives every tailed line instead of the Wails event
 	// bus. Tests use it to observe what StartTail emits.
 	emitLine func(event, line string)
+}
+
+// runningTail is a followed log file together with the goroutine that emits its lines.
+type runningTail struct {
+	tail *tail.Tail
+	// done is closed when the goroutine that emits the tail's lines has returned.
+	done chan struct{}
 }
 
 func (b *BackendLogger) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
@@ -121,7 +135,7 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 	return &BackendLogger{
 		Sugared:   logger.Sugar(),
 		logDir:    baseDir,
-		watchers:  make(map[string]*tail.Tail),
+		watchers:  make(map[string]*runningTail),
 		app:       nil,
 		watchLock: sync.Mutex{},
 		emitLine:  nil,
@@ -277,6 +291,14 @@ func (b *BackendLogger) StartTail(_ context.Context, name string) error {
 	if _, ok := b.watchers[name]; ok {
 		return nil // already tailing
 	}
+	if len(b.watchers) >= maxTails {
+		return apperror.New(
+			apperror.TypeResourceLimit,
+			http.StatusTooManyRequests,
+			"Too many log tails",
+			"Only one log can be followed at a time; stop the running tail first.",
+		)
+	}
 	t, err := tail.TailFile(filepath.Join(b.logDir, name+".log"), tail.Config{
 		Follow:    true,
 		ReOpen:    true,
@@ -284,8 +306,13 @@ func (b *BackendLogger) StartTail(_ context.Context, name string) error {
 		// Start at the current end of the file. The viewer loads the history with
 		// ReadLog, which is capped at maxReadLogBytes; replaying the whole file as
 		// events would hand a remote viewer far more than that cap.
-		Location:      &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
-		Poll:          false,
+		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
+		// Poll the file instead of using inotify. The library's inotify tracker is
+		// process-wide and keyed by file name, so a tail stopped and restarted on
+		// the same file races with the old watcher's removal of that shared watch
+		// and can be left deaf. A polling tail keeps all of its state to itself
+		// and stops cleanly, at the price of up to one poll interval of latency.
+		Poll:          true,
 		Pipe:          false,
 		MaxLineSize:   0,
 		CompleteLines: false,
@@ -295,16 +322,19 @@ func (b *BackendLogger) StartTail(_ context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	b.watchers[name] = t
+	running := &runningTail{tail: t, done: make(chan struct{})}
+	b.watchers[name] = running
 
-	go b.emitTailedLines(name, t)
+	go b.emitTailedLines(name, running)
 	return nil
 }
 
-// emitTailedLines hands each line of t to the event bus, or to emitLine when set.
-func (b *BackendLogger) emitTailedLines(name string, t *tail.Tail) {
+// emitTailedLines hands each line of the tail to the event bus, or to emitLine
+// when set, until the tail ends.
+func (b *BackendLogger) emitTailedLines(name string, running *runningTail) {
+	defer close(running.done)
 	event := fmt.Sprintf(LogUpdateFmt, name)
-	for line := range t.Lines {
+	for line := range running.tail.Lines {
 		switch {
 		case b.emitLine != nil:
 			b.emitLine(event, line.Text)
@@ -314,11 +344,24 @@ func (b *BackendLogger) emitTailedLines(name string, t *tail.Tail) {
 	}
 }
 
+// stop ends the tail and waits until nothing of it is left: its goroutine has
+// exited and its file is closed (Stop returns after both), and so has the
+// goroutine that emitted its lines, so no line is emitted once stop returns.
+//
+// tail.Cleanup is deliberately not called. It removes the library's
+// process-wide inotify watch of the file, which a polling tail never
+// registers; calling it anyway unbalances that shared bookkeeping and starts
+// the shared watcher for nothing.
+func (r *runningTail) stop() {
+	_ = r.tail.Stop() // the error is the tail's own death reason, such as a failed seek
+	<-r.done
+}
+
 func (b *BackendLogger) StopTail(_ context.Context, name string) error {
 	b.watchLock.Lock()
 	defer b.watchLock.Unlock()
-	if t, ok := b.watchers[name]; ok {
-		t.Cleanup()
+	if running, ok := b.watchers[name]; ok {
+		running.stop()
 		delete(b.watchers, name)
 	}
 	return nil

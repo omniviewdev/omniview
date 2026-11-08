@@ -116,6 +116,7 @@ Runtime object and method numbers come from Wails, so a Wails upgrade fails `Tes
 - Plugin data reads create nothing: `data.Get` and `data.Keys` (and the denied `GetSnapshot`) read a plugin without a data directory as empty and neither create the directory nor cache a root for it (`appstate.PluginDataIfExists`). Before that, every novel plugin ID created a directory and leaked a file descriptor. `Set`, `Delete` and `CompareAndSwap` still create it, and stay denied.
 - Window-keyed state is keyed by window kind and ID: the window realm's scopes, the metric sessions and the activity subscriptions. Native and browser windows are numbered separately from 1, so a browser window used to share its owner with the window of the same number, the first one being `main`.
 - `DiagnosticsClient.ReadLog` returns at most the last 8 MiB of the log file, cut at a line boundary, and `StartTail` follows the file from its current end, so a remote viewer never receives more history than that cap.
+- The UI log has at most one tail, process-wide. `StartTail` while it runs does nothing, and `StopTail` returns only once the tail's goroutines have exited and its file is closed, so a remote client that starts and stops the tail in a loop cannot grow the host's goroutines or file descriptors (a regression runs 200 cycles and compares both counts). The tail polls the file every 250 ms instead of using the library's process-wide inotify tracker, whose per-file bookkeeping a stop and restart on the same file can leave deaf.
 
 ## What is not covered
 
