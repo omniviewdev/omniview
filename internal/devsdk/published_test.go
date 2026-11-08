@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -170,63 +171,156 @@ func TestPublishedVerificationRefusalsAreTypedAndHappenBeforeAnyGoCommandWhenThe
 }
 
 func TestPublishedVerificationRefusesReleasesBelowTheFloorAndNonReleases(t *testing.T) {
-	for _, version := range []string{"v0.16.0", "v0.9.9", "v0.17.1-0.20261108000000-abcdefabcdef", "v0.18.0-rc.1"} {
+	for version, cause := range map[string]string{
+		"v0.16.0":                               "below the accepted floor",
+		"v0.9.9":                                "below the accepted floor",
+		"v0.17.1-0.20261108000000-abcdefabcdef": "not a released tag",
+		"v0.18.0-rc.1":                          "not a released tag",
+	} {
 		t.Run(version, func(t *testing.T) {
 			world := sdktest.New(t)
 			sdk := world.PublishSDK(version, nil)
 			uuid := world.PublishPinned("github.com/google/uuid")
 			f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
-			_, err := verifier()(context.Background(), f.request())
-			typed := refusal(t, err)
-			require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, typed.Message)
-			require.Equal(t, 4, typed.Exit)
-			require.ErrorIs(t, err, devsdk.ErrNotAccepted)
-			require.Equal(t, version, typed.Details["version"])
-			require.Equal(t, devsdk.FloorVersion, typed.Details["floor"])
-			require.Contains(t, typed.Message, devsdk.FloorVersion)
+			// Even a policy that reviewed the synthetic release refuses it: the
+			// floor and the release shape are not negotiable by the table.
+			for name, policy := range map[string]devsdk.Policy{"production": devsdk.ReleasePolicy(), "reviewed in the world": world.Policy(sdk)} {
+				_, err := devsdk.NewVerifier(policy)(context.Background(), f.request())
+				typed := refusal(t, err)
+				require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, "%s: %s", name, typed.Message)
+				require.Equal(t, 4, typed.Exit)
+				require.ErrorIs(t, err, devsdk.ErrNotAccepted)
+				require.Equal(t, version, typed.Details["version"])
+				require.Equal(t, devsdk.FloorVersion, typed.Details["floor"])
+				require.Contains(t, typed.Message, cause, name)
+				require.Contains(t, typed.Message, devsdk.FloorVersion)
+			}
 			require.Empty(t, f.world.Commands(), "the declared version decides this: nothing may be resolved or downloaded")
 			require.NoDirExists(t, world.Extracted(sdk))
 		})
 	}
 }
 
-func TestPublishedVerificationAdmitsEveryReleasedTagAtOrAboveTheFloor(t *testing.T) {
-	world := sdktest.New(t)
-	sdk := world.PublishSDK("v0.17.4", nil)
-	uuid := world.PublishPinned("github.com/google/uuid")
-	f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
-	identity, err := verifier()(context.Background(), f.request())
-	require.NoError(t, err)
-	published, _ := identity.Published()
-	require.Equal(t, "v0.17.4", published.Version)
+// Anchoring: a tag at or above the floor is not enough. The controller admits
+// the releases it has reviewed, with exactly the checksums it has reviewed.
+func TestPublishedVerificationAdmitsOnlyReviewedReleases(t *testing.T) {
+	t.Run("an unreviewed release above the floor is refused by production", func(t *testing.T) {
+		world := sdktest.New(t)
+		sdk := world.PublishSDK("v0.17.4", nil)
+		uuid := world.PublishPinned("github.com/google/uuid")
+		f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
+		identity, err := verifier()(context.Background(), f.request())
+		typed := refusal(t, err)
+		require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, typed.Message)
+		require.ErrorIs(t, err, devsdk.ErrNotAccepted)
+		require.Contains(t, typed.Message, "not a release this controller has reviewed")
+		require.Contains(t, typed.Message, "rebuild the controller from a host checkout that adopts this release")
+		require.NotContains(t, typed.Message, "at or above "+devsdk.FloorVersion+" works", "the message must not promise that any later tag works")
+		require.Equal(t, devsdk.Identity{}, identity)
+		require.Empty(t, world.Commands())
+		require.NoDirExists(t, world.Extracted(sdk))
+	})
+	t.Run("the same release reviewed in the world is admitted", func(t *testing.T) {
+		world := sdktest.New(t)
+		sdk := world.PublishSDK("v0.17.4", nil)
+		uuid := world.PublishPinned("github.com/google/uuid")
+		f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
+		identity, err := devsdk.NewVerifier(world.Policy(sdk))(context.Background(), f.request())
+		require.NoError(t, err)
+		published, _ := identity.Published()
+		require.Equal(t, sdk.Published(), published)
+	})
+	t.Run("a reviewed row does not admit other checksums of the same version", func(t *testing.T) {
+		world := sdktest.New(t)
+		reviewedRelease := world.PublishSDK("v0.18.0", nil)
+		other := world.PublishSDK("v0.18.0", func(tree string) {
+			require.NoError(t, os.WriteFile(filepath.Join(tree, "marker.txt"), []byte("different bytes\n"), 0o600))
+		})
+		require.NotEqual(t, reviewedRelease.ModuleSum, other.ModuleSum)
+		uuid := world.PublishPinned("github.com/google/uuid")
+		f := fixture{world: world, sdk: other, uuid: uuid, consumer: world.Consumer("consumer", other, uuid)}
+		_, err := devsdk.NewVerifier(world.Policy(reviewedRelease))(context.Background(), f.request())
+		typed := refusal(t, err)
+		require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, typed.Message)
+		require.Contains(t, typed.Message, "differ from the reviewed release")
+	})
 }
 
-func TestPublishedVerificationRefusesBytesThatDisagreeWithTheRecordedChecksums(t *testing.T) {
+// The world's floor release is the real pinned SDK, so it IS the reviewed row:
+// tests of the floor release need no extra policy row, and the production
+// policy and the world's policy agree about it.
+func TestTheWorldsFloorReleaseIsTheReviewedRow(t *testing.T) {
+	world := sdktest.New(t)
+	floor := world.PublishSDK(devsdk.FloorVersion, nil)
+	var row devsdk.Published
+	for _, release := range devsdk.ReviewedReleases() {
+		if release.Version == devsdk.FloorVersion {
+			row = release
+		}
+	}
+	require.NotEmpty(t, row.Version, "the floor release must have a reviewed row")
+	require.Equal(t, row, floor.Published(), "a world serving the floor release reproduces the reviewed checksums exactly")
+	identity, err := devsdk.NewPublishedIdentity(floor.Published())
+	require.NoError(t, err)
+	require.NoError(t, devsdk.ReleasePolicy().Admit(identity))
+	require.NoError(t, world.Policy().Admit(identity), "the world's policy without extra rows is the production one")
+}
+
+// A branch's own go.sum cannot attest its SDK: checksums that differ from the
+// controller's reviewed row are refused by the policy before anything is
+// resolved or downloaded, whether or not the module is already cached.
+func TestPublishedVerificationRefusesChecksumsThatDifferFromTheReviewedRelease(t *testing.T) {
 	wrong := "h1:" + strings.Repeat("A", 43) + "="
-	t.Run("wrong recorded checksum, module not yet downloaded", func(t *testing.T) {
-		f := newFixture(t)
-		f.world.Write(f.consumer, "go.sum", f.sdk.Module+" "+f.sdk.Version+" "+wrong+"\n"+f.sdk.Module+" "+f.sdk.Version+"/go.mod "+f.sdk.GoModSum+"\n"+
+	rewrite := func(f fixture, moduleSum, goModSum string) {
+		f.world.Write(f.consumer, "go.sum", f.sdk.Module+" "+f.sdk.Version+" "+moduleSum+"\n"+f.sdk.Module+" "+f.sdk.Version+"/go.mod "+goModSum+"\n"+
 			f.uuid.Module+" "+f.uuid.Version+" "+f.uuid.ModuleSum+"\n"+f.uuid.Module+" "+f.uuid.Version+"/go.mod "+f.uuid.GoModSum+"\n")
-		_, err := verifier()(context.Background(), f.request())
-		typed := refusal(t, err)
-		require.Equal(t, devsdk.CodeIntegrityMismatch, typed.Code, typed.Message)
-		require.Equal(t, 4, typed.Exit)
+	}
+	for name, test := range map[string]struct {
+		cached              bool
+		moduleSum, goModSum func(fixture) string
+	}{
+		"module checksum, module not yet downloaded": {false, func(fixture) string { return wrong }, func(f fixture) string { return f.sdk.GoModSum }},
+		"module checksum, module already cached":     {true, func(fixture) string { return wrong }, func(f fixture) string { return f.sdk.GoModSum }},
+		"go.mod checksum, module already cached":     {true, func(f fixture) string { return f.sdk.ModuleSum }, func(fixture) string { return wrong }},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			if test.cached {
+				f.world.Download(f.consumer, f.sdk)
+			}
+			rewrite(f, test.moduleSum(f), test.goModSum(f))
+			before := len(f.world.Commands())
+			identity, err := verifier()(context.Background(), f.request())
+			typed := refusal(t, err)
+			require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, typed.Message)
+			require.Equal(t, 4, typed.Exit)
+			require.ErrorIs(t, err, devsdk.ErrNotAccepted)
+			require.Contains(t, typed.Message, "differ from the reviewed release")
+			require.Equal(t, devsdk.Identity{}, identity)
+			require.Len(t, f.world.Commands(), before, "the recorded tuple decides this: no Go command may run")
+		})
+	}
+}
+
+// When the recorded checksums ARE the reviewed row, a registry that serves other
+// bytes for that release is caught by Go's own verification of the download.
+func TestPublishedVerificationRefusesAModuleThatDisagreesWithTheReviewedChecksums(t *testing.T) {
+	world := sdktest.New(t)
+	served := world.PublishSDK(devsdk.FloorVersion, func(tree string) {
+		require.NoError(t, os.WriteFile(filepath.Join(tree, "injected.go"), []byte("package sdk\n"), 0o600))
 	})
-	t.Run("wrong recorded checksum, module already cached", func(t *testing.T) {
-		f := newFixture(t)
-		f.world.Download(f.consumer, f.sdk)
-		f.world.Write(f.consumer, "go.sum", f.sdk.Module+" "+f.sdk.Version+" "+wrong+"\n"+f.sdk.Module+" "+f.sdk.Version+"/go.mod "+f.sdk.GoModSum+"\n")
-		_, err := verifier()(context.Background(), f.request())
-		typed := refusal(t, err)
-		require.Equal(t, devsdk.CodeIntegrityMismatch, typed.Code, typed.Message)
-	})
-	t.Run("wrong recorded go.mod checksum", func(t *testing.T) {
-		f := newFixture(t)
-		f.world.Download(f.consumer, f.sdk)
-		f.world.Write(f.consumer, "go.sum", f.sdk.Module+" "+f.sdk.Version+" "+f.sdk.ModuleSum+"\n"+f.sdk.Module+" "+f.sdk.Version+"/go.mod "+wrong+"\n")
-		_, err := verifier()(context.Background(), f.request())
-		require.Equal(t, devsdk.CodeIntegrityMismatch, refusal(t, err).Code)
-	})
+	uuid := world.PublishPinned("github.com/google/uuid")
+	reviewed := devsdk.ReviewedReleases()[0]
+	require.NotEqual(t, reviewed.ModuleSum, served.ModuleSum, "control: the proxy serves other bytes than the reviewed release")
+	recorded := sdktest.Release{Module: reviewed.Module, Version: reviewed.Version, ModuleSum: reviewed.ModuleSum, GoModSum: reviewed.GoModSum}
+	f := fixture{world: world, sdk: recorded, uuid: uuid, consumer: world.Consumer("consumer", recorded, uuid)}
+
+	identity, err := verifier()(context.Background(), f.request())
+	typed := refusal(t, err)
+	require.Equal(t, devsdk.CodeIntegrityMismatch, typed.Code, typed.Message)
+	require.Equal(t, 4, typed.Exit)
+	require.Equal(t, devsdk.Identity{}, identity)
+	require.NoDirExists(t, world.Extracted(recorded), "bytes that fail verification are never extracted into the module cache")
 }
 
 // The Go module cache never re-verifies an extracted directory, so tampering
@@ -294,7 +388,7 @@ func TestPublishedVerificationRefusesAReleaseWithoutTheIsolationCapability(t *te
 			sdk := world.PublishSDK("v0.18.0", stub)
 			uuid := world.PublishPinned("github.com/google/uuid")
 			f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
-			_, err := verifier()(context.Background(), f.request())
+			_, err := devsdk.NewVerifier(world.Policy(sdk))(context.Background(), f.request())
 			typed := refusal(t, err)
 			require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, typed.Message)
 			require.Contains(t, typed.Message, devsdk.Capability)
@@ -324,44 +418,80 @@ func TestPublishedVerificationReportsAnUnavailableDependencyWithoutFallingBack(t
 }
 
 func TestPublishedVerificationRedactsCredentialsFromDiagnostics(t *testing.T) {
-	f := newFixture(t)
-	request := f.request()
-	request.Run = func(context.Context, string, []string, ...string) ([]byte, error) {
-		return nil, errors.New("go list: dial https://user:hunter2@proxy.example.com/github.com/omniviewdev/plugin-sdk: connection refused")
+	// The cut lands 8 bytes into the password: only redacting first removes the
+	// half that survives the truncation.
+	const password = "s3cr3tpassw0rdvalue"
+	cutInPassword := strings.Repeat("filler ", 400) + "dial https://user:" + password + "@proxy.example.com/x" +
+		strings.Repeat("z", 1024-(len(password)-8)-len("@proxy.example.com/x"))
+	tests := map[string]struct {
+		text    string
+		secrets []string
+		kept    string
+	}{
+		"userinfo":                 {"go list: dial https://user:hunter2@proxy.example.com/github.com/omniviewdev/plugin-sdk: connection refused", []string{"hunter2"}, "connection refused"},
+		"password containing @":    {"go list: dial https://user:p@ss@w0rd@proxy.example.com/mod: connection refused", []string{"p@ss", "ss@w0rd", "w0rd@"}, "connection refused"},
+		"token in a URL query":     {"go list: GET https://proxy.example.com/mod/@v/list?access=q9x8secretq&x=1: 403", []string{"q9x8secretq"}, "403"},
+		"token-shaped path":        {"go list: GET https://proxy.example.com/ghp_" + strings.Repeat("a1B2", 9) + "/mod/@v/list: 404", []string{"ghp_" + strings.Repeat("a1B2", 9)}, "404"},
+		"the cut is in the secret": {cutInPassword, []string{password, "passw0rdvalue", "w0rdvalue"}, "proxy.example.com"},
 	}
-	_, err := verifier()(context.Background(), request)
-	typed := refusal(t, err)
-	require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code)
-	require.NotContains(t, typed.Message, "hunter2")
-	require.Contains(t, typed.Message, "connection refused")
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			request := f.request()
+			request.Run = func(context.Context, string, []string, ...string) ([]byte, error) { return nil, errors.New(test.text) }
+			_, err := verifier()(context.Background(), request)
+			typed := refusal(t, err)
+			require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code)
+			for _, secret := range test.secrets {
+				require.NotContains(t, typed.Message, secret)
+				require.NotContains(t, err.Error(), secret)
+			}
+			require.Contains(t, typed.Message, test.kept)
+		})
+	}
 }
 
 func TestPublishedVerificationPropagatesCancellationAndOwnedCommandErrors(t *testing.T) {
 	f := newFixture(t)
+	uncertain := errors.New("owned process termination is uncertain")
+	request := f.request()
+	request.Run = func(context.Context, string, []string, ...string) ([]byte, error) { return nil, uncertain }
+
+	_, err := verifier()(context.Background(), request)
+	require.ErrorIs(t, err, uncertain, "the runner's own error must stay reachable through the typed refusal")
+
+	deadline, stop := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer stop()
+	<-deadline.Done()
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	request := f.request()
-	_, err := verifier()(canceled, request)
-	require.ErrorIs(t, err, context.Canceled)
-	var typed *devcontract.Error
-	require.False(t, errors.As(err, &typed), "cancellation is not a dependency refusal: %v", err)
+	for name, test := range map[string]struct {
+		ctx    context.Context
+		reason error
+	}{"canceled": {canceled, context.Canceled}, "deadline": {deadline, context.DeadlineExceeded}} {
+		t.Run(name, func(t *testing.T) {
+			_, err := verifier()(test.ctx, f.request())
+			require.ErrorIs(t, err, test.reason)
+			var typed *devcontract.Error
+			require.False(t, errors.As(err, &typed), "cancellation is not a dependency refusal: %v", err)
 
-	uncertain := errors.New("owned process termination is uncertain")
-	request.Run = func(context.Context, string, []string, ...string) ([]byte, error) { return nil, uncertain }
-	_, err = verifier()(context.Background(), request)
-	require.ErrorIs(t, err, uncertain, "the runner's own error must stay reachable through the typed refusal")
+			_, err = verifier()(test.ctx, request)
+			require.ErrorIs(t, err, test.reason)
+			require.ErrorIs(t, err, uncertain, "the owner's uncertainty marker must survive a cancellation: callers keep durable writer intent on it")
+			require.False(t, errors.As(err, &typed), "cancellation is not a dependency refusal: %v", err)
+		})
+	}
 }
 
-// Flags and a workspace file in the ambient environment, or an environment
-// file, must neither change nor break the verification: the effective graph is
-// resolved from the consumer's files only.
+// Flags and a workspace file in the ambient environment must neither change nor
+// break the verification: the effective graph is resolved from the consumer's
+// files only. (A GOFLAGS in the Go environment FILE is refused instead: see
+// TestPublishedVerificationRefusesGoFlagsFromTheGoEnvironmentFile.)
 func TestPublishedVerificationIsIndependentOfTheAmbientGoEnvironment(t *testing.T) {
 	f := newFixture(t)
 	expected, err := verifier()(context.Background(), f.request())
 	require.NoError(t, err)
 
-	envFile := filepath.Join(t.TempDir(), "goenv")
-	require.NoError(t, os.WriteFile(envFile, []byte("GOFLAGS=-mod=vendor -modfile=/nonexistent/evil.mod\n"), 0o600))
 	hostile := map[string]string{
 		"GOFLAGS":  "-mod=vendor -modfile=/nonexistent/evil.mod",
 		"GOWORK":   filepath.Join(t.TempDir(), "evil.work"),
@@ -371,14 +501,8 @@ func TestPublishedVerificationIsIndependentOfTheAmbientGoEnvironment(t *testing.
 	for key, value := range hostile {
 		t.Setenv(key, value)
 	}
-	base := f.world.Runner()
-	request := f.request()
-	request.Run = func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
-		// Override the world's GOENV=off with a hostile environment file.
-		return base(ctx, directory, append([]string{"GOENV=" + envFile}, environment...), args...)
-	}
-	got, err := verifier()(context.Background(), request)
-	require.NoError(t, err, "explicit -mod/-modfile and the scrubbed environment must override ambient and env-file flags")
+	got, err := verifier()(context.Background(), f.request())
+	require.NoError(t, err, "explicit -mod/-modfile and the scrubbed environment must override ambient flags")
 	require.Equal(t, expected, got)
 }
 
@@ -404,6 +528,9 @@ func TestPublishedVerificationOfAnEffectiveModfile(t *testing.T) {
 		published, _ := identity.Published()
 		require.Equal(t, f.sdk.Published(), published)
 		for _, command := range f.world.Commands() {
+			if command[0] == "env" {
+				continue
+			}
 			require.Contains(t, strings.Join(command, " "), "-modfile=", "%v", command)
 		}
 	})

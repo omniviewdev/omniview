@@ -10,33 +10,59 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
-func TestReleasePolicyAdmitsReleasedTagsAtOrAboveTheFloorOnly(t *testing.T) {
-	policy := ReleasePolicy()
-	admit := func(version string) error {
-		published := fixturePublished()
-		published.Version = version
+func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) {
+	reviewed := ReviewedReleases()
+	require.NotEmpty(t, reviewed)
+	newer := Published{Module: Module, Version: "v0.18.0", ModuleSum: fixturePublished().ModuleSum, GoModSum: fixturePublished().GoModSum}
+	policy := NewReleasePolicy(FloorVersion, append(reviewed, newer)...)
+	admit := func(policy Policy, published Published) error {
 		identity, err := NewPublishedIdentity(published)
-		require.NoError(t, err, version)
+		require.NoError(t, err, published.Version)
 		return policy.Admit(identity)
 	}
-	for _, version := range []string{FloorVersion, "v0.17.1", "v0.18.0", "v1.0.0", "v2.3.4"} {
-		require.NoError(t, admit(version), version)
+	for _, release := range append(reviewed, newer) {
+		require.NoError(t, admit(policy, release), release.Version)
 	}
-	for _, version := range []string{
-		"v0.16.0", "v0.16.99", "v0.10.0", "v0.1.0",
-		"v0.17.1-0.20261108000000-abcdefabcdef", // pseudo-version above the floor
-		"v0.18.0-rc.1", "v0.18.0-0.20261108000000-abcdefabcdef",
+	for _, release := range reviewed {
+		require.NoError(t, admit(ReleasePolicy(), release), "the production policy admits the compiled-in rows")
+	}
+	require.ErrorIs(t, admit(ReleasePolicy(), newer), ErrNotAccepted, "a release at or above the floor that the table does not name is not reviewed")
+
+	withVersion := func(row Published, version string) Published {
+		row.Version = version
+		return row
+	}
+	pinned := reviewed[0]
+	wrongSum := "h1:" + strings.Repeat("A", 43) + "="
+	for name, test := range map[string]struct {
+		policy    Policy
+		published Published
+		cause     string
+	}{
+		"below the floor":            {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.16.0")), withVersion(pinned, "v0.16.0"), "below the accepted floor"},
+		"far below the floor":        {policy, withVersion(pinned, "v0.1.0"), "below the accepted floor"},
+		"pseudo-version":             {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.17.1-0.20261108000000-abcdefabcdef")), withVersion(pinned, "v0.17.1-0.20261108000000-abcdefabcdef"), "not a released tag"},
+		"prerelease":                 {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.18.0-rc.1")), withVersion(pinned, "v0.18.0-rc.1"), "not a released tag"},
+		"unreviewed release":         {policy, withVersion(pinned, "v0.17.1"), "not a release this controller has reviewed"},
+		"unreviewed future release":  {ReleasePolicy(), withVersion(pinned, "v1.0.0"), "not a release this controller has reviewed"},
+		"module checksum differs":    {ReleasePolicy(), Published{Module: Module, Version: pinned.Version, ModuleSum: wrongSum, GoModSum: pinned.GoModSum}, "differ from the reviewed release"},
+		"go.mod checksum differs":    {ReleasePolicy(), Published{Module: Module, Version: pinned.Version, ModuleSum: pinned.ModuleSum, GoModSum: wrongSum}, "differ from the reviewed release"},
+		"zero policy has no rows":    {Policy{}, pinned, "not accepted"},
+		"empty table, floor release": {NewReleasePolicy(FloorVersion), pinned, "not a release this controller has reviewed"},
 	} {
-		err := admit(version)
-		require.ErrorIs(t, err, ErrNotAccepted, version)
+		t.Run(name, func(t *testing.T) {
+			err := admit(test.policy, test.published)
+			require.ErrorIs(t, err, ErrNotAccepted)
+			require.Contains(t, err.Error(), test.cause)
+		})
 	}
-	require.Error(t, admitRelease(Published{Module: Module, Version: "v0.17.0+build"}), "build metadata is never a release tag")
-	require.ErrorIs(t, Policy{}.Admit(mustPublished(t)), ErrNotAccepted, "the zero policy still accepts no published release")
+	require.Error(t, admitRelease(FloorVersion, nil, Published{Module: Module, Version: "v0.17.0+build"}), "build metadata is never a release tag")
 }
 
 func mustPublished(t *testing.T) Identity {
@@ -46,26 +72,71 @@ func mustPublished(t *testing.T) Identity {
 	return identity
 }
 
-// The floor is the SDK the controller is itself built against. When the
-// controller's pin moves, raising the floor must be a deliberate edit.
-func TestFloorMatchesTheControllerPin(t *testing.T) {
+// pinnedSDK returns the controller's own SDK requirement and the module and
+// go.mod checksums its go.sum records for it.
+func pinnedSDK(t *testing.T) Published {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
 	require.NoError(t, err)
 	module, err := modfile.Parse("go.mod", data, nil)
 	require.NoError(t, err)
-	pinned := ""
+	pinned := Published{Module: Module}
 	for _, requirement := range module.Require {
 		if requirement.Mod.Path == Module {
-			pinned = requirement.Mod.Version
+			pinned.Version = requirement.Mod.Version
 		}
 	}
-	require.Equal(t, pinned, FloorVersion, "go.mod pins the SDK the controller builds against; FloorVersion must equal it (edit both deliberately)")
 	sums, err := os.ReadFile(filepath.Join("..", "..", "go.sum"))
 	require.NoError(t, err)
-	moduleSum, goModSum, err := recordedSums(sums, pinned)
+	pinned.ModuleSum, pinned.GoModSum, err = recordedSums(sums, pinned.Version)
 	require.NoError(t, err)
-	require.NotEmpty(t, moduleSum)
-	require.NotEmpty(t, goModSum)
+	return pinned
+}
+
+// The reviewed table must anchor the controller's own pin, and nothing in it may
+// be a pseudo-version, a release below the floor, a duplicate or out of order.
+func TestReviewedReleasesCoverTheControllerPin(t *testing.T) {
+	pinned := pinnedSDK(t)
+	require.NotEmpty(t, pinned.ModuleSum)
+	require.NotEmpty(t, pinned.GoModSum)
+
+	reviewed := ReviewedReleases()
+	var row *Published
+	for i, release := range reviewed {
+		require.NoError(t, release.validate(), release.Version)
+		require.Equal(t, semver.Canonical(release.Version), release.Version, "rows are canonical versions")
+		require.Empty(t, semver.Prerelease(release.Version), "rows are released tags, never prereleases or pseudo-versions: %s", release.Version)
+		require.Empty(t, semver.Build(release.Version), release.Version)
+		require.GreaterOrEqual(t, semver.Compare(release.Version, FloorVersion), 0, "%s is below the floor %s", release.Version, FloorVersion)
+		if i > 0 {
+			require.Equal(t, 1, semver.Compare(release.Version, reviewed[i-1].Version), "rows are unique and ascending: %s after %s", release.Version, reviewed[i-1].Version)
+		}
+		if release.Version == pinned.Version {
+			row = &reviewed[i]
+		}
+	}
+	require.NotNil(t, row, "the controller pins %s %s; its reviewed row is missing from reviewedReleases", Module, pinned.Version)
+	require.Equal(t, pinned, *row, "the reviewed row of the controller's pin must equal the checksums in the controller's go.sum")
+
+	// The table is returned as a copy: callers cannot edit what anchors production.
+	reviewed[0].ModuleSum = "edited"
+	require.NotEqual(t, "edited", ReviewedReleases()[0].ModuleSum)
+}
+
+func TestFloorNeverDropsBelowTheReviewedMinimum(t *testing.T) {
+	require.GreaterOrEqual(t, semver.Compare(FloorVersion, minimumFloor), 0,
+		"FloorVersion %s fell below the reviewed minimum %s; the first release with state-root isolation is the lowest allowed floor", FloorVersion, minimumFloor)
+	require.True(t, semver.IsValid(minimumFloor))
+	require.Empty(t, semver.Prerelease(minimumFloor))
+}
+
+// The floor is the SDK the controller is itself built against. When the
+// controller's pin moves, raising the floor must be a deliberate edit.
+func TestFloorMatchesTheControllerPin(t *testing.T) {
+	pinned := pinnedSDK(t)
+	require.Equal(t, pinned.Version, FloorVersion, "go.mod pins the SDK the controller builds against; FloorVersion must equal it (edit both deliberately)")
+	require.NotEmpty(t, pinned.ModuleSum)
+	require.NotEmpty(t, pinned.GoModSum)
 
 	require.Equal(t, config.StateIsolationCapability, Capability, "the SDK's own capability constant is the one the verifier requires")
 	require.Equal(t, config.StateIsolationSDKModule, Module)

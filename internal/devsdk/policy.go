@@ -2,6 +2,7 @@ package devsdk
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -38,6 +39,14 @@ const (
 // has been reviewed (a tag is added together with the pin bump that adopts it, or
 // ahead of it). TestReviewedReleasesCoverTheControllerPin fails when the
 // controller's own pinned release is missing here or recorded differently.
+//
+// The table also subsumes retraction: a retracted release is simply never added,
+// and a published build never needs `go list -retracted`, which would need the
+// network. Verifying releases beyond this table against the Go checksum database
+// (sumdb) is not implemented. It is how a future extension would verify a release
+// the controller has not reviewed, with the caveat that GOPRIVATE and GONOSUMDB
+// commonly bypass sumdb for github.com/omniviewdev/*, so it could not be the only
+// anchor.
 var reviewedReleases = []Published{
 	{
 		Module: Module, Version: "v0.17.0",
@@ -53,6 +62,11 @@ func ReviewedReleases() []Published { return append([]Published(nil), reviewedRe
 // exactly when it is a released tag at or above FloorVersion whose module and
 // go.mod checksums equal the reviewed row for that version. It is a constructor
 // value, never read from the environment or a global.
+//
+// What an admitted, verified identity means is stated on the package: the bytes
+// hash to checksums this controller reviewed, the module provides Capability,
+// and the compiled binary names exactly that version and sum. It does not mean
+// the SDK's behavior was reviewed for safety or sandboxing.
 func ReleasePolicy() Policy { return NewReleasePolicy(FloorVersion, reviewedReleases...) }
 
 // NewReleasePolicy is ReleasePolicy for a caller-supplied floor and table of
@@ -67,12 +81,13 @@ func NewReleasePolicy(floor string, reviewed ...Published) Policy {
 	return NewPolicy(func(published Published) error { return admitRelease(floor, known, published) })
 }
 
+// admitRelease states its cause alone: releaseUntrusted adds the next step.
 func admitRelease(floor string, known map[string]Published, published Published) error {
 	if semver.Prerelease(published.Version) != "" || semver.Build(published.Version) != "" {
-		return fmt.Errorf("%s is not a released tag; pseudo-versions and prereleases are not supported", published.Version)
+		return fmt.Errorf("%s is not a released tag (pseudo-versions and prereleases are not supported)", published.Version)
 	}
 	if semver.Compare(published.Version, floor) < 0 {
-		return fmt.Errorf("%s is below the accepted floor %s; older releases are not supported", published.Version, floor)
+		return fmt.Errorf("%s is below the accepted floor %s (older releases are not supported)", published.Version, floor)
 	}
 	reviewed, ok := known[published.Version]
 	if !ok {
@@ -80,21 +95,11 @@ func admitRelease(floor string, known map[string]Published, published Published)
 		for version := range known {
 			versions = append(versions, version)
 		}
-		return fmt.Errorf("%s is not a release this controller has reviewed (reviewed: %s); published builds are anchored to reviewed checksums, "+
-			"so rebuild the controller from a host checkout that adopts this release", published.Version, strings.Join(semverSorted(versions), ", "))
+		slices.SortFunc(versions, semver.Compare)
+		return fmt.Errorf("%s is not a release this controller has reviewed (reviewed: %s)", published.Version, strings.Join(versions, ", "))
 	}
 	if reviewed != published {
-		return fmt.Errorf("%s records module checksums that differ from the reviewed release; the branch's go.sum cannot attest its own SDK", published.Version)
+		return fmt.Errorf("%s records module checksums that differ from the reviewed release (a branch's go.sum cannot attest its own SDK)", published.Version)
 	}
 	return nil
-}
-
-func semverSorted(versions []string) []string {
-	sorted := append([]string(nil), versions...)
-	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && semver.Compare(sorted[j-1], sorted[j]) > 0; j-- {
-			sorted[j-1], sorted[j] = sorted[j], sorted[j-1]
-		}
-	}
-	return sorted
 }

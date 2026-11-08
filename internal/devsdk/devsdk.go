@@ -10,6 +10,23 @@
 // An Identity is the validated evidence of the SDK a build used. A published
 // identity is produced by the verifier from a consumer's effective Go module
 // graph (see NewVerifier) and admitted under the release policy.
+//
+// "Verified" has one meaning for a published identity, and no more:
+//
+//   - the extracted module-cache bytes hash (dirhash) to module and go.mod
+//     checksums the CONTROLLER itself reviewed (the compiled-in reviewed
+//     releases), not merely what a branch's go.sum says;
+//   - the module provides the Capability, observed in those bytes;
+//   - the compiled binary's Go buildinfo names exactly that version and sum
+//     with no replacement (VerifyBinary);
+//   - the identity was unchanged between a before and an after observation of
+//     the build (IdentityChanged).
+//
+// Not claimed: that the SDK's behavior was reviewed for safety or sandboxing;
+// that the executable's bytes were compiled from the hashed bytes (buildinfo is
+// written by the go command, not measured); or that the toolchain or the Go
+// environment is trustworthy. A Go environment whose effective GOFLAGS is not
+// empty is refused, because it could change the source that is compiled.
 package devsdk
 
 import (

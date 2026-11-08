@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"golang.org/x/mod/sumdb/dirhash"
+
+	"github.com/omniviewdev/omniview/internal/devdiag"
 )
 
 // Runner runs one Go command ("go" plus args) in directory under the caller's
@@ -173,17 +175,58 @@ func readConsumerFiles(directory string) (ModuleFiles, error) {
 	return files, nil
 }
 
+// goflagsBound bounds the effective GOFLAGS copied into a refusal.
+const goflagsBound = 256
+
+// checkBuildEnvironment refuses a Go environment whose effective GOFLAGS is not
+// empty, observed through the caller's runner under ModuleEnvironment. An empty
+// GOFLAGS variable does not mask the Go environment file (`go env -w`, the file
+// `go env GOENV` names): Go falls back to the file's value, so a user-level
+// -overlay, -toolexec, -modfile or -mod=vendor there could change the SDK source
+// that is compiled although only -mod=readonly is pinned. The refusal keeps the
+// user's GOPRIVATE, GOPROXY, GOMODCACHE and checksum settings, which GOENV=off
+// would have discarded. It runs before anything is resolved or downloaded, and a
+// build that follows its verification in the same environment is covered by it.
+func checkBuildEnvironment(ctx context.Context, consumer Consumer, declared Published, run Runner) error {
+	name := consumer.label()
+	output, err := run(ctx, consumer.Directory, ModuleEnvironment(), "env", "-json", "GOFLAGS")
+	if err != nil {
+		return commandFailure(ctx, name, declared, err)
+	}
+	var environment struct{ GOFLAGS string }
+	if err = json.Unmarshal(output, &environment); err != nil {
+		return dependencyUnavailable(name, declared, fmt.Errorf("unreadable go env response: %w", err))
+	}
+	flags := strings.TrimSpace(environment.GOFLAGS)
+	if flags == "" {
+		return nil
+	}
+	return buildEnvironmentConflict(name, declared, devdiag.Tail(devdiag.Redact(flags), goflagsBound))
+}
+
 // observePublished identifies the published SDK a consumer's effective module
-// graph selects, and refuses everything that makes that identity untrustworthy:
+// graph selects, and refuses everything that makes that identity untrustworthy.
+// An identity it returns is "verified" in exactly this sense: the extracted
+// module-cache bytes hash (dirhash) to module and go.mod checksums the
+// controller itself reviewed (the policy's table, not merely what the branch's
+// go.sum says), and the module provides the Capability. Callers add the rest of
+// the meaning: the compiled binary's Go buildinfo names exactly that version and
+// sum with no replacement (VerifyBinary), and the identity was unchanged between
+// a before and an after observation of the build. It does NOT claim that the
+// SDK's behavior was reviewed for safety or sandboxing, that the executable's
+// bytes were compiled from the hashed bytes (buildinfo is written by the go
+// command, not measured), or that the toolchain or environment is trustworthy.
 //
 //  1. Static refusals from the consumer's own files (see Declare), applied to its
 //     go.mod and, when given, to the explicit effective modfile.
 //  2. The policy, on the declared tuple, before anything is resolved.
-//  3. The effective MVS-selected version and recorded checksums, resolved with
+//  3. The Go environment: a non-empty effective GOFLAGS is refused before
+//     anything is resolved (see checkBuildEnvironment).
+//  4. The effective MVS-selected version and recorded checksums, resolved with
 //     -mod=readonly against a private modfile copy under the caller's runner.
-//  4. The module bytes: downloaded if absent, then hashed in place and compared
+//  5. The module bytes: downloaded if absent, then hashed in place and compared
 //     with the recorded module and go.mod checksums.
-//  5. The capability the module's verified bytes must provide.
+//  6. The capability the module's verified bytes must provide.
 func observePublished(ctx context.Context, policy Policy, consumer Consumer, run Runner) (observation, error) {
 	var none observation
 	if run == nil {
@@ -223,6 +266,9 @@ func observePublished(ctx context.Context, policy Policy, consumer Consumer, run
 		}
 	}
 	if err = AdmitDeclared(policy, name, declared); err != nil {
+		return none, err
+	}
+	if err = checkBuildEnvironment(ctx, consumer, declared, run); err != nil {
 		return none, err
 	}
 	resolve, cleanup, err := newResolver(consumer, effective, run)

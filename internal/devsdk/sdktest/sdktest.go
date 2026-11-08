@@ -163,6 +163,25 @@ func (w *World) PublishSDK(version string, mutate func(tree string)) Release {
 	return w.publishTree(devsdk.Module, version, tree)
 }
 
+// PublishRequiring serves a tiny module whose go.mod requires the given
+// releases: a dependency that makes the module graph select another SDK version
+// than its consumer requires directly. The module declares go 1.16, whose
+// unpruned module graph is loaded in full. The last element of path must be a
+// valid package name.
+func (w *World) PublishRequiring(path, version string, requires ...Release) Release {
+	w.t.Helper()
+	tree := filepath.Join(w.Root, "tree-"+strings.NewReplacer("/", "_", ".", "_").Replace(path)+"-"+version)
+	var goMod strings.Builder
+	fmt.Fprintf(&goMod, "module %s\n\ngo 1.16\n\nrequire (\n", path)
+	for _, release := range requires {
+		fmt.Fprintf(&goMod, "\t%s %s\n", release.Module, release.Version)
+	}
+	goMod.WriteString(")\n")
+	w.Write(tree, "go.mod", goMod.String())
+	w.Write(tree, "doc.go", "package "+filepath.Base(path)+"\n")
+	return w.publishTree(path, version, tree)
+}
+
 // PublishPinned serves a module of this repository's build list at its pinned
 // version, for the dependencies of a consumer that imports real SDK packages.
 func (w *World) PublishPinned(path string) Release {
@@ -240,15 +259,33 @@ func (w *World) Consumer(name string, releases ...Release) string {
 	return directory
 }
 
-// Policy is the production release policy extended with the world's served
+// Policy is the production release policy extended with the world's served SDK
 // releases as reviewed rows: the compiled-in floor and the production rules, with
 // the synthetic releases a test publishes known to it. The floor release a world
-// serves is the real pinned release, so it needs no row; every other served
-// version does.
+// serves is the real pinned release, so it needs no row (passing it is allowed);
+// every other served SDK version does. Releases of other modules are ignored. A
+// release whose version is already reviewed with other checksums is a test bug:
+// the controller's rows cannot be overridden, so Policy fails the test.
 func (w *World) Policy(releases ...Release) devsdk.Policy {
+	w.t.Helper()
 	reviewed := devsdk.ReviewedReleases()
+	known := make(map[string]devsdk.Published, len(reviewed))
+	for _, row := range reviewed {
+		known[row.Version] = row
+	}
 	for _, release := range releases {
-		reviewed = append(reviewed, release.Published())
+		if release.Module != devsdk.Module {
+			continue
+		}
+		published := release.Published()
+		if row, ok := known[published.Version]; ok {
+			if row != published {
+				w.t.Fatalf("release %s differs from the controller's reviewed row of that version; a world cannot override it", published.Version)
+			}
+			continue
+		}
+		known[published.Version] = published
+		reviewed = append(reviewed, published)
 	}
 	return devsdk.NewReleasePolicy(devsdk.FloorVersion, reviewed...)
 }

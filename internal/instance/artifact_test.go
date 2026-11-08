@@ -443,7 +443,10 @@ func TestArtifactWriterCannotClaimUnmarkedDefaultTransientProfile(t *testing.T) 
 func publishedBuild(t *testing.T, world *sdktest.World, name string, releases ...sdktest.Release) (string, devsdk.Identity) {
 	t.Helper()
 	directory := world.Consumer(name, releases...)
-	identity, err := devsdk.NewVerifier(devsdk.ReleasePolicy())(context.Background(), devsdk.Request{
+	// The production rules plus the releases this world serves as reviewed rows:
+	// the floor release is the reviewed row itself, any other served release needs
+	// its own.
+	identity, err := devsdk.NewVerifier(world.Policy(releases...))(context.Background(), devsdk.Request{
 		Selection: devsdk.PublishedSelection(),
 		Consumer:  devsdk.Consumer{Name: name, Directory: directory},
 		Run:       world.Runner(),
@@ -596,10 +599,18 @@ func TestPublishedArtifactRefusesChangedBytes(t *testing.T) {
 }
 
 func TestPublishedArtifactIsRevokedByTheCurrentReleasePolicy(t *testing.T) {
+	// The load-time policy is the compiled-in production one, with no injection
+	// point: it refuses everything below the floor, every non-release, every
+	// release the controller has not reviewed, and the floor release itself when
+	// the recorded checksums are not the reviewed ones. (The record below uses
+	// checksums that are not the reviewed row of any version.)
 	for name, version := range map[string]string{
-		"below the floor": "v0.16.0",
-		"pseudo-version":  "v0.17.1-0.20260101000000-abcdefabcdef",
-		"prerelease":      "v0.18.0-rc.1",
+		"below the floor":                    "v0.16.0",
+		"pseudo-version":                     "v0.17.1-0.20260101000000-abcdefabcdef",
+		"prerelease":                         "v0.18.0-rc.1",
+		"unreviewed release above the floor": "v0.17.1",
+		"unreviewed future release":          "v1.0.0",
+		"reviewed version, other checksums":  devsdk.FloorVersion,
 	} {
 		t.Run(name, func(t *testing.T) {
 			workspace := artifactWorkspaceFixture(t)
