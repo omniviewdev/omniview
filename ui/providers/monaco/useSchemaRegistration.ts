@@ -1,4 +1,4 @@
-import { Button } from '@omniviewdev/base-ui';
+import { Banner, Button, Text } from '@omniviewdev/base-ui';
 import { useEditorSchemas } from '@omniviewdev/runtime';
 import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
 import { createElement, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
@@ -110,6 +110,8 @@ export type EditorSchemaBoundaryProps = {
   connectionID: string;
   resourceType?: string;
   modelPath?: string;
+  /** Lets the owning view place schema status banners within its own layout. */
+  statusClassName?: string;
   children: ReactNode;
 };
 
@@ -117,20 +119,23 @@ export const editorSchemaBridge = window as Window & {
   __omniviewEditorSchemaBoundary?: ComponentType<EditorSchemaBoundaryProps>;
 };
 
-export function EditorSchemaBoundary({ pluginID, connectionID, resourceType, modelPath, children }: EditorSchemaBoundaryProps) {
+export function EditorSchemaBoundary({ pluginID, connectionID, resourceType, modelPath, statusClassName, children }: EditorSchemaBoundaryProps) {
   const { isLoading, error, associations, retry } = useSchemaRegistration({ pluginID, connectionID });
   if (isLoading) {
-    return createElement('div', { role: 'status' }, 'Loading editor schemas…');
+    return createElement(Banner, { role: 'status', color: 'neutral', size: 'sm', className: statusClassName },
+      createElement(Banner.Content, null, createElement(Text, { size: 'sm', tone: 'muted' }, 'Loading editor schemas…')));
   }
 
-  const unavailable = error ? `Editor schemas unavailable: ${error.message}`
-    : !associations.some((association) => association.status === 'available' && (!resourceType || association.type === resourceType && !!modelPath?.startsWith(`${association.modelDirectory}/`))) ? 'No editor schema is available for this model. Completion and schema validation are unavailable.' : null;
+  const unavailable = !error && !associations.some((association) => association.status === 'available' && (!resourceType || association.type === resourceType && !!modelPath?.startsWith(`${association.modelDirectory}/`)));
 
   return createElement('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' } },
-    unavailable && createElement('div', { role: error ? 'alert' : 'status' }, unavailable,
-      error && createElement(Button, { type: 'button', onClick: () => {
+    error && createElement(Banner, { role: 'alert', color: 'danger', size: 'sm', className: statusClassName },
+      createElement(Banner.Content, null, createElement(Text, { size: 'sm', tone: 'danger' }, `Editor schemas unavailable: ${error.message}`)),
+      createElement(Banner.Actions, null, createElement(Button, { type: 'button', size: 'sm', variant: 'outline', color: 'neutral', onClick: () => {
         void retry();
-      } }, 'Retry editor schemas')),
+      } }, 'Retry editor schemas'))),
+    unavailable && createElement(Banner, { role: 'status', color: 'warning', size: 'sm', className: statusClassName },
+      createElement(Banner.Content, null, createElement(Text, { size: 'sm', tone: 'warning' }, 'No editor schema is available for this model. Completion and schema validation are unavailable.'))),
     createElement('div', { style: { flex: 1, minHeight: 0 } }, children));
 }
 
