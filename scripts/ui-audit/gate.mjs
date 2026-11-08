@@ -12,7 +12,7 @@ export function isRelevant(file) {
     || /^(?:src|ui|plugins|packages)\/.*\.(?:ts|js|html|svg)$/.test(file)
     || /(?:^|\/)(?:package\.json|(?:pnpm-lock|yarn\.lock|package-lock\.json).*)$/.test(file)
     || /(?:shared_dependencies|sharedPackages)\.[jt]s$/.test(file)
-    || /^(?:scripts\/ui-audit\/|\.omp\/(?:agents\/omniview-ui-auditor\.md$|hooks\/pre\/ui-audit\.ts$|skills\/omniview-ui-implementation\/)|\.agents\/skills\/omniview-ui-implementation\/)/.test(file);
+    || /^(?:\.omp\/(?:agents\/omniview-ui-auditor\.md$|hooks\/pre\/ui-audit\.ts$|skills\/omniview-ui-implementation\/)|\.agents\/skills\/omniview-ui-implementation\/)/.test(file);
 }
 async function git(root, args) { return (await exec('git', ['-C', root, ...args], { maxBuffer: 32 * 1024 * 1024 })).stdout; }
 async function selectedRoots(root) {
@@ -66,6 +66,30 @@ function newFindings(current, baseline) {
     counts.set(key, count - 1); return false;
   });
 }
+// Files that differ from the session baseline only because upstream commits were pulled are not agent edits.
+// Local edits = working-tree changes plus commits not reachable from any remote ref since the baseline HEAD.
+// Merge commits list no files of their own; their non-merge parents are covered. Returns null when the baseline HEAD is unknown or unreachable; callers then treat every difference as local (fail closed).
+async function headOf(root) {
+  try { return (await git(root, ['rev-parse', '--verify', '-q', 'HEAD'])).trim() || undefined; } catch { return undefined; }
+}
+async function localFiles(root, head) {
+  if (!head) return null;
+  try {
+    await git(root, ['cat-file', '-e', `${head}^{commit}`]);
+    const local = new Set();
+    const status = (await git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all'])).split('\0');
+    for (let i = 0; i < status.length; i++) {
+      const entry = status[i];
+      if (entry.length < 4) continue;
+      local.add(entry.slice(3));
+      if (/[RC]/.test(entry.slice(0, 2))) i++;
+    }
+    const log = await git(root, ['log', '--no-renames', '--name-only', '--format=', '-z', `${head}..HEAD`, '--not', '--remotes']);
+    for (const name of log.split('\0')) if (name) local.add(name);
+    return local;
+  } catch { return null; }
+}
+const stuckLimit = () => { const value = Number(process.env.UI_AUDIT_STUCK_LIMIT ?? 3); return Number.isInteger(value) && value >= 0 ? value : 3; };
 export class AuditGate {
   constructor(root, sessionId, parentId, checker) {
     this.root = root; this.sessionId = sessionId; this.parentId = parentId; this.checker = checker;
@@ -83,7 +107,9 @@ export class AuditGate {
     if (!persisted) {
       const baseline = await snapshot(this.root);
       const baselineFindings = await this.checkSnapshot(baseline, Object.keys(baseline.files));
-      const candidate = { version: 1, root: this.root, sessionId: this.sessionId, baseline, baselineFindings };
+      const heads = {};
+      for (const selected of baseline.roots) { const head = await headOf(selected.root); if (head) heads[selected.prefix] = head; }
+      const candidate = { version: 1, root: this.root, sessionId: this.sessionId, baseline, baselineFindings, heads };
       try { await writeFile(baselinePath, JSON.stringify(candidate), { flag: 'wx' }); persisted = candidate; }
       catch (error) {
         if (error.code !== 'EEXIST') throw error;
@@ -98,6 +124,9 @@ export class AuditGate {
       || !Array.isArray(persisted.baselineFindings)) throw new Error(`Invalid UI audit baseline: ${baselinePath}. Restore the original baseline; do not reset it to approve current edits.`);
     this.baseline = persisted.baseline;
     this.baselineFindings = persisted.baselineFindings;
+    // Absent in baselines written before upstream-aware snapshots: every difference then counts as local.
+    this.heads = persisted.heads && typeof persisted.heads === 'object' ? persisted.heads : {};
+    this.lastBlock = null;
     // Resume restores initial dirt only. Approval is never restored from filesystem receipts.
     this.findingsCache = new Map();
   }
@@ -115,25 +144,46 @@ export class AuditGate {
   }
   async inspect(identity) {
     this.bindChild(identity);
+    this.lastBlock = null;
     const pending = await this.pending();
     this.children.set(identity.id, pending.snapshot);
     return { ...pending, auditor: { ...identity }, effortEligible: ['high', 'xhigh', 'max'].includes(identity.thinkingLevel) };
   }
+  async waiver(snapshotId) {
+    try {
+      const waiver = JSON.parse(await readFile(join(this.receiptDir, 'waiver.json'), 'utf8'));
+      return waiver.snapshot === snapshotId && typeof waiver.reason === 'string' && waiver.reason.trim() ? waiver : null;
+    } catch { return null; }
+  }
   async pending() {
     if (!this.baseline) throw new Error('UI audit baseline unavailable. Restart session with the UI audit extension enabled.');
     const current = await snapshot(this.root);
-    const changed = [...new Set([...Object.keys(current.files), ...Object.keys(this.baseline.files)])].filter(file => current.files[file] !== this.baseline.files[file]).sort();
-    let findings = this.findingsCache.get(current.id);
+    const locals = new Map();
+    for (const selected of current.roots) locals.set(selected.prefix, await localFiles(selected.root, this.heads[selected.prefix]));
+    const byPrefix = [...current.roots].sort((a, b) => b.prefix.length - a.prefix.length);
+    const isLocal = file => {
+      const selected = byPrefix.find(entry => file.startsWith(entry.prefix));
+      const local = selected && locals.get(selected.prefix);
+      return !local || local.has(file.slice(selected.prefix.length));
+    };
+    const changed = [...new Set([...Object.keys(current.files), ...Object.keys(this.baseline.files)])]
+      .filter(file => current.files[file] !== this.baseline.files[file])
+      .filter(file => file === '@workspace/workspace.json' || isLocal(file)).sort();
+    // Identity covers only agent-authored changes, so pulling upstream neither creates nor invalidates an audit.
+    const snapshotId = hash(JSON.stringify(changed.map(file => [file, current.files[file] ?? null])));
+    let findings = this.findingsCache.get(snapshotId);
     if (!findings) {
       const affected = changed.filter(file => Object.hasOwn(current.files, file));
       findings = affected.length ? newFindings(await this.checkSnapshot(current, affected), this.baselineFindings) : [];
       this.findingsCache.clear();
-      this.findingsCache.set(current.id, findings);
+      this.findingsCache.set(snapshotId, findings);
     }
-    return { root: this.root, roots: current.roots, workspaceManifest: current.manifest?.path, baseline: this.baseline.id, snapshot: current.id, changed, findings, required: changed.length > 0, approved: this.approved === current.id && findings.length === 0, instructions };
+    const waived = changed.length > 0 && Boolean(await this.waiver(snapshotId));
+    return { root: this.root, roots: current.roots, workspaceManifest: current.manifest?.path, baseline: this.baseline.id, snapshot: snapshotId, changed, findings, required: changed.length > 0, approved: this.approved === snapshotId && findings.length === 0, waived, instructions };
   }
   async submit(identity, report) {
     this.bindChild(identity);
+    this.lastBlock = null;
     // A new audit attempt supersedes prior approval even if this attempt fails.
     this.approved = null;
     const pending = await this.pending();
@@ -169,7 +219,7 @@ export class AuditGate {
     // Magic bytes reject text masquerading as screenshots; they cannot prove a capture's provenance or visual correctness.
     const receipt = { version: 1, sessionId: this.sessionId, auditor: { ...identity }, snapshot: pending.snapshot, roots: pending.roots, workspaceManifest: pending.workspaceManifest, submittedAt: new Date().toISOString(), report, evidence, accepted: errors.length === 0, errors, trustLimits: ['Same-user filesystem is not tamper-proof.', 'Artifact hashes bind bytes, not capture provenance.', 'Independent auditor judgment is not mechanically provable.'] };
     await mkdir(this.receiptDir, { recursive: true });
-    if ((await snapshot(this.root)).id !== pending.snapshot) { receipt.accepted = false; receipt.errors.push('Snapshot changed during submission; inspect and audit again.'); }
+    if ((await this.pending()).snapshot !== pending.snapshot) { receipt.accepted = false; receipt.errors.push('Snapshot changed during submission; inspect and audit again.'); }
     receipt.receiptPath = join(this.receiptDir, `${Date.now()}-${hash(JSON.stringify(receipt)).slice(0, 12)}.json`);
     await writeFile(receipt.receiptPath, JSON.stringify(receipt, null, 2));
     if (receipt.accepted) this.approved = pending.snapshot;
@@ -177,8 +227,23 @@ export class AuditGate {
   }
   async stop() {
     const pending = await this.pending();
-    if (!pending.required || pending.approved) return undefined;
-    return { decision: 'block', reason: `${instructions}\nPending snapshot: ${pending.snapshot}\nChanged files: ${pending.changed.join(', ')}\nStatic findings: ${JSON.stringify(pending.findings)}\nReceipts: ${this.receiptDir}` };
+    if (!pending.required || pending.approved || pending.waived) return undefined;
+    const limit = stuckLimit();
+    this.lastBlock = this.lastBlock?.snapshot === pending.snapshot ? { ...this.lastBlock, count: this.lastBlock.count + 1 } : { snapshot: pending.snapshot, count: 1, released: false };
+    const { count } = this.lastBlock;
+    if (limit > 0 && count > limit) {
+      // Same snapshot blocked repeatedly with no inspection or submission: release the stop so the session cannot loop.
+      // The gate stays unapproved and the release is recorded for review.
+      if (!this.lastBlock.released) {
+        this.lastBlock.released = true;
+        await mkdir(this.receiptDir, { recursive: true });
+        await writeFile(join(this.receiptDir, `stuck-${Date.now()}.json`), JSON.stringify({ snapshot: pending.snapshot, changed: pending.changed, blocks: count - 1, releasedAt: new Date().toISOString() }, null, 2));
+      }
+      return undefined;
+    }
+    const waive = `node scripts/ui-audit/waive.mjs "${this.receiptDir}" ${pending.snapshot} "<reason>"`;
+    const repeat = count > 1 ? `\nREPEAT ${count}/${limit}: this exact snapshot was already blocked and no audit was attempted. Do not resend the same reply: dispatch the audit, fix the snapshot, or ask the user. After ${limit} unchanged blocks the stop is released and logged to ${join(this.receiptDir, 'stuck-*.json')}.` : '';
+    return { decision: 'block', reason: `${instructions}\nPending snapshot: ${pending.snapshot}\nChanged files: ${pending.changed.join(', ')}\nStatic findings: ${JSON.stringify(pending.findings)}\nReceipts: ${this.receiptDir}\nHuman-only waiver (interactive terminal required): ${waive}${repeat}` };
   }
 }
 export const instructions = 'UI audit required. Read skill omniview-ui-implementation. Dispatch task with agent: "omniview-ui-auditor" as a direct independent child using effective high/xhigh/max thinking. Auditor: call ui_audit_snapshot({}), use returned roots mapping to inspect changed files and actual browser UI using read/grep/glob/eval/browser only; never edit source. Submit ui_audit_submit({report: {snapshot: "<snapshot returned by ui_audit_snapshot>", libraryCompliance: "pass"|"fail", compositionParity: "pass"|"fail", informationPreservation: "pass"|"fail", visualAcceptance: "pass"|"fail", findings: [], libraryRequests: [], unverified: [], evidence: [{path: "<existing artifact path>", kind: "source"|"screenshot"|"log", verdicts: ["libraryCompliance", "compositionParity", "informationPreservation", "visualAcceptance"]}]}}). Each ledger entry defaults to blocking. Retain resolved entries only with {status: "resolved"|"approved-exception", blocking: false, approvalReference: "<actual resolution or approval reference>", ...findingDetails}. Every verdict needs existing artifact evidence; visualAcceptance requires a real PNG/JPEG/WebP capture. Report failures honestly; missing runtime/browser access blocks approval. Parent cannot submit. Resolve failures then dispatch a fresh audit only after a material fix; do not repeatedly audit an unchanged failed snapshot. No workaround is authorized by findings or libraryRequests.';

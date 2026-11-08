@@ -97,6 +97,7 @@ test('sessions and concurrent worktrees keep separate receipts and approval', as
 test('manifests, policy, host, runtime, plugin CSS are relevant; Go is not', () => {
   for (const file of ['ui/View.tsx', 'packages/runtime/src/View.tsx', 'plugins/example/ui/style.css', 'package.json', 'packages/runtime/package.json', '.omp/agents/omniview-ui-auditor.md', '.omp/hooks/pre/ui-audit.ts', '.omp/skills/omniview-ui-implementation/SKILL.md']) assert.equal(isRelevant(file), true, file);
   assert.equal(isRelevant('pkg/resource/service.go'), false);
+  for (const file of ['scripts/ui-audit/check.mjs', 'scripts/ui-audit/gate.mjs', 'scripts/ui-audit/check.test.mjs']) assert.equal(isRelevant(file), false, file);
 });
 test('deleted UI files invalidate approval', async t => {
   const { root, gate } = await fixture(t);
@@ -251,4 +252,118 @@ test('selected sibling src TypeScript edits invalidate approval', async t => {
   await mkdir(join(plugin, 'src'));
   await writeFile(join(plugin, 'src/theme.ts'), 'export const theme = {};');
   assert.deepEqual((await gate.pending()).changed, ['plugin/src/theme.ts']);
+});
+const commit = (cwd, message) => exec('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', message]);
+async function remoteFixture(t) {
+  const base = await mkdtemp(join(tmpdir(), 'ui-audit-remote-'));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const remote = join(base, 'remote.git'), root = join(base, 'work'), other = join(base, 'other');
+  await exec('git', ['init', '-q', '--bare', '-b', 'main', remote]);
+  await exec('git', ['init', '-q', '-b', 'main', root]);
+  await mkdir(join(root, 'ui'));
+  await writeFile(join(root, 'ui/base.tsx'), 'baseline');
+  await exec('git', ['-C', root, 'add', '.']);
+  await commit(root, 'base');
+  await exec('git', ['-C', root, 'remote', 'add', 'origin', remote]);
+  await exec('git', ['-C', root, 'push', '-q', 'origin', 'main']);
+  const gate = new AuditGate(await realpath(root), 'remote-session', 'parent', async () => []);
+  await gate.start();
+  const pushUpstream = async (file, content) => {
+    await exec('git', ['clone', '-q', remote, other]).catch(() => {});
+    await mkdir(join(other, 'ui'), { recursive: true });
+    await writeFile(join(other, file), content);
+    await exec('git', ['-C', other, 'add', '.']);
+    await commit(other, `upstream ${file}`);
+    await exec('git', ['-C', other, 'push', '-q', 'origin', 'main']);
+  };
+  return { root, gate, pushUpstream, pull: () => exec('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'pull', '-q', '--no-rebase', '--no-edit', 'origin', 'main']) };
+}
+test('pulling upstream commits neither requires an audit nor invalidates an approval', async t => {
+  const { root, gate, pushUpstream, pull } = await remoteFixture(t);
+  await writeFile(join(root, 'ui/base.tsx'), 'local edit');
+  const report = await reportFor(root, gate);
+  assert.equal((await gate.submit(auditor, report)).accepted, true);
+  await pushUpstream('ui/upstream.tsx', 'upstream');
+  await pull();
+  const pending = await gate.pending();
+  assert.deepEqual(pending.changed, ['ui/base.tsx']);
+  assert.equal(pending.snapshot, report.snapshot);
+  assert.equal(await gate.stop(), undefined);
+});
+test('pure upstream pull leaves nothing pending', async t => {
+  const { gate, pushUpstream, pull } = await remoteFixture(t);
+  await pushUpstream('ui/upstream.tsx', 'upstream');
+  await pull();
+  const pending = await gate.pending();
+  assert.deepEqual(pending.changed, []);
+  assert.equal(pending.required, false);
+  assert.equal(await gate.stop(), undefined);
+});
+test('unpushed local commits and later edits to pulled files still count as agent edits', async t => {
+  const { root, gate, pushUpstream, pull } = await remoteFixture(t);
+  await writeFile(join(root, 'ui/local.tsx'), 'local commit');
+  await exec('git', ['-C', root, 'add', '.']);
+  await commit(root, 'local');
+  await pushUpstream('ui/upstream.tsx', 'upstream');
+  await pull();
+  assert.deepEqual((await gate.pending()).changed, ['ui/local.tsx']);
+  await writeFile(join(root, 'ui/upstream.tsx'), 'edited after pull');
+  assert.deepEqual((await gate.pending()).changed, ['ui/local.tsx', 'ui/upstream.tsx']);
+  assert.equal((await gate.stop()).decision, 'block');
+});
+test('baseline without recorded heads keeps every difference local', async t => {
+  const { root, gate, pushUpstream, pull } = await remoteFixture(t);
+  gate.heads = {};
+  await pushUpstream('ui/upstream.tsx', 'upstream');
+  await pull();
+  assert.deepEqual((await gate.pending()).changed, ['ui/upstream.tsx']);
+  assert.equal(root.length > 0, true);
+});
+test('waiver binds to one snapshot and later edits require a real audit', async t => {
+  const { root, gate } = await fixture(t);
+  await writeFile(join(root, 'ui/base.tsx'), 'edit');
+  const { snapshot } = await gate.pending();
+  assert.equal((await gate.stop()).decision, 'block');
+  await writeFile(join(gate.receiptDir, 'waiver.json'), JSON.stringify({ snapshot: 'f'.repeat(64), reason: 'other' }));
+  assert.equal((await gate.stop()).decision, 'block');
+  await writeFile(join(gate.receiptDir, 'waiver.json'), JSON.stringify({ snapshot, reason: '   ' }));
+  assert.equal((await gate.stop()).decision, 'block');
+  await writeFile(join(gate.receiptDir, 'waiver.json'), JSON.stringify({ snapshot, reason: 'human reviewed' }));
+  assert.equal(await gate.stop(), undefined);
+  assert.equal((await gate.pending()).approved, false);
+  await writeFile(join(root, 'ui/base.tsx'), 'edited again');
+  assert.equal((await gate.stop()).decision, 'block');
+});
+test('waive command refuses non-interactive use and writes nothing', async t => {
+  const { root, gate } = await fixture(t);
+  await writeFile(join(root, 'ui/base.tsx'), 'edit');
+  const { snapshot } = await gate.pending();
+  const script = new URL('./waive.mjs', import.meta.url).pathname;
+  await assert.rejects(exec(process.execPath, [script, gate.receiptDir, snapshot, 'reason']), error => /interactive terminal/.test(error.stderr) && error.code === 2);
+  assert.equal((await gate.stop()).decision, 'block');
+});
+test('identical repeated blocks release the stop once, record it, and stay unapproved', async t => {
+  const { root, gate } = await fixture(t);
+  await writeFile(join(root, 'ui/base.tsx'), 'edit');
+  const first = await gate.stop();
+  assert.equal(first.decision, 'block');
+  assert.doesNotMatch(first.reason, /REPEAT/);
+  const second = await gate.stop();
+  assert.match(second.reason, /REPEAT 2\/3/);
+  assert.equal((await gate.stop()).decision, 'block');
+  assert.equal(await gate.stop(), undefined);
+  assert.equal(await gate.stop(), undefined);
+  const { readdir } = await import('node:fs/promises');
+  assert.equal((await readdir(gate.receiptDir)).filter(name => name.startsWith('stuck-')).length, 1);
+  assert.equal((await gate.pending()).approved, false);
+});
+test('inspecting or editing again restarts the repeat counter', async t => {
+  const { root, gate } = await fixture(t);
+  await writeFile(join(root, 'ui/base.tsx'), 'edit');
+  await gate.stop(); await gate.stop(); await gate.stop();
+  await gate.inspect(auditor);
+  assert.doesNotMatch((await gate.stop()).reason, /REPEAT/);
+  await gate.stop(); await gate.stop();
+  await writeFile(join(root, 'ui/base.tsx'), 'different edit');
+  assert.doesNotMatch((await gate.stop()).reason, /REPEAT/);
 });
