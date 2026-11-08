@@ -155,6 +155,8 @@ export class MetricViewPreferences {
  * DomainStart/DomainEnd describe the evaluation window that produced Data. Data
  * may cover a subset while Complete is false. Relative observations leave the
  * domain absent until data arrives and retain it during compatible refreshes.
+ * Progress frames do not replace a retained complete snapshot; final success
+ * replaces it atomically, while operational failures retain it and report Error.
  * Catalog is admitted metadata for the delivered sample lanes, not full metric
  * discovery. Consumers derive units/source identity from this snapshot and use
  * GetResourceMetricsCatalog independently for available metric choices.

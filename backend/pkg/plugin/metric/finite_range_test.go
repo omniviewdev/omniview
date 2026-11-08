@@ -3,10 +3,12 @@ package metric
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"github.com/stretchr/testify/require"
@@ -56,6 +58,35 @@ func finiteRangeProvider(t *testing.T, allowed bool) (*controller, *finiteTestPr
 	provider.response = finiteRangeResponse
 	close(provider.release)
 	return c, provider, ctx
+}
+
+// finiteRangeDispatch starts at most one queued provider call at a chosen
+// instant, for coordinators built without their scheduler loop.
+func finiteRangeDispatch(f *finiteCoordinator, at time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dispatchAtLocked(at)
+}
+
+// finiteRangePausedCoordinator has no scheduler loop: only the test starts
+// provider calls, and only registration can attach a reader to running work.
+// The range-reuse catalog is already cached. Dispatch at later instants than
+// the returned one.
+func finiteRangePausedCoordinator(t *testing.T) (*controller, *finiteTestProvider, context.Context, *finiteCoordinator, time.Time) {
+	t.Helper()
+	c, provider, ctx := finiteRangeProvider(t, true)
+	f := &finiteCoordinator{c: c, pending: map[*finiteWaiter]bool{}, jobs: map[*finiteJob]bool{}, epochs: map[metricStreamKey]uint64{}, blocked: map[metricStreamKey]int{}, observations: map[string]*finiteObservation{}, tombstones: map[string]time.Time{}, wake: make(chan struct{}, 1)}
+	c.finiteOnce.Do(func() { c.finite.Store(f) })
+	catalog := make(chan error, 1)
+	go func() {
+		_, err := c.GetResourceMetricsCatalog(ctx, ResourceMetricsCatalogRequest{OwnerPluginID: "kubernetes", OwnerConnectionID: "cluster", ResourceKey: "core::v1::Pod"})
+		catalog <- err
+	}()
+	require.Eventually(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.catalogs) == 1 }, 3*time.Second, time.Millisecond)
+	now := time.Now().Add(time.Second)
+	finiteRangeDispatch(f, now)
+	require.NoError(t, finiteTestReceive(t, catalog))
+	return c, provider, ctx, f, now
 }
 
 func TestFiniteRangeReuseClipsDomainOwnsValuesAndPreservesGaps(t *testing.T) {
@@ -200,29 +231,179 @@ func TestFiniteRangeInflightOverlapSurvivesOriginalReaderCancellation(t *testing
 	require.Equal(t, int32(2), provider.queries.Load())
 }
 
+func TestFiniteRangeReaderJoinsRunningWorkBeforeOriginalReaderCancels(t *testing.T) {
+	c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		select {
+		case <-pc.Context.Done():
+			provider.cancelled <- struct{}{}
+			return nil, pc.Context.Err()
+		case <-release:
+			return finiteRangeResponse(query), nil
+		}
+	}
+	originalCtx, cancelOriginal := context.WithCancel(ctx)
+	defer cancelOriginal()
+	original := finiteTestRead(c, originalCtx, finiteRangeSpec(0, 10))
+	finiteTestWaiters(t, f, 1)
+	finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+	finiteTestReceive(t, provider.calls)
+	// Nothing scans pending readers here, so only registration itself can
+	// attach this reader before the original reader cancels.
+	joined := finiteTestRead(c, ctx, finiteRangeSpec(2, 7))
+	finiteTestWaiters(t, f, 2)
+	cancelOriginal()
+	require.ErrorIs(t, finiteTestReceive(t, original).err, context.Canceled)
+	close(release)
+	result := finiteTestReceive(t, joined)
+	require.NoError(t, result.err)
+	require.True(t, result.data.Complete)
+	require.Len(t, result.data.Results[0].Points, 6)
+	require.Equal(t, 4.0, *result.data.Results[0].Points[0].Value)
+	require.Equal(t, int32(1), provider.queries.Load())
+}
+
+func TestFiniteRangeSharedWorkStopsWhenItsLastJoinedReaderCancels(t *testing.T) {
+	c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+	provider.query = func(pc *types.PluginContext, _ sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		<-pc.Context.Done()
+		provider.cancelled <- struct{}{}
+		return nil, pc.Context.Err()
+	}
+	originalCtx, cancelOriginal := context.WithCancel(ctx)
+	defer cancelOriginal()
+	joinedCtx, cancelJoined := context.WithCancel(ctx)
+	defer cancelJoined()
+	original := finiteTestRead(c, originalCtx, finiteRangeSpec(0, 10))
+	finiteTestWaiters(t, f, 1)
+	finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+	finiteTestReceive(t, provider.calls)
+	joined := finiteTestRead(c, joinedCtx, finiteRangeSpec(2, 7))
+	finiteTestWaiters(t, f, 2)
+	cancelOriginal()
+	require.ErrorIs(t, finiteTestReceive(t, original).err, context.Canceled)
+	cancelJoined()
+	require.ErrorIs(t, finiteTestReceive(t, joined).err, context.Canceled)
+	finiteTestReceive(t, provider.cancelled)
+}
+
 func TestFiniteRangeNegativeAndIncompleteCacheEntriesStayExact(t *testing.T) {
 	for _, status := range []string{"missing", "failed", "incomplete"} {
-		t.Run(status, func(t *testing.T) {
-			c, provider, ctx := finiteRangeProvider(t, true)
-			provider.response = func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
-				response := finiteRangeResponse(query)
-				if provider.queries.Load() == 1 {
-					if status == "incomplete" {
-						response.Complete = false
-					} else {
-						response.Results[0].Status = status
-						response.Results[0].Points = nil
-					}
-				}
-				return response
+		for _, offGrid := range []bool{false, true} {
+			name := status
+			if offGrid {
+				name += " with off-grid end"
 			}
-			require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 10))).err)
-			result := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(2, 7)))
-			require.NoError(t, result.err)
-			require.True(t, result.data.Complete)
-			require.Equal(t, "ok", result.data.Results[0].Status)
-			require.Len(t, result.data.Results[0].Points, 6)
-			require.Equal(t, int32(2), provider.queries.Load())
+			t.Run(name, func(t *testing.T) {
+				c, provider, ctx := finiteRangeProvider(t, true)
+				provider.response = func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
+					response := finiteRangeResponse(query)
+					if provider.queries.Load() == 1 {
+						if status == "incomplete" {
+							response.Complete = false
+						} else {
+							response.Results[0].Status = status
+							response.Results[0].Points = nil
+						}
+					}
+					return response
+				}
+				spec := finiteRangeSpec(0, 10)
+				if offGrid {
+					spec.EndTime = spec.EndTime.Add(500 * time.Millisecond)
+				}
+				first := finiteTestReceive(t, finiteTestRead(c, ctx, spec))
+				require.NoError(t, first.err)
+				wire := finiteTestReceive(t, provider.calls)
+				require.Equal(t, spec.StartTime, wire.StartTime)
+				require.Equal(t, spec.EndTime, wire.EndTime, "an unfragmented read keeps its original wire bounds")
+				again := finiteTestReceive(t, finiteTestRead(c, ctx, spec))
+				require.NoError(t, again.err)
+				require.Equal(t, first.data.Complete, again.data.Complete)
+				require.Equal(t, first.data.Results[0].Status, again.data.Results[0].Status)
+				require.Len(t, again.data.Results[0].Points, len(first.data.Results[0].Points))
+				require.Equal(t, int32(1), provider.queries.Load(), "the identical read reuses its exact domain")
+				result := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(2, 7)))
+				require.NoError(t, result.err)
+				require.True(t, result.data.Complete)
+				require.Equal(t, "ok", result.data.Results[0].Status)
+				require.Len(t, result.data.Results[0].Points, 6)
+				require.Equal(t, int32(2), provider.queries.Load())
+			})
+		}
+	}
+}
+
+func TestFiniteRangeOffGridEndEvaluatesWholeStepsAndSharesItsGridDomain(t *testing.T) {
+	c, provider, ctx := finiteRangeProvider(t, true)
+	spec := finiteRangeSpec(0, 10)
+	spec.EndTime = spec.EndTime.Add(900 * time.Millisecond)
+	first := finiteTestReceive(t, finiteTestRead(c, ctx, spec))
+	require.NoError(t, first.err)
+	require.True(t, first.data.Complete)
+	require.Len(t, first.data.Results[0].Points, 11)
+	require.Equal(t, finiteRangeTestStart.Add(10*time.Second), first.data.Results[0].Points[10].Time)
+	spec.EndTime = finiteRangeTestStart.Add(10*time.Second + 100*time.Millisecond)
+	again := finiteTestReceive(t, finiteTestRead(c, ctx, spec))
+	require.NoError(t, again.err)
+	require.True(t, again.data.Complete)
+	require.Len(t, again.data.Results[0].Points, 11)
+	require.Equal(t, int32(1), provider.queries.Load(), "another off-grid end evaluates the same grid points")
+}
+
+func TestFiniteRangeFragmentsStayOnGridWhileWholeDomainsKeepWireBounds(t *testing.T) {
+	c, provider, ctx := finiteRangeProvider(t, true)
+	require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(3, 7))).err)
+	seed := finiteTestReceive(t, provider.calls)
+	require.Equal(t, finiteRangeTestStart.Add(3*time.Second), seed.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), seed.EndTime)
+	spec := finiteRangeSpec(0, 10)
+	spec.EndTime = spec.EndTime.Add(500 * time.Millisecond)
+	result := finiteTestReceive(t, finiteTestRead(c, ctx, spec))
+	require.NoError(t, result.err)
+	require.True(t, result.data.Complete)
+	require.Len(t, result.data.Results[0].Points, 11)
+	left, right := finiteTestReceive(t, provider.calls), finiteTestReceive(t, provider.calls)
+	require.Equal(t, spec.StartTime, left.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(3*time.Second), left.EndTime)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), right.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(10*time.Second), right.EndTime, "a fragment is never widened to the off-grid end")
+	require.Equal(t, int32(3), provider.queries.Load())
+}
+
+func TestFiniteRangeOmittedPointInRefreshedCoverageIsNotRestoredFromOlderEntries(t *testing.T) {
+	c, provider, ctx := finiteRangeProvider(t, true)
+	omitted := finiteRangeTestStart.Add(5 * time.Second)
+	provider.response = func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
+		response := finiteRangeResponse(query)
+		if query.StartTime.Equal(omitted) {
+			// The fresh boundary fetch no longer has a sample at the omitted time.
+			response.Results[0].Points = response.Results[0].Points[1:]
+		}
+		return response
+	}
+	require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 5))).err)
+	require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(7, 10))).err)
+	fresh := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 10)))
+	require.Equal(t, int32(3), provider.queries.Load())
+	cached := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 10)))
+	require.Equal(t, int32(3), provider.queries.Load(), "the identical read is served from completed entries")
+	for _, tc := range []struct {
+		name string
+		got  finiteReply
+	}{{"assembled from running work", fresh}, {"assembled from cache", cached}} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, tc.got.err)
+			require.True(t, tc.got.data.Complete)
+			points := tc.got.data.Results[0].Points
+			require.Len(t, points, 10)
+			for _, point := range points {
+				require.False(t, point.Time.Equal(omitted), "an omitted point must not return from an older entry")
+			}
+			require.Equal(t, finiteRangeTestStart.Add(4*time.Second), points[4].Time)
+			require.Nil(t, points[4].Value, "an explicit source gap stays a gap")
+			require.Equal(t, 36.0, *points[5].Value)
 		})
 	}
 }
@@ -353,4 +534,315 @@ func TestFiniteFinishedRangeReaderDoesNotKeepRemainderAlive(t *testing.T) {
 	cancelTail()
 	require.ErrorIs(t, finiteTestReceive(t, tail).err, context.Canceled)
 	finiteTestReceive(t, provider.cancelled)
+}
+
+func TestFiniteRangeBorrowedNonReusableAnswerDoesNotFinishContainedReader(t *testing.T) {
+	for _, variant := range []string{"failed", "missing", "incomplete", "absent"} {
+		t.Run(variant, func(t *testing.T) {
+			c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+			release := make(chan struct{})
+			provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+				response := finiteRangeResponse(query)
+				if provider.queries.Load() > 1 {
+					return response, nil
+				}
+				select {
+				case <-pc.Context.Done():
+					return nil, pc.Context.Err()
+				case <-release:
+				}
+				switch variant {
+				case "failed", "missing":
+					response.Results[0].Status, response.Results[0].Points = variant, nil
+				case "incomplete":
+					response.Complete = false
+				case "absent":
+					response.Complete, response.Results = false, nil
+				}
+				return response, nil
+			}
+			wide := finiteTestRead(c, ctx, finiteRangeSpec(0, 10))
+			finiteTestWaiters(t, f, 1)
+			finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+			finiteTestReceive(t, provider.calls)
+			contained := finiteTestRead(c, ctx, finiteRangeSpec(2, 7))
+			finiteTestWaiters(t, f, 2)
+			close(release)
+			owner := finiteTestReceive(t, wide)
+			require.NoError(t, owner.err)
+			switch variant {
+			case "failed", "missing":
+				require.Equal(t, variant, owner.data.Results[0].Status)
+			case "incomplete":
+				require.False(t, owner.data.Complete)
+				require.Len(t, owner.data.Results[0].Points, 11)
+			case "absent":
+				require.False(t, owner.data.Complete)
+				require.Empty(t, owner.data.Results)
+			}
+			// The contained reader never asked for the wide domain, so that
+			// answer cannot finish it. Its own domain is fetched next.
+			finiteRangeDispatch(f, now.Add(2*finiteDispatchInterval))
+			own := finiteTestReceive(t, provider.calls)
+			require.Equal(t, finiteRangeTestStart.Add(2*time.Second), own.StartTime)
+			require.Equal(t, finiteRangeTestStart.Add(7*time.Second), own.EndTime)
+			got := finiteTestReceive(t, contained)
+			require.NoError(t, got.err)
+			require.True(t, got.data.Complete)
+			require.Equal(t, "ok", got.data.Results[0].Status)
+			require.Len(t, got.data.Results[0].Points, 6)
+			require.Equal(t, int32(2), provider.queries.Load())
+		})
+	}
+}
+
+func TestFiniteRangeBorrowedFailureWithSameGridButDifferentWireBoundsRetries(t *testing.T) {
+	c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+	firstSpec, secondSpec := finiteRangeSpec(0, 10), finiteRangeSpec(0, 10)
+	firstSpec.EndTime = firstSpec.EndTime.Add(250 * time.Millisecond)
+	secondSpec.EndTime = secondSpec.EndTime.Add(750 * time.Millisecond)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		response := finiteRangeResponse(query)
+		if provider.queries.Load() == 1 {
+			select {
+			case <-pc.Context.Done():
+				return nil, pc.Context.Err()
+			case <-release:
+			}
+			response.Results[0].Status, response.Results[0].Points = "failed", nil
+		}
+		return response, nil
+	}
+	first := finiteTestRead(c, ctx, firstSpec)
+	finiteTestWaiters(t, f, 1)
+	finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+	finiteTestReceive(t, provider.calls)
+	second := finiteTestRead(c, ctx, secondSpec)
+	finiteTestWaiters(t, f, 2)
+	close(release)
+	got := finiteTestReceive(t, first)
+	require.NoError(t, got.err)
+	require.Equal(t, "failed", got.data.Results[0].Status)
+	// Wait for the finishing job to release the coordinator before checking
+	// whether it incorrectly finalized the different wire-domain borrower.
+	f.mu.Lock()
+	f.mu.Unlock()
+	select {
+	case <-second:
+		t.Fatal("a shared grid must not transfer failure across different wire bounds")
+	default:
+	}
+	finiteRangeDispatch(f, now.Add(2*finiteDispatchInterval))
+	own := finiteTestReceive(t, provider.calls)
+	require.Equal(t, secondSpec.StartTime, own.StartTime)
+	require.Equal(t, secondSpec.EndTime, own.EndTime)
+	got = finiteTestReceive(t, second)
+	require.NoError(t, got.err)
+	require.True(t, got.data.Complete)
+	require.Equal(t, "ok", got.data.Results[0].Status)
+	require.Len(t, got.data.Results[0].Points, 11)
+	require.Equal(t, int32(2), provider.queries.Load())
+}
+
+func TestFiniteRangeReaderOfTheSameDomainSharesItsFailure(t *testing.T) {
+	c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		select {
+		case <-pc.Context.Done():
+			return nil, pc.Context.Err()
+		case <-release:
+		}
+		response := finiteRangeResponse(query)
+		response.Results[0].Status, response.Results[0].Points = "failed", nil
+		return response, nil
+	}
+	first := finiteTestRead(c, ctx, finiteRangeSpec(0, 10))
+	finiteTestWaiters(t, f, 1)
+	finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+	finiteTestReceive(t, provider.calls)
+	second := finiteTestRead(c, ctx, finiteRangeSpec(0, 10))
+	finiteTestWaiters(t, f, 2)
+	close(release)
+	for _, read := range []<-chan finiteReply{first, second} {
+		got := finiteTestReceive(t, read)
+		require.NoError(t, got.err)
+		require.Equal(t, "failed", got.data.Results[0].Status)
+	}
+	finiteRangeDispatch(f, now.Add(2*finiteDispatchInterval))
+	require.Equal(t, int32(1), provider.queries.Load())
+	select {
+	case <-provider.calls:
+		t.Fatal("a reader of the failed domain must not fetch it again")
+	default:
+	}
+}
+
+func TestFiniteRangeContainedReaderFinishesOnFailureOfItsOwnDomain(t *testing.T) {
+	c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		if provider.queries.Load() == 1 {
+			select {
+			case <-pc.Context.Done():
+				return nil, pc.Context.Err()
+			case <-release:
+			}
+		}
+		response := finiteRangeResponse(query)
+		response.Results[0].Status, response.Results[0].Points = "failed", nil
+		return response, nil
+	}
+	wide := finiteTestRead(c, ctx, finiteRangeSpec(0, 10))
+	finiteTestWaiters(t, f, 1)
+	finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+	finiteTestReceive(t, provider.calls)
+	contained := finiteTestRead(c, ctx, finiteRangeSpec(2, 7))
+	finiteTestWaiters(t, f, 2)
+	close(release)
+	owner := finiteTestReceive(t, wide)
+	require.NoError(t, owner.err)
+	require.Equal(t, "failed", owner.data.Results[0].Status)
+	finiteRangeDispatch(f, now.Add(2*finiteDispatchInterval))
+	finiteTestReceive(t, provider.calls)
+	got := finiteTestReceive(t, contained)
+	require.NoError(t, got.err)
+	require.Equal(t, "failed", got.data.Results[0].Status, "the failure of its own domain is final")
+	finiteRangeDispatch(f, now.Add(3*finiteDispatchInterval))
+	finiteTestWaiters(t, f, 0)
+	require.Equal(t, int32(2), provider.queries.Load())
+	select {
+	case <-provider.calls:
+		t.Fatal("a failure of the reader's own domain must not be retried")
+	default:
+	}
+}
+
+func TestFiniteRangeFailureOfAnyFragmentTheReaderStillNeedsIsItsOwn(t *testing.T) {
+	c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+	seed := finiteTestRead(c, ctx, finiteRangeSpec(3, 7))
+	finiteTestWaiters(t, f, 1)
+	finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+	require.NoError(t, finiteTestReceive(t, seed).err)
+	finiteTestReceive(t, provider.calls)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		select {
+		case <-pc.Context.Done():
+			return nil, pc.Context.Err()
+		case <-release:
+		}
+		response := finiteRangeResponse(query)
+		response.Results[0].Status, response.Results[0].Points = "failed", nil
+		return response, nil
+	}
+	// The tail's whole remaining domain is [7,10]. The wide reader holds [3,7],
+	// so [7,10] is the second of its two fragments, not its first.
+	tail := finiteTestRead(c, ctx, finiteRangeSpec(7, 10))
+	finiteTestWaiters(t, f, 1)
+	wide := finiteTestRead(c, ctx, finiteRangeSpec(0, 10))
+	finiteTestWaiters(t, f, 2)
+	finiteRangeDispatch(f, now.Add(2*finiteDispatchInterval))
+	fetch := finiteTestReceive(t, provider.calls)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), fetch.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(10*time.Second), fetch.EndTime)
+	close(release)
+	for _, read := range []<-chan finiteReply{tail, wide} {
+		got := finiteTestReceive(t, read)
+		require.NoError(t, got.err)
+		require.Equal(t, "failed", got.data.Results[0].Status)
+	}
+	finiteRangeDispatch(f, now.Add(3*finiteDispatchInterval))
+	require.Equal(t, int32(2), provider.queries.Load())
+	select {
+	case <-provider.calls:
+		t.Fatal("the failed fragment must not be fetched again for a reader that needs exactly it")
+	default:
+	}
+}
+
+func TestFiniteRangeBorrowedProviderFailureRetriesOnlyOperationalFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		respond func(sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error)
+		retried bool
+	}{
+		{name: "operational", retried: true, respond: func(sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+			return nil, errors.New("range exceeds the source limit")
+		}},
+		{name: "contract violation", retried: false, respond: func(query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+			response := finiteRangeResponse(query)
+			response.Results[0].Points[0].Time = response.Results[0].Points[0].Time.Add(500 * time.Millisecond)
+			return response, nil
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, provider, ctx, f, now := finiteRangePausedCoordinator(t)
+			release := make(chan struct{})
+			provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+				if provider.queries.Load() > 1 {
+					return finiteRangeResponse(query), nil
+				}
+				select {
+				case <-pc.Context.Done():
+					return nil, pc.Context.Err()
+				case <-release:
+				}
+				return tc.respond(query)
+			}
+			wide := finiteTestRead(c, ctx, finiteRangeSpec(0, 10))
+			finiteTestWaiters(t, f, 1)
+			finiteRangeDispatch(f, now.Add(finiteDispatchInterval))
+			finiteTestReceive(t, provider.calls)
+			contained := finiteTestRead(c, ctx, finiteRangeSpec(2, 7))
+			finiteTestWaiters(t, f, 2)
+			close(release)
+			require.Error(t, finiteTestReceive(t, wide).err)
+			finiteRangeDispatch(f, now.Add(2*finiteDispatchInterval))
+			if !tc.retried {
+				// A response that breaks the provider's declared contract fails
+				// closed for every reader. It is not a domain-specific failure.
+				got := finiteTestReceive(t, contained)
+				require.Error(t, got.err)
+				require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(got.err))
+				require.Equal(t, int32(1), provider.queries.Load())
+				return
+			}
+			finiteTestReceive(t, provider.calls)
+			got := finiteTestReceive(t, contained)
+			require.NoError(t, got.err)
+			require.Len(t, got.data.Results[0].Points, 6)
+			require.Equal(t, int32(2), provider.queries.Load())
+		})
+	}
+}
+
+func TestFiniteRangeMetadataBearingResultsNeedNoReuseDeclaration(t *testing.T) {
+	observed := finiteRangeTestStart.Add(9 * time.Second)
+	withMetadata := func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
+		response := finiteRangeResponse(query)
+		response.Results[0].ObservedAt = &observed
+		response.Results[0].Window = 15 * time.Second
+		return response
+	}
+	t.Run("declared pure series reject range-wide metadata", func(t *testing.T) {
+		c, provider, ctx := finiteRangeProvider(t, true)
+		provider.response = withMetadata
+		got := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 10)))
+		require.Error(t, got.err)
+		require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(got.err))
+	})
+	t.Run("undeclared results keep their metadata for their exact domain only", func(t *testing.T) {
+		c, provider, ctx := finiteRangeProvider(t, false)
+		provider.response = withMetadata
+		first := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 10)))
+		require.NoError(t, first.err)
+		require.Equal(t, observed, *first.data.Results[0].ObservedAt)
+		require.Equal(t, 15*time.Second, first.data.Results[0].Window)
+		require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(0, 10))).err)
+		require.Equal(t, int32(1), provider.queries.Load())
+		require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(2, 7))).err)
+		require.Equal(t, int32(2), provider.queries.Load(), "metadata-bearing results are never reused across bounds")
+	})
 }

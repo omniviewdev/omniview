@@ -391,6 +391,13 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	f.mu.Lock()
 	refresh := o.refresh
 	epoch := o.configurationEpoch
+	// A complete snapshot stays authoritative until this collection succeeds. A
+	// frame from one source would replace the other sources' history, and an
+	// operational failure would then retain only that fragment. Deciding here
+	// keeps a frame that would be discarded from being assembled, cloned or
+	// serialized. Initial, invalidated and incomplete observations still publish
+	// honest incomplete progress.
+	completeRetained := o.snapshot.Data != nil && o.snapshot.Data.Complete
 	o.refresh = false
 	f.mu.Unlock()
 	ctx, cancel := context.WithTimeout(o.ctx, resourceMetricsTimeout)
@@ -400,7 +407,7 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	var sampleCatalog *sdk.ResourceMetricsCatalog
 	if err == nil {
 		var progress finiteProgress
-		if spec.Shape == "range" {
+		if spec.Shape == "range" && !completeRetained {
 			progress = func(data *sdk.ResourceMetricsResponse, catalog *sdk.ResourceMetricsCatalog, guard func() error) error {
 				return f.publishFinitePartial(ctx, o, epoch, spec, data, catalog, guard)
 			}
@@ -493,12 +500,18 @@ func finiteResponseSize(data *sdk.ResourceMetricsResponse) (int, error) {
 	return len(encoded), nil
 }
 
+// publishFinitePartial commits one immutable incomplete frame while a collection
+// still runs. collectObservation enables it only for an observation that retains
+// no complete snapshot, so a frame never replaces last-good samples, catalog or
+// domain.
 func (f *finiteCoordinator) publishFinitePartial(ctx context.Context, o *finiteObservation, epoch uint64, spec MetricsObservationSpec, data *sdk.ResourceMetricsResponse, catalog *sdk.ResourceMetricsCatalog, guard func() error) error {
 	if len(data.Results) == 0 {
 		return nil
 	}
+	// Progress precedes pending pairs or intervals, so its frame is never complete.
 	partial := &sdk.ResourceMetricsResponse{
 		Results:  make([]sdk.ResourceMetricResult, len(data.Results)),
+		Complete: false,
 		Warnings: slices.Clone(data.Warnings),
 	}
 	points := 0
