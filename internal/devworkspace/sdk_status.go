@@ -232,6 +232,25 @@ func inspectSDK(ctx context.Context, manifest devcontract.WorkspaceManifest, rea
 	return status, issues
 }
 
+// inspectGoEnvironment reports the refusal a launch would raise for a Go
+// environment file that sets GOFLAGS. In published mode only, it reads that file
+// (see devsdk.CheckGoEnvironmentFile). It runs no process and writes nothing;
+// launch's authoritative `go env` check still decides.
+func inspectGoEnvironment(status SDKStatus) *devcontract.Error {
+	if status.Mode != devsdk.ModePublished {
+		return nil
+	}
+	name, declared := "workspace", devsdk.Published{}
+	if len(status.Consumers) > 0 {
+		name, declared = status.Consumers[0].RepositoryID, devsdk.Published{Version: status.Consumers[0].RequiredVersion}
+	}
+	var typed *devcontract.Error
+	if errors.As(devsdk.CheckGoEnvironmentFile(name, declared), &typed) {
+		return typed
+	}
+	return nil
+}
+
 // refusePublishedNative refuses a native launch of a published SDK workspace:
 // the native host build still requires explicit SDK source.
 func refusePublishedNative(selection devsdk.Selection, options LaunchOptions) error {

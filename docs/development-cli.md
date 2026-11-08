@@ -515,7 +515,8 @@ user's `GOPRIVATE`, `GOPROXY`, `GOMODCACHE`, `GONOSUMDB` and `GOSUMDB` settings
 stay in effect. The check lives inside SDK verification, so it covers every
 published path that verifies before it builds: build-graph nodes (including
 bindings), the host build and a managed plugin rebuild. The read-only `workspace
-preflight` runs no Go, so it cannot observe this refusal; a launch reports it.
+preflight` reports it too, from the Go environment file, so it is not discovered
+only at launch (exit 3 for the aggregate report).
 Source mode is unchanged.
 
 The other typed refusals are: any `replace` of the SDK, including a dormant
@@ -566,8 +567,12 @@ A changed, refused or failed observation downgrades the consumer back to
 `workspace preflight --json` and `workspace inspect --json` report an `sdk` object:
 `mode`, and in published mode per-consumer `requiredVersion` (from `go.mod`),
 `resolvedVersion` (only after a launch verified it), checksums and `verification`.
-Preflight is read-only and runs no tool: it reports the declaration and the
-refusals the files already prove, never an effective resolution. `up` and
+Preflight runs no installs, no network, no writes and no process; in published
+mode it reads the Go environment file (`GOENV`, default `<user config dir>/go/env`)
+and reports a non-empty `GOFLAGS` there, so the refusal appears at preflight as
+well as at launch; module-cache integrity, checksums and capability are verified
+only at launch. It reports the declaration and
+the refusals the files already prove, never an effective resolution. `up` and
 `create --start` print the mode and the resolved versions. Published mode is
 browser mode only: `--mode native` is refused with
 `sdk_published_native_unsupported` (exit 2); create the workspace with

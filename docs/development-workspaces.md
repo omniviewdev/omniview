@@ -27,7 +27,11 @@ SDK; see the CLI guide), and preflight reports each consumer's declared
 requirement as `unresolved` in its `sdk` object. Select `--repo plugin-sdk` to
 build every consumer against explicit SDK source instead; native mode requires it.
 
-Preflight does not install dependencies or start processes. A ready report covers
+Preflight runs no installs, no network, no writes and no process; in published
+mode it reads the Go environment file (`GOENV`, default `<user config dir>/go/env`)
+and reports a non-empty `GOFLAGS` there, so the refusal appears at preflight as
+well as at launch; module-cache integrity, checksums and capability are verified
+only at launch. A ready report covers
 launch inputs only; launch still validates source identity, strict peer dependencies,
 and runtime compatibility.
 

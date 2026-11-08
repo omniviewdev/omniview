@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 )
 
 func TestWorkspacePreflightAggregatesMissingInputsAfterSourceOnlyCreation(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", sdktest.Home(t))
 	t.Setenv(devcontract.WorkspaceEnvironment, "")
 	t.Setenv("OMNIVIEW_STATE_DIR", "")
 	root := t.TempDir()

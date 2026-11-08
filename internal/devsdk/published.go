@@ -54,7 +54,7 @@ func (c Consumer) label() string {
 // Settings in the Go environment file are not masked by an empty variable: an
 // empty GOFLAGS falls back to the file's value. Every command therefore passes
 // -mod and -modfile explicitly, and the verifier refuses an effective GOFLAGS
-// before it resolves anything (see checkBuildEnvironment). A published build
+// before it resolves anything (see CheckGoEnvironment). A published build
 // that is not itself run by the verifier's runner appends this too.
 func ModuleEnvironment() []string {
 	return []string{"GOWORK=off", "GOFLAGS=", "GO111MODULE=on"}
@@ -178,7 +178,7 @@ func readConsumerFiles(directory string) (ModuleFiles, error) {
 // goflagsBound bounds the effective GOFLAGS copied into a refusal.
 const goflagsBound = 256
 
-// checkBuildEnvironment refuses a Go environment whose effective GOFLAGS is not
+// CheckGoEnvironment refuses a Go environment whose effective GOFLAGS is not
 // empty, observed through the caller's runner under ModuleEnvironment. An empty
 // GOFLAGS variable does not mask the Go environment file (`go env -w`, the file
 // `go env GOENV` names): Go falls back to the file's value, so a user-level
@@ -187,7 +187,8 @@ const goflagsBound = 256
 // user's GOPRIVATE, GOPROXY, GOMODCACHE and checksum settings, which GOENV=off
 // would have discarded. It runs before anything is resolved or downloaded, and a
 // build that follows its verification in the same environment is covered by it.
-func checkBuildEnvironment(ctx context.Context, consumer Consumer, declared Published, run Runner) error {
+// Verification and workspace preflight share this one check; it only reads.
+func CheckGoEnvironment(ctx context.Context, consumer Consumer, declared Published, run Runner) error {
 	name := consumer.label()
 	output, err := run(ctx, consumer.Directory, ModuleEnvironment(), "env", "-json", "GOFLAGS")
 	if err != nil {
@@ -201,7 +202,53 @@ func checkBuildEnvironment(ctx context.Context, consumer Consumer, declared Publ
 	if flags == "" {
 		return nil
 	}
-	return buildEnvironmentConflict(name, declared, devdiag.Tail(devdiag.Redact(flags), goflagsBound))
+	return GoFlagsRefusal(name, declared, flags)
+}
+
+// GoFlagsRefusal is the one typed refusal of a non-empty effective GOFLAGS,
+// shared by the launch check (the go command's answer) and preflight (the Go
+// environment file). flags is redacted and bounded here.
+func GoFlagsRefusal(consumer string, declared Published, flags string) error {
+	return buildEnvironmentConflict(consumer, declared, devdiag.Tail(devdiag.Redact(strings.TrimSpace(flags)), goflagsBound))
+}
+
+// CheckGoEnvironmentFile is the read-only, process-free preflight counterpart of
+// CheckGoEnvironment: it parses the Go environment file (GOENV, "off" meaning
+// none, else <user config dir>/go/env; KEY=VALUE lines, "#" comments, the last
+// GOFLAGS line wins) and refuses a non-empty GOFLAGS there. The ambient GOFLAGS
+// variable is not read: launch neutralizes it. A missing or unreadable file, an
+// unresolvable config directory or an empty GOFLAGS is no refusal; launch's
+// authoritative check still runs.
+func CheckGoEnvironmentFile(consumer string, declared Published) error {
+	path := os.Getenv("GOENV")
+	if path == "off" {
+		return nil
+	}
+	if path == "" {
+		directory, err := os.UserConfigDir()
+		if err != nil {
+			return nil
+		}
+		path = filepath.Join(directory, "go", "env")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var flags string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if key, value, found := strings.Cut(line, "="); found && key == "GOFLAGS" {
+			flags = value
+		}
+	}
+	if strings.TrimSpace(flags) == "" {
+		return nil
+	}
+	return GoFlagsRefusal(consumer, declared, flags)
 }
 
 // observePublished identifies the published SDK a consumer's effective module
@@ -221,7 +268,7 @@ func checkBuildEnvironment(ctx context.Context, consumer Consumer, declared Publ
 //     go.mod and, when given, to the explicit effective modfile.
 //  2. The policy, on the declared tuple, before anything is resolved.
 //  3. The Go environment: a non-empty effective GOFLAGS is refused before
-//     anything is resolved (see checkBuildEnvironment).
+//     anything is resolved (see CheckGoEnvironment).
 //  4. The effective MVS-selected version and recorded checksums, resolved with
 //     -mod=readonly against a private modfile copy under the caller's runner.
 //  5. The module bytes: downloaded if absent, then hashed in place and compared
@@ -268,7 +315,7 @@ func observePublished(ctx context.Context, policy Policy, consumer Consumer, run
 	if err = AdmitDeclared(policy, name, declared); err != nil {
 		return none, err
 	}
-	if err = checkBuildEnvironment(ctx, consumer, declared, run); err != nil {
+	if err = CheckGoEnvironment(ctx, consumer, declared, run); err != nil {
 		return none, err
 	}
 	resolve, cleanup, err := newResolver(consumer, effective, run)

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 )
 
@@ -22,7 +23,7 @@ type cliEdgeFixture struct {
 
 func newCLIEdgeFixture(t *testing.T) cliEdgeFixture {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", sdktest.Home(t))
 	t.Setenv(devcontract.WorkspaceEnvironment, "")
 	t.Setenv("OMNIVIEW_STATE_DIR", "")
 	root := t.TempDir()

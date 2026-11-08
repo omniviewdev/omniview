@@ -22,8 +22,11 @@ type LaunchPreflight struct {
 }
 
 // PreflightLaunch checks all independent launch prerequisites, retaining the normal gates.
-// It reads checked-out module files only: no installs, no network, no writes. policy
-// judges each consumer's declared published SDK version the way a launch would.
+// It reads checked-out module files only: no installs, no network, no writes, no process. In
+// published mode it also reads the Go environment file, so a GOFLAGS refusal shows here.
+// Issue order: evidence, declaration, Go environment, mode,
+// MCP, plugin runtime. policy judges each consumer's declared published SDK version the way
+// a launch would.
 func PreflightLaunch(ctx context.Context, w Workspace, o LaunchOptions, policy devsdk.Policy) LaunchPreflight {
 	return preflightLaunch(ctx, w.Manifest, o, worktreeModuleFiles(w), policy)
 }
@@ -38,6 +41,9 @@ func preflightLaunch(ctx context.Context, manifest devcontract.WorkspaceManifest
 	status, issues := inspectSDK(ctx, manifest, read, policy)
 	report.SDK = &status
 	report.Issues = append(report.Issues, issues...)
+	if issue := inspectGoEnvironment(status); issue != nil {
+		report.Issues = append(report.Issues, issue)
+	}
 	if o.Mode != "browser" && o.Mode != "native" {
 		report.Issues = append(report.Issues, devcontract.Fail(2, "invalid_mode", "mode must be browser or native"))
 	} else if status.Mode == devsdk.ModePublished && o.Mode == "native" {

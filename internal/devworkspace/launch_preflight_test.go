@@ -43,6 +43,8 @@ func writeConsumerModule(t *testing.T, directory, version string) {
 // SDK repository.
 func publishedWorkspace(t *testing.T) Workspace {
 	t.Helper()
+	// Preflight queries the Go environment: keep the user's Go environment file out of it.
+	t.Setenv("GOENV", filepath.Join(t.TempDir(), "env"))
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	writeConsumerModule(t, filepath.Join(root, "omniview"), devsdk.FloorVersion)
@@ -96,7 +98,7 @@ func TestLaunchPreflightRequiresActualProtocolProof(t *testing.T) {
 
 // A workspace that selects no SDK repository is a published-SDK workspace: it
 // is ready, reports its mode and each consumer's declared requirement as
-// unresolved, and preflight stays read-only: no tools, no network, no writes.
+// unresolved, and preflight stays read-only: no process, no network, no writes.
 func TestLaunchPreflightOfAPublishedWorkspaceIsReadyAndHonestlyUnresolved(t *testing.T) {
 	w := publishedWorkspace(t)
 	before := treeDigest(t, w.Root)

@@ -28,6 +28,7 @@ func commitConsumerModule(t *testing.T, repository, version string, extra map[st
 
 func publishedCreateFixture(t *testing.T) (*Manager, string, LaunchOptions) {
 	t.Helper()
+	t.Setenv("GOENV", filepath.Join(t.TempDir(), "env"))
 	m, root := fixtureManager(t)
 	m.options.SDKPolicy = devsdk.ReleasePolicy()
 	commitConsumerModule(t, filepath.Join(root, "omniview"), devsdk.FloorVersion, nil)
