@@ -27,7 +27,8 @@ func selectedRepository(t *testing.T, w Workspace, id string) devcontract.Reposi
 }
 
 func TestRepositoryAddRemovePreservesMappingsAndReferencedResources(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	before, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
@@ -67,7 +68,8 @@ func TestRepositoryAddRemovePreservesMappingsAndReferencedResources(t *testing.T
 }
 
 func TestEditResolvesPluginIdentityFromSelectedAndRetainedCommits(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	source := fixtureRepo(t, t.TempDir(), "not-the-plugin-id", "committed-plugin")
 	_, err := AddRepository(ctx, root, SourceSpec{ID: "provider", Path: source})
@@ -100,7 +102,8 @@ func TestEditResolvesPluginIdentityFromSelectedAndRetainedCommits(t *testing.T) 
 }
 
 func TestRemoteTrackingSelectionFetchesBeforeResolvingAndPinsDoNotFetch(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	remote := fixtureRepo(t, t.TempDir(), "upstream", "remote-plugin")
 	clone := filepath.Join(t.TempDir(), "source")
@@ -129,7 +132,8 @@ func TestRemoteTrackingSelectionFetchesBeforeResolvingAndPinsDoNotFetch(t *testi
 }
 
 func TestRepositoryRemovalRefusesDirtyWorkspaceWithoutChangingRegistry(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "ui")
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "keep-dirty-provider", Repositories: []string{"ui"}})
 	require.NoError(t, err)
@@ -150,6 +154,7 @@ func TestRepositoryRemovalRefusesDirtyWorkspaceWithoutChangingRegistry(t *testin
 }
 
 func TestPinnedRefClassification(t *testing.T) {
+	t.Parallel()
 	require.True(t, IsPinnedRef("abcdef0"))
 	require.True(t, IsPinnedRef("0123456789012345678901234567890123456789"))
 	require.False(t, IsPinnedRef("origin/main"))
@@ -159,7 +164,8 @@ func TestPinnedRefClassification(t *testing.T) {
 }
 
 func TestPluginDiscoveryDoesNotFetchUnselectedRemote(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	remote := fixtureRepo(t, t.TempDir(), "offline-upstream", "unselected-plugin")
 	clone := filepath.Join(t.TempDir(), "clone")
@@ -176,7 +182,8 @@ func TestPluginDiscoveryDoesNotFetchUnselectedRemote(t *testing.T) {
 }
 
 func TestPluginSelectionRevalidatesFetchedIdentity(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	remote := fixtureRepo(t, t.TempDir(), "changing-upstream", "old-plugin")
 	clone := filepath.Join(t.TempDir(), "clone")
@@ -234,7 +241,8 @@ func TestSelectedFetchUsesGlobalCredentialHelperOnly(t *testing.T) {
 }
 
 func TestPluginDiscoveryReportsMissingSourcePath(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	reg, err := LoadRegistry(context.Background(), root)
 	require.NoError(t, err)
 	reg.Repositories = append(reg.Repositories, Source{ID: "missing", CommonDir: filepath.Join(t.TempDir(), "missing"), DefaultRef: "main", Directory: "missing"})
@@ -244,7 +252,8 @@ func TestPluginDiscoveryReportsMissingSourcePath(t *testing.T) {
 }
 
 func TestMissingPinnedSelectionRequiresExplicitFetch(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	remote := fixtureRepo(t, t.TempDir(), "upstream", "")
 	clone := filepath.Join(t.TempDir(), "source")

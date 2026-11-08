@@ -24,6 +24,7 @@ func outputGraphNode(t *testing.T, g *BuildGraph, id string) BuildNode {
 }
 
 func TestGraphPublishesOwnedJavaScriptThenRestoresCurrentSource(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	ctx := context.Background()
 	for _, node := range g.Nodes {
@@ -60,6 +61,7 @@ func TestGraphPublishesOwnedJavaScriptThenRestoresCurrentSource(t *testing.T) {
 }
 
 func TestGraphRefusesPreexistingIgnoredDistribution(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	base := outputGraphNode(t, g, "base-ui")
 	foreign := filepath.Join(base.Directory, "dist/user.txt")
@@ -74,6 +76,7 @@ func TestGraphRefusesPreexistingIgnoredDistribution(t *testing.T) {
 }
 
 func TestGraphUnknownProducerLifetimeRetainsStageAndCacheIntent(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	base := outputGraphNode(t, g, "base-ui")
 	var stage string
@@ -99,7 +102,8 @@ func TestGraphUnknownProducerLifetimeRetainsStageAndCacheIntent(t *testing.T) {
 }
 
 func TestBindingsStageIsNotPublishedAcrossSDKMutation(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{NativeOnly: true})
 	node := outputGraphNode(t, g, "bindings")
 	g.run = func(context.Context, string, string, ...string) ([]byte, error) {
 		return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
@@ -130,6 +134,7 @@ func TestBindingsStageIsNotPublishedAcrossSDKMutation(t *testing.T) {
 }
 
 func TestDistributionRequiresDeclaredExportsNotJustAnyOutput(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	writeGraphFixture(t, filepath.Join(directory, "unrelated.js"), "not the declared module")
 	if err := validateDistribution(map[string]any{"exports": map[string]any{".": map[string]any{"import": "./dist/index.js", "types": "./dist/index.d.ts"}}}, directory, false); err == nil {
@@ -138,6 +143,7 @@ func TestDistributionRequiresDeclaredExportsNotJustAnyOutput(t *testing.T) {
 }
 
 func TestDistributionAllowsEmptyAuxiliaryCompilerChunk(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	writeGraphFixture(t, filepath.Join(directory, "index.js"), "export const real = true;\n")
 	writeGraphFixture(t, filepath.Join(directory, "empty-chunk.js"), "")
@@ -147,7 +153,8 @@ func TestDistributionAllowsEmptyAuxiliaryCompilerChunk(t *testing.T) {
 }
 
 func TestPluginCompilerUnknownLifetimeCannotPublishGeneratedTree(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{NoUI: true})
 	var partial string
 	g.run = func(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
 		if len(args) > 0 && args[0] == "list" {

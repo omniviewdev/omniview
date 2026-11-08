@@ -30,6 +30,7 @@ func TestFiniteCommandFixture(t *testing.T) {
 }
 
 func TestFiniteOwnedCommandPreservesSeparateJSONAndDiagnostics(t *testing.T) {
+	t.Parallel()
 	root, err := devcontract.CanonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +59,7 @@ func TestFiniteOwnedCommandPreservesSeparateJSONAndDiagnostics(t *testing.T) {
 }
 
 func TestFiniteCancellationWaitsForOwnedDescendantExit(t *testing.T) {
+	t.Parallel()
 	root, err := devcontract.CanonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +114,7 @@ func TestFiniteCancellationWaitsForOwnedDescendantExit(t *testing.T) {
 }
 
 func TestFiniteCommandJoinsRetainedStartupUncertaintyBeforeReturning(t *testing.T) {
+	t.Parallel()
 	root, err := devcontract.CanonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +152,7 @@ func TestFiniteCommandJoinsRetainedStartupUncertaintyBeforeReturning(t *testing.
 }
 
 func TestFiniteCommandReturnsReapedOutputFailure(t *testing.T) {
+	t.Parallel()
 	root, err := devcontract.CanonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -194,6 +198,7 @@ func TestFiniteCommandReturnsReapedOutputFailure(t *testing.T) {
 }
 
 func TestFiniteCommandPreservesImmediateFailureStatus(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	command := exec.Command("/bin/sh", "-c", "printf 'failed-smoke'; exit 17")
 	command.Dir = root
@@ -210,6 +215,7 @@ func TestFiniteCommandPreservesImmediateFailureStatus(t *testing.T) {
 }
 
 func TestFiniteCommandRejectsInvalidOwnerBeforeSideEffects(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	marker := filepath.Join(root, "unexpected-launch")
 	command := exec.Command("/bin/sh", "-c", `printf started > "$1"`, "fixture", marker)

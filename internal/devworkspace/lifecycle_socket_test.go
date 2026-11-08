@@ -13,12 +13,13 @@ import (
 )
 
 func TestRemovalRetainsUnixSocketProofBeforeNativeCallbackOrPurge(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"malformed", "foreign-directory"} {
 		t.Run(kind, func(t *testing.T) {
-			m, _ := fixtureManager(t)
+			m, _ := fixtureManager(t, "omniview")
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "socket-proof"})
-			require.NoError(t, err)
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "socket-proof"})
+			var err error
 			require.NoError(t, devcontract.EnsureDefaultProfileOwnership(m.options.Home, w.Manifest.WorkspaceID))
 			profile, err := m.defaultProfileRoot(w.Manifest.WorkspaceID)
 			require.NoError(t, err)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestDependencyCommandRetainsPrivateEvidenceWithoutLeakingCredentials(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	graph := &BuildGraph{workspace: w}
 	ctx := context.WithValue(context.Background(), linkToolchainKey{}, graph)

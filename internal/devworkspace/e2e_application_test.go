@@ -24,6 +24,7 @@ import (
 )
 
 func TestApplicationFixtureCommandUsesOwnedChildDrain(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	owner := devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "host", Source: root}
 	options := ApplicationFixtureCommand{Directory: root, Program: os.Args[0], Args: []string{"-test.run=^TestOwnedChildProcessFixture$"}, Owner: owner, IdentityFile: filepath.Join(root, "identity.json"), StoppedFile: filepath.Join(root, "stopped.json"), Environment: append(os.Environ(), "GOWORK=off", "OMNIVIEW_OWNED_CHILD_FIXTURE=descendant")}
@@ -84,8 +85,9 @@ func TestApplicationFixtureCommandUsesOwnedChildDrain(t *testing.T) {
 // application smoke. Use the existing compiler fixture to exercise real output
 // capabilities and canonical restoration without building another application.
 func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	g := graphFixture(t)
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixtureLinked})
 	install, err := devoutputs.BeginCompositionInstall(ctx, g.workspace.ResolvedWorkspace, *g.plan.Composition)
 	if err != nil {
 		t.Fatal(err)
@@ -177,8 +179,9 @@ func TestApplicationFixtureProducerOutputsRestoreCanonicalSource(t *testing.T) {
 }
 
 func TestApplicationFixtureProducerRetainsUncertainOutputWriter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	g := graphFixture(t)
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixtureLinked})
 	install, err := devoutputs.BeginCompositionInstall(ctx, g.workspace.ResolvedWorkspace, *g.plan.Composition)
 	if err != nil {
 		t.Fatal(err)
@@ -310,6 +313,7 @@ func TestApplicationFixtureHostOwnsShortSocketAndRealBridge(t *testing.T) {
 
 // Real subprocess transport/ownership boundary, not a fake SDK/plugin service.
 func TestApplicationFixtureHostTransportChild(t *testing.T) {
+	t.Parallel()
 	evidenceFile := os.Getenv("OMNIVIEW_APPLICATION_TRANSPORT_CHILD")
 	if evidenceFile == "" {
 		return
@@ -385,6 +389,7 @@ type applicationDeadlineEvidence struct {
 }
 
 func TestApplicationFixtureDeadlineProducerProcess(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("OMNIVIEW_APPLICATION_DEADLINE_PRODUCER") != "1" {
 		return
 	}
@@ -414,6 +419,7 @@ func TestApplicationFixtureDeadlineProducerProcess(t *testing.T) {
 }
 
 func TestApplicationFixtureFinalizesOnlyDeterminateChildCancellation(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name                  string
 		wantErr               error
@@ -430,7 +436,7 @@ func TestApplicationFixtureFinalizesOnlyDeterminateChildCancellation(t *testing.
 			defer cancelOuter()
 			scoped, cancelScoped := context.WithCancel(outer)
 			defer cancelScoped()
-			g := graphFixture(t)
+			g := graphFixture(t, graphFixtureOptions{Stage: graphFixtureLinked})
 			install, err := devoutputs.BeginCompositionInstall(scoped, g.workspace.ResolvedWorkspace, *g.plan.Composition)
 			if err != nil {
 				t.Fatal(err)

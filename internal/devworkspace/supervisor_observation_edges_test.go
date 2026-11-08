@@ -16,6 +16,7 @@ import (
 )
 
 func TestSupervisorObservationEdgesStalledHostCannotHoldShutdownAuthority(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	host, err := s.workspace.RepositoryPath("omniview")
 	require.NoError(t, err)
@@ -107,6 +108,7 @@ func TestSupervisorObservationEdgesStalledHostCannotHoldShutdownAuthority(t *tes
 }
 
 func TestSupervisorStatusDelayedHostObservation(t *testing.T) {
+	t.Parallel()
 	for _, cancelObservation := range []bool{false, true} {
 		t.Run(map[bool]string{false: "released", true: "canceled"}[cancelObservation], func(t *testing.T) {
 			s := supervisorEdgeFixture(t)

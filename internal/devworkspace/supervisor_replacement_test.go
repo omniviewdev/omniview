@@ -76,6 +76,7 @@ func (p *replacementPluginProducer) Stop(_ context.Context, id string) error {
 // This subprocess is an actual authenticated host control server. Its descriptor
 // reports the frontend URL captured at process creation, not the current lease.
 func TestSupervisorReplacementHostFixture(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("OMNIVIEW_REPLACEMENT_HOST_FIXTURE") != "1" {
 		return
 	}

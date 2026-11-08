@@ -14,7 +14,8 @@ import (
 )
 
 func TestSupervisedOwnershipFailureSurvivesAuthenticatedStatusTransport(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{NoUI: true})
 	g.workspace.ManifestPath = filepath.Join(g.workspace.Root, "workspace.json")
 	host, err := g.workspace.RepositoryPath("omniview")
 	require.NoError(t, err)
@@ -62,6 +63,7 @@ func TestSupervisedOwnershipFailureSurvivesAuthenticatedStatusTransport(t *testi
 }
 
 func TestOwnershipPlanEnumeratesCompositionWithoutChangingReceipts(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	report, err := InspectOwnership(context.Background(), g.workspace)
 	require.NoError(t, err)

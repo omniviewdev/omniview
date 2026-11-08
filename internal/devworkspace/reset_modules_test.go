@@ -26,7 +26,7 @@ type resetModulesFixture struct {
 func newResetModulesFixture(t *testing.T, repositories ...string) *resetModulesFixture {
 	t.Helper()
 	ctx := context.Background()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, append([]string{"omniview"}, repositories...)...)
 	// Keep fixture inputs committed so canonical retirement sees no user edits.
 	source := filepath.Join(root, "omniview")
 	require.NoError(t, os.WriteFile(filepath.Join(source, "package.json"), []byte(`{"name":"fixture","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"19.0.0","react-dom":"19.0.0"}}`), 0600))
@@ -38,8 +38,7 @@ func newResetModulesFixture(t *testing.T, repositories ...string) *resetModulesF
 	require.NoError(t, os.WriteFile(filepath.Join(source, "pnpm-workspace.yaml"), []byte("packages:\n  - packages/*\n"), 0600))
 	fixtureGit(t, source, "add", "package.json", "pnpm-workspace.yaml", "packages")
 	fixtureGit(t, source, "commit", "-m", "dependency fixture inputs")
-	w, err := m.Create(ctx, CreateOptions{Slug: "reset-modules", Repositories: repositories})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "reset-modules", Repositories: repositories})
 	f := &resetModulesFixture{m: m, w: w, host: filepath.Join(w.Root, "omniview")}
 	j := compositionJournalFixture(t, w)
 	f.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
@@ -75,6 +74,7 @@ func (f *resetModulesFixture) outputJournal(t *testing.T) map[string]json.RawMes
 }
 
 func TestResetModulesReinstallsExternallyChangedTreeThroughRecordedWriter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	aggregate := filepath.Join(f.w.Root, "node_modules")
@@ -100,6 +100,7 @@ func TestResetModulesReinstallsExternallyChangedTreeThroughRecordedWriter(t *tes
 }
 
 func TestResetModulesRemovesUnrecordedSelectedPackageModules(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	runtime := filepath.Join(f.host, "packages", "omniviewdev-runtime", "node_modules")
@@ -116,6 +117,7 @@ func TestResetModulesRemovesUnrecordedSelectedPackageModules(t *testing.T) {
 }
 
 func TestResetModulesDiscardsInterruptedWriterIntent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
@@ -131,6 +133,7 @@ func TestResetModulesDiscardsInterruptedWriterIntent(t *testing.T) {
 }
 
 func TestResetModulesRefusesRedirectedModulesTree(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	require.NoError(t, devoutputs.Restore(ctx, f.w.ResolvedWorkspace), "forget every recorded output")
@@ -147,6 +150,7 @@ func TestResetModulesRefusesRedirectedModulesTree(t *testing.T) {
 }
 
 func TestResetModulesLeavesPublishedDistributionUntouched(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	stage, err := devoutputs.Prepare(ctx, f.w.ResolvedWorkspace, f.host, devoutputs.Distribution)
@@ -170,6 +174,7 @@ func TestResetModulesLeavesPublishedDistributionUntouched(t *testing.T) {
 }
 
 func TestResetModulesRefusesUnlessStopped(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	foreign := filepath.Join(f.w.Root, "node_modules", "stray.js")
@@ -190,6 +195,7 @@ func TestResetModulesRefusesUnlessStopped(t *testing.T) {
 }
 
 func TestResetModulesUnblocksInterruptedUnlinkWithoutReinstall(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	stage, err := devoutputs.Prepare(ctx, f.w.ResolvedWorkspace, f.host, devoutputs.Distribution)
@@ -230,10 +236,11 @@ func TestResetModulesUnblocksInterruptedUnlinkWithoutReinstall(t *testing.T) {
 }
 
 func TestResetModulesRetiresCompilerCachesAndPreservesSiblingState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
-	sibling, err := f.m.Create(ctx, CreateOptions{Slug: "unrelated-sibling"})
-	require.NoError(t, err)
+	sibling := fixtureWorkspace(t, f.m, CreateOptions{Slug: "unrelated-sibling"})
+	var err error
 	require.NoError(t, os.MkdirAll(sibling.StateRoot, 0700))
 	sentinel := filepath.Join(sibling.StateRoot, "keep")
 	require.NoError(t, os.WriteFile(sentinel, []byte("sibling state"), 0600))

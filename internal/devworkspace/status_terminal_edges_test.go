@@ -22,11 +22,12 @@ import (
 // The proxy holds a complete authenticated response while the real owner exits.
 // Only transport timing changes; process proof and response bytes remain real.
 func TestStatusTerminalEdgesOwnerExitsAfterAuthenticatedResponse(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"stopped-response", "saved-stopped-proof", "ready-without-proof", "replacement"} {
 		t.Run(scenario, func(t *testing.T) {
-			m, _ := fixtureManager(t)
-			w, err := m.Create(context.Background(), CreateOptions{Slug: "terminal-inspect"})
-			require.NoError(t, err)
+			m, _ := fixtureManager(t, "omniview")
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "terminal-inspect"})
+			var err error
 			owner := startGenerationEdge(t, m, w, NewGeneration(), "", "")
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()

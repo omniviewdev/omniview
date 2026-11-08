@@ -13,7 +13,7 @@ import (
 )
 
 func TestDiscoverCollectionsUsesRegisteredWorktreesWithoutSelectingProfile(t *testing.T) {
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	_, err := m.Create(ctx, CreateOptions{Slug: "first"})
 	require.NoError(t, err)
@@ -44,7 +44,8 @@ func TestDiscoverCollectionsUsesRegisteredWorktreesWithoutSelectingProfile(t *te
 }
 
 func TestListSkipsDirectoriesWithoutManifestsButRejectsMalformedManifests(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	_, err := m.Create(ctx, CreateOptions{Slug: "first"})
 	require.NoError(t, err)
@@ -61,7 +62,8 @@ func TestListSkipsDirectoriesWithoutManifestsButRejectsMalformedManifests(t *tes
 }
 
 func TestDiscoverCollectionsRefusesRedirectedRegistryAndHonorsCancellation(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	_, err := m.Create(context.Background(), CreateOptions{Slug: "feature"})
 	require.NoError(t, err)
 	marker := filepath.Join(root, ".omniview-dev", "repositories.json")
@@ -80,7 +82,8 @@ func TestDiscoverCollectionsRefusesRedirectedRegistryAndHonorsCancellation(t *te
 }
 
 func TestRegistryAndCollectionsRejectExpiredContext(t *testing.T) {
-	_, root := fixtureManager(t)
+	t.Parallel()
+	_, root := fixtureManager(t, "omniview")
 	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
 	defer cancel()
 	_, err := LoadRegistry(ctx, root)

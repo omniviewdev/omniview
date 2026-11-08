@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gofrs/flock"
@@ -28,13 +29,101 @@ func bindFixtureProfile(t *testing.T, m *Manager, w Workspace) string {
 	return state
 }
 
+// attestedHost is the generated executable that every rename refusal starts from.
+const attestedHost = "attested executable"
+
+// observeSharedFixture records the mode and bytes of every listed file and the
+// mode and entry names of every listed directory. Cases that share a fixture
+// compare it with their pristine observation before they start, so an earlier
+// case that failed to restore its mutation fails the next case instead of
+// letting a refusal pass on stale state.
+func observeSharedFixture(t *testing.T, files, directories []string) map[string]string {
+	t.Helper()
+	observed := make(map[string]string, len(files)+len(directories))
+	for _, path := range files {
+		info, err := os.Lstat(path)
+		require.NoError(t, err)
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		observed[path] = info.Mode().String() + "\n" + string(data)
+	}
+	for _, path := range directories {
+		info, err := os.Lstat(path)
+		require.NoError(t, err)
+		entries, err := os.ReadDir(path)
+		require.NoError(t, err)
+		names := make([]string, len(entries))
+		for i, entry := range entries {
+			names[i] = entry.Name()
+		}
+		observed[path+"/"] = info.Mode().String() + "\n" + strings.Join(names, "\n")
+	}
+	return observed
+}
+
+// renameRefusalFixture is one attested workspace shared by cases that must each
+// leave it as they found it. A case may change it only through restorations
+// registered with t.Cleanup, and requirePristine runs before every case.
+type renameRefusalFixture struct {
+	manager    *Manager
+	root       string
+	workspace  Workspace
+	output     string
+	ledger     string
+	pristine   map[string]string
+	outputInfo os.FileInfo
+}
+
+func newRenameRefusalFixture(t *testing.T, repositories ...string) *renameRefusalFixture {
+	t.Helper()
+	m, root := fixtureManager(t, repositories...)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "generated-refusal"})
+	prepared, err := PrepareGeneratedTree(w, "bin", NewGeneration())
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(prepared.Directory, "host"), []byte(attestedHost), 0700))
+	require.NoError(t, RecordGeneratedTree(prepared))
+	f := &renameRefusalFixture{manager: m, root: root, workspace: w}
+	f.output = filepath.Join(w.Root, ".local", "bin", "host")
+	f.ledger = filepath.Join(root, ".omniview-dev", "generated", w.Manifest.WorkspaceID+".json")
+	f.pristine = f.observe(t)
+	f.outputInfo, err = os.Lstat(f.output)
+	require.NoError(t, err)
+	return f
+}
+
+// observe records the files and directory listings a refusal case may change.
+// Git refs are checked by the cases that create branches.
+func (f *renameRefusalFixture) observe(t *testing.T) map[string]string {
+	t.Helper()
+	w := f.workspace
+	local := filepath.Join(w.Root, ".local")
+	return observeSharedFixture(t,
+		[]string{filepath.Join(w.Root, "workspace.json"), filepath.Join(local, "ownership.json"), f.ledger, f.output},
+		[]string{w.Root, local, filepath.Dir(f.output), filepath.Join(w.Root, "omniview"), filepath.Join(f.root, "workspaces")})
+}
+
+// requirePristine fails unless every earlier case restored the fixture exactly:
+// the same files and listings, the original output inode and modification time,
+// and outputs that the real generated-ownership validator still accepts.
+func (f *renameRefusalFixture) requirePristine(t *testing.T) {
+	t.Helper()
+	require.Equal(t, f.pristine, f.observe(t), "an earlier case did not restore the shared workspace")
+	current, err := os.Lstat(f.output)
+	require.NoError(t, err)
+	require.True(t, os.SameFile(f.outputInfo, current), "an earlier case replaced the attested output inode")
+	require.True(t, f.outputInfo.ModTime().Equal(current.ModTime()), "an earlier case changed the attested output time")
+	require.NoError(t, ValidateGenerated(context.Background(), f.workspace), "an earlier case left the attested outputs invalid")
+}
+
 func TestProfileBindingSurvivesManagerRenameAndDefaultRuntimePaths(t *testing.T) {
+	t.Parallel()
 	for _, custom := range []bool{false, true} {
 		t.Run(map[bool]string{false: "default", true: "custom"}[custom], func(t *testing.T) {
-			m, _ := fixtureManager(t)
+			t.Parallel()
+			m, _ := fixtureManager(t, "omniview")
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "bound-profile"})
-			require.NoError(t, err)
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "bound-profile"})
+			var err error
 			state := w.StateRoot
 			if custom {
 				state = bindFixtureProfile(t, m, w)
@@ -64,12 +153,14 @@ func TestProfileBindingSurvivesManagerRenameAndDefaultRuntimePaths(t *testing.T)
 }
 
 func TestStoppedSlugRenameRetiresAttestedOutputsAndPreservesState(t *testing.T) {
+	t.Parallel()
 	for _, custom := range []bool{false, true} {
 		t.Run(map[bool]string{false: "default", true: "custom"}[custom], func(t *testing.T) {
-			m, _ := fixtureManager(t)
+			t.Parallel()
+			m, _ := fixtureManager(t, "ui")
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "generated-before", Repositories: []string{"ui"}})
-			require.NoError(t, err)
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "generated-before", Repositories: []string{"ui"}})
+			var err error
 			state := w.StateRoot
 			if custom {
 				state = bindFixtureProfile(t, m, w)
@@ -124,43 +215,77 @@ func TestStoppedSlugRenameRetiresAttestedOutputsAndPreservesState(t *testing.T) 
 }
 
 func TestStoppedSlugRenameRefusesChangedOrForeignOutputsUnchanged(t *testing.T) {
-	for _, change := range []string{"edited", "foreign", "symlink", "dirty-source", "occupied-target", "occupied-added-branch", "ancestor-added-branch", "descendant-added-branch", "native-identity"} {
-		t.Run(change, func(t *testing.T) {
-			m, root := fixtureManager(t)
+	t.Parallel()
+	// Cases share one attested workspace per source selection instead of
+	// rebuilding it. They run in order, never in parallel, and each restores
+	// exactly what it changed; requirePristine fails the next case if it did
+	// not. native-identity records a second owned bundle that cannot be removed
+	// on its own, so it stays last in the plain fixture.
+	plain := newRenameRefusalFixture(t, "omniview")
+	withUI := newRenameRefusalFixture(t, "ui")
+	uiCommon := filepath.Join(withUI.root, "ui", ".bare")
+	uiRefs := fixtureGit(t, uiCommon, "for-each-ref", "--format=%(refname) %(objectname)")
+	conflictingBranch := func(t *testing.T, branch string) {
+		t.Helper()
+		require.Equal(t, uiRefs, fixtureGit(t, uiCommon, "for-each-ref", "--format=%(refname) %(objectname)"), "an earlier case left a branch in the shared source")
+		fixtureGit(t, uiCommon, "branch", branch, "main")
+		t.Cleanup(func() { fixtureGit(t, uiCommon, "branch", "-D", branch) })
+	}
+	for _, tc := range []struct {
+		change  string
+		fixture *renameRefusalFixture
+	}{
+		{"edited", plain}, {"foreign", plain}, {"symlink", plain}, {"dirty-source", plain}, {"occupied-target", plain},
+		{"occupied-added-branch", withUI}, {"ancestor-added-branch", withUI}, {"descendant-added-branch", withUI},
+		{"native-identity", plain},
+	} {
+		t.Run(tc.change, func(t *testing.T) {
+			change, f := tc.change, tc.fixture
+			f.requirePristine(t)
+			m, root, w, output := f.manager, f.root, f.workspace, f.output
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "generated-refusal"})
-			require.NoError(t, err)
-			prepared, err := PrepareGeneratedTree(w, "bin", NewGeneration())
-			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(filepath.Join(prepared.Directory, "host"), []byte("attested executable"), 0700))
-			require.NoError(t, RecordGeneratedTree(prepared))
-			output := filepath.Join(w.Root, ".local", "bin", "host")
 			slug := "refused-target"
 			options := EditOptions{Slug: &slug}
 			switch change {
 			case "edited":
 				require.NoError(t, os.WriteFile(output, []byte("editor output"), 0700))
+				t.Cleanup(func() {
+					require.NoError(t, os.WriteFile(output, []byte(attestedHost), 0700))
+					require.NoError(t, os.Chtimes(output, f.outputInfo.ModTime(), f.outputInfo.ModTime()))
+				})
 			case "foreign":
-				require.NoError(t, os.WriteFile(filepath.Join(w.Root, ".local", "bin", "foreign"), []byte("keep"), 0600))
+				foreign := filepath.Join(w.Root, ".local", "bin", "foreign")
+				require.NoError(t, os.WriteFile(foreign, []byte("keep"), 0600))
+				t.Cleanup(func() { require.NoError(t, os.Remove(foreign)) })
 			case "symlink":
-				target := filepath.Join(t.TempDir(), "foreign")
+				scratch := t.TempDir()
+				// Rename the attested file aside instead of deleting it, so
+				// putting it back restores its original inode.
+				attested := filepath.Join(scratch, "attested")
+				require.NoError(t, os.Rename(output, attested))
+				t.Cleanup(func() { require.NoError(t, os.Rename(attested, output)) })
+				target := filepath.Join(scratch, "foreign")
 				require.NoError(t, os.WriteFile(target, []byte("keep"), 0600))
-				require.NoError(t, os.Remove(output))
 				require.NoError(t, os.Symlink(target, output))
+				t.Cleanup(func() { require.NoError(t, os.Remove(output)) })
 			case "dirty-source":
-				require.NoError(t, os.WriteFile(filepath.Join(w.Root, "omniview", "user-file"), []byte("keep"), 0600))
+				dirty := filepath.Join(w.Root, "omniview", "user-file")
+				require.NoError(t, os.WriteFile(dirty, []byte("keep"), 0600))
+				t.Cleanup(func() { require.NoError(t, os.Remove(dirty)) })
 			case "occupied-target":
-				require.NoError(t, os.Mkdir(filepath.Join(root, "workspaces", slug), 0700))
+				occupied := filepath.Join(root, "workspaces", slug)
+				require.NoError(t, os.Mkdir(occupied, 0700))
+				t.Cleanup(func() { require.NoError(t, os.Remove(occupied)) })
 			case "occupied-added-branch":
 				options.AddRepositories = []string{"ui"}
-				fixtureGit(t, filepath.Join(root, "ui", ".bare"), "branch", "feature/"+slug+"-"+w.Manifest.WorkspaceID[:8], "main")
+				conflictingBranch(t, "feature/"+slug+"-"+w.Manifest.WorkspaceID[:8])
 			case "ancestor-added-branch", "descendant-added-branch":
 				options.AddRepositories = []string{"ui"}
 				branch := "feature"
 				if change == "descendant-added-branch" {
 					branch = "feature/" + slug + "-" + w.Manifest.WorkspaceID[:8] + "/nested"
 				}
-				fixtureGit(t, filepath.Join(root, "ui", ".bare"), "branch", branch, "main")
+				conflictingBranch(t, branch)
 			case "native-identity":
 				native, err := PrepareGeneratedTree(w, "bin/native", NewGeneration())
 				require.NoError(t, err)
@@ -175,7 +300,7 @@ func TestStoppedSlugRenameRefusesChangedOrForeignOutputsUnchanged(t *testing.T) 
 			require.NoError(t, err)
 			journal, err := os.ReadFile(filepath.Join(w.Root, ".local", "ownership.json"))
 			require.NoError(t, err)
-			ledgerPath := filepath.Join(root, ".omniview-dev", "generated", w.Manifest.WorkspaceID+".json")
+			ledgerPath := f.ledger
 			ledger, err := os.ReadFile(ledgerPath)
 			require.NoError(t, err)
 			info, err := os.Lstat(output)
@@ -197,34 +322,47 @@ func TestStoppedSlugRenameRefusesChangedOrForeignOutputsUnchanged(t *testing.T) 
 }
 
 func TestSlugRenameResumesInterruptedGeneratedCleanup(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("requires non-root POSIX directory permissions to interrupt a real deletion")
 	}
-	for _, foreign := range []bool{false, true} {
+	// Both cases resume the same interrupted rename, so it is built and
+	// interrupted once. refuse-foreign leaves it exactly as found, which every
+	// case verifies first; resume completes the rename and therefore runs last.
+	m, root := fixtureManager(t, "omniview")
+	ctx := context.Background()
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "cleanup-before"})
+	prepared, err := PrepareGeneratedTree(w, "bin", NewGeneration())
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(prepared.Directory, "host"), []byte("attested executable"), 0700))
+	require.NoError(t, RecordGeneratedTree(prepared))
+	bin := filepath.Join(w.Root, ".local", "bin")
+	require.NoError(t, os.Chmod(bin, 0500))
+	t.Cleanup(func() { _ = os.Chmod(bin, 0700) })
+	slug := "cleanup-after"
+	_, err = m.Edit(ctx, w.Manifest.WorkspaceID, EditOptions{Slug: &slug})
+	require.Error(t, err, "actual generated deletion must fail on a non-writable directory")
+	require.NoError(t, os.Chmod(bin, 0700))
+	j, err := loadJournal(w.Root)
+	require.NoError(t, err)
+	require.Equal(t, "edit", j.Phase, "cleanup must not begin without durable rename intent")
+	require.Equal(t, filepath.Join(root, "workspaces", slug), j.RenameTo)
+	ledgerPath := filepath.Join(root, ".omniview-dev", "generated", w.Manifest.WorkspaceID+".json")
+	local := filepath.Join(w.Root, ".local")
+	observe := func(t *testing.T) map[string]string {
+		t.Helper()
+		return observeSharedFixture(t,
+			[]string{filepath.Join(w.Root, "workspace.json"), filepath.Join(local, "ownership.json"), ledgerPath, filepath.Join(bin, "host")},
+			[]string{w.Root, local, bin, filepath.Join(root, "workspaces")})
+	}
+	interrupted := observe(t)
+	for _, foreign := range []bool{true, false} {
 		t.Run(map[bool]string{false: "resume", true: "refuse-foreign"}[foreign], func(t *testing.T) {
-			m, root := fixtureManager(t)
-			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "cleanup-before"})
-			require.NoError(t, err)
-			prepared, err := PrepareGeneratedTree(w, "bin", NewGeneration())
-			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(filepath.Join(prepared.Directory, "host"), []byte("attested executable"), 0700))
-			require.NoError(t, RecordGeneratedTree(prepared))
-			bin := filepath.Join(w.Root, ".local", "bin")
-			require.NoError(t, os.Chmod(bin, 0500))
-			t.Cleanup(func() { _ = os.Chmod(bin, 0700) })
-			slug := "cleanup-after"
-			_, err = m.Edit(ctx, w.Manifest.WorkspaceID, EditOptions{Slug: &slug})
-			require.Error(t, err, "actual generated deletion must fail on a non-writable directory")
-			require.NoError(t, os.Chmod(bin, 0700))
-			j, err := loadJournal(w.Root)
-			require.NoError(t, err)
-			require.Equal(t, "edit", j.Phase, "cleanup must not begin without durable rename intent")
-			require.Equal(t, filepath.Join(root, "workspaces", slug), j.RenameTo)
-			ledgerPath := filepath.Join(root, ".omniview-dev", "generated", w.Manifest.WorkspaceID+".json")
+			require.Equal(t, interrupted, observe(t), "an earlier case did not leave the interrupted rename as it found it")
 			if foreign {
 				path := filepath.Join(bin, "foreign")
 				require.NoError(t, os.WriteFile(path, []byte("preserve foreign"), 0600))
+				t.Cleanup(func() { require.NoError(t, os.Remove(path)) })
 				before, err := os.ReadFile(ledgerPath)
 				require.NoError(t, err)
 				info, err := os.Lstat(path)
@@ -256,10 +394,11 @@ func TestSlugRenameResumesInterruptedGeneratedCleanup(t *testing.T) {
 }
 
 func TestCustomPurgeRemovesStateAndOwnedDefaultStorageButKeepsClaims(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "custom-purge"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "custom-purge"})
+	var err error
 	state := bindFixtureProfile(t, m, w)
 	require.NoError(t, os.MkdirAll(state, 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(state, "sentinel"), []byte("state"), 0600))
@@ -284,10 +423,11 @@ func TestCustomPurgeRemovesStateAndOwnedDefaultStorageButKeepsClaims(t *testing.
 }
 
 func TestRetiredCustomBindingSnapshotSurvivesLocalBindingUnlink(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "custom-retire"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "custom-retire"})
+	var err error
 	state := bindFixtureProfile(t, m, w)
 	w, err = m.Inspect(ctx, "custom-retire")
 	require.NoError(t, err)
@@ -316,9 +456,10 @@ func TestRetiredCustomBindingSnapshotSurvivesLocalBindingUnlink(t *testing.T) {
 }
 
 func TestForeignProfileBindingCannotBeAcceptedByFilename(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "foreign-binding"})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "foreign-binding"})
+	var err error
 	path := filepath.Join(w.Root, ".local", "profile.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"schemaVersion":1,"workspaceID":"4beee3e2-2450-421c-ad44-485a704c3a65","stateRoot":"/foreign/state"}`), 0600))
 	_, err = m.Remove(context.Background(), "foreign-binding", RemoveOptions{})
@@ -328,22 +469,38 @@ func TestForeignProfileBindingCannotBeAcceptedByFilename(t *testing.T) {
 }
 
 func TestCustomPurgeRejectsUnmarkedOrForeignDefaultProfileBeforeGitRemoval(t *testing.T) {
+	t.Parallel()
+	// Both cases refuse before any mutation, so they share one workspace. Each
+	// sets the valid owner marker aside instead of deleting it and puts that same
+	// file back, and every case first compares the whole fixture with its
+	// pristine observation.
+	m, _ := fixtureManager(t, "omniview")
+	ctx := context.Background()
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "foreign-default"})
+	state := bindFixtureProfile(t, m, w)
+	profile := filepath.Dir(w.StateRoot)
+	require.NoError(t, os.MkdirAll(filepath.Join(profile, "runtime"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(profile, "runtime", "keep"), []byte("unproven"), 0600))
+	marker := filepath.Join(profile, ".workspace-owner.json")
+	local := filepath.Join(w.Root, ".local")
+	observe := func(t *testing.T) map[string]string {
+		t.Helper()
+		return observeSharedFixture(t,
+			[]string{marker, filepath.Join(profile, "runtime", "keep"), filepath.Join(w.Root, "workspace.json"), filepath.Join(local, "ownership.json"), filepath.Join(local, "profile.json")},
+			[]string{profile, filepath.Join(profile, "runtime"), w.Root, local})
+	}
+	pristine := observe(t)
 	for _, foreign := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unmarked", true: "foreign marker"}[foreign], func(t *testing.T) {
-			m, _ := fixtureManager(t)
-			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "foreign-default"})
-			require.NoError(t, err)
-			state := bindFixtureProfile(t, m, w)
-			profile := filepath.Dir(w.StateRoot)
-			require.NoError(t, os.MkdirAll(filepath.Join(profile, "runtime"), 0700))
-			require.NoError(t, os.WriteFile(filepath.Join(profile, "runtime", "keep"), []byte("unproven"), 0600))
-			marker := filepath.Join(profile, ".workspace-owner.json")
-			require.NoError(t, os.Remove(marker))
+			require.Equal(t, pristine, observe(t), "an earlier case did not restore the shared profile")
+			stash := filepath.Join(t.TempDir(), "owner")
+			require.NoError(t, os.Rename(marker, stash))
+			t.Cleanup(func() { require.NoError(t, os.Rename(stash, marker)) })
 			if foreign {
 				require.NoError(t, atomicJSON(marker, profileOwner{SchemaVersion: 1, WorkspaceID: "60813fa5-179c-4146-b210-ab0fa6b79870"}))
+				t.Cleanup(func() { require.NoError(t, os.Remove(marker)) })
 			}
-			_, err = m.Remove(ctx, "foreign-default", RemoveOptions{PurgeState: true})
+			_, err := m.Remove(ctx, "foreign-default", RemoveOptions{PurgeState: true})
 			require.Error(t, err)
 			require.FileExists(t, filepath.Join(profile, "runtime", "keep"))
 			require.DirExists(t, filepath.Join(w.Root, "omniview"))
@@ -353,10 +510,11 @@ func TestCustomPurgeRejectsUnmarkedOrForeignDefaultProfileBeforeGitRemoval(t *te
 }
 
 func TestCustomPurgeAlsoLocksExistingDefaultState(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "locked-default"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "locked-default"})
+	var err error
 	bindFixtureProfile(t, m, w)
 	require.NoError(t, os.MkdirAll(w.StateRoot, 0700))
 	lock := flock.New(filepath.Join(w.StateRoot, ".lock"))

@@ -11,7 +11,8 @@ import (
 // An unknown explicit target with no ownership journal or retirement receipt must
 // return the ordinary inspection error, not dereference a missing journal.
 func TestValidateLifecycleContextRefusesUnknownTargetWithoutPanic(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	for _, name := range []string{"never-created", filepath.Join(root, "workspaces", "never-created", "workspace.json")} {
 		require.NotPanics(t, func() {
 			id, err := m.ValidateLifecycleContext(context.Background(), name, "", "")

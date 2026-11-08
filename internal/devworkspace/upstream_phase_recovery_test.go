@@ -24,11 +24,13 @@ var errPhaseInterrupted = errors.New("interrupt after durable phase write")
 // intents. Stopped source updates cover every persisted source phase; pinned,
 // current and stopped are result classifications, not durable intent phases.
 func TestSourceDurablePhaseRecovery(t *testing.T) {
+	t.Parallel()
 	phases := []string{
 		sourceUpdatePrepared, sourceUpdateCheckout, sourceUpdateOverlays, sourceUpdateBuild, sourceUpdateComplete,
 	}
 	for _, phase := range phases {
 		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
 			m, w, plan := sourcePlanFixture(t, "plugin-sdk")
 			assertCanaries := phaseRecoveryCanaries(t, m, w)
 			observed := false
@@ -87,15 +89,12 @@ func TestSourceDurablePhaseRecovery(t *testing.T) {
 // builds and rendering: its ready response proves supervisor transport only,
 // not host/plugin application readiness. No installer or Git operation is mocked.
 func TestRefreshDurablePhaseRecovery(t *testing.T) {
-	if native := "/opt/homebrew/Cellar/pnpm/12.14.0/bin/pnpm"; os.Getenv("OMNIVIEW_PNPM_EXECUTABLE") == "" {
-		// Prefer the installed native binary over an ambient Corepack shim.
-		// Elsewhere, use the normal production PATH/configuration selection.
-		if _, err := os.Stat(native); err == nil {
-			t.Setenv("OMNIVIEW_PNPM_EXECUTABLE", native)
-		}
-	}
+	t.Parallel()
 	for _, phase := range []string{"stop", "retire", "update", "install", "start", "verify"} {
-		t.Run(phase, func(t *testing.T) { runRefreshPhaseRecovery(t, phase) })
+		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
+			runRefreshPhaseRecovery(t, phase)
+		})
 	}
 }
 
@@ -209,7 +208,7 @@ func resumeRefreshPhaseSequence(t *testing.T, m *Manager, w Workspace, plan Upda
 
 func refreshPhaseFixture(t *testing.T) (*Manager, Workspace, UpdatePlan) {
 	t.Helper()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, "omniview")
 	source := filepath.Join(root, "omniview")
 	put := func(relative, content string) {
 		t.Helper()
@@ -224,12 +223,10 @@ func refreshPhaseFixture(t *testing.T) (*Manager, Workspace, UpdatePlan) {
 	}
 	fixtureGit(t, source, "add", ".")
 	fixtureGit(t, source, "commit", "-m", "seed real native12 composition")
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "refresh-phases"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "refresh-phases"})
 	put("package.json", `{"name":"phase-host","private":true,`+
 		`"description":"captured dependency input change","packageManager":"pnpm@12.14.0"}`)
-	fixtureGit(t, source, "add", "package.json")
-	fixtureGit(t, source, "commit", "-m", "change captured dependency input")
+	fixtureGit(t, source, "commit", "-m", "change captured dependency input", "--", "package.json")
 	plan := UpdatePlan{
 		WorkspaceID: w.Manifest.WorkspaceID, OperationID: "refresh-phase-operation", Result: "update_available",
 		ConfigurationFingerprint: UpdateConfigurationFingerprint(w.Manifest), DependencyChanged: true,
@@ -376,12 +373,15 @@ func assertTerminalRecoveryIdempotent(t *testing.T, m *Manager, w Workspace) {
 }
 
 func TestRecoverRefusesMalformedOrRedirectedMetadata(t *testing.T) {
+	t.Parallel()
+	// Refusals cannot mutate the workspace. Vary only the invalid metadata and
+	// remove it between cases instead of creating twelve identical workspaces.
+	m, w, _ := sourcePlanFixture(t)
+	base := filepath.Dir(sourceUpdatePath(m, w))
+	require.NoError(t, os.MkdirAll(base, 0700))
 	for _, kind := range []string{"source-update.json", "refresh.json", "recover-complete.json"} {
 		for _, change := range []string{"malformed", "redirected", "foreign", "unknown-phase"} {
 			t.Run(kind+"/"+change, func(t *testing.T) {
-				m, w, _ := sourcePlanFixture(t)
-				base := filepath.Dir(sourceUpdatePath(m, w))
-				require.NoError(t, os.MkdirAll(base, 0700))
 				path := filepath.Join(base, kind)
 				switch change {
 				case "malformed":
@@ -399,6 +399,10 @@ func TestRecoverRefusesMalformedOrRedirectedMetadata(t *testing.T) {
 						"workspaceID": identity, "root": w.Root, "phase": phase,
 					}))
 				}
+				t.Cleanup(func() {
+					m.afterDurablePhase = nil
+					require.NoError(t, os.Remove(path))
+				})
 				before, err := os.ReadFile(path)
 				require.NoError(t, err)
 				m.afterDurablePhase = func(kind, phase string) error {
@@ -416,8 +420,10 @@ func TestRecoverRefusesMalformedOrRedirectedMetadata(t *testing.T) {
 }
 
 func TestRecoverWithoutTerminalReceiptPreservesInitialUpRefusal(t *testing.T) {
+	t.Parallel()
 	for _, failedInstall := range []bool{false, true} {
 		t.Run(map[bool]string{false: "fresh", true: "failed-install"}[failedInstall], func(t *testing.T) {
+			t.Parallel()
 			m, w, links := recoveryFixture(t)
 			if failedInstall {
 				links.Phase = "applying"
@@ -447,8 +453,10 @@ func TestRecoverWithoutTerminalReceiptPreservesInitialUpRefusal(t *testing.T) {
 }
 
 func TestTerminalRecoveryReceiptDoesNotAdoptChangedState(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"head", "tracked-edit", "pending-generated", "unfinished-links"} {
 		t.Run(change, func(t *testing.T) {
+			t.Parallel()
 			m, w, plan := sourcePlanFixture(t)
 			m.afterDurablePhase = func(kind, phase string) error {
 				if kind == "source" && phase == sourceUpdatePrepared {
@@ -492,15 +500,16 @@ func TestTerminalRecoveryReceiptDoesNotAdoptChangedState(t *testing.T) {
 }
 
 func TestReadyRecoveryProofKeepsInstallAndModuleOwnershipStrict(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, "omniview")
 	source := filepath.Join(root, "omniview")
 	packagePath := filepath.Join(source, "package.json")
 	require.NoError(t, os.WriteFile(packagePath, []byte(`{"name":"recovery-proof","private":true}`), 0600))
 	fixtureGit(t, source, "add", "package.json")
 	fixtureGit(t, source, "commit", "-m", "add actual package consumer")
-	w, err := m.Create(ctx, CreateOptions{Slug: "ready-proof"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "ready-proof"})
+	var err error
 	assertSupervisor := phaseRecoverySupervisor(t, m, w, NewGeneration())
 	repo := filepath.Join(w.Root, "omniview")
 	install, err := devoutputs.BeginInstall(ctx, w.ResolvedWorkspace, repo)

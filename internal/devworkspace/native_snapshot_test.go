@@ -7,6 +7,7 @@ import (
 )
 
 func TestNativeSnapshotRetainsExactBundleNamespaceAfterSourceCleanup(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	w.StateRoot = filepath.Join(filepath.Dir(filepath.Dir(w.Root)), "profiles", "state")
 	cap, err := PrepareGeneratedTree(w, filepath.Join("bin", "native"), NewGeneration())

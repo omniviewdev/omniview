@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -333,6 +334,10 @@ const dependencyCommandExitCode = 5
 // selectors. Every pnpm call uses the exact native12 composition launcher, and
 // only this recorded composition runner may change dependencies through it.
 func linkCommand(ctx context.Context, dir, program string, args ...string) ([]byte, error) {
+	return linkCommandWithInput(ctx, dir, program, nil, args...)
+}
+
+func linkCommandWithInput(ctx context.Context, dir, program string, input io.Reader, args ...string) ([]byte, error) {
 	pnpm := program == "pnpm"
 	if pnpm {
 		graph, ok := ctx.Value(linkToolchainKey{}).(*BuildGraph)
@@ -353,6 +358,7 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 		cmd = exec.CommandContext(ctx, program, args...)
 	}
 	cmd.Dir = dir
+	cmd.Stdin = input
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		if workspaceRootEnvironment(key) || key == compositionInstallEnvironment {
@@ -1188,12 +1194,24 @@ func (m *Manager) LinkEvidence(ctx context.Context, name string) (LinkProtocolEv
 // Resolve package manifests by walking from the resolved public entry rather
 // than requiring package.json exports (the UI packages do not all expose it).
 const linkResolveScript = `import fs from 'node:fs';import path from 'node:path';import {fileURLToPath,pathToFileURL} from 'node:url';
-const [consumer,specifier,name=specifier]=process.argv.slice(1);
-let entry=fileURLToPath(import.meta.resolve(specifier,pathToFileURL(path.join(consumer,'package.json')).href)),dir=path.dirname(fs.realpathSync(entry));
-for(;;){const p=path.join(dir,'package.json');if(fs.existsSync(p)){const j=JSON.parse(fs.readFileSync(p));if(j.name===name){console.log(JSON.stringify({path:dir,version:j.version||''}));break;}}const up=path.dirname(dir);if(up===dir)throw Error('manifest not found');dir=up;}`
+const requests=JSON.parse(fs.readFileSync(0,'utf8'));
+console.log(JSON.stringify(requests.map(({Consumer,Specifier,Name})=>{
+try {
+const parent=pathToFileURL(path.join(Consumer,'package.json')).href;
+let entry=fileURLToPath(import.meta.resolve(Specifier,parent)),dir=path.dirname(fs.realpathSync(entry));
+for(;;){const p=path.join(dir,'package.json');if(fs.existsSync(p)){const j=JSON.parse(fs.readFileSync(p));if(j.name===Name){const Version=j.version||'';if(typeof Version!=='string')throw Error('invalid manifest version');return {Path:dir,Version};}}const up=path.dirname(dir);if(up===dir)throw Error('manifest not found');dir=up;}
+} catch { return {Problem:'package resolution failed'}; }
+})));`
 
 func inspectLinkPlan(ctx context.Context, j *linkJournal) LinkReport {
 	report := LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, Resolutions: []LinkResolution{}, SeedConvergence: j.Plan.Composition.Convergence}
+	// Resolution is read-only. Keep each consumer's explicit parent URL, but
+	// start Node once per inspection rather than once per export or consumer.
+	type resolutionRequest struct {
+		Consumer, Specifier, Name string
+		index                     int
+	}
+	var requests []resolutionRequest
 	for _, consumer := range j.Plan.Consumers {
 		pkg, err := readLinkPackage(consumer.Path)
 		if err != nil {
@@ -1234,22 +1252,33 @@ func inspectLinkPlan(ctx context.Context, j *linkJournal) LinkReport {
 				r := LinkResolution{Consumer: consumer.Path, Package: specifier, Expected: expected}
 				if e != nil {
 					r.Problem = e.Error()
-				} else {
-					raw, resolveErr := linkCommand(ctx, consumer.Path, "node", "--experimental-import-meta-resolve", "--input-type=module", "-e", linkResolveScript, consumer.Path, specifier, name)
-					var result struct{ Path, Version string }
-					if resolveErr != nil {
-						r.Problem = resolveErr.Error()
-					} else if resolveErr = json.Unmarshal(raw, &result); resolveErr != nil {
-						r.Problem = "invalid node resolution response"
-					} else {
-						r.Resolved = result.Path
-						r.Version = result.Version
-						if r.Resolved != r.Expected {
-							r.Problem = "resolved package is not the selected feature package"
-						}
-					}
+				}
+				if e == nil {
+					requests = append(requests, resolutionRequest{Consumer: consumer.Path, Specifier: specifier, Name: name, index: len(report.Resolutions)})
 				}
 				report.Resolutions = append(report.Resolutions, r)
+			}
+		}
+	}
+	if len(requests) != 0 {
+		encoded, _ := json.Marshal(requests)
+		raw, resolveErr := linkCommandWithInput(ctx, j.Root, "node", bytes.NewReader(encoded), "--experimental-import-meta-resolve", "--input-type=module", "-e", linkResolveScript)
+		var results []struct{ Path, Version, Problem string }
+		if resolveErr == nil {
+			if err := json.Unmarshal(raw, &results); err != nil || len(results) != len(requests) {
+				resolveErr = errors.New("invalid node resolution response")
+			}
+		}
+		for i, request := range requests {
+			r := &report.Resolutions[request.index]
+			if resolveErr != nil {
+				r.Problem = resolveErr.Error()
+				continue
+			}
+			result := results[i]
+			r.Resolved, r.Version, r.Problem = result.Path, result.Version, result.Problem
+			if r.Problem == "" && r.Resolved != r.Expected {
+				r.Problem = "resolved package is not the selected feature package"
 			}
 		}
 	}

@@ -619,6 +619,43 @@ and reject altered, foreign or redirected capabilities. Fast selector contracts
 remain Go/Task-free; generated-binding freshness and actual application execution
 exercise generation and its consumers.
 
+Run the backend workspace suite with `GOWORK=off go test -count=1 ./internal/devworkspace`.
+Fixtures select only the repositories needed by each scenario and copy immutable
+Git seed bytes into independent repositories. Refusal matrices may share a fixture
+only when each case preserves its inputs or restores the exact owned inode/state
+before the next case. Git, Node resolution, process ownership, and durable output
+operations still execute through their real implementations. Deadline tests use a
+short client policy independently of caller cancellation; production timeout and
+filesystem durability remain unchanged. No CI-specific timeout or parallelism
+flags are required.
+
+Dedicated creation tests retain the complete `Manager.Create` lifecycle, including
+interrupted publication. Other scenarios start with completed owned worktrees and
+real profile ownership instead of replaying creation coordination during setup.
+Graph fixtures stop at the stage each scenario needs: planned graphs skip Git and
+installation; linked graphs retain real Git and applied links, letting installer
+tests perform their own installation once. Ownership and lifecycle scenarios
+retain the real operations they exercise.
+Large-consumer transport tests use long shared ancestors to exceed argument byte
+limits with fewer physical trees, and assert the byte-budget boundary explicitly.
+Upstream fixtures register extra SDK sources only for selection-change cases.
+Feedback authority and shutdown fixtures prepare only source paths and graph
+metadata; their actual private-file, flush, native-handle, and process-disposal
+checks still run, without unrelated Git or dependency installation.
+Dependency authority scenarios keep independent repositories and parallel cases,
+rather than serially resetting and revalidating one mutable remote.
+
+Performance probes exercise real Git and filesystem paths without building
+host/plugin artifacts or changing CI settings:
+
+```bash
+GOWORK=off go test -run '^$' -bench 'BenchmarkCheckoutStatuses|BenchmarkBuildSourceInputs' -benchmem ./internal/devworkspace
+GOWORK=off go test -run '^$' -bench 'BenchmarkSnapshotSizes|BenchmarkCommittedOutputBaseline' -benchmem ./internal/devoutputs
+```
+
+Compare uncached suite runs separately from profiled or concurrent runs.
+Snapshot reuse is limited to scratch bytes, never filesystem metadata or digests.
+
 `task fmt` and `task check:fmt-check` select tracked and nonignored Go source through Git, preserving spaced filenames with NUL-delimited arguments. Both use `goimports` for formatting and imports; they never traverse ignored `node_modules`, prepared Wails sources or other tool caches.
 
 See [worktree lifecycle](development-worktree-lifecycle.md), [package linking](development-package-linking.md), [build/watch graph](development-watch-graph.md), [instance profiles](development-instance-profiles.md), [sessions](development-sessions.md), [baselines](development-baselines.md) and [authenticated control](development-control.md) for producer contracts and platform evidence.

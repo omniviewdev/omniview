@@ -17,9 +17,8 @@ import (
 // or source transaction, not for a process whose disposal has been established.
 func supervisorEdgeFixture(t *testing.T) *workspaceSupervisor {
 	t.Helper()
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "supervisor-edges"})
-	require.NoError(t, err)
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "supervisor-edges"})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	generation := NewGeneration()
@@ -48,6 +47,7 @@ func receiveSupervisorEdge(t *testing.T, result <-chan supervisorEdgeResult) sup
 }
 
 func TestSupervisorStatusDuringBlockedStop(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{supervisorStopCommand, supervisorRestartCommand} {
 		t.Run(operation, func(t *testing.T) {
 			s := supervisorEdgeFixture(t)
@@ -98,6 +98,7 @@ func TestSupervisorStatusDuringBlockedStop(t *testing.T) {
 }
 
 func TestSupervisorCanceledMutationWaitingForSourceAuthority(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{supervisorStopCommand, supervisorRestartCommand} {
 		t.Run(operation, func(t *testing.T) {
 			s := supervisorEdgeFixture(t)
@@ -129,6 +130,7 @@ func TestSupervisorCanceledMutationWaitingForSourceAuthority(t *testing.T) {
 }
 
 func TestSupervisorCanceledMutationWaitingForRunAuthority(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{supervisorStopCommand, supervisorRestartCommand} {
 		t.Run(operation, func(t *testing.T) {
 			s := supervisorEdgeFixture(t)

@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
 // reuseFixture is graphFixture without Go compiler nodes. Every real build
@@ -27,9 +30,9 @@ type reuseFixture struct {
 	serial int
 }
 
-func newReuseFixture(t *testing.T) *reuseFixture {
+func newReuseFixture(t *testing.T, options ...graphFixtureOptions) *reuseFixture {
 	t.Helper()
-	f := &reuseFixture{g: graphFixture(t)}
+	f := &reuseFixture{g: graphFixture(t, options...)}
 	g := f.g
 	// Like the real host, a tracked placeholder lives in an output directory
 	// that the host-frontend publication replaces.
@@ -93,7 +96,7 @@ func newReuseFixture(t *testing.T) *reuseFixture {
 // Reuse goes through the real supervisor launch-artifact selection path.
 func newHostReuseFixture(t *testing.T, executable []byte) (*BuildGraph, BuildNode, *workspaceSupervisor, string) {
 	t.Helper()
-	f := newReuseFixture(t)
+	f := newReuseFixture(t, graphFixtureOptions{NativeOnly: true})
 	g := f.g
 	s := &workspaceSupervisor{workspace: g.workspace, options: LaunchOptions{Mode: "native"}}
 	g.options.HostOutput = s.hostOutput()
@@ -150,48 +153,48 @@ func (f *reuseFixture) bootstrap(t *testing.T) []string {
 	return built
 }
 
-func TestBootstrapReuseSkipsUnchangedNodesAndRebuildsChangedClosure(t *testing.T) {
+func TestBootstrapReuseAcrossFreshSupervisors(t *testing.T) {
+	t.Parallel()
 	f := newReuseFixture(t)
-	if built := f.bootstrap(t); len(built) != len(f.nodes) {
-		t.Fatalf("first bootstrap built %v, want every node", built)
-	}
-	if built := f.bootstrap(t); len(built) != 0 {
-		t.Fatalf("unchanged bootstrap rebuilt %v", built)
-	}
-	writeGraphFixture(t, filepath.Join(f.g.workspace.Root, "ui/packages/ai-ui/src/panel.ts"), "export const edited = true;\n")
-	built := f.bootstrap(t)
-	want := []string{"ai-ui", "host-frontend", "plugin-ui:plugin", "runtime", "vite-plugin"}
-	if !slices.Equal(built, want) {
-		t.Fatalf("edit in ai-ui rebuilt %v, want %v", built, want)
-	}
-	if built := f.bootstrap(t); len(built) != 0 {
-		t.Fatalf("bootstrap after rebuilding the edit rebuilt %v", built)
-	}
-}
-
-func TestBootstrapReuseRebuildsOutputsReplacedOutsideBootstrap(t *testing.T) {
-	f := newReuseFixture(t)
-	f.bootstrap(t)
-	// A watch transaction republishes base-ui without updating reuse records.
-	if err := f.g.execute(context.Background(), []BuildNode{outputGraphNode(t, f.g, "base-ui")}, nil); err != nil {
-		t.Fatal(err)
-	}
-	built := f.bootstrap(t)
-	if !slices.Contains(built, "base-ui") || !slices.Contains(built, "ai-ui") || slices.Contains(built, "providers") || slices.Contains(built, "bindings") {
-		t.Fatalf("replaced base-ui output rebuilt %v, want base-ui and its dependents only", built)
-	}
-}
-
-func TestBootstrapReuseRebuildsEverythingWhenToolchainChanges(t *testing.T) {
-	f := newReuseFixture(t)
-	f.bootstrap(t)
-	f.g.toolInputs = func(context.Context, BuildNode) (string, error) { return "upgraded-tools", nil }
-	if built := f.bootstrap(t); len(built) != len(f.nodes) {
-		t.Fatalf("toolchain change rebuilt only %v", built)
-	}
+	// Each bootstrap discards in-memory outputs. Exercise the transitions on
+	// one workspace instead of republishing the same initial graph three times.
+	t.Run("unchanged and changed closure", func(t *testing.T) {
+		if built := f.bootstrap(t); len(built) != len(f.nodes) {
+			t.Fatalf("first bootstrap built %v, want every node", built)
+		}
+		if built := f.bootstrap(t); len(built) != 0 {
+			t.Fatalf("unchanged bootstrap rebuilt %v", built)
+		}
+		writeGraphFixture(t, filepath.Join(f.g.workspace.Root, "ui/packages/ai-ui/src/panel.ts"), "export const edited = true;\n")
+		built := f.bootstrap(t)
+		want := []string{"ai-ui", "host-frontend", "plugin-ui:plugin", "runtime", "vite-plugin"}
+		if !slices.Equal(built, want) {
+			t.Fatalf("edit in ai-ui rebuilt %v, want %v", built, want)
+		}
+		if built := f.bootstrap(t); len(built) != 0 {
+			t.Fatalf("bootstrap after rebuilding the edit rebuilt %v", built)
+		}
+	})
+	t.Run("outputs replaced outside bootstrap", func(t *testing.T) {
+		// A watch transaction republishes base-ui without updating reuse records.
+		if err := f.g.execute(context.Background(), []BuildNode{outputGraphNode(t, f.g, "base-ui")}, nil); err != nil {
+			t.Fatal(err)
+		}
+		built := f.bootstrap(t)
+		if !slices.Contains(built, "base-ui") || !slices.Contains(built, "ai-ui") || slices.Contains(built, "providers") || slices.Contains(built, "bindings") {
+			t.Fatalf("replaced base-ui output rebuilt %v, want base-ui and its dependents only", built)
+		}
+	})
+	t.Run("toolchain changed", func(t *testing.T) {
+		f.g.toolInputs = func(context.Context, BuildNode) (string, error) { return "upgraded-tools", nil }
+		if built := f.bootstrap(t); len(built) != len(f.nodes) {
+			t.Fatalf("toolchain change rebuilt only %v", built)
+		}
+	})
 }
 
 func TestExecuteRunsIndependentNodesConcurrently(t *testing.T) {
+	t.Parallel()
 	if buildParallelism() < 2 {
 		t.Skip("single-core parallelism")
 	}
@@ -218,6 +221,7 @@ func TestExecuteRunsIndependentNodesConcurrently(t *testing.T) {
 }
 
 func TestExecuteFailureStartsNoDependentAndLetsRunningSiblingFinish(t *testing.T) {
+	t.Parallel()
 	if buildParallelism() < 2 {
 		t.Skip("single-core parallelism")
 	}
@@ -263,6 +267,7 @@ func TestExecuteFailureStartsNoDependentAndLetsRunningSiblingFinish(t *testing.T
 }
 
 func TestSourceInputReaderPreservesFramingAndReadsFreshBytes(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	files := []struct {
 		name    string
@@ -318,6 +323,7 @@ func TestSourceInputReaderPreservesFramingAndReadsFreshBytes(t *testing.T) {
 }
 
 func TestSourceInputReaderKeepsSymlinkTargets(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.Symlink("target.ts", filepath.Join(root, "alias.ts")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
@@ -348,6 +354,7 @@ func (writer *mutatingFingerprintWriter) Write(raw []byte) (int, error) {
 }
 
 func TestSourceInputReaderRejectsMutationDuringRead(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	path := filepath.Join(root, "source.ts")
 	if err := os.WriteFile(path, bytes.Repeat([]byte("source"), 20000), 0600); err != nil {
@@ -390,6 +397,103 @@ func BenchmarkSourceInputFingerprint(b *testing.B) {
 					if err := reader.hashFile(hash, root, name); err != nil {
 						b.Fatal(err)
 					}
+				}
+			}
+		})
+	}
+}
+
+func TestSourceInputsRetainLiteralTreesAncestorsAndScriptReferences(t *testing.T) {
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{NoUI: true, Stage: graphFixturePlanned})
+	root := filepath.Join(g.workspace.Root, "host")
+	directory := filepath.Join(root, "packages[config]", "widget[1]")
+	node := BuildNode{ID: "literal-package", Kind: "javascript", Directory: directory}
+	files := map[string]string{
+		" leading.ts":                    "ancestor with whitespace\n",
+		".npmrc":                         "shared=true\n",
+		"packages[config]/shared.config": "ancestor\n",
+		"packages[config]/widget[1]/package.json": `{"scripts":{"build":"node ../../tools/config.js"}}`,
+		"packages[config]/widget[1]/source.ts":    "selected\n",
+		"packages[config]/widget[1]/deleted.ts":   "tracked\n",
+		"tools/config.js":                         "script input\n",
+		"packages[config]/unrelated/source.ts":    "sibling\n",
+	}
+	for name, content := range files {
+		writeGraphFixture(t, filepath.Join(root, filepath.FromSlash(name)), content)
+	}
+	fixtureGit(t, root, "init", "--template=", "-b", "main")
+	fixtureGit(t, root, "add", "--", ":(literal)packages[config]/widget[1]/deleted.ts")
+	fingerprint := func(t *testing.T) string {
+		t.Helper()
+		hash := sha256.New()
+		if err := g.sourceInputs(context.Background(), node, hash); err != nil {
+			t.Fatal(err)
+		}
+		return string(hash.Sum(nil))
+	}
+	for _, name := range []string{
+		" leading.ts",
+		".npmrc", "packages[config]/shared.config",
+		"packages[config]/widget[1]/source.ts", "tools/config.js",
+		"packages[config]/widget[1]/new-untracked.ts",
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := fingerprint(t)
+			writeGraphFixture(t, filepath.Join(root, filepath.FromSlash(name)), "changed input\n")
+			if fingerprint(t) == before {
+				t.Fatal("selected input did not invalidate the fingerprint")
+			}
+		})
+	}
+	before := fingerprint(t)
+	writeGraphFixture(t, filepath.Join(root, "packages[config]/unrelated/source.ts"), "unrelated edit\n")
+	if fingerprint(t) != before {
+		t.Fatal("unrelated sibling invalidated the package fingerprint")
+	}
+	if err := os.Remove(filepath.Join(directory, "deleted.ts")); err != nil {
+		t.Fatal(err)
+	}
+	if fingerprint(t) == before {
+		t.Fatal("tracked deletion did not invalidate the fingerprint")
+	}
+}
+
+func BenchmarkBuildSourceInputs(b *testing.B) {
+	for _, packages := range []int{16, 256} {
+		b.Run(fmt.Sprintf("packages=%d", packages), func(b *testing.B) {
+			root := b.TempDir()
+			write := func(name string) {
+				path := filepath.Join(root, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					b.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("source\n"), 0600); err != nil {
+					b.Fatal(err)
+				}
+			}
+			write("root.config")
+			for pkg := range packages {
+				for file := range 16 {
+					write(fmt.Sprintf("packages/p%d/f%d.ts", pkg, file))
+				}
+			}
+			for _, args := range [][]string{{"init", "--template=", "-b", "main"}, {"add", "."}} {
+				if output, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+					b.Fatalf("git: %s: %v", output, err)
+				}
+			}
+			g := &BuildGraph{}
+			g.workspace.Root = root
+			g.workspace.Manifest.Repositories = []devcontract.Repository{{ID: "fixture", Directory: "."}}
+			node := BuildNode{ID: "fixture", Kind: "javascript", Directory: filepath.Join(root, "packages/p0")}
+			g.Nodes = []BuildNode{node}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				hash := sha256.New()
+				if err := g.sourceInputs(context.Background(), node, hash); err != nil {
+					b.Fatal(err)
 				}
 			}
 		})

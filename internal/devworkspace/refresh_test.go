@@ -13,9 +13,8 @@ import (
 
 func recoveryFixture(t *testing.T) (*Manager, Workspace, *linkJournal) {
 	t.Helper()
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "recovery"})
-	require.NoError(t, err)
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "recovery"})
 	host := filepath.Join(w.Root, "omniview")
 	require.NoError(t, os.WriteFile(filepath.Join(host, "package.json"), []byte(`{"name":"fixture","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"19.0.0","react-dom":"19.0.0"}}`), 0600))
 	for _, name := range []string{"runtime", "providers", "vite-plugin"} {
@@ -28,6 +27,7 @@ func recoveryFixture(t *testing.T) (*Manager, Workspace, *linkJournal) {
 }
 
 func TestRecoverLinksBacksUpChangedBytesBeforeRestore(t *testing.T) {
+	t.Parallel()
 	m, w, j := recoveryFixture(t)
 	path := filepath.Join(w.Root, "omniview", "go.mod")
 	original := []byte("module fixture\n\ngo 1.26.0\n\n// one\n// two\n// three\n// four\n// five\n// six\n\nrequire example.com/base v1.0.0\n")
@@ -65,6 +65,7 @@ func TestRecoverLinksBacksUpChangedBytesBeforeRestore(t *testing.T) {
 }
 
 func TestRefreshRejectsUnknownDurablePhase(t *testing.T) {
+	t.Parallel()
 	m, w, _ := recoveryFixture(t)
 	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
 	require.NoError(t, atomicJSON(path, refreshIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: "unknown"}))
@@ -73,8 +74,10 @@ func TestRefreshRejectsUnknownDurablePhase(t *testing.T) {
 }
 
 func TestRecoverLinksPendingAggregateRestoresAbsence(t *testing.T) {
+	t.Parallel()
 	for _, pending := range []bool{true, false} {
 		t.Run(map[bool]string{true: "pending", false: "not-pending"}[pending], func(t *testing.T) {
+			t.Parallel()
 			m, w, j := recoveryFixture(t)
 			var entry *linkFile
 			for i := range j.Files {
@@ -113,6 +116,7 @@ func TestRecoverLinksPendingAggregateRestoresAbsence(t *testing.T) {
 }
 
 func TestPreserveGeneratedEditsReportsDeletedPath(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	prepared, err := PrepareGeneratedTree(w, "bin", "generation")
 	require.NoError(t, err)
@@ -127,6 +131,7 @@ func TestPreserveGeneratedEditsReportsDeletedPath(t *testing.T) {
 }
 
 func TestRefreshRejectsChangedCapturedTargetsBeforeRecoveryMutation(t *testing.T) {
+	t.Parallel()
 	m, w, _ := recoveryFixture(t)
 	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
 	intent := refreshIntent{
@@ -146,6 +151,7 @@ func TestRefreshRejectsChangedCapturedTargetsBeforeRecoveryMutation(t *testing.T
 }
 
 func TestRefreshConfigurationAcceptsOnlyCapturedProgress(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	upstreamCommit(t, remote, "package.json", `{"name":"changed","packageManager":"pnpm@12.14.0"}`)
 	plan, err := m.PlanUpdate(context.Background(), w.Manifest.Slug, UpdateOptions{})
@@ -160,12 +166,12 @@ func TestRefreshConfigurationAcceptsOnlyCapturedProgress(t *testing.T) {
 }
 
 func TestRefreshUsesSavedLaunchEvidenceBeforeFirstAcceptedLink(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "first-launch-recovery"})
-	require.NoError(t, err)
-	_, _, accepted := recoveryFixture(t)
-	options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence}
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "first-launch-recovery"})
+	var err error
+	options := LaunchOptions{Mode: "browser", LinkEvidence: fixtureLinkEvidence()}
 	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), options))
 	_, err = m.ProtocolEvidence(ctx, w.Manifest.WorkspaceID)
 	require.True(t, os.IsNotExist(err))
@@ -185,6 +191,22 @@ func TestRefreshUsesSavedLaunchEvidenceBeforeFirstAcceptedLink(t *testing.T) {
 }
 
 func TestCapturedRefreshReportsSafeOptionDiffAndResumesSavedIntent(t *testing.T) {
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	ctx := context.Background()
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "captured-options"})
+	var err error
+	saved := LaunchOptions{Mode: "browser"}
+	intent := refreshIntent{
+		WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
+		Evidence: LinkProtocolEvidence{Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true},
+		Launch:   saved,
+	}
+	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+	require.NoError(t, atomicJSON(path, intent))
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	// Every rejected override must preserve this same intent for the final resume.
 	for _, test := range []struct {
 		field  string
 		change func(*LaunchOptions)
@@ -199,23 +221,9 @@ func TestCapturedRefreshReportsSafeOptionDiffAndResumesSavedIntent(t *testing.T)
 		{"timeout", func(o *LaunchOptions) { o.Timeout++ }},
 	} {
 		t.Run(test.field, func(t *testing.T) {
-			m, _ := fixtureManager(t)
-			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "captured-options"})
-			require.NoError(t, err)
-			_, _, j := recoveryFixture(t)
-			saved := LaunchOptions{Mode: "browser"}
-			intent := refreshIntent{
-				WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
-				Evidence: j.Evidence, Launch: saved,
-			}
-			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
-			require.NoError(t, atomicJSON(path, intent))
-			before, err := os.ReadFile(path)
-			require.NoError(t, err)
 			requested := saved
 			test.change(&requested)
-			_, err = m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{Launch: &requested})
+			_, err := m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{Launch: &requested})
 			var failure *devcontract.Error
 			require.ErrorAs(t, err, &failure)
 			require.Equal(t, "refresh_intent_mismatch", failure.Code)
@@ -232,16 +240,17 @@ func TestCapturedRefreshReportsSafeOptionDiffAndResumesSavedIntent(t *testing.T)
 			after, err := os.ReadFile(path)
 			require.NoError(t, err)
 			require.Equal(t, before, after)
-			result, err := m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{})
-			require.NoError(t, err)
-			require.Equal(t, sourceUpdateComplete, result.Phase)
-			require.Equal(t, "stopped", result.Status.Phase)
 		})
 	}
+	result, err := m.Recover(ctx, w.Manifest.WorkspaceID, RefreshOptions{})
+	require.NoError(t, err)
+	require.Equal(t, sourceUpdateComplete, result.Phase)
+	require.Equal(t, "stopped", result.Status.Phase)
 }
 
 func TestRecoverResumesJournalOnlyCreation(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	registry, err := LoadRegistry(ctx, m.Root)
 	require.NoError(t, err)

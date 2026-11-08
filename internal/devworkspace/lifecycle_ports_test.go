@@ -10,7 +10,8 @@ import (
 )
 
 func TestPortPolicyDefaultExplicitSelectionAndImmutableOptionMaps(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
@@ -35,7 +36,8 @@ func TestPortPolicyDefaultExplicitSelectionAndImmutableOptionMaps(t *testing.T) 
 }
 
 func TestInvalidPortPolicyHasNoWorkspaceOrGitEffects(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "ui")
 	ctx := context.Background()
 	source := filepath.Join(root, "omniview")
 	before := fixtureGit(t, source, "worktree", "list", "--porcelain")

@@ -32,6 +32,7 @@ func recoveryWatchHooks(t *testing.T, g *BuildGraph, started chan struct{}) Watc
 }
 
 func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -110,6 +111,7 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 }
 
 func TestWatchRejectsNewAggregatePNPMModuleHook(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

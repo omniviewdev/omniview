@@ -22,10 +22,11 @@ import (
 )
 
 func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "failed-launch"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "failed-launch"})
+	var err error
 	generation := NewGeneration()
 	owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
 	child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
@@ -84,12 +85,13 @@ func TestStartRetainsFailedSupervisorForRecovery(t *testing.T) {
 }
 
 func TestRestartStoppedWorkspaceReachesLaunchPreconditions(t *testing.T) {
+	t.Parallel()
 	for _, recorded := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing", true: "exited"}[recorded], func(t *testing.T) {
-			m, _ := fixtureManager(t)
+			m, _ := fixtureManager(t, "omniview")
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "restart-stopped"})
-			require.NoError(t, err)
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "restart-stopped"})
+			var err error
 			require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "browser"}))
 			if recorded {
 				generation := NewGeneration()
@@ -111,6 +113,7 @@ func TestRestartStoppedWorkspaceReachesLaunchPreconditions(t *testing.T) {
 }
 
 func TestStoppedRefreshMovesFailureToHistory(t *testing.T) {
+	t.Parallel()
 	m, w, j := recoveryFixture(t)
 	ctx := context.Background()
 	generation := NewGeneration()
@@ -147,6 +150,7 @@ func TestStoppedRefreshMovesFailureToHistory(t *testing.T) {
 }
 
 func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []string{refreshStart, refreshVerify} {
 		t.Run(phase, func(t *testing.T) {
 			m, w, j := recoveryFixture(t)
@@ -207,10 +211,11 @@ func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T)
 }
 
 func TestFailedRefreshShutdownRejectsSuccessorGeneration(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "failed-owner-successor"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "failed-owner-successor"})
+	var err error
 	generation := NewGeneration()
 	owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root}
 	child, err := startOwnedChild(ctx, w.Root, os.Environ(), io.Discard, owner, nil, "/bin/sleep", "300")
@@ -234,9 +239,12 @@ func TestFailedRefreshShutdownRejectsSuccessorGeneration(t *testing.T) {
 }
 
 func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
+	t.Parallel()
 	for _, replacement := range []string{"before-start", "before-verify", "between-verify-and-start", "same-generation-before-start", "same-generation-between-reads", "unbound-legacy", "missing-native-handoff"} {
 		t.Run(replacement, func(t *testing.T) {
-			m, w, j := recoveryFixture(t)
+			t.Parallel()
+			m, _ := fixtureManager(t, "omniview")
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "recovery"})
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			var stops atomic.Int32
@@ -273,7 +281,7 @@ func TestRecoverDoesNotRetireUnrelatedFailedSuccessor(t *testing.T) {
 			}
 			successor, replacementChild, replacementOwner := startOwner(successorGeneration)
 			intent := refreshIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart,
-				Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, WasRunning: true,
+				Evidence: fixtureLinkEvidence(), Launch: LaunchOptions{Mode: "browser"}, WasRunning: true,
 				LaunchGenerations: []string{attempt.Generation}}
 			if replacement == "before-verify" || replacement == "between-verify-and-start" || replacement == "same-generation-between-reads" {
 				intent.Phase = refreshVerify

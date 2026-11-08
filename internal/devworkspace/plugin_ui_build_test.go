@@ -7,7 +7,8 @@ import (
 )
 
 func TestPluginUIClosureBuildsRealJavaScriptDependenciesOnly(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	nodes, err := pluginUINodes(g.Nodes, "plugin")
 	require.NoError(t, err)
 	ids := make([]string, 0, len(nodes))
@@ -19,7 +20,8 @@ func TestPluginUIClosureBuildsRealJavaScriptDependenciesOnly(t *testing.T) {
 }
 
 func TestPluginUIClosureRejectsUnknownTargetAndMissingDependency(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	_, err := pluginUINodes(g.Nodes, "absent")
 	require.Error(t, err)
 	for i := range g.Nodes {
@@ -32,6 +34,7 @@ func TestPluginUIClosureRejectsUnknownTargetAndMissingDependency(t *testing.T) {
 }
 
 func TestPluginUIClosureRejectsNativeDependencyRatherThanBuildingIt(t *testing.T) {
+	t.Parallel()
 	nodes := []BuildNode{
 		{ID: "backend", Kind: "plugin-backend"},
 		{ID: "plugin-ui:kubernetes", Kind: "javascript", Dependencies: []string{"backend"}},
@@ -41,6 +44,7 @@ func TestPluginUIClosureRejectsNativeDependencyRatherThanBuildingIt(t *testing.T
 }
 
 func TestPluginUIClosureRejectsCyclesAndDuplicateNodeIdentities(t *testing.T) {
+	t.Parallel()
 	nodes := []BuildNode{
 		{ID: "runtime", Kind: "javascript", Dependencies: []string{"plugin-ui:kubernetes"}},
 		{ID: "plugin-ui:kubernetes", Kind: "javascript", Dependencies: []string{"runtime"}},

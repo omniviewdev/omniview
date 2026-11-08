@@ -12,6 +12,7 @@ import (
 )
 
 func TestBrowserSurfaceRequiresExactInjectedGeneration(t *testing.T) {
+	t.Parallel()
 	expected := devcontract.BootIdentity{SchemaVersion: 1, InstanceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Kind: "development", DisplayName: "Fixture"}
 	var document atomic.Value
 	document.Store("<html>__OMNIVIEW_INSTANCE__ " + expected.InstanceID + "</html>")

@@ -2,6 +2,7 @@ package devcontract
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -226,6 +227,91 @@ func TestResolveWorkspaceRejectsDanglingSymlinkIdentity(t *testing.T) {
 			}
 			if selected, err := ResolveWorkspace(ResolveOptions{Explicit: root, Home: home}); err == nil {
 				t.Fatalf("dangling symlink accepted as canonical workspace identity: %+v", selected)
+			}
+		})
+	}
+}
+
+func TestCanonicalPathResolvesMissingDescendantsAgainstCurrentAncestor(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	for _, name := range []string{"first", "second", "dangling"} {
+		target := filepath.Join(root, name)
+		if name != "dangling" {
+			if err := os.Mkdir(target, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Symlink(target, alias); err != nil {
+			t.Fatal(err)
+		}
+		selected := filepath.Join(alias, "missing", "nested", "output")
+		got, err := CanonicalPath(selected)
+		if name == "dangling" {
+			if !os.IsNotExist(err) {
+				t.Fatalf("dangling ancestor reconstructed as %q: %v", got, err)
+			}
+		} else if want := filepath.Join(target, "missing", "nested", "output"); err != nil || got != want {
+			t.Fatalf("current ancestor %s: got %q, want %q: %v", name, got, want, err)
+		}
+		if err := os.Remove(alias); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCanonicalPathResolvesLongSymlinkedAncestor(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "output"), []byte("owned"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for index := 59; index >= 0; index-- {
+		next := "target"
+		if index < 59 {
+			next = fmt.Sprintf("link-%02d", index+1)
+		}
+		if err := os.Symlink(next, filepath.Join(root, fmt.Sprintf("link-%02d", index))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := CanonicalPath(filepath.Join(root, "link-00", "output"))
+	want := filepath.Join(target, "output")
+	if err != nil || got != want {
+		t.Fatalf("valid symlink chain: got %q, want %q: %v", got, want, err)
+	}
+}
+
+func BenchmarkCanonicalPath(b *testing.B) {
+	root, err := filepath.EvalSymlinks(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	existing := filepath.Join(root, "source")
+	if err := os.WriteFile(existing, []byte("source"), 0600); err != nil {
+		b.Fatal(err)
+	}
+	for name, path := range map[string]string{
+		"existing": existing,
+		"missing":  filepath.Join(root, "missing", "nested", "output"),
+	} {
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				if got, err := CanonicalPath(path); err != nil || got != path {
+					b.Fatalf("canonical path: got %q, want %q: %v", got, path, err)
+				}
 			}
 		})
 	}

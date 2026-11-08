@@ -33,6 +33,7 @@ type preflightRetentionConfig struct {
 // The helper runs real retained owners without building the desktop application.
 // Both control readiness and served cohort bytes come from the host child.
 func TestUpstreamPreflightRetentionProcess(t *testing.T) {
+	t.Parallel()
 	mode := os.Getenv("OMNIVIEW_PREFLIGHT_RETENTION_MODE")
 	if mode == "" {
 		return
@@ -141,6 +142,7 @@ func TestUpstreamPreflightRetentionProcess(t *testing.T) {
 }
 
 func TestUpstreamFetchFailureKeepsReadyRetainedCohortReachable(t *testing.T) {
+	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

@@ -35,9 +35,10 @@ func feedbackShutdownChildren(t *testing.T, s *workspaceSupervisor) (*ownedChild
 }
 
 func TestViteFeedbackUnfencedShutdownRetiresViteBeforeBackend(t *testing.T) {
+	t.Parallel()
 	for _, refusal := range []bool{false, true} {
 		t.Run(map[bool]string{false: "vite-retired", true: "vite-disposal-refused"}[refusal], func(t *testing.T) {
-			_, s, _, path := feedbackWatchFixture(t)
+			_, s, _, path := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true, Stage: graphFixturePlanned})
 			ctx := context.Background()
 			change := WatchChange{Nodes: []string{"host-backend"}}
 			if err := s.beginFeedback(ctx, change); err != nil {
@@ -139,9 +140,10 @@ func assertFeedbackChildrenRetained(t *testing.T, s *workspaceSupervisor, retain
 }
 
 func TestViteFeedbackSyncFailureRetainsOwnerPublicationForDurableRetry(t *testing.T) {
+	t.Parallel()
 	for _, publication := range []string{"shutdown-hold", "release"} {
 		t.Run(publication, func(t *testing.T) {
-			_, s, _, _ := feedbackWatchFixture(t)
+			_, s, _, _ := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true, Stage: graphFixturePlanned})
 			ctx := context.Background()
 			change := WatchChange{Nodes: []string{"host-backend"}}
 			if err := s.beginFeedback(ctx, change); err != nil {

@@ -20,6 +20,7 @@ import (
 )
 
 func TestSourceUpdateSuccessfulBuildCannotCommitFailedPluginReadiness(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"RPC", "controllers", "Vite"} {
 		t.Run(stage, func(t *testing.T) { testSourceUpdateFailedReadiness(t, stage) })
 	}
@@ -29,7 +30,7 @@ func testSourceUpdateFailedReadiness(t *testing.T, stage string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, "kubernetes")
 	source := filepath.Join(root, "omniview")
 	packageJSON := `{"name":"fixture","private":true,"packageManager":"pnpm@12.14.0",` +
 		`"scripts":{"build":"fixture-compiler"}}`
@@ -42,12 +43,11 @@ func testSourceUpdateFailedReadiness(t *testing.T, stage string) {
 	writeGraphFixture(t, filepath.Join(source, ".gitignore"), "dist/\nnode_modules/\n")
 	fixtureGit(t, source, "add", ".")
 	fixtureGit(t, source, "commit", "-m", "readiness composition")
-	w, err := m.Create(ctx, CreateOptions{Slug: "failed-readiness", Plugins: []string{"kubernetes"}})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "failed-readiness", Plugins: []string{"kubernetes"}})
 	evidence := LinkProtocolEvidence{
 		Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
 	}
-	_, err = m.Link(ctx, w.Manifest.WorkspaceID, LinkOptions{Evidence: evidence})
+	_, err := m.Link(ctx, w.Manifest.WorkspaceID, LinkOptions{Evidence: evidence})
 	require.NoError(t, err)
 	links, err := loadLinkJournal(w)
 	require.NoError(t, err)

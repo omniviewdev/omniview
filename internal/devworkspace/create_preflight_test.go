@@ -11,7 +11,8 @@ import (
 )
 
 func TestCreateLaunchPreflightRequiresSDKSelection(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	options := LaunchOptions{
 		Mode: "browser",
 		LinkEvidence: LinkProtocolEvidence{

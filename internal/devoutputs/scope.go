@@ -10,10 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -122,6 +124,12 @@ func (s scope) repository(path string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	return s.canonicalRepository(path)
+}
+
+// canonicalRepository only checks the selected boundary. Callers must have
+// just validated this path with cleanPath, without an intervening mutation.
+func (s scope) canonicalRepository(path string) (string, string, error) {
 	for _, root := range s.repos {
 		if contains(root, path) {
 			relative, _ := filepath.Rel(root, path)
@@ -157,7 +165,7 @@ func (s scope) spec(consumer string, kind Producer) (specification, error) {
 		}
 		return spec, nil
 	}
-	repo, _, err := s.repository(consumer)
+	repo, _, err := s.canonicalRepository(consumer)
 	if err != nil {
 		return spec, err
 	}
@@ -214,15 +222,20 @@ func (s scope) spec(consumer string, kind Producer) (specification, error) {
 		return spec, err
 	}
 	if kind != viteCache {
-		if _, _, err = s.repository(target); err != nil {
+		if _, _, err = s.canonicalRepository(target); err != nil {
 			return spec, err
 		}
 	}
 	return spec, nil
 }
 func runGit(ctx context.Context, repo string, args ...string) ([]byte, error) {
+	return runGitInput(ctx, repo, nil, args...)
+}
+
+func runGitInput(ctx context.Context, repo string, input io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repo
+	cmd.Stdin = input
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch key {
@@ -267,6 +280,12 @@ func tracked(ctx context.Context, spec specification) (map[string]committedFile,
 	if err != nil {
 		return nil, err
 	}
+	type requestedBlob struct {
+		relative, oid string
+		mode          os.FileMode
+	}
+	var blobs []requestedBlob
+	var requests strings.Builder
 	for _, record := range bytes.Split(raw, []byte{0}) {
 		if len(record) == 0 {
 			continue
@@ -287,15 +306,37 @@ func tracked(ctx context.Context, spec specification) (map[string]committedFile,
 		if len(fields) != 3 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
 			return nil, fmt.Errorf("producer baseline contains a non-regular tracked source file")
 		}
-		data, err := runGit(ctx, spec.Repository, "cat-file", "blob", fields[2])
-		if err != nil {
-			return nil, err
-		}
 		mode := os.FileMode(0644)
 		if fields[0] == "100755" {
 			mode = 0755
 		}
-		result[relative] = committedFile{Data: data, Mode: mode}
+		blobs = append(blobs, requestedBlob{relative: relative, oid: fields[2], mode: mode})
+		requests.WriteString(fields[2])
+		requests.WriteByte('\n')
+	}
+	if len(blobs) == 0 {
+		return result, nil
+	}
+	// One fresh batch replaces one cat-file process per committed file.
+	raw, err = runGitInput(ctx, spec.Repository, strings.NewReader(requests.String()), "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	for _, blob := range blobs {
+		header, rest, ok := bytes.Cut(raw, []byte{'\n'})
+		fields := strings.Fields(string(header))
+		if !ok || len(fields) != 3 || fields[0] != blob.oid || fields[1] != "blob" {
+			return nil, fmt.Errorf("invalid committed source blob response")
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil || size < 0 || size >= len(rest) || rest[size] != '\n' {
+			return nil, fmt.Errorf("invalid committed source blob size")
+		}
+		result[blob.relative] = committedFile{Data: rest[:size:size], Mode: blob.mode}
+		raw = rest[size+1:]
+	}
+	if len(raw) != 0 {
+		return nil, fmt.Errorf("unexpected committed source blob data")
 	}
 	return result, nil
 }
@@ -453,19 +494,23 @@ func packagePrefix(pattern, parts []string) bool {
 	return err == nil && matched && packagePrefix(pattern[1:], parts[1:])
 }
 func readJournal(s scope) (journal, error) {
-	return readJournalMode(s, false)
-}
-
-func readJournalMode(s scope, inspection bool) (journal, error) {
-	j := journal{Version: 1, WorkspaceID: s.workspace.Manifest.WorkspaceID, Root: s.workspace.Root, Repositories: s.repos, RepositoryIdentities: s.identities, Entries: map[string]*outputEntry{}}
 	raw, err := readJournalBytes(s.path)
 	if os.IsNotExist(err) {
-		return j, nil
+		return emptyJournal(s), nil
 	}
 	if err != nil {
-		return j, err
+		return emptyJournal(s), err
 	}
-	if err = json.Unmarshal(raw, &j); err != nil {
+	return decodeJournal(s, raw, false)
+}
+
+func emptyJournal(s scope) journal {
+	return journal{Version: 1, WorkspaceID: s.workspace.Manifest.WorkspaceID, Root: s.workspace.Root, Repositories: s.repos, RepositoryIdentities: s.identities, Entries: map[string]*outputEntry{}}
+}
+
+func decodeJournal(s scope, raw []byte, inspection bool) (journal, error) {
+	j := emptyJournal(s)
+	if err := json.Unmarshal(raw, &j); err != nil {
 		return j, err
 	}
 	if j.Version != 1 || j.WorkspaceID != s.workspace.Manifest.WorkspaceID || j.Entries == nil {
@@ -500,7 +545,7 @@ func readJournalMode(s scope, inspection bool) (journal, error) {
 		return j, fmt.Errorf("selected repository directory identity changed")
 	}
 	for key, entry := range j.Entries {
-		if err = validateEntryRecord(entry); err != nil {
+		if err := validateEntryRecord(entry); err != nil {
 			return j, err
 		}
 		expected, e := s.spec(entry.Spec.Consumer, entry.Spec.Kind)

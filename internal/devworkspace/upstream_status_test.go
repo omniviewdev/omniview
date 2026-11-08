@@ -1,7 +1,6 @@
 package devworkspace
 
 import (
-	"context"
 	"errors"
 	"io"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 )
 
 func TestNextCommandQuotesLiteralShellMetacharacters(t *testing.T) {
+	t.Parallel()
 	values := []string{"space path", "$(exit 29)", "`exit 31`", "quote'path", "$HOME", "semi;colon"}
 	for _, value := range values {
 		command := "printf '%s' " + shellArgument(value)
@@ -27,11 +27,11 @@ func TestNextCommandQuotesLiteralShellMetacharacters(t *testing.T) {
 }
 
 func TestFailedLaunchRecoveryTargetsOriginalProfileOutsideCollection(t *testing.T) {
-	m, _ := fixtureManager(t)
-	failed, err := m.Create(context.Background(), CreateOptions{Slug: "failed"})
-	require.NoError(t, err)
-	other, err := m.Create(context.Background(), CreateOptions{Slug: "other"})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	failed := fixtureWorkspace(t, m, CreateOptions{Slug: "failed"})
+	var err error
+	other := fixtureWorkspace(t, m, CreateOptions{Slug: "other"})
 	s := &workspaceSupervisor{
 		workspace: failed,
 		status:    Status{Workspace: failed, Phase: "building"},

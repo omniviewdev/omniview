@@ -20,13 +20,15 @@ type item struct {
 }
 type snapshot map[string]item
 
-// Scratch belongs to one observation, never to a path or a prior snapshot.
+// Hash state belongs to one observation, never to a path or a prior snapshot.
 type snapshotReader struct {
 	digest hash.Hash
-	buffer []byte
 	sum    [sha256.Size]byte
 	source struct{ io.Reader }
 }
+
+// Only scratch bytes are pooled. File metadata and content digests stay fresh.
+var snapshotBuffers = sync.Pool{New: func() any { return new([32 * 1024]byte) }}
 
 func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	result := snapshot{}
@@ -60,6 +62,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	var readErrors chan error
 	var readers sync.WaitGroup
 	var resultMu sync.Mutex
+	regularFiles := 0
 	err = filepath.WalkDir(spec.Target, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -96,7 +99,11 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		if err != nil {
 			return err
 		}
-		if workers > 1 && spec.Mode != filteredOutputMode && info.Mode().IsRegular() {
+		if info.Mode().IsRegular() {
+			regularFiles++
+		}
+		// A one-file tree needs neither worker goroutines nor a result mutex.
+		if workers > 1 && spec.Mode != filteredOutputMode && info.Mode().IsRegular() && regularFiles > 1 {
 			if files == nil {
 				files = make(chan fileRead, workers*2)
 				readErrors = make(chan error, workers)
@@ -187,12 +194,13 @@ func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks boo
 		}
 		if reader.digest == nil {
 			reader.digest = sha256.New()
-			reader.buffer = make([]byte, 32*1024)
 		}
 		reader.digest.Reset()
 		// Expose only Read: os.File.WriteTo would bypass CopyBuffer's scratch.
 		reader.source.Reader = stream
-		_, copyErr := io.CopyBuffer(reader.digest, &reader.source, reader.buffer)
+		buffer := snapshotBuffers.Get().(*[32 * 1024]byte)
+		_, copyErr := io.CopyBuffer(reader.digest, &reader.source, buffer[:])
+		snapshotBuffers.Put(buffer)
 		reader.source.Reader = nil
 		closeErr := stream.Close()
 		if copyErr != nil {

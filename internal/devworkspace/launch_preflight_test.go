@@ -7,6 +7,7 @@ import (
 )
 
 func TestLaunchPreflightRequiresActualProtocolProof(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	sdk := "plugin-sdk"
 	w.Manifest.Links.SDKRepositoryID = &sdk

@@ -1,6 +1,7 @@
 package devoutputs
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -499,5 +500,113 @@ func BenchmarkSnapshotModuleFiles(b *testing.B) {
 		if _, err := snapshotPath(spec, nil); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func BenchmarkSnapshotSizes(b *testing.B) {
+	for _, count := range []int{1, 8, 256} {
+		b.Run(fmt.Sprintf("files=%d", count), func(b *testing.B) {
+			root := b.TempDir()
+			data := make([]byte, 1024)
+			for file := range count {
+				if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("f%d.js", file)), data, 0600); err != nil {
+					b.Fatal(err)
+				}
+			}
+			spec := specification{Target: root, Mode: "directory"}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, err := snapshotPath(spec, nil); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkCommittedOutputBaseline(b *testing.B) {
+	for _, count := range []int{1, 64} {
+		b.Run(fmt.Sprintf("files=%d", count), func(b *testing.B) {
+			root := b.TempDir()
+			target := filepath.Join(root, "dist")
+			if err := os.Mkdir(target, 0700); err != nil {
+				b.Fatal(err)
+			}
+			for file := range count {
+				if err := os.WriteFile(filepath.Join(target, fmt.Sprintf("f%d.js", file)), []byte("committed source\n"), 0600); err != nil {
+					b.Fatal(err)
+				}
+			}
+			for _, args := range [][]string{
+				{"init", "--template=", "-b", "main"}, {"add", "."},
+				{"-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "initial"},
+			} {
+				if _, err := runGit(context.Background(), root, args...); err != nil {
+					b.Fatal(err)
+				}
+			}
+			spec := specification{Repository: root, Target: target, Relative: "dist", Mode: "tree"}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, err := tracked(context.Background(), spec); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestTrackedBaselinePreservesBlobFramingModesAndHead(t *testing.T) {
+	t.Parallel()
+	_, root := outputFixture(t)
+	files := map[string][]byte{
+		"empty.js":      nil,
+		"binary.js":     bytes.Repeat([]byte{0, '\n', 255, 'b'}, 20000),
+		"executable.js": []byte("#!/bin/sh\nprintf 'source\\n'\n"),
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(root, "dist", name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outputGit(t, root, "add", "-f", "dist")
+	outputGit(t, root, "update-index", "--chmod=+x", "dist/executable.js")
+	outputGit(t, root, "commit", "-m", "committed output baseline")
+	spec := specification{Repository: root, Target: filepath.Join(root, "dist"), Relative: "dist", Mode: "tree"}
+	baseline, err := tracked(context.Background(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		mode := os.FileMode(0644)
+		if name == "executable.js" {
+			mode = 0755
+		}
+		if got, ok := baseline[name]; !ok || got.Mode != mode || !bytes.Equal(got.Data, data) {
+			t.Fatalf("committed source %s changed: %+v", name, got)
+		}
+	}
+	replacement := []byte("new committed source\n")
+	if err := os.WriteFile(filepath.Join(root, "dist/binary.js"), replacement, 0600); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err := tracked(context.Background(), spec)
+	if err != nil || !bytes.Equal(dirty["binary.js"].Data, files["binary.js"]) {
+		t.Fatalf("working-tree bytes replaced the committed baseline: %v", err)
+	}
+	outputGit(t, root, "add", "-f", "dist/binary.js")
+	outputGit(t, root, "commit", "-m", "advance committed baseline")
+	current, err := tracked(context.Background(), spec)
+	if err != nil || !bytes.Equal(current["binary.js"].Data, replacement) || !bytes.Equal(baseline["binary.js"].Data, files["binary.js"]) {
+		t.Fatalf("fresh HEAD was not isolated from prior baseline: %v", err)
+	}
+	oid := outputGit(t, root, "rev-parse", "HEAD:dist/binary.js")
+	if err := os.Remove(filepath.Join(root, ".git", "objects", oid[:2], oid[2:])); err != nil {
+		t.Fatal(err)
+	}
+	if image, err := tracked(context.Background(), spec); err == nil || image != nil {
+		t.Fatalf("missing committed blob produced an accepted baseline: %v", err)
 	}
 }

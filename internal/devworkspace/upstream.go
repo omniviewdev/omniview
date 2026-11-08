@@ -477,7 +477,7 @@ func upstreamDirtyPaths(ctx context.Context, r resource, overlays map[string]str
 		if record == "" {
 			continue
 		}
-		path, xy, parseErr := parseUpstreamStatusRecord(record)
+		path, xy, parseErr := parseGitStatusRecord(record)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -496,7 +496,7 @@ func upstreamDirtyPaths(ctx context.Context, r resource, overlays map[string]str
 	return paths, nil
 }
 
-func parseUpstreamStatusRecord(record string) (string, string, error) {
+func parseGitStatusRecord(record string) (string, string, error) {
 	const (
 		untrackedPrefixLength = 3
 		ordinaryFields        = 9

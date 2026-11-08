@@ -20,10 +20,12 @@ import (
 )
 
 func TestSupervisorDeadlineEdgesStalledStatusBodyRetainsOwner(t *testing.T) {
+	t.Parallel()
 	testSupervisorStalledStatusBody(t, false)
 }
 
 func TestSupervisorDeadlineEdgesCompleteStatusRequiresBoundedEOF(t *testing.T) {
+	t.Parallel()
 	testSupervisorStalledStatusBody(t, true)
 }
 
@@ -34,7 +36,7 @@ func testSupervisorStalledStatusBody(t *testing.T, complete bool) {
 	identity, err := devsession.CaptureProcess(os.Getpid(), owner)
 	require.NoError(t, err)
 	token := []byte("stalled-status-body-exact-supervisor-capability")
-	started, release := make(chan struct{}), make(chan struct{})
+	started, release := make(chan struct{}, 2), make(chan struct{})
 	var releaseOnce sync.Once
 	server := httptest.NewServer(http.HandlerFunc(func(out http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer "+string(token) {
@@ -48,7 +50,7 @@ func testSupervisorStalledStatusBody(t *testing.T, complete bool) {
 			_, _ = io.WriteString(out, `{"status":`)
 		}
 		out.(http.Flusher).Flush()
-		close(started)
+		started <- struct{}{}
 		select {
 		case <-request.Context().Done():
 		case <-release:
@@ -61,9 +63,20 @@ func testSupervisorStalledStatusBody(t *testing.T, complete bool) {
 	require.NoError(t, rawSaveLaunchJSON(launchPath(s.workspace, "supervisor.json"), record))
 	before, err := os.ReadFile(launchPath(s.workspace, "supervisor.json"))
 	require.NoError(t, err)
+	// Exercise the client's body/EOF deadline without a caller deadline, but
+	// use a short policy instead of sleeping through the production budget.
+	_, clientErr := callSupervisorWithStatusTimeout(context.Background(), record, token, supervisorStatusCommand, 250*time.Millisecond)
+	require.ErrorIs(t, clientErr, context.DeadlineExceeded)
+	select {
+	case <-started:
+	default:
+		t.Fatal("client deadline did not exercise the authenticated response body")
+	}
+	observation, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
 	result := make(chan supervisorEdgeResult, 1)
 	go func() {
-		status, err := s.manager.Status(context.Background(), s.workspace.Manifest.WorkspaceID)
+		status, err := s.manager.Status(observation, s.workspace.Manifest.WorkspaceID)
 		result <- supervisorEdgeResult{status, err}
 	}()
 	joined := false
@@ -81,8 +94,8 @@ func testSupervisorStalledStatusBody(t *testing.T, complete bool) {
 	var observed supervisorEdgeResult
 	select {
 	case observed = <-result:
-	case <-time.After(supervisorStatusClientTimeout + time.Second):
-		t.Error("inspection has no bounded response-body wait without a caller deadline")
+	case <-time.After(3 * time.Second):
+		t.Error("timed-out inspection did not return while retaining its owner")
 		releaseOnce.Do(func() { close(release) })
 		observed = receiveSupervisorEdge(t, result)
 	}

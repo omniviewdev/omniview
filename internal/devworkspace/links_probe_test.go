@@ -21,6 +21,7 @@ import (
 // TestLinkPinnedProtocolProbe uses registered disposable selected repositories
 // and the actual native12 executable. Evidence is emitted only after all gates.
 func TestLinkPinnedProtocolProbe(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("A11_PROTOCOL_PROBE") != "1" {
 		t.Skip("barrier-only pinned pnpm protocol probe; set A11_PROTOCOL_PROBE=1")
 	}
@@ -347,6 +348,7 @@ func protocolProbeDiagnostics(raw string) string {
 }
 
 func TestProtocolProbeDiagnosticsWithholdsUntrustedMessages(t *testing.T) {
+	t.Parallel()
 	raw := `{"level":"error","code":"ERR_PNPM_PEER_DEP_ISSUES","err":{"name":"PnpmError","message":"@omniviewdev/base-ui from https://private.example.invalid/package?token=secret-token Authorization: Bearer private-credential"}}`
 	require.Equal(t, "@omniviewdev/base-ui, ERR_PNPM_PEER_DEP_ISSUES, PnpmError", protocolProbeDiagnostics(raw))
 	require.Equal(t, "none recognized", protocolProbeDiagnostics("https://registry.invalid/?token=secret-token"))
@@ -422,6 +424,7 @@ func protocolProbeStreamSummary(raw string) string {
 }
 
 func TestProtocolProbeStreamSummaryExposesOnlySafeStructure(t *testing.T) {
+	t.Parallel()
 	raw := `{"level":"error","err":{"message":"invalid version range workspace:* at https://private.example.invalid?token=secret-token","code":"ERR_PNPM_PEER_DEP_ISSUES"},"Authorization":"private-credential"}`
 	summary := protocolProbeStreamSummary(raw)
 	require.Contains(t, summary, `"jsonRecords":1`)
@@ -447,6 +450,7 @@ func protocolProbePeerDetails(message string) [][]string {
 }
 
 func TestProtocolProbePeerDetailsRetainsOnlyControlledRelationships(t *testing.T) {
+	t.Parallel()
 	message := "@omniviewdev/ai-ui 0.0.1\nunmet peer @omniviewdev/base-ui@workspace:*: found 0.0.1 via link:/private/credential-bearing-path?token=secret-token"
 	require.Equal(t, [][]string{
 		{"@omniviewdev/ai-ui", "0.0.1"},
@@ -455,6 +459,7 @@ func TestProtocolProbePeerDetailsRetainsOnlyControlledRelationships(t *testing.T
 }
 
 func TestProtocolProbePeerDetailsRetainsNativeRendererContinuations(t *testing.T) {
+	t.Parallel()
 	message := "unmet peer react\n  Installed: link:/private/credential-bearing-path?token=secret-token\n  Wanted:\n    ^19.0.0:\n      @omniviewdev/base-ui@0.0.1"
 	require.Equal(t, [][]string{
 		{"unmet peer", "react"},

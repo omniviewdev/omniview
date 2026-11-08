@@ -338,6 +338,8 @@ func goVersion(ctx context.Context, directory string) (string, error) {
 
 var parentReference = regexp.MustCompile(`(?:^|[\s"'=])((?:\.\./)+[^\s"'&|;<>()]+)`)
 
+var sourcePathspecEscaper = strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`)
+
 // sourceInputs hashes the selected repository files a node reads: everything
 // below its directory, files directly inside each ancestor up to the
 // repository root (shared configs, manifests and lockfiles), and paths outside
@@ -391,7 +393,29 @@ func (g *BuildGraph) sourceInputs(ctx context.Context, n BuildNode, hash io.Writ
 			outputs = append(outputs, filepath.Join(node.Directory, "shims"))
 		}
 	}
-	listing, err := git(ctx, repository, "", "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	listingArgs := []string{"ls-files", "--cached", "--others", "--exclude-standard", "-z"}
+	if !slices.Contains(trees, ".") {
+		// Ask Git only for selected trees and direct ancestor files. Listing
+		// every sibling package makes each node scale with the whole repository.
+		paths := []string{":(top,glob)*"}
+		for ancestor := filepath.ToSlash(filepath.Dir(directory)); ancestor != "."; ancestor = filepath.ToSlash(filepath.Dir(ancestor)) {
+			paths = append(paths, ":(top,glob)"+sourcePathspecEscaper.Replace(ancestor)+"/*")
+		}
+		for _, tree := range trees {
+			paths = append(paths, ":(top,literal)"+tree)
+		}
+		size := 0
+		for _, path := range paths {
+			size += len(path) + 1
+		}
+		// Preserve full-listing behavior rather than exceed native argument
+		// limits when a manifest references unusually many external trees.
+		if size <= 4096 {
+			listingArgs = append(listingArgs, "--")
+			listingArgs = append(listingArgs, paths...)
+		}
+	}
+	listing, err := git(ctx, repository, "", listingArgs...)
 	if err != nil {
 		return err
 	}

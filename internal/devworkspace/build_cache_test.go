@@ -11,6 +11,7 @@ import (
 )
 
 func TestCompilerCacheOwnsUUIDRuntimeWithoutInitializingState(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	home, err := devcontract.CanonicalPath(t.TempDir())
 	if err != nil {

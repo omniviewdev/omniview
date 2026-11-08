@@ -15,6 +15,7 @@ import (
 )
 
 func TestSourceEdgesDependencyAuthorityBoundaries(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name       string
 		path       string
@@ -32,49 +33,76 @@ func TestSourceEdgesDependencyAuthorityBoundaries(t *testing.T) {
 		{"non-workspace-lock", "tools/pnpm-lock.yaml", "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\nimporters:\n  .: {}\n", false, false},
 		{"ordinary-source", "packages/widget/component.ts", "export const dependencyBoundarySentinel = true;\n", false, false},
 	}
+	type boundaryFixture struct {
+		m         *Manager
+		w         Workspace
+		remote    string
+		source    string
+		checkout  string
+		head      string
+		canonical string
+		baseline  UpdatePlan
+	}
+	// Each case gets an independent owned checkout and baseline plan.
+	newFixture := func(t *testing.T) *boundaryFixture {
+		t.Helper()
+		m, w, remote, source := upstreamFixture(t)
+		f := &boundaryFixture{m: m, w: w, remote: remote, source: source}
+		f.checkout = filepath.Join(w.Root, "omniview")
+		f.head = fixtureGit(t, f.checkout, "rev-parse", "HEAD")
+		f.canonical = fixtureGit(t, source, "rev-parse", "HEAD")
+		var err error
+		f.baseline, err = m.PlanUpdate(context.Background(), w.Manifest.WorkspaceID, UpdateOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "up_to_date", f.baseline.Result)
+		return f
+	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, w, remote, source := upstreamFixture(t)
-			checkout := filepath.Join(w.Root, "omniview")
-			before := fixtureGit(t, checkout, "rev-parse", "HEAD")
-			canonical := fixtureGit(t, source, "rev-parse", "HEAD")
-			baseline, err := m.PlanUpdate(context.Background(), w.Manifest.WorkspaceID, UpdateOptions{})
-			require.NoError(t, err)
-			require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(remote, tc.path)), 0700))
+			t.Parallel()
+			f := newFixture(t)
+			require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(f.remote, tc.path)), 0700))
 			if tc.workspace {
-				upstreamCommit(t, remote, "tools/pnpm-workspace.yaml", "packages:\n  - packages/*\n")
+				upstreamCommit(t, f.remote, "tools/pnpm-workspace.yaml", "packages:\n  - packages/*\n")
 			}
-			target := upstreamCommit(t, remote, tc.path, tc.content)
-			plan, err := m.PlanUpdate(context.Background(), w.Manifest.WorkspaceID, UpdateOptions{})
+			target := upstreamCommit(t, f.remote, tc.path, tc.content)
+			plan, err := f.m.PlanUpdate(context.Background(), f.w.Manifest.WorkspaceID, UpdateOptions{})
 			require.NoError(t, err)
 			require.Equal(t, "update_available", plan.Result)
 			require.Equal(t, target, plan.Repositories[0].TargetSHA)
+			require.Equal(t, f.head, plan.Repositories[0].ActualHEAD)
 			require.Equal(t, tc.dependency, plan.DependencyChanged)
 			if tc.dependency {
-				require.NotEqual(t, baseline.CompositionFingerprint, plan.CompositionFingerprint)
+				require.NotEqual(t, f.baseline.CompositionFingerprint, plan.CompositionFingerprint)
 			} else {
-				require.Equal(t, baseline.CompositionFingerprint, plan.CompositionFingerprint)
-				result, applyErr := m.applyPlannedUpdate(context.Background(), w.Manifest.WorkspaceID, plan, UpdateOptions{})
+				require.Equal(t, f.baseline.CompositionFingerprint, plan.CompositionFingerprint)
+				result, applyErr := f.m.applyPlannedUpdate(context.Background(), f.w.Manifest.WorkspaceID, plan, UpdateOptions{})
 				require.NoError(t, applyErr)
 				require.NotNil(t, result.Plan)
-				require.Equal(t, target, fixtureGit(t, checkout, "rev-parse", "HEAD"))
+				require.Equal(t, target, fixtureGit(t, f.checkout, "rev-parse", "HEAD"))
 			}
 			if tc.dependency {
 				// No composition evidence or launch is configured. Dependency updates
 				// must refuse rather than silently taking the source-only shortcut.
-				_, applyErr := m.applyPlannedUpdate(context.Background(), w.Manifest.WorkspaceID, plan, UpdateOptions{})
-				require.Error(t, applyErr)
-				require.Equal(t, before, fixtureGit(t, checkout, "rev-parse", "HEAD"))
+				_, applyErr := f.m.applyPlannedUpdate(context.Background(), f.w.Manifest.WorkspaceID, plan, UpdateOptions{})
+				var failure *devcontract.Error
+				require.ErrorAs(t, applyErr, &failure)
+				require.Equal(t, "refresh_evidence_required", failure.Code)
+				require.Equal(t, f.head, fixtureGit(t, f.checkout, "rev-parse", "HEAD"))
+				require.NoFileExists(t, sourceUpdatePath(f.m, f.w))
+				require.NoFileExists(t, filepath.Join(filepath.Dir(sourceUpdatePath(f.m, f.w)), "refresh.json"))
 			}
-			require.Equal(t, canonical, fixtureGit(t, source, "rev-parse", "HEAD"))
+			require.Equal(t, f.canonical, fixtureGit(t, f.source, "rev-parse", "HEAD"))
 		})
 	}
 }
 
 func TestSourceEdgesFollowConsentDoesNotExpandAfterEdit(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"configuration", "selection"} {
 		t.Run(change, func(t *testing.T) {
-			m, w, remote, _ := upstreamFixture(t)
+			t.Parallel()
+			m, w, remote, _ := upstreamFixture(t, "plugin-sdk")
 			checkout := filepath.Join(w.Root, "omniview")
 			before := fixtureGit(t, checkout, "rev-parse", "HEAD")
 			var target string
@@ -130,6 +158,7 @@ func TestSourceEdgesFollowConsentDoesNotExpandAfterEdit(t *testing.T) {
 }
 
 func TestSourceEdgesPreCanceledHeldAuthorityPreservesCapturedIntent(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t)
 	intent := sourceUpdateIntent{WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Plan: plan}
 	require.NoError(t, saveSourceUpdate(m, w, &intent, sourceUpdatePrepared))
@@ -167,34 +196,36 @@ func TestSourceEdgesPreCanceledHeldAuthorityPreservesCapturedIntent(t *testing.T
 }
 
 func TestSourceEdgesDependencyRecoveryRejectsLaunchOverrides(t *testing.T) {
+	t.Parallel()
+	m, w, plan := refreshPhaseFixture(t)
+	launch := LaunchOptions{
+		Mode: "browser", Watch: true, Timeout: time.Minute,
+	}
+	evidence := LinkProtocolEvidence{
+		Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
+	}
+	m.afterDurablePhase = func(kind, phase string) error {
+		if kind == "refresh" && phase == refreshStop {
+			return errPhaseInterrupted
+		}
+		return nil
+	}
+	refs := map[string]string{}
+	for _, repository := range plan.Repositories {
+		refs[repository.ID] = repository.TargetSHA
+	}
+	_, err := m.refresh(context.Background(), w.Manifest.WorkspaceID,
+		RefreshOptions{Launch: &launch, Evidence: evidence, plan: &plan}, refs)
+	require.ErrorIs(t, err, errPhaseInterrupted)
+	m.afterDurablePhase = nil
+	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+	manifest, err := os.ReadFile(w.ManifestPath)
+	require.NoError(t, err)
+	// Every override must refuse this same captured intent without changing it.
 	for _, change := range []string{"mode", "watch", "frontend", "baseline", "timeout"} {
 		t.Run(change, func(t *testing.T) {
-			m, w, plan := refreshPhaseFixture(t)
-			launch := LaunchOptions{
-				Mode: "browser", Watch: true, Timeout: time.Minute,
-			}
-			evidence := LinkProtocolEvidence{
-				Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
-			}
-			m.afterDurablePhase = func(kind, phase string) error {
-				if kind == "refresh" && phase == refreshStop {
-					return errPhaseInterrupted
-				}
-				return nil
-			}
-			refs := map[string]string{}
-			for _, repository := range plan.Repositories {
-				refs[repository.ID] = repository.TargetSHA
-			}
-			_, err := m.refresh(context.Background(), w.Manifest.WorkspaceID,
-				RefreshOptions{Launch: &launch, Evidence: evidence, plan: &plan}, refs)
-			require.ErrorIs(t, err, errPhaseInterrupted)
-			m.afterDurablePhase = nil
-			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
-			before, err := os.ReadFile(path)
-			require.NoError(t, err)
-			manifest, err := os.ReadFile(w.ManifestPath)
-			require.NoError(t, err)
 			override := launch
 			switch change {
 			case "mode":
@@ -208,9 +239,9 @@ func TestSourceEdgesDependencyRecoveryRejectsLaunchOverrides(t *testing.T) {
 			case "timeout":
 				override.Timeout = 2 * time.Minute
 			}
-			_, err = m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{Launch: &override})
+			_, recoverErr := m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{Launch: &override})
 			var typed *devcontract.Error
-			require.ErrorAs(t, err, &typed)
+			require.ErrorAs(t, recoverErr, &typed)
 			require.Equal(t, "refresh_intent_mismatch", typed.Code)
 			after, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
@@ -229,6 +260,7 @@ func TestSourceEdgesDependencyRecoveryRejectsLaunchOverrides(t *testing.T) {
 }
 
 func TestSourceEdgesCanceledAuthorityRequestCannotAcquireFreeLock(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

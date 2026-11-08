@@ -11,6 +11,7 @@ import (
 )
 
 func TestCaptureExecutedProcessWaitsForChildExec(t *testing.T) {
+	t.Parallel()
 	const self, launched = "/cache/omniview-dev", "/workspace/.local/bin/native/Omniview"
 	images := []string{self, self, launched}
 	calls := 0
@@ -28,6 +29,7 @@ func TestCaptureExecutedProcessWaitsForChildExec(t *testing.T) {
 }
 
 func TestCaptureExecutedProcessRefusesChildThatNeverExecs(t *testing.T) {
+	t.Parallel()
 	const self = "/cache/omniview-dev"
 	// The capture deadline is the only exit; the context only stops a regression from hanging.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -41,6 +43,7 @@ func TestCaptureExecutedProcessRefusesChildThatNeverExecs(t *testing.T) {
 }
 
 func TestCaptureExecutedProcessStopsWhenCancelled(t *testing.T) {
+	t.Parallel()
 	const self = "/cache/omniview-dev"
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -53,6 +56,7 @@ func TestCaptureExecutedProcessStopsWhenCancelled(t *testing.T) {
 }
 
 func TestCaptureExecutedProcessAcceptsSupervisorLaunchingItself(t *testing.T) {
+	t.Parallel()
 	const self = "/cache/omniview-dev"
 	calls := 0
 	identity, err := captureExecutedProcess(context.Background(), self, self, time.Minute, func() (devcontract.ProcessIdentity, error) {

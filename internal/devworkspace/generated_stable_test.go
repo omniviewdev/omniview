@@ -7,6 +7,7 @@ import (
 )
 
 func TestStableHostModCapabilityRefusesChangedOutputsWithoutRepair(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	prepared, err := prepareStableHostModTree(w, NewGeneration())
 	if err != nil {

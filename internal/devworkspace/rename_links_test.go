@@ -13,6 +13,7 @@ import (
 )
 
 func TestApplyingResetPreservesIntentAndDeletesOnlySelectedModules(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
@@ -39,6 +40,7 @@ func TestApplyingResetPreservesIntentAndDeletesOnlySelectedModules(t *testing.T)
 }
 
 func TestRenameLinkAdmissionRejectsChangedAggregateBeforeTeardown(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t)
 	path := filepath.Join(f.w.Root, "package.json")
 	require.NoError(t, os.WriteFile(path, []byte("changed"), 0600))
@@ -51,6 +53,7 @@ func TestRenameLinkAdmissionRejectsChangedAggregateBeforeTeardown(t *testing.T) 
 }
 
 func TestRenameLinkTeardownRemovesAbsoluteRootJournal(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	paths, err := renameOwnedRootPaths(ctx, f.w)
@@ -63,6 +66,7 @@ func TestRenameLinkTeardownRemovesAbsoluteRootJournal(t *testing.T) {
 }
 
 func TestLinkedRenamePreservesWorkspaceIdentity(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
@@ -91,6 +95,7 @@ func TestLinkedRenamePreservesWorkspaceIdentity(t *testing.T) {
 }
 
 func TestLinkedRenameRefusesUnknownMetadataAndRootNeighbors(t *testing.T) {
+	t.Parallel()
 	for _, relative := range []string{".local/unknown", "foreign.txt"} {
 		t.Run(relative, func(t *testing.T) {
 			f := newResetModulesFixture(t)
@@ -107,6 +112,7 @@ func TestLinkedRenameRefusesUnknownMetadataAndRootNeighbors(t *testing.T) {
 }
 
 func TestLinkedRenameRefusesRedirectedLinkJournal(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t)
 	path := filepath.Join(f.w.Root, ".local", "links.json")
 	raw, err := os.ReadFile(path)
@@ -125,6 +131,7 @@ func TestLinkedRenameRefusesRedirectedLinkJournal(t *testing.T) {
 }
 
 func TestLinkedRenameResumesRestoredLinkFiles(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
@@ -138,6 +145,7 @@ func TestLinkedRenameResumesRestoredLinkFiles(t *testing.T) {
 }
 
 func TestLinkedRenameRefusesChangedLinkJournalIdentity(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t)
 	path := filepath.Join(f.w.Root, ".local", "links.json")
 	j, err := loadLinkJournal(f.w)
@@ -156,6 +164,7 @@ func TestLinkedRenameRefusesChangedLinkJournalIdentity(t *testing.T) {
 }
 
 func TestApplyingModulesConflictGivesRetainedOrderedRecovery(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
 	require.NoError(t, err)
@@ -181,6 +190,7 @@ func TestApplyingModulesConflictGivesRetainedOrderedRecovery(t *testing.T) {
 }
 
 func TestLinkedRenameRefusesUnfinishedInstallerBeforeMutation(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
 	require.NoError(t, err)
@@ -195,14 +205,14 @@ func TestLinkedRenameRefusesUnfinishedInstallerBeforeMutation(t *testing.T) {
 }
 
 func TestRenameLaunchRestorationResumesAfterMove(t *testing.T) {
+	t.Parallel()
 	for _, restored := range []bool{false, true} {
 		t.Run(map[bool]string{false: "before-launch-publication", true: "after-launch-publication"}[restored], func(t *testing.T) {
 			ctx := context.Background()
-			m, root := fixtureManager(t)
-			w, err := m.Create(ctx, CreateOptions{Slug: "launch-before"})
-			require.NoError(t, err)
-			_, _, accepted := recoveryFixture(t)
-			options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence}
+			m, root := fixtureManager(t, "omniview")
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "launch-before"})
+			var err error
+			options := LaunchOptions{Mode: "browser", LinkEvidence: fixtureLinkEvidence()}
 			require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), options))
 			j, err := loadJournal(w.Root)
 			require.NoError(t, err)
@@ -229,14 +239,14 @@ func TestRenameLaunchRestorationResumesAfterMove(t *testing.T) {
 }
 
 func TestRenamePublicationInterruptedBeforeLedger(t *testing.T) {
+	t.Parallel()
 	for _, foreign := range []bool{false, true} {
 		t.Run(map[bool]string{false: "resume", true: "foreign"}[foreign], func(t *testing.T) {
 			ctx := context.Background()
-			m, root := fixtureManager(t)
-			w, err := m.Create(ctx, CreateOptions{Slug: "publication-before"})
-			require.NoError(t, err)
-			_, _, accepted := recoveryFixture(t)
-			options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence}
+			m, root := fixtureManager(t, "omniview")
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "publication-before"})
+			var err error
+			options := LaunchOptions{Mode: "browser", LinkEvidence: fixtureLinkEvidence()}
 			data, err := json.Marshal(options)
 			require.NoError(t, err)
 			data = append(data, '\n')
@@ -265,14 +275,14 @@ func TestRenamePublicationInterruptedBeforeLedger(t *testing.T) {
 }
 
 func TestSeededRenameRetainsReceiptAndDisclosure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	m, _ := fixtureManager(t)
-	w, err := m.Create(ctx, CreateOptions{Slug: "seed-before"})
-	require.NoError(t, err)
-	_, _, accepted := recoveryFixture(t)
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "seed-before"})
+	var err error
 	source, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
-	options := LaunchOptions{Mode: "browser", LinkEvidence: accepted.Evidence, BaselineSource: source}
+	options := LaunchOptions{Mode: "browser", LinkEvidence: fixtureLinkEvidence(), BaselineSource: source}
 	require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), options))
 	s := &workspaceSupervisor{workspace: w, manager: m, options: options, generation: NewGeneration()}
 	err = s.seed(ctx)

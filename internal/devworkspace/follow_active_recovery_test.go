@@ -20,8 +20,12 @@ import (
 // the overlays phase has reached durable storage. The retained process gives
 // interruption a real process handle to dispose of, rather than an idle timer.
 func TestActiveFollowCancellationAndDownRetainCapturedCohort(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"cancel", "down"} {
-		t.Run(action, func(t *testing.T) { activeFollowInterruption(t, action) })
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			activeFollowInterruption(t, action)
+		})
 	}
 }
 
@@ -139,6 +143,7 @@ func interruptActiveFollow(
 }
 
 func TestActiveFollowerCrashRetainsExactIntent(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	target := upstreamCommit(t, remote, "component.ts", "export const revision = 1")
 	barrier := filepath.Join(t.TempDir(), "durable-phase")
@@ -190,6 +195,7 @@ func TestActiveFollowerCrashRetainsExactIntent(t *testing.T) {
 }
 
 func TestActiveFollowerCrashHelper(t *testing.T) {
+	t.Parallel()
 	root := os.Getenv("OMNIVIEW_ACTIVE_FOLLOW_ROOT")
 	if root == "" {
 		return

@@ -12,6 +12,7 @@ import (
 )
 
 func TestSDKImportPreflight(t *testing.T) {
+	t.Parallel()
 	write := func(t *testing.T, root, name, source string) {
 		t.Helper()
 		file := filepath.Join(root, filepath.FromSlash(name))

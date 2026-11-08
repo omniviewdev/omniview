@@ -135,9 +135,29 @@ func verifyWorktree(ctx context.Context, r *resource, clean bool) error {
 	if path != r.Path {
 		return devcontract.Fail(4, "foreign_worktree", "worktree path resolves through a symlink")
 	}
-	common, err := git(ctx, path, "", "rev-parse", "--path-format=absolute", "--git-common-dir")
+	// Ask one Git process for one worktree identity snapshot. Do not cache it
+	// between operations: every caller must still observe current ownership.
+	identity, err := git(ctx, path, "", "rev-parse", "--path-format=absolute", "--git-common-dir", "--absolute-git-dir", "--symbolic-full-name", "HEAD")
 	if err != nil {
 		return devcontract.Fail(4, "foreign_worktree", "owned worktree is missing or no longer a Git checkout")
+	}
+	common, rest, ok := strings.Cut(identity, "\n")
+	gitDir, branch, complete := strings.Cut(rest, "\n")
+	if !ok || !complete || strings.Contains(branch, "\n") {
+		// Git frames these fields with newlines. Preserve support for paths
+		// containing newlines by querying ambiguous responses individually.
+		common, err = git(ctx, path, "", "rev-parse", "--path-format=absolute", "--git-common-dir")
+		if err != nil {
+			return devcontract.Fail(4, "foreign_worktree", "owned worktree is missing or no longer a Git checkout")
+		}
+		gitDir, err = git(ctx, path, "", "rev-parse", "--absolute-git-dir")
+		if err != nil {
+			return err
+		}
+		branch, err = git(ctx, path, "", "symbolic-ref", "--quiet", "HEAD")
+		if err != nil {
+			return devcontract.Fail(4, "foreign_worktree", "worktree is no longer on its owned branch")
+		}
 	}
 	common, err = devcontract.CanonicalPath(common)
 	if err != nil {
@@ -145,10 +165,6 @@ func verifyWorktree(ctx context.Context, r *resource, clean bool) error {
 	}
 	if common != r.CommonDir {
 		return devcontract.Fail(4, "foreign_worktree", "worktree now belongs to another Git repository")
-	}
-	gitDir, err := git(ctx, path, "", "rev-parse", "--absolute-git-dir")
-	if err != nil {
-		return err
 	}
 	gitDir, err = devcontract.CanonicalPath(gitDir)
 	if err != nil {
@@ -160,8 +176,7 @@ func verifyWorktree(ctx context.Context, r *resource, clean bool) error {
 	if gitDir == common || !inside(filepath.Join(common, "worktrees"), gitDir) {
 		return devcontract.Fail(4, "foreign_worktree", "resource is not a linked worktree")
 	}
-	branch, err := git(ctx, path, "", "symbolic-ref", "--quiet", "HEAD")
-	if err != nil || branch != "refs/heads/"+r.Repository.Branch {
+	if branch != "refs/heads/"+r.Repository.Branch {
 		return devcontract.Fail(4, "foreign_worktree", "worktree is no longer on its owned branch")
 	}
 	marker := refValue(ctx, common, r.Marker)

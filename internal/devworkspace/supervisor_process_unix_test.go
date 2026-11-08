@@ -32,7 +32,11 @@ func TestOwnedChildProcessFixture(t *testing.T) {
 	if err := command.Start(); err != nil {
 		os.Exit(80)
 	}
-	if err := os.WriteFile(os.Getenv("OMNIVIEW_OWNED_PID_FILE"), []byte(strconv.Itoa(command.Process.Pid)), 0600); err != nil {
+	pidFile := os.Getenv("OMNIVIEW_OWNED_PID_FILE")
+	if err := os.WriteFile(pidFile+".tmp", []byte(strconv.Itoa(command.Process.Pid)), 0600); err != nil {
+		os.Exit(81)
+	}
+	if err := os.Rename(pidFile+".tmp", pidFile); err != nil {
 		os.Exit(81)
 	}
 	for {
@@ -44,6 +48,7 @@ func TestOwnedChildProcessFixture(t *testing.T) {
 }
 
 func TestOwnedTreeCleanupOnHostCrashAndAuthenticatedStop(t *testing.T) {
+	t.Parallel()
 	for _, crash := range []bool{true, false} {
 		t.Run(strconv.FormatBool(crash), func(t *testing.T) {
 			root := t.TempDir()

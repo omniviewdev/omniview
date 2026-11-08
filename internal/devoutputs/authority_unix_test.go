@@ -61,9 +61,6 @@ func TestSnapshotRejectsSubstitutedRegularFilesBeforeReading(t *testing.T) {
 			if !errors.As(err, &substitution) || substitution.Path != path || substitution.ExpectedKind != "file" {
 				t.Fatalf("missing typed substitution: %v", err)
 			}
-			if reader.digest != nil || reader.buffer != nil {
-				t.Fatal("replacement reached payload hashing")
-			}
 			raw, e := os.ReadFile(foreign)
 			if e != nil || string(raw) != "do not read foreign payload" {
 				t.Fatal("foreign bytes changed", e)

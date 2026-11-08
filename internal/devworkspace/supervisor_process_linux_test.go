@@ -22,6 +22,7 @@ import (
 )
 
 func TestLinuxGroupMemberStat(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name    string
 		stat    string
@@ -100,6 +101,7 @@ func (p linuxProcStatRecheck) Stat(name string) (fs.FileInfo, error) {
 const linuxUnfilteredProcMount = "42 23 0:5 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw\n"
 
 func TestLinuxProcVisibility(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name      string
 		mountinfo string
@@ -128,6 +130,7 @@ func TestLinuxProcVisibility(t *testing.T) {
 }
 
 func TestLinuxUnreapedGroupInspection(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name       string
 		leader     string
@@ -186,6 +189,7 @@ func TestLinuxUnreapedGroupInspection(t *testing.T) {
 }
 
 func TestLinuxMalformedStatRequiresConfirmedDisappearance(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name       string
 		leader     string
@@ -232,6 +236,7 @@ func TestLinuxMalformedStatRequiresConfirmedDisappearance(t *testing.T) {
 }
 
 func TestLinuxUnreapedGroupProofIsBounded(t *testing.T) {
+	t.Parallel()
 	proc := fstest.MapFS{
 		"100/stat":       &fstest.MapFile{Data: []byte("100 (leader) Z 1 100")},
 		"200/stat":       &fstest.MapFile{Data: []byte("200 (writer) D 1 100")},
@@ -316,6 +321,7 @@ func linuxFixtureDescendant(t *testing.T, pidFile string, owner devsession.Proce
 }
 
 func TestLinuxOwnedChildFinishesOnlyAfterRedirectedDescendantExit(t *testing.T) {
+	t.Parallel()
 	command, owner, pidFile, exitFile := linuxOwnedFixtureCommand(t)
 	descendants := make(chan devcontract.ProcessIdentity, 1)
 	finished := make(chan error, 1)
@@ -361,6 +367,7 @@ func TestLinuxOwnedChildFinishesOnlyAfterRedirectedDescendantExit(t *testing.T) 
 }
 
 func TestLinuxUncertainGroupRetainsUnreapedCommand(t *testing.T) {
+	t.Parallel()
 	command, owner, pidFile, exitFile := linuxOwnedFixtureCommand(t)
 	prepareOwnedCommand(command)
 	if err := command.Start(); err != nil {
@@ -406,6 +413,7 @@ func TestLinuxUncertainGroupRetainsUnreapedCommand(t *testing.T) {
 }
 
 func TestLinuxRedirectedDescendantPreventsGroupDisposal(t *testing.T) {
+	t.Parallel()
 	command, owner, pidFile, exitFile := linuxOwnedFixtureCommand(t)
 	prepareOwnedCommand(command)
 	if err := command.Start(); err != nil {

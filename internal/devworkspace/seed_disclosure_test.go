@@ -16,6 +16,7 @@ import (
 )
 
 func TestSeedDisclosureRequiresPublishedImportEvidenceOnResume(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	source, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
@@ -57,6 +58,7 @@ func TestSeedDisclosureRequiresPublishedImportEvidenceOnResume(t *testing.T) {
 }
 
 func TestSeedDisclosureSurvivesRunningHostSettingsLock(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	source, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
@@ -97,6 +99,7 @@ func TestSeedDisclosureSurvivesRunningHostSettingsLock(t *testing.T) {
 }
 
 func TestSeedIntentRecoveryRejectsReceiptWithoutCopiedPreferences(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	source, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
