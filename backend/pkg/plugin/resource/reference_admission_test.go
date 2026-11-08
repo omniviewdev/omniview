@@ -110,3 +110,53 @@ func TestAdmitReferenceDistinguishesProviderMismatchFromRetiredAuthority(t *test
 		})
 	}
 }
+
+func TestAdmitReferenceBatchSharesCatalogButAuthorizesEveryReference(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := &mockProvider{}
+	registerActionTestPlugin(ctrl, "p1", provider)
+	input := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
+	catalogCalls := 0
+	provider.CatalogFunc = func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		catalogCalls++
+		return canonicalTestCatalog("p1", "pods"), nil
+	}
+	authorized := 0
+	ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, _ string, target invocation.Target) error {
+		authorized++
+		if target.Object == "denied" {
+			return errors.New("denied")
+		}
+		return nil
+	}))
+	reference := func(id string) resourcev2.ResourceReference {
+		ref := input.Reference
+		ref.Address.ID = id
+		return ref
+	}
+	batch := WithAdmissionBatch(testInvocationContext())
+	var last context.Context
+	for _, id := range []string{"a", "b", "c", "d"} {
+		ctx, err := ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, reference(id))
+		require.NoError(t, err)
+		last = ctx
+	}
+	require.Equal(t, 1, catalogCalls, "catalog is acquired once per batch and type")
+	require.Equal(t, 8, authorized, "every reference is admitted and reauthorized individually")
+
+	_, err := ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, reference("denied"))
+	require.Error(t, err)
+	require.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
+
+	stale := reference("e")
+	stale.Address.Authority += "-retired"
+	_, err = ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, stale)
+	require.Error(t, err)
+	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code, "shared authority still rejects a stale reference")
+	require.Equal(t, 1, catalogCalls)
+
+	// The admitted context must not carry the batch into delivery-time admissions.
+	_, err = ctrl.AdmitReference(last, "metric.Query", "p1", input.Route, reference("f"))
+	require.NoError(t, err)
+	require.Equal(t, 2, catalogCalls, "a context returned from admission starts a new catalog acquisition")
+}

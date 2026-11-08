@@ -72,5 +72,7 @@ func (c *controller) AdmitReference(ctx context.Context, operation string, plugi
 	}
 	request, _ := invocation.FromContext(admitted)
 	admitted = resourcev2.WithSession(admitted, resourcev2.Session{Connection: connectionForRoute(route), RequestID: request.ID(), RequesterID: string(request.Principal().Origin()), PluginID: pluginID})
-	return admitted, nil
+	// The batch scopes catalog sharing to admission only; delivery-time work
+	// that re-admits through this context must acquire its own catalog.
+	return context.WithValue(admitted, admissionBatchContextKey{}, (*admissionBatch)(nil)), nil
 }

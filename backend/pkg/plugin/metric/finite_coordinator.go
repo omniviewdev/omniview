@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -362,6 +363,9 @@ func (c *controller) admitFinite(ctx context.Context, spec MetricsObservationSpe
 		return ctx, q, finiteError("UNSUPPORTED", "Reference admission is unavailable.")
 	}
 	first := ctx
+	// One admission instant per call: targets share the route catalog while each
+	// reference is still individually authorized. Delivery re-admits with a new batch.
+	batch := resource.WithAdmissionBatch(ctx)
 	identities := map[string]bool{}
 	for i, t := range q.Targets {
 		if t.Route.Connection != spec.OwnerConnectionID || t.Reference.Address.Type != spec.ResourceKey || t.Reference.Address.Provider != spec.OwnerPluginID {
@@ -372,7 +376,7 @@ func (c *controller) admitFinite(ctx context.Context, spec MetricsObservationSpe
 			return ctx, q, finiteError("INVALID_REQUEST", "Duplicate canonical metric target.")
 		}
 		identities[identity] = true
-		admitted, err := c.referenceAdmitter(ctx, "metric.Query", spec.OwnerPluginID, t.Route, t.Reference)
+		admitted, err := c.referenceAdmitter(batch, "metric.Query", spec.OwnerPluginID, t.Route, t.Reference)
 		if err != nil {
 			return ctx, q, finiteAuthorityError(err)
 		}
