@@ -115,7 +115,7 @@ Runtime object and method numbers come from Wails, so a Wails upgrade fails `Tes
 
 - Plugin data reads create nothing: `data.Get` and `data.Keys` (and the denied `GetSnapshot`) read a plugin without a data directory as empty and neither create the directory nor cache a root for it (`appstate.PluginDataIfExists`). Before that, every novel plugin ID created a directory and leaked a file descriptor. `Set`, `Delete` and `CompareAndSwap` still create it, and stay denied.
 - Window-keyed state is keyed by window kind and ID: the window realm's scopes, the metric sessions and the activity subscriptions. Native and browser windows are numbered separately from 1, so a browser window used to share its owner with the window of the same number, the first one being `main`.
-- `DiagnosticsClient.ReadLog` returns at most the last 8 MiB of the log file, cut at a line boundary.
+- `DiagnosticsClient.ReadLog` returns at most the last 8 MiB of the log file, cut at a line boundary, and `StartTail` follows the file from its current end, so a remote viewer never receives more history than that cap.
 
 ## What is not covered
 

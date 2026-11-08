@@ -40,6 +40,9 @@ type BackendLogger struct {
 	logDir    string
 	watchers  map[string]*tail.Tail
 	watchLock sync.Mutex
+	// emitLine, when set, receives every tailed line instead of the Wails event
+	// bus. Tests use it to observe what StartTail emits.
+	emitLine func(event, line string)
 }
 
 func (b *BackendLogger) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
@@ -121,6 +124,7 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 		watchers:  make(map[string]*tail.Tail),
 		app:       nil,
 		watchLock: sync.Mutex{},
+		emitLine:  nil,
 	}, nil
 }
 
@@ -219,12 +223,22 @@ func (b *BackendLogger) ReadLog(_ context.Context, name string) (string, error) 
 		}
 		return string(data), nil
 	}
+	return readTailWindow(f, size)
+}
 
+// readTailWindow returns the last maxReadLogBytes bytes of a log that measured
+// size bytes (more than maxReadLogBytes) when it was last statted, starting at a
+// line boundary. The log may have shrunk since (a truncated or rotated file), in
+// which case less is read, possibly nothing.
+func readTailWindow(r io.ReaderAt, size int64) (string, error) {
 	// Read one byte before the window so we can tell whether the window starts on a line boundary.
 	buf := make([]byte, maxReadLogBytes+1)
-	n, err := f.ReadAt(buf, size-maxReadLogBytes-1)
+	n, err := r.ReadAt(buf, size-maxReadLogBytes-1)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
+	}
+	if n == 0 {
+		return "", nil
 	}
 	buf = buf[:n]
 	if buf[0] == '\n' {
@@ -264,10 +278,13 @@ func (b *BackendLogger) StartTail(_ context.Context, name string) error {
 		return nil // already tailing
 	}
 	t, err := tail.TailFile(filepath.Join(b.logDir, name+".log"), tail.Config{
-		Follow:        true,
-		ReOpen:        true,
-		MustExist:     true,
-		Location:      nil,
+		Follow:    true,
+		ReOpen:    true,
+		MustExist: true,
+		// Start at the current end of the file. The viewer loads the history with
+		// ReadLog, which is capped at maxReadLogBytes; replaying the whole file as
+		// events would hand a remote viewer far more than that cap.
+		Location:      &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd},
 		Poll:          false,
 		Pipe:          false,
 		MaxLineSize:   0,
@@ -280,14 +297,21 @@ func (b *BackendLogger) StartTail(_ context.Context, name string) error {
 	}
 	b.watchers[name] = t
 
-	go func() {
-		for line := range t.Lines {
-			if b.app != nil {
-				b.app.Event.Emit(fmt.Sprintf(LogUpdateFmt, name), line.Text)
-			}
-		}
-	}()
+	go b.emitTailedLines(name, t)
 	return nil
+}
+
+// emitTailedLines hands each line of t to the event bus, or to emitLine when set.
+func (b *BackendLogger) emitTailedLines(name string, t *tail.Tail) {
+	event := fmt.Sprintf(LogUpdateFmt, name)
+	for line := range t.Lines {
+		switch {
+		case b.emitLine != nil:
+			b.emitLine(event, line.Text)
+		case b.app != nil:
+			b.app.Event.Emit(event, line.Text)
+		}
+	}
 }
 
 func (b *BackendLogger) StopTail(_ context.Context, name string) error {

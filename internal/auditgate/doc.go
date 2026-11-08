@@ -9,7 +9,8 @@
 //   - [Policy.EvaluateRuntime] checks one POST /wails/runtime request and, when
 //     the request may pass, returns the canonical body to forward upstream. The
 //     bytes the client sent are never forwarded.
-//   - [Policy.FilterEventFrame] checks one frame of the /wails/events socket.
+//   - [Policy.FilterEventMessage] checks one message of the /wails/events
+//     socket.
 //   - [Policy.Verify] checks that every method Wails would bind for a set of
 //     service instances is classified, so a new method cannot become reachable
 //     unreviewed.
