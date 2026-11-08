@@ -1,6 +1,9 @@
 package telemetry
 
 import (
+	"context"
+
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -83,6 +86,10 @@ func NewMetrics(mp metric.MeterProvider) (*Metrics, error) {
 	}
 	if err = registerMeasurements(meter, &m); err != nil {
 		return nil, err
+	}
+	// Fresh sessions must distinguish zero cancellations from missing coverage.
+	for _, event := range [...]string{"cancel_interest", "cancel_provider"} {
+		m.PipelineEvents.Add(context.Background(), 0, metric.WithAttributes(attribute.String("event", event)))
 	}
 	activeMetrics.Store(&m)
 

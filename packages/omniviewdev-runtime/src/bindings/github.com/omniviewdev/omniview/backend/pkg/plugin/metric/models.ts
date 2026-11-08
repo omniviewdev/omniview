@@ -152,8 +152,9 @@ export class MetricViewPreferences {
  * while initially pending, and remains visible while compatible refreshes run.
  * Source timestamps and units are unchanged (CPU cores, memory bytes); missing
  * samples are not zero. Invalidated clears Data on retirement or lost authority.
- * DomainStart/DomainEnd describe the data's actual range. Relative observations
- * leave the domain absent until collection succeeds and retain it during refresh.
+ * DomainStart/DomainEnd describe the evaluation window that produced Data. Data
+ * may cover a subset while Complete is false. Relative observations leave the
+ * domain absent until data arrives and retain it during compatible refreshes.
  * Catalog is admitted metadata for the delivered sample lanes, not full metric
  * discovery. Consumers derive units/source identity from this snapshot and use
  * GetResourceMetricsCatalog independently for available metric choices.

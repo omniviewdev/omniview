@@ -176,3 +176,89 @@ it('does not retain old samples after an unacknowledged reentry setup failure', 
   expect(result.current.catalog).toBeNull();
   expect(result.current.error?.message).toBe('Session admission failed');
 });
+
+const hour = ['2026-11-05T09:00:00Z', '2026-11-05T09:30:00Z', '2026-11-05T10:00:00Z'];
+const rangeFrame = (name: string, times: readonly string[], extra: Partial<MetricsObservationSnapshot> = {}, complete = true) => frame(name, {
+  data: { complete, warnings: [], results: [{ resource_token: name, metric_id: 'cpu', status: 'ok', value: null,
+    points: times.map(time => ({ time, value: 0.25 })), observed_at: null, window: Duration.$zero, dimensions: {}, identity_scope: 'name', message: '' }] },
+  ...extra,
+});
+const emptyFrame = (name: string, extra: Partial<MetricsObservationSnapshot> = {}) => frame(name, { data: { complete: false, warnings: [], results: [] }, ...extra });
+
+it('shows an incomplete range as partial until its final frame, retaining data and domain until a new-domain frame arrives', () => {
+  const { result, rerender } = renderHook(({ startTime }) => useMetricObservation({ ...base, targets: [target('pod-a')], shape: 'range',
+    startTime, endTime: '2026-11-05T10:00:00Z', stepMs: 15000 }), { initialProps: { startTime: '2026-11-05T09:00:00Z' } });
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  const id = result.current.results[0].id;
+  expect(result.current.isPartial).toBe(false);
+  rerender({ startTime: '2026-11-05T08:00:00Z' });
+  act(() => transport.receivers[1](frame('pod-a', { data: null, fetching: true, domain_start: null, domain_end: null })));
+  expect(result.current.isPartial).toBe(false);
+  expect(result.current.domain).toEqual({ startMs: Date.parse('2026-11-05T09:00:00Z'), endMs: Date.parse('2026-11-05T10:00:00Z') });
+  const domain = { domain_start: '2026-11-05T08:00:00Z', domain_end: '2026-11-05T10:00:00Z' };
+  act(() => transport.receivers[1](rangeFrame('pod-a', hour, { fetching: true, ...domain }, false)));
+  expect(result.current).toMatchObject({ isPartial: true, isFetching: true, isLoading: false,
+    domain: { startMs: Date.parse('2026-11-05T08:00:00Z'), endMs: Date.parse('2026-11-05T10:00:00Z') } });
+  expect(result.current.results[0].id).toBe(id);
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual(hour.map(time => Date.parse(time)));
+  act(() => transport.receivers[1](rangeFrame('pod-a', ['2026-11-05T08:00:00Z', ...hour], { fetching: false, ...domain })));
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: false });
+  expect(result.current.results[0].points).toHaveLength(4);
+});
+
+it('keeps a final incomplete range partial without reporting it as loading', () => {
+  const { result } = renderHook(() => useMetricObservation({ ...base, targets: [target('pod-a')], shape: 'range',
+    startTime: '2026-11-05T09:00:00Z', endTime: '2026-11-05T10:00:00Z', stepMs: 15000 }));
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour.slice(2), { fetching: false }, false)));
+  expect(result.current).toMatchObject({ isPartial: true, isFetching: false, isLoading: false });
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual(hour.slice(2).map(time => Date.parse(time)));
+});
+
+it('treats an incomplete frame without results as loading and shows it only for the request it answers', () => {
+  const { result, rerender } = renderHook(({ targets }) => useMetricObservation({ ...base, targets, shape: 'range',
+    startTime: '2026-11-05T09:00:00Z', endTime: '2026-11-05T10:00:00Z', stepMs: 15000 }), { initialProps: { targets: [target('pod-a')] } });
+  act(() => transport.receivers[0](emptyFrame('pod-a', { fetching: true })));
+  expect(result.current.results).toEqual([]);
+  expect(result.current).toMatchObject({ isPartial: true, isLoading: true, isFetching: true,
+    domain: { startMs: Date.parse('2026-11-05T09:00:00Z'), endMs: Date.parse('2026-11-05T10:00:00Z') } });
+  act(() => transport.receivers[0](emptyFrame('pod-a', { fetching: false })));
+  expect(result.current).toMatchObject({ isPartial: true, isLoading: false, isFetching: false });
+  rerender({ targets: [target('pod-b')] });
+  expect(result.current.domain).toBeNull();
+  expect(result.current.isPartial).toBe(false);
+});
+
+it('keeps the resolution of displayed history until a frame for the new request arrives', () => {
+  const { result, rerender } = renderHook(({ stepMs }) => useMetricObservation({ ...base, targets: [target('pod-a')], shape: 'range',
+    startTime: '2026-11-05T09:00:00Z', endTime: '2026-11-05T10:00:00Z', stepMs }), { initialProps: { stepMs: 86_400 } });
+  expect(result.current.stepMs).toBeNull();
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  expect(result.current.stepMs).toBe(86_400);
+  rerender({ stepMs: 15_000 });
+  act(() => transport.receivers[1](frame('pod-a', { data: null, fetching: true })));
+  expect(result.current.stepMs).toBe(86_400);
+  act(() => transport.receivers[1](rangeFrame('pod-a', hour)));
+  expect(result.current.stepMs).toBe(15_000);
+});
+
+it('does not remove loaded history while a refresh collects omitted intervals', () => {
+  const { result } = renderHook(() => useMetricObservation({ ...base, targets: [target('pod-a')], shape: 'range',
+    durationMs: 3600000, stepMs: 15000 }));
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  const oldDomain = result.current.domain;
+  const domain = { domain_start: '2026-11-05T09:00:15Z', domain_end: '2026-11-05T10:00:15Z' };
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour.slice(2), { fetching: true, ...domain }, false)));
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual(hour.map(time => Date.parse(time)));
+  expect(result.current.domain).toEqual(oldDomain);
+  expect(result.current.isFetching).toBe(true);
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour.slice(1), { fetching: true, ...domain }, false)));
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual(hour.slice(1).map(time => Date.parse(time)));
+  expect(result.current).toMatchObject({ isPartial: true,
+    domain: { startMs: Date.parse(domain.domain_start), endMs: Date.parse(domain.domain_end) } });
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour.slice(2), { fetching: true, ...domain }, false)));
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual(hour.slice(1).map(time => Date.parse(time)));
+  act(() => transport.receivers[0](rangeFrame('pod-a', [...hour.slice(1), domain.domain_end], { fetching: false, ...domain })));
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual([...hour.slice(1), domain.domain_end].map(time => Date.parse(time)));
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: false });
+});

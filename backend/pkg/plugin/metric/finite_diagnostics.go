@@ -23,7 +23,7 @@ func (f *finiteCoordinator) diagnosticsState() telemetry.PipelineState {
 			continue
 		}
 		for pair := range w.pairs {
-			if f.uncoveredLocked(w, pair) {
+			if _, uncovered := f.uncoveredLocked(w, pair); uncovered {
 				s.Queued++
 				break
 			}

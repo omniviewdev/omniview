@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,8 @@ type finiteObservation struct {
 	waiter             *finiteWaiter
 	lastPublished      uint64
 }
+
+type finiteProgress func(*sdk.ResourceMetricsResponse, *sdk.ResourceMetricsCatalog, func() error) error
 
 type finiteProviderFailure struct{ error }
 
@@ -396,7 +399,13 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	var data *sdk.ResourceMetricsResponse
 	var sampleCatalog *sdk.ResourceMetricsCatalog
 	if err == nil {
-		data, err = f.c.readFiniteResolved(ctx, spec, refresh, func(catalog *sdk.ResourceMetricsCatalog) { sampleCatalog = catalog }, o, nil)
+		var progress finiteProgress
+		if spec.Shape == "range" {
+			progress = func(data *sdk.ResourceMetricsResponse, catalog *sdk.ResourceMetricsCatalog, guard func() error) error {
+				return f.publishFinitePartial(ctx, o, epoch, spec, data, catalog, guard)
+			}
+		}
+		data, err = f.c.readFiniteResolved(ctx, spec, refresh, func(catalog *sdk.ResourceMetricsCatalog) { sampleCatalog = catalog }, o, nil, progress)
 	}
 	size := 0
 	if err == nil {
@@ -467,4 +476,72 @@ func (f *finiteCoordinator) collectObservation(o *finiteObservation) {
 	f.mu.Unlock()
 	f.signal()
 	o.publish()
+}
+
+func finiteResponseSize(data *sdk.ResourceMetricsResponse) (int, error) {
+	points := 0
+	for _, result := range data.Results {
+		points += len(result.Points)
+	}
+	if points > sdk.MaxFinitePoints {
+		return 0, finiteError("RESOURCE_LIMIT", "Merged metric sample limit exceeded.")
+	}
+	encoded, err := json.Marshal(data)
+	if err != nil || len(encoded) > finiteMaxBytes {
+		return 0, finiteError("RESOURCE_LIMIT", "Merged metric response byte limit exceeded.")
+	}
+	return len(encoded), nil
+}
+
+func (f *finiteCoordinator) publishFinitePartial(ctx context.Context, o *finiteObservation, epoch uint64, spec MetricsObservationSpec, data *sdk.ResourceMetricsResponse, catalog *sdk.ResourceMetricsCatalog, guard func() error) error {
+	if len(data.Results) == 0 {
+		return nil
+	}
+	partial := &sdk.ResourceMetricsResponse{
+		Results:  make([]sdk.ResourceMetricResult, len(data.Results)),
+		Warnings: slices.Clone(data.Warnings),
+	}
+	points := 0
+	for i, result := range data.Results {
+		points += len(result.Points)
+		if points > sdk.MaxFinitePoints {
+			return finiteError("RESOURCE_LIMIT", "Merged metric sample limit exceeded.")
+		}
+		partial.Results[i] = cloneFiniteResult(result)
+	}
+	size, err := finiteResponseSize(partial)
+	if err != nil {
+		return err
+	}
+	metadata := cloneFiniteCatalog(catalog)
+	// All participating source/configuration fences and all delivered projection
+	// guards run after preparing the immutable frame, immediately before commit.
+	if err := guard(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		f.mu.Unlock()
+		return err
+	}
+	key := finiteObservationKey(o.owner, o.snapshot.ClientToken)
+	if f.stopped || f.configurationChanges > 0 || f.observations[key] != o || o.configurationEpoch != epoch || o.ctx.Err() != nil || !o.running {
+		f.mu.Unlock()
+		return profileChangingError()
+	}
+	if f.snapshotBytes-o.dataBytes+size > 16<<20 {
+		f.mu.Unlock()
+		return finiteError("RESOURCE_LIMIT", "Metric observation snapshot byte budget exceeded.")
+	}
+	f.snapshotBytes += size - o.dataBytes
+	o.dataBytes = size
+	o.snapshot.Data, o.snapshot.Catalog = partial, metadata
+	o.snapshot.Fetching, o.snapshot.Invalidated = true, false
+	o.snapshot.Error = ""
+	start, end := spec.StartTime, spec.EndTime
+	o.snapshot.DomainStart, o.snapshot.DomainEnd = &start, &end
+	o.snapshot.Sequence++
+	f.mu.Unlock()
+	o.publish()
+	return nil
 }

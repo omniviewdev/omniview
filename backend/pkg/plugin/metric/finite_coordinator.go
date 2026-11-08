@@ -57,6 +57,9 @@ type finiteWaiter struct {
 	configurationSerial uint64
 	configurationGuard  func() error
 	finished            bool
+	rangeReuse          bool
+	rangeCoverage       map[finitePair][]finiteRangeSpan
+	progress            chan struct{}
 }
 type finiteJob struct {
 	partition           string
@@ -74,6 +77,7 @@ type finiteJob struct {
 	configurationGuard  func() error
 	retired             bool
 	maxSampleAge        time.Duration
+	rangeReuse          bool
 }
 type finiteCacheEntry struct {
 	partition         string
@@ -88,6 +92,8 @@ type finiteCacheEntry struct {
 	configuration     uint64
 	configurationKeys []finiteConfigurationKey
 	bytes             int
+	rangeReuse        bool
+	start, end        time.Time
 }
 
 func mergeFiniteWarnings(current, incoming []string) []string {
@@ -409,9 +415,9 @@ func (c *controller) ReadFiniteResourceMetrics(ctx context.Context, spec Metrics
 	return c.readFinite(ctx, spec, false)
 }
 func (c *controller) readFinite(ctx context.Context, spec MetricsObservationSpec, refresh bool) (*sdk.ResourceMetricsResponse, error) {
-	return c.readFiniteResolved(ctx, spec, refresh, nil, nil, nil)
+	return c.readFiniteResolved(ctx, spec, refresh, nil, nil, nil, nil)
 }
-func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObservationSpec, refresh bool, capture func(*sdk.ResourceMetricsCatalog), observation *finiteObservation, preview *sdk.MetricDefinition) (*sdk.ResourceMetricsResponse, error) {
+func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObservationSpec, refresh bool, capture func(*sdk.ResourceMetricsCatalog), observation *finiteObservation, preview *sdk.MetricDefinition, progress finiteProgress) (*sdk.ResourceMetricsResponse, error) {
 	resolved, err := resolveFiniteRange(spec, time.Now())
 	if err != nil {
 		return nil, err
@@ -449,7 +455,7 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 		observation.configurationKeys = finiteMergeConfigurationKeys(observation.configurationKeys, finiteLaneConfigurationKeys(lanes))
 		f.mu.Unlock()
 	}
-	// Validate every lane before collecting any metric samples.
+	// Validate every lane before collecting or publishing any sample.
 	preparedCatalogs := make([]*sdk.ResourceMetricsCatalog, len(lanes))
 	for i, lane := range lanes {
 		catalog, err := c.finiteCatalog(admitted, request, lane, serial)
@@ -473,11 +479,10 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 		observation.configurationKeys = finiteLaneConfigurationKeys(lanes)
 		f.mu.Unlock()
 	}
-	projectionGuards := []func() error{}
-	response := &sdk.ResourceMetricsResponse{Complete: true}
-	var catalogs []*sdk.ResourceMetricsCatalog
-	for i, lane := range lanes {
-		if capture != nil {
+	var sampleCatalog *sdk.ResourceMetricsCatalog
+	if capture != nil || progress != nil {
+		catalogs := make([]*sdk.ResourceMetricsCatalog, 0, len(lanes))
+		for i, lane := range lanes {
 			filtered := cloneFiniteCatalog(preparedCatalogs[i])
 			filtered.Metrics = nil
 			for _, descriptor := range preparedCatalogs[i].Metrics {
@@ -487,6 +492,38 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 			}
 			catalogs = append(catalogs, filtered)
 		}
+		sampleCatalog, err = mergeFiniteCatalogs(catalogs)
+		if err != nil {
+			return nil, err
+		}
+		sampleCatalog.Source = lanes[0].catalogSource
+	}
+	projectionGuards := []func() error{}
+	deliveryGuard := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		f.mu.Lock()
+		current := !f.stopped && f.configuration == generation && f.configurationChanges == 0
+		f.mu.Unlock()
+		if !current {
+			return profileChangingError()
+		}
+		if _, _, err := c.admitFinite(ctx, spec); err != nil {
+			return err
+		}
+		if err := finiteAuthorityError(sourceGuard()); err != nil {
+			return err
+		}
+		for _, guard := range projectionGuards {
+			if err := finiteAuthorityError(guard()); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	response := &sdk.ResourceMetricsResponse{Complete: true}
+	for i, lane := range lanes {
 		laneSpec := spec
 		source := lane.source
 		laneSpec.Source = &source
@@ -495,7 +532,24 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 		if err != nil {
 			return nil, err
 		}
-		data, err := c.readFiniteLane(admitted, laneSpec, lane, preparedCatalogs[i], refresh, observation, generation, serial, laneGuard, func(guard func() error) { projectionGuards = append(projectionGuards, guard) })
+		var laneProgress func(*sdk.ResourceMetricsResponse) error
+		if progress != nil && spec.Shape == "range" {
+			laneProgress = func(data *sdk.ResourceMetricsResponse) error {
+				partial := &sdk.ResourceMetricsResponse{
+					Results:  make([]sdk.ResourceMetricResult, 0, len(response.Results)+len(data.Results)),
+					Warnings: mergeFiniteWarnings(slices.Clone(response.Warnings), data.Warnings),
+				}
+				partial.Results = append(partial.Results, response.Results...)
+				for _, result := range data.Results {
+					if len(lanes) > 1 {
+						result.Source = &source
+					}
+					partial.Results = append(partial.Results, result)
+				}
+				return progress(partial, sampleCatalog, deliveryGuard)
+			}
+		}
+		data, err := c.readFiniteLane(admitted, laneSpec, lane, preparedCatalogs[i], refresh, observation, generation, serial, laneGuard, func(guard func() error) { projectionGuards = append(projectionGuards, guard) }, laneProgress)
 		if err != nil {
 			return nil, err
 		}
@@ -508,45 +562,24 @@ func (c *controller) readFiniteResolved(ctx context.Context, spec MetricsObserva
 		response.Results = append(response.Results, data.Results...)
 		response.Complete = response.Complete && data.Complete
 		response.Warnings = mergeFiniteWarnings(response.Warnings, data.Warnings)
-	}
-	f.mu.Lock()
-	current := !f.stopped && f.configuration == generation && f.configurationChanges == 0
-	f.mu.Unlock()
-	if !current {
-		return nil, profileChangingError()
-	}
-	if _, _, err = c.admitFinite(ctx, spec); err != nil {
-		return nil, err
-	}
-	if err = finiteAuthorityError(sourceGuard()); err != nil {
-		return nil, err
-	}
-	for _, guard := range projectionGuards {
-		if err = finiteAuthorityError(guard()); err != nil {
-			return nil, err
+		if progress != nil && spec.Shape == "range" && i+1 < len(lanes) {
+			if err := progress(response, sampleCatalog, deliveryGuard); err != nil {
+				return nil, err
+			}
 		}
 	}
-	points := 0
-	for _, result := range response.Results {
-		points += len(result.Points)
+	if err := deliveryGuard(); err != nil {
+		return nil, err
 	}
-	if points > sdk.MaxFinitePoints {
-		return nil, finiteError("RESOURCE_LIMIT", "Merged metric sample limit exceeded.")
-	}
-	if encoded, err := json.Marshal(response); err != nil || len(encoded) > finiteMaxBytes {
-		return nil, finiteError("RESOURCE_LIMIT", "Merged metric response byte limit exceeded.")
+	if _, err := finiteResponseSize(response); err != nil {
+		return nil, err
 	}
 	if capture != nil {
-		catalog, err := mergeFiniteCatalogs(catalogs)
-		if err != nil {
-			return nil, err
-		}
-		catalog.Source = lanes[0].catalogSource
-		capture(catalog)
+		capture(sampleCatalog)
 	}
 	return response, nil
 }
-func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservationSpec, lane finiteSourceLane, catalog *sdk.ResourceMetricsCatalog, refresh bool, observation *finiteObservation, generation, serial uint64, configurationGuard func() error, captureGuard func(func() error)) (*sdk.ResourceMetricsResponse, error) {
+func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservationSpec, lane finiteSourceLane, catalog *sdk.ResourceMetricsCatalog, refresh bool, observation *finiteObservation, generation, serial uint64, configurationGuard func() error, captureGuard func(func() error), progress func(*sdk.ResourceMetricsResponse) error) (*sdk.ResourceMetricsResponse, error) {
 	admitted, q, err := c.admitFinite(ctx, spec)
 	if err != nil {
 		return nil, err
@@ -567,8 +600,14 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 	if !ok {
 		return nil, finiteError("DENIED", "Admitted metric identity is required.")
 	}
-	// A partition isolates authority, connection generations and evaluation domain.
-	partition := metricDigest([]any{request.Principal().Owner(), request.Principal().Generation(), spec.OwnerPluginID, spec.OwnerConnectionID, q.Source, q.Context, lane.configurationKeys, spec.ResourceKey, q.Shape, q.StartTime, q.EndTime, q.Step, catalog})
+	// Bounds may be omitted only when every selected metric explicitly declares
+	// pointwise grid semantics. Step, catalog, context and all authority remain.
+	rangeReuse := finiteRangeReuseAllowed(q, catalog)
+	start, end := q.StartTime, q.EndTime
+	if rangeReuse {
+		start, end = time.Time{}, time.Time{}
+	}
+	partition := metricDigest([]any{request.Principal().Owner(), request.Principal().Generation(), spec.OwnerPluginID, spec.OwnerConnectionID, q.Source, q.Context, lane.configurationKeys, spec.ResourceKey, q.Shape, start, end, q.Step, catalog})
 	canonical := q
 	canonical.Targets = make([]sdk.ResourceMetricTarget, len(q.Targets))
 	copy(canonical.Targets, q.Targets)
@@ -576,6 +615,13 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 		canonical.Targets[i].Token = finiteTargetKey(canonical.Targets[i])
 	}
 	w := &finiteWaiter{ctx: admitted, query: canonical, spec: spec, partition: partition, done: map[finitePair]bool{}, results: map[finitePair]sdk.ResourceMetricResult{}, complete: true, reply: make(chan finiteReply, 1), queued: time.Now(), maxTargets: catalog.MaxTargets}
+	w.rangeReuse = rangeReuse
+	if rangeReuse {
+		w.rangeCoverage = map[finitePair][]finiteRangeSpan{}
+	}
+	if progress != nil && q.Shape == "range" {
+		w.progress = make(chan struct{}, 1)
+	}
 	w.maxSampleAge = catalog.MaxSampleAge
 	w.pairs, w.workTargets, w.workPairs = finiteWaiterPairs(canonical)
 	w.configuration = generation
@@ -614,6 +660,13 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 			if entry.partition != partition || entry.configuration != generation || entry.epoch != w.epoch || entry.sourceEpoch != w.sourceEpoch || !now.Before(entry.until) {
 				continue
 			}
+			if w.rangeReuse {
+				if err := f.applyRangeCacheLocked(w, entry); err != nil {
+					f.mu.Unlock()
+					return nil, err
+				}
+				continue
+			}
 			for pair := range w.pairs {
 				if !w.done[pair] {
 					if r, ok := entry.pairs[pair]; ok {
@@ -635,7 +688,7 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 	telemetry.RecordPipelineEvent(ctx, "cache_miss_pairs", int64(w.missing))
 	if w.missing > 0 {
 		for job := range f.jobs {
-			if job.retired || job.partition != partition || job.configuration != generation || job.epoch != w.epoch || job.sourceEpoch != w.sourceEpoch {
+			if job.retired || job.partition != partition || job.configuration != generation || job.epoch != w.epoch || job.sourceEpoch != w.sourceEpoch || w.rangeReuse {
 				continue
 			}
 			for pair := range w.pairs {
@@ -645,6 +698,7 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 			}
 		}
 		f.pending[w] = true
+		f.progressWaiterLocked(w)
 	}
 	ready := w.missing == 0
 	if ready {
@@ -652,8 +706,10 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 	}
 	f.mu.Unlock()
 	f.signal()
-	select {
-	case result := <-w.reply:
+	deliver := func(result finiteReply) (*sdk.ResourceMetricsResponse, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if result.err != nil {
 			return nil, result.err
 		}
@@ -695,10 +751,34 @@ func (c *controller) readFiniteLane(ctx context.Context, spec MetricsObservation
 			return nil, finiteError("RESOURCE_LIMIT", "Projected metric response byte limit exceeded.")
 		}
 		return result.data, nil
-	case <-ctx.Done():
-		telemetry.RecordPipelineEvent(ctx, "cancel_interest", 1)
-		f.detach(w)
-		return nil, ctx.Err()
+	}
+	for {
+		select {
+		case result := <-w.reply:
+			return deliver(result)
+		case <-w.progress:
+			f.mu.Lock()
+			var reply finiteReply
+			if !w.finished {
+				reply = finiteWaiterReply(w, true)
+			}
+			f.mu.Unlock()
+			if reply.data == nil && reply.err == nil {
+				continue
+			}
+			data, err := deliver(reply)
+			if err == nil {
+				err = progress(data)
+			}
+			if err != nil {
+				f.detach(w)
+				return nil, err
+			}
+		case <-ctx.Done():
+			telemetry.RecordPipelineEvent(ctx, "cancel_interest", 1)
+			f.detach(w)
+			return nil, ctx.Err()
+		}
 	}
 }
 func (f *finiteCoordinator) interestBoundsLocked() (int, int) {
@@ -741,15 +821,29 @@ func (f *finiteCoordinator) finishWaiter(w *finiteWaiter, err error) {
 	if w.finished {
 		return
 	}
-	w.finished = true
-	if err != nil {
-		select {
-		case w.reply <- finiteReply{err: err}:
-		default:
+	if w.rangeReuse && err == nil {
+		// Another overlapping job may finish this reader first. It must not
+		// keep unrelated remainder work alive after its last real reader leaves.
+		for job := range f.jobs {
+			delete(job.waiters, w)
+			if len(job.waiters) == 0 && !job.retired {
+				job.retireLocked()
+			}
 		}
-		return
 	}
-	response := &sdk.ResourceMetricsResponse{Results: make([]sdk.ResourceMetricResult, 0, len(w.results)), Complete: w.complete, Warnings: w.warnings}
+	w.finished = true
+	reply := finiteReply{err: err}
+	if err == nil {
+		reply = finiteWaiterReply(w, false)
+	}
+	select {
+	case w.reply <- reply:
+	default:
+	}
+}
+
+func finiteWaiterReply(w *finiteWaiter, partial bool) finiteReply {
+	response := &sdk.ResourceMetricsResponse{Results: make([]sdk.ResourceMetricResult, 0, len(w.results)), Complete: w.complete && !partial, Warnings: slices.Clone(w.warnings)}
 	for _, t := range w.query.Targets {
 		for _, m := range w.query.MetricIDs {
 			if r, ok := w.results[w.workPairs[finitePair{t.Token, m}]]; ok {
@@ -766,10 +860,7 @@ func (f *finiteCoordinator) finishWaiter(w *finiteWaiter, err error) {
 	} else if encoded, encodeErr := json.Marshal(response); encodeErr != nil || len(encoded) > finiteMaxBytes {
 		reply = finiteReply{err: finiteError("RESOURCE_LIMIT", "Assembled metric response byte limit exceeded.")}
 	}
-	select {
-	case w.reply <- reply:
-	default:
-	}
+	return reply
 }
 func (f *finiteCoordinator) loop() {
 	timer := time.NewTimer(time.Hour)
@@ -827,17 +918,7 @@ func (f *finiteCoordinator) nextDeadlineLocked(now time.Time) time.Time {
 			earlier(deadline)
 		}
 		for pair := range w.pairs {
-			if w.done[pair] {
-				continue
-			}
-			covered := false
-			for job := range f.jobs {
-				if !job.retired && job.partition == w.partition && job.pairs[pair] {
-					covered = true
-					break
-				}
-			}
-			if !covered {
+			if _, uncovered := f.uncoveredLocked(w, pair); uncovered {
 				admission(w.queued)
 				break
 			}
@@ -912,17 +993,20 @@ func maxFiniteTime(values ...time.Time) time.Time {
 	return latest
 }
 
-func (f *finiteCoordinator) uncoveredLocked(w *finiteWaiter, pair finitePair) bool {
+func (f *finiteCoordinator) uncoveredLocked(w *finiteWaiter, pair finitePair) (finiteRangeSpan, bool) {
 	if w.done[pair] {
-		return false
+		return finiteRangeSpan{}, false
+	}
+	if w.rangeReuse {
+		return f.nextFiniteRangeLocked(w, pair, true)
 	}
 	for job := range f.jobs {
 		if !job.retired && job.partition == w.partition && job.pairs[pair] {
 			job.waiters[w] = true
-			return false
+			return finiteRangeSpan{}, false
 		}
 	}
-	return true
+	return finiteRangeSpan{}, true
 }
 
 func (f *finiteCoordinator) dispatchLocked() {
@@ -937,19 +1021,21 @@ func (f *finiteCoordinator) dispatchAtLocked(now time.Time) {
 	}
 	var base *finiteWaiter
 	var seed finitePair
+	var seedRange finiteRangeSpan
 	for w := range f.pending {
 		if w.ctx.Err() != nil || now.Before(w.queued.Add(finiteCoalesceDelay)) {
 			continue
 		}
 		for pair := range w.pairs {
-			if !f.uncoveredLocked(w, pair) {
+			span, uncovered := f.uncoveredLocked(w, pair)
+			if !uncovered {
 				continue
 			}
 			if base == nil || w.queued.Before(base.queued) ||
 				(w.queued.Equal(base.queued) && (w.partition < base.partition ||
 					(w.partition == base.partition && (pair.target < seed.target ||
 						(pair.target == seed.target && pair.metric < seed.metric))))) {
-				base, seed = w, pair
+				base, seed, seedRange = w, pair, span
 			}
 		}
 	}
@@ -983,7 +1069,8 @@ func (f *finiteCoordinator) dispatchAtLocked(now time.Time) {
 			continue
 		}
 		for pair := range w.pairs {
-			if !f.uncoveredLocked(w, pair) {
+			span, uncovered := f.uncoveredLocked(w, pair)
+			if !uncovered || !span.start.Equal(seedRange.start) || !span.end.Equal(seedRange.end) {
 				continue
 			}
 			if byTarget[pair.target] == nil {
@@ -1021,6 +1108,9 @@ func (f *finiteCoordinator) dispatchAtLocked(now time.Time) {
 		return ages[list[i]].Before(ages[list[j]])
 	})
 	q := base.query
+	if base.rangeReuse {
+		q = finiteRangeQuery(q, seedRange)
+	}
 	q.Targets = make([]sdk.ResourceMetricTarget, 0, min(len(list), base.maxTargets))
 	q.MetricIDs = ids
 	seenReferences := map[string]bool{}
@@ -1044,10 +1134,17 @@ func (f *finiteCoordinator) dispatchAtLocked(now time.Time) {
 	job.configurationSerial = base.configurationSerial
 	job.configurationGuard = base.configurationGuard
 	job.maxSampleAge = base.maxSampleAge
+	job.rangeReuse = base.rangeReuse
 	for w := range f.pending {
 		if w.partition == base.partition && w.ctx.Err() == nil {
 			for pair := range job.pairs {
 				if w.pairs[pair] && !w.done[pair] {
+					if w.rangeReuse {
+						span, overlaps := finiteIntersectSpan(finiteQuerySpan(w.query), finiteQuerySpan(q))
+						if !overlaps || !finiteCompatibleGrid(finiteQuerySpan(w.query), finiteQuerySpan(q), q.Step) || !finiteSpanNeeded(w.rangeCoverage[pair], span, q.Step) {
+							continue
+						}
+					}
 					job.waiters[w] = true
 					break
 				}
@@ -1065,6 +1162,9 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 	spec := base
 	spec.Targets = job.query.Targets
 	spec.MetricIDs = job.query.MetricIDs
+	spec.Shape, spec.DurationMs = job.query.Shape, 0
+	spec.StartTime, spec.EndTime = job.query.StartTime, job.query.EndTime
+	spec.StepMs = int(job.query.Step / time.Millisecond)
 	admitted, _, err := f.c.admitFinite(ctx, spec)
 	var response *sdk.ResourceMetricsResponse
 	var guard func() error
@@ -1123,6 +1223,15 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 	if err == nil {
 		err = sdk.ValidateResourceMetricsResponse(job.query, response)
 	}
+	if err == nil && job.rangeReuse {
+		span := finiteQuerySpan(job.query)
+		for _, result := range response.Results {
+			if result.Status == "ok" && !finitePureRangeResult(result, span, job.query.Step) {
+				err = finiteError("INVALID_REQUEST", "Range reuse requires pure, aligned point series.")
+				break
+			}
+		}
+	}
 	var size int
 	if err == nil {
 		bytes, encodeErr := json.Marshal(response)
@@ -1170,6 +1279,11 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 		}
 		entry := finiteCacheEntry{partition: job.partition, pairs: resultMap, complete: response.Complete, warnings: response.Warnings, until: time.Now().Add(finiteCacheTTL), key: job.key, epoch: job.epoch, sourceKey: job.sourceKey, sourceEpoch: job.sourceEpoch, configuration: job.configuration, bytes: size}
 		entry.configurationKeys = job.configurationKeys
+		entry.rangeReuse = job.rangeReuse
+		if job.rangeReuse {
+			entry.start, entry.end = job.query.StartTime, job.query.EndTime
+			entry.bytes += 64 // Account for the retained range descriptor.
+		}
 		if job.query.Shape == "current" && job.maxSampleAge > 0 {
 			for _, result := range resultMap {
 				if result.ObservedAt != nil {
@@ -1180,7 +1294,7 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 				}
 			}
 		}
-		total := size
+		total := entry.bytes
 		for _, e := range f.cache {
 			total += e.bytes
 		}
@@ -1209,6 +1323,15 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 			if !w.pairs[pair] || w.done[pair] {
 				continue
 			}
+			if w.rangeReuse {
+				r, present := resultMap[pair]
+				if failure := f.acceptRangeResultLocked(w, job, pair, r, present, response.Complete); failure != nil {
+					f.removeWaiterLocked(w)
+					f.finishWaiter(w, failure)
+					break
+				}
+				continue
+			}
 			w.done[pair] = true
 			w.missing--
 			if r, ok := resultMap[pair]; ok {
@@ -1217,9 +1340,14 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 				w.complete = false
 			}
 		}
+		if w.finished {
+			continue
+		}
 		if w.missing == 0 {
 			delete(f.pending, w)
 			f.finishWaiter(w, nil)
+		} else {
+			f.progressWaiterLocked(w)
 		}
 	}
 	f.mu.Unlock()

@@ -205,6 +205,24 @@ export class FiniteMetricDescriptor {
      */
     "source"?: MetricSourceRef | null;
 
+    /**
+     * RangeReuse is the provider's opt-in to coverage-aware range reuse. It
+     * requires the range shape; false or absent never permits reuse. Setting it
+     * guarantees that every ok range result for this metric is a pure point
+     * series: Points are pointwise evaluations on the grid StartTime+n*Step, and
+     * for the same query context and Step each point's value and presence do not
+     * depend on StartTime, EndTime or which other points were requested.
+     * ObservedAt and Window describe one requested domain, not that series, so a
+     * host reuses points across different bounds only from ok results that leave
+     * both unset and whose IdentityScope, Source and Dimensions stay compatible;
+     * any other result is valid only for its exact domain. Reuse does not imply
+     * that a range point equals a current sample or that source history never
+     * changes: the host's cache TTL still governs staleness. The descriptor, not
+     * an owner's MetricDefinition.RangeReuse declaration, is the opt-in, and a
+     * provider may decline that declaration.
+     */
+    "range_reuse"?: boolean;
+
     /** Creates a new FiniteMetricDescriptor instance. */
     constructor($$source: Partial<FiniteMetricDescriptor> = {}) {
         if (!("id" in $$source)) {
@@ -396,6 +414,15 @@ export class MetricDefinition {
     "batch_strategy": string;
     "revision": string;
     "native": boolean;
+
+    /**
+     * RangeReuse is the owner's declaration that this authored definition meets
+     * the FiniteMetricDescriptor.RangeReuse guarantee. It requires the range
+     * shape. It is not an opt-in: the provider's descriptor decides and may
+     * decline, and a host clears the declaration unless the effective definition
+     * is exactly the owner-authored one.
+     */
+    "range_reuse"?: boolean;
 
     /** Creates a new MetricDefinition instance. */
     constructor($$source: Partial<MetricDefinition> = {}) {
