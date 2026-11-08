@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/mod/module"
 	"golang.org/x/mod/sumdb/dirhash"
@@ -52,11 +53,66 @@ type World struct {
 	commands [][]string
 }
 
-// New creates an empty world. Its module cache is writable again when the test
-// ends, because the Go command extracts modules read-only.
+// TempDir returns a private directory a Go command may write into. Unlike
+// t.TempDir it is removed robustly: the Go command extracts module caches
+// read-only, and a late writer (a flushing Go telemetry or cache writer) can
+// create an entry while the removal scans, which makes a plain RemoveAll end in
+// ENOTEMPTY on the top directory. The cleanup makes the whole tree writable and
+// retries the removal for a bounded time; only a directory that survives every
+// retry fails the test. It is registered at creation, so it runs after the
+// cleanups registered later (LIFO) that still need the files.
+func TempDir(t testing.TB) string {
+	t.Helper()
+	directory, err := os.MkdirTemp("", "sdktest-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			makeWritable(directory)
+			err := os.RemoveAll(directory)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("sdktest.TempDir cleanup: %v", err)
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
+	return directory
+}
+
+// Home returns a TempDir to use as a Go user's HOME, with Go telemetry turned
+// off for it so no telemetry writer touches the directory, in both user-config
+// locations (Linux: <home>/.config, macOS: <home>/Library/Application Support).
+// Callers still point HOME and USERPROFILE at it, and should also set
+// XDG_CONFIG_HOME=<home>/.config and XDG_CACHE_HOME=<home>/.cache so Go's
+// configuration and cache never leave the scratch directory.
+func Home(t testing.TB) string {
+	t.Helper()
+	home := TempDir(t)
+	for _, directory := range []string{
+		filepath.Join(home, ".config", "go", "telemetry"),
+		filepath.Join(home, "Library", "Application Support", "go", "telemetry"),
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "mode"), []byte("off 2024-01-01\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return home
+}
+
+// New creates an empty world. Its root is a TempDir, so the read-only module
+// cache the Go command extracts is made writable and removed when the test ends.
 func New(t testing.TB) *World {
 	t.Helper()
-	root, err := filepath.EvalSymlinks(t.TempDir())
+	root, err := filepath.EvalSymlinks(TempDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,12 +122,18 @@ func New(t testing.TB) *World {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(func() { makeWritable(world.ModCache) })
 	return world
 }
 
 func makeWritable(root string) {
 	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if entry != nil && entry.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		if entry != nil && entry.IsDir() && err != nil {
+			_ = os.Chmod(path, 0o700)
+			return nil
+		}
 		if err == nil {
 			_ = os.Chmod(path, 0o700)
 		}

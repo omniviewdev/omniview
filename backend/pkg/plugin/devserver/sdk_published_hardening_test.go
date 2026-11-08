@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/internal/devsdk"
+	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 	"github.com/omniviewdev/omniview/internal/instance"
 )
 
@@ -23,7 +24,7 @@ func TestPublishedManagedBuildRefusesEnvironmentFileGoFlags(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			build := newPublishedBuild(t, nil)
-			goEnv := filepath.Join(t.TempDir(), "env")
+			goEnv := filepath.Join(sdktest.TempDir(t), "env")
 			require.NoError(t, os.WriteFile(goEnv, []byte("GOFLAGS="+flags+"\n"), 0o600))
 			t.Setenv("GOENV", goEnv)
 
@@ -56,16 +57,6 @@ func TestPublishedDependencyWatchesRunInTheNeutralModuleEnvironment(t *testing.T
 	build.world.Write(build.plugin, "go.mod", fmt.Sprintf("module example.com/plugin\n\ngo 1.26.0\n\nrequire %s %s\n", build.uuid.Module, build.uuid.Version))
 	build.world.Write(build.plugin, "go.sum", fmt.Sprintf("%s %s %s\n%s %s/go.mod %s\n",
 		build.uuid.Module, build.uuid.Version, build.uuid.ModuleSum, build.uuid.Module, build.uuid.Version, build.uuid.GoModSum))
-	// The neutral environment drops -modcacherw: let the temp dir be removed.
-	modcache := os.Getenv("GOMODCACHE")
-	t.Cleanup(func() {
-		_ = filepath.WalkDir(modcache, func(path string, entry os.DirEntry, err error) error {
-			if err == nil && entry.IsDir() {
-				_ = os.Chmod(path, 0o700)
-			}
-			return nil
-		})
-	})
 	// -mod=vendor makes `go list -m` fail in a tree without vendor/.
 	t.Setenv("GOFLAGS", "-mod=vendor")
 	watcher := build.watcher(t, build.goPath, devsdk.ReleasePolicy())
@@ -99,9 +90,9 @@ func TestGoRunnerRedactsBeforeTruncating(t *testing.T) {
 	password := "p@ss" + strings.Repeat("w", 40) + "@word"
 	stderr := "https://user:" + password + "@proxy.example/x?access_token=TOPSECRETTOKEN " + strings.Repeat("x", 4090-len("https://user:")-len(password)+30)
 	script := "#!/bin/sh\nprintf '%s' \"$GO_STDERR\" >&2\nexit 1\n"
-	goPath := filepath.Join(t.TempDir(), "go")
+	goPath := filepath.Join(sdktest.TempDir(t), "go")
 	require.NoError(t, os.WriteFile(goPath, []byte(script), 0o700))
-	_, err := goRunner(goPath, []string{"GO_STDERR=" + stderr})(context.Background(), t.TempDir(), nil, "list", "-m")
+	_, err := goRunner(goPath, []string{"GO_STDERR=" + stderr})(context.Background(), sdktest.TempDir(t), nil, "list", "-m")
 	require.Error(t, err)
 	require.LessOrEqual(t, len(err.Error()), goDiagnosticLimit+64)
 	for _, secret := range []string{"TOPSECRETTOKEN", "word", "p@ss", strings.Repeat("w", 8)} {

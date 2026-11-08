@@ -494,7 +494,7 @@ func TestPublishedVerificationIsIndependentOfTheAmbientGoEnvironment(t *testing.
 
 	hostile := map[string]string{
 		"GOFLAGS":  "-mod=vendor -modfile=/nonexistent/evil.mod",
-		"GOWORK":   filepath.Join(t.TempDir(), "evil.work"),
+		"GOWORK":   filepath.Join(sdktest.TempDir(t), "evil.work"),
 		"GOROOT":   "",
 		"SDK_ROOT": "/nonexistent",
 	}
@@ -514,7 +514,7 @@ func TestPublishedVerificationOfAnEffectiveModfile(t *testing.T) {
 		sum, err := os.ReadFile(filepath.Join(f.consumer, "go.sum"))
 		require.NoError(t, err)
 		newMod, newSum := edit(f, string(mod), string(sum))
-		output := t.TempDir()
+		output := sdktest.TempDir(t)
 		require.NoError(t, os.WriteFile(filepath.Join(output, "host.mod"), []byte(newMod), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(output, "host.sum"), []byte(newSum), 0o600))
 		request := f.request()
@@ -566,7 +566,7 @@ func TestVerifyBinaryChecksTheBuiltSDKAgainstTheVerifiedIdentity(t *testing.T) {
 	require.NoError(t, err)
 	build := func(t *testing.T, directory string) string {
 		t.Helper()
-		binary := filepath.Join(t.TempDir(), "plugin")
+		binary := filepath.Join(sdktest.TempDir(t), "plugin")
 		_, err := f.world.Runner()(context.Background(), directory, []string{"GOFLAGS="}, "build", "-mod=readonly", "-o", binary, ".")
 		require.NoError(t, err)
 		return binary

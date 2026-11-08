@@ -31,7 +31,7 @@ func pubSelect(t *testing.T, directory, module, extra string, releases ...sdktes
 // a checkout that would fail verification if anything resolved the SDK to it.
 func pubTamperedSDK(t *testing.T) string {
 	t.Helper()
-	directory := filepath.Join(t.TempDir(), "tampered-sdk")
+	directory := filepath.Join(sdktest.TempDir(t), "tampered-sdk")
 	require.NoError(t, os.MkdirAll(directory, 0o700))
 	pubCopyDirectory(t, sdktest.PinnedSDK(t), directory)
 	pubWrite(t, filepath.Join(directory, "pkg", "config", "isolation.go"), "package config\n")

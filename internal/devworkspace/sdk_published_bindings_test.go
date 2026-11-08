@@ -13,6 +13,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsdk"
+	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 )
 
 const pubBindingsFile = "packages/omniviewdev-runtime/src/bindings/index.ts"
@@ -49,7 +50,7 @@ type pubBindingsFixture struct {
 func (e *pubEnv) bindingsFixture() *pubBindingsFixture {
 	t := e.t
 	t.Helper()
-	root, err := filepath.EvalSymlinks(t.TempDir())
+	root, err := filepath.EvalSymlinks(sdktest.TempDir(t))
 	require.NoError(t, err)
 	root = filepath.Join(root, "sources")
 	require.NoError(t, os.MkdirAll(root, 0o700))
@@ -89,8 +90,8 @@ func (e *pubEnv) bindingsFixture() *pubBindingsFixture {
 	pubLinkWorkspace(t, w)
 
 	f := &pubBindingsFixture{env: e, manager: manager, w: w, log: pubGoShim(t)}
-	f.taskEnv = filepath.Join(t.TempDir(), "task-environment")
-	taskDirectory := t.TempDir()
+	f.taskEnv = filepath.Join(sdktest.TempDir(t), "task-environment")
+	taskDirectory := sdktest.TempDir(t)
 	pubWrite(t, filepath.Join(taskDirectory, "task"), strings.NewReplacer("%[1]s", pubShellQuote(f.log), "%[2]s", pubShellQuote(f.taskEnv), "%%", "%").Replace(pubFakeTask))
 	require.NoError(t, os.Chmod(filepath.Join(taskDirectory, "task"), 0o700))
 	t.Setenv("PATH", taskDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))

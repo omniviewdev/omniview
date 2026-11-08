@@ -65,7 +65,7 @@ func newPubEnv(t *testing.T) *pubEnv {
 	}
 	require.NotEmpty(t, pubGoBinary, "go must be on PATH")
 	world := sdktest.New(t)
-	home, err := filepath.EvalSymlinks(t.TempDir())
+	home, err := filepath.EvalSymlinks(sdktest.Home(t))
 	require.NoError(t, err)
 	env := &pubEnv{t: t, world: world, home: home}
 	env.sdk = world.PublishSDK(devsdk.FloorVersion, nil)
@@ -87,6 +87,8 @@ func (e *pubEnv) activate() {
 	}
 	e.t.Setenv("HOME", e.home)
 	e.t.Setenv("USERPROFILE", e.home)
+	e.t.Setenv("XDG_CONFIG_HOME", filepath.Join(e.home, ".config"))
+	e.t.Setenv("XDG_CACHE_HOME", filepath.Join(e.home, ".cache"))
 	e.t.Setenv("GOCACHE", pubAmbientGoCache)
 	e.t.Setenv("SDK_SOURCE", "/ambient/sdk")
 	e.t.Setenv(devcontract.WorkspaceEnvironment, "")
@@ -136,7 +138,7 @@ func pubRead(t *testing.T, path string) string {
 func (e *pubEnv) workspace() Workspace {
 	t := e.t
 	t.Helper()
-	root, err := filepath.EvalSymlinks(filepath.Join(t.TempDir()))
+	root, err := filepath.EvalSymlinks(sdktest.TempDir(t))
 	require.NoError(t, err)
 	root = filepath.Join(root, "workspaces", "feature")
 	require.NoError(t, os.MkdirAll(root, 0o700))
@@ -191,7 +193,7 @@ func pubRequireCode(t *testing.T, err error, code string, exit int) *devcontract
 func (e *pubEnv) hostileGoEnv() string {
 	t := e.t
 	t.Helper()
-	directory := t.TempDir()
+	directory := sdktest.TempDir(t)
 	overlay := filepath.Join(directory, "overlay.json")
 	pubWrite(t, overlay, `{"Replace":{}}`+"\n")
 	file := filepath.Join(directory, "go.env")
@@ -206,7 +208,7 @@ func (e *pubEnv) hostileGoEnv() string {
 // was ever started.
 func pubGoShim(t *testing.T) (log string) {
 	t.Helper()
-	directory := t.TempDir()
+	directory := sdktest.TempDir(t)
 	log = filepath.Join(directory, "go-invocations.log")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + pubShellQuote(log) + "\nexec " + pubShellQuote(pubGoBinary) + " \"$@\"\n"
 	pubWrite(t, filepath.Join(directory, "go"), script)

@@ -206,7 +206,7 @@ func TestTrustedArtifactRequiresSourceSnapshotIdentity(t *testing.T) {
 
 func artifactWorkspaceFixture(t *testing.T) devcontract.ResolvedWorkspace {
 	t.Helper()
-	home, err := filepath.EvalSymlinks(t.TempDir())
+	home, err := filepath.EvalSymlinks(sdktest.Home(t))
 	if err != nil {
 		t.Fatal(err)
 	}

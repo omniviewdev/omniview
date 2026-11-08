@@ -1,7 +1,11 @@
 package sdktest_test
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -46,4 +50,62 @@ func TestWorldServesAndRequiresReleases(t *testing.T) {
 	require.NotEmpty(t, required.ModuleSum)
 	require.NotEmpty(t, required.GoModSum)
 	require.DirExists(t, world.Proxy+"/example.com/helper/@v")
+}
+
+func TestTempDirRemovesReadOnlyTrees(t *testing.T) {
+	var directory string
+	t.Run("body", func(t *testing.T) {
+		directory = sdktest.TempDir(t)
+		locked := filepath.Join(directory, "a", "b")
+		require.NoError(t, os.MkdirAll(locked, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(locked, "file"), []byte("x"), 0o600))
+		require.NoError(t, os.Chmod(filepath.Join(locked, "file"), 0o444))
+		require.NoError(t, os.Chmod(locked, 0o555))
+		require.NoError(t, os.Chmod(filepath.Join(directory, "a"), 0o555))
+	})
+	require.NoDirExists(t, directory)
+}
+
+func TestTempDirSurvivesALateWriter(t *testing.T) {
+	var directory string
+	t.Run("body", func(t *testing.T) {
+		directory = sdktest.TempDir(t)
+		go func() {
+			// A real concurrent writer that outlives the test body and stops
+			// by itself: after 300 ms, or once the directory is gone.
+			deadline := time.Now().Add(300 * time.Millisecond)
+			for i := 0; time.Now().Before(deadline); i++ {
+				if os.WriteFile(filepath.Join(directory, fmt.Sprintf("late-%d", i)), []byte("x"), 0o600) != nil {
+					return
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}()
+	})
+	require.NoDirExists(t, directory)
+}
+
+func TestHomeTurnsGoTelemetryOff(t *testing.T) {
+	home := sdktest.Home(t)
+	for _, mode := range []string{
+		filepath.Join(home, ".config", "go", "telemetry", "mode"),
+		filepath.Join(home, "Library", "Application Support", "go", "telemetry", "mode"),
+	} {
+		data, err := os.ReadFile(mode)
+		require.NoError(t, err)
+		require.Equal(t, "off 2024-01-01\n", string(data))
+	}
+}
+
+func TestWorldRootIsWritableCleaned(t *testing.T) {
+	var root string
+	t.Run("body", func(t *testing.T) {
+		world := sdktest.New(t)
+		root = world.Root
+		extracted := filepath.Join(world.ModCache, "example.com", "m@v1.0.0")
+		require.NoError(t, os.MkdirAll(extracted, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(extracted, "go.mod"), []byte("module m\n"), 0o444))
+		require.NoError(t, os.Chmod(extracted, 0o555))
+	})
+	require.NoDirExists(t, root)
 }

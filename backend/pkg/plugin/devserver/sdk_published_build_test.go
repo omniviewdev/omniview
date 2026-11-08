@@ -50,7 +50,7 @@ func newPublishedBuild(t *testing.T, mutateSDK func(tree string), extraVersions 
 	// it refuses a state root that disagrees with the profile.
 	state := appstate.NewTestService(t)
 	world := sdktest.New(t)
-	home := t.TempDir()
+	home := sdktest.Home(t)
 	sdk := world.PublishSDK(devsdk.FloorVersion, mutateSDK)
 	extra := map[string]sdktest.Release{}
 	for _, version := range extraVersions {
@@ -60,12 +60,9 @@ func newPublishedBuild(t *testing.T, mutateSDK func(tree string), extraVersions 
 	// The pinned releases are derived from the controller's own module graph, so
 	// the hermetic environment applies only after they are published.
 	t.Setenv("HOME", home)
-	// Go's telemetry counters are written under the user config directory by a
-	// process that can outlive the command; keep the scratch HOME inert.
-	config, err := os.UserConfigDir()
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Join(config, "go", "telemetry"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(config, "go", "telemetry", "mode"), []byte("off 2024-01-01\n"), 0o600))
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	for _, entry := range world.Environment() {
 		key, value, _ := strings.Cut(entry, "=")
 		t.Setenv(key, value)
@@ -270,7 +267,7 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 func TestPublishedManagedBuildRefusesAnSDKChangedDuringTheBuild(t *testing.T) {
 	build := newPublishedBuild(t, nil, "v0.18.0")
 	second := build.extra["v0.18.0"]
-	alternate := filepath.Join(t.TempDir(), "go.mod.alt")
+	alternate := filepath.Join(sdktest.TempDir(t), "go.mod.alt")
 	require.NoError(t, os.WriteFile(alternate, []byte(fmt.Sprintf("module example.com/plugin\n\ngo 1.26.0\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
 		second.Module, second.Version, build.uuid.Module, build.uuid.Version)), 0o600))
 	sums, err := os.ReadFile(filepath.Join(build.plugin, "go.sum"))
@@ -280,7 +277,7 @@ func TestPublishedManagedBuildRefusesAnSDKChangedDuringTheBuild(t *testing.T) {
 
 	// The wrapped go swaps the SDK requirement right after the compile, the
 	// window between the before and after verifications.
-	wrapper := filepath.Join(t.TempDir(), "go")
+	wrapper := filepath.Join(sdktest.TempDir(t), "go")
 	script := fmt.Sprintf("#!/bin/sh\n%q \"$@\"\nstatus=$?\nif [ \"$1\" = build ]; then cp %q go.mod; fi\nexit $status\n", build.goPath, alternate)
 	require.NoError(t, os.WriteFile(wrapper, []byte(script), 0o700))
 

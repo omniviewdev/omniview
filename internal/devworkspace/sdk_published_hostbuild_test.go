@@ -91,7 +91,7 @@ func (e *pubEnv) hostFixture(overrideMod, overrideSum string) *pubHostFixture {
 	f := &pubHostFixture{env: e, workspace: w, host: host, goLog: pubGoShim(t)}
 	f.supervisor = &workspaceSupervisor{
 		workspace: w, options: LaunchOptions{Mode: "browser"}, goBuildCache: pubAmbientGoCache,
-		manager: &Manager{options: Options{Home: t.TempDir(), SDKPolicy: e.policy}},
+		manager: &Manager{options: Options{Home: sdktest.TempDir(t), SDKPolicy: e.policy}},
 	}
 	f.graph = e.graph(w, f.supervisor.buildHost)
 	f.supervisor.generation = f.graph.options.Generation
@@ -177,7 +177,7 @@ func TestPublishedHostBuildCompilesAgainstThePublishedSDKAndAdoptsTheBinary(t *t
 // before any compile.
 func TestPublishedHostBuildRefusesAHostmodThatInjectsAnSDKReplacement(t *testing.T) {
 	env := newPubEnv(t)
-	tampered := filepath.Join(t.TempDir(), "tampered-sdk")
+	tampered := filepath.Join(sdktest.TempDir(t), "tampered-sdk")
 	require.NoError(t, os.MkdirAll(tampered, 0o700))
 	pubCopyDirectory(t, sdktest.PinnedSDK(t), tampered)
 	pubWrite(t, filepath.Join(tampered, "pkg", "profilecontract", "tamper.go"), "package profilecontract\n\nfunc init() { panic(\"tampered SDK was compiled\") }\n")

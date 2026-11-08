@@ -234,7 +234,7 @@ func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
 // refuses it before anything is resolved. The same flag as an ambient variable is
 // neutralized by ModuleEnvironment.
 func TestPublishedVerificationRefusesGoFlagsFromTheGoEnvironmentFile(t *testing.T) {
-	scratch := t.TempDir()
+	scratch := sdktest.TempDir(t)
 	overlay := filepath.Join(scratch, "overlay.json")
 	require.NoError(t, os.WriteFile(overlay, []byte(`{"Replace":{}}`), 0o600))
 	evilMod := filepath.Join(scratch, "evil.mod")
@@ -253,7 +253,7 @@ func TestPublishedVerificationRefusesGoFlagsFromTheGoEnvironmentFile(t *testing.
 			require.NoError(t, err, "control: the same consumer verifies without the flag")
 			cleanCommands := len(f.world.Commands())
 
-			envFile := filepath.Join(t.TempDir(), "goenv")
+			envFile := filepath.Join(sdktest.TempDir(t), "goenv")
 			require.NoError(t, os.WriteFile(envFile, []byte("GOFLAGS="+flag+"\n"), 0o600))
 			fileRunner := func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
 				return f.world.Runner()(ctx, directory, append([]string{"GOENV=" + envFile}, environment...), args...)
@@ -284,7 +284,7 @@ func TestPublishedVerificationRefusesGoFlagsFromTheGoEnvironmentFile(t *testing.
 
 	t.Run("credentials in the flags are redacted and the flags are bounded", func(t *testing.T) {
 		f := newFixture(t)
-		envFile := filepath.Join(t.TempDir(), "goenv")
+		envFile := filepath.Join(sdktest.TempDir(t), "goenv")
 		hostile := "-tags=" + strings.Repeat("x", 1000) + " -toolexec=https://user:hunter2@example.com/wrapper"
 		require.NoError(t, os.WriteFile(envFile, []byte("GOFLAGS="+hostile+"\n"), 0o600))
 		run := func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
@@ -304,7 +304,7 @@ func TestPublishedVerificationRefusesGoFlagsFromTheGoEnvironmentFile(t *testing.
 
 	t.Run("a Go environment file without GOFLAGS keeps the user's other settings", func(t *testing.T) {
 		f := newFixture(t)
-		envFile := filepath.Join(t.TempDir(), "goenv")
+		envFile := filepath.Join(sdktest.TempDir(t), "goenv")
 		require.NoError(t, os.WriteFile(envFile, []byte("GOPROXY=file://"+f.world.Proxy+"\nGOSUMDB=off\n"), 0o600))
 		run := func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
 			return f.world.Runner()(ctx, directory, append([]string{"GOENV=" + envFile}, environment...), args...)
