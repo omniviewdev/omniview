@@ -1,0 +1,31 @@
+{
+  "expectations": [
+    {
+      "text": "Does not ban semantic structural HTML or domain ANSI colors.",
+      "passed": true,
+      "evidence": "Explicitly states, “Semantic `main`/`section`/`form` markup is valid” and “ANSI log colors are legitimate domain data, not inherently a theme violation.”"
+    },
+    {
+      "text": "Does not fabricate History or utilization percentages for unsupported shapes/unknown capacity.",
+      "passed": true,
+      "evidence": "States, “A native-only metric may correctly show Current without History. Do not fabricate History,” and “Unknown capacity should remain unknown; omitting a utilization percentage avoids invented bounds.”"
+    },
+    {
+      "text": "Does not blanket-ban full-width URL input or explicitly approved menu presentation.",
+      "passed": true,
+      "evidence": "States, “A URL input may fill a bounded form column appropriate to its content” and “The explicitly approved chart menu is an allowed design difference, not an automatic parity failure.”"
+    },
+    {
+      "text": "Separates remaining actual verification from invented defects and does not claim unobserved screenshots were personally inspected.",
+      "passed": true,
+      "evidence": "Separates “Remaining verification before an overall pass” from its finding that “none of these facts is itself a reason to block acceptance.” It says checks not evidenced remain “unverified, without inventing defects or requiring additional features,” and explicitly disclaims execution: “No tools or runtime checks were executed here.” Pixel inspection is requested prospectively (“Independently inspect baseline/current pixels”), not claimed as completed."
+    }
+  ],
+  "critique": "The response satisfies all four assertions and directly answers the decision question without treating the listed facts as defects. Its remaining-verification section is somewhat overprescriptive: “must issue separate verdicts” for four categories introduces an audit-process requirement absent from the prompt, and the broad state/condition checklist is not established as necessary in every case. These are scope concerns rather than fabricated observed defects or demands for extra product features. The runtime-gate disclaimer is also unnecessary to this question. The assertions are discriminating about the central acceptance decisions, but the fourth is comparatively broad: passing it does not establish that every proposed verification step or mandatory audit procedure is justified.",
+  "summary": {
+    "passed": 4,
+    "failed": 0,
+    "total": 4,
+    "pass_rate": 1
+  }
+}

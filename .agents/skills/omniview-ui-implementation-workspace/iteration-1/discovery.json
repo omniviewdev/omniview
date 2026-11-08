@@ -1,0 +1,37 @@
+{
+  "scope": "Metadata-only fresh completion selection, not client runtime trigger proof.",
+  "cases": [
+    {
+      "prompt": "Convert the metrics adapter to the new runtime APIs; preserve its existing cards and table display.",
+      "expected": true,
+      "result": {
+        "activate": true,
+        "reason": "The runtime API migration affects a metrics adapter with visible card and table consumers, so the skill applies to preserve the existing Omniview UI/UX and detect display regressions."
+      }
+    },
+    {
+      "prompt": "Fix crowded icons in the source dropdown and time picker without changing the design.",
+      "expected": true,
+      "result": {
+        "activate": true,
+        "reason": "Fixing crowded icons in dropdown and time-picker controls is a UI-affecting change that requires preserving the existing Omniview design and component composition."
+      }
+    },
+    {
+      "prompt": "Add retries to the Go transport and update its timeout regression tests. No UI changes.",
+      "expected": false,
+      "result": {
+        "activate": false,
+        "reason": "The request concerns Go transport retries and timeout regression tests only, with explicitly no UI changes or affected UI consumers."
+      }
+    },
+    {
+      "prompt": "Update a backend-only database migration comment.",
+      "expected": false,
+      "result": {
+        "activate": false,
+        "reason": "A backend-only database migration comment does not affect UI or UX."
+      }
+    }
+  ]
+}
