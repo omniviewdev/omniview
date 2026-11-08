@@ -265,12 +265,16 @@ func (g *BuildGraph) toolchainInputs(ctx context.Context, n BuildNode) (string, 
 		if err != nil {
 			return "", err
 		}
+		source, isSource := identity.Source()
+		if !isSource {
+			return "", errors.New("build reuse has no fingerprint for a published SDK identity")
+		}
 		version, err := goVersion(ctx, n.Directory)
 		if err != nil {
 			return "", err
 		}
 		fmt.Fprintf(&b, "sdk\x00%s\x00%s\x00go\x00%s\x00variant\x00%s",
-			identity.Revision, identity.SourceDigest, version, g.options.HostVariant)
+			source.Revision, source.SourceDigest, version, g.options.HostVariant)
 		return b.String(), nil
 	}
 	if g.plan.Composition == nil {

@@ -392,14 +392,18 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	return resultErr
 }
 func writeLaunchSecret(path string, token []byte) error { return writeOwnedLaunchSecret(path, token) }
-func (s *workspaceSupervisor) environment() []string {
-	env := append(workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options), "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
+func (s *workspaceSupervisor) environment() ([]string, error) {
+	base, err := workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options)
+	if err != nil {
+		return nil, err
+	}
+	env := append(base, "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
 	s.feedbackMu.Lock()
 	defer s.feedbackMu.Unlock()
 	if s.feedback != nil {
 		env = append(env, s.feedback.environment)
 	}
-	return env
+	return env, nil
 }
 func (s *workspaceSupervisor) snapshot() Status {
 	s.mu.Lock()

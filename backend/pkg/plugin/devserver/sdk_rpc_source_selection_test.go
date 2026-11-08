@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +23,7 @@ func sdkRPCSelectionSource(t *testing.T, modulePath string) (root, providerFile 
 }
 
 func TestSDKRPCSourceSelectionExplicitCheckoutNeedsNoReleasedModule(t *testing.T) {
-	selected, _ := sdkRPCSelectionSource(t, sdkModulePath)
+	selected, _ := sdkRPCSelectionSource(t, devsdk.Module)
 	// Even unavailable/trimmed parent source evidence must not trigger a
 	// repository go-list query when an explicit valid source was selected.
 	actual, err := sdkRPCSelectSource(selected, "trimmed/unavailable/provider.go")
@@ -31,7 +32,7 @@ func TestSDKRPCSourceSelectionExplicitCheckoutNeedsNoReleasedModule(t *testing.T
 }
 
 func TestSDKRPCSourceSelectionDefaultUsesCompiledSource(t *testing.T) {
-	compiled, providerFile := sdkRPCSelectionSource(t, sdkModulePath)
+	compiled, providerFile := sdkRPCSelectionSource(t, devsdk.Module)
 	// There is deliberately no repository-manifest argument: a parent's
 	// -modfile replacement cannot be overridden by the original root go.mod.
 	actual, err := sdkRPCSelectSource("", providerFile)
@@ -40,7 +41,7 @@ func TestSDKRPCSourceSelectionDefaultUsesCompiledSource(t *testing.T) {
 }
 
 func TestSDKRPCSourceSelectionInvalidExplicitSourceNeverFallsBack(t *testing.T) {
-	_, validCompiledFile := sdkRPCSelectionSource(t, sdkModulePath)
+	_, validCompiledFile := sdkRPCSelectionSource(t, devsdk.Module)
 	wrongModule, _ := sdkRPCSelectionSource(t, "example.invalid/not-the-sdk")
 	for _, explicit := range []string{filepath.Join(t.TempDir(), "missing"), wrongModule} {
 		t.Run(filepath.Base(explicit), func(t *testing.T) {

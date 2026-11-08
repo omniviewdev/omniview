@@ -112,7 +112,7 @@ func TestViteFeedbackStopRetainsHandleUntilExactOwnedDisposal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			child, err := startOwnedChild(ctx, host, s.environment(), io.Discard, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "host", Source: host}, nil, "/bin/sleep", "300")
+			child, err := startOwnedChild(ctx, host, mustEnvironment(t, s), io.Discard, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "host", Source: host}, nil, "/bin/sleep", "300")
 			if err != nil {
 				t.Fatal(err)
 			}

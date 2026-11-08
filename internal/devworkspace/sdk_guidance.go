@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 )
@@ -54,10 +55,10 @@ func declaredSDKRequirements(ctx context.Context, probes []sdkProbe) []SDKRequir
 			continue
 		}
 		for _, req := range file.Require {
-			if req.Mod.Path != linkedSDK {
+			if req.Mod.Path != devsdk.Module {
 				continue
 			}
-			requirement := SDKRequirement{Repository: p.Repository, Module: linkedSDK, Version: req.Mod.Version, Ref: req.Mod.Version, Kind: "tag"}
+			requirement := SDKRequirement{Repository: p.Repository, Module: devsdk.Module, Version: req.Mod.Version, Ref: req.Mod.Version, Kind: "tag"}
 			if module.IsPseudoVersion(req.Mod.Version) {
 				rev, revErr := module.PseudoVersionRev(req.Mod.Version)
 				if revErr != nil {
@@ -101,7 +102,7 @@ func sdkSourceRequired(ctx context.Context, message string, probes []sdkProbe, c
 		"nextCommand":  next,
 		"mixed":        mixed,
 	}
-	failure.Message = fmt.Sprintf("%s; %s declares %s %s (%s); next: %s", message, chosen.Repository, linkedSDK, chosen.Version, chosen.Kind, next)
+	failure.Message = fmt.Sprintf("%s; %s declares %s %s (%s); next: %s", message, chosen.Repository, devsdk.Module, chosen.Version, chosen.Kind, next)
 	if mixed {
 		failure.Message += "; consumers declare different plugin-sdk versions (see details.requirements)"
 	}

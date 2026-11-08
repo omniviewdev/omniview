@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/state"
 )
@@ -59,20 +60,26 @@ func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) 
 	return path, nil
 }
 
-// RecordBuiltArtifactSource MUST only be called after the trusted builder
-// verifies the selected SDK path and confirms the exact source digest is
-// unchanged across a successful build.
+// RecordBuiltArtifact MUST only be called after the trusted builder verifies
+// the selected SDK and confirms the exact identity is unchanged across a
+// successful build. Schema 3 records selected source identities only; a
+// published SDK identity is refused until a schema can record it truthfully.
 // Dirty edits are supported: the digest identifies that working-tree snapshot,
 // not a claim that hashing alone proves source inclusion in the executable.
-func RecordBuiltArtifactSource(
-	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath, sdkRevision, sourceDigest string,
+func RecordBuiltArtifact(
+	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string, sdk devsdk.Identity,
 ) error {
 	if err := state.ValidateComponent(pluginID); err != nil {
 		return err
 	}
-	if sourceDigest == "" {
-		return fmt.Errorf("instance: verified SDK source snapshot digest is required")
+	if err := sdk.Validate(); err != nil {
+		return fmt.Errorf("instance: verified SDK identity is required: %w", err)
 	}
+	source, ok := sdk.Source()
+	if !ok {
+		return fmt.Errorf("instance: artifact schema %d records only selected source SDK identities", artifactSchemaVersion)
+	}
+	sdkRevision, sourceDigest := source.Revision, source.SourceDigest
 	provenance, err := config.BuildStateIsolationProvenance(binaryPath, sdkRevision, sourceDigest)
 	if err != nil {
 		return err

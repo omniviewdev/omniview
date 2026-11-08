@@ -109,13 +109,17 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 		if !ok {
 			return "", receipt, fmt.Errorf("archive plugin %s has no build evidence recorded by this workspace build", plugin.ID)
 		}
+		sourceIdentity, isSource := identity.Source()
+		if !isSource {
+			return "", receipt, fmt.Errorf("archive plugin %s was not built against a selected source SDK; archives record source identities only", plugin.ID)
+		}
 		if err = g.verifyUnchangedSDK(ctx, backend.Directory, identity); err != nil {
 			return "", receipt, err
 		}
 		if err = instance.VerifyPluginArtifact(g.workspace.ResolvedWorkspace, plugin.ID, binaryPath); err != nil {
 			return "", receipt, fmt.Errorf("archive plugin %s backend does not match this workspace's build evidence: %w", plugin.ID, err)
 		}
-		provenance, provenanceErr := sdkconfig.BuildStateIsolationProvenance(binaryPath, identity.Revision, identity.SourceDigest)
+		provenance, provenanceErr := sdkconfig.BuildStateIsolationProvenance(binaryPath, sourceIdentity.Revision, sourceIdentity.SourceDigest)
 		if provenanceErr != nil {
 			return "", receipt, provenanceErr
 		}

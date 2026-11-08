@@ -29,6 +29,7 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	"github.com/omniviewdev/omniview/internal/instance"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
@@ -81,8 +82,8 @@ func sdkRPCSelectSource(explicit, compiledFile string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", authority, err)
 	}
-	if module.Module == nil || module.Module.Mod.Path != sdkModulePath {
-		return "", fmt.Errorf("%s must select actual module %s", authority, sdkModulePath)
+	if module.Module == nil || module.Module.Mod.Path != devsdk.Module {
+		return "", fmt.Errorf("%s must select actual module %s", authority, devsdk.Module)
 	}
 	return selected, nil
 }
@@ -153,14 +154,14 @@ func newSDKRPCContract(t *testing.T, ctx context.Context) *sdkRPCContract {
 	selected, err := sdkRPCSelectSource(explicit, compiledFile)
 	require.NoError(t, err)
 	fixture.origin = selected
-	t.Logf("selected SDK source: authority=%s module=%s directory=%s compiled-source-file=%s", authority, sdkModulePath, selected, compiledFile)
+	t.Logf("selected SDK source: authority=%s module=%s directory=%s compiled-source-file=%s", authority, devsdk.Module, selected, compiledFile)
 	// If the actual selected source is a released module-cache directory, log
 	// its own version/archive checksum, never another root manifest's SDK. These
 	// optional metadata bytes are distinct from the verified source digest.
 	if moduleCache, cacheErr := filepath.EvalSymlinks(caches["GOMODCACHE"]); cacheErr == nil {
-		prefix := filepath.Join(moduleCache, filepath.FromSlash(sdkModulePath)) + "@"
+		prefix := filepath.Join(moduleCache, filepath.FromSlash(devsdk.Module)) + "@"
 		if version, inCache := strings.CutPrefix(selected, prefix); inCache && !strings.ContainsAny(version, `/\`) {
-			archiveSum, sumErr := os.ReadFile(filepath.Join(moduleCache, "cache", "download", filepath.FromSlash(sdkModulePath), "@v", version+".ziphash"))
+			archiveSum, sumErr := os.ReadFile(filepath.Join(moduleCache, "cache", "download", filepath.FromSlash(devsdk.Module), "@v", version+".ziphash"))
 			t.Logf("selected module-cache SDK metadata: version=%s archiveSum=%s checksumReadError=%v", version, strings.TrimSpace(string(archiveSum)), sumErr)
 		}
 	}
@@ -287,11 +288,11 @@ func (f *sdkRPCContract) profile(t *testing.T, name string) *sdkRPCProfile {
 	require.NoError(t, err)
 	require.NoError(t, module.AddModuleStmt("example.invalid/omniview-sdk-rpc-contract"))
 	for _, replacement := range module.Replace {
-		if replacement.Old.Path == sdkModulePath {
+		if replacement.Old.Path == devsdk.Module {
 			require.NoError(t, module.DropReplace(replacement.Old.Path, replacement.Old.Version))
 		}
 	}
-	require.NoError(t, module.AddReplace(sdkModulePath, "", p.sdkSource, ""))
+	require.NoError(t, module.AddReplace(devsdk.Module, "", p.sdkSource, ""))
 	data, err = module.Format()
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(p.source, "go.mod"), data, 0600))
@@ -382,10 +383,11 @@ func (p *sdkRPCProfile) identity(t *testing.T) devsource.Identity {
 	t.Helper()
 	identity, err := VerifySelectedSDK(p.fixture.ctx, p.fixture.goPath, p.source, p.env)
 	require.NoError(t, err)
-	require.Equal(t, p.sdkSource, identity.Directory, "actual Go module replacement must select the owned copy")
-	require.Equal(t, p.revision, identity.Revision, "identity must record the fixture checkout HEAD")
-	require.Len(t, identity.SourceDigest, 64)
-	return identity
+	source := sourceOf(t, identity)
+	require.Equal(t, p.sdkSource, source.Directory, "actual Go module replacement must select the owned copy")
+	require.Equal(t, p.revision, source.Revision, "identity must record the fixture checkout HEAD")
+	require.Len(t, source.SourceDigest, 64)
+	return source
 }
 
 func (p *sdkRPCProfile) start(t *testing.T) {
@@ -506,7 +508,11 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 		return fmt.Errorf("controller schema differs from actual SDK settings RPC")
 	}
 	p.live.pluginPID = p.backend.ReattachConfig().Pid
-	p.live.sdkDigest, p.live.buildOrigin = before.SourceDigest, p.buildOrigin
+	selected, isSource := before.Source()
+	if !isSource {
+		return fmt.Errorf("selected SDK is not a source checkout")
+	}
+	p.live.sdkDigest, p.live.buildOrigin = selected.SourceDigest, p.buildOrigin
 	p.trace("publish actual host/settings RPC readiness")
 	select {
 	case p.readyEvents <- p.live:
@@ -638,14 +644,14 @@ func (p *sdkRPCProfile) verifyCompiledSDK(binary string) error {
 		return err
 	}
 	for _, dependency := range info.Deps {
-		if dependency.Path == sdkModulePath {
+		if dependency.Path == devsdk.Module {
 			if dependency.Replace == nil || dependency.Replace.Path != p.sdkSource {
 				return fmt.Errorf("compiled consumer did not select owned SDK module: %+v", dependency)
 			}
 			return nil
 		}
 	}
-	return fmt.Errorf("compiled consumer does not contain actual SDK module %s", sdkModulePath)
+	return fmt.Errorf("compiled consumer does not contain actual SDK module %s", devsdk.Module)
 }
 
 func (p *sdkRPCProfile) stopConsumers() error {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +44,7 @@ func TestSDKSourceRequiredNamesDeclaredRefAcrossSupervisorBoundary(t *testing.T)
 			token := []byte("sdk-guidance-token")
 			generation := NewGeneration()
 			server := httptest.NewServer(supervisorHandler(w.Manifest.WorkspaceID, generation, token, func(ctx context.Context, _ string) (Status, error) {
-				return Status{Workspace: w, Generation: generation}, compatibilityPreflight(ctx, w)
+				return Status{Workspace: w, Generation: generation}, compatibilityPreflight(ctx, w, devsdk.NewVerifier(devsdk.Policy{}))
 			}))
 			defer server.Close()
 			_, err := callSupervisor(context.Background(), supervisorRecord{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Endpoint: server.URL + "/v1/supervisor"}, token, supervisorStatusCommand)
