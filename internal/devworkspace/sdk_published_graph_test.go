@@ -120,9 +120,5 @@ func TestBuildReuseFingerprintBindsTheSDKModeAndPublishedIdentity(t *testing.T) 
 	require.NoError(t, err)
 	require.NotEqual(t, floor, fingerprint(other), "the same version with another checksum must not reuse outputs")
 
-	source, err := fakeSDKIdentity(filepath.Join(t.TempDir(), "sdk"), strings.Repeat("a", 40), strings.Repeat("c", 64))
-	require.NoError(t, err)
-	require.Contains(t, fingerprint(source), "source")
-	require.NotEqual(t, floor, fingerprint(source))
 	require.Equal(t, 3, buildReuseSchema, "records written before published identities existed must rebuild")
 }

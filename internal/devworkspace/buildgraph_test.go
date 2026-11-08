@@ -341,12 +341,23 @@ func TestBuildGraphRequiresRealSDKSourceVerifier(t *testing.T) {
 	}
 }
 
-func TestBuildGraphRequiresSelectedSDKSource(t *testing.T) {
+// A published selection is a first-class build plan: no SDK checkout is
+// required to compile the graph, but the verifier still is.
+func TestBuildGraphCompilesAPublishedSelectionWithoutASourceCheckout(t *testing.T) {
 	g := graphFixture(t)
 	plan := g.plan
 	plan.SDK = devsdk.PublishedSelection()
-	if _, err := compileBuildGraph(g.workspace, plan, g.options); err == nil {
-		t.Fatal("trusted builds were planned without a selected local SDK source")
+	compiled, err := compileBuildGraph(g.workspace, plan, g.options)
+	if err != nil {
+		t.Fatalf("a published selection was refused: %v", err)
+	}
+	if compiled.plan.SDK.Mode() != devsdk.ModePublished {
+		t.Fatal("the compiled graph lost its published selection")
+	}
+	opts := g.options
+	opts.VerifySDK = nil
+	if _, err := compileBuildGraph(g.workspace, plan, opts); err == nil {
+		t.Fatal("a published graph without a verifier was planned")
 	}
 }
 
