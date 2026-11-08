@@ -332,6 +332,8 @@ func TestEventFilterReadsWailsFrames(t *testing.T) {
 			Name: "windows/changed", Data: []any{1, "a"}, Sender: "main",
 		}, true},
 		{"log lines", &application.CustomEvent{Name: "core/logs/lines/s1", Data: "line one\nline two"}, true},
+		{"plugin process log", &application.CustomEvent{Name: "plugin/process/log", Data: map[string]any{"line": "x"}}, true},
+		{"host log tail", &application.CustomEvent{Name: "internal/log/update:host", Data: "line"}, true},
 		{"dropped terminal output", &application.CustomEvent{Name: "core/exec/stream/stdout/s1", Data: "bytes"}, false},
 		{"dropped mcp event", &application.CustomEvent{
 			Name: "mcp/confirmation/resolved", Data: map[string]any{"id": "x"},
@@ -346,5 +348,45 @@ func TestEventFilterReadsWailsFrames(t *testing.T) {
 			require.Equal(t, tt.forward, verdict.Forward, frame)
 			require.Equal(t, tt.event.Name, verdict.Name, frame)
 		})
+	}
+}
+
+// The user chose to let the remote audit browser read logs, knowing they can
+// hold secrets. This pins that decision so changing it is deliberate: host
+// and plugin process logs, log viewer sessions and dev server logs, with
+// their event streams, are all allowed.
+func TestLogViewerAccessIsAllowedByDecision(t *testing.T) {
+	policy := auditPolicy(t)
+	const plugin = "github.com/omniviewdev/omniview/backend/pkg/plugin"
+	reflected := make(map[string]struct{})
+	for _, fqn := range reflectedFQNs(t) {
+		reflected[fqn] = struct{}{}
+	}
+	methods := []string{
+		"github.com/omniviewdev/omniview/backend/diagnostics.DiagnosticsClient.ReadLog",
+		"github.com/omniviewdev/omniview/backend/diagnostics.DiagnosticsClient.StartTail",
+		"github.com/omniviewdev/omniview/backend/diagnostics.DiagnosticsClient.StopTail",
+		plugin + "/pluginlog.ServiceWrapper.GetLogs",
+		plugin + "/pluginlog.ServiceWrapper.SearchLogs",
+		plugin + "/pluginlog.ServiceWrapper.Subscribe",
+		plugin + "/pluginlog.ServiceWrapper.Unsubscribe",
+		plugin + "/logs.ServiceWrapper.CreateSession",
+		plugin + "/logs.ServiceWrapper.SendCommand",
+		plugin + "/devserver.ServiceWrapper.GetDevServerLogs",
+	}
+	for _, fqn := range methods {
+		_, bound := reflected[fqn]
+		require.True(t, bound, "%s is not a bound method any more: update this list", fqn)
+		rule, ok := policy.Method(fqn)
+		require.True(t, ok, fqn)
+		require.Equal(t, auditgate.Allow, rule.Decision, "%s must stay allowed", fqn)
+		verdict := policy.EvaluateRuntime(runtimeRequest(callBody(`"methodName":` + strconv.Quote(fqn))))
+		require.True(t, verdict.Allowed, "%s: %s", fqn, verdict.Reason)
+	}
+	events := []string{"plugin/process/log", "internal/log/update:host", "core/logs/lines/s1", "plugin/devserver/log"}
+	for _, name := range events {
+		decision, _, matched := policy.ClassifyEvent(name)
+		require.Equal(t, auditgate.Allow, decision, name)
+		require.True(t, matched, name)
 	}
 }

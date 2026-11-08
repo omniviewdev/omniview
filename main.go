@@ -138,6 +138,7 @@ func boundServiceTypes() []any {
 		(*AppService)(nil),
 		(*diagnostics.DiagnosticsClient)(nil),
 		(*extensiondiagnosticshost.Service)(nil),
+		(*diagnosticshost.Service)(nil),
 		(*telemetry.TelemetryBinding)(nil),
 		(*profiling.ServiceWrapper)(nil),
 		(*uiinspection.Service)(nil),

@@ -29,9 +29,12 @@ func TestFilterEventFrameForwardsAllowedEvents(t *testing.T) {
 		"metric/observation",
 		"activity/observation-error",
 		"core/networker/portforward/created",
-		// Logs are allowed by decision.
+		// Logs are allowed by decision: the remote browser can read them.
 		"core/logs/lines/session-1",
 		"core/logs/event/session-1",
+		"plugin/process/log",
+		"internal/log/update:host",
+		"internal/log/update:plugin",
 		"core/metrics/data/sub-1",
 		"core/metrics/error/sub-1",
 		"activity/change/abc123",
@@ -76,9 +79,6 @@ func TestFilterEventFrameDropsExplicitlyDeniedEvents(t *testing.T) {
 		"core/exec/stream/stderr/session-1",
 		"core/exec/signal/CLOSE/session-1",
 		"core/exec/signal/ERROR/session-1",
-		"internal/log/update:host",
-		"internal/log/update:",
-		"plugin/process/log",
 		"mcp/status",
 		"mcp/config_changed",
 		"mcp/tools_changed",
@@ -233,7 +233,7 @@ func TestClassifyEvent(t *testing.T) {
 func TestDecidedEventDropsStayDropped(t *testing.T) {
 	policy := defaultPolicy(t)
 	for _, name := range []string{
-		"core/exec/stream/stdout/s", "core/exec/signal/CLOSE/s", "internal/log/update:host", "plugin/process/log",
+		"core/exec/stream/stdout/s", "core/exec/signal/CLOSE/s",
 		"mcp/status", "action/stream/a", "menu/view/zoom/in", "extensions/diagnostics/request",
 	} {
 		decision, rule, matched := policy.ClassifyEvent(name)
