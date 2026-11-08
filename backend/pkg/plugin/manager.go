@@ -364,10 +364,12 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 	pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 }
 
-// registerStateObserver adds an observer to a plugin's state machine that
-// emits Wails events on every state transition.
-func (pm *pluginManager) registerStateObserver(sm *lifecycle.PluginStateMachine) {
+// registerStateObserver records successful activation and follows subsequent
+// lifecycle transitions for diagnostics and frontend events. Call once per runtime.
+func (pm *pluginManager) registerStateObserver(pluginID string, sm *lifecycle.PluginStateMachine) {
+	recordPluginActivation(pluginID)
 	sm.AddObserver(func(pluginID string, t lifecycle.Transition) {
+		recordPluginTransition(pluginID, t)
 		emitStateChange(pm.emitter, pluginID, t)
 	})
 }

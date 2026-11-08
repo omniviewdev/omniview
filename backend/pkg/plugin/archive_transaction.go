@@ -273,7 +273,7 @@ func (pm *pluginManager) restoreArchiveRuntime(recovery *archiveRecovery, origin
 			if !archiveRuntimeUsable(resumed) {
 				return errors.New("original backend exited while its controllers were being restored")
 			}
-			pm.registerStateObserver(resumed.StateMachine)
+			pm.registerStateObserver(recovery.ID, resumed.StateMachine)
 			pm.recordsMu.Lock()
 			pm.records[recovery.ID] = resumed
 			pm.recordsMu.Unlock()

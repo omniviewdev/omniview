@@ -19,6 +19,7 @@ func NewTracerProvider(res *resource.Resource, exp sdktrace.SpanExporter) *sdktr
 func NewMeterProvider(res *resource.Resource, exp sdkmetric.Exporter) *sdkmetric.MeterProvider {
 	return sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
+		sdkmetric.WithCardinalityLimit(128),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp)),
 	)
 }
