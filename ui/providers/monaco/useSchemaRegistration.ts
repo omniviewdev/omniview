@@ -1,3 +1,4 @@
+import { Button } from '@omniviewdev/base-ui';
 import { useEditorSchemas } from '@omniviewdev/runtime';
 import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
 import { createElement, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
@@ -127,7 +128,7 @@ export function EditorSchemaBoundary({ pluginID, connectionID, resourceType, mod
 
   return createElement('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' } },
     unavailable && createElement('div', { role: error ? 'alert' : 'status' }, unavailable,
-      error && createElement('button', { type: 'button', onClick: () => {
+      error && createElement(Button, { type: 'button', onClick: () => {
         void retry();
       } }, 'Retry editor schemas')),
     createElement('div', { style: { flex: 1, minHeight: 0 } }, children));
