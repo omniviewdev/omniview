@@ -11,7 +11,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
-	"github.com/omniviewdev/omniview/internal/devsource"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 // GenerateBindings uses the canonical task through the staged graph producer.
@@ -51,19 +51,23 @@ func (m *Manager) GenerateBindings(ctx context.Context, name string, output io.W
 	if options.Mode != "browser" && options.Mode != "native" {
 		return "", fmt.Errorf("saved bindings build mode is invalid")
 	}
-	if err = compatibilityPreflight(ctx, w); err != nil {
-		return "", err
-	}
+	verify := devsdk.NewVerifier(m.options.SDKPolicy)
 	generation := uuid.NewString()
-	cache, err := prepareWorkspaceBuildCacheLocked(w, m.options.Home, generation)
-	if err != nil {
-		return "", err
-	}
-	g := &BuildGraph{workspace: w, plan: j.Plan, options: BuildOptions{Generation: generation, GoBuildCacheDirectory: cache, VerifySDKSource: devsource.Verify}}
+	g := &BuildGraph{workspace: w, plan: j.Plan, options: BuildOptions{Generation: generation, VerifySDK: verify}}
 	if output != nil {
 		g.options.Output = &lockedWriter{writer: output}
 	}
 	g.run, g.runProducer = g.command, g.commandWithEnvironment
+	// The preflight needs only module resolution, which needs no build cache:
+	// a refusal here creates none.
+	if err = compatibilityPreflight(ctx, w, verify, g.goRunner()); err != nil {
+		return "", err
+	}
+	cache, err := prepareWorkspaceBuildCacheLocked(w, m.options.Home, generation)
+	if err != nil {
+		return "", err
+	}
+	g.options.GoBuildCacheDirectory = cache
 	g.options.Bindings = func(ctx context.Context, host, directory string) (resultErr error) {
 		mod, e := prepareStableHostModTree(w, generation)
 		if e != nil {
@@ -83,7 +87,11 @@ func (m *Manager) GenerateBindings(ctx context.Context, name string, output io.W
 		if options.MCP {
 			args = append(args, "WAILS_MCP=1")
 		}
-		_, resultErr = g.commandWithEnvironment(ctx, host, workspaceEnvironment(nil, w, generation, options), "task", args...)
+		environment, environmentErr := workspaceEnvironment(nil, w, generation, options)
+		if environmentErr != nil {
+			return environmentErr
+		}
+		_, resultErr = g.commandWithEnvironment(ctx, host, environment, "task", args...)
 		return resultErr
 	}
 	nodes, err := planBuildNodes(w)

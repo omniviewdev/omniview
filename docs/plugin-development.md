@@ -203,6 +203,10 @@ subscription and live producer identities also have finite limits. Retired
 identities are removed rather than accumulated in an unbounded blacklist.
 
 
+### Diagnostics reporting
+
+Plugins built on plugin-sdk with `pkg/diagnostics` publish bounded in-plugin measurements. The host pulls them over `PluginLifecycle.GetDiagnostics` every two seconds and merges them into its diagnostics collector, so they appear in Performance views, captures, comparison, `/metrics` and configured OTLP with a host-assigned `plugin` label. Metric names must start with `omniview.plugin.self.`; attribute keys are a closed set (`operation`, `outcome`, `phase`, `state`, `reason`, `cache`, `queue`, `direction`, `event`) with values matching `^[a-z][a-z0-9_]{0,31}$`. Never record resource names, queries or credentials. Plugins built before the RPC existed, or that fail to answer, are reported through `omniview.plugin.diagnostics.status` as unavailable, not zero. Design, limits and decisions: [plugin-sdk-diagnostics-plan.md](plugin-sdk-diagnostics-plan.md).
+
 ### Host drawer context
 
 `BottomDrawerProvider` must wrap `RightDrawerProvider` in `ui/App.tsx`.

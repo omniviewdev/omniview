@@ -25,6 +25,25 @@ type Identity struct {
 
 var fullRevision = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
+var sourceDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// Validate reports whether the identity is complete: an absolute clean checkout
+// directory, a full lowercase commit hash and a SHA-256 source digest. Verify
+// returns only identities that satisfy it; consumers that accept an identity
+// from elsewhere use it to reject partial evidence.
+func (i Identity) Validate() error {
+	if !filepath.IsAbs(i.Directory) || filepath.Clean(i.Directory) != i.Directory {
+		return errors.New("SDK source identity requires an absolute clean checkout directory")
+	}
+	if !fullRevision.MatchString(i.Revision) {
+		return errors.New("SDK source identity requires a full lowercase commit hash")
+	}
+	if !sourceDigestPattern.MatchString(i.SourceDigest) {
+		return errors.New("SDK source identity requires a lowercase SHA-256 source digest")
+	}
+	return nil
+}
+
 func command(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir

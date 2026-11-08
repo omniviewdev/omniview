@@ -32,12 +32,15 @@ func TestLaunchOptionsRejectInvalidModes(t *testing.T) {
 func TestWorkspaceChildEnvironmentDoesNotLeakHostModuleFlags(t *testing.T) {
 	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: "/selected", ManifestPath: "/selected/workspace.json", StateRoot: "/profile/state", Manifest: devcontract.WorkspaceManifest{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6"}}}
 	o := LaunchOptions{Watch: true}
-	env := workspaceEnvironment([]string{
+	env, err := workspaceEnvironment([]string{
 		"HOME=/unchanged", "GOFLAGS=-modfile=/foreign.mod", "GOWORK=/foreign.work",
 		"OMNIVIEW_WORKSPACE_FILE=/foreign", "PNPM_CONFIG_WORKSPACE_DIR=/foreign/root",
 		"pnpm_config_workspace_dir=/foreign/root", "NPM_CONFIG_WORKSPACE_DIR=/foreign/root",
 		"npm_config_workspace_dir=/foreign/root",
 	}, w, "generation", o)
+	if err != nil {
+		t.Fatal(err)
+	}
 	joined := strings.Join(env, "\n")
 	if strings.Contains(joined, "/foreign") {
 		t.Fatal(joined)

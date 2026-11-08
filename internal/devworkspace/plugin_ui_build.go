@@ -53,9 +53,7 @@ func (m *Manager) BuildPluginUI(ctx context.Context, name, pluginID string, outp
 		}
 		// Resolve actual public JS exports after publication, just as Bootstrap
 		// does. SDK identity is outside this JavaScript-only build contract.
-		jsJournal := *j
-		jsJournal.Plan.SDK = ""
-		for _, resolution := range inspectLinkPlan(ctx, &jsJournal).Resolutions {
+		for _, resolution := range inspectJavaScriptLinks(ctx, j).Resolutions {
 			if resolution.Problem != "" {
 				return fmt.Errorf("plugin UI dependency unresolved for %s in %s: %s", resolution.Package, resolution.Consumer, resolution.Problem)
 			}

@@ -6,34 +6,54 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
-	"github.com/omniviewdev/omniview/internal/devsource"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"golang.org/x/mod/modfile"
 )
 
-// Preflight reads the selected graph before installers, bindings or compilers run.
-func compatibilityPreflight(ctx context.Context, w Workspace) error {
+// compatibilityPreflight reads the selected graph before installers, bindings or
+// compilers run. Source mode checks every Go consumer against the selected SDK
+// checkout. Published mode verifies every Go consumer's effective published SDK
+// (its own module files, the module bytes and the release policy) with run, the
+// caller's owned Go runner; a refusal here happens before any producer starts.
+func compatibilityPreflight(ctx context.Context, w Workspace, verify devsdk.Verifier, run devsdk.Runner) error {
 	plan, err := makeLinkPlan(w)
 	if err != nil {
 		return err
 	}
-	if plan.SDK == "" {
-		return sdkSourceRequired(ctx, "select the plugin-sdk repository before launching", workspaceSDKProbes(w), editAddSDKCommand(w))
+	sdk, selected := plan.SDK.Directory()
+	if !selected {
+		for _, root := range plan.GoRoots {
+			request := devsdk.Request{Selection: plan.SDK, Consumer: devsdk.Consumer{Name: workspaceConsumerName(w, root), Directory: root}, Run: run}
+			if _, err = verify(ctx, request); err != nil {
+				return err
+			}
+			// The compiler stays authoritative for the selected target; this only
+			// names a missing package early, from the verified module bytes.
+			directory, directoryErr := devsdk.PublishedDirectory(ctx, request.Consumer, run)
+			if directoryErr != nil {
+				return directoryErr
+			}
+			if err = validateSDKImports(ctx, root, directory); err != nil {
+				return err
+			}
+		}
+		return validateRuntimeUIContracts(w, plan)
 	}
-	sdkBytes, err := os.ReadFile(filepath.Join(plan.SDK, "go.mod"))
+	sdkBytes, err := os.ReadFile(filepath.Join(sdk, "go.mod"))
 	if err != nil {
 		return err
 	}
 	sdkModule, err := modfile.Parse("go.mod", sdkBytes, nil)
-	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != linkedSDK {
-		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+linkedSDK+"; select a compatible SDK repository")
+	if err != nil || sdkModule.Module == nil || sdkModule.Module.Mod.Path != devsdk.Module {
+		return devcontract.Fail(3, "sdk_contract_mismatch", "selected SDK must declare module "+devsdk.Module+"; select a compatible SDK repository")
 	}
-	if _, err = devsource.Verify(ctx, plan.SDK); err != nil {
+	if _, err = verify(ctx, devsdk.Request{Selection: plan.SDK}); err != nil {
 		return err
 	}
 	for _, root := range plan.GoRoots {
@@ -47,15 +67,15 @@ func compatibilityPreflight(ctx context.Context, w Workspace) error {
 		}
 		declaresSDK := false
 		for _, requirement := range module.Require {
-			if requirement.Mod.Path == linkedSDK {
+			if requirement.Mod.Path == devsdk.Module {
 				declaresSDK = true
 				break
 			}
 		}
 		if !declaresSDK {
-			return devcontract.Fail(3, "sdk_contract_mismatch", fmt.Sprintf("%s/go.mod does not declare %s; select compatible host and plugin branches", filepath.Base(root), linkedSDK))
+			return devcontract.Fail(3, "sdk_contract_mismatch", fmt.Sprintf("%s/go.mod does not declare %s; select compatible host and plugin branches", filepath.Base(root), devsdk.Module))
 		}
-		if err := validateSDKImports(ctx, root, plan.SDK); err != nil {
+		if err := validateSDKImports(ctx, root, sdk); err != nil {
 			return err
 		}
 	}
@@ -105,27 +125,6 @@ func validateRuntimeUIContracts(w Workspace, plan linkPlan) error {
 		}
 	}
 	return nil
-}
-
-var diagnosticSecret = regexp.MustCompile(`(?i)(bearer\s+)[^\s]+|((?:token|password|secret|authorization|api[_-]?key)\s*[:=]\s*)(?:(?:bearer|basic)\s+)?[^\s,;]+|([a-z][a-z0-9+.-]*://)[^/@\s]+:[^/@\s]+@`)
-
-func safeCompilerDiagnostic(text, root string) string {
-	text = diagnosticSecret.ReplaceAllString(text, "${1}${2}${3}[REDACTED]")
-	for _, entry := range os.Environ() {
-		key, value, ok := strings.Cut(entry, "=")
-		key = strings.ToLower(key)
-		if ok && len(value) >= 4 && (strings.Contains(key, "token") || strings.Contains(key, "secret") || strings.Contains(key, "password") || strings.Contains(key, "api_key")) {
-			text = strings.ReplaceAll(text, value, "[REDACTED]")
-		}
-	}
-	text = strings.ReplaceAll(text, root, "$WORKSPACE")
-	if home, err := os.UserHomeDir(); err == nil {
-		text = strings.ReplaceAll(text, home, "$HOME")
-	}
-	if len(text) > 8192 {
-		text = text[len(text)-8192:]
-	}
-	return strings.TrimSpace(text)
 }
 
 // workspaceOwnershipError preserves typed ownership data without treating
@@ -252,10 +251,15 @@ func preservationDirectoryIdentity(path string) (generatedFileIdentity, error) {
 	return generatedDirectoryIdentity(file)
 }
 
+// supervisedBuildError reports a failed build node. Ownership conflicts and
+// every other typed error keep their code, exit and typed details across the
+// supervisor boundary; only untyped compiler or tool failures are flattened to
+// build_failed with a sanitized diagnostic.
 func supervisedBuildError(event BuildEvent, w Workspace) *devcontract.Error {
 	var conflict *devoutputs.Conflict
-	if errors.As(event.cause, &conflict) {
+	var typed *devcontract.Error
+	if errors.As(event.cause, &conflict) || errors.As(event.cause, &typed) {
 		return workspaceOwnershipError(event.cause, w)
 	}
-	return devcontract.Fail(buildFailureExitCode, "build_failed", safeCompilerDiagnostic(event.Error, w.Root))
+	return devcontract.Fail(buildFailureExitCode, "build_failed", devdiag.Safe(event.Error, w.Root))
 }

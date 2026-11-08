@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 )
 
 func TestWorkspacePreflightAggregatesMissingInputsAfterSourceOnlyCreation(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", sdktest.Home(t))
 	t.Setenv(devcontract.WorkspaceEnvironment, "")
 	t.Setenv("OMNIVIEW_STATE_DIR", "")
 	root := t.TempDir()
@@ -75,7 +76,9 @@ func TestWorkspacePreflightAggregatesMissingInputsAfterSourceOnlyCreation(t *tes
 		if report.Ready || len(report.Issues) != 2 {
 			t.Fatalf("expected both missing inputs: %+v", report)
 		}
-		for i, code := range []string{"link_evidence_required", "sdk_source_required"} {
+		// The fixture host declares no Go module, so a published-SDK launch has
+		// no SDK requirement to resolve: an independent prerequisite.
+		for i, code := range []string{"link_evidence_required", "sdk_contract_mismatch"} {
 			if report.Issues[i].Code != code {
 				t.Fatalf("issue %d: %+v", i, report.Issues[i])
 			}

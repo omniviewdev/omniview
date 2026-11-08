@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -32,7 +33,7 @@ func TestArchiveRuntimeLaunchValidation(t *testing.T) {
 		if err := options.Validate(); !errors.As(err, &failure) || failure.Code != "archive_runtime_options" || failure.Exit != 2 {
 			t.Fatalf("%s: incompatible combination was not refused with a usage error: %v", name, err)
 		}
-		if report := PreflightLaunch(context.Background(), Workspace{}, options); !containsIssue(report, "archive_runtime_options") {
+		if report := PreflightLaunch(context.Background(), Workspace{}, options, devsdk.ReleasePolicy()); !containsIssue(report, "archive_runtime_options") {
 			t.Fatalf("%s: preflight did not report the incompatible combination: %+v", name, report.Issues)
 		}
 	}

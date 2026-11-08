@@ -76,8 +76,9 @@ func managedSDKSelection(t *testing.T) managedSDKSelectionFixture {
 // Directory binding must fail even when both checkouts have identical commits and source bytes.
 func TestVerifySelectedSDKManagedRejectsUnselectedCheckout(t *testing.T) {
 	fixture := managedSDKSelection(t)
-	selected, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	typed, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
 	require.NoError(t, err, "the manifest-selected checkout must remain acceptable")
+	selected := sourceOf(t, typed)
 	canonical, err := filepath.EvalSymlinks(fixture.sdk)
 	require.NoError(t, err)
 	require.Equal(t, canonical, selected.Directory)
@@ -105,16 +106,18 @@ func TestVerifySelectedSDKManagedRejectsUnselectedCheckout(t *testing.T) {
 	require.NoError(t, os.WriteFile(goMod, original, 0600))
 	restored, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
 	require.NoError(t, err)
-	require.Equal(t, selected, restored, "restoring selected A must preserve its exact source identity")
+	require.Equal(t, typed, restored, "restoring selected A must preserve its exact source identity")
 }
 
 func TestVerifySelectedSDKManagedDirtySourceChangesDigest(t *testing.T) {
 	fixture := managedSDKSelection(t)
-	selected, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	typed, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
 	require.NoError(t, err)
+	selected := sourceOf(t, typed)
 	require.NoError(t, os.WriteFile(filepath.Join(fixture.sdk, "pkg", "state", "root.go"), []byte("package state\n// deliberate isolation development\n"), 0600))
-	dirty, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
+	dirtyTyped, err := VerifySelectedSDK(context.Background(), fixture.goPath, fixture.source, fixture.environment)
 	require.NoError(t, err)
+	dirty := sourceOf(t, dirtyTyped)
 	require.Equal(t, selected.Directory, dirty.Directory)
 	require.Equal(t, selected.Revision, dirty.Revision)
 	require.NotEqual(t, selected.SourceDigest, dirty.SourceDigest)

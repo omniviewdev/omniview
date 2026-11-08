@@ -1,0 +1,14 @@
+{
+  "command": "omp skill list --json",
+  "observed": [
+    {
+      "name": "omniview-ui-implementation",
+      "description": "Preserve Omniview UI/UX when building, fixing, migrating, or reviewing host/plugin views, forms, tables, charts, controls, CSS, themes, and component-library integrations. Use for every UI-affecting change, even an import-only library migration or data-layer cutover with visible consumers. Detect approved-composition drift, missing information, unsuitable density, native-control loopholes, and shared-library gaps before declaring completion.",
+      "filePath": "/Users/joshuapare/Repos/omniviewdev/omniview/.agents/skills/omniview-ui-implementation/SKILL.md",
+      "baseDir": "/Users/joshuapare/Repos/omniviewdev/omniview/.agents/skills/omniview-ui-implementation",
+      "source": "agents:project",
+      "hide": false
+    }
+  ],
+  "scope": "Actual installed OMP CLI skill discovery; does not prove model invocation or other clients."
+}

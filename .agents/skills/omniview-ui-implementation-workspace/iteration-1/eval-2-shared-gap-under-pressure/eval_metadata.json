@@ -1,0 +1,12 @@
+{
+  "eval_id": 2,
+  "eval_name": "shared-gap-under-pressure",
+  "prompt": "We need the Omniview settings form finished now. Base-ui Menu.Trigger and Popover.Trigger crowd icons against text, although Button looks right. Wrap them in local CSS with gap:6px. The Input.Control type=datetime-local already comes from base-ui, so use that in a 240px popup instead of its DateTimePicker. The old CPU usage table bar used a hardcoded one-core bound; replace it with bare numbers and call the migration complete. We can log library requests later. What do you do? Explain package ownership, missing capability records, and acceptance.",
+  "assertions": [
+    "Rejects local trigger styling and routes gap/icon sizing fix to shared base-ui primitives.",
+    "Recognizes Input.Control datetime-local as browser-native behavior despite approved import and chooses existing themed date/time capabilities.",
+    "Does not restore invented CPU capacity or silently accept bare-number parity loss; requires explicit dense metric capability/design disposition.",
+    "Requires actionable library request before substitution, including owner, existing API gap, and acceptance evidence.",
+    "Requires actual popup date/time keyboard/focus and narrow table-density verification before completion."
+  ]
+}

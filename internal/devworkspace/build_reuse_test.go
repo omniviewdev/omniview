@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/internal/devsdk"
 )
 
 // reuseFixture is graphFixture without Go compiler nodes. Every real build
@@ -44,7 +46,7 @@ func newReuseFixture(t *testing.T) *reuseFixture {
 		case "pnpm":
 			return []byte("{}"), nil
 		case "go":
-			return json.Marshal(map[string]any{"Path": linkedSDK, "Dir": g.plan.SDK})
+			return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 		}
 		return nil, os.ErrInvalid
 	}

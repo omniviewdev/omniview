@@ -2,6 +2,8 @@ package instance
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,21 +11,150 @@ import (
 	"path/filepath"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/state"
 )
 
-const artifactSchemaVersion = 3
+const (
+	// sourceArtifactSchemaVersion records selected source SDK identities as
+	// flat fields; older hosts read it.
+	sourceArtifactSchemaVersion = 3
+	// typedArtifactSchemaVersion carries a typed SDK identity that is either
+	// the published or the source variant. Older hosts cannot read it.
+	typedArtifactSchemaVersion = 4
+)
 
-// artifactRecord is host-owned transient build evidence, never imported from
-// plugin.yaml or a baseline. The revision and digest identify the stable
-// selected source snapshot verified by the builder.
+// sourceArtifactRecord is the exact schema 3 encoding of a source identity.
+// Its field set must not change: existing profiles and older hosts read it.
+type sourceArtifactRecord struct {
+	SchemaVersion           int                              `json:"schemaVersion"`
+	PluginID                string                           `json:"pluginID"`
+	SDKRevision             string                           `json:"sdkRevision"`
+	ExpectedSDKSourceSHA256 string                           `json:"expectedSDKSourceSHA256"`
+	Provenance              *config.StateIsolationProvenance `json:"provenance"`
+}
+
+// typedArtifactRecord is the schema 4 encoding written for published identities.
+type typedArtifactRecord struct {
+	SchemaVersion int         `json:"schemaVersion"`
+	PluginID      string      `json:"pluginID"`
+	SDK           artifactSDK `json:"sdk"`
+	Capability    string      `json:"capability"`
+	BinarySHA256  string      `json:"binarySHA256"`
+}
+
+// artifactSDK is the typed SDK identity of a schema 4 record. Only the fields
+// of its mode may be set.
+type artifactSDK struct {
+	Mode         devsdk.Mode                      `json:"mode"`
+	Module       string                           `json:"module,omitempty"`
+	Version      string                           `json:"version,omitempty"`
+	ModuleSum    string                           `json:"moduleSum,omitempty"`
+	GoModSum     string                           `json:"goModSum,omitempty"`
+	Revision     string                           `json:"revision,omitempty"`
+	SourceSHA256 string                           `json:"sourceSHA256,omitempty"`
+	Provenance   *config.StateIsolationProvenance `json:"provenance,omitempty"`
+}
+
+// artifactRecord is the decoded union of every readable schema. It is
+// host-owned transient build evidence, never imported from plugin.yaml or a
+// baseline. A source revision and digest identify the stable selected source
+// snapshot verified by the builder.
 type artifactRecord struct {
 	SchemaVersion           int                              `json:"schemaVersion"`
 	PluginID                string                           `json:"pluginID"`
 	SDKRevision             string                           `json:"sdkRevision"`
 	ExpectedSDKSourceSHA256 string                           `json:"expectedSDKSourceSHA256"`
 	Provenance              *config.StateIsolationProvenance `json:"provenance"`
+	SDK                     *artifactSDK                     `json:"sdk"`
+	Capability              string                           `json:"capability"`
+	BinarySHA256            string                           `json:"binarySHA256"`
+
+	published devsdk.Identity
+	// source evidence a source verification checks the bytes against.
+	revision, sourceDigest string
+	provenance             *config.StateIsolationProvenance
+}
+
+func invalidArtifactEvidence(pluginID string) error {
+	return fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
+}
+
+// resolve validates the record's schema and union shape and reports the
+// evidence it carries. A published record is also admitted by the release
+// policy of this host binary, evaluated now, so raising the floor revokes
+// recorded tuples.
+func (record *artifactRecord) resolve(pluginID string) error {
+	if record.PluginID != pluginID {
+		return invalidArtifactEvidence(pluginID)
+	}
+	switch record.SchemaVersion {
+	case sourceArtifactSchemaVersion:
+		if record.SDK != nil || record.Capability != "" || record.BinarySHA256 != "" ||
+			record.Provenance == nil || record.SDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
+			return invalidArtifactEvidence(pluginID)
+		}
+		record.revision, record.sourceDigest, record.provenance = record.SDKRevision, record.ExpectedSDKSourceSHA256, record.Provenance
+		return nil
+	case typedArtifactSchemaVersion:
+		if record.SDK == nil || record.SDKRevision != "" || record.ExpectedSDKSourceSHA256 != "" || record.Provenance != nil {
+			return invalidArtifactEvidence(pluginID)
+		}
+		switch record.SDK.Mode {
+		case devsdk.ModeSource:
+			sdk := record.SDK
+			if sdk.Provenance == nil || sdk.Revision == "" || sdk.SourceSHA256 == "" ||
+				sdk.Module != "" || sdk.Version != "" || sdk.ModuleSum != "" || sdk.GoModSum != "" ||
+				record.Capability != "" || record.BinarySHA256 != "" {
+				return invalidArtifactEvidence(pluginID)
+			}
+			record.revision, record.sourceDigest, record.provenance = sdk.Revision, sdk.SourceSHA256, sdk.Provenance
+			return nil
+		case devsdk.ModePublished:
+			sdk := record.SDK
+			if sdk.Revision != "" || sdk.SourceSHA256 != "" || sdk.Provenance != nil || record.BinarySHA256 == "" {
+				return invalidArtifactEvidence(pluginID)
+			}
+			if record.Capability != devsdk.Capability {
+				return fmt.Errorf("instance: plugin %s artifact evidence declares capability %q, not %q", pluginID, record.Capability, devsdk.Capability)
+			}
+			identity, err := devsdk.NewPublishedIdentity(devsdk.Published{
+				Module: sdk.Module, Version: sdk.Version, ModuleSum: sdk.ModuleSum, GoModSum: sdk.GoModSum,
+			})
+			if err != nil {
+				return fmt.Errorf("instance: invalid trusted artifact SDK identity for %s: %w", pluginID, err)
+			}
+			if err := devsdk.ReleasePolicy().Admit(identity); err != nil {
+				return fmt.Errorf("instance: plugin %s artifact SDK identity is no longer accepted: %w", pluginID, err)
+			}
+			record.published = identity
+			return nil
+		}
+	}
+	return invalidArtifactEvidence(pluginID)
+}
+
+// artifactSHA256 is the lowercase hex SHA-256 of a regular file, computed like
+// the SDK's artifact digest.
+func artifactSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("artifact must be a regular file")
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) {
@@ -59,21 +190,47 @@ func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) 
 	return path, nil
 }
 
-// RecordBuiltArtifactSource MUST only be called after the trusted builder
-// verifies the selected SDK path and confirms the exact source digest is
-// unchanged across a successful build.
-// Dirty edits are supported: the digest identifies that working-tree snapshot,
-// not a claim that hashing alone proves source inclusion in the executable.
-func RecordBuiltArtifactSource(
-	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath, sdkRevision, sourceDigest string,
+// RecordBuiltArtifact MUST only be called after the trusted builder verifies
+// the selected SDK and confirms the exact identity is unchanged across a
+// successful build. A source identity is written as the schema 3 record; a
+// published identity is written as a schema 4 record with its typed identity,
+// capability and the SHA-256 of the exact bytes. Dirty source edits are
+// supported: the digest identifies that working-tree snapshot, not a claim
+// that hashing alone proves source inclusion in the executable.
+func RecordBuiltArtifact(
+	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string, sdk devsdk.Identity,
 ) error {
 	if err := state.ValidateComponent(pluginID); err != nil {
 		return err
 	}
-	if sourceDigest == "" {
-		return fmt.Errorf("instance: verified SDK source snapshot digest is required")
+	if err := sdk.Validate(); err != nil {
+		return fmt.Errorf("instance: verified SDK identity is required: %w", err)
 	}
-	provenance, err := config.BuildStateIsolationProvenance(binaryPath, sdkRevision, sourceDigest)
+	var record any
+	if source, ok := sdk.Source(); ok {
+		provenance, err := config.BuildStateIsolationProvenance(binaryPath, source.Revision, source.SourceDigest)
+		if err != nil {
+			return err
+		}
+		record = sourceArtifactRecord{
+			SchemaVersion: sourceArtifactSchemaVersion, PluginID: pluginID, SDKRevision: source.Revision,
+			ExpectedSDKSourceSHA256: source.SourceDigest, Provenance: provenance,
+		}
+	} else {
+		published, _ := sdk.Published()
+		digest, err := artifactSHA256(binaryPath)
+		if err != nil {
+			return err
+		}
+		record = typedArtifactRecord{
+			SchemaVersion: typedArtifactSchemaVersion, PluginID: pluginID, Capability: devsdk.Capability, BinarySHA256: digest,
+			SDK: artifactSDK{
+				Mode: devsdk.ModePublished, Module: published.Module, Version: published.Version,
+				ModuleSum: published.ModuleSum, GoModSum: published.GoModSum,
+			},
+		}
+	}
+	encoded, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
@@ -94,14 +251,6 @@ func RecordBuiltArtifactSource(
 		return err
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	record := artifactRecord{
-		SchemaVersion: artifactSchemaVersion, PluginID: pluginID, SDKRevision: sdkRevision,
-		ExpectedSDKSourceSHA256: sourceDigest, Provenance: provenance,
-	}
-	encoded, err := json.Marshal(record)
-	if err != nil {
 		return err
 	}
 	file, err := os.CreateTemp(dir, ".artifact-*")
@@ -164,17 +313,27 @@ func readPluginArtifactRecord(workspace devcontract.ResolvedWorkspace, pluginID 
 	if closeErr != nil {
 		return "", record, closeErr
 	}
-	if record.SchemaVersion != artifactSchemaVersion || record.PluginID != pluginID || record.Provenance == nil ||
-		record.SDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
-		return "", record, fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
+	if err := record.resolve(pluginID); err != nil {
+		return "", record, err
 	}
 	return dir, record, nil
 }
 
 func (record *artifactRecord) verifyArtifact(pluginID, binaryPath string) error {
-	if err := record.Provenance.VerifyArtifact(
-		binaryPath, record.SDKRevision, record.ExpectedSDKSourceSHA256,
-	); err != nil {
+	if record.published.Mode() == devsdk.ModePublished {
+		digest, err := artifactSHA256(binaryPath)
+		if err != nil {
+			return fmt.Errorf("instance: plugin %s artifact verification failed: %w", pluginID, err)
+		}
+		if digest != record.BinarySHA256 {
+			return fmt.Errorf("instance: plugin %s artifact bytes differ from the recorded build", pluginID)
+		}
+		if err := devsdk.VerifyBinary(pluginID, binaryPath, record.published); err != nil {
+			return fmt.Errorf("instance: plugin %s artifact SDK verification failed: %w", pluginID, err)
+		}
+		return nil
+	}
+	if err := record.provenance.VerifyArtifact(binaryPath, record.revision, record.sourceDigest); err != nil {
 		return fmt.Errorf("instance: plugin %s artifact isolation verification failed: %w", pluginID, err)
 	}
 	return nil
