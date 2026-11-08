@@ -159,4 +159,15 @@ func TestAdmitReferenceBatchSharesCatalogButAuthorizesEveryReference(t *testing.
 	_, err = ctrl.AdmitReference(last, "metric.Query", "p1", input.Route, reference("f"))
 	require.NoError(t, err)
 	require.Equal(t, 2, catalogCalls, "a context returned from admission starts a new catalog acquisition")
+
+	// A concurrent catalog observation can retire authority without replacing
+	// the plugin process or advancing the connection epoch.
+	ctrl.finite.mu.Lock()
+	resolver := ctrl.finite.authorities["p1"]
+	_, err = resolver.ObserveCatalog("p1", input.Route.Connection, authorityTestCatalog("p1", nil))
+	ctrl.finite.mu.Unlock()
+	require.NoError(t, err)
+	_, err = ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, reference("g"))
+	require.Error(t, err)
+	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
 }
