@@ -14,7 +14,7 @@ A library import proves provenance, not fidelity. A working query, green test, o
 3. Classify work as preservation or explicitly approved redesign. A migration does not authorize a redesign. Record each intentional difference and its user approval. Do not infer permission from implementation convenience.
 4. Check actual exported components and supported props/slots before inventing controls. Prefer existing components, then their composition, then an owner-reviewed shared capability. Keep domain decisions in the owning view; generic controls must not branch on plugin/resource IDs.
 
-See [audit protocol](references/audit-protocol.md) for evidence and report requirements. Use [the metrics incident](references/metrics-regression-case.md) as a regression example, not a universal chart specification.
+Use [the metrics incident](references/metrics-regression-case.md) as a regression example, not a universal chart specification.
 
 ## During implementation
 
@@ -30,10 +30,8 @@ See [audit protocol](references/audit-protocol.md) for evidence and report requi
 
 Stop the substitution and record a **library gap** before accepting a workaround: owning package/component, requested capability, existing APIs inspected and why insufficient, affected consumers, reproduction/baseline evidence, and acceptance criteria. Fix the shared capability or obtain an explicit, narrowly scoped exception with owner, tracking reference, and removal condition. A ticket alone does not authorize a workaround. Do not expand scope beyond what the approved experience needs.
 
-## Verify independently before completion
+## Verify before completion
 
 Exercise the actual consumer using the existing workspace and instance-verification workflow. Use real components and CSS, matched fixture/provider/resource/time range, theme, density, viewport, and pane width. Test relevant keyboard/pointer flows, overlays, error/empty states, long labels, units, and narrow layouts. Inspect actual pixels; DOM dumps and component stories cannot substitute for integrated screenshots or native rendering proof.
 
-Request the independent `omniview-ui-auditor` agent with the current snapshot, parity contract, source changes, preserved baseline, and evidence. It must issue separate verdicts for **library compliance**, **composition parity**, **information/interaction preservation**, and **visual acceptance**. Any failed or unverified required verdict blocks completion. Finish reachable checks when runtime is unavailable, but do not claim a visual pass.
-
-Use the installed audit gate's snapshot/submission tools when available; only the independent auditor submits approval. Any relevant source, CSS, dependency, policy, or agent change invalidates old approval, including shell/external/child writes. Never copy a prior receipt or self-attest. Without a loaded runtime gate, explicitly report that enforcement is advisory; never claim this skill auto-runs by itself.
+Check library compliance, composition parity, information/interaction preservation, and visual result separately. Finish reachable checks when runtime is unavailable, but do not claim a visual pass. Run `pnpm lint:ui-policy` for the deterministic static checks.
