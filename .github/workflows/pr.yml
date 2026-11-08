@@ -13,7 +13,7 @@ permissions:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27"
   NODE_VERSION: "26.13.0"
 
 jobs:
@@ -100,7 +100,7 @@ jobs:
           pnpm install --frozen-lockfile
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -132,9 +132,9 @@ jobs:
         shell: bash
         env:
           CGO_ENABLED: "1"
-          CGO_CFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=12.0' || '' }}
-          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=12.0' || '' }}
-          MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '12.0' || '' }}
+          CGO_CFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=13.0' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=13.0' || '' }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '13.0' || '' }}
         run: |
           HOST_MODFILE="$(task --silent host:prepare)"
           build_command=(go build -o bin/Omniview)

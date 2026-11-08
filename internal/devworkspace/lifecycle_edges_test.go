@@ -241,7 +241,8 @@ func lifecycleEdgeListener(t *testing.T) *net.TCPListener {
 }
 
 func TestLifecycleEdgesConcurrentSameSlugHasOneDurableWinner(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "ui")
 	config := lifecycleEdgeConfig{Action: "create", Create: CreateOptions{Slug: "one-winner", Repositories: []string{"ui"}}}
 	first, second := startLifecycleEdge(t, m, config), startLifecycleEdge(t, m, config)
 	first.signal(t)
@@ -270,7 +271,8 @@ func TestLifecycleEdgesConcurrentSameSlugHasOneDurableWinner(t *testing.T) {
 }
 
 func TestLifecycleEdgesCancelledCreateAfterFirstWorktreeResumesSameIdentity(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "ui")
 	listener := lifecycleEdgeListener(t)
 	p := startLifecycleEdge(t, m, lifecycleEdgeConfig{Action: "create", Create: CreateOptions{Slug: "cancel-create", Repositories: []string{"ui"}}, Gate: listener.Addr().String(), GitDirectory: filepath.Join(root, "omniview", ".git"), GitCommand: "worktree add", AfterGit: true})
 	p.signal(t)
@@ -294,10 +296,11 @@ func TestLifecycleEdgesCancelledCreateAfterFirstWorktreeResumesSameIdentity(t *t
 }
 
 func TestLifecycleEdgesLaterEditFailureRetainsWholeIntent(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "plugin-sdk", "ui")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "partial-edit"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "partial-edit"})
+	var err error
 	reg, err := LoadRegistry(ctx, root)
 	require.NoError(t, err)
 	planned, err := m.plan(ctx, reg, CreateOptions{Slug: w.Manifest.Slug, workspaceID: w.Manifest.WorkspaceID, Repositories: []string{"plugin-sdk", "ui"}})
@@ -332,9 +335,10 @@ func TestLifecycleEdgesLaterEditFailureRetainsWholeIntent(t *testing.T) {
 }
 
 func TestLifecycleEdgesCancelledRemovalAfterFirstDeletionKeepsOriginalFlags(t *testing.T) {
-	m, root := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "partial-remove", Repositories: []string{"ui"}})
-	require.NoError(t, err)
+	t.Parallel()
+	m, root := fixtureManager(t, "ui")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "partial-remove", Repositories: []string{"ui"}})
+	var err error
 	require.NoError(t, os.MkdirAll(w.StateRoot, 0700))
 	sentinel := filepath.Join(w.StateRoot, "retained-user-state")
 	require.NoError(t, os.WriteFile(sentinel, []byte("keep"), 0600))
@@ -367,14 +371,15 @@ func TestLifecycleEdgesCancelledRemovalAfterFirstDeletionKeepsOriginalFlags(t *t
 }
 
 func TestLifecycleEdgesRemoveContendsWithRemoveEditAndResume(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"remove", "edit", "resume"} {
 		t.Run(action, func(t *testing.T) {
-			m, _ := fixtureManager(t)
+			t.Parallel()
+			m, _ := fixtureManager(t, "ui")
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "retiring"})
-			require.NoError(t, err)
-			foreign, err := m.Create(ctx, CreateOptions{Slug: "unrelated", Repositories: []string{"ui"}})
-			require.NoError(t, err)
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "retiring"})
+			var err error
+			foreign := fixtureWorkspace(t, m, CreateOptions{Slug: "unrelated", Repositories: []string{"ui"}})
 			require.NoError(t, os.MkdirAll(w.StateRoot, 0700))
 			sentinel := filepath.Join(w.StateRoot, "keep-state")
 			require.NoError(t, os.WriteFile(sentinel, []byte("keep"), 0600))
@@ -407,7 +412,8 @@ func TestLifecycleEdgesRemoveContendsWithRemoveEditAndResume(t *testing.T) {
 }
 
 func TestLifecycleEdgesRollbackRetainsLiveOutputWriterEvidence(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	hostSource := filepath.Join(m.Root, "omniview")
 	require.NoError(t, os.WriteFile(filepath.Join(hostSource, "package.json"), []byte("{\"name\":\"rollback-host\",\"private\":true}\n"), 0600))
@@ -471,10 +477,11 @@ func lifecycleEdgeAccept(t *testing.T, listener *net.TCPListener, process *lifec
 }
 
 func TestRegistryAndCollectionsCancelDuringSourceGitValidation(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"registry", "collections"} {
 		for _, command := range []string{"rev-parse", "config --get remote.origin.url"} {
 			t.Run(action+"/"+command, func(t *testing.T) {
-				m, root := fixtureManager(t)
+				m, root := fixtureManager(t, "omniview")
 				fixtureGit(t, filepath.Join(root, "omniview"), "remote", "add", "origin", "https://example.invalid/host.git")
 				listener := lifecycleEdgeListener(t)
 				p := startLifecycleEdge(t, m, lifecycleEdgeConfig{

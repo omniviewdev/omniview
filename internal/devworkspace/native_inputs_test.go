@@ -3,6 +3,7 @@ package devworkspace
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,9 +14,12 @@ import (
 // A refusal at the host boundary proves selection without inventing a successful
 // native build or readiness observation.
 func TestNativeContentChangesReachOwnedHostRebuild(t *testing.T) {
+	t.Parallel()
+	// Every case removes its input. The owned watch transaction needs only
+	// the host and SDK sources, not unrelated UI and plugin compositions.
+	g, _, hooks, _ := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true})
 	for _, extension := range []string{".go", ".c", ".h", ".m", ".mm", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".f", ".F", ".for", ".f90", ".s", ".S", ".sx", ".swig", ".swigcxx", ".syso"} {
 		t.Run(extension, func(t *testing.T) {
-			g, _, hooks, _ := feedbackWatchFixture(t)
 			path := filepath.Join(g.workspace.Root, "host", "internal", "native", "bridge"+extension)
 			// Keep the failed transaction's graph for the next source mutation.
 			// Each step must retry the host with the latest source state.
@@ -54,11 +58,18 @@ func TestNativeContentChangesReachOwnedHostRebuild(t *testing.T) {
 }
 
 func TestLiveFrontendContentChangesDoNotReplaceHost(t *testing.T) {
+	t.Parallel()
+	g, _, hooks, _ := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	for _, extension := range []string{".js", ".tsx", ".css"} {
 		t.Run(extension, func(t *testing.T) {
-			g, _, hooks, _ := feedbackWatchFixture(t)
+			// Each case removes its input before the next watch transaction.
 			path := filepath.Join(g.workspace.Root, "host", "ui", "native-control"+extension)
 			writeGraphFixture(t, path, "changed frontend input\n")
+			t.Cleanup(func() {
+				if err := os.Remove(path); err != nil {
+					t.Error(err)
+				}
+			})
 			hooks.HostRebuildAndWait = func(context.Context, HostBuildRequest) (map[string]bool, error) {
 				t.Error("live frontend change reached native host replacement")
 				return nil, errors.New("unexpected native build")
@@ -71,24 +82,26 @@ func TestLiveFrontendContentChangesDoNotReplaceHost(t *testing.T) {
 }
 
 func TestNativeContentInvalidatesBootstrapReuseButTimestampDoesNot(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
+	t.Parallel()
+	// Reuse validates bytes and ownership; this test never executes the artifact.
+	binary := []byte("native host fixture\n")
+	g, node, supervisor, published := newHostReuseFixture(t, binary)
+	extensions := []string{".c", ".h", ".m", ".mm", ".s", ".S"}
+	nativePath := func(index int, extension, operation string) string {
+		return filepath.Join(g.workspace.Root, "host", "internal", "native", fmt.Sprintf("bridge-%d-%s%s", index, operation, extension))
 	}
-	binary, err := os.ReadFile(executable)
-	if err != nil {
-		t.Fatal(err)
+	// Track edit/removal inputs together; additions remain untracked throughout.
+	for index, extension := range extensions {
+		for _, operation := range []string{"edit", "remove"} {
+			writeGraphFixture(t, nativePath(index, extension, operation), "original native input\n")
+		}
 	}
-	for _, extension := range []string{".c", ".h", ".m", ".mm", ".s", ".S"} {
+	fixtureGit(t, node.Directory, "add", "internal/native")
+	fixtureGit(t, node.Directory, "commit", "-m", "native input fixtures")
+	for index, extension := range extensions {
 		for _, operation := range []string{"add", "edit", "remove"} {
 			t.Run(extension+"/"+operation, func(t *testing.T) {
-				g, node, supervisor, published := newHostReuseFixture(t, binary)
-				path := filepath.Join(g.workspace.Root, "host", "internal", "native", "bridge"+extension)
-				if operation != "add" {
-					writeGraphFixture(t, path, "original native input\n")
-					fixtureGit(t, node.Directory, "add", "internal/native")
-					fixtureGit(t, node.Directory, "commit", "-m", "native input")
-				}
+				path := nativePath(index, extension, operation)
 				ctx := context.Background()
 				inputs, err := g.nodeInputs(ctx, node)
 				if err != nil {

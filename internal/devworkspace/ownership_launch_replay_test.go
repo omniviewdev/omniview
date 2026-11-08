@@ -130,6 +130,7 @@ func TestInitialUpOwnershipGuidanceReplaysSavedLaunch(t *testing.T) {
 }
 
 func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {
+	t.Parallel()
 	for _, savedLaunch := range []bool{false, true} {
 		t.Run(map[bool]string{false: "without-launch", true: "saved-launch"}[savedLaunch], func(t *testing.T) {
 			ctx := context.Background()
@@ -181,6 +182,7 @@ func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {
 }
 
 func TestProducerOwnershipRecoveryRetainsRefreshRoute(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t, "plugin-sdk")
 	ctx := context.Background()
 	j, err := loadLinkJournal(f.w)
@@ -209,6 +211,7 @@ func TestProducerOwnershipRecoveryRetainsRefreshRoute(t *testing.T) {
 }
 
 func TestProducerOwnershipRecoveryRetriesOriginalPreservation(t *testing.T) {
+	t.Parallel()
 	for _, moved := range []bool{false, true} {
 		t.Run(map[bool]string{false: "intent", true: "moved"}[moved], func(t *testing.T) {
 			f := newResetModulesFixture(t, "plugin-sdk")
@@ -277,6 +280,7 @@ func TestProducerOwnershipRecoveryRetriesOriginalPreservation(t *testing.T) {
 }
 
 func TestProducerPreservationBaseRequiresProducerFilesystem(t *testing.T) {
+	t.Parallel()
 	f := newResetModulesFixture(t)
 	base := filepath.Dir(f.m.Root)
 	target := filepath.Join(f.host, "ui", "providers", "monaco", "yaml.worker.bundle.js")

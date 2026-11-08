@@ -12,7 +12,8 @@ import (
 )
 
 func TestAbsentStateStaysAbsentThroughEditAndPartialCreateResume(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "no-state", Baseline: new("offline-source")})
 	require.NoError(t, err)
@@ -41,7 +42,8 @@ func TestAbsentStateStaysAbsentThroughEditAndPartialCreateResume(t *testing.T) {
 }
 
 func TestOwnedPartialWriteRecoveryDoesNotDeleteForeignWriteFiles(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "staged-writes"})
 	require.NoError(t, err)
@@ -64,7 +66,8 @@ func TestOwnedPartialWriteRecoveryDoesNotDeleteForeignWriteFiles(t *testing.T) {
 }
 
 func TestRemovalResumesAfterRetiredJournalAndManifestWereUnlinked(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "retired"})
 	require.NoError(t, err)
@@ -98,7 +101,8 @@ func TestRemovalResumesAfterRetiredJournalAndManifestWereUnlinked(t *testing.T) 
 }
 
 func TestStableProfileGuardBlocksRemovalBeforeAnyWorktreeChanges(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "external-lock"})
 	require.NoError(t, err)
@@ -111,6 +115,7 @@ func TestStableProfileGuardBlocksRemovalBeforeAnyWorktreeChanges(t *testing.T) {
 }
 
 func TestFileURLAndLocalPathOriginsAreOneSourceIdentity(t *testing.T) {
+	t.Parallel()
 	root := filepath.Join(t.TempDir(), "paths with spaces")
 	require.NoError(t, os.MkdirAll(root, 0700))
 	remote := fixtureRepo(t, root, "remote.git", "")
@@ -124,7 +129,8 @@ func TestFileURLAndLocalPathOriginsAreOneSourceIdentity(t *testing.T) {
 }
 
 func TestRemovalResumesAfterProfilePurgeBeforeRetirement(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
 	w, err := m.Create(ctx, CreateOptions{Slug: "purge-boundary"})
 	require.NoError(t, err)

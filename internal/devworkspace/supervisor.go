@@ -106,6 +106,10 @@ func readSupervisorToken(w Workspace, record supervisorRecord) ([]byte, error) {
 	return token, err
 }
 func callSupervisor(ctx context.Context, record supervisorRecord, token []byte, command string) (Status, error) {
+	return callSupervisorWithStatusTimeout(ctx, record, token, command, supervisorStatusClientTimeout)
+}
+
+func callSupervisorWithStatusTimeout(ctx context.Context, record supervisorRecord, token []byte, command string, statusTimeout time.Duration) (Status, error) {
 	var status Status
 	raw, err := json.Marshal(map[string]string{"workspaceID": record.WorkspaceID, "generation": record.Generation, "command": command})
 	if err != nil {
@@ -123,7 +127,7 @@ func callSupervisor(ctx context.Context, record supervisorRecord, token []byte, 
 	if command == supervisorStatusCommand {
 		// Cover the response body too: a listener or flushed header does not
 		// prove the authenticated owner can complete an observation.
-		client.Timeout = supervisorStatusClientTimeout
+		client.Timeout = statusTimeout
 	}
 	response, err := client.Do(request)
 	if err != nil {

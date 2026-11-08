@@ -9,6 +9,7 @@ import (
 )
 
 func TestUpstreamConfigurationRejectsWholeEditBeforeMutation(t *testing.T) {
+	t.Parallel()
 	m, w, _, _ := upstreamFixture(t)
 	before, err := os.ReadFile(w.ManifestPath)
 	require.NoError(t, err)
@@ -26,6 +27,7 @@ func TestUpstreamConfigurationRejectsWholeEditBeforeMutation(t *testing.T) {
 }
 
 func TestUpstreamConfigurationPersistsWithoutChangingSelection(t *testing.T) {
+	t.Parallel()
 	m, w, _, _ := upstreamFixture(t)
 	old := w.Manifest.Repositories[0]
 	configured, err := m.ConfigureUpstreams(

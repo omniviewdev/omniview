@@ -16,7 +16,8 @@ import (
 )
 
 func TestPNPMToolchainRejectsUnselectedPinsBeforeCreatingFiles(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	if _, _, err := g.PNPMCommand(context.Background(), "10.34.7"); err == nil {
 		t.Fatal("accepted unproved/unselected pnpm pin")
 	}
@@ -29,6 +30,7 @@ func TestPNPMToolchainRejectsUnselectedPinsBeforeCreatingFiles(t *testing.T) {
 // The native pinned pnpm runs an outer script, which launches a bare nested
 // pnpm script through PATH under the inherited Corepack marker.
 func TestPinnedPNPMNestedScriptProbe(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("A15_PINNED_PNPM_PROBE") != "1" {
 		t.Skip("parent-only real pinned pnpm nested-script probe")
 	}
@@ -117,6 +119,7 @@ fs.writeFileSync(process.env.A15_NESTED_REPORT, JSON.stringify({agent:process.en
 }
 
 func TestPNPMLauncherRejectsInvalidExplicitNodeWithoutFallback(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("actual Node is required for launcher behavior")
@@ -154,7 +157,7 @@ func TestGraphCommandClearsAmbientNodeOverride(t *testing.T) {
 		t.Skip("actual Node is required for command environment behavior")
 	}
 	t.Setenv("OMNIVIEW_PNPM_NODE_PATH", "ambient-node-must-not-override")
-	g := graphFixture(t)
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	raw, err := g.command(context.Background(), g.workspace.Root, node, "-e", `process.stdout.write(JSON.stringify({override:process.env.OMNIVIEW_PNPM_NODE_PATH}));`)
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +172,7 @@ func TestGraphCommandClearsAmbientNodeOverride(t *testing.T) {
 }
 
 func TestPrivateNodeAliasesExecuteActualRenamedRuntime(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("actual Node is required for renamed-runtime behavior")
@@ -296,7 +300,7 @@ func TestNativePNPMRefusesActualWrongVersionAndNoncanonicalOverride(t *testing.T
 		t.Fatal(err)
 	}
 	node = strings.TrimSpace(string(actualNode))
-	g := graphFixture(t)
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	t.Setenv("OMNIVIEW_PNPM_EXECUTABLE", node)
 	version, err := exec.Command(node, "--version").Output()
 	if err != nil {
@@ -325,6 +329,7 @@ func TestNativePNPMRefusesActualWrongVersionAndNoncanonicalOverride(t *testing.T
 }
 
 func TestNativePNPMLauncherRefusesVersionMismatchBeforeScript(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("actual native Node is required for mismatch refusal")
@@ -357,6 +362,7 @@ func TestNativePNPMLauncherRefusesVersionMismatchBeforeScript(t *testing.T) {
 // any directory rewrites the owned composition node_modules. Only the recorded
 // composition install may pass; ordinary scripts and audits still run.
 func TestNativePNPMLauncherRefusesDependencyWritesOutsideCompositionInstall(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX fake native pnpm")
 	}
@@ -426,6 +432,7 @@ func TestNativePNPMLauncherRefusesDependencyWritesOutsideCompositionInstall(t *t
 }
 
 func TestLinkEvidenceCoversEverySelectedExactPin(t *testing.T) {
+	t.Parallel()
 	legacy := LinkProtocolEvidence{Protocol: "link", Versions: []string{"10.34.7", "10.6.2"}, AtomicDist: true, Peers: true, Runtime: true}
 	roots := []linkRoot{{Version: "12.14.0"}, {Version: "10.6.2"}}
 	if err := legacy.validateRoots(roots); err == nil {
@@ -445,6 +452,7 @@ func TestLinkEvidenceCoversEverySelectedExactPin(t *testing.T) {
 }
 
 func TestSelectedManifestAcceptsOnlySupportedExactNativePin(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	for _, pin := range []string{"12.14.0", "12.14.1", "^12.14.0", "12"} {
 		raw, _ := json.Marshal(map[string]string{"packageManager": "pnpm@" + pin})

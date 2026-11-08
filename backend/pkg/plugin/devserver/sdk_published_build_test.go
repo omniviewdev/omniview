@@ -200,7 +200,7 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 		"below the floor": {
 			prepare: func(b *publishedBuild, t *testing.T) {
 				old := b.extra["v0.16.0"]
-				b.world.Write(b.plugin, "go.mod", fmt.Sprintf("module example.com/plugin\n\ngo 1.26.0\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
+				b.world.Write(b.plugin, "go.mod", fmt.Sprintf("module example.com/plugin\n\ngo 1.27.0\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
 					old.Module, old.Version, b.uuid.Module, b.uuid.Version))
 				b.world.Write(b.plugin, "go.sum", fmt.Sprintf("%s %s %s\n%s %s/go.mod %s\n%s %s %s\n%s %s/go.mod %s\n",
 					old.Module, old.Version, old.ModuleSum, old.Module, old.Version, old.GoModSum,
@@ -265,10 +265,10 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 }
 
 func TestPublishedManagedBuildRefusesAnSDKChangedDuringTheBuild(t *testing.T) {
-	build := newPublishedBuild(t, nil, "v0.18.0")
-	second := build.extra["v0.18.0"]
+	build := newPublishedBuild(t, nil, "v0.19.0")
+	second := build.extra["v0.19.0"]
 	alternate := filepath.Join(sdktest.TempDir(t), "go.mod.alt")
-	require.NoError(t, os.WriteFile(alternate, []byte(fmt.Sprintf("module example.com/plugin\n\ngo 1.26.0\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
+	require.NoError(t, os.WriteFile(alternate, []byte(fmt.Sprintf("module example.com/plugin\n\ngo 1.27.0\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
 		second.Module, second.Version, build.uuid.Module, build.uuid.Version)), 0o600))
 	sums, err := os.ReadFile(filepath.Join(build.plugin, "go.sum"))
 	require.NoError(t, err)

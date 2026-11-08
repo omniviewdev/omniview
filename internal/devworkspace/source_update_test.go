@@ -13,9 +13,8 @@ import (
 
 func sourcePlanFixture(t *testing.T, repositories ...string) (*Manager, Workspace, UpdatePlan) {
 	t.Helper()
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "source-only", Repositories: repositories})
-	require.NoError(t, err)
+	m, _ := fixtureManager(t, append([]string{"omniview"}, repositories...)...)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "source-only", Repositories: repositories})
 	plan := UpdatePlan{
 		WorkspaceID: w.Manifest.WorkspaceID, OperationID: "captured-operation", Result: "update_available",
 		ConfigurationFingerprint: UpdateConfigurationFingerprint(w.Manifest),
@@ -26,8 +25,7 @@ func sourcePlanFixture(t *testing.T, repositories ...string) (*Manager, Workspac
 		// Commit in the registered source, never in the owned feature checkout.
 		source := filepath.Dir(r.CommonDir)
 		require.NoError(t, os.WriteFile(filepath.Join(source, "README"), []byte("captured target\n"), 0600))
-		fixtureGit(t, source, "add", "README")
-		fixtureGit(t, source, "commit", "-m", "captured source change")
+		fixtureGit(t, source, "commit", "-m", "captured source change", "--", "README")
 		target := fixtureGit(t, source, "rev-parse", "HEAD")
 		plan.Repositories = append(plan.Repositories, RepositoryUpdatePlan{
 			ID: r.Repository.ID, OldSHA: r.Repository.BaseCommit, ActualHEAD: r.Repository.BaseCommit,
@@ -38,6 +36,7 @@ func sourcePlanFixture(t *testing.T, repositories ...string) (*Manager, Workspac
 }
 
 func TestSourceUpdateStoppedNeedsNoLaunchOrProtocolAndDoesNotInstall(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t)
 	result, err := m.applySourceUpdate(context.Background(), w.Manifest.WorkspaceID, plan, UpdateOptions{})
 	require.NoError(t, err)
@@ -54,6 +53,7 @@ func TestSourceUpdateStoppedNeedsNoLaunchOrProtocolAndDoesNotInstall(t *testing.
 }
 
 func TestSourceUpdateDirtyCohortWritesNoRepository(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t, "plugin-sdk")
 	last := plan.Repositories[len(plan.Repositories)-1]
 	j, err := loadJournal(w.Root)
@@ -72,6 +72,7 @@ func TestSourceUpdateDirtyCohortWritesNoRepository(t *testing.T) {
 }
 
 func TestSourceUpdateRejectsChangedConfigurationAndHead(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"configuration", "head"} {
 		t.Run(change, func(t *testing.T) {
 			m, w, plan := sourcePlanFixture(t)
@@ -91,6 +92,7 @@ func TestSourceUpdateRejectsChangedConfigurationAndHead(t *testing.T) {
 }
 
 func TestSourceUpdateRecoveryUsesCapturedTargetAfterUpstreamMoves(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t)
 	j, err := loadJournal(w.Root)
 	require.NoError(t, err)
@@ -102,8 +104,7 @@ func TestSourceUpdateRecoveryUsesCapturedTargetAfterUpstreamMoves(t *testing.T) 
 	fixtureGit(t, r.Path, "merge", "--ff-only", target)
 	source := filepath.Dir(r.CommonDir)
 	require.NoError(t, os.WriteFile(filepath.Join(source, "README"), []byte("later upstream\n"), 0600))
-	fixtureGit(t, source, "add", "README")
-	fixtureGit(t, source, "commit", "-m", "later upstream")
+	fixtureGit(t, source, "commit", "-m", "later upstream", "--", "README")
 	intent := sourceUpdateIntent{
 		WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Plan: plan,
 		Paths: []string{filepath.Join(r.Path, "README")},
@@ -121,6 +122,7 @@ func TestSourceUpdateRecoveryUsesCapturedTargetAfterUpstreamMoves(t *testing.T) 
 }
 
 func TestSourceUpdateRecoveryRejectsRedirectedIntent(t *testing.T) {
+	t.Parallel()
 	m, w, _ := sourcePlanFixture(t)
 	path := sourceUpdatePath(m, w)
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
@@ -137,7 +139,7 @@ func TestSourceUpdateRecoveryRejectsRedirectedIntent(t *testing.T) {
 
 func sourceOverlayPlanFixture(t *testing.T) (*Manager, Workspace, UpdatePlan, *linkJournal) {
 	t.Helper()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, "omniview")
 	source := filepath.Join(root, "omniview")
 	packageJSON := `{"name":"fixture","private":true,"packageManager":"pnpm@12.14.0",` +
 		`"dependencies":{"react":"19.0.0","react-dom":"19.0.0"}}`
@@ -154,8 +156,7 @@ func sourceOverlayPlanFixture(t *testing.T) (*Manager, Workspace, UpdatePlan, *l
 	require.NoError(t, os.WriteFile(filepath.Join(source, "go.mod"), original, 0600))
 	fixtureGit(t, source, "add", ".")
 	fixtureGit(t, source, "commit", "-m", "composition authority")
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "overlay-source"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "overlay-source"})
 	links := compositionJournalFixture(t, w)
 	path := filepath.Join(w.Root, "omniview", "go.mod")
 	file, err := snapshotLinkFile(w.Root, path)
@@ -170,8 +171,7 @@ func sourceOverlayPlanFixture(t *testing.T) (*Manager, Workspace, UpdatePlan, *l
 	require.NoError(t, err)
 	require.NoError(t, devcompose.CheckInputs(*persisted.Plan.Composition))
 	require.NoError(t, os.WriteFile(filepath.Join(source, "README"), []byte("source-only update\n"), 0600))
-	fixtureGit(t, source, "add", "README")
-	fixtureGit(t, source, "commit", "-m", "source only")
+	fixtureGit(t, source, "commit", "-m", "source only", "--", "README")
 	target := fixtureGit(t, source, "rev-parse", "HEAD")
 	repo := w.Manifest.Repositories[0]
 	plan := UpdatePlan{
@@ -186,6 +186,7 @@ func sourceOverlayPlanFixture(t *testing.T) (*Manager, Workspace, UpdatePlan, *l
 }
 
 func TestSourceUpdatePreservesExactSDKOverlayWithoutUnlink(t *testing.T) {
+	t.Parallel()
 	m, w, plan, persisted := sourceOverlayPlanFixture(t)
 	path := filepath.Join(w.Root, "omniview", "go.mod")
 	file := persisted.Files[len(persisted.Files)-1]
@@ -215,6 +216,7 @@ func TestSourceUpdatePreservesExactSDKOverlayWithoutUnlink(t *testing.T) {
 }
 
 func TestSourceUpdateAdoptsRebasedCompositionIntoCachedGraph(t *testing.T) {
+	t.Parallel()
 	m, w, plan, links := sourceOverlayPlanFixture(t)
 	graph := &BuildGraph{workspace: w, plan: links.Plan}
 	require.NoError(t, devcompose.CheckInputs(*graph.plan.Composition))
@@ -236,6 +238,7 @@ func TestSourceUpdateAdoptsRebasedCompositionIntoCachedGraph(t *testing.T) {
 }
 
 func TestSourceBuildRecoveryRejectsUncapturedCheckoutWithoutLinkJournal(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"head", "marker"} {
 		t.Run(change, func(t *testing.T) {
 			m, w, plan := sourcePlanFixture(t)
@@ -315,6 +318,7 @@ func assertSourceCompositionRefusesForeignChanges(t *testing.T, m *Manager, w Wo
 }
 
 func TestSourceUpdateRetainedIntentRejectsNewApplyWithoutMutation(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"selection", "configuration", "target", "launch", "same-plan"} {
 		t.Run(change, func(t *testing.T) {
 			m, w, plan := sourcePlanFixture(t)
@@ -349,6 +353,7 @@ func TestSourceUpdateRetainedIntentRejectsNewApplyWithoutMutation(t *testing.T) 
 }
 
 func TestSourceRecoveryRejectsLaunchOverrideWithoutMutation(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t)
 	intent := sourceUpdateIntent{
 		WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Plan: plan, Launch: &LaunchOptions{Mode: "native"},
@@ -371,11 +376,12 @@ func TestSourceRecoveryRejectsLaunchOverrideWithoutMutation(t *testing.T) {
 }
 
 func TestSourceFrontendQuiescenceDoesNotContactOrStopBackendRuntimes(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{
+	t.Parallel()
+	m, _ := fixtureManager(t, "plugin-sdk", "kubernetes")
+	w := fixtureWorkspace(t, m, CreateOptions{
 		Slug: "source-frontends", Repositories: []string{"plugin-sdk"}, Plugins: []string{"kubernetes"},
 	})
-	require.NoError(t, err)
+	var err error
 	pluginRoot, err := w.RepositoryPath(w.Manifest.Plugins[0].RepositoryID)
 	require.NoError(t, err)
 	for _, path := range []string{

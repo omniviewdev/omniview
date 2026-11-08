@@ -179,6 +179,11 @@ func CanonicalPath(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if plain, err := canonicalPlainPath(abs); err != nil {
+		return "", err
+	} else if plain {
+		return abs, nil
+	}
 	probe := abs
 	var missing []string
 	for {

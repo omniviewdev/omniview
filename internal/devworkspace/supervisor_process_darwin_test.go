@@ -22,6 +22,7 @@ import (
 )
 
 func TestDarwinOwnedCommandObservesAlreadyExitedLeader(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name, script string
 		exitCode     int
@@ -128,10 +129,14 @@ func TestDarwinSupervisorExitFixture(t *testing.T) {
 	buffer := make([]byte, 65536)
 	for {
 		_, err = unix.Write(socket, buffer)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
 		if errors.Is(err, unix.EAGAIN) {
 			break
 		}
 		if err != nil {
+			_, _ = os.Stderr.WriteString("Darwin linger fixture socket fill: " + err.Error() + "\n")
 			os.Exit(85)
 		}
 	}
@@ -180,6 +185,7 @@ func TestDarwinOwnedGroupExitFixture(t *testing.T) {
 }
 
 func TestDarwinOwnedGroupWaitsForExitingDescendant(t *testing.T) {
+	t.Parallel()
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		t.Fatal(err)
@@ -341,13 +347,11 @@ func TestDarwinOwnedGroupWaitsForExitingDescendant(t *testing.T) {
 }
 
 func TestDarwinDownWaitsForExactSupervisorKernelExit(t *testing.T) {
-	manager, _ := fixtureManager(t)
+	t.Parallel()
+	manager, _ := fixtureManager(t, "omniview")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	workspace, err := manager.Create(ctx, CreateOptions{Slug: "darwin-exit"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	workspace := fixtureWorkspace(t, manager, CreateOptions{Slug: "darwin-exit"})
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		t.Fatal(err)

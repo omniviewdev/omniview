@@ -168,7 +168,7 @@ overrides:
   '@opentelemetry/api': 1.9.1
 
 patchedDependencies:
-  '@wailsio/runtime@3.0.0-beta.34': c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862
+  '@wailsio/runtime@3.1.0': c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862
   monaco-editor@0.52.2: c9b4df6cf0c9f7250a4cac07c32e978eff7b3e8a3972ccf4e016e437eac285e0
   vite@7.3.7: 55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b
 
@@ -373,8 +373,8 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(vitest@5.0.5)
       '@wailsio/runtime':
-        specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
+        specifier: 3.1.0
+        version: 3.1.0(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
       '@welldone-software/why-did-you-render':
         specifier: 10.0.1
         version: 10.0.1(react@19.3.1)
@@ -433,8 +433,8 @@ importers:
   packages/omniviewdev-providers:
     dependencies:
       '@wailsio/runtime':
-        specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
+        specifier: 3.1.0
+        version: 3.1.0(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
     devDependencies:
       '@types/node':
         specifier: 26.6.5
@@ -464,8 +464,8 @@ importers:
   packages/omniviewdev-runtime:
     dependencies:
       '@wailsio/runtime':
-        specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
+        specifier: 3.1.0
+        version: 3.1.0(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)
       lodash.get:
         specifier: 4.4.2
         version: 4.4.2
@@ -1962,8 +1962,8 @@ packages:
   '@vscode/l10n@0.0.18':
     resolution: {integrity: sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ==}
 
-  '@wailsio/runtime@3.0.0-beta.34':
-    resolution: {integrity: sha512-uchPkqqbH+yAweQh4J0y0G1NRE6ILcas6huNTruTVU84aWqCFanlpdVM/KYJdcNzWKhdHGcGGBJYCUYn3ualoQ==}
+  '@wailsio/runtime@3.1.0':
+    resolution: {integrity: sha512-noEAedvRyO8TLCrqhGwzrp+mbMxAIDa2rYmdJQOzvJV9MxgaZeXAJGNBiMiKMTSSy4ESOtQi4VH/5heSzi6ZmA==}
 
   '@welldone-software/why-did-you-render@10.0.1':
     resolution: {integrity: sha512-tMgGkt30iVYeLMUKExNmtm019QgyjLtA7lwB0QAizYNEuihlCG2eoAWBBaz/bDeI7LeqAJ9msC6hY3vX+JB97g==}
@@ -5156,7 +5156,7 @@ snapshots:
 
   '@vscode/l10n@0.0.18': {}
 
-  '@wailsio/runtime@3.0.0-beta.34(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)': {}
+  '@wailsio/runtime@3.1.0(patch_hash=c07536c6a63634b99b63cb3f02b0fc2e21063066b96ae8aa9dfa3069810ea862)': {}
 
   '@welldone-software/why-did-you-render@10.0.1(react@19.3.1)':
     dependencies:

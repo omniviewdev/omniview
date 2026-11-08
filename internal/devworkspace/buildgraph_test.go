@@ -3,17 +3,31 @@ package devworkspace
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsource"
 )
+
+type graphFixtureStage uint8
+
+const (
+	graphFixtureInstalled graphFixtureStage = iota
+	graphFixtureLinked
+	graphFixturePlanned
+)
+
+type graphFixtureOptions struct {
+	NativeOnly bool
+	NoUI       bool
+	Stage      graphFixtureStage
+}
 
 // sdkDirectory returns the SDK checkout the fixture's plan selected.
 func sdkDirectory(t testing.TB, g *BuildGraph) string {
@@ -31,13 +45,15 @@ func fakeSDKIdentity(directory, revision, digest string) (devsdk.Identity, error
 	return devsdk.NewSourceIdentity(devsource.Identity{Directory: directory, Revision: revision, SourceDigest: digest})
 }
 
-func graphFixture(t *testing.T) *BuildGraph {
+func graphFixture(t *testing.T, options ...graphFixtureOptions) *BuildGraph {
 	t.Helper()
-	startedAt := time.Now()
-	traceStage := func(stage string) {
-		t.Logf("graphFixture stage=%s elapsed=%s", stage, time.Since(startedAt))
+	nativeOnly := len(options) != 0 && options[0].NativeOnly
+	noUI := nativeOnly || len(options) != 0 && options[0].NoUI
+	stage := graphFixtureInstalled
+	if len(options) != 0 {
+		stage = options[0].Stage
 	}
-	traceStage("create package sources")
+	planningOnly := stage == graphFixturePlanned
 	root := filepath.Join(t.TempDir(), "workspaces", "feature")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
@@ -49,6 +65,24 @@ func graphFixture(t *testing.T) *BuildGraph {
 	uiID, sdkID := "ui", "plugin-sdk"
 	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root, Manifest: devcontract.WorkspaceManifest{WorkspaceID: "11111111-1111-4111-8111-111111111111", Repositories: []devcontract.Repository{{ID: "omniview", Directory: "host"}, {ID: "ui", Directory: "ui"}, {ID: "plugin-sdk", Directory: "sdk"}, {ID: "plugin", Directory: "plugin"}}, Plugins: []devcontract.Plugin{{ID: "plugin", RepositoryID: "plugin", Mode: "managed"}}, Links: devcontract.Links{HostPackages: true, UIRepositoryID: &uiID, SDKRepositoryID: &sdkID}}}}
 	packages := map[string]string{"host": "omniview", "ui": "ui", "ui/packages/base-ui": "@omniviewdev/base-ui", "ui/packages/ai-ui": "@omniviewdev/ai-ui", "ui/packages/editors": "@omniviewdev/editors", "host/packages/omniviewdev-providers": "@omniviewdev/providers", "host/packages/omniviewdev-runtime": "@omniviewdev/runtime", "host/packages/omniviewdev-vite-plugin": "@omniviewdev/vite-plugin", "plugin/ui": "plugin-ui"}
+	repositories := []string{"host", "ui", "sdk", "plugin"}
+	if nativeOnly {
+		w.Manifest.Repositories = []devcontract.Repository{{ID: "omniview", Directory: "host"}, {ID: "plugin-sdk", Directory: "sdk"}}
+		w.Manifest.Plugins = nil
+		w.Manifest.Links = devcontract.Links{SDKRepositoryID: &sdkID}
+		packages = map[string]string{"host": "omniview"}
+		repositories = []string{"host", "sdk"}
+	}
+	if noUI && !nativeOnly {
+		w.Manifest.Repositories = []devcontract.Repository{{ID: "omniview", Directory: "host"}, {ID: "plugin-sdk", Directory: "sdk"}, {ID: "plugin", Directory: "plugin"}}
+		w.Manifest.Links.UIRepositoryID = nil
+		repositories = []string{"host", "sdk", "plugin"}
+		for relative := range packages {
+			if relative == "ui" || strings.HasPrefix(relative, "ui/") {
+				delete(packages, relative)
+			}
+		}
+	}
 	for rel, name := range packages {
 		dir := filepath.Join(root, rel)
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -60,62 +94,69 @@ func graphFixture(t *testing.T) *BuildGraph {
 			t.Fatal(err)
 		}
 	}
-	for _, rel := range []string{"sdk", "host", "plugin"} {
+	for _, rel := range repositories {
 		if err := os.MkdirAll(filepath.Join(root, rel), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, rel := range []string{"host", "ui"} {
+	workspaces := []string{"host", "ui"}
+	if noUI {
+		workspaces = []string{"host"}
+	}
+	if nativeOnly {
+		workspaces = nil
+	}
+	for _, rel := range workspaces {
 		writeGraphFixture(t, filepath.Join(root, rel, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n")
 	}
 	writeGraphFixture(t, filepath.Join(root, "host/packages/omniviewdev-runtime/src/bindings/index.ts"), "export const original = true;\n")
-	writeGraphFixture(t, filepath.Join(root, "host/packages/omniviewdev-vite-plugin/shims/runtime.mjs"), "export const original = true;\n")
-	writeGraphFixture(t, filepath.Join(root, "host/ui/providers/monaco/yaml.worker.bundle.js"), "self.original = true;\n")
-	for _, rel := range []string{"host", "ui", "sdk", "plugin"} {
-		traceStage("initialize and commit repository " + rel)
-		dir := filepath.Join(root, rel)
-		writeGraphFixture(t, filepath.Join(dir, ".gitignore"), "node_modules/\ndist/\n")
-		fixtureGit(t, dir, "init")
-		fixtureGit(t, dir, "add", ".")
-		fixtureGit(t, dir, "commit", "-m", "fixture source")
+	if !nativeOnly {
+		writeGraphFixture(t, filepath.Join(root, "host/packages/omniviewdev-vite-plugin/shims/runtime.mjs"), "export const original = true;\n")
+		writeGraphFixture(t, filepath.Join(root, "host/ui/providers/monaco/yaml.worker.bundle.js"), "self.original = true;\n")
+	}
+	if !planningOnly {
+		for _, rel := range repositories {
+			dir := filepath.Join(root, rel)
+			writeGraphFixture(t, filepath.Join(dir, ".gitignore"), "node_modules/\ndist/\n")
+			fixtureSeedRepository(t, dir, fmt.Sprintf("graph:%s:native=%t", rel, nativeOnly))
+		}
 	}
 	cache := filepath.Join(filepath.Dir(filepath.Dir(root)), "profile-cache")
 	if err := os.MkdirAll(cache, 0700); err != nil {
 		t.Fatal(err)
 	}
 	registerCompositionFixture(t, &w)
-	traceStage("plan composition links")
 	p, err := makeLinkPlan(w)
 	if err != nil {
 		t.Fatal(err)
 	}
-	j := linkJournal{SchemaVersion: 2, WorkspaceID: w.Manifest.WorkspaceID, Root: root, Phase: "applying", Manifest: w.Manifest, Plan: p, Evidence: LinkProtocolEvidence{Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true}}
-	for _, file := range p.Composition.Files {
-		e, err := snapshotLinkFile(root, file.Path)
+	if !planningOnly {
+		j := linkJournal{SchemaVersion: 2, WorkspaceID: w.Manifest.WorkspaceID, Root: root, Phase: "applying", Manifest: w.Manifest, Plan: p, Evidence: fixtureLinkEvidence()}
+		for _, file := range p.Composition.Files {
+			e, err := snapshotLinkFile(root, file.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Applied, e.AppliedHash = file.Data, linkHash(file.Data, true)
+			j.Files = append(j.Files, e)
+		}
+		if err := applyLinkFiles(&j); err != nil {
+			t.Fatal(err)
+		}
+		j.Phase = "linked"
+		if err := saveLinkJournal(&j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if stage == graphFixtureInstalled {
+		writer, err := devoutputs.BeginCompositionInstall(context.Background(), w.ResolvedWorkspace, *p.Composition)
 		if err != nil {
 			t.Fatal(err)
 		}
-		e.Applied, e.AppliedHash = file.Data, linkHash(file.Data, true)
-		j.Files = append(j.Files, e)
+		if err = writer.Finish(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
-	traceStage("apply composition links")
-	if err := applyLinkFiles(&j); err != nil {
-		t.Fatal(err)
-	}
-	j.Phase = "linked"
-	if err := saveLinkJournal(&j); err != nil {
-		t.Fatal(err)
-	}
-	traceStage("begin composition install")
-	writer, err := devoutputs.BeginCompositionInstall(context.Background(), w.ResolvedWorkspace, *p.Composition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	traceStage("finish composition install")
-	if err = writer.Finish(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	traceStage("compile build graph")
 	g, err := compileBuildGraph(w, p, BuildOptions{
 		Generation: "22222222-2222-4222-8222-222222222222", GoBuildCacheDirectory: cache,
 		VerifySDK: func(_ context.Context, request devsdk.Request) (devsdk.Identity, error) {
@@ -157,7 +198,8 @@ func graphFixture(t *testing.T) *BuildGraph {
 }
 
 func TestBuildGraphOrdersRuntimeBeforeShimAndConsumers(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	position := map[string]int{}
 	for i, n := range g.Nodes {
 		position[n.ID] = i
@@ -178,7 +220,8 @@ func TestBuildGraphOrdersRuntimeBeforeShimAndConsumers(t *testing.T) {
 }
 
 func TestBuildGraphAffectedClosureDoesNotBuildBackendForCSS(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	got, err := g.affected([]string{filepath.Join(g.workspace.Root, "ui/packages/base-ui/src/styles.css")})
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +241,8 @@ func TestBuildGraphAffectedClosureDoesNotBuildBackendForCSS(t *testing.T) {
 }
 
 func TestBuildGraphManifestMutationRequiresExplicitRelink(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	_, err := g.affected([]string{filepath.Join(g.workspace.Root, "plugin/ui/package.json")})
 	if err == nil {
 		t.Fatal("manifest mutation silently reused old dependency graph")
@@ -206,7 +250,8 @@ func TestBuildGraphManifestMutationRequiresExplicitRelink(t *testing.T) {
 }
 
 func TestVerifyBuildSDKRejectsWrongEffectiveSourceAndIncompleteIdentity(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	for _, tc := range []struct {
 		name, dir, revision, digest string
 		want                        bool
@@ -294,7 +339,8 @@ func TestVerifyBuildSDKReportsTheDevsourceIdentityOfTheSelectedCheckout(t *testi
 }
 
 func TestVerifyBuildSDKRejectsSourceMutationDuringBuild(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	g.run = func(_ context.Context, dir, program string, args ...string) ([]byte, error) {
 		return json.Marshal(map[string]any{"Path": devsdk.Module, "Dir": sdkDirectory(t, g)})
 	}
@@ -312,6 +358,7 @@ func TestVerifyBuildSDKRejectsSourceMutationDuringBuild(t *testing.T) {
 }
 
 func TestBuildGraphTypecheckFailureStopsBuild(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	calls := []string{}
 	g.runProducer = func(_ context.Context, dir string, _ []string, program string, args ...string) ([]byte, error) {
@@ -333,7 +380,8 @@ func TestBuildGraphTypecheckFailureStopsBuild(t *testing.T) {
 }
 
 func TestBuildGraphRequiresRealSDKSourceVerifier(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	opts := g.options
 	opts.VerifySDK = nil
 	if _, err := compileBuildGraph(g.workspace, g.plan, opts); err == nil {
@@ -362,7 +410,8 @@ func TestBuildGraphCompilesAPublishedSelectionWithoutASourceCheckout(t *testing.
 }
 
 func TestBuildGraphRequiresOwnedGeneration(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	opts := g.options
 	opts.Generation = ""
 	if _, err := compileBuildGraph(g.workspace, g.plan, opts); err == nil {
@@ -371,7 +420,8 @@ func TestBuildGraphRequiresOwnedGeneration(t *testing.T) {
 }
 
 func TestBuildGraphPrivateLockRejectsRedirectedLeaf(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	lockPath, err := GeneratedLockPath(g.workspace, "buildgraph")
 	if err != nil {
 		t.Fatal(err)
@@ -407,7 +457,8 @@ func writeGraphFixture(t *testing.T, path, contents string) {
 }
 
 func TestBuildGraphRequiresExplicitCompilerCacheOutsideSource(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	for _, cache := range []string{"", filepath.Join(g.workspace.Root, "host")} {
 		options := g.options
 		options.GoBuildCacheDirectory = cache
@@ -418,6 +469,7 @@ func TestBuildGraphRequiresExplicitCompilerCacheOutsideSource(t *testing.T) {
 }
 
 func TestBuildGraphAuditsWarmPeerEditBeforeAnyBuild(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	manifest := filepath.Join(g.workspace.Root, "ui", "packages", "base-ui", "package.json")
 	var pkg map[string]any

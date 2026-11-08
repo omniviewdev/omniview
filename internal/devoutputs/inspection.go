@@ -62,9 +62,15 @@ func Inspect(ctx context.Context, w devcontract.ResolvedWorkspace, requests []Re
 	if err != nil && !os.IsNotExist(err) {
 		return report, err
 	}
-	j, err := readJournalMode(s, true)
-	if err != nil {
-		return report, err
+	var j journal
+	if err == nil {
+		// Parse the exact bytes covered by the before/after consistency check.
+		j, err = decodeJournal(s, before, true)
+		if err != nil {
+			return report, err
+		}
+	} else {
+		j = emptyJournal(s)
 	}
 	report.Restoring = j.Restoring
 	if j.Restoring {

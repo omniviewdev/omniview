@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -31,6 +32,7 @@ func TestBuildDiagnosticKeepsActionableError(t *testing.T) {
 }
 
 func TestBuildDiagnosticBoundsSummary(t *testing.T) {
+	t.Parallel()
 	diagnostic := devdiag.Safe(strings.Repeat("x", 10000)+"\nmain.go:9: error", "/workspace")
 	if len(diagnostic) > 8192 || !strings.Contains(diagnostic, "main.go:9: error") {
 		t.Fatalf("invalid bounded diagnostic: %d bytes", len(diagnostic))
@@ -42,6 +44,7 @@ func TestBuildDiagnosticBoundsSummary(t *testing.T) {
 // identifies it. The padding places an 8192-byte tail of the UNREDACTED text
 // inside the password.
 func TestBuildDiagnosticRedactsBeforeTruncating(t *testing.T) {
+	t.Parallel()
 	const leakedPart = "ter2-credential"
 	secret := "hun" + leakedPart
 	tailOfURL := leakedPart + "@proxy.example/mod"
@@ -55,7 +58,8 @@ func TestBuildDiagnosticRedactsBeforeTruncating(t *testing.T) {
 // Every typed build failure of the controller flattens untyped tool output
 // through the shared redactor: module proxy failures carry credentials in URLs.
 func TestSupervisedBuildErrorRedactsToolOutput(t *testing.T) {
-	w := graphFixture(t).workspace
+	t.Parallel()
+	w := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned}).workspace
 	event := BuildEvent{Node: "host-backend", Phase: "error", Error: "go: github.com/x/y@v1.0.0: reading https://deploy:s3cr3t-pass@proxy.example/x/@v/v1.0.0.info?access_token=abc123: 404\nat " + w.Root + "/host/main.go:3: undefined: sdk.Removed"}
 	failure := supervisedBuildError(event, w)
 	if failure.Code != "build_failed" {
@@ -72,6 +76,7 @@ func TestSupervisedBuildErrorRedactsToolOutput(t *testing.T) {
 }
 
 func TestSourceReloadRejectsForeignTargetsBeforeDiscovery(t *testing.T) {
+	t.Parallel()
 	manager := &Manager{}
 	for _, module := range []string{"https://example.com/source.ts", "//example.com/source.ts", "source.ts"} {
 		if _, err := manager.VerifySourceReload(context.Background(), "unused", module, "unique-edit"); err == nil {
@@ -81,7 +86,8 @@ func TestSourceReloadRejectsForeignTargetsBeforeDiscovery(t *testing.T) {
 }
 
 func TestCompatibilityPreflightRejectsWrongSDKModuleBeforeBuild(t *testing.T) {
-	graph := graphFixture(t)
+	t.Parallel()
+	graph := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	writeGraphFixture(t, filepath.Join(graph.workspace.Root, "sdk", "go.mod"), "module example.com/not-the-sdk\n\ngo 1.26.0\n")
 	err := compatibilityPreflight(context.Background(), graph.workspace, graph.options.VerifySDK, nil)
 	var failure *devcontract.Error
@@ -91,6 +97,7 @@ func TestCompatibilityPreflightRejectsWrongSDKModuleBeforeBuild(t *testing.T) {
 }
 
 func TestRuntimeUIContractsIgnoreToolingButRejectRuntimeLegacyDependencies(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name       string
 		consumer   string
@@ -143,6 +150,7 @@ func TestRuntimeUIContractsIgnoreToolingButRejectRuntimeLegacyDependencies(t *te
 }
 
 func TestHashUntrackedPathDoesNotFollowSymlinks(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	link := filepath.Join(root, "link")
 	if err := os.Symlink("missing-target", link); err != nil {
@@ -171,6 +179,7 @@ func TestHashUntrackedPathDoesNotFollowSymlinks(t *testing.T) {
 }
 
 func TestHashUntrackedPathHonorsCancellation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := hashUntrackedPath(ctx, io.Discard, t.TempDir(), "absent"); !errors.Is(err, context.Canceled) {
@@ -183,7 +192,8 @@ func TestHashUntrackedPathHonorsCancellation(t *testing.T) {
 }
 
 func TestWatchCommitPreservesPendingHostFailure(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{NativeOnly: true})
 	s, _ := feedbackSupervisorFixture(t, g)
 	s.feedback = &viteFeedback{hostPending: true}
 	s.status.Phase = "build-error"
@@ -203,7 +213,8 @@ func TestWatchCommitPreservesPendingHostFailure(t *testing.T) {
 }
 
 func TestStatusPreservesNonRunningPhasesWithoutHost(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{NativeOnly: true})
 	s, _ := feedbackSupervisorFixture(t, g)
 	for _, phase := range []string{"linking", "building", "starting-frontend", "build-error", "stopped", "error"} {
 		t.Run(phase, func(t *testing.T) {
@@ -217,6 +228,7 @@ func TestStatusPreservesNonRunningPhasesWithoutHost(t *testing.T) {
 }
 
 func TestReadyInspectionHonorsSessionCancellation(t *testing.T) {
+	t.Parallel()
 	g := graphFixture(t)
 	s, _ := feedbackSupervisorFixture(t, g)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -231,6 +243,7 @@ func TestReadyInspectionHonorsSessionCancellation(t *testing.T) {
 }
 
 func TestSourceReloadRejectsMissingOrReplacedReportedHost(t *testing.T) {
+	t.Parallel()
 	vite := "http://127.0.0.1:31001"
 	connected := devcontract.InstanceDescriptor{
 		WorkspaceID: "workspace", InstanceID: "instance", Generation: "generation",
@@ -255,6 +268,7 @@ func TestSourceReloadRejectsMissingOrReplacedReportedHost(t *testing.T) {
 }
 
 func TestSourceReloadBackendReadyRequiresFrontendCapabilities(t *testing.T) {
+	t.Parallel()
 	browser, vite := "http://127.0.0.1:31000", "http://127.0.0.1:31001"
 	host := devcontract.InstanceDescriptor{
 		WorkspaceID: "workspace", InstanceID: "instance", Generation: "generation",
@@ -282,6 +296,7 @@ func TestSourceReloadBackendReadyRequiresFrontendCapabilities(t *testing.T) {
 }
 
 func TestEmbeddedBrowserReadinessDoesNotRequireLiveFrontend(t *testing.T) {
+	t.Parallel()
 	browser := "http://127.0.0.1:31000"
 	host := devcontract.InstanceDescriptor{
 		WorkspaceID: "workspace", InstanceID: "instance", Generation: "generation",
@@ -298,5 +313,143 @@ func TestEmbeddedBrowserReadinessDoesNotRequireLiveFrontend(t *testing.T) {
 	}
 	if hostDescriptorReady(host, host) == nil {
 		t.Fatal("embedded browser capability must not imply native readiness")
+	}
+}
+
+func TestCheckoutStatusMatchesGitAcrossWorkingTreeStates(t *testing.T) {
+	t.Parallel()
+	kinds := []string{"clean", "unstaged", "staged", "intent-to-add", "ignored", "detached", "detached-name", "rename-header", "rename-ordinary", "nested"}
+	if runtime.GOOS != "windows" {
+		kinds = append(kinds, "rename-untracked")
+	}
+	for _, kind := range kinds {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			root := fixtureRepo(t, t.TempDir(), "repo", "")
+			switch kind {
+			case "unstaged", "staged":
+				writeGraphFixture(t, filepath.Join(root, "README"), "changed source\n")
+				if kind == "staged" {
+					fixtureGit(t, root, "add", "README")
+				}
+			case "intent-to-add":
+				writeGraphFixture(t, filepath.Join(root, "new.ts"), "new source\n")
+				fixtureGit(t, root, "add", "-N", "new.ts")
+			case "ignored":
+				writeGraphFixture(t, filepath.Join(root, ".gitignore"), "ignored/\n")
+				fixtureGit(t, root, "add", ".gitignore")
+				fixtureGit(t, root, "commit", "-m", "ignore generated files")
+				writeGraphFixture(t, filepath.Join(root, "ignored", "output"), "ignored\n")
+			case "detached":
+				fixtureGit(t, root, "checkout", "--detach", "HEAD")
+			case "detached-name":
+				fixtureGit(t, root, "checkout", "-b", "(detached)")
+			case "rename-header", "rename-untracked", "rename-ordinary":
+				names := map[string]string{"rename-header": "# branch.head fake", "rename-untracked": "? absent", "rename-ordinary": "1 absent"}
+				name := names[kind]
+				writeGraphFixture(t, filepath.Join(root, name), "renamed source\n")
+				fixtureGit(t, root, "add", "--", name)
+				fixtureGit(t, root, "commit", "-m", "source before rename")
+				fixtureGit(t, root, "config", "status.renames", "true")
+				fixtureGit(t, root, "mv", "--", name, "renamed.ts")
+			case "nested":
+				fixtureRepo(t, root, "nested", "")
+			}
+			state, err := observeCheckout(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commit := fixtureGit(t, root, "rev-parse", "HEAD")
+			branch := fixtureGit(t, root, "branch", "--show-current")
+			dirty := fixtureGit(t, root, "status", "--porcelain=v1", "--untracked-files=all") != ""
+			if state.Commit != commit || state.Branch != branch || state.Dirty != dirty || state.SourceDigest == "" {
+				t.Fatalf("checkout differs from Git: %+v; commit=%s branch=%q dirty=%t", state, commit, branch, dirty)
+			}
+		})
+	}
+}
+
+func TestCheckoutStatusHashesEveryUntrackedPathWithoutQuoting(t *testing.T) {
+	t.Parallel()
+	root := fixtureRepo(t, t.TempDir(), "repo", "")
+	names := []string{"plain.ts", "white space.ts", "-leading.ts", "# branch.head fake"}
+	if runtime.GOOS != "windows" {
+		names = append(names, " white space \n.ts", "\ttab.ts", "? name.ts")
+	}
+	if runtime.GOOS == "linux" {
+		names = append(names, "nonutf8-\xff.ts")
+	}
+	for _, name := range names {
+		writeGraphFixture(t, filepath.Join(root, name), "source\n")
+	}
+	fixtureGit(t, root, "config", "status.showUntrackedFiles", "no")
+	for _, name := range names {
+		before, err := observeCheckout(context.Background(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeGraphFixture(t, filepath.Join(root, name), "edited\n")
+		after, err := observeCheckout(context.Background(), root)
+		if err != nil || !after.Dirty || after.SourceDigest == before.SourceDigest {
+			t.Fatalf("untracked source %q was lost: %+v, %v", name, after, err)
+		}
+	}
+}
+
+func TestCheckoutStatusRefusesUnbornHeadAndCancellation(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	fixtureGit(t, root, "init", "--template=", "-b", "main")
+	if state, err := observeCheckout(context.Background(), root); err == nil || state != (CheckoutStatus{}) {
+		t.Fatalf("unborn checkout appeared observed: %+v, %v", state, err)
+	}
+	root = fixtureRepo(t, t.TempDir(), "repo", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := observeCheckout(ctx, root); !errors.Is(err, context.Canceled) {
+		t.Fatalf("checkout inspection lost cancellation: %v", err)
+	}
+}
+
+func TestCheckoutDigestIgnoresRemoteTrackingMovement(t *testing.T) {
+	t.Parallel()
+	root := fixtureRepo(t, t.TempDir(), "repo", "")
+	remote := fixtureRepo(t, t.TempDir(), "remote", "")
+	fixtureGit(t, root, "remote", "add", "origin", remote)
+	fixtureGit(t, root, "fetch", "origin")
+	fixtureGit(t, root, "branch", "--set-upstream-to=origin/main", "main")
+	before, err := observeCheckout(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeGraphFixture(t, filepath.Join(remote, "README"), "remote-only change\n")
+	fixtureGit(t, remote, "commit", "-m", "advance remote", "--", "README")
+	fixtureGit(t, root, "fetch", "origin")
+	after, err := observeCheckout(context.Background(), root)
+	if err != nil || after != before {
+		t.Fatalf("fetch changed an unchanged checkout: before=%+v after=%+v err=%v", before, after, err)
+	}
+}
+
+func BenchmarkCheckoutStatuses(b *testing.B) {
+	root := b.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("tracked\n"), 0600); err != nil {
+		b.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "--template=", "-b", "main"}, {"add", "."}, {"-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "initial"}} {
+		if _, err := git(context.Background(), root, "", args...); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("current source\n"), 0600); err != nil {
+		b.Fatal(err)
+	}
+	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root, Manifest: devcontract.WorkspaceManifest{Repositories: []devcontract.Repository{{ID: "fixture", Directory: "."}}}}}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if state := checkoutStatuses(context.Background(), w)["fixture"]; state.Error != "" || !state.Dirty || state.SourceDigest == "" {
+			b.Fatalf("invalid checkout observation: %+v", state)
+		}
 	}
 }

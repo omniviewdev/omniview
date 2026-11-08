@@ -16,7 +16,7 @@ import (
 )
 
 const WailsModule = "github.com/wailsapp/wails/v3"
-const WailsVersion = "v3.0.0-beta.34"
+const WailsVersion = "v3.1.0"
 
 // Root supplies a checksum-trusted stock module through a private file proxy.
 // The fixture module is intentionally tiny; cmd/go still performs real module

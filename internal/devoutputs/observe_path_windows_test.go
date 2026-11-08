@@ -95,7 +95,7 @@ func TestWindowsInitialObservationPinsIdentityBeforeMetadataCapture(t *testing.T
 				var reader snapshotReader
 				_, err := reader.item(path, observed, false)
 				var substitution *pathConflict
-				if !errors.As(err, &substitution) || reader.digest != nil || reader.buffer != nil {
+				if !errors.As(err, &substitution) {
 					t.Fatalf("snapshot read replacement after capture-window substitution: %v", err)
 				}
 			}

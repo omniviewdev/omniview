@@ -11,15 +11,13 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
-func upstreamFixture(t *testing.T) (*Manager, Workspace, string, string) {
+func upstreamFixture(t *testing.T, repositories ...string) (*Manager, Workspace, string, string) {
 	t.Helper()
-	ctx := context.Background()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, append([]string{"omniview"}, repositories...)...)
 	remote := fixtureRepo(t, t.TempDir(), "remote", "")
 	source := filepath.Join(root, "omniview")
 	fixtureGit(t, source, "remote", "add", "origin", remote)
-	w, err := m.Create(ctx, CreateOptions{Slug: "upstream", Refs: map[string]string{"omniview": "origin/main"}})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "upstream", Refs: map[string]string{"omniview": "origin/main"}})
 	return m, w, remote, source
 }
 
@@ -32,6 +30,7 @@ func upstreamCommit(t *testing.T, path, name, contents string) string {
 }
 
 func TestUpstreamCheckFetchesRemoteWithoutChangingCanonicalOrOwnedHEAD(t *testing.T) {
+	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	canonical := fixtureGit(t, source, "rev-parse", "HEAD")
 	target := upstreamCommit(t, remote, "component.ts", "export const value = 2")
@@ -48,8 +47,10 @@ func TestUpstreamCheckFetchesRemoteWithoutChangingCanonicalOrOwnedHEAD(t *testin
 }
 
 func TestUpstreamAncestryAndTreeEquality(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"current", "ahead", "divergent", "equal-divergent"} {
 		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
 			m, w, remote, _ := upstreamFixture(t)
 			checkout := filepath.Join(w.Root, w.Manifest.Repositories[0].Directory)
 			if kind != "current" {
@@ -81,6 +82,7 @@ func TestUpstreamAncestryAndTreeEquality(t *testing.T) {
 }
 
 func TestUpstreamReportsAllDirtyPathsAndPreservesIndex(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	checkout := filepath.Join(w.Root, w.Manifest.Repositories[0].Directory)
 	require.NoError(t, os.WriteFile(filepath.Join(checkout, "README"), []byte("staged"), 0600))
@@ -99,6 +101,7 @@ func TestUpstreamReportsAllDirtyPathsAndPreservesIndex(t *testing.T) {
 }
 
 func TestUpstreamDependencyInputsAndMissingBranch(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	upstreamCommit(t, remote, "package.json", `{"name":"fixture","packageManager":"pnpm@12.14.0"}`)
 	plan, err := m.PlanUpdate(context.Background(), w.Manifest.Slug, UpdateOptions{})
@@ -113,6 +116,7 @@ func TestUpstreamDependencyInputsAndMissingBranch(t *testing.T) {
 }
 
 func TestUpstreamMigrationNeverGuessesPlainBranches(t *testing.T) {
+	t.Parallel()
 	source := fixtureRepo(t, t.TempDir(), "source", "")
 	ctx := context.Background()
 	fixtureGit(t, source, "remote", "add", "origin", source)
@@ -130,6 +134,7 @@ func TestUpstreamMigrationNeverGuessesPlainBranches(t *testing.T) {
 }
 
 func TestUpstreamPinsAndUnconfiguredSelection(t *testing.T) {
+	t.Parallel()
 	m, w, _, source := upstreamFixture(t)
 	j, err := loadJournal(w.Root)
 	require.NoError(t, err)
@@ -150,6 +155,7 @@ func TestUpstreamPinsAndUnconfiguredSelection(t *testing.T) {
 }
 
 func TestUpstreamSchemaRejectsUnsafeRefs(t *testing.T) {
+	t.Parallel()
 	for _, upstream := range []devcontract.RepositoryUpstream{
 		{Remote: "-option", Branch: "refs/heads/main"},
 		{Remote: "origin", Branch: "main"},
@@ -163,6 +169,7 @@ func TestUpstreamSchemaRejectsUnsafeRefs(t *testing.T) {
 }
 
 func TestUpstreamTargetPluginIdentityCannotChange(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	j, err := loadJournal(w.Root)
 	require.NoError(t, err)
@@ -174,6 +181,7 @@ func TestUpstreamTargetPluginIdentityCannotChange(t *testing.T) {
 }
 
 func TestUpstreamCheckRejectsUnknownCohortBeforeFetch(t *testing.T) {
+	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	target := upstreamCommit(t, remote, "new.txt", "new")
 	before := fixtureGit(t, source, "rev-parse", "refs/remotes/origin/main")
@@ -184,6 +192,7 @@ func TestUpstreamCheckRejectsUnknownCohortBeforeFetch(t *testing.T) {
 }
 
 func TestUpstreamDirtyParserPreservesWhitespaceAndRenamePaths(t *testing.T) {
+	t.Parallel()
 	m, w, _, _ := upstreamFixture(t)
 	j, err := loadJournal(w.Root)
 	require.NoError(t, err)
@@ -197,6 +206,7 @@ func TestUpstreamDirtyParserPreservesWhitespaceAndRenamePaths(t *testing.T) {
 }
 
 func TestUpstreamDirtyExemptionNeverHidesStagedOverlay(t *testing.T) {
+	t.Parallel()
 	_, w, _, _ := upstreamFixture(t)
 	j, err := loadJournal(w.Root)
 	require.NoError(t, err)
@@ -213,6 +223,7 @@ func TestUpstreamDirtyExemptionNeverHidesStagedOverlay(t *testing.T) {
 }
 
 func TestUpstreamOwnedPublicationDeletionKeepsAuthoredDeletionsVisible(t *testing.T) {
+	t.Parallel()
 	_, w, _, _ := upstreamFixture(t)
 	j, err := loadJournal(w.Root)
 	require.NoError(t, err)
@@ -246,6 +257,7 @@ func TestUpstreamOwnedPublicationDeletionKeepsAuthoredDeletionsVisible(t *testin
 }
 
 func TestUpstreamCompositionFingerprintRespectsWorkspaceLocks(t *testing.T) {
+	t.Parallel()
 	source := fixtureRepo(t, t.TempDir(), "source", "")
 	ctx := context.Background()
 	first, err := upstreamDependencyFingerprint(ctx, source, fixtureGit(t, source, "rev-parse", "HEAD"))
@@ -267,6 +279,7 @@ func TestUpstreamCompositionFingerprintRespectsWorkspaceLocks(t *testing.T) {
 }
 
 func TestUpstreamCurrentCheckDoesNotRewriteWorkspaceMetadata(t *testing.T) {
+	t.Parallel()
 	m, w, _, _ := upstreamFixture(t)
 	manifest, err := os.ReadFile(w.ManifestPath)
 	require.NoError(t, err)
@@ -286,6 +299,7 @@ func TestUpstreamCurrentCheckDoesNotRewriteWorkspaceMetadata(t *testing.T) {
 }
 
 func TestLegacyPlainBranchOffersExplicitChoicesWithoutChoosingRemote(t *testing.T) {
+	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	fixtureGit(t, source, "remote", "add", "alternative", remote)
 	j, err := loadJournal(w.Root)

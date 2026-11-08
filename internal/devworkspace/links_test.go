@@ -16,6 +16,7 @@ import (
 )
 
 func TestLinkProtocolRejectsIndependentRootEvidence(t *testing.T) {
+	t.Parallel()
 	for _, evidence := range []LinkProtocolEvidence{
 		{Protocol: "link", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true},
 		{Protocol: "workspace", Versions: []string{"10.34.7"}, AtomicDist: true, Peers: true, Runtime: true},
@@ -27,6 +28,7 @@ func TestLinkProtocolRejectsIndependentRootEvidence(t *testing.T) {
 }
 
 func TestLinkJournalRestoresOnlyUnchangedOwnedFiles(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "host"), 0700))
 	path := filepath.Join(root, "host", "go.mod")
@@ -52,6 +54,7 @@ func TestLinkJournalRestoresOnlyUnchangedOwnedFiles(t *testing.T) {
 }
 
 func TestLinkJournalDoesNotFollowRedirectedFiles(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	outside := filepath.Join(t.TempDir(), "foreign")
 	require.NoError(t, os.WriteFile(outside, []byte("foreign"), 0600))
@@ -62,6 +65,7 @@ func TestLinkJournalDoesNotFollowRedirectedFiles(t *testing.T) {
 }
 
 func TestLinkPlanIncludesRuntimeAndEverySelectedPlugin(t *testing.T) {
+	t.Parallel()
 	root := filepath.Join(linkFixtureRoot(t), "feature with spaces")
 	files := map[string]string{
 		"host/package.json":                                  `{"name":"host","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"19.0.0","react-dom":"19.0.0"}}`,
@@ -111,6 +115,7 @@ func TestLinkPlanIncludesRuntimeAndEverySelectedPlugin(t *testing.T) {
 }
 
 func TestSDKReplacementPreservesUserReplacement(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	sdk := filepath.Join(root, "sdk with spaces")
 	require.NoError(t, os.MkdirAll(sdk, 0700))
@@ -126,6 +131,7 @@ func TestSDKReplacementPreservesUserReplacement(t *testing.T) {
 }
 
 func TestLinkProtocolRequiresObservedGate(t *testing.T) {
+	t.Parallel()
 	for _, e := range []LinkProtocolEvidence{{}, {Protocol: "file", Versions: []string{"10.34.7", "10.6.2"}, AtomicDist: true, Peers: true, Runtime: true}} {
 		require.Error(t, e.validate())
 	}
@@ -137,6 +143,7 @@ func TestLinkProtocolRequiresObservedGate(t *testing.T) {
 }
 
 func TestLinkRestoresAbsentFilesAndRejectsInterruptedInstallerChanges(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	path := filepath.Join(root, "pnpm-lock.yaml")
 	e, err := snapshotLinkFile(root, path)
@@ -154,6 +161,7 @@ func TestLinkRestoresAbsentFilesAndRejectsInterruptedInstallerChanges(t *testing
 }
 
 func TestLinkRestorePreflightsAllFilesBeforeChangingAny(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	var files []linkFile
 	for _, name := range []string{"go.mod", "go.sum"} {
@@ -174,6 +182,7 @@ func TestLinkRestorePreflightsAllFilesBeforeChangingAny(t *testing.T) {
 }
 
 func TestSDKReplacementChecksConflictsAfterMatchingDefault(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	sdk := filepath.Join(root, "selected-sdk")
 	require.NoError(t, os.MkdirAll(sdk, 0700))
@@ -183,6 +192,7 @@ func TestSDKReplacementChecksConflictsAfterMatchingDefault(t *testing.T) {
 }
 
 func TestLinkInstallerPreservesEditorChangesAcrossProcessBoundary(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"package.json", "pnpm-workspace.yaml"} {
 		t.Run(name, func(t *testing.T) {
 			w, root := linkInstallerFixture(t)
@@ -213,6 +223,7 @@ func TestLinkInstallerPreservesEditorChangesAcrossProcessBoundary(t *testing.T) 
 }
 
 func TestLinkPlanRejectsEscapedPackageAndFrontendDirectories(t *testing.T) {
+	t.Parallel()
 	for _, nested := range []string{"packages/omniviewdev-runtime", "ui"} {
 		t.Run(nested, func(t *testing.T) {
 			root := linkFixtureRoot(t)
@@ -241,6 +252,7 @@ func TestLinkPlanRejectsEscapedPackageAndFrontendDirectories(t *testing.T) {
 }
 
 func TestFailedLinkInstallerDoesNotAcquireUnknownLockfileBytes(t *testing.T) {
+	t.Parallel()
 	w, root := linkInstallerFixture(t)
 	path := filepath.Join(root, "pnpm-lock.yaml")
 	j := compositionJournalFixture(t, w)
@@ -259,6 +271,7 @@ func TestFailedLinkInstallerDoesNotAcquireUnknownLockfileBytes(t *testing.T) {
 }
 
 func TestLinkPlanRejectsSelectedUIPackageSymlink(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	host, ui, foreign := filepath.Join(root, "host"), filepath.Join(root, "ui"), t.TempDir()
 	require.NoError(t, os.MkdirAll(host, 0700))
@@ -273,6 +286,7 @@ func TestLinkPlanRejectsSelectedUIPackageSymlink(t *testing.T) {
 }
 
 func TestLinkApplyPreflightsEditsMadeDuringSDKPlanning(t *testing.T) {
+	t.Parallel()
 	for _, editedName := range []string{"pnpm-workspace.yaml", "go.mod"} {
 		t.Run(editedName, func(t *testing.T) {
 			root := linkFixtureRoot(t)
@@ -305,10 +319,11 @@ func TestLinkApplyPreflightsEditsMadeDuringSDKPlanning(t *testing.T) {
 }
 
 func TestLinkEvidenceReturnsJournalValuesAndRejectsChangedState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	m, _ := fixtureManager(t)
-	w, err := m.Create(ctx, CreateOptions{Slug: "link-evidence"})
-	require.NoError(t, err)
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "link-evidence"})
+	var err error
 	_, err = m.LinkEvidence(ctx, "link-evidence")
 	require.Error(t, err, "an unlinked workspace must not acquire synthetic evidence")
 	host := filepath.Join(w.Root, "omniview")
@@ -361,6 +376,7 @@ func TestLinkEvidenceReturnsJournalValuesAndRejectsChangedState(t *testing.T) {
 }
 
 func TestCompositionInstallAuditsPeersBeforeAcquiringLockProvenance(t *testing.T) {
+	t.Parallel()
 	w, _ := linkInstallerFixture(t)
 	plan, err := makeLinkPlan(w)
 	require.NoError(t, err)
@@ -415,11 +431,15 @@ func linkInstallerFixture(t *testing.T) (Workspace, string) {
 	return w, root
 }
 
+func fixtureLinkEvidence() LinkProtocolEvidence {
+	return LinkProtocolEvidence{Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true}
+}
+
 func compositionJournalFixture(t *testing.T, w Workspace) *linkJournal {
 	t.Helper()
 	plan, err := makeLinkPlan(w)
 	require.NoError(t, err)
-	j := &linkJournal{SchemaVersion: 2, WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: "applying", Manifest: w.Manifest, Plan: plan, Evidence: LinkProtocolEvidence{Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true}}
+	j := &linkJournal{SchemaVersion: 2, WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: "applying", Manifest: w.Manifest, Plan: plan, Evidence: fixtureLinkEvidence()}
 	for _, file := range plan.Composition.Files {
 		e, err := snapshotLinkFile(w.Root, file.Path)
 		require.NoError(t, err)
@@ -447,10 +467,11 @@ func registerCompositionFixture(t *testing.T, w *Workspace) {
 	w.ManifestPath = filepath.Join(w.Root, "workspace.json")
 	w.StateRoot = filepath.Join(w.Root, ".state")
 	require.NoError(t, w.Manifest.Validate())
-	require.NoError(t, atomicJSON(w.ManifestPath, w.Manifest))
+	fixtureJSON(t, w.ManifestPath, w.Manifest)
 }
 
 func TestCompositionInstallNeverFinishesUncertainProducer(t *testing.T) {
+	t.Parallel()
 	w, _ := linkInstallerFixture(t)
 	j := compositionJournalFixture(t, w)
 	run := func(context.Context, string, string, ...string) ([]byte, error) {
@@ -462,6 +483,7 @@ func TestCompositionInstallNeverFinishesUncertainProducer(t *testing.T) {
 }
 
 func TestCompositionInstallDoesNotAdoptSourceEditAtTerminalBoundary(t *testing.T) {
+	t.Parallel()
 	w, _ := linkInstallerFixture(t)
 	j := compositionJournalFixture(t, w)
 	path := filepath.Join(w.Root, "host", "package.json")
@@ -482,10 +504,11 @@ func TestCompositionInstallDoesNotAdoptSourceEditAtTerminalBoundary(t *testing.T
 }
 
 func TestDeselectedSourceDoesNotBlockUnlinkOrRemoval(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "ui")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "deselected", Repositories: []string{"ui"}})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "deselected", Repositories: []string{"ui"}})
+	var err error
 	ui := filepath.Join(w.Root, "ui")
 	fixtureGit(t, ui, "commit", "--allow-empty", "-m", "retained feature work")
 	tip := fixtureGit(t, ui, "rev-parse", "HEAD")
@@ -504,10 +527,11 @@ func TestDeselectedSourceDoesNotBlockUnlinkOrRemoval(t *testing.T) {
 }
 
 func TestUnlinkStillRejectsMissingSelectedWorktree(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "ui")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "missing-selected", Repositories: []string{"ui"}})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "missing-selected", Repositories: []string{"ui"}})
+	var err error
 	ui := filepath.Join(w.Root, "ui")
 	moved := filepath.Join(t.TempDir(), "moved-ui")
 	require.NoError(t, os.Rename(ui, moved))
@@ -521,6 +545,7 @@ func TestUnlinkStillRejectsMissingSelectedWorktree(t *testing.T) {
 }
 
 func TestLinkConflictRecoveryRequiresSavedPrerequisites(t *testing.T) {
+	t.Parallel()
 	root := linkFixtureRoot(t)
 	path := filepath.Join(root, "go.mod")
 	require.NoError(t, os.WriteFile(path, []byte("original"), 0600))

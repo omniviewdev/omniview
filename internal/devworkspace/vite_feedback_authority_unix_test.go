@@ -15,9 +15,10 @@ import (
 )
 
 func TestViteFeedbackAuthorityRejectsFIFOWithoutWaitingForWriter(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"state-read", "path-revalidation"} {
 		t.Run(operation, func(t *testing.T) {
-			_, s, _, path := feedbackWatchFixture(t)
+			_, s, _, path := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true, Stage: graphFixturePlanned})
 			if err := s.beginFeedback(context.Background(), WatchChange{Nodes: []string{"host-backend"}}); err != nil {
 				t.Fatal(err)
 			}

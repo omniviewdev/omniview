@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "wails": "v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf",
+  "wails": "v3.1.0",
   "methods": [
     {"fqn": "github.com/omniviewdev/omniview/backend/diagnostics.DiagnosticsClient.Debug", "decision": "deny", "reason": "writes client log lines into the UI log file ui.log (Q7)"},
     {"fqn": "github.com/omniviewdev/omniview/backend/diagnostics.DiagnosticsClient.Error", "decision": "deny", "reason": "writes client log lines into the UI log file ui.log (Q7)"},

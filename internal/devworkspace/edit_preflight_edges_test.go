@@ -15,6 +15,7 @@ import (
 )
 
 func TestRenameDestinationPreservesFilesystemErrorEdges(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	parent := filepath.Join(root, "workspaces")
 	before := []byte("not a directory; preserve these bytes\n")
@@ -40,7 +41,7 @@ func TestRenameDestinationPreservesFilesystemErrorEdges(t *testing.T) {
 
 func editOutputFixture(t *testing.T) (*Manager, Workspace, string) {
 	t.Helper()
-	m, root := fixtureManager(t)
+	m, root := fixtureManager(t, "omniview")
 	source := filepath.Join(root, "omniview")
 	worker := "ui/providers/monaco/yaml.worker.bundle.js"
 	writeGraphFixture(t, filepath.Join(source, worker), "reviewed worker\n")
@@ -48,12 +49,12 @@ func editOutputFixture(t *testing.T) (*Manager, Workspace, string) {
 	writeGraphFixture(t, filepath.Join(source, "package.json"), "{\"name\":\"fixture\",\"private\":true}\n")
 	fixtureGit(t, source, "add", ".")
 	fixtureGit(t, source, "commit", "-m", "tracked producer output")
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "output-edit"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "output-edit"})
 	return m, w, filepath.Join(w.Root, "omniview")
 }
 
 func TestPreflightRenameProjectsCompletedTrackedOutputWithoutMutationEdges(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"owned", "tampered", "staged-original"} {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
@@ -104,6 +105,7 @@ func TestPreflightRenameProjectsCompletedTrackedOutputWithoutMutationEdges(t *te
 }
 
 func TestPreflightRenameRefusesDirtyOriginalBeforeProducerCaptureEdges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	m, w, host := editOutputFixture(t)
 	path := filepath.Join(host, "ui/providers/monaco/yaml.worker.bundle.js")
@@ -148,6 +150,7 @@ func TestPreflightRenameRefusesDirtyOriginalBeforeProducerCaptureEdges(t *testin
 }
 
 func TestPreflightMetadataAcceptsLiveOwnedIgnoredCacheWriterEdges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	m, w, host := editOutputFixture(t)
 	install, err := devoutputs.BeginInstall(ctx, w.ResolvedWorkspace, host)

@@ -27,6 +27,7 @@ func generatedFixture(t *testing.T) Workspace {
 }
 
 func TestGeneratedTreeBuildPublishesOnlyPreparedPrivateOutputs(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	capability, err := PrepareGeneratedTree(w, "build/plugin-id", "generation")
 	if err != nil {
@@ -53,6 +54,7 @@ func TestGeneratedTreeBuildPublishesOnlyPreparedPrivateOutputs(t *testing.T) {
 }
 
 func TestGeneratedTreeRefusesForeignOrChangedDestination(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	foreign := filepath.Join(w.Root, ".local/bin")
 	if err := os.Mkdir(foreign, 0700); err != nil {
@@ -70,6 +72,7 @@ func TestGeneratedTreeRefusesForeignOrChangedDestination(t *testing.T) {
 }
 
 func TestGeneratedCleanupRejectsUserEditAndNestedInjectionBeforeDeleting(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	capability, err := PrepareGeneratedTree(w, "bin", "generation")
 	if err != nil {
@@ -97,6 +100,7 @@ func TestGeneratedCleanupRejectsUserEditAndNestedInjectionBeforeDeleting(t *test
 }
 
 func TestGeneratedLogDoesNotAdoptForeignAppends(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	log, err := openGeneratedLog(w, "supervisor.log")
 	if err != nil {
@@ -120,6 +124,7 @@ func TestGeneratedLogDoesNotAdoptForeignAppends(t *testing.T) {
 }
 
 func TestGeneratedBuildCannotAdoptUnrecordedParentDirectory(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	if err := os.Mkdir(filepath.Join(w.Root, ".local/build"), 0700); err != nil {
 		t.Fatal(err)
@@ -130,6 +135,7 @@ func TestGeneratedBuildCannotAdoptUnrecordedParentDirectory(t *testing.T) {
 }
 
 func TestGeneratedSiblingBuildsPreparedTogetherBothPublishUnderNewParent(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	first, err := PrepareGeneratedTree(w, "build/first", "generation")
 	if err != nil {
@@ -161,6 +167,7 @@ func TestGeneratedSiblingBuildsPreparedTogetherBothPublishUnderNewParent(t *test
 }
 
 func TestPreparedDirectoryReplacementCannotAcquireForeignBytes(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	prepared, err := PrepareGeneratedTree(w, "bin", "generation")
 	if err != nil {
@@ -190,6 +197,7 @@ func TestPreparedDirectoryReplacementCannotAcquireForeignBytes(t *testing.T) {
 }
 
 func TestGeneratedCleanupResumesOnlyRecordedDeletionIntent(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	prepared, err := PrepareGeneratedTree(w, "bin", "generation")
 	if err != nil {
@@ -220,6 +228,7 @@ func TestGeneratedCleanupResumesOnlyRecordedDeletionIntent(t *testing.T) {
 }
 
 func TestGeneratedCleanupRejectsUnrecordedMissingFile(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	prepared, err := PrepareGeneratedTree(w, "bin", "generation")
 	if err != nil {
@@ -240,6 +249,7 @@ func TestGeneratedCleanupRejectsUnrecordedMissingFile(t *testing.T) {
 }
 
 func TestGeneratedLogRejectsReplacementBeforeAppending(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	log, err := openGeneratedLog(w, "supervisor.log")
 	if err != nil {
@@ -269,6 +279,7 @@ func TestGeneratedLogRejectsReplacementBeforeAppending(t *testing.T) {
 }
 
 func TestGeneratedTreeCreatesPrivateScaffoldWithoutIncidentalBuildCache(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	local := filepath.Join(w.Root, ".local")
 	if err := os.Remove(local); err != nil {

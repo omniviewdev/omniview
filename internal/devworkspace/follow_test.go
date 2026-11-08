@@ -13,15 +13,17 @@ import (
 )
 
 func TestFollowRejectsFastPollingBeforeWorkspaceResolution(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	err := m.Follow(context.Background(), "missing", FollowOptions{Interval: time.Second}, nil)
 	require.ErrorContains(t, err, "at least 5s")
 }
 
 func TestObserveFollowPreservesCheckoutAndCancellationLeavesStopped(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "observe"})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "observe"})
+	var err error
 	before := refValue(context.Background(), filepath.Join(w.Root, "omniview"), "HEAD")
 	ctx, cancel := context.WithCancel(context.Background())
 	count := 0
@@ -43,9 +45,10 @@ func TestObserveFollowPreservesCheckoutAndCancellationLeavesStopped(t *testing.T
 }
 
 func TestFollowLeaseRejectsDuplicateAndFenceStopsIdleOwner(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "follow-owner"})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "follow-owner"})
+	var err error
 	dir, err := followDirectory(m, w)
 	require.NoError(t, err)
 	unlock, err := tryLock(filepath.Join(dir, "follow.lock"))
@@ -66,6 +69,7 @@ func TestFollowLeaseRejectsDuplicateAndFenceStopsIdleOwner(t *testing.T) {
 }
 
 func TestFollowCohortIdentityIgnoresObservationMetadata(t *testing.T) {
+	t.Parallel()
 	first := UpdatePlan{OperationID: "first", Repositories: []RepositoryUpdatePlan{{ID: "omniview", TargetSHA: "target"}}}
 	second := first
 	second.OperationID = "second"
@@ -76,11 +80,12 @@ func TestFollowCohortIdentityIgnoresObservationMetadata(t *testing.T) {
 }
 
 func TestFollowFenceIntegrityChangesRevokeConsent(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"malformed", "removed"} {
 		t.Run(change, func(t *testing.T) {
-			m, _ := fixtureManager(t)
-			w, err := m.Create(context.Background(), CreateOptions{Slug: "fence-integrity"})
-			require.NoError(t, err)
+			m, _ := fixtureManager(t, "omniview")
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "fence-integrity"})
+			var err error
 			require.NoError(t, m.fenceFollow(context.Background(), "fence-integrity"))
 			directory, err := followDirectory(m, w)
 			require.NoError(t, err)
@@ -105,12 +110,13 @@ func TestFollowFenceIntegrityChangesRevokeConsent(t *testing.T) {
 }
 
 func TestFollowBackoffCapsAndClockControlsScheduling(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, 60*time.Second, followBackoff(30*time.Second))
 	require.Equal(t, 5*time.Minute, followBackoff(240*time.Second))
 	require.Equal(t, 5*time.Minute, followBackoff(5*time.Minute))
-	m, _ := fixtureManager(t)
-	_, err := m.Create(context.Background(), CreateOptions{Slug: "clock"})
-	require.NoError(t, err)
+	m, _ := fixtureManager(t, "omniview")
+	fixtureWorkspace(t, m, CreateOptions{Slug: "clock"})
+	var err error
 	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
 	observations := 0
 	err = m.Follow(context.Background(), "clock", FollowOptions{
@@ -128,6 +134,7 @@ func TestFollowBackoffCapsAndClockControlsScheduling(t *testing.T) {
 }
 
 func TestFollowRetainsFailedBuildCohortWhenCheckoutIsCurrent(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	upstreamCommit(t, remote, "component.ts", "export const marker = 'new'")
 	result, err := m.Update(context.Background(), w.Manifest.Slug, UpdateOptions{})
@@ -160,6 +167,7 @@ func TestFollowRetainsFailedBuildCohortWhenCheckoutIsCurrent(t *testing.T) {
 }
 
 func TestApplyFollowSerializesSuccessorAndSkipsDuplicateCohorts(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	first := upstreamCommit(t, remote, "component.ts", "export const revision = 1")
 	var newest string
@@ -197,6 +205,7 @@ func TestApplyFollowSerializesSuccessorAndSkipsDuplicateCohorts(t *testing.T) {
 }
 
 func TestApplyFollowDoesNotAdoptChangedPolicyAfterOwnProgress(t *testing.T) {
+	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	checkout := filepath.Join(w.Root, "omniview")
 	canonical := fixtureGit(t, source, "rev-parse", "HEAD")
@@ -248,6 +257,7 @@ func TestApplyFollowDoesNotAdoptChangedPolicyAfterOwnProgress(t *testing.T) {
 }
 
 func TestFinishFollowIntegrityOverridesConcurrentConfigurationRevocation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(errFollowFenceIntegrity)
 	status := FollowStatus{Enabled: true, BlockedReason: "configuration_changed"}
@@ -267,6 +277,7 @@ func TestFinishFollowIntegrityOverridesConcurrentConfigurationRevocation(t *test
 }
 
 func TestFinishFollowConfigurationRevocationClearsActionableObservation(t *testing.T) {
+	t.Parallel()
 	status := FollowStatus{
 		Enabled: true, Result: "blocked_recovery", BlockedReason: "configuration_changed",
 		Plan: &UpdatePlan{OperationID: "old-operation"}, PendingCohort: "old-cohort",
@@ -292,6 +303,7 @@ func TestFinishFollowConfigurationRevocationClearsActionableObservation(t *testi
 }
 
 func TestFinishFollowInterruptedApplyRetainsRecoveryAuthority(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(errFollowConsentRevoked)
 	plan := &UpdatePlan{OperationID: "interrupted-operation"}
@@ -310,6 +322,7 @@ func TestFinishFollowInterruptedApplyRetainsRecoveryAuthority(t *testing.T) {
 }
 
 func TestApplyFollowPausesDirtySourceAndRevalidatesAfterUserFix(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	target := upstreamCommit(t, remote, "component.ts", "export const remote = true")
 	path := filepath.Join(w.Root, "omniview", "README")
@@ -347,6 +360,7 @@ func TestApplyFollowPausesDirtySourceAndRevalidatesAfterUserFix(t *testing.T) {
 }
 
 func TestFollowNetworkBackoffResetsAfterRealRemoteRecovers(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	unreachable := remote + "-offline"
 	require.NoError(t, os.Rename(remote, unreachable))

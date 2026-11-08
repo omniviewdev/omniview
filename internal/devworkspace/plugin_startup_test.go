@@ -29,6 +29,7 @@ func startupWorkspace(t *testing.T, declarations [][2]string) Workspace {
 }
 
 func TestManagedPluginStartupResolvesTransitiveOwners(t *testing.T) {
+	t.Parallel()
 	workspace := startupWorkspace(t, [][2]string{{"consumer", "middle"}, {"unrelated", ""}, {"middle", "owner"}, {"owner", ""}})
 	ordered, err := managedPluginStartupOrder(&workspace)
 	require.NoError(t, err)
@@ -40,6 +41,7 @@ func TestManagedPluginStartupResolvesTransitiveOwners(t *testing.T) {
 }
 
 func TestManagedPluginStartupRejectsCycleBeforeActivation(t *testing.T) {
+	t.Parallel()
 	workspace := startupWorkspace(t, [][2]string{{"independent", ""}, {"consumer", "owner"}, {"owner", "consumer"}})
 	ordered, err := managedPluginStartupOrder(&workspace)
 	require.Error(t, err)
@@ -47,6 +49,7 @@ func TestManagedPluginStartupRejectsCycleBeforeActivation(t *testing.T) {
 }
 
 func TestManagedPluginStartupLeavesUnselectedOwnerToHostAdmission(t *testing.T) {
+	t.Parallel()
 	workspace := startupWorkspace(t, [][2]string{{"consumer", "installed-owner"}})
 	ordered, err := managedPluginStartupOrder(&workspace)
 	require.NoError(t, err)

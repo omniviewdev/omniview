@@ -12,6 +12,7 @@ import (
 )
 
 func TestHashUntrackedFIFODoesNotOpenPipe(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := syscall.Mkfifo(filepath.Join(root, "pipe"), 0600); err != nil {
 		t.Fatal(err)

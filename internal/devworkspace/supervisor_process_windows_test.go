@@ -20,6 +20,7 @@ import (
 )
 
 func TestWindowsOwnedJobClosesBeforeInheritedPipeDrain(t *testing.T) {
+	t.Parallel()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +90,7 @@ func TestWindowsOwnedPipeFixture(t *testing.T) {
 }
 
 func TestWindowsOwnedJobFailedDisposalRetainsLifetimeForStopRetry(t *testing.T) {
+	t.Parallel()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

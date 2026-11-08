@@ -14,7 +14,8 @@ import (
 )
 
 func TestConcurrentCreatesReportCollectionNotWorkspaceContention(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	type result struct {
 		slug    string
 		err     error
@@ -58,7 +59,8 @@ func TestConcurrentCreatesReportCollectionNotWorkspaceContention(t *testing.T) {
 }
 
 func TestCreateReportsHeldCollectionLockWithoutPublishingWorkspace(t *testing.T) {
-	m, root := fixtureManager(t)
+	t.Parallel()
+	m, root := fixtureManager(t, "omniview")
 	release, err := lockRoot(root)
 	require.NoError(t, err)
 	defer release()
@@ -76,6 +78,7 @@ func TestCreateReportsHeldCollectionLockWithoutPublishingWorkspace(t *testing.T)
 }
 
 func TestProfileLockContentionPreservesDistinctRole(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), ".lock")
 	release, err := tryLock(path)
 	require.NoError(t, err)

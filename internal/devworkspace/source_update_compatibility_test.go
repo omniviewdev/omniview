@@ -92,6 +92,7 @@ func sourceCompatibilitySupervisorStatus(t *testing.T, w Workspace, current bool
 }
 
 func TestSourceUpdateOldSupervisorRefusesBeforeMutation(t *testing.T) {
+	t.Parallel()
 	t.Run("new-intent", func(t *testing.T) { assertOldSupervisorSourceUpdateRefusal(t, false) })
 	t.Run("retained-intent", func(t *testing.T) { assertOldSupervisorSourceUpdateRefusal(t, true) })
 }
@@ -174,6 +175,7 @@ func assertOldSupervisorSourceUpdateRefusal(t *testing.T, recovering bool) {
 }
 
 func TestCurrentRetainedSupervisorAdvertisesSourceUpdateSupport(t *testing.T) {
+	t.Parallel()
 	m, w, plan := sourcePlanFixture(t)
 	_, commands := sourceCompatibilitySupervisor(t, w, true)
 	status, err := m.Status(context.Background(), w.Manifest.WorkspaceID)
@@ -192,6 +194,7 @@ func TestCurrentRetainedSupervisorAdvertisesSourceUpdateSupport(t *testing.T) {
 }
 
 func TestStoppedSourceUpdateNeedsNoSupervisorCapability(t *testing.T) {
+	t.Parallel()
 	m, w, _ := sourcePlanFixture(t)
 	for _, phase := range []string{"", "created", sourceUpdateStopped, refreshCrashed} {
 		t.Run(phase, func(t *testing.T) {
@@ -201,6 +204,7 @@ func TestStoppedSourceUpdateNeedsNoSupervisorCapability(t *testing.T) {
 }
 
 func TestSupervisorSnapshotAdvertisesSourceUpdateSupport(t *testing.T) {
+	t.Parallel()
 	supervisor := &workspaceSupervisor{status: Status{Phase: "ready"}}
 	require.True(t, supervisor.snapshot().SourceUpdateSupported)
 	supervisor.options = LaunchOptions{Mode: "browser", PluginRuntime: PluginRuntimeArchive}
@@ -208,6 +212,7 @@ func TestSupervisorSnapshotAdvertisesSourceUpdateSupport(t *testing.T) {
 }
 
 func TestFollowOldSupervisorRetainsRestartGuidanceAcrossObservations(t *testing.T) {
+	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	_, commands := sourceCompatibilitySupervisor(t, w, false)
 	require.NoError(t, rawSaveLaunchJSON(launchPath(w, "launch.json"), LaunchOptions{Mode: "native"}))

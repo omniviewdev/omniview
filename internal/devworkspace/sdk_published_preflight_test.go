@@ -131,7 +131,7 @@ func TestPublishedPreflightRefusals(t *testing.T) {
 	})
 	t.Run("release without the isolation capability", func(t *testing.T) {
 		env := newPubEnv(t)
-		bare := env.world.PublishSDK("v0.17.2", func(tree string) {
+		bare := env.world.PublishSDK("v0.18.2", func(tree string) {
 			pubWrite(t, filepath.Join(tree, "pkg", "config", "isolation.go"), "package config\n")
 		})
 		w := env.workspace()
@@ -155,7 +155,7 @@ func TestPublishedPreflightIgnoresAGoWorkFileAboveTheWorkspace(t *testing.T) {
 	w := env.workspace()
 	tampered := pubTamperedSDK(t)
 	pubWrite(t, filepath.Join(w.Root, "go.work"),
-		"go 1.26.0\n\nuse (\n\t./omniview\n\t./plugin\n\t"+tampered+"\n)\n")
+		"go 1.27.0\n\nuse (\n\t./omniview\n\t./plugin\n\t"+tampered+"\n)\n")
 	env.activate()
 
 	// Control: Go honours the workspace when asked to, so the file is live.
@@ -221,7 +221,7 @@ func TestPublishedPreflightTreatsAToolchainDirectiveFailingClosed(t *testing.T) 
 		plugin := filepath.Join(w.Root, "plugin")
 		pubSelect(t, plugin, "example.com/plugin", "", env.sdk, env.uuid)
 		goMod := pubRead(t, filepath.Join(plugin, "go.mod"))
-		pubWrite(t, filepath.Join(plugin, "go.mod"), strings.Replace(goMod, "go 1.26.0\n", "go 1.99.0\ntoolchain go1.99.0\n", 1))
+		pubWrite(t, filepath.Join(plugin, "go.mod"), strings.Replace(goMod, "go 1.27.0\n", "go 1.99.0\ntoolchain go1.99.0\n", 1))
 		env.activate()
 
 		err := env.preflight(w, env.policy)

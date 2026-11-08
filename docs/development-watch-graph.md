@@ -37,6 +37,17 @@ Managed plugin watcher/rebuild operations enforce the same exact selected SDK di
 
 Dependency output digests give early cutoff: an edit rebuilds the edited node, and its dependents rebuild only if its outputs actually change. Watch rebuilds and `BuildPluginUI` never consult or write records, so outputs they republish make the next bootstrap rebuild that node. Any fingerprint error (Git, toolchain or SDK probe) only disables reuse for that node.
 
+Package fingerprints ask Git for the selected literal trees and direct ancestor
+files rather than returning every sibling package. Tracked deletions, untracked
+inputs, script-referenced trees and unusual pathnames retain the same selection
+rules. Very large pathspec sets fall back to the full listing to avoid native
+argument limits. Every fingerprint still reads current file content.
+
+Checkout status obtains commit, branch, dirty state and untracked paths from one
+porcelain-v2 observation, followed by the binary diff and current untracked bytes.
+Remote-tracking headers do not affect the source digest. Detached HEAD and a
+branch literally named `(detached)` remain distinct.
+
 ## Launch and watch adapters
 
 Launch preflight validates the selected composition, SDK source, parsed Go module contracts and shared UI dependencies before install or compilation. The selected SDK must declare `github.com/omniviewdev/plugin-sdk`; host and Go plugins must require that module. Comments containing its name do not satisfy the contract. Legacy MUI, Emotion and `@omniviewdev/ui` dependencies require migration to the current host contract.

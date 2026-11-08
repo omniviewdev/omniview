@@ -75,7 +75,7 @@ func TestPublishedVerificationIgnoresAParentWorkspaceFile(t *testing.T) {
 	data, err := os.ReadFile(isolation)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(isolation, []byte(strings.Replace(string(data), `"state-root-v1"`, `"tampered"`, 1)), 0o600))
-	f.world.Write(f.world.Root, "go.work", "go 1.26.0\n\nuse ./consumer\n\nreplace "+devsdk.Module+" => ./tampered\n")
+	f.world.Write(f.world.Root, "go.work", "go 1.27.0\n\nuse ./consumer\n\nreplace "+devsdk.Module+" => ./tampered\n")
 	run := environmentRunner(f)
 
 	// Control: without the verifier's environment, Go really does build against
@@ -124,8 +124,8 @@ func TestPublishedVerificationNeverReportsTheDeclaredVersionWhenTheGraphSelectsA
 	graph := func(t *testing.T) (fixture, sdktest.Release) {
 		t.Helper()
 		world := sdktest.New(t)
-		declared := world.PublishSDK("v0.17.4", trim)
-		higher := world.PublishSDK("v0.18.0", trim)
+		declared := world.PublishSDK("v0.18.4", trim)
+		higher := world.PublishSDK("v0.19.0", trim)
 		uuid := world.PublishPinned("github.com/google/uuid")
 		helper := world.PublishRequiring("example.com/helper", "v1.0.0", higher)
 		consumer := world.Consumer("consumer", declared, uuid)
@@ -140,7 +140,7 @@ func TestPublishedVerificationNeverReportsTheDeclaredVersionWhenTheGraphSelectsA
 		typed := refusal(t, err)
 		require.Equal(t, devsdk.CodeChecksumsRequired, typed.Code, typed.Message)
 		require.Equal(t, 3, typed.Exit)
-		require.Contains(t, typed.Message, devsdk.Module+"@v0.18.0", "the refusal names the version Go says is missing, not the declared one")
+		require.Contains(t, typed.Message, devsdk.Module+"@v0.19.0", "the refusal names the version Go says is missing, not the declared one")
 		require.Equal(t, devsdk.Identity{}, identity)
 	})
 	t.Run("the selected version's checksums are recorded", func(t *testing.T) {
@@ -166,7 +166,7 @@ func TestPublishedVerificationMapsGoSumDiagnosticsFromRealGo(t *testing.T) {
 		// (github.com/creack/pty and others) need go.mod checksums this go.sum lacks.
 		data, err := os.ReadFile(filepath.Join(f.consumer, "go.mod"))
 		require.NoError(t, err)
-		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.26.0", "go 1.16", 1))
+		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.27.0", "go 1.16", 1))
 		identity, err := verifier()(context.Background(), f.request())
 		typed := refusal(t, err)
 		require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code, "a missing entry of another module is not the SDK's missing checksum: %s", typed.Message)
@@ -220,7 +220,7 @@ func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
 		f := newFixture(t)
 		data, err := os.ReadFile(filepath.Join(f.consumer, "go.mod"))
 		require.NoError(t, err)
-		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.26.0", "go 1.99.0", 1))
+		f.world.Write(f.consumer, "go.mod", strings.Replace(string(data), "go 1.27.0", "go 1.99.0", 1))
 		identity, err := verifier()(context.Background(), f.request())
 		typed := refusal(t, err)
 		require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code, typed.Message)

@@ -20,6 +20,7 @@ import (
 )
 
 func TestSupervisorFailedStopRetainsOwnerAndLeaseForRetry(t *testing.T) {
+	t.Parallel()
 	for _, canceled := range []bool{true, false} {
 		t.Run(map[bool]string{true: "canceled", false: "signal-failed"}[canceled], func(t *testing.T) {
 			w := generatedFixture(t)
@@ -83,9 +84,10 @@ func TestSupervisorFailedStopRetainsOwnerAndLeaseForRetry(t *testing.T) {
 }
 
 func TestViteFeedbackStopRetainsHandleUntilExactOwnedDisposal(t *testing.T) {
+	t.Parallel()
 	for _, tamper := range []bool{false, true} {
 		t.Run(map[bool]string{false: "owned-metadata", true: "foreign-replacement"}[tamper], func(t *testing.T) {
-			g, s, _, path := feedbackWatchFixture(t)
+			g, s, _, path := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true, Stage: graphFixturePlanned})
 			ctx := context.Background()
 			initial := WatchChange{Nodes: []string{"host-backend"}}
 			if err := s.beginFeedback(ctx, initial); err != nil {
@@ -159,6 +161,7 @@ func TestViteFeedbackStopRetainsHandleUntilExactOwnedDisposal(t *testing.T) {
 }
 
 func TestManagedBridgeFinalizationFailureIsNotTerminalExit(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	generation := NewGeneration()
 	owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "host", Source: w.Root}
@@ -253,11 +256,9 @@ func TestOwnedChildRetriesFailedFinalizationAfterConfirmedDisposal(t *testing.T)
 }
 
 func TestSourceUpdateCommandRetainsAuthenticatedSupervisorProcess(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "retained-source-supervisor"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "retained-source-supervisor"})
 	generation := NewGeneration()
 	owner := devsession.ProcessOwner{
 		WorkspaceID: w.Manifest.WorkspaceID, Generation: generation, Role: "supervisor", Source: w.Root,

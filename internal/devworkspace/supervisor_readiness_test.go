@@ -86,6 +86,7 @@ func readinessSupervisor(t *testing.T, states map[string]devcontrol.DevState) (*
 }
 
 func TestSupervisorFrontendOnlyDependencyWatchHandoffStaysHealthy(t *testing.T) {
+	t.Parallel()
 	s, _ := readinessSupervisor(t, map[string]devcontrol.DevState{
 		"frontend": {PluginState: devcontract.PluginState{ID: "frontend", Mode: "managed", Generation: "frontend-generation", BuildStatus: "n/a", ViteStatus: "ready", RPCStatus: "n/a", ControllerStatus: "n/a"}, Ready: true},
 		"backend":  {PluginState: devcontract.PluginState{ID: "backend", Mode: "managed", Generation: "backend-generation", BuildStatus: "ready", ViteStatus: "n/a", RPCStatus: "ready", ControllerStatus: "ready"}, Ready: true},
@@ -104,6 +105,7 @@ func TestSupervisorFrontendOnlyDependencyWatchHandoffStaysHealthy(t *testing.T) 
 }
 
 func TestSupervisorLiveReadinessReflectsPluginFailureAndRecovery(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"build", "vite", "rpc", "controller", "last-error", "stopped", "building"} {
 		t.Run(stage, func(t *testing.T) {
 			ready := devcontrol.DevState{PluginState: devcontract.PluginState{ID: "plugin", Mode: "managed", Generation: "original-plugin-generation", BuildStatus: "ready", ViteStatus: "ready", RPCStatus: "ready", ControllerStatus: "ready"}, Ready: true}
@@ -155,6 +157,7 @@ func TestSupervisorLiveReadinessReflectsPluginFailureAndRecovery(t *testing.T) {
 }
 
 func TestSupervisorWaitPluginReadyRejectsTerminalStages(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"build", "vite", "rpc", "controller", "last-error"} {
 		t.Run(stage, func(t *testing.T) {
 			state := devcontrol.DevState{PluginState: devcontract.PluginState{ID: "plugin", Mode: "managed", Generation: "selected-generation", BuildStatus: "ready", ViteStatus: "ready", RPCStatus: "ready", ControllerStatus: "ready"}}

@@ -4,13 +4,13 @@ Standalone verification module, not a host dependency or production store. Histo
 
 ## Reproduce on native macOS
 
-Requires Go 1.26, Xcode clang/ar, git, make and configure's native prerequisites. Run:
+Requires Go 1.27, Xcode clang/ar, git, make and configure's native prerequisites. Run:
 
 ```sh
 bash native-darwin.sh
 ```
 
-The script fetches official SQLCipher commit `355d4db92d3404e71faa8088d071a71d767807f4` (4.20.0), generates its unchanged amalgamation, and builds an isolated static `libsqlite3.a` using Apple's CommonCrypto/Security.framework provider. It supplies isolated headers and library paths to maintained `github.com/mattn/go-sqlite3 v1.14.52`, with `CGO_ENABLED=1`, `GOWORK=off` and `libsqlite3`. It builds, vets, inventories dynamic linkage, rejects dynamic SQLite/SQLCipher/third-party crypto linkage, then runs the native smoke. It does not install into system or Homebrew paths. Temporary build products are removed. Git object identity is pinned; independent tag-signature authenticity verification remains a release gate.
+The script fetches official SQLCipher commit `355d4db92d3404e71faa8088d071a71d767807f4` (4.20.0), generates its unchanged amalgamation, and builds an isolated static `libsqlite3.a` using Apple's CommonCrypto/Security.framework provider. It supplies isolated headers and library paths to maintained `github.com/mattn/go-sqlite3 v1.14.53`, with `CGO_ENABLED=1`, `GOWORK=off` and `libsqlite3`. It builds, vets, inventories dynamic linkage, rejects dynamic SQLite/SQLCipher/third-party crypto linkage, then runs the native smoke. It does not install into system or Homebrew paths. Temporary build products are removed. Git object identity is pinned; independent tag-signature authenticity verification remains a release gate.
 
 Do not run a plain `go run .`: bundled SQLite does not provide SQLCipher. Runtime admission rejects any core other than SQLCipher 4.20.0 community / SQLite 3.54.1, any provider other than `commoncrypto`, and missing HAS_CODEC/ENABLE_FTS5/TEMP_STORE=2/THREADSAFE=1 compile options.
 

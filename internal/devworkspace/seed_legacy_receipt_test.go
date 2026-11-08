@@ -13,6 +13,7 @@ import (
 )
 
 func TestSeedResumePreservesOlderExplanatoryReceiptBytes(t *testing.T) {
+	t.Parallel()
 	for _, markerPresent := range []bool{false, true} {
 		t.Run(map[bool]string{false: "pending-intent", true: "completed-import"}[markerPresent], func(t *testing.T) {
 			s := supervisorEdgeFixture(t)
@@ -59,6 +60,7 @@ func TestSeedResumePreservesOlderExplanatoryReceiptBytes(t *testing.T) {
 }
 
 func TestSeedResumeImportsLegacyIntentBeforeMarkerPublication(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	source, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)

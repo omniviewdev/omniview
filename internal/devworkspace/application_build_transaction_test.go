@@ -12,6 +12,7 @@ import (
 )
 
 func TestApplicationProducerObserverCannotSkipRepeatOrSuppressFailure(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"normal", "skip", "repeat", "suppress-failure"} {
 		t.Run(mode, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "actual-producer-output")
@@ -68,6 +69,7 @@ func TestApplicationProducerObserverCannotSkipRepeatOrSuppressFailure(t *testing
 }
 
 func TestApplicationProducerObserverRevokesRetainedCallback(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "late-producer-output")
 	var retained func() error
 	err := observeApplicationProducer("consumer", func(_ string, run func() error) error {
@@ -88,6 +90,7 @@ func TestApplicationProducerObserverRevokesRetainedCallback(t *testing.T) {
 }
 
 func TestApplicationProducerObserverJoinsAdmittedAsyncFailure(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		entered := make(chan struct{})
 		release := make(chan struct{})
@@ -129,6 +132,7 @@ func TestApplicationProducerObserverJoinsAdmittedAsyncFailure(t *testing.T) {
 }
 
 func TestApplicationProducerObserverRetainsConcurrentDuplicateAndProducerErrors(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	failed := errors.New("actual producer failed")
@@ -152,6 +156,7 @@ func TestApplicationProducerObserverRetainsConcurrentDuplicateAndProducerErrors(
 }
 
 func TestApplicationProducerObserverRetainsAbandonedExecutionUncertainty(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{})
 	err := observeApplicationProducer("consumer", func(_ string, run func() error) error {
 		go func() { _ = run() }()

@@ -309,7 +309,7 @@ func (w *World) Consumer(name string, releases ...Release) string {
 		w.t.Fatal(err)
 	}
 	var goMod, goSum strings.Builder
-	goMod.WriteString("module example.com/" + name + "\n\ngo 1.26.0\n\nrequire (\n")
+	goMod.WriteString("module example.com/" + name + "\n\ngo 1.27.0\n\nrequire (\n")
 	for _, release := range releases {
 		fmt.Fprintf(&goMod, "\t%s %s\n", release.Module, release.Version)
 		fmt.Fprintf(&goSum, "%s %s %s\n%s %s/go.mod %s\n", release.Module, release.Version, release.ModuleSum, release.Module, release.Version, release.GoModSum)

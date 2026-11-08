@@ -13,6 +13,7 @@ import (
 )
 
 func TestFollowRetainsRecoveryGuidanceWhenApplyingLinksPreventPlanning(t *testing.T) {
+	t.Parallel()
 	m, w, links := recoveryFixture(t)
 	links.Phase = "applying"
 	require.NoError(t, saveLinkJournal(links))
@@ -42,43 +43,48 @@ func TestFollowRetainsRecoveryGuidanceWhenApplyingLinksPreventPlanning(t *testin
 }
 
 func TestLateRefreshRecoveryRefusesDifferentCompletedCohort(t *testing.T) {
-	for _, phase := range []string{"install", "start", "verify"} {
-		for _, change := range []string{"descendant", "upstream"} {
-			t.Run(phase+"/"+change, func(t *testing.T) {
-				m, w, plan := sourcePlanFixture(t)
-				_, err := m.applySourceUpdate(context.Background(), w.Manifest.Slug, plan, UpdateOptions{})
-				require.NoError(t, err)
-				require.NoError(t, m.validateFinalRefreshCohort(context.Background(), w.Manifest.Slug, &plan))
-				if change == "descendant" {
-					checkout := filepath.Join(w.Root, "omniview")
-					require.NoError(t, os.WriteFile(filepath.Join(checkout, "descendant.txt"), []byte("user commit"), 0600))
-					fixtureGit(t, checkout, "add", "descendant.txt")
-					fixtureGit(t, checkout, "commit", "-m", "preserve user descendant")
-				} else {
-					j, loadErr := loadJournal(w.Root)
-					require.NoError(t, loadErr)
-					j.Manifest.Repositories[0].Upstream = &devcontract.RepositoryUpstream{
-						Remote: "different", Branch: "refs/heads/main",
+	t.Parallel()
+	for _, change := range []string{"descendant", "upstream"} {
+		t.Run(change, func(t *testing.T) {
+			t.Parallel()
+			m, w, plan := sourcePlanFixture(t)
+			_, err := m.applySourceUpdate(context.Background(), w.Manifest.Slug, plan, UpdateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, m.validateFinalRefreshCohort(context.Background(), w.Manifest.Slug, &plan))
+			if change == "descendant" {
+				checkout := filepath.Join(w.Root, "omniview")
+				require.NoError(t, os.WriteFile(filepath.Join(checkout, "descendant.txt"), []byte("user commit"), 0600))
+				fixtureGit(t, checkout, "add", "descendant.txt")
+				fixtureGit(t, checkout, "commit", "-m", "preserve user descendant")
+			} else {
+				j, loadErr := loadJournal(w.Root)
+				require.NoError(t, loadErr)
+				j.Manifest.Repositories[0].Upstream = &devcontract.RepositoryUpstream{
+					Remote: "different", Branch: "refs/heads/main",
+				}
+				j.Resources[0].Repository = j.Manifest.Repositories[0]
+				require.NoError(t, writeManifest(w.Root, j.Manifest))
+				require.NoError(t, saveJournal(w.Root, j))
+			}
+			// Recovery must refuse each late phase against the same changed cohort.
+			for _, phase := range []string{"install", "start", "verify"} {
+				t.Run(phase, func(t *testing.T) {
+					evidence := LinkProtocolEvidence{
+						Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
 					}
-					j.Resources[0].Repository = j.Manifest.Repositories[0]
-					require.NoError(t, writeManifest(w.Root, j.Manifest))
-					require.NoError(t, saveJournal(w.Root, j))
-				}
-				evidence := LinkProtocolEvidence{
-					Protocol: "workspace", Versions: []string{"12.14.0"}, AtomicDist: true, Peers: true, Runtime: true,
-				}
-				intent := refreshIntent{
-					WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: phase, Plan: &plan, Evidence: evidence,
-					Launch: LaunchOptions{Mode: "browser"},
-				}
-				path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
-				require.NoError(t, atomicOwnedJSON(path, intent, w.Manifest.WorkspaceID))
-				_, err = m.refresh(context.Background(), w.Manifest.Slug, RefreshOptions{}, nil)
-				var typed *devcontract.Error
-				require.ErrorAs(t, err, &typed)
-				require.Equal(t, "refresh_intent_mismatch", typed.Code)
-				require.NoFileExists(t, filepath.Join(w.Root, ".local", "supervisor.json"))
-			})
-		}
+					intent := refreshIntent{
+						WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: phase, Plan: &plan, Evidence: evidence,
+						Launch: LaunchOptions{Mode: "browser"},
+					}
+					path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+					require.NoError(t, atomicOwnedJSON(path, intent, w.Manifest.WorkspaceID))
+					_, err = m.refresh(context.Background(), w.Manifest.Slug, RefreshOptions{}, nil)
+					var typed *devcontract.Error
+					require.ErrorAs(t, err, &typed)
+					require.Equal(t, "refresh_intent_mismatch", typed.Code)
+					require.NoFileExists(t, filepath.Join(w.Root, ".local", "supervisor.json"))
+				})
+			}
+		})
 	}
 }

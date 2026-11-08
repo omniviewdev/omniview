@@ -253,9 +253,10 @@ func generationEdgeAwait(t *testing.T, done <-chan generationEdgeOutcome) genera
 }
 
 func TestGenerationEdgesAuthenticatedStatusCannotOutliveRecordReplacement(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "stale-inspect"})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "stale-inspect"})
+	var err error
 	listener := lifecycleEdgeListener(t)
 	old := startGenerationEdge(t, m, w, NewGeneration(), listener.Addr().String(), supervisorStatusCommand)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -298,11 +299,12 @@ func TestGenerationEdgesAuthenticatedStatusCannotOutliveRecordReplacement(t *tes
 }
 
 func TestGenerationEdgesReplacementDuringShutdownPreservesSuccessor(t *testing.T) {
+	t.Parallel()
 	for _, command := range []string{supervisorStopCommand, supervisorRestartCommand} {
 		t.Run(command, func(t *testing.T) {
-			m, _ := fixtureManager(t)
-			w, err := m.Create(context.Background(), CreateOptions{Slug: "replace-shutdown"})
-			require.NoError(t, err)
+			m, _ := fixtureManager(t, "omniview")
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "replace-shutdown"})
+			var err error
 			require.NoError(t, saveLaunchJSON(launchPath(w, "launch.json"), generationEdgeLaunchOptions(w)))
 			listener := lifecycleEdgeListener(t)
 			old := startGenerationEdge(t, m, w, NewGeneration(), listener.Addr().String(), command)
@@ -346,9 +348,10 @@ func TestGenerationEdgesReplacementDuringShutdownPreservesSuccessor(t *testing.T
 }
 
 func TestGenerationEdgesCancelledResponseAfterDisposalCanRetryExactOwner(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "disposal-retry"})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "disposal-retry"})
+	var err error
 	listener := lifecycleEdgeListener(t)
 	owner := startGenerationEdge(t, m, w, NewGeneration(), listener.Addr().String(), supervisorStopCommand)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -387,6 +390,7 @@ func TestGenerationEdgesCancelledResponseAfterDisposalCanRetryExactOwner(t *test
 }
 
 func TestGenerationEdgesExitedCaptureCannotPublishLiveIdentity(t *testing.T) {
+	t.Parallel()
 	// Capture and publication are separate existing seams. Keep a real Cmd
 	// through Wait, then use the production capture gate on that exact handle.
 	command := exec.Command(os.Args[0], "-test.run=^TestGenerationEdgeProcess$")
@@ -420,9 +424,10 @@ func generationEdgeExecutable(t *testing.T, m *Manager, w Workspace, publishGate
 }
 
 func TestGenerationEdgesConcurrentStartPublishesOneSupervisor(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "concurrent-up", Repositories: []string{"plugin-sdk"}})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "plugin-sdk")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "concurrent-up", Repositories: []string{"plugin-sdk"}})
+	var err error
 	executable, generation, starts := generationEdgeExecutable(t, m, w, "")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -461,9 +466,10 @@ func TestGenerationEdgesConcurrentStartPublishesOneSupervisor(t *testing.T) {
 }
 
 func TestGenerationEdgesCancelledStartRetainsInspectableStoppableOwner(t *testing.T) {
-	m, _ := fixtureManager(t)
-	w, err := m.Create(context.Background(), CreateOptions{Slug: "cancel-up", Repositories: []string{"plugin-sdk"}})
-	require.NoError(t, err)
+	t.Parallel()
+	m, _ := fixtureManager(t, "plugin-sdk")
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "cancel-up", Repositories: []string{"plugin-sdk"}})
+	var err error
 	listener := lifecycleEdgeListener(t)
 	executable, generation, starts := generationEdgeExecutable(t, m, w, listener.Addr().String())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -510,6 +516,7 @@ func TestGenerationEdgesCancelledStartRetainsInspectableStoppableOwner(t *testin
 }
 
 func TestGenerationEdgesDownWaitsForCapturedSourceUpdateWithoutResurrection(t *testing.T) {
+	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	target := upstreamCommit(t, remote, "component.ts", "export const revision = 1")
 	entered, release := activeFollowBarrier(t, m, w)

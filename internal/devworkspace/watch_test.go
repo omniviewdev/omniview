@@ -19,6 +19,7 @@ func (*graphManagedFixture) RebuildPluginGeneration(context.Context, string, str
 }
 
 func TestWatchTreeIncludesNewSourceDirectoriesButNotOutputs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	for _, rel := range []string{"settings/new", "log", "proto", "pkg/new/module", "packages/omniviewdev-runtime/src/feature", "packages/omniviewdev-runtime/src/bindings/nested", "dist/generated", "shims/generated", "node_modules/dependency", ".git/objects"} {
 		if err := os.MkdirAll(filepath.Join(root, rel), 0700); err != nil {
@@ -51,7 +52,8 @@ func TestWatchTreeIncludesNewSourceDirectoriesButNotOutputs(t *testing.T) {
 }
 
 func TestWatchIgnoresItsGeneratedBindingsAndShims(t *testing.T) {
-	g := graphFixture(t)
+	t.Parallel()
+	g := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	if !g.generatedSourceOutput(filepath.Join(g.workspace.Root, "host/packages/omniviewdev-runtime/src/bindings/models.ts")) {
 		t.Fatal("bindings generation would enqueue a second build")
 	}

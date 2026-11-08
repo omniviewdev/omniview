@@ -11,6 +11,7 @@ import (
 )
 
 func TestFailedLinkResetReplaysAppliedFiles(t *testing.T) {
+	t.Parallel()
 	for _, mutation := range []string{"none", "foreign", "symlink", "identity"} {
 		t.Run(mutation, func(t *testing.T) {
 			ctx := context.Background()

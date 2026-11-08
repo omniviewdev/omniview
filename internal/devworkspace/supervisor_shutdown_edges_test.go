@@ -19,6 +19,7 @@ import (
 )
 
 func TestSupervisorShutdownEdgesLateFeedbackCannotRestoreReady(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	s.setPhase("stopping", nil)
 	s.sessionCancel()
@@ -31,6 +32,7 @@ func TestSupervisorShutdownEdgesLateFeedbackCannotRestoreReady(t *testing.T) {
 }
 
 func TestSupervisorShutdownEdgesPersistCurrentWaitStage(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	s.setPhase("stopping", nil)
 	for _, stage := range []string{"build-authority", "feedback", "host", "leases"} {
@@ -46,6 +48,7 @@ func TestSupervisorShutdownEdgesPersistCurrentWaitStage(t *testing.T) {
 }
 
 func TestSupervisorShutdownEdgesHelper(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("OMNIVIEW_SHUTDOWN_EDGE_HELPER") != "1" {
 		return
 	}
@@ -55,6 +58,7 @@ func TestSupervisorShutdownEdgesHelper(t *testing.T) {
 }
 
 func TestSupervisorShutdownEdgesCanceledStopEventuallyReleasesOwner(t *testing.T) {
+	t.Parallel()
 	s := supervisorEdgeFixture(t)
 	w := s.workspace
 	options := LaunchOptions{Mode: "browser", Timeout: 10 * time.Second}

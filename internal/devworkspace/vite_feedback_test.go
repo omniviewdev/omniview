@@ -67,9 +67,9 @@ func feedbackSupervisorFixture(t *testing.T, g *BuildGraph) (*workspaceSuperviso
 	return s, path
 }
 
-func feedbackWatchFixture(t *testing.T) (*BuildGraph, *workspaceSupervisor, WatchHooks, string) {
+func feedbackWatchFixture(t *testing.T, options ...graphFixtureOptions) (*BuildGraph, *workspaceSupervisor, WatchHooks, string) {
 	t.Helper()
-	g := graphFixture(t)
+	g := graphFixture(t, options...)
 	s, path := feedbackSupervisorFixture(t, g)
 	g.run = func(_ context.Context, _ string, program string, _ ...string) ([]byte, error) {
 		if program == "go" {
@@ -157,7 +157,8 @@ func assertFeedbackHeld(t *testing.T, s *workspaceSupervisor, held bool, stage s
 }
 
 func TestViteFeedbackInitialLaunchFailureLeavesReconnectHeld(t *testing.T) {
-	_, s, _, _ := feedbackWatchFixture(t)
+	t.Parallel()
+	_, s, _, _ := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	s.options.Timeout = 3 * time.Second
 	// Missing reviewed link evidence rejects real graph preparation before any
 	// compiler or child can run. Initial feedback must already be fail-closed.
@@ -171,7 +172,8 @@ func TestViteFeedbackInitialLaunchFailureLeavesReconnectHeld(t *testing.T) {
 }
 
 func TestViteFeedbackPublishesNativeAuthorityForTheOriginalHandle(t *testing.T) {
-	_, s, _, _ := feedbackWatchFixture(t)
+	t.Parallel()
+	_, s, _, _ := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	change := WatchChange{Nodes: []string{"host-backend"}}
 	if err := s.beginFeedback(context.Background(), change); err != nil {
 		t.Fatal(err)
@@ -196,7 +198,7 @@ func TestViteFeedbackPublishesNativeAuthorityForTheOriginalHandle(t *testing.T) 
 func TestViteFeedbackHoldsBeforePublicationUntilAllReplacementReadiness(t *testing.T) {
 	// An ambient context from another supervisor must never reach any child.
 	t.Setenv("OMNIVIEW_VITE_FEEDBACK", `{"schemaVersion":1,"workspaceID":"foreign","held":false}`)
-	g, s, hooks, path := feedbackWatchFixture(t)
+	g, s, hooks, path := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	var first os.FileInfo
 	bindings := g.options.Bindings
 	g.options.Bindings = func(ctx context.Context, host, output string) error {
@@ -242,9 +244,11 @@ func TestViteFeedbackHoldsBeforePublicationUntilAllReplacementReadiness(t *testi
 }
 
 func TestViteFeedbackFailureCannotBeReleasedByUnrelatedFrontendSuccess(t *testing.T) {
+	t.Parallel()
 	for _, failure := range []string{"producer", "host", "plugin", "refresh"} {
 		t.Run(failure, func(t *testing.T) {
-			g, s, hooks, _ := feedbackWatchFixture(t)
+			t.Parallel()
+			g, s, hooks, _ := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 			broken := errors.New("replacement remains incomplete")
 			bindings := g.options.Bindings
 			hostReady, pluginReady, refresh := hooks.HostRebuildAndWait, hooks.WaitPluginReady, hooks.RefreshConsumers
@@ -282,7 +286,8 @@ func TestViteFeedbackFailureCannotBeReleasedByUnrelatedFrontendSuccess(t *testin
 }
 
 func TestViteFeedbackRefusesUnknownExistingFileBeforePublishing(t *testing.T) {
-	g, _, hooks, path := feedbackWatchFixture(t)
+	t.Parallel()
+	g, _, hooks, path := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	foreign := []byte(`{"schemaVersion":1,"workspaceID":"11111111-1111-4111-8111-111111111111","generation":"22222222-2222-4222-8222-222222222222","workspaceRoot":"` + g.workspace.Root + `","held":false}`)
 	if err := os.WriteFile(path, foreign, 0600); err != nil {
 		t.Fatal(err)
@@ -306,10 +311,12 @@ func TestViteFeedbackRefusesUnknownExistingFileBeforePublishing(t *testing.T) {
 }
 
 func TestViteFeedbackRejectsTamperedOwnershipBeforeRelease(t *testing.T) {
+	t.Parallel()
+	g, s, hooks, path := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true})
+	bindings := g.options.Bindings
 	for _, tamper := range []string{"replaced-inode", "symlink", "generation", "workspace-root", "malformed", "permissions"} {
 		t.Run(tamper, func(t *testing.T) {
-			g, s, hooks, path := feedbackWatchFixture(t)
-			bindings := g.options.Bindings
+			// Cleanup restores the exact owned inode/state before the next retry.
 			var foreign []byte
 			g.options.Bindings = func(ctx context.Context, host, output string) error {
 				if err := bindings(ctx, host, output); err != nil {
@@ -379,9 +386,11 @@ func TestViteFeedbackRejectsTamperedOwnershipBeforeRelease(t *testing.T) {
 }
 
 func TestSourceUpdateEarlyQuiescenceFailureCannotRemainReady(t *testing.T) {
+	t.Parallel()
 	for _, failure := range []string{"feedback-integrity", "backend-quiescence"} {
 		t.Run(failure, func(t *testing.T) {
-			g, s, _, path := feedbackWatchFixture(t)
+			t.Parallel()
+			g, s, _, path := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 			root, err := devcontract.CanonicalPath(t.TempDir())
 			require.NoError(t, err)
 			s.manager.Root = root

@@ -6,8 +6,8 @@ metadata, ordinary index, FTS index and synthetic snapshot/diff payload.
 No plaintext database driver or storage fallback exists.
 
 Pinned maintained dependencies:
-  github.com/godbus/dbus/v5 v5.1.0 (BSD-2-Clause)
-  github.com/mattn/go-sqlite3 v1.14.52 (MIT)
+  github.com/godbus/dbus/v5 v5.2.4 (BSD-2-Clause)
+  github.com/mattn/go-sqlite3 v1.14.53 (MIT)
   official github.com/sqlcipher/sqlcipher commit
   355d4db92d3404e71faa8088d071a71d767807f4
   SQLCipher 4.20.0 community, SQLite 3.54.1 (BSD-3-Clause;

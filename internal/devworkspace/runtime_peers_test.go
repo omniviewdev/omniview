@@ -11,6 +11,7 @@ import (
 )
 
 func TestLinkedPeerContractsDiagnoseSelectedSourceCohorts(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name          string
 		query         string
@@ -64,6 +65,7 @@ func TestLinkedPeerContractsDiagnoseSelectedSourceCohorts(t *testing.T) {
 }
 
 func TestLinkedPeerContractsUseDirectProviderContexts(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	consumer := filepath.Join(root, "plugin")
 	first := filepath.Join(root, "host/first")
@@ -90,6 +92,7 @@ func TestLinkedPeerContractsUseDirectProviderContexts(t *testing.T) {
 }
 
 func TestManifestRangesDisjoint(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		left, right string
 		want        bool
@@ -113,7 +116,8 @@ func TestManifestRangesDisjoint(t *testing.T) {
 }
 
 func TestLinkPlanningRejectsPeerConflictBeforeInstallation(t *testing.T) {
-	graph := graphFixture(t)
+	t.Parallel()
+	graph := graphFixture(t, graphFixtureOptions{Stage: graphFixturePlanned})
 	root := graph.workspace.Root
 	writeGraphFixture(t, filepath.Join(root, "plugin/ui/package.json"), `{"name":"plugin-ui","private":true,"version":"1.0.0","packageManager":"pnpm@12.14.0","dependencies":{"@omniviewdev/runtime":"1.0.0","@tanstack/react-query":"5.90.21"}}`)
 	writeGraphFixture(t, filepath.Join(root, "host/packages/omniviewdev-runtime/package.json"), `{"name":"@omniviewdev/runtime","private":true,"version":"1.0.0","peerDependencies":{"@tanstack/react-query":"^5.105.0"}}`)
@@ -125,6 +129,7 @@ func TestLinkPlanningRejectsPeerConflictBeforeInstallation(t *testing.T) {
 }
 
 func TestLinkedPeerContractsUseSelectedProviderVersion(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	consumer := filepath.Join(root, "plugin")
 	linked := filepath.Join(root, "host/runtime")

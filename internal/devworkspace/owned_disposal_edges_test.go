@@ -17,6 +17,7 @@ import (
 )
 
 func TestOwnedChildCancellationDuringBlockedDisposal(t *testing.T) {
+	t.Parallel()
 	w := generatedFixture(t)
 	owner := devsession.ProcessOwner{WorkspaceID: w.Manifest.WorkspaceID, Generation: NewGeneration(), Role: "host", Source: w.Root}
 	var finalized atomic.Int32

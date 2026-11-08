@@ -16,10 +16,11 @@ import (
 )
 
 func TestDarwinRemovalCapabilitiesRetainSameLockedFileDescriptions(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "guard-capabilities"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "guard-capabilities"})
+	var err error
 	state := bindFixtureProfile(t, m, w)
 	for _, path := range []string{state, w.StateRoot} {
 		require.NoError(t, os.MkdirAll(path, 0700))
@@ -67,10 +68,11 @@ func TestDarwinRemovalCapabilitiesRetainSameLockedFileDescriptions(t *testing.T)
 }
 
 func TestDarwinDefaultSelectedStateHasNoDuplicateDefaultCapability(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "same-state-capability"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "same-state-capability"})
+	var err error
 	require.NoError(t, os.MkdirAll(w.StateRoot, 0700))
 	failure := errors.New("leave fixture intact")
 	_, err = m.Remove(ctx, "same-state-capability", RemoveOptions{BeforeRemove: func(_ context.Context, _ Workspace, guards []GuardFile) error {

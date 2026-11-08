@@ -90,7 +90,7 @@ tap-qualified names are reserved for selecting the candidate during installation
 and upgrade. A failed lifecycle check blocks GitHub Release and tap publication,
 even if the temporary CI installation itself succeeded.
 
-Production macOS builds target macOS 12.0 or newer, matching the Go 1.26
+Production macOS builds target macOS 13.0 or newer, matching the Go 1.27
 toolchain support floor. The stable bundle metadata and local, PR, stable,
 and nightly compilation targets use that same minimum. Development bundles
 retain their separate macOS 14 minimum. Verify the resulting Mach-O build
@@ -100,17 +100,17 @@ release tag alone.
 The package verifier checks each architecture separately for compatibility with
 Apple `lipo` versions that reject multiple architectures in one verification call.
 
-The cask updater applies that macOS 12 minimum to stable and nightly publication
+The cask updater applies that macOS 13 minimum to stable and nightly publication
 alongside the new version and checksum. It raises missing or weaker requirements,
 preserves stricter tap policy, and refuses unsupported eligibility layouts.
 The currently published cask is not changed until the new release is published.
 
-The supported baseline is `depends_on macos: :monterey`, not the deprecated
-string comparison `">= :monterey"`. Named minima and equivalent whole-release
+The supported baseline is `depends_on macos: :ventura`, not the deprecated
+string comparison `">= :ventura"`. Named minima and equivalent whole-release
 numeric minima migrate to symbols. Stricter numeric minor/patch minima cannot
 be represented exactly by Homebrew's current supported named minimum DSL.
 The updater refuses those policies before writing the cask; review tap policy
-explicitly rather than rounding `12.3.1` down to Monterey or emitting deprecated DSL.
+explicitly rather than rounding `13.3.1` down to Ventura or emitting deprecated DSL.
 Unknown names, conditional requirements, and mixed layouts also fail closed.
 See Homebrew's [requirement parser](https://github.com/Homebrew/brew/blob/main/Library/Homebrew/requirements/macos_requirement.rb)
 and [macOS version symbols](https://github.com/Homebrew/brew/blob/main/Library/Homebrew/macos_version.rb).

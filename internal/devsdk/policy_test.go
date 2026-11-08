@@ -19,7 +19,7 @@ import (
 func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) {
 	reviewed := ReviewedReleases()
 	require.NotEmpty(t, reviewed)
-	newer := Published{Module: Module, Version: "v0.18.0", ModuleSum: fixturePublished().ModuleSum, GoModSum: fixturePublished().GoModSum}
+	newer := Published{Module: Module, Version: "v0.19.0", ModuleSum: fixturePublished().ModuleSum, GoModSum: fixturePublished().GoModSum}
 	policy := NewReleasePolicy(FloorVersion, append(reviewed, newer)...)
 	admit := func(policy Policy, published Published) error {
 		identity, err := NewPublishedIdentity(published)
@@ -27,9 +27,17 @@ func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) 
 		return policy.Admit(identity)
 	}
 	for _, release := range append(reviewed, newer) {
+		if semver.Compare(release.Version, FloorVersion) < 0 {
+			require.ErrorIs(t, admit(policy, release), ErrNotAccepted, "historical reviewed releases below the current floor stay refused")
+			continue
+		}
 		require.NoError(t, admit(policy, release), release.Version)
 	}
 	for _, release := range reviewed {
+		if semver.Compare(release.Version, FloorVersion) < 0 {
+			require.ErrorIs(t, admit(ReleasePolicy(), release), ErrNotAccepted)
+			continue
+		}
 		require.NoError(t, admit(ReleasePolicy(), release), "the production policy admits the compiled-in rows")
 	}
 	require.ErrorIs(t, admit(ReleasePolicy(), newer), ErrNotAccepted, "a release at or above the floor that the table does not name is not reviewed")
@@ -38,7 +46,7 @@ func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) 
 		row.Version = version
 		return row
 	}
-	pinned := reviewed[0]
+	pinned := pinnedSDK(t)
 	wrongSum := "h1:" + strings.Repeat("A", 43) + "="
 	for name, test := range map[string]struct {
 		policy    Policy
@@ -49,7 +57,7 @@ func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) 
 		"far below the floor":        {policy, withVersion(pinned, "v0.1.0"), "below the accepted floor"},
 		"pseudo-version":             {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.17.1-0.20261108000000-abcdefabcdef")), withVersion(pinned, "v0.17.1-0.20261108000000-abcdefabcdef"), "not a released tag"},
 		"prerelease":                 {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.18.0-rc.1")), withVersion(pinned, "v0.18.0-rc.1"), "not a released tag"},
-		"unreviewed release":         {policy, withVersion(pinned, "v0.17.1"), "not a release this controller has reviewed"},
+		"unreviewed release":         {policy, withVersion(pinned, "v0.18.1"), "not a release this controller has reviewed"},
 		"unreviewed future release":  {ReleasePolicy(), withVersion(pinned, "v1.0.0"), "not a release this controller has reviewed"},
 		"module checksum differs":    {ReleasePolicy(), Published{Module: Module, Version: pinned.Version, ModuleSum: wrongSum, GoModSum: pinned.GoModSum}, "differ from the reviewed release"},
 		"go.mod checksum differs":    {ReleasePolicy(), Published{Module: Module, Version: pinned.Version, ModuleSum: pinned.ModuleSum, GoModSum: wrongSum}, "differ from the reviewed release"},
@@ -93,8 +101,8 @@ func pinnedSDK(t *testing.T) Published {
 	return pinned
 }
 
-// The reviewed table must anchor the controller's own pin, and nothing in it may
-// be a pseudo-version, a release below the floor, a duplicate or out of order.
+// The reviewed table anchors the controller's own pin and retains older review
+// history. Rows cannot predate the reviewed minimum, repeat or go out of order.
 func TestReviewedReleasesCoverTheControllerPin(t *testing.T) {
 	pinned := pinnedSDK(t)
 	require.NotEmpty(t, pinned.ModuleSum)
@@ -107,7 +115,7 @@ func TestReviewedReleasesCoverTheControllerPin(t *testing.T) {
 		require.Equal(t, semver.Canonical(release.Version), release.Version, "rows are canonical versions")
 		require.Empty(t, semver.Prerelease(release.Version), "rows are released tags, never prereleases or pseudo-versions: %s", release.Version)
 		require.Empty(t, semver.Build(release.Version), release.Version)
-		require.GreaterOrEqual(t, semver.Compare(release.Version, FloorVersion), 0, "%s is below the floor %s", release.Version, FloorVersion)
+		require.GreaterOrEqual(t, semver.Compare(release.Version, minimumFloor), 0, "%s predates the reviewed minimum %s", release.Version, minimumFloor)
 		if i > 0 {
 			require.Equal(t, 1, semver.Compare(release.Version, reviewed[i-1].Version), "rows are unique and ascending: %s after %s", release.Version, reviewed[i-1].Version)
 		}

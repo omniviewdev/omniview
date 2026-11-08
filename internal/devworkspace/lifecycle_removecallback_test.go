@@ -12,12 +12,13 @@ import (
 )
 
 func TestRemovalCallbackCannotPrecedeCanonicalRefusals(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"dirty", "user commits", "foreign default profile"} {
 		t.Run(kind, func(t *testing.T) {
-			m, _ := fixtureManager(t)
+			m, _ := fixtureManager(t, "omniview")
 			ctx := context.Background()
-			w, err := m.Create(ctx, CreateOptions{Slug: "callback-refusal"})
-			require.NoError(t, err)
+			w := fixtureWorkspace(t, m, CreateOptions{Slug: "callback-refusal"})
+			var err error
 			host := filepath.Join(w.Root, "omniview")
 			switch kind {
 			case "dirty":
@@ -41,10 +42,11 @@ func TestRemovalCallbackCannotPrecedeCanonicalRefusals(t *testing.T) {
 }
 
 func TestRemovalCallbackErrorPreservesSourcesAndRunsUnderUUIDGuard(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "callback-failure"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "callback-failure"})
+	var err error
 	failure := errors.New("native cleanup did not complete")
 	_, err = m.Remove(ctx, "callback-failure", RemoveOptions{PurgeState: true, BeforeRemove: func(ctx context.Context, selected Workspace, guards []GuardFile) error {
 		require.Equal(t, w.Manifest.WorkspaceID, selected.Manifest.WorkspaceID)
@@ -65,10 +67,11 @@ func TestRemovalCallbackErrorPreservesSourcesAndRunsUnderUUIDGuard(t *testing.T)
 }
 
 func TestGeneratedValidationPrecedesCallbackAndCleanupMustLeaveStrictMetadata(t *testing.T) {
-	m, _ := fixtureManager(t)
+	t.Parallel()
+	m, _ := fixtureManager(t, "omniview")
 	ctx := context.Background()
-	w, err := m.Create(ctx, CreateOptions{Slug: "generated-callback"})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "generated-callback"})
+	var err error
 	generated := filepath.Join(w.Root, ".local", "owned-generated-output")
 	require.NoError(t, os.WriteFile(generated, []byte("authored bytes"), 0600))
 	callbackCalled := false

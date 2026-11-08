@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -53,6 +54,8 @@ func safeID(s string) bool {
 func git(ctx context.Context, dir string, input string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.WaitDelay = 2 * time.Second
+	// Errors never expose Git stderr, so do not capture sensitive diagnostics.
+	cmd.Stderr = io.Discard
 	// Ambient GIT_DIR/GIT_WORK_TREE must not redirect an owned operation.
 	for _, e := range os.Environ() {
 		key, _, _ := strings.Cut(e, "=")
@@ -72,6 +75,10 @@ func git(ctx context.Context, dir string, input string, args ...string) (string,
 		}
 		// Git stderr may contain credential-bearing remote URLs. Never relay it.
 		return "", devcontract.Fail(5, "git_failed", fmt.Sprintf("Git %s failed in %s", args[0], dir))
+	}
+	// NUL-delimited inventories may begin with whitespace in a filename.
+	if len(out) > 0 && out[len(out)-1] == 0 {
+		return string(out), nil
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -99,9 +106,24 @@ func sourceFromSpec(ctx context.Context, root string, spec SourceSpec, refresh b
 	if err != nil {
 		return s, err
 	}
-	common, err := git(ctx, p, "", "rev-parse", "--path-format=absolute", "--git-common-dir")
+	// A registry read already supplies its default ref. Resolve it in the same
+	// Git process as the common directory, without caching either observation.
+	batched := !refresh && strings.TrimSpace(spec.DefaultRef) != "" &&
+		!strings.ContainsAny(spec.DefaultRef, "\x00\r\n") && !strings.ContainsAny(p, "\r\n")
+	args := []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}
+	if batched {
+		args = append(args, "--verify", "--end-of-options", spec.DefaultRef+"^{commit}")
+	}
+	common, err := git(ctx, p, "", args...)
 	if err != nil {
 		return s, err
+	}
+	if batched {
+		var complete bool
+		common, _, complete = strings.Cut(common, "\n")
+		if !complete {
+			return s, devcontract.Fail(5, "git_failed", "Git returned an invalid source identity")
+		}
 	}
 	common, err = devcontract.CanonicalPath(common)
 	if err != nil {
@@ -146,12 +168,14 @@ func sourceFromSpec(ctx context.Context, root string, spec SourceSpec, refresh b
 			return s, devcontract.Fail(2, "missing_default_ref", "detached source requires an explicit default ref")
 		}
 	}
-	resolve := resolveCommit
-	if refresh {
-		resolve = resolveSelectedCommit
-	}
-	if _, err = resolve(ctx, common, ref); err != nil {
-		return s, err
+	if !batched {
+		resolve := resolveCommit
+		if refresh {
+			resolve = resolveSelectedCommit
+		}
+		if _, err = resolve(ctx, common, ref); err != nil {
+			return s, err
+		}
 	}
 	directory := spec.Directory
 	if directory == "" {

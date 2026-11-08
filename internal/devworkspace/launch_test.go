@@ -17,6 +17,7 @@ import (
 )
 
 func TestLaunchOptionsRejectInvalidModes(t *testing.T) {
+	t.Parallel()
 	for _, o := range []LaunchOptions{{Mode: "other"}, {Mode: "browser", MCP: true}} {
 		if err := o.validate(); err == nil {
 			t.Fatalf("accepted invalid launch options: %+v", o)
@@ -30,6 +31,7 @@ func TestLaunchOptionsRejectInvalidModes(t *testing.T) {
 }
 
 func TestWorkspaceChildEnvironmentDoesNotLeakHostModuleFlags(t *testing.T) {
+	t.Parallel()
 	w := Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: "/selected", ManifestPath: "/selected/workspace.json", StateRoot: "/profile/state", Manifest: devcontract.WorkspaceManifest{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6"}}}
 	o := LaunchOptions{Watch: true}
 	env, err := workspaceEnvironment([]string{
@@ -53,6 +55,7 @@ func TestWorkspaceChildEnvironmentDoesNotLeakHostModuleFlags(t *testing.T) {
 }
 
 func TestSupervisorAuthenticationAndExactGeneration(t *testing.T) {
+	t.Parallel()
 	token := []byte(strings.Repeat("s", 43))
 	calls := 0
 	h := supervisorHandler("workspace", "generation", token, func(ctx context.Context, command string) (Status, error) {
@@ -79,6 +82,7 @@ func TestSupervisorAuthenticationAndExactGeneration(t *testing.T) {
 }
 
 func TestSupervisorStatusWritesAtomicPrivateJSON(t *testing.T) {
+	t.Parallel()
 	root, canonicalErr := devcontract.CanonicalPath(t.TempDir())
 	if canonicalErr != nil {
 		t.Fatal(canonicalErr)
@@ -103,6 +107,7 @@ func TestSupervisorStatusWritesAtomicPrivateJSON(t *testing.T) {
 }
 
 func TestSupervisorPersistReportsUnderlyingError(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	s := &workspaceSupervisor{
 		workspace: Workspace{ResolvedWorkspace: devcontract.ResolvedWorkspace{Root: root}},
@@ -119,6 +124,7 @@ func TestSupervisorPersistReportsUnderlyingError(t *testing.T) {
 }
 
 func TestReadinessRejectsForeignIdentityAndStartingDescriptor(t *testing.T) {
+	t.Parallel()
 	target := devcontract.InstanceDescriptor{WorkspaceID: "workspace", InstanceID: "workspace", Generation: "generation", StateRoot: "/profile/state", Readiness: "host-ready"}
 	for _, change := range []func(*devcontract.InstanceDescriptor){func(d *devcontract.InstanceDescriptor) { d.Generation = "other" }, func(d *devcontract.InstanceDescriptor) { d.WorkspaceID = "other" }, func(d *devcontract.InstanceDescriptor) { d.StateRoot = "/other" }, func(d *devcontract.InstanceDescriptor) { d.Readiness = "starting" }} {
 		candidate := target
@@ -133,6 +139,7 @@ func TestReadinessRejectsForeignIdentityAndStartingDescriptor(t *testing.T) {
 }
 
 func TestSupervisorClientHonorsDeadline(t *testing.T) {
+	t.Parallel()
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -152,6 +159,7 @@ func TestSupervisorClientHonorsDeadline(t *testing.T) {
 }
 
 func TestFailedBindDetectionRequiresExactPortOnFailureLine(t *testing.T) {
+	t.Parallel()
 	output := &childOutput{}
 	output.Write([]byte("Browser ready at http://127.0.0.1:20123\nlisten tcp 127.0.0.1:20124: bind: address already in use\n"))
 	if output.failedBind(20123) {

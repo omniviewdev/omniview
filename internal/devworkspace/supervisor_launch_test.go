@@ -41,11 +41,11 @@ func init() {
 }
 
 func TestRecoverRejectsDirectSupervisorGenerationReplay(t *testing.T) {
-	m, _ := fixtureManager(t)
+	m, _ := fixtureManager(t, "plugin-sdk")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	w, err := m.Create(ctx, CreateOptions{Slug: "native-launch-authorization", Repositories: []string{"plugin-sdk"}})
-	require.NoError(t, err)
+	w := fixtureWorkspace(t, m, CreateOptions{Slug: "native-launch-authorization", Repositories: []string{"plugin-sdk"}})
+	var err error
 	t.Setenv("OMNIVIEW_SUPERVISOR_AUTH_TEST", "1")
 	t.Setenv("OMNIVIEW_SUPERVISOR_AUTH_ROOT", m.Root)
 	t.Setenv("OMNIVIEW_SUPERVISOR_AUTH_HOME", m.options.Home)
@@ -119,31 +119,37 @@ func TestRecoverRejectsDirectSupervisorGenerationReplay(t *testing.T) {
 }
 
 func TestRecoveryRejectsMalformedPersistedLaunchGenerations(t *testing.T) {
+	t.Parallel()
 	valid := NewGeneration()
-	for _, generations := range [][]string{
-		{""}, {"00000000-0000-0000-0000-000000000000"}, {"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}, {"../private-payload"}, {valid, valid},
+	// Every case is a read-only refusal with unchanged intent bytes.
+	m, w, j := recoveryFixture(t)
+	path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
+	for name, generations := range map[string][]string{
+		"empty": {""}, "nil": {"00000000-0000-0000-0000-000000000000"},
+		"noncanonical": {"AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"},
+		"traversal":    {"../private-payload"}, "duplicate": {valid, valid},
 	} {
 		for _, recover := range []bool{false, true} {
-			m, w, j := recoveryFixture(t)
-			path := filepath.Join(m.Root, ".omniview-dev", "recovery", w.Manifest.WorkspaceID, "refresh.json")
-			require.NoError(t, atomicJSON(path, refreshIntent{
-				WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart, WasRunning: true,
-				Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, LaunchGenerations: generations,
-			}))
-			before, err := os.ReadFile(path)
-			require.NoError(t, err)
-			if recover {
-				_, err = m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{})
-			} else {
-				_, err = m.Refresh(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{})
-			}
-			var failure *devcontract.Error
-			require.ErrorAs(t, err, &failure)
-			require.Equal(t, "invalid_refresh", failure.Code)
-			after, err := os.ReadFile(path)
-			require.NoError(t, err)
-			require.Equal(t, before, after)
-			require.NoFileExists(t, launchPath(w, "supervisor.json"))
+			t.Run(name+"/"+map[bool]string{false: "refresh", true: "recover"}[recover], func(t *testing.T) {
+				require.NoError(t, atomicJSON(path, refreshIntent{
+					WorkspaceID: w.Manifest.WorkspaceID, Root: w.Root, Phase: refreshStart, WasRunning: true,
+					Evidence: j.Evidence, Launch: LaunchOptions{Mode: "browser"}, LaunchGenerations: generations,
+				}))
+				before, err := os.ReadFile(path)
+				require.NoError(t, err)
+				if recover {
+					_, err = m.Recover(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{})
+				} else {
+					_, err = m.Refresh(context.Background(), w.Manifest.WorkspaceID, RefreshOptions{})
+				}
+				var failure *devcontract.Error
+				require.ErrorAs(t, err, &failure)
+				require.Equal(t, "invalid_refresh", failure.Code)
+				after, err := os.ReadFile(path)
+				require.NoError(t, err)
+				require.Equal(t, before, after)
+				require.NoFileExists(t, launchPath(w, "supervisor.json"))
+			})
 		}
 	}
 }
