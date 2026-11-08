@@ -573,7 +573,7 @@ func TestTrackedBaselinePreservesBlobFramingModesAndHead(t *testing.T) {
 	}
 	outputGit(t, root, "add", "-f", "dist")
 	outputGit(t, root, "update-index", "--chmod=+x", "dist/executable.js")
-	outputGit(t, root, "commit", "-m", "committed output baseline")
+	outputGit(t, root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "committed output baseline")
 	spec := specification{Repository: root, Target: filepath.Join(root, "dist"), Relative: "dist", Mode: "tree"}
 	baseline, err := tracked(context.Background(), spec)
 	if err != nil {
@@ -597,7 +597,7 @@ func TestTrackedBaselinePreservesBlobFramingModesAndHead(t *testing.T) {
 		t.Fatalf("working-tree bytes replaced the committed baseline: %v", err)
 	}
 	outputGit(t, root, "add", "-f", "dist/binary.js")
-	outputGit(t, root, "commit", "-m", "advance committed baseline")
+	outputGit(t, root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "advance committed baseline")
 	current, err := tracked(context.Background(), spec)
 	if err != nil || !bytes.Equal(current["binary.js"].Data, replacement) || !bytes.Equal(baseline["binary.js"].Data, files["binary.js"]) {
 		t.Fatalf("fresh HEAD was not isolated from prior baseline: %v", err)
