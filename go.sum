@@ -149,6 +149,12 @@ github.com/omniviewdev/grpc-go v1.85.1-0.20261107225428-6ba964c95af2 h1:76h5GwBR
 github.com/omniviewdev/grpc-go v1.85.1-0.20261107225428-6ba964c95af2/go.mod h1:0rQrOD58yjal/0EaVbGBANindixsCZNQPDV3VKtaKuQ=
 github.com/omniviewdev/plugin-sdk v0.18.0 h1:DLcNbTghtD/Jc2knt+vBJAj+mJRTpuEgHx1lUOdqnso=
 github.com/omniviewdev/plugin-sdk v0.18.0/go.mod h1:7ZjIDHv7L0YEHsy3Ld2CHKGr/HHTNY4wUrzVyfYRR8E=
+github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10 h1:2rx00CjQ8G9XKctUvJ198ESozea5DXfZC5SfnPwFp8s=
+github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
+github.com/omniviewdev/plugin-sdk v0.17.0 h1:y+On5xnaevx96M744EQrwuMDdB37bjhdfhWMUpfU6xI=
+github.com/omniviewdev/plugin-sdk v0.17.0/go.mod h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=
+github.com/omniviewdev/plugin-sdk v0.17.1-0.20261108081213-a1ce23e8b414 h1:ImePrCgbvNmLViLq+KuYRlTH9k5025BDu7z7DP5bxbY=
+github.com/omniviewdev/plugin-sdk v0.17.1-0.20261108081213-a1ce23e8b414/go.mod h1:FFxi7m1H27zsC3VwMZ6Z9zVrwIytVTAkRjLT5cpv0G4=
 github.com/omniviewdev/registry v0.2.3 h1:s9GYTZMqwMaUgvuHVTIOgHcRHK9C28O68EW3o+lHvIc=
 github.com/omniviewdev/registry v0.2.3/go.mod h1:wlpWX8JO05ctq2r+dC22E7C04wvsZSUAuWCUAnn6pP8=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
