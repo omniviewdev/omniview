@@ -1,10 +1,10 @@
-import { StrictMode, useEffect } from 'react';
-import { act, cleanup, renderHook } from '@testing-library/react';
+import { StrictMode, createContext, useContext, useEffect } from 'react';
+import { act, cleanup, render, renderHook, type RenderResult } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { HostRecord } from '../../resource/v2/host';
 import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import type { ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
-import { useTableMetricObservation, type UseTableMetricObservationOptions } from './useTableMetricObservation';
+import { useTableMetricObservation, type TableMetricObservation, type UseTableMetricObservationOptions } from './useTableMetricObservation';
 
 const transport = vi.hoisted(() => ({ leases: [] as Array<{
   spec: MetricsObservationSpec;
@@ -41,13 +41,49 @@ const base: UseTableMetricObservationOptions = {
 };
 const catalog = { source: { plugin_id: 'monitor', connection_id: 'metrics', datasource_uid: 'source', datasource_kind: 'prometheus', native: false },
   metrics: [{ id: 'cpu', unit: 'cores' }, { id: 'memory', unit: 'bytes' }], max_targets: 256, max_sample_age: 0 } as ResourceMetricsCatalog;
-function frame(token: string, status = 'ok', fetching = false): MetricsObservationSnapshot {
+/** A complete answer holding both metrics for every token; `[]` answers without any sample. */
+function frame(token: string | readonly string[], status = 'ok', fetching = false): MetricsObservationSnapshot {
+  const tokens = typeof token === 'string' ? [token] : token;
   return { client_token: 'client', generation: 1, sequence: 1, invalidated: false, error: '', fetching, catalog,
-    domain_start: null, domain_end: null, data: { complete: true, warnings: [], results: [
-      { resource_token: token, metric_id: 'cpu', status, value: status === 'ok' ? 0 : null, observed_at: null, window: 0, dimensions: {}, points: [], identity_scope: 'incarnation', message: '' },
-      { resource_token: token, metric_id: 'memory', status, value: status === 'ok' ? 2048 : null, observed_at: null, window: 0, dimensions: {}, points: [], identity_scope: 'incarnation', message: '' },
-    ] } } as MetricsObservationSnapshot;
+    domain_start: null, domain_end: null, data: { complete: true, warnings: [], results: tokens.flatMap(resource_token => [
+      { resource_token, metric_id: 'cpu', status, value: status === 'ok' ? 0 : null, observed_at: null, window: 0, dimensions: {}, points: [], identity_scope: 'incarnation', message: '' },
+      { resource_token, metric_id: 'memory', status, value: status === 'ok' ? 2048 : null, observed_at: null, window: 0, dimensions: {}, points: [], identity_scope: 'incarnation', message: '' },
+    ]) } } as MetricsObservationSnapshot;
 }
+const renderTable = (initialProps: UseTableMetricObservationOptions = base) => renderHook(
+  (options: UseTableMetricObservationOptions) => useTableMetricObservation(options), { initialProps });
+/** Mounts one cell, lets its demand publish and answers the request it opened. */
+function publishAnswered(result: { current: TableMetricObservation }, body: object, token: string) {
+  let release!: () => void;
+  act(() => { release = result.current.register(body); vi.advanceTimersByTime(120); });
+  const lease = transport.leases[transport.leases.length - 1];
+  act(() => lease.receive(frame(token)));
+  return { lease, release };
+}
+
+// Cells shaped like a real consumer: they register in an effect and read state while rendering.
+const Observation = createContext<TableMetricObservation | null>(null);
+interface Row { id: string; body: object }
+const firstRow: Row = { id: 'first', body: first };
+const secondRow: Row = { id: 'second', body: second };
+function Cell({ row, metricID }: { row: Row; metricID: string }) {
+  const observation = useContext(Observation)!;
+  const { register } = observation;
+  useEffect(() => register(row.body), [register, row.body]);
+  const token = observation.tokenFor(row.body);
+  const sample = token ? observation.metrics.get(token)?.get(metricID) : undefined;
+  return <output data-cell={`${row.id}:${metricID}`}>
+    {sample ? sample.status : observation.isLoadingFor(row.body, metricID) ? 'loading' : 'unavailable'}
+  </output>;
+}
+function Table({ options, rows }: { options: UseTableMetricObservationOptions; rows: readonly Row[] }) {
+  const observation = useTableMetricObservation(options);
+  return <Observation.Provider value={observation}>
+    {rows.flatMap(row => ['cpu', 'memory'].map(metricID => <Cell key={`${row.id}:${metricID}`} row={row} metricID={metricID} />))}
+  </Observation.Provider>;
+}
+const read = (view: RenderResult, row: string, metric = 'cpu') => view.container.querySelector(`[data-cell="${row}:${metric}"]`)?.textContent;
+
 beforeEach(() => {
   vi.useFakeTimers();
   transport.leases.length = 0;
@@ -105,39 +141,168 @@ it('keeps the current observation through scroll churn and discards retired-row 
   expect(result.current.isLoading).toBe(false);
 });
 
+it('publishes continuous demand churn no later than the maximum wait, then restarts the window', () => {
+  const { result } = renderTable();
+  let releaseFirst!: () => void;
+  let releaseSecond!: () => void;
+  // Every change lands inside the previous change's quiet period, so a pure debounce would never publish.
+  act(() => { releaseFirst = result.current.register(first); });
+  act(() => { vi.advanceTimersByTime(100); releaseSecond = result.current.register(second); });
+  act(() => { vi.advanceTimersByTime(100); releaseFirst(); });
+  act(() => { vi.advanceTimersByTime(49); });
+  expect(transport.leases).toHaveLength(0);
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(1);
+  expect(transport.leases[0].spec.targets.map(target => target.token)).toEqual([secondRecord.key]);
+  expect(vi.getTimerCount()).toBe(0);
+  // The maximum wait counts from the next unpublished change, not from the previous publication.
+  act(() => { result.current.register(first); });
+  act(() => { vi.advanceTimersByTime(100); releaseSecond(); });
+  act(() => { vi.advanceTimersByTime(100); result.current.register(second); });
+  act(() => { vi.advanceTimersByTime(49); });
+  expect(transport.leases).toHaveLength(1);
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(2);
+  expect(transport.leases[1].spec.targets.map(target => target.token).sort()).toEqual([firstRecord.key, secondRecord.key]);
+});
+
+it('keeps published demand and its samples while a replaced map and replaced bodies wait for publication', () => {
+  const replacement = Object.freeze({ name: 'replacement-body' });
+  const { result, rerender } = renderTable();
+  const { lease, release } = publishAnswered(result, first, firstRecord.key);
+  // The table decodes a new body for the same admitted record, swaps its map, and the cell re-registers.
+  rerender({ ...base, recordsByBody: new WeakMap([[replacement, member(firstRecord.key)]]) });
+  let releaseReplacement!: () => void;
+  act(() => { release(); releaseReplacement = result.current.register(replacement); });
+  expect(lease.close).not.toHaveBeenCalled();
+  expect(result.current.metrics.get(firstRecord.key)?.get('cpu')?.value).toBe(0);
+  expect(result.current.tokenFor(replacement)).toBe(firstRecord.key);
+  expect(result.current.isLoadingFor(replacement, 'cpu')).toBe(false);
+  expect(result.current.isLoading).toBe(false);
+  act(() => { vi.advanceTimersByTime(119); });
+  expect(lease.close).not.toHaveBeenCalled();
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(1);
+  expect(lease.close).not.toHaveBeenCalled();
+  expect(result.current.metrics.get(firstRecord.key)?.get('memory')?.value).toBe(2048);
+  // Demand now belongs to the replacement body alone.
+  act(() => { releaseReplacement(); vi.advanceTimersByTime(120); });
+  expect(lease.close).toHaveBeenCalledTimes(1);
+  expect(result.current.metrics.size).toBe(0);
+});
+
+it('does not republish or reopen when the table swaps in an equal map', () => {
+  const { result, rerender } = renderTable();
+  const { lease } = publishAnswered(result, first, firstRecord.key);
+  rerender({ ...base, recordsByBody: new WeakMap([[first, member(firstRecord.key)], [second, secondRecord]]) });
+  expect(vi.getTimerCount()).toBe(0);
+  expect(lease.close).not.toHaveBeenCalled();
+  expect(transport.leases).toHaveLength(1);
+  expect(result.current.metrics.get(firstRecord.key)?.get('cpu')?.value).toBe(0);
+});
+
+it('never answers a recreated resource with the previous incarnation\'s sample while old demand is retained', () => {
+  const recreated = Object.freeze({ name: 'recreated-body' });
+  const { result, rerender } = renderTable();
+  const { lease, release } = publishAnswered(result, first, firstRecord.key);
+  // Same host token, new incarnation: the sample the retained demand holds belongs to the resource that was deleted.
+  rerender({ ...base, recordsByBody: new WeakMap([[recreated, member(firstRecord.key, 'incarnation-2')]]) });
+  act(() => { release(); result.current.register(recreated); });
+  expect(lease.close).not.toHaveBeenCalled();
+  expect(result.current.tokenFor(recreated)).toBeUndefined();
+  expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(true);
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(lease.close).toHaveBeenCalledTimes(1);
+  expect(transport.leases[1].spec.targets[0].reference.incarnation).toBe('incarnation-2');
+  expect(result.current.metrics.size).toBe(0);
+  expect(result.current.tokenFor(recreated)).toBe(firstRecord.key);
+  expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(true);
+  act(() => transport.leases[1].receive(frame(firstRecord.key)));
+  expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(false);
+  expect(result.current.metrics.get(firstRecord.key)?.get('cpu')?.value).toBe(0);
+});
+
+it('never sends retained demand under another connection', () => {
+  const other = Object.freeze({ name: 'other-connection-body' });
+  const { result, rerender } = renderTable();
+  const { lease, release } = publishAnswered(result, first, firstRecord.key);
+  rerender({ ...base, ownerConnectionID: 'other-tenant', recordsByBody: new WeakMap([[other, member('host-other')]]) });
+  expect(lease.close).toHaveBeenCalledTimes(1);
+  expect(transport.leases).toHaveLength(1);
+  expect(result.current.metrics.size).toBe(0);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoadingFor(other, 'cpu')).toBe(true);
+  act(() => { release(); result.current.register(other); vi.advanceTimersByTime(120); });
+  expect(transport.leases).toHaveLength(2);
+  expect(transport.leases[1].spec).toMatchObject({ owner_connection_id: 'other-tenant', targets: [{ token: 'host-other' }] });
+});
+
+it('reopens retained demand under a new source without showing the old source\'s samples', () => {
+  const replacement = Object.freeze({ name: 'replacement-body' });
+  const source = { ...catalog.source, datasource_uid: 'other-source' };
+  const { result, rerender } = renderTable();
+  const { lease } = publishAnswered(result, first, firstRecord.key);
+  rerender({ ...base, source, recordsByBody: new WeakMap([[replacement, member(firstRecord.key)]]) });
+  expect(lease.close).toHaveBeenCalledTimes(1);
+  expect(transport.leases).toHaveLength(2);
+  expect(transport.leases[1].spec.source).toEqual(source);
+  expect(transport.leases[1].spec.targets.map(target => target.token)).toEqual([firstRecord.key]);
+  expect(result.current.metrics.size).toBe(0);
+  expect(result.current.isLoadingFor(replacement, 'cpu')).toBe(true);
+  act(() => transport.leases[1].receive({ ...frame(firstRecord.key), catalog: { ...catalog, source } }));
+  expect(result.current.isLoadingFor(replacement, 'cpu')).toBe(false);
+  expect(result.current.metrics.get(firstRecord.key)?.get('cpu')?.value).toBe(0);
+});
+
 it('starts hidden without collecting and keeps unavailable cells settled through background refresh and visibility pauses', () => {
   let visibility: DocumentVisibilityState = 'hidden';
   vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
   const { result } = renderHook(() => useTableMetricObservation(base));
   act(() => { result.current.register(first); vi.advanceTimersByTime(120); });
   expect(transport.leases).toHaveLength(0);
+  // Paused before its first answer, a cell is pending rather than unavailable.
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
+  expect(result.current.isLoading).toBe(true);
   act(() => { visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
   const lease = transport.leases[0];
   expect(result.current.isLoading).toBe(true);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
   act(() => lease.receive(frame(firstRecord.key, 'failed')));
   expect(result.current.metrics.get(firstRecord.key)?.get('cpu')).toMatchObject({ status: 'failed', value: null });
   expect(result.current.isLoading).toBe(false);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   act(() => lease.receive({ ...frame(firstRecord.key), data: null, fetching: true }));
   expect(result.current.isFetching).toBe(true);
   expect(result.current.isLoading).toBe(false);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   act(() => { visibility = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); });
   expect(lease.close).toHaveBeenCalledTimes(1);
   expect(result.current.isFetching).toBe(false);
   expect(result.current.metrics.get(firstRecord.key)?.get('cpu')?.status).toBe('failed');
+  // A row published while paused waits beside the retained samples; it is pending, not unavailable.
+  act(() => { result.current.register(second); vi.advanceTimersByTime(120); });
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoadingFor(second, 'cpu')).toBe(true);
   act(() => { visibility = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
-  act(() => transport.leases[1].receive(frame(firstRecord.key)));
+  act(() => transport.leases[1].receive(frame([firstRecord.key, secondRecord.key])));
   expect(result.current.metrics.get(firstRecord.key)?.get('cpu')?.value).toBe(0);
+  expect(result.current.isLoadingFor(second, 'cpu')).toBe(false);
   expect(result.current.isLoading).toBe(false);
 });
 
 it('pauses disabled and unselected demand while preserving selected samples across a pause', () => {
-  const { result, rerender } = renderHook((options: UseTableMetricObservationOptions) => useTableMetricObservation(options), { initialProps: base });
+  const { result, rerender } = renderTable();
   act(() => { result.current.register(first); vi.advanceTimersByTime(120); });
   act(() => transport.leases[0].receive(frame(firstRecord.key)));
+  expect(result.current.isLoadingFor(second, 'cpu')).toBe(true);
   rerender({ ...base, enabled: false });
   expect(transport.leases[0].close).toHaveBeenCalledTimes(1);
   expect(result.current.isLoading).toBe(false);
   expect(result.current.metrics.get(firstRecord.key)?.get('memory')?.value).toBe(2048);
+  // Nothing can arrive for a disabled table, an unselected metric or a body the table did not admit.
+  expect(result.current.isLoadingFor(second, 'cpu')).toBe(false);
+  expect(result.current.isLoadingFor(first, 'disk')).toBe(false);
+  expect(result.current.isLoadingFor({ name: 'not-admitted' }, 'cpu')).toBe(false);
   rerender({ ...base, metricIDs: [] });
   expect(result.current.metrics.size).toBe(0);
   expect(transport.leases).toHaveLength(1);
@@ -145,47 +310,124 @@ it('pauses disabled and unselected demand while preserving selected samples acro
   act(() => transport.leases[1].receive(frame(firstRecord.key)));
   expect(result.current.metrics.get(firstRecord.key)?.has('cpu')).toBe(false);
   expect(result.current.metrics.get(firstRecord.key)?.get('memory')?.value).toBe(2048);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
 });
 
 it('clears old source and incarnation samples and lets upstream failures block collection without perpetual loading', () => {
   const pending: UseTableMetricObservationOptions = { ...base, enabled: false, loading: true };
-  const { result, rerender } = renderHook((options: UseTableMetricObservationOptions) => useTableMetricObservation(options), { initialProps: pending });
+  const { result, rerender } = renderTable(pending);
   act(() => { result.current.register(first); vi.advanceTimersByTime(120); });
   expect(result.current.isLoading).toBe(true);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
   expect(transport.leases).toHaveLength(0);
   rerender(base);
   act(() => transport.leases[0].receive(frame(firstRecord.key)));
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   const source = { ...catalog.source, datasource_uid: 'other-source' };
   rerender({ ...base, source });
   expect(result.current.metrics.size).toBe(0);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
   act(() => transport.leases[1].receive({ ...frame(firstRecord.key), catalog: { ...catalog, source } }));
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   const replacement = new WeakMap([[first, member(firstRecord.key, 'incarnation-2')]]);
   rerender({ ...base, source, recordsByBody: replacement });
   expect(result.current.metrics.size).toBe(0);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
   act(() => transport.leases[2].fail(new Error('Metrics endpoint unavailable')));
   expect(result.current.isLoading).toBe(false);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   expect(result.current.error).toMatchObject({ message: 'Metrics endpoint unavailable' });
   const error = new Error('Source discovery failed');
   rerender({ ...base, loading: true, error });
   expect(result.current.error).toBe(error);
   expect(result.current.isLoading).toBe(false);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   expect(transport.leases).toHaveLength(3);
 });
 
-it('survives StrictMode effect replay and cancels pending demand on unmount', () => {
-  const hook = renderHook(() => {
-    const observation = useTableMetricObservation(base);
-    useEffect(() => observation.register(first), [observation.register]);
-    return observation;
-  }, { wrapper: ({ children }) => <StrictMode>{children}</StrictMode> });
+it('settles a request answered without a sample instead of spinning, and replaces isLoadingFor when an answer can change', () => {
+  const { result } = renderTable();
+  act(() => { result.current.register(first); vi.advanceTimersByTime(120); });
+  const pending = result.current.isLoadingFor;
+  expect(pending(first, 'cpu')).toBe(true);
+  act(() => transport.leases[0].receive(frame([])));
+  expect(result.current.isLoadingFor).not.toBe(pending);
+  expect(result.current.metrics.size).toBe(0);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoadingFor(first, 'memory')).toBe(false);
+  expect(result.current.isLoading).toBe(false);
+  // A background refresh of a settled request does not restart its loading state.
+  act(() => transport.leases[0].receive({ ...frame([]), data: null, fetching: true }));
+  expect(result.current.isFetching).toBe(true);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoading).toBe(false);
+});
+
+it('shows a cell as loading from its first render until its request settles, beside samples that are already displayed', () => {
+  const view = render(<Table options={base} rows={[firstRow]} />);
+  // Initial batching: nothing is published yet, and the cell must not look unavailable.
+  expect(read(view, 'first')).toBe('loading');
+  expect(read(view, 'first', 'memory')).toBe('loading');
   act(() => { vi.advanceTimersByTime(120); });
   expect(transport.leases).toHaveLength(1);
+  expect(read(view, 'first')).toBe('loading');
   act(() => transport.leases[0].receive(frame(firstRecord.key)));
-  expect(hook.result.current.metrics.get(firstRecord.key)?.get('cpu')?.value).toBe(0);
-  act(() => { hook.result.current.register(second); vi.advanceTimersByTime(119); });
-  hook.unmount();
+  expect(read(view, 'first')).toBe('ok');
+  // A second row mounts while the first row's samples are on screen.
+  view.rerender(<Table options={base} rows={[firstRow, secondRow]} />);
+  expect(read(view, 'first')).toBe('ok');
+  expect(read(view, 'second')).toBe('loading');
+  act(() => { vi.advanceTimersByTime(119); });
+  expect(transport.leases).toHaveLength(1);
+  expect(read(view, 'second')).toBe('loading');
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(2);
+  expect(read(view, 'first')).toBe('ok');
+  expect(read(view, 'second')).toBe('loading');
+  act(() => transport.leases[1].receive(frame([firstRecord.key, secondRecord.key], 'failed')));
+  expect(read(view, 'first')).toBe('failed');
+  expect(read(view, 'second')).toBe('failed');
+});
+
+it('stops loading a row whose request answered without a sample for it', () => {
+  const view = render(<Table options={base} rows={[firstRow, secondRow]} />);
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(read(view, 'second')).toBe('loading');
+  act(() => transport.leases[0].receive(frame(firstRecord.key)));
+  expect(read(view, 'first')).toBe('ok');
+  expect(read(view, 'second')).toBe('unavailable');
+  expect(read(view, 'second', 'memory')).toBe('unavailable');
+});
+
+it('cancels pending demand when the owning hook unmounts and arms nothing for late cell cleanup', () => {
+  const { result, unmount } = renderTable();
+  let release!: () => void;
+  act(() => { release = result.current.register(first); });
+  expect(vi.getTimerCount()).toBeGreaterThan(0);
+  unmount();
+  expect(vi.getTimerCount()).toBe(0);
+  release();
+  result.current.register(second)();
+  expect(vi.getTimerCount()).toBe(0);
+  act(() => { vi.advanceTimersByTime(1_000); });
+  expect(transport.leases).toHaveLength(0);
+});
+
+it('leaves no timer behind when a parent unmounts before its cells, including after a StrictMode replay', () => {
+  const view = render(<StrictMode><Table options={base} rows={[firstRow]} /></StrictMode>);
+  // The replay cleaned the owner and then its cells; demand that was still unpublished must be armed again.
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(0);
+  const lease = transport.leases[0];
+  act(() => lease.receive(frame(firstRecord.key)));
+  expect(read(view, 'first')).toBe('ok');
+  view.rerender(<StrictMode><Table options={base} rows={[firstRow, secondRow]} /></StrictMode>);
+  expect(vi.getTimerCount()).toBeGreaterThan(0);
+  // React runs the parent's cleanup first; the cells' cleanup afterwards must not arm a new publication.
+  view.unmount();
+  expect(vi.getTimerCount()).toBe(0);
   act(() => { vi.advanceTimersByTime(1_000); });
   expect(transport.leases).toHaveLength(1);
-  expect(transport.leases[0].close).toHaveBeenCalledTimes(1);
-  expect(vi.getTimerCount()).toBe(0);
+  expect(lease.close).toHaveBeenCalledTimes(1);
 });

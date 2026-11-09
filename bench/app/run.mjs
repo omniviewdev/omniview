@@ -16,7 +16,15 @@ import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
 import { build, preview } from 'vite';
 
-import { pluginAssetDirectory, requirePluginBundle } from './plugin-bundle.mjs';
+import {
+  fileSHA256,
+  gitSourceIdentity,
+  hashPluginBundle,
+  pluginAssetDirectory,
+  pluginCheckoutIdentity,
+  pluginMetadataFile,
+  requirePluginBundle,
+} from './plugin-bundle.mjs';
 const here = import.meta.dirname;
 const root = path.resolve(here, '../..');
 const configFile = path.join(here, 'vite.config.ts');
@@ -41,6 +49,17 @@ const SCROLL_PAGES = 30;
 const DRAWER_TOGGLES = 10;
 const POD_NAME = /^[a-z-]+-[0-9a-f]{10}-[0-9a-f]{5}$/;
 
+// Identity of what the scenarios measure, recorded in every result. Change `id` whenever a scenario's
+// fixture, record count or steps change, so results of different workloads are never compared as if they
+// matched. bench/app/README.md defines what each id measures; results without an id are unknown legacy
+// workloads. The parameters are the ones this runner actually applies.
+const WORKLOAD = {
+  id: 'whole-app/v1',
+  viewport: VIEWPORT,
+  pods: { records: POD_COUNT, scrollPages: SCROLL_PAGES },
+  logs: { lines: LOG_LINES, scrollPages: SCROLL_PAGES, drawerToggles: DRAWER_TOGGLES },
+};
+
 // ---------------------------------------------------------------- build + serve
 
 function ensurePluginBundle() {
@@ -61,12 +80,42 @@ function ensurePluginBundle() {
   requirePluginBundle(assets);
 }
 
+/**
+ * Identify the sources and plugin bytes about to be measured. The plugin commit is a claim about a real
+ * checkout, never a guess from the metadata file's parent directory, which can belong to the host repository.
+ */
+function captureProvenance() {
+  const assets = pluginAssetDirectory(root);
+  return {
+    hostSource: gitSourceIdentity(root),
+    frontend: {
+      config: opts['no-build'] ? 'unknown' : 'bench/app/vite.config.ts',
+      reactDom: opts['no-build'] ? 'unknown' : 'react-dom/profiling',
+      configSHA256: opts['no-build'] ? null : fileSHA256(configFile),
+      rebuilt: !opts['no-build'],
+      bundle: hashPluginBundle(path.join(here, 'dist')),
+    },
+    plugin: {
+      selection: {
+        assets: process.env.OV_K8S_PLUGIN_DIST === undefined ? 'default' : 'override',
+        metadata: process.env.OV_K8S_PLUGIN_METADATA === undefined ? 'default' : 'override',
+      },
+      checkout: pluginCheckoutIdentity({ hostRoot: root, metadataFile: pluginMetadata, assets }),
+      metadataSHA256: fileSHA256(pluginMetadata),
+      bundle: hashPluginBundle(assets),
+    },
+  };
+}
+
+// An invalid override fails before any build or measurement; vite.config.ts resolves it the same way.
+const pluginMetadata = pluginMetadataFile(root);
 if (!opts['no-build']) {
   ensurePluginBundle();
   console.log('Building the profiling bundle (bench/app/dist)…');
   await build({ configFile, logLevel: 'warn' });
 }
 if (opts['no-build']) requirePluginBundle(pluginAssetDirectory(root));
+const provenance = captureProvenance();
 const server = await preview({ configFile, logLevel: 'warn' });
 const baseURL = server.resolvedUrls.local[0];
 
@@ -239,7 +288,7 @@ const scenarios = {
     });
   },
 
-  /** Open the native Pod page from a 5k-pod corpus, then scroll up to 30 viewport steps within that page. */
+  /** Acquire the complete 5,000-Pod source-view collection, then scroll up to 30 viewport steps through it (workload whole-app/v1). */
   async pods() {
     const s = await openPage({ plugins: ['kubernetes'], pods: POD_COUNT });
     try {
@@ -394,17 +443,21 @@ try {
   await new Promise((r) => server.httpServer.close(r));
 }
 
-const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' }).stdout.trim();
-const pluginRepository = path.dirname(path.resolve(process.env.OV_K8S_PLUGIN_METADATA ?? path.join(root, 'plugins/kubernetes/plugin.json')));
+const { hostSource, plugin } = provenance;
 const meta = {
   date: new Date().toISOString(),
-  commit: git('rev-parse', '--short', 'HEAD'),
-  dirty: git('status', '--porcelain', '--untracked-files=no') !== '',
-  k8sPlugin: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: pluginRepository, encoding: 'utf8' }).stdout.trim(),
+  commit: hostSource.short ?? 'unknown',
+  dirty: hostSource.dirty ?? null,
+  k8sPlugin: plugin.checkout.short ?? 'unknown',
   chromium: browser.version(),
   host: `${os.type()} ${os.arch()}, ${os.cpus()[0]?.model}, ${Math.round(os.totalmem() / 2 ** 30)} GB`,
   runs: RUNS,
   cpuThrottle: CPU_THROTTLE,
+  workload: WORKLOAD,
+  // Reusing a bundle cannot establish which React build produced it. Its bytes remain identified.
+  frontend: provenance.frontend,
+  hostSource,
+  plugin,
 };
 
 fs.mkdirSync(path.dirname(opts.out), { recursive: true });

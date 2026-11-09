@@ -8,7 +8,22 @@
     "ui": "c21aa5062a3c3b24b7515afbcca45217a7a22222",
     "sdk": "141d19553c0fd68902bfdcd015b6185bfcaf949f"
   },
-  "workload": "Real production host and Kubernetes UI, 5,000 source-view records; in-page fixture backend, not a live cluster. Normal React production build without React profiling overhead.",
+  "workload": "Real production host and Kubernetes UI, 5,000 source-view records; in-page fixture backend, not a live cluster. Normal React production build without React profiling overhead. This describes nominalScroll; viewportJump is an unknown legacy workload (see provenance.workloads).",
+  "provenance": {
+    "reproducible": false,
+    "retained": "No host or Kubernetes UI working-tree diff, build input, built frontend bundle, built Kubernetes bundle or bundle hash from any measured run was retained.",
+    "sourceBaseCommits": "Pinned workspace bases from the CLI manifest. They are not proof of the measured sources: both viewportJump metas record dirty=true for the host, and no run recorded the Kubernetes plugin's dirty state.",
+    "frontendBuild": {
+      "receipt": "The workload field records a normal React production build without React profiling overhead. Every viewportJump run reports zero React profiler commits and render time.",
+      "bench/app": "bench/app/run.mjs builds bench/app/vite.config.ts: react-dom/profiling with a <Profiler>, so its React columns and timings include profiling overhead.",
+      "comparable": false,
+      "note": "The configuration, flags and artifacts that produced these historical results were not retained."
+    },
+    "workloads": {
+      "nominalScroll": "Described by the top-level workload field; tail.lastIndex is 4999. No workload id was recorded.",
+      "viewportJump": "Unknown legacy workload. The runner recorded no workload id or record count, so these results are not relabeled as the 5,000-record collection."
+    }
+  },
   "nominalScroll": {
     "method": "180 requestAnimationFrame steps, 60px per step, 1440x900 viewport. DOM range coverage sampling adds measurement overhead. Not compositor-paint or M1 certification.",
     "baselineFourfold": {
@@ -77,7 +92,9 @@
         "date": "2026-11-09T17:01:11.550Z",
         "commit": "f306d38e",
         "dirty": true,
-        "k8sPlugin": "f306d38e",
+        "k8sPlugin": "unknown",
+        "k8sPluginRaw": "f306d38e",
+        "k8sPluginRawStatus": "invalid: identical to this meta's host commit. The older runner resolved the host's parent checkout, so this is not a Kubernetes plugin commit and the plugin source is unknown.",
         "chromium": "156.0.8078.4",
         "host": "Darwin arm64, Apple M5 Max, 128 GB",
         "runs": 3,
@@ -208,6 +225,7 @@
         "commit": "f306d38e",
         "dirty": true,
         "k8sPlugin": "6e0bbc5",
+        "k8sPluginSource": "metadata parent directory only; not verified as the checkout of the measured plugin bundle, and its dirty state was not recorded",
         "chromium": "156.0.8078.4",
         "host": "Darwin arm64, Apple M5 Max, 128 GB",
         "runs": 3,
@@ -344,7 +362,10 @@
     "Full-viewport jump rendering regressed versus baseline. Nominal fourfold-throttled frame timing improved, but does not meet 60fps. No buttery-smooth success claim.",
     "The baseline fixture did not reproduce black rows. Zero sampled missing ranges in both baseline and candidate is not proof of native compositor behavior.",
     "CLI browser workspace launch stalled at starting-host and timed out after 1200 seconds. Static retry failed owned-cache validation. Recover after down failed on generated kubernetes/ui/node_modules/.tmp. Issues recorded. No live cluster end-to-end measurement.",
-    "Older baseline runner misidentified k8sPlugin as the parent host commit; authoritative sourceBaseCommits above came from the CLI manifest. Candidate runner now resolves the metadata-selected plugin repository.",
+    "The older baseline runner recorded the host commit as k8sPlugin. That raw value is retained as k8sPluginRaw and is invalid; the baseline plugin source is unknown. The candidate runner took k8sPlugin only from the plugin metadata file's parent directory, which is not proof of a checkout, so its value is unverified. sourceBaseCommits are CLI-manifest pins of the workspace bases, not the measured dirty trees. bench/app/run.mjs now records a plugin commit only for a repository that is not the host, tracks the selected plugin.json and contains the selected bundle, and otherwise records unknown.",
+    "Not reproducible. Both viewportJump metas record a dirty host working tree and the Kubernetes UI working tree's state was not recorded. Exact diffs, build inputs and built artifacts were not retained, so the commit IDs above do not reconstruct what was measured. No measurement here was edited or re-derived.",
+    "Build configuration differs from bench/app/run.mjs. This receipt records a normal React production build; bench/app/run.mjs measures the profiling build, whose React columns and timings include profiling overhead. Do not compare them. How these results were built was not retained.",
+    "The viewportJump workload is an unknown legacy workload: no workload id or record count was recorded. It is not relabeled as the 5,000-record collection.",
     "No M1 Pro measurements. CPU throttling does not emulate memory bandwidth, native WKWebView or M1 graphics."
   ]
 }

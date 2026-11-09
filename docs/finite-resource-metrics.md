@@ -128,26 +128,51 @@ function CurrentCell({ body, metricID, batch }: {
   useEffect(() => batch.register(body), [batch.register, body]);
   const token = batch.tokenFor(body);
   const sample = token ? batch.metrics.get(token)?.get(metricID) : undefined;
-  if (batch.isLoading && !sample) return <span role="status">Loading…</span>;
-  return sample?.status === 'ok' && sample.unit
-    ? <MetricValue value={sample.value} unit={sample.unit} />
-    : <span>—</span>;
+  if (sample?.status === 'ok' && sample.unit) return <MetricValue value={sample.value} unit={sample.unit} />;
+  return batch.isLoadingFor(body, metricID) ? <span role="status">Loading…</span> : <span>—</span>;
 }
 ```
 
 `recordsByBody` is the owning table's `WeakMap<object, HostRecord>`. Presentation
 bodies select membership; only the admitted record supplies the token, reference,
 and route. Unknown bodies do not produce targets. Multiple metric cells for one
-body share one target until the last registration is cleaned up.
+body share one target until the last registration is cleaned up. Replace the map
+whenever records or membership change; never mutate it in place.
+
+Ask `isLoadingFor(body, metricID)` for each cell. It is `true` while an admitted
+cell for a selected metric has no sample and an answer is still expected: its
+registration awaits publication, the document is hidden, or its request has not
+answered. It is `false` once the cell holds any sample (unavailable and failed
+samples are answers), once the request settled without one, after an error, and
+when the cell can never be collected: disabled collection, an unselected metric,
+or a body the table did not admit. `loading` keeps such cells pending while
+source/catalog discovery runs. A new row therefore shows loading beside samples
+that are already displayed, never an unavailable value, and a settled empty cell
+does not spin again during background refresh. The returned function changes
+whenever any cell's answer can change, so memoized cells re-render. `isLoading`
+is only the table-level aggregate: upstream discovery, or a published request
+that has answered nothing yet.
 
 The runtime publishes target membership after 120 milliseconds without changes,
-pauses collection while the document is hidden, and indexes prepared results by
-host token and metric ID. Settled unavailable cells do not restart their initial
-loading state during background refresh. `loading` and `error` describe upstream
+and no later than 250 milliseconds after the first unpublished change, so
+continuous scrolling still publishes. Until then the published targets stay in
+force. When the table replaces `recordsByBody` and the bodies it replaced, rows
+keep their samples and the host keeps the same observation until the replacement
+bodies publish. Retained targets never cross a change of plugin, connection, or
+resource type, and a source change still clears samples at once. A recreated
+resource keeps its host token with a new incarnation: `tokenFor` returns
+`undefined` while only the previous incarnation's samples are held for that
+token, so a cell never shows the previous resource's value. The timers stop
+when the owning table unmounts, whichever order React cleans up the table and
+its cells, and a StrictMode replay re-arms the demand that was still
+unpublished.
+
+Collection pauses while the document is hidden, and prepared results are indexed
+by host token and metric ID. `loading` and `error` describe upstream
 source/catalog discovery; upstream errors block collection and loading.
 `isFetching` and `refresh()` retain the underlying observation's meaning.
 `intervalMs` defaults to 30,000; set it to zero for initial/manual collection only.
-The debounce timer batches view demand, not provider polling. The host still owns
+The timers batch view demand, not provider polling. The host still owns
 admission, scheduling, shared work, and result reuse.
 
 Keep column selection, source preferences, headers, bounds, and rendering in the
