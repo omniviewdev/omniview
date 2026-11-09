@@ -14,12 +14,14 @@ test('Completion transport: real schema edits, supersession and identity fences'
   test.slow();
   const plugin = 'workspace-probe';
   const connection = 'hypervisor-bundled-vms';
-  await goTo(page, `/resources/${plugin}/${connection}`);
-  const connect = page.getByRole('button', { name: 'Connect and continue' });
-  const navigation = page.getByRole('navigation', { name: 'Resource types' }).filter({ hasText: connection });
-  await expect(connect.or(navigation)).toBeVisible({ timeout: 15000 });
-  if (await connect.isVisible()) await connect.click();
-  await expect(navigation).toBeVisible({ timeout: 15000 });
+  for (const name of [connection, 'cloud-bundled-pages']) {
+    await goTo(page, `/resources/${plugin}/${name}`);
+    const connect = page.getByRole('button', { name: 'Connect and continue' });
+    const navigation = page.getByRole('navigation', { name: 'Resource types' }).filter({ hasText: name });
+    await expect(connect.or(navigation)).toBeVisible({ timeout: 15000 });
+    if (await connect.isVisible()) await connect.click();
+    await expect(navigation).toBeVisible({ timeout: 15000 });
+  }
   try {
     const result = await page.evaluate(async () => {
       const factory = window.__probeCompletionSession;
@@ -32,8 +34,8 @@ test('Completion transport: real schema edits, supersession and identity fences'
         return outcome.response;
       };
       try {
-        const source = '"😀" == "😀" && resource.hard';
-        const fields = await run(source);
+        const source = '"😀" == "😀" && resource.hard == null';
+        const fields = await run(source, source.indexOf(' == null'));
         const field = fields.items?.find(item => item.label === 'hardware');
         if (!field) throw new Error(JSON.stringify(fields));
         const bytes = new TextEncoder().encode(source);
@@ -46,11 +48,17 @@ test('Completion transport: real schema edits, supersession and identity fences'
         session.invalidate();
         const absent = await session.complete({ source: 'resource.', cursor: 9, target: { ...target, representation: 'native' }, maxSuggestions: 16 });
         const restored = await run('resource.hardware.');
-        return { fields, edited, operators, values, bounded, rapid, absent, restored };
+        const cloud = await session.complete({
+          source: 'resource.hardware.', cursor: 18,
+          target: { ...target, route: { connection: 'cloud-bundled-pages' }, type: 'compute/instance',
+            scope: [{ dimension: 'region', match: 'oneOf', values: ['us-west-2'] }] },
+          maxSuggestions: 16,
+        });
+        return { fields, edited, operators, values, bounded, rapid, absent, restored, cloud };
       } finally { session.dispose(); }
     });
     expect(result.fields.schema.state).toBe('available');
-    expect(result.edited).toBe('"😀" == "😀" && resource.hardware');
+    expect(result.edited).toBe('"😀" == "😀" && resource.hardware == null');
     expect(result.operators.items?.map(item => item.label)).toContain('==');
     expect(result.values.items?.map(item => item.edit.text)).toContain('"running"');
     expect(result.bounded.items?.length).toBeLessThanOrEqual(1);
@@ -60,6 +68,13 @@ test('Completion transport: real schema edits, supersession and identity fences'
     expect(result.absent.status).toBe('applied');
     if (result.absent.status === 'applied') expect(result.absent.response.schema.state).toBe('absent');
     expect(result.restored.items?.map(item => item.label)).toContain('cores');
+    expect(result.cloud.status).toBe('applied');
+    if (result.cloud.status === 'applied') {
+      expect(result.cloud.response.identity).toMatchObject({ connection: 'cloud-bundled-pages', type: 'compute/instance' });
+      expect(result.cloud.response.identity.scopeKey).not.toBe(result.fields.identity.scopeKey);
+      expect(result.cloud.response.identity.schemaRevision).not.toBe(result.fields.identity.schemaRevision);
+      expect(result.cloud.response.items?.map(item => item.label)).toContain('cores');
+    }
 
     const id = methodId(Service.resource, 'CompletePredicate');
     const fenced = await page.evaluate(async ({ id, baseline }) => {
@@ -78,5 +93,6 @@ test('Completion transport: real schema edits, supersession and identity fences'
     await testInfo.attach('completion-transport.json', { body: JSON.stringify({ result, fenced }, null, 2), contentType: 'application/json' });
   } finally {
     await callBinding(request, Service.resource, 'StopConnection', plugin, connection);
+    await callBinding(request, Service.resource, 'StopConnection', plugin, 'cloud-bundled-pages');
   }
 });

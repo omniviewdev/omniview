@@ -29,6 +29,7 @@ const specGroups = new Map([
   ['e2e/tests/layout/theme.spec.ts', ['layout', 'settings', 'workspaces']],
   ['e2e/tests/settings/settings.spec.ts', ['layout', 'settings', 'workspaces']],
   ['e2e/tests/plugins/plugins.spec.ts', ['layout', 'plugins', 'workspaces']],
+  ['e2e/tests/plugins/authoring-transport.spec.ts', ['layout', 'plugins', 'workspaces']],
   ['e2e/tests/panels/bottom-drawer.spec.ts', ['layout', 'panels', 'workspaces']],
   ['e2e/tests/workspaces/workspaces.spec.ts', ['workspaces']],
   ['e2e/tests/workspaces/consumers.spec.ts', ['workspaces']],

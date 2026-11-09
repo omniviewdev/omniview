@@ -15,6 +15,7 @@ const files = [
   'go.sum',
   'plugin.yaml',
   'pkg/main.go',
+  'pkg/authoring.go',
   'pkg/presentation.go',
   'pkg/presentation_test.go',
   'pkg/resource-benchmark.go',
