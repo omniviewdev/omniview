@@ -293,6 +293,16 @@ plugin whose resource type is requested, and `meta.resourceKey` selects the type
 The generic linked-resource drawer (`ui/features/resource-drawer/`) is the host fallback used when no plugin
 drawer is registered for a resource type.
 
+Open drawers follow the plugin lifecycle too. `RightDrawerProvider` keeps the registrations an open drawer was
+built from (`DrawerSources`: the plugin drawer factory, or the plugin sidebar the linked-resource drawer renders as
+its overview) next to the drawer. When an unload removes them or a reload replaces them, the provider swaps the
+drawer, in that same render, for the host-owned unavailable drawer (`createUnavailableDrawer`). That drawer
+references nothing the plugin supplied, so no retired plugin component stays mounted or reachable from provider
+state; a drawer whose resource was still being read when its plugin unloaded opens directly in that state.
+A reloaded plugin does not take over an already-open drawer: reopening the resource resolves the new
+registration. Components a caller passes straight to `openDrawer` were not resolved from the registry, so the host
+has no contribution to retire and leaves them alone.
+
 ### Kubernetes Resource Editors
 
 The runtime exports `RESOURCE_EDITOR_EXTENSION_POINT` (`kubernetes/resource/editor/v1`) and

@@ -1152,7 +1152,7 @@ Cells never render blank. A column whose renderer is not registered (plugin not 
 
 Plugin lifecycle drives mounted cells. Registering a renderer replaces **Unavailable** in place; reloading swaps in the new component and unmounts the old one; unloading removes the contribution immediately, so no stale renderer stays mounted or cached. The registry rejects a malformed or duplicate descriptor, and the loader logs a warning with the safe diagnostic (never contributor values) instead of failing the plugin's other contributions.
 
-Sidebar and drawer contributions follow the same ownership rule: they resolve only for the plugin that registered them, and `meta.resourceKey` selects the opaque resource type. `meta.pluginId` is ignored.
+Sidebar and drawer contributions follow the same ownership rule: they resolve only for the plugin that registered them, and `meta.resourceKey` selects the opaque resource type. `meta.pluginId` is ignored. They also follow the same lifecycle: when a plugin unloads, or reloads and replaces its registrations, a drawer that is already open for one of its resources is replaced by an **Unavailable** drawer instead of keeping the retired plugin's components mounted. Reopen the resource to use the reloaded plugin's drawer.
 
 #### Live data, cache ownership, and failures
 

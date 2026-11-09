@@ -23,7 +23,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/features/resource-drawer/LinkedResourceDrawer';
-import { useExtensionPoint } from '@omniviewdev/runtime';
+import { createUnavailableDrawer } from '@/features/resource-drawer/unavailableDrawer';
+import { retiredDrawerSource, type DrawerSources } from '@/features/resource-drawer/drawerSources';
+import { useExtensionPointSnapshot } from '@omniviewdev/runtime';
 import { RESOURCE_DRAWER_EXTENSION_POINT_ID } from '@/features/extensions/drawer/extensionPoint';
 import { RESOURCE_SIDEBAR_EXTENSION_POINT_ID } from '@/features/extensions/sidebar/extensionPoint';
 import { createResourceExtensionRenderContext } from '@/features/extensions/resource/context';
@@ -41,6 +43,17 @@ type Props = {
 /** Length of the core layout sidebar */
 const innerWidthBuffer = 47;
 
+/** The drawer on screen, with the plugin contributions it was built from. */
+type OpenDrawer = {
+  drawer: DrawerComponent;
+  /** Empty for drawers the registry did not supply; those outlive any plugin lifecycle. */
+  sources: DrawerSources;
+  /** The opaque resource type the drawer was opened for, used only to label the unavailable state. */
+  resourceKey: string;
+  /** Set once a source was retired; `drawer` is then the host-owned unavailable drawer. */
+  unavailable: boolean;
+};
+
 const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const queryClient = useQueryClient();
   // TODO - calculate these based on window width
@@ -49,7 +62,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const initialWidth = 800;
 
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [content, setContent] = useState<DrawerComponent | null>(null);
+  const [content, setContent] = useState<OpenDrawer | null>(null);
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
   const resourceRequest = useRef(0);
   const cancelResourceRead = useRef<(() => void) | null>(null);
@@ -61,11 +74,12 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   }, []);
 
 
-  // Extension point hooks for plugin sidebar/drawer resolution
-  const drawerEP = useExtensionPoint<PluginDrawerFactory, ResourceExtensionRenderContext>(
+  // Extension point snapshots for plugin sidebar/drawer resolution. The contribution lists also
+  // tell an open drawer when the plugin that supplied it was unloaded or reloaded.
+  const { store: drawerEP, contributions: drawerContributions } = useExtensionPointSnapshot<PluginDrawerFactory, ResourceExtensionRenderContext>(
     RESOURCE_DRAWER_EXTENSION_POINT_ID,
   );
-  const sidebarEP = useExtensionPoint<SidebarComponent, ResourceExtensionRenderContext>(
+  const { store: sidebarEP, contributions: sidebarContributions } = useExtensionPointSnapshot<SidebarComponent, ResourceExtensionRenderContext>(
     RESOURCE_SIDEBAR_EXTENSION_POINT_ID,
   );
   const [isDragging, setIsDragging] = useState(false);
@@ -238,18 +252,25 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   }, [escFunction]);
 
   /**
-   * Show the resource sidebar with a specific component.
-   * The slide-in animation starts immediately; the heavy component tree
+   * Put a drawer on screen. The slide-in animation starts immediately; the heavy component tree
    * mounts as a low-priority transition so the browser can paint first.
    */
-  const openDrawer: RightDrawerContextType['openDrawer'] = useCallback((DrawerComponent, ctx) => {
+  const present = useCallback((open: Omit<OpenDrawer, 'unavailable'>, ctx: DrawerContext | undefined) => {
     resourceRequest.current += 1;
     cancelResourceRead.current?.();
     cancelResourceRead.current = null;
     setIsOpen(true);
-    setContent(DrawerComponent);
+    setContent({ ...open, unavailable: false });
     setContext(ctx);
   }, []);
+
+  /**
+   * Show a component the caller built. The host did not resolve it from the registry, so it has
+   * no contribution to retire and stays until it is closed.
+   */
+  const openDrawer: RightDrawerContextType['openDrawer'] = useCallback((DrawerComponent, ctx) => {
+    present({ drawer: DrawerComponent, sources: {}, resourceKey: ctx.resource?.reference.address.type ?? '' }, ctx);
+  }, [present]);
 
   /**
    * Show a linked resource in the sidebar drawer.
@@ -278,10 +299,12 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       }).catch(createErrorHandler(notify, 'Failed to update resource'));
     };
 
-    // Resolve drawer/sidebar via extension points — synchronous lookup
+    // Resolve drawer/sidebar via extension points — synchronous lookup. Keep the registrations,
+    // not only their values: they are what tells the open drawer its plugin went away.
     const epContext = createResourceExtensionRenderContext(params.pluginID, resourceKey);
-    const factory = drawerEP?.provide(epContext)?.[0];
-    const sidebarComponent = sidebarEP?.provide(epContext)?.[0];
+    const drawerRegistration = drawerEP?.list(epContext)[0];
+    const sidebarRegistration = sidebarEP?.list(epContext)[0];
+    const factory = drawerRegistration?.value;
 
     // Prefer a full drawer factory from the plugin (same views + actions as table row clicks).
     // Fall back to the generic linked-resource drawer with sidebar component overlay.
@@ -291,8 +314,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         resourceKey,
         onSubmit,
         closeDrawer,
-        sidebarComponent,
+        sidebarRegistration?.value,
       );
+    const sources: DrawerSources = factory ? { drawer: drawerRegistration } : { sidebar: sidebarRegistration };
 
     // Observed rows already carry host identity. Linked resources require a fresh read.
     const result: HostRecord | null = params.record ?? await withConnectionReady(params.pluginID, params.route.connection, async () => {
@@ -351,7 +375,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       throw new Error('Resource identity changed. Search again.');
     }
 
-    openDrawer(drawer, {
+    present({ drawer, sources, resourceKey }, {
       data,
       resource: {
         name: params.resourceName ?? resourceID,
@@ -364,7 +388,24 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         record: result,
       },
     });
-  }, [closeDrawer, openDrawer, drawerEP, sidebarEP, queryClient, notify]);
+  }, [closeDrawer, present, drawerEP, sidebarEP, queryClient, notify]);
+
+  // Unloading a plugin removes the drawer and sidebar contributions an open drawer was built from,
+  // and reloading replaces them. Swap the plugin-built drawer for the host-owned unavailable one
+  // in this very render: no frame shows, and no state keeps, a retired plugin component. Only
+  // drawers resolved from the registry can retire, and the swap happens once because the
+  // unavailable drawer has no sources.
+  const retired = content && !content.unavailable
+    ? retiredDrawerSource(content.sources, drawerContributions, sidebarContributions)
+    : undefined;
+  if (content && retired) {
+    setContent({
+      drawer: createUnavailableDrawer({ resourceKey: content.resourceKey, pluginId: retired.plugin }),
+      sources: {},
+      resourceKey: content.resourceKey,
+      unavailable: true,
+    });
+  }
 
   const contextValue = useMemo(() => ({
     closeDrawer,
@@ -383,7 +424,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         style={{ width: initialWidth }}
       >
         {content && (
-          context?.resource?.pluginID && context.resource.route.connection ? (
+          // The unavailable drawer needs no connection, and must stay explainable when the plugin
+          // that served it (and so possibly its connection) is gone.
+          !content.unavailable && context?.resource?.pluginID && context.resource.route.connection ? (
             <ConnectionBoundary
               pluginID={context.resource.pluginID}
               connectionID={context.resource.route.connection}
@@ -396,10 +439,10 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
                 />
               )}
             >
-              <RightDrawer {...content} ctx={context} open={isOpen} onClose={closeDrawer} />
+              <RightDrawer {...content.drawer} ctx={context} open={isOpen} onClose={closeDrawer} />
             </ConnectionBoundary>
           ) : (
-            <RightDrawer {...content} ctx={context} open={isOpen} onClose={closeDrawer} />
+            <RightDrawer key={content.unavailable ? 'unavailable' : 'drawer'} {...content.drawer} ctx={context} open={isOpen} onClose={closeDrawer} />
           )
         )}
         <div
