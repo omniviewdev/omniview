@@ -10,16 +10,16 @@ import type { EditorSchemaAssociation, SchemaFieldsResult } from '../../../packa
  * (issue #85).
  *
  * The workspace probe's Go provider serves four fixed connections: cloud, container, hypervisor and a
- * Kubernetes-shaped fixture. Each advertises one type whose only representation declares
- * `Schema: {State: "absent"}`, so the provider has no schema to offer and the host catalog must say so
- * without guessing one. Nothing between the plugin process and these assertions is simulated: each
+ * Kubernetes-shaped fixture. Each advertises one type whose native representation declares
+ * `Schema: {State: "absent"}`. A separate authoring representation offers a schema; it must not
+ * contaminate the native representation. Nothing between the provider and these assertions is simulated: each
  * connection is started through the browser's own Connect action, and the host's resource service
  * answers over its real runtime endpoint from the catalog it admitted from the plugin process over gRPC.
  *
  * What the catalog must report for every connection:
  * - field discovery: schema state `absent`, no schema revision or dialect, no fields, and an overlay
  *   that evaluates dynamically with no validation and no native query languages;
- * - editor associations: one association for the type, `absent`, with no document, bound to a model
+ * - editor associations: one native association for the type, `absent`, with no document, bound to a model
  *   directory derived from the plugin, connection, type and representation, so no two connections share
  *   one;
  * - documents: an editor document or raw schema document nothing in the connection's catalog

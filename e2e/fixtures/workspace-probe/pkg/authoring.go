@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 

@@ -25,7 +25,7 @@ Counts from the Go run: 293 passing tests and subtests in `resourceauthoring`; t
 | Provider, type, scope, access generation, schema revision and document revision changes invalidate or reject stale suggestions; cancellation and bounds | `TestAuthoringIdentityChangesRejectStaleExpectations`, `TestRapidDocumentChangesAreSupersededThroughTheTransport`, `TestAuthoringDeadlineAndCancellation`, `TestAuthoringResponseIsBoundedForLargeSchemas`, `TestSuggestionBoundsAndTruncation`, `TestResponseByteBudget`, `TestTraversalBounds`, `sessions_test.go`; TS `authoringSession.test.ts` | Met at the host and the runtime helper. No permission epoch exists to key on (§Gaps) |
 | Conditional branch applicability, nullable ancestors, actual static/partial/dynamic strength; discriminator hint is not narrowing | `TestDiscriminatorComparisonDoesNotNarrow`, `TestVMHardwareNestingAndConditionalBranches`, `TestCheckingLabelsMatchTheCELChecker` | Met |
 | Contract cases for partial paths, quotes, operators, Unicode, nested nullability, conditional branches across cloud/container/VM and Kubernetes | files above | Met |
-| Rapid document/type/provider/scope/schema/access changes through the real authoring transport; bounded responses; stale rejection | the transport tests call `ServiceWrapper.CompletePredicate` with the request JSON-decoded strictly and the response JSON-encoded, against the real controller; one run of the burst served 4 and cancelled or refused 176 of 180 requests, every answer carrying its own revision | Met for the Go transport. The Wails runtime/HTTP layer and a browser were not driven (§Gaps) |
+| Rapid document/type/provider/scope/schema/access changes through the real authoring transport; bounded responses; stale rejection | Go transport burst plus `authoring-transport.spec.ts`: published runtime session through real Wails binding, Unicode edits, document supersession, representation/connection/type/scope switches, five stale identity fences | Browser/server transport verified. Live provider replacement and permission-policy mutation are not claimed |
 | Labels inspected against actual catalog semantics, not example objects | every suggested path compiled with `celtypes` (the production catalog-bound CEL environment) and compared with the checker; operator and value edits compiled once their placeholder was filled | Met. It found three catalog facts now documented (contract §6, §8) |
 | Link PRs and executed evidence; no fixture-only or forwarding-mock proof | this document and the PR body | Met. Mock providers appear only to vary a schema, slow or block a call; the P44 profiles run through the SDK child |
 
@@ -86,3 +86,17 @@ This is focused browser/server-mode evidence, not native WebView or full-suite a
 Access expectations are tested against the existing host identity; no permission epoch or
 live permission-policy mutation is claimed. Schema changes are exercised by representation/connection
 switches, not a live provider replacing its schema document.
+
+Final focused run at `2b86dc98`:
+
+```text
+✓ Completion transport: real schema edits, supersession and identity fences (1.0s)
+✓ Schema catalog: a provider that declares no schema stays absent, dynamic and isolated on every connection (1.0s)
+2 passed (5.4s)
+```
+
+The complete harness invocation exited 0 in 165.89 seconds. E2E TypeScript and scoped ESLint passed;
+the selector suite passed all 10 tests. Earlier preparation failures were an uninitialized submodule,
+a local ignored `.claude/settings.local.json` becoming visible under the isolated HOME (resolved by
+running a clean clone), and omission of the new fixture file from the explicit preparation inventory
+(fixed in `prepare-workspace-probe.mjs`). None is counted as a passing application run.
