@@ -20,9 +20,10 @@ node bench/app/report.mjs              # Markdown summary of results/latest.json
 
 Also `task perf:app -- <args>`. First run locally: `pnpm install --frozen-lockfile`,
 `task packages` (providers → runtime → Vite plugin) and
-`pnpm exec playwright install chromium`. The pinned Kubernetes submodule records
-its standalone dependencies in its UI manifest and lockfile. Canonical candidate
-runs instead use the workspace-selected SDK, UI, and runtime sources.
+`pnpm exec playwright install chromium`. Set `KUBERNETES_SOURCE` to an external
+Kubernetes checkout at the revision being measured. Its UI manifest and lockfile
+record standalone dependencies. Canonical candidate runs instead use the
+workspace-selected SDK, UI, and runtime sources.
 Older plugin archives built against MUI or legacy UI contracts are incompatible.
 
 The Logs scenario selects a container from the opened Logs submenu, not from the
@@ -109,10 +110,10 @@ credentials, or the full profile.
 
 CI resolves the SDK commit from the host's declared `go.mod` dependency and
 checks out that commit for the managed workspace. UI packages come from the host
-lockfile; Kubernetes comes from the host's `plugins/kubernetes` gitlink. The
-host input remains the exact checked-out PR commit, or the selected branch
-commit for manual dispatch. Managed workspaces record the SDK checkout's commit
-and source digest, rather than requiring an approval revision.
+lockfile; CI checks out the latest published Kubernetes GitHub release tag and
+passes its full checked-out commit to the builder. The host input remains the
+exact checked-out PR commit, or the selected branch commit for manual dispatch.
+Managed workspaces record the SDK checkout's commit and source digest.
 
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph
@@ -131,11 +132,13 @@ must both declare `allowBuilds.esbuild: true`, with Kubernetes retaining
 `unrs-resolver: false`. The managed install still uses `--ignore-scripts`; the
 builder does not rewrite policies, approve all scripts, or relax peers.
 
-With installed/built host packages, initialize the Kubernetes submodule and check
-out the SDK commit resolved by the host module:
+With installed/built host packages, select a compatible Kubernetes source checkout
+and the SDK commit resolved by the host module. The builder uses the selected
+Kubernetes checkout's committed HEAD; it does not include uncommitted changes:
 
 ```bash
-git submodule update --init plugins/kubernetes
+export KUBERNETES_SOURCE=/absolute/path/omniview-plugin-kubernetes
+KUBERNETES_COMMIT="$(git -C "$KUBERNETES_SOURCE" rev-parse HEAD)"
 SDK_SOURCE=/absolute/path/plugin-sdk
 SDK_COMMIT="$(node e2e/scripts/sdk-source.mjs print)"
 git -C "$SDK_SOURCE" checkout --detach "$SDK_COMMIT"
@@ -156,7 +159,7 @@ A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
 GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
   --host "$PWD" --host-ref "$(git rev-parse HEAD)" \
   --sdk "$SDK_SOURCE" --sdk-ref "$SDK_COMMIT" \
-  --kubernetes "$PWD/plugins/kubernetes" --kubernetes-ref "$(git -C plugins/kubernetes rev-parse HEAD)" \
+  --kubernetes "$KUBERNETES_SOURCE" --kubernetes-ref "$KUBERNETES_COMMIT" \
   --link-evidence /absolute/path/link-protocol.json -- --runs 3
 ```
 
@@ -190,8 +193,9 @@ the collection and report its path instead of deleting uncertain files.
   override paths resolve from the host root, as in `vite.config.ts` (both use
   `plugin-bundle.mjs`), not from the working directory.
   Empty overrides and missing, empty or non-file `entry.js` entries fail before
-  profiling. Without an override, the runner builds the bundled UI if missing;
-  that checkout must independently satisfy the host's current consumer contract.
+  profiling. Without an override, the runner builds the external checkout's UI if
+  missing. It defaults to `../omniview-plugin-kubernetes` relative to the host.
+  The checkout must independently satisfy the host's current consumer contract.
 - **Startup marker.** The app reports "interactive" through `ReportStartupReady`, the same
   marker `task perf:coldstart` reads from the native app (first painted frame after the
   router's first render).

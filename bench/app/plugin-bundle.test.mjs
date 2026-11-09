@@ -30,6 +30,18 @@ test('relative external assets resolve from the host root', () => {
   assert.equal(pluginAssetDirectory('/host', '../kubernetes/ui/dist/assets'), '/kubernetes/ui/dist/assets');
 });
 
+test('default bundle follows the external Kubernetes checkout', (t) => {
+  const previous = process.env.KUBERNETES_SOURCE;
+  t.after(() => {
+    if (previous === undefined) delete process.env.KUBERNETES_SOURCE;
+    else process.env.KUBERNETES_SOURCE = previous;
+  });
+  process.env.KUBERNETES_SOURCE = '../selected-kubernetes';
+  assert.equal(pluginAssetDirectory('/host'), '/selected-kubernetes/ui/dist/assets');
+  process.env.KUBERNETES_SOURCE = ' ';
+  assert.throws(() => pluginAssetDirectory('/host'), /KUBERNETES_SOURCE/);
+});
+
 test('missing, empty, and directory entries are not usable plugin bundles', (t) => {
   const assets = fixture(t);
   assert.throws(() => requirePluginBundle(assets), /entry\.js/);

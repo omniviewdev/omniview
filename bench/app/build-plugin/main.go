@@ -37,8 +37,8 @@ func run(ctx context.Context) (resultErr error) {
 	hostRef := flag.String("host-ref", "", "exact host commit")
 	sdk := flag.String("sdk", "", "resolved SDK source checkout")
 	sdkRef := flag.String("sdk-ref", "", "exact resolved SDK commit")
-	kube := flag.String("kubernetes", "", "Kubernetes gitlink source checkout")
-	kubeRef := flag.String("kubernetes-ref", "", "exact Kubernetes gitlink commit")
+	kube := flag.String("kubernetes", "", "Kubernetes source checkout")
+	kubeRef := flag.String("kubernetes-ref", "", "exact Kubernetes source commit")
 	evidenceFile := flag.String("link-evidence", "", "actual native pnpm protocol probe report")
 	flag.Parse()
 	for _, source := range []struct{ path, ref string }{{*host, *hostRef}, {*sdk, *sdkRef}, {*kube, *kubeRef}} {
@@ -120,12 +120,12 @@ func run(ctx context.Context) (resultErr error) {
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch strings.ToLower(key) {
-		case "pnpm_config_workspace_dir", "npm_config_workspace_dir", "node_path", "omniview_pnpm_node_path", "ov_k8s_plugin_dist", "ov_k8s_plugin_metadata":
+		case "pnpm_config_workspace_dir", "npm_config_workspace_dir", "node_path", "omniview_pnpm_node_path", "ov_k8s_plugin_dist", "ov_k8s_plugin_metadata", "kubernetes_source":
 			continue
 		}
 		cmd.Env = append(cmd.Env, entry)
 	}
-	cmd.Env = append(cmd.Env, devcompose.RootEnvironment+"="+*host, "OV_K8S_PLUGIN_DIST="+assets, "OV_K8S_PLUGIN_METADATA="+filepath.Join(plugin, "plugin.json"))
+	cmd.Env = append(cmd.Env, devcompose.RootEnvironment+"="+*host, "OV_K8S_PLUGIN_DIST="+assets, "OV_K8S_PLUGIN_METADATA="+filepath.Join(plugin, "plugin.json"), "KUBERNETES_SOURCE="+plugin)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return devworkspace.RunRepositoryCommand(ctx, cmd, devsession.ProcessOwner{
 		WorkspaceID: workspace.Manifest.WorkspaceID,

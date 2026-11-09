@@ -91,7 +91,7 @@ and uses `--lockfile-only --ignore-scripts --no-frozen-lockfile`. This explicit
 source-lock reconciliation does not install or reset managed dependency trees.
 Run managed refresh after reviewing the resulting source lockfile change.
 
-The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not plugin repositories under `plugins/`. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; initializing an unselected submodule must not change host compilation or dependency resolution.
+The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not external plugin repositories. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; unrelated checkouts must not change host compilation or dependency resolution.
 
 For standalone frontend checks, build providers, runtime, then the Vite plugin
 before type-aware linting; workspace imports need the runtime's declarations.
@@ -495,6 +495,7 @@ worktree is a source input, not a second package-install root.
 ```sh
 export GOWORK=off
 export SDK_SOURCE=/absolute/plugin-sdk
+export KUBERNETES_SOURCE=/absolute/omniview-plugin-kubernetes
 task e2e
 task e2e -- --changed --base origin/main
 task e2e -- --grep 'published consumers'
@@ -564,16 +565,15 @@ cancelled, missing or skipped jobs cannot make the gate green.
 
 Canonical E2E and whole-app profiling resolve the SDK commit from the host's
 `go.mod` using Go module download metadata. The SDK checkout must match that
-commit. UI packages come from the host lockfile, and Kubernetes comes from the
-committed `plugins/kubernetes` gitlink. Initialize the submodule at that gitlink
-before running E2E. Source identity registration, mandatory probes, conservative
-selection, and native payload cache rules remain unchanged.
+commit. UI packages come from the host lockfile. CI uses the latest published
+Kubernetes plugin release. Locally, set `KUBERNETES_SOURCE` to a clean checkout
+at your chosen commit; E2E defaults to the sibling `omniview-plugin-kubernetes`
+directory if unset. Source identity registration records the selected commit.
+Mandatory probes, conservative selection, and native payload cache rules remain
+unchanged.
 
-Update the Kubernetes gitlink when selecting a different plugin commit. Stage the
-gitlink in the host commit; no separate source pin is required.
-
-Run final acceptance from a clean, committed host checkout with a clean SDK
-checkout at the resolved commit and the Kubernetes submodule at the gitlink.
+Run final acceptance from a clean, committed host checkout with clean SDK and
+Kubernetes checkouts at their selected commits.
 Ignored dependency/build outputs are not source evidence. A worktree containing
 linked managed dependencies is not a standalone registry install root. Use
 independently owned dependencies, never mutate another workspace's `node_modules`

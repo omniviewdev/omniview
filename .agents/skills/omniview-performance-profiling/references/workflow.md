@@ -15,7 +15,7 @@ kind get clusters
 
 A broad `brew list --versions` can fail on an unrelated stale cask. Query `brew list --cask --versions omniview` instead. Current native pnpm pin lives in the selected host's `package.json`. Existing shell PATH can differ from Homebrew's installation; use the native executable described in `docs/development-workspaces.md`.
 
-For application profiling, resolve the SDK commit from the selected host's `go.mod`, use UI packages from its lockfile, and select Kubernetes at the host gitlink. With the host checkout at `HOST_REF`, obtain `SDK_REF` using `node e2e/scripts/sdk-source.mjs print` from that checkout and `KUBERNETES_REF` using `git rev-parse HEAD:plugins/kubernetes`. Fetch missing refs in their registered repositories. Do not reset canonical source or select a stale SDK simply because it has a convenient sibling directory.
+For application profiling, resolve the SDK commit from the selected host's `go.mod` and use UI packages from its lockfile. Select a compatible Kubernetes source and revision for the measurement; set `KUBERNETES_REF` to its full commit with `git -C "$KUBERNETES_SOURCE" rev-parse HEAD`. CI uses the latest published Kubernetes GitHub release tag, but local profiling may use another selected source. With the host checkout at `HOST_REF`, obtain `SDK_REF` using `node e2e/scripts/sdk-source.mjs print`. Fetch missing refs in their registered repositories. Do not reset canonical source or select a stale SDK simply because it has a convenient sibling directory.
 
 ```sh
 omniview-dev workspace create "$FEATURE" --root "$COLLECTION" \

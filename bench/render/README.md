@@ -14,10 +14,22 @@ node bench/render/report.mjs           # Markdown table from results/latest.json
 
 First run locally: `pnpm exec playwright install chromium` and `task packages`.
 
-Run the suite from the host checkout with its pinned Kubernetes submodule initialized.
-The Kubernetes benchmark imports `plugins/kubernetes/ui/src` against the host's
-shared packages; no installed marketplace plugin or cluster credentials are needed.
-Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debugging.
+Run the suite from the host checkout with an external Kubernetes checkout. CI
+checks out the latest published GitHub release tag and saves its full commit in
+the `render-bench-results` artifact as `kubernetes-commit.txt`. Locally, select
+the compatible checkout and revision to measure, then install its dependencies:
+
+```bash
+export KUBERNETES_SOURCE=/absolute/path/omniview-plugin-kubernetes
+git -C "$KUBERNETES_SOURCE" rev-parse HEAD
+pnpm --dir "$KUBERNETES_SOURCE/ui" install --frozen-lockfile
+```
+
+The benchmark imports the selected checkout's UI source against the host's shared
+packages. No installed marketplace plugin or cluster credentials are needed.
+Without `KUBERNETES_SOURCE`, the default is `../omniview-plugin-kubernetes`
+relative to the host. Production React and JSX are the default. Use
+`BENCH_REACT_DEV=1` only for debugging.
 
 ## How it works
 
@@ -49,10 +61,10 @@ Production React and JSX are the default. Use `BENCH_REACT_DEV=1` only for debug
   Log creation consumes the current encoded JSON request and preserves its correlation
   ID and session options in the current session DTO. Drawer and whole-app fixtures
   retain live sessions until the real close call removes them; unknown session reads fail.
-- The kubernetes Pod table is rendered from the `plugins/kubernetes` submodule source
-  against the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get them
-  at runtime through the shared-deps import map). Run `git submodule update --init
-  plugins/kubernetes` first. The bench uses whatever commit is checked out there.
+- The Kubernetes Pod table is rendered from the selected external checkout against
+  the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get
+  them at runtime through the shared-deps import map). Record the checkout commit
+  when comparing results.
 
 ## Reading the numbers
 

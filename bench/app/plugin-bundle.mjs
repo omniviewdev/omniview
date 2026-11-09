@@ -3,12 +3,22 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+export function kubernetesSource(root) {
+  const source = process.env.KUBERNETES_SOURCE;
+  if (source !== undefined && !source.trim()) {
+    throw new Error('KUBERNETES_SOURCE must name a Kubernetes checkout');
+  }
+  return path.resolve(root, source ?? '../omniview-plugin-kubernetes');
+}
+
 /** OV_K8S_PLUGIN_DIST names the assets directory, not dist or an entry file. */
 export function pluginAssetDirectory(root, override = process.env.OV_K8S_PLUGIN_DIST) {
   if (override !== undefined && !override.trim()) {
     throw new Error('OV_K8S_PLUGIN_DIST must name a built Kubernetes UI assets directory');
   }
-  return path.resolve(root, override ?? 'plugins/kubernetes/ui/dist/assets');
+  return override === undefined
+    ? path.join(kubernetesSource(root), 'ui/dist/assets')
+    : path.resolve(root, override);
 }
 
 /** OV_K8S_PLUGIN_METADATA names plugin.json. Like the assets override, a relative path resolves from the host root. */
@@ -16,7 +26,7 @@ export function pluginMetadataFile(root, override = process.env.OV_K8S_PLUGIN_ME
   if (override !== undefined && !override.trim()) {
     throw new Error('OV_K8S_PLUGIN_METADATA must name the selected Kubernetes plugin.json');
   }
-  return path.resolve(root, override ?? 'plugins/kubernetes/plugin.json');
+  return override === undefined ? path.join(kubernetesSource(root), 'plugin.json') : path.resolve(root, override);
 }
 
 export function requirePluginBundle(assets) {

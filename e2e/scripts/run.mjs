@@ -81,7 +81,7 @@ function sourceLocations() {
   return {
     omniview: root,
     'plugin-sdk': resolve(process.env.SDK_SOURCE ?? join(root, '..', 'plugin-sdk')),
-    kubernetes: join(root, 'plugins/kubernetes'),
+    kubernetes: resolve(process.env.KUBERNETES_SOURCE ?? join(root, '..', 'omniview-plugin-kubernetes')),
   };
 }
 function cacheProtectedRoots(sources, preparationRoot) {
@@ -192,7 +192,6 @@ async function main() {
     }
     const declaredSDK = resolveSDKSource(root, env);
     if (refs['plugin-sdk'] !== declaredSDK) throw Error(`SDK_SOURCE is at ${refs['plugin-sdk']} but host go.mod resolves github.com/omniviewdev/plugin-sdk to ${declaredSDK}; check out ${declaredSDK} in SDK_SOURCE`);
-    if (git(root, 'ls-tree', 'HEAD', 'plugins/kubernetes') !== `160000 commit ${refs.kubernetes}\tplugins/kubernetes`) throw Error('plugins/kubernetes checkout differs from the host gitlink; run git submodule update --init plugins/kubernetes');
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
   if (process.platform === 'linux') {

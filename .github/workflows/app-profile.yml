@@ -56,8 +56,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           persist-credentials: false
+
+      - name: Resolve latest Kubernetes release
+        id: kubernetes-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh api repos/omniviewdev/omniview-plugin-kubernetes/releases/latest --jq '.tag_name')"
+          test -n "$tag" && test "$tag" != "null"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Kubernetes source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/omniview-plugin-kubernetes
+          ref: ${{ steps.kubernetes-release.outputs.tag }}
+          path: .app-profile-sources/kubernetes
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record Kubernetes commit
+        id: kubernetes
+        run: echo "commit=$(git -C .app-profile-sources/kubernetes rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -131,7 +152,7 @@ jobs:
           HOST_MODFILE: ${{ steps.host-module.outputs.modfile }}
         run: GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" -mod=readonly -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
 
-      # Build the gitlink plugin with the declared SDK and host package outputs.
+      # Build the selected plugin with the declared SDK and host package outputs.
       # The helper retires its private collection after the profile finishes.
       - name: Profile
         shell: bash
@@ -142,7 +163,7 @@ jobs:
           GOWORK=off GOFLAGS= go run -modfile="$HOST_MODFILE" -mod=readonly -tags server ./bench/app/build-plugin \
             --host "$GITHUB_WORKSPACE" --host-ref "$(git rev-parse HEAD)" \
             --sdk "$SDK_SOURCE" --sdk-ref "${{ steps.sdk.outputs.sdk }}" \
-            --kubernetes "$GITHUB_WORKSPACE/plugins/kubernetes" --kubernetes-ref "$(git -C plugins/kubernetes rev-parse HEAD)" \
+            --kubernetes "$GITHUB_WORKSPACE/.app-profile-sources/kubernetes" --kubernetes-ref "${{ steps.kubernetes.outputs.commit }}" \
             --link-evidence "$RUNNER_TEMP/app-profile-link-protocol.json" \
             -- --runs 3
 

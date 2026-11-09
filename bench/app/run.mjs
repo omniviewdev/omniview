@@ -20,6 +20,7 @@ import {
   fileSHA256,
   gitSourceIdentity,
   hashPluginBundle,
+  kubernetesSource,
   pluginAssetDirectory,
   pluginCheckoutIdentity,
   pluginMetadataFile,
@@ -68,14 +69,14 @@ function ensurePluginBundle() {
     requirePluginBundle(assets);
     return;
   }
-  const ui = path.join(root, 'plugins/kubernetes/ui');
+  const ui = path.join(kubernetesSource(root), 'ui');
   if (!fs.existsSync(path.join(ui, 'package.json'))) {
-    throw new Error('plugins/kubernetes is not checked out: git submodule update --init plugins/kubernetes');
+    throw new Error(`Kubernetes checkout not found at ${ui}; set KUBERNETES_SOURCE to an external checkout`);
   }
-  console.log('Building the kubernetes plugin UI bundle (plugins/kubernetes/ui)…');
+  console.log(`Building the Kubernetes plugin UI bundle (${ui})…`);
   for (const args of [['install', '--frozen-lockfile'], ['run', 'build']]) {
     const r = spawnSync('pnpm', args, { cwd: ui, stdio: 'inherit' });
-    if (r.status !== 0) throw new Error(`pnpm ${args.join(' ')} failed in plugins/kubernetes/ui`);
+    if (r.status !== 0) throw new Error(`pnpm ${args.join(' ')} failed in ${ui}`);
   }
   requirePluginBundle(assets);
 }

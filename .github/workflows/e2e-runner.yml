@@ -46,7 +46,6 @@ jobs:
         with:
           path: host
           fetch-depth: 0
-          submodules: recursive
           persist-credentials: false
 
       - name: Setup Node
@@ -74,6 +73,30 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve latest Kubernetes release
+        id: kubernetes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module -e '
+            import { appendFileSync } from "node:fs";
+            const response = await fetch("https://api.github.com/repos/omniviewdev/omniview-plugin-kubernetes/releases/latest", {
+              headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json" },
+            });
+            if (!response.ok) throw new Error(`GitHub latest release request failed: ${response.status}`);
+            const { tag_name: tag } = await response.json();
+            if (typeof tag !== "string" || !tag || /[\r\n]/.test(tag)) throw new Error("Latest Kubernetes release has no valid tag");
+            appendFileSync(process.env.GITHUB_OUTPUT, `ref=${tag}\n`);
+          '
+
+      - name: Checkout released Kubernetes source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/omniview-plugin-kubernetes
+          ref: ${{ steps.kubernetes.outputs.ref }}
+          path: omniview-plugin-kubernetes
+          persist-credentials: false
+
 
       - name: Resolve container source and native payload paths
         # Shell paths use the container mounts, unlike host-side workflow contexts.
@@ -81,6 +104,7 @@ jobs:
         run: |
           {
             echo "SDK_SOURCE=$GITHUB_WORKSPACE/plugin-sdk"
+            echo "KUBERNETES_SOURCE=$GITHUB_WORKSPACE/omniview-plugin-kubernetes"
             echo "OMNIVIEW_E2E_TOOL_CACHE_ROOT=$(realpath -e "$RUNNER_TEMP")/omniview-e2e-native-private-v1/omniview-e2e-native-tool-cache-v1"
           } >> "$GITHUB_ENV"
 
@@ -111,8 +135,8 @@ jobs:
         id: cache-keys
         if: steps.selection.outputs.kind != 'none'
         env:
-          PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
-          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
+          PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'omniview-plugin-kubernetes/ui/pnpm-lock.yaml') }}
+          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'omniview-plugin-kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
           BROWSER_KEY: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-chromium-v1-${{ hashFiles('host/pnpm-lock.yaml', 'host/e2e/package.json') }}
         run: |
           echo "pnpm=$PNPM_KEY" >> "$GITHUB_OUTPUT"

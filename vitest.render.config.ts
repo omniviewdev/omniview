@@ -16,7 +16,10 @@ import { vitestCaches } from './vitest.cache';
 const root = import.meta.dirname;
 const testCaches = vitestCaches(root);
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
-const k8sPluginSrc = path.join(root, 'plugins/kubernetes/ui/src');
+const k8sSource = process.env.KUBERNETES_SOURCE;
+if (k8sSource !== undefined && !k8sSource.trim()) throw new Error('KUBERNETES_SOURCE must name a Kubernetes checkout');
+const k8sRoot = path.resolve(root, k8sSource ?? '../omniview-plugin-kubernetes');
+const k8sPluginSrc = path.join(k8sRoot, 'ui/src');
 
 // React ships a slower dev build. Benchmark the production
 // builds unless BENCH_REACT_DEV=1 (useful for readable errors while writing a bench).
@@ -36,6 +39,9 @@ function k8sPluginAlias(): Plugin {
     enforce: 'pre',
     // The app's aliases run first, so match on what they produced.
     async resolveId(source, importer, options) {
+      if (source === 'bench-kubernetes-pod-table') {
+        return this.resolve(path.join(k8sPluginSrc, 'components/kubernetes/table/corev1/Pod/Table'), importer, { ...options, skipSelf: true });
+      }
       if (!importer || !importer.startsWith(k8sPluginSrc)) return;
       if (source === hostRuntime || source === '@omniviewdev/runtime/runtime') return runtimeShim;
       const sub = source.startsWith('@/') ? source.slice(2) : source.startsWith(appUi) ? source.slice(appUi.length) : null;
@@ -90,13 +96,14 @@ export default defineConfig({
     'import.meta.env.BENCH_VERBOSE': JSON.stringify(process.env.BENCH_VERBOSE ?? ''),
   },
   esbuild: { jsx: 'automatic', jsxDev: reactDev },
+  server: { fs: { allow: [root, k8sRoot] } },
   optimizeDeps: {
     // Discovering a dep mid-run makes Vite re-optimize and reload the page,
     // which aborts the bench file. Pre-bundle the discovered list only.
     noDiscovery: true,
     include: discoverDeps(
       [path.join(root, 'bench/render'), path.join(root, 'ui'), path.join(root, 'packages/omniviewdev-runtime/src'), k8sPluginSrc],
-      [...appAliases, '@omniviewdev/runtime'],
+      [...appAliases, '@omniviewdev/runtime', 'bench-kubernetes-pod-table'],
     ),
     esbuildOptions: { define: { 'process.env.NODE_ENV': nodeEnv } },
   },

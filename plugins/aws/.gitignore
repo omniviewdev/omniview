@@ -1,9 +1,0 @@
-.DS_Store
-
-/bin
-/dist
-*.tar.gz
-*.log
-*.log.*
-*.pid
-*.pid.*
