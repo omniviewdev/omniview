@@ -194,7 +194,7 @@ it('keeps published demand and its samples while a replaced map and replaced bod
 it('does not republish or reopen when the table swaps in an equal map', () => {
   const { result, rerender } = renderTable();
   const { lease } = publishAnswered(result, first, firstRecord.key);
-  rerender({ ...base, recordsByBody: new WeakMap([[first, member(firstRecord.key)], [second, secondRecord]]) });
+  rerender({ ...base, recordsByBody: new WeakMap<object, HostRecord>([[first, member(firstRecord.key)], [second, secondRecord]]) });
   expect(vi.getTimerCount()).toBe(0);
   expect(lease.close).not.toHaveBeenCalled();
   expect(transport.leases).toHaveLength(1);
