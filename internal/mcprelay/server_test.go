@@ -417,7 +417,7 @@ func TestRelayGenericOperationsStartNativeConnectionAndConfirm(t *testing.T) {
 	state := appstate.NewTestService(t)
 	epoch, err := resourcev2.NewCatalogBindingEpoch()
 	require.NoError(t, err)
-	provider := &lazyCatalogProvider{generatedNativeSource: &generatedNativeSource{epoch: epoch, revision: "one"}}
+	provider := &lazyCatalogProvider{generatedNativeSource: &generatedNativeSource{epoch: epoch, revision: "one", actions: true}}
 	authority := NewAuthority()
 	ctrl := resource.NewController(logging.NewNop(), nil, state.PluginStore, invocation.NewBoundary(authority))
 	ctrl.Run(context.Background())
@@ -636,10 +636,12 @@ func TestRelayViewsAndPresets(t *testing.T) {
 	require.NoError(t, err)
 	byName := map[string]ToolView{}
 	for _, v := range views {
+		require.NotContains(t, byName, v.MCPName)
 		byName[v.MCPName] = v
 	}
 	require.True(t, byName["kubernetes_list_namespaces"].Enabled)
-	require.Equal(t, "inherited", byName["kubernetes_list_namespaces"].EnabledSource)
+	require.Equal(t, "override", byName["kubernetes_list_namespaces"].EnabledSource)
+	require.Empty(t, byName["kubernetes_list_namespaces"].ConnectionID)
 	require.False(t, byName["kubernetes_delete_resource"].Enabled)
 	require.True(t, byName["kubernetes_delete_resource"].Confirm)
 	require.Equal(t, "default", byName["kubernetes_delete_resource"].ConfirmSource)
@@ -823,7 +825,11 @@ func TestScopedCustomToolReadinessUsesNativeState(t *testing.T) {
 	for _, view := range views {
 		require.Equal(t, "prod", view.ConnectionID)
 		require.False(t, view.Ready)
-		require.False(t, view.Listed)
+		if view.MCPName == "kubernetes_resource_discover" {
+			require.True(t, view.Listed)
+		} else if view.MCPName == "kubernetes_list_namespaces" {
+			require.False(t, view.Listed)
+		}
 	}
 	connections.stateErr = errors.New("readiness unavailable")
 	_, err = h.service.ListTools(Scope{"kubernetes", "prod"})
@@ -908,7 +914,7 @@ func TestSaveGlobalPresetDoesNotPromoteConnectionGrant(t *testing.T) {
 	require.Contains(t, saved.Tools, "alpha_ping")
 }
 
-func TestGeneratedViewUsesPinnedRoutePolicy(t *testing.T) {
+func TestGeneratedViewUsesSelectedScopePolicy(t *testing.T) {
 	h := newHarness(t)
 	const name = "resource_route_policy"
 	require.NoError(t, h.service.SetToolOverride(Scope{}, name, ToolOverride{Enabled: new(false), Confirm: new(false)}))
@@ -919,18 +925,28 @@ func TestGeneratedViewUsesPinnedRoutePolicy(t *testing.T) {
 		Resource: &ResourceBinding{PluginID: "kubernetes", Route: resourcev2.AccessRoute{Connection: "prod"}, Operation: "resource.Get"},
 	})
 	h.relay.mu.Unlock()
-	views, err := h.service.ListTools(Scope{})
-	require.NoError(t, err)
-	for _, view := range views {
-		if view.MCPName == name {
-			require.Equal(t, "prod", view.ConnectionID)
-			require.True(t, view.Enabled)
-			require.True(t, view.Confirm)
-			require.Equal(t, "override", view.EnabledSource)
-			return
+	for _, tc := range []struct {
+		scope   Scope
+		enabled bool
+		confirm bool
+	}{
+		{Scope{}, false, false},
+		{Scope{"kubernetes", "prod"}, true, true},
+	} {
+		views, err := h.service.ListTools(tc.scope)
+		require.NoError(t, err)
+		found := false
+		for _, view := range views {
+			if view.MCPName == name {
+				found = true
+				require.Equal(t, "prod", view.ConnectionID)
+				require.Equal(t, tc.enabled, view.Enabled)
+				require.Equal(t, tc.confirm, view.Confirm)
+				require.Equal(t, "override", view.EnabledSource)
+			}
 		}
+		require.True(t, found, "generated route view missing")
 	}
-	t.Fatal("generated route view missing")
 }
 
 func TestActualHTTPCallsRetainOneHostSessionAfterInitializeResponse(t *testing.T) {

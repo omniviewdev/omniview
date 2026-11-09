@@ -53,7 +53,9 @@ Omniview is a groundbreaking Integrated Development Environment (IDE) tailored s
 Settings → AI Tools controls the loopback MCP relay. Resource tools expose provider action
 labels, descriptions and danger notices. Actions and mutations require consent unless the
 tool's confirm override is set to false.
-Search the tool list by name, description, plugin, or connection. Resource tools show a
+The global tool list shows each tool once and edits its global policy.
+Select a plugin connection to see and edit its connection policy.
+Search the tool list by name, description, plugin, or route. Resource tools show a
 readable title and their MCP name; the MCP name remains the policy and client identifier.
 
 For configured Kubernetes connections, five generic resource tools remain available while
@@ -61,6 +63,7 @@ the cluster is disconnected: `kubernetes_resource_discover`, `kubernetes_resourc
 `kubernetes_resource_write`, `kubernetes_resource_action`, and `kubernetes_resource_telemetry`.
 The first call starts the selected connection. Use the `catalog` operation of
 `kubernetes_resource_discover` to find live operations and their argument schemas.
+The catalog includes action descriptors for resource types that support actions.
 Each tool uses an `operation` argument to select an operation. Unsupported operations
 return an error.
 

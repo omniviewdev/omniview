@@ -50,6 +50,12 @@ func TestGenericKubernetesStartupAdmissionIsScopedAndRevocable(t *testing.T) {
 		require.Error(t, err)
 		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: "other", Connection: "cluster-a"})
 		require.Error(t, err)
+		actions := invocation.Target{Provider: tool.PluginID, Connection: "cluster-a", ResourceType: "pods", Scope: map[string]string{"resource-scope": "null", "authority": ""}}
+		_, err = boundary.Admit(callCtx, "resource.GetActions", actions)
+		require.NoError(t, err)
+		actions.Scope["authority"] = "other"
+		_, err = boundary.Admit(callCtx, "resource.GetActions", actions)
+		require.Error(t, err)
 		_, err = boundary.Admit(callCtx, "resource.Mutate", start)
 		require.Error(t, err)
 		cfg.Global.Preset = PresetNone
