@@ -325,8 +325,10 @@ describe('open drawers through the plugin lifecycle', () => {
     s.importer.register('A', pluginModule({ drawers: { widgets: drawerFactory('v1', events) } }));
     await act(async () => s.service.load('A'));
     const Custom = tracked('custom', events);
+    // Callers compiled against older runtimes pass a `resource` without `reference` or `route`.
+    const legacyContext = { data: {}, resource: { id: 'w1', key: 'widgets', connectionID: 'c1' } } as unknown as DrawerContext;
     await act(async () => {
-      drawer.openDrawer({ title: 'custom', views: [{ title: 'custom', component: () => <Custom /> }], actions: [] }, { data: {} });
+      drawer.openDrawer({ title: 'custom', views: [{ title: 'custom', component: () => <Custom /> }], actions: [] }, legacyContext);
     });
     await act(async () => s.service.unload('A'));
     expect(screen.getByTestId('plugin-custom')).toBeTruthy();

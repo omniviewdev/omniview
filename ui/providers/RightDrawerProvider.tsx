@@ -266,10 +266,11 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
 
   /**
    * Show a component the caller built. The host did not resolve it from the registry, so it has
-   * no contribution to retire and stays until it is closed.
+   * no contribution to retire and stays until it is closed. Callers compiled against older
+   * runtimes pass a legacy `resource` shape without a `reference`, so nothing is read from it.
    */
   const openDrawer: RightDrawerContextType['openDrawer'] = useCallback((DrawerComponent, ctx) => {
-    present({ drawer: DrawerComponent, sources: {}, resourceKey: ctx.resource?.reference.address.type ?? '' }, ctx);
+    present({ drawer: DrawerComponent, sources: {}, resourceKey: '' }, ctx);
   }, [present]);
 
   /**
