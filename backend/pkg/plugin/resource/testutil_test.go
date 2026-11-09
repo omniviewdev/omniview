@@ -231,7 +231,7 @@ func canonicalTestRecord(provider, authority, resourceType, id string) resource.
 	}
 }
 
-func admittedReadTarget(t *testing.T, ctrl *controller, pluginID, connectionID, resourceType string) ResolvedTarget {
+func admittedReadTarget(t testing.TB, ctrl *controller, pluginID, connectionID, resourceType string) ResolvedTarget {
 	t.Helper()
 	route := resource.AccessRoute{Connection: connectionID}
 	catalog, err := ctrl.Catalog(testInvocationContext(), pluginID, resource.CatalogRequest{Route: route})
@@ -671,7 +671,7 @@ func TestRecordingEmitter_Reset(t *testing.T) {
 
 // newTestControllerWithEmitter creates a controller with a recording emitter
 // and no-op logger. Suitable for unit tests.
-func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter) {
+func newTestControllerWithEmitter(t testing.TB) (*controller, *recordingEmitter) {
 	t.Helper()
 	emitter := newRecordingEmitter()
 	store := registry.NewMemoryStore()

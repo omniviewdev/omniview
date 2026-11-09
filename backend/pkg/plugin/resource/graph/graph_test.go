@@ -85,6 +85,12 @@ func TestGraph_RemoveEdgesForConnection(t *testing.T) {
 	if len(g.EdgesFrom(pod3.Key())) != 1 {
 		t.Fatal("expected c2 edge to survive")
 	}
+	if edges := g.EdgesTo(nodeN.Key()); len(edges) != 1 || edges[0].Source.Key() != pod3.Key() {
+		t.Fatalf("expected surviving external declarer in reverse index, got %v", edges)
+	}
+	if depth, ok := depths(g.GetSubgraph(nodeN, 1, 0))["core::v1::Pod/p3"]; !ok || depth != -1 {
+		t.Fatalf("expected surviving external declarer upstream, got depth %d (present=%v)", depth, ok)
+	}
 }
 
 func TestGraph_DuplicateEdge(t *testing.T) {

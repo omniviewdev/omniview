@@ -21,18 +21,27 @@ func NewGraphIndexer(graph *RelationshipGraph, store registry.Store) *Indexer {
 func (gi *Indexer) Name() string { return "relationship-graph" }
 
 func (gi *Indexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
-	gi.graph.RemoveDerivedEdges(entry.EntryKey())
+	key := entry.EntryKey()
+	gi.graph.RemoveDerivedEdges(key)
+	snapshot, epoch := gi.inputSnapshot(entry)
 	gi.extractEdges(entry, raw)
 	gi.CheckLabelSelectorsForEntry(entry)
+	gi.rememberInputs(entry, raw, snapshot, epoch, key)
 }
 
 // OnUpdate re-derives the edges that come from this resource's data. Edges
 // other resources declared about it (a Pod's "runs on" edge to an updated
 // Node, a Pod's ownership edge from an updated ReplicaSet) are left alone.
 func (gi *Indexer) OnUpdate(old, updated registry.ResourceEntry, raw json.RawMessage) {
-	gi.graph.RemoveDerivedEdges(old.EntryKey())
+	oldKey, key := updateKeys(old, updated)
+	if gi.inputsUnchanged(old, updated, raw, oldKey, key) {
+		return
+	}
+	gi.graph.RemoveDerivedEdges(oldKey)
+	snapshot, epoch := gi.inputSnapshot(updated)
 	gi.extractEdges(updated, raw)
 	gi.CheckLabelSelectorsForEntry(updated)
+	gi.rememberInputs(updated, raw, snapshot, epoch, key)
 }
 
 // OnDelete withdraws the edges derived from this resource's data. Field-path

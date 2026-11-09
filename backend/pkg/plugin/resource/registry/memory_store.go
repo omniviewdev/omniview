@@ -53,13 +53,17 @@ func (s *MemoryStore) put(entry ResourceEntry, absentOnly bool) (*ResourceEntry,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var old *ResourceEntry
+	rebuildLabels := true
 	if previous, exists := s.entries[key]; exists {
 		copy := cloneEntry(previous)
 		old = &copy
 		if absentOnly {
 			return old, true
 		}
-		s.removeLabels(key, previous.Labels)
+		rebuildLabels = !maps.Equal(previous.Labels, entry.Labels)
+		if rebuildLabels {
+			s.removeLabels(key, previous.Labels)
+		}
 	}
 	entry = cloneEntry(entry)
 	s.entries[key] = entry
@@ -68,12 +72,14 @@ func (s *MemoryStore) put(entry ResourceEntry, absentOnly bool) (*ResourceEntry,
 		s.byConn[connection] = make(map[projectionKey]struct{})
 	}
 	s.byConn[connection][key] = struct{}{}
-	for name, value := range entry.Labels {
-		label := labelKey{name, value}
-		if s.byLabel[label] == nil {
-			s.byLabel[label] = make(map[projectionKey]struct{})
+	if rebuildLabels {
+		for name, value := range entry.Labels {
+			label := labelKey{name, value}
+			if s.byLabel[label] == nil {
+				s.byLabel[label] = make(map[projectionKey]struct{})
+			}
+			s.byLabel[label][key] = struct{}{}
 		}
-		s.byLabel[label][key] = struct{}{}
 	}
 	return old, old != nil
 }
