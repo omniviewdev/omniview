@@ -784,3 +784,25 @@ point does not advance the stored fence while both entries remain valid. All
 range-to-current race tests passed in the focused run. The earlier admission
 table now labels metrics-server request counts and response bytes explicitly;
 those counters never established server-internal scanned objects or bytes.
+
+### CI bootstrap recovery
+
+Repeated final-head CI attempts failed before application execution while
+`pnpm/setup` v2 downloaded GitHub release archives with HTTP 504. Host and
+companion workflows now pin upstream
+[`pnpm/setup` v3.1.2](https://github.com/pnpm/setup/releases/tag/v3.1.2) at
+`fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e`. Its maintained downloader fetches
+the native pnpm package from npm and verifies npm's signature and the package
+checksum; no custom installer, unverified mirror or disabled integrity check
+was introduced. The pnpm version remains 12.14.0.
+
+Automatic Node version-file discovery is disabled so existing explicit Node
+setup remains authoritative. The nested E2E caller uses the supported
+`working-directory: host` input instead of the retired manifest-path input.
+All 15 setup calls across ten host/companion workflows use the same contract.
+The exact released action installed and executed native pnpm 12.14.0 in an
+isolated smoke directory, and all 60 canonical-runner tests passed. Local
+actionlint reported only its unsupported existing runner labels
+(`macos-15-intel` and `omniview`); actual GitHub CI remains the acceptance gate.
+This bootstrap change does not alter the metrics implementation or measured
+workloads above.
