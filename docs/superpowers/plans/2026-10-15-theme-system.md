@@ -108,7 +108,7 @@
 - `ui/features/extensions/registerBuiltinExtensionPoints.ts`
 - `ui/features/extensions/builtinExtensionPoints.test.ts`
 - `ui/components/displays/CodeEditor.tsx`
-- `ui/federation/LinkedResourceDrawer.tsx`
+- `ui/features/resource-drawer/LinkedResourceDrawer.tsx`
 - `ui/providers/BottomDrawer/containers/Terminal.tsx`
 - `ui/providers/BottomDrawer/containers/terminalThemes.ts`
 - `ui/providers/BottomDrawer/containers/__tests__/Terminal.test.tsx`
@@ -1315,7 +1315,7 @@ git commit -m "feat(plugins): add theme contribution extension point"
 - Create: `ui/components/displays/CodeEditor.test.tsx`
 - Preserve: `ui/components/displays/themes/BrillianceBlack.ts`
 - Preserve: `ui/components/displays/themes/GithubDark.ts`
-- Modify: `ui/federation/LinkedResourceDrawer.tsx`
+- Modify: `ui/features/resource-drawer/LinkedResourceDrawer.tsx`
 - Modify: `ui/providers/BottomDrawer/containers/Terminal.tsx`
 - Modify: `ui/providers/BottomDrawer/containers/terminalThemes.ts`
 - Modify: `ui/providers/BottomDrawer/containers/__tests__/Terminal.test.tsx`
@@ -1381,9 +1381,9 @@ Remove `default` from `terminalThemes` and make `application` the first option. 
 pnpm exec vitest run \
   ui/components/displays \
   ui/providers/BottomDrawer/containers \
-  ui/federation
+  ui/features/resource-drawer
 pnpm run build
-git add ui/components/displays ui/federation/LinkedResourceDrawer.tsx \
+git add ui/components/displays ui/features/resource-drawer/LinkedResourceDrawer.tsx \
   ui/providers/BottomDrawer/containers/Terminal.tsx \
   ui/providers/BottomDrawer/containers/terminalThemes.ts \
   ui/providers/BottomDrawer/containers/__tests__/Terminal.test.tsx
