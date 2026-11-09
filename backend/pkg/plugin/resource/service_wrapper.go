@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/resourceauthoring"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -160,6 +161,12 @@ func (s *ServiceWrapper) GetResourceDefinition(ctx context.Context, pluginID str
 }
 func (s *ServiceWrapper) GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error) {
 	return s.Ctrl.GetSchemaFields(s.realmContext(ctx), pluginID, request)
+}
+
+// CompletePredicate is the authoring transport: one cancellable request per call,
+// admitted, bounded and identity-checked by the host (omniview.authoring.v1).
+func (s *ServiceWrapper) CompletePredicate(ctx context.Context, pluginID string, request resourceauthoring.CompletionRequest) (resourceauthoring.CompletionResponse, error) {
+	return s.Ctrl.CompletePredicate(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error) {
 	return s.Ctrl.GetEditorSchemas(s.realmContext(ctx), pluginID, route)

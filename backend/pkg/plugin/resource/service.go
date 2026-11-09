@@ -2,7 +2,7 @@ package resource
 
 import (
 	"context"
-
+	"github.com/omniviewdev/omniview/backend/pkg/resourceauthoring"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -54,6 +54,7 @@ type Service interface {
 	GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]resourcev2.ResourceGroup, error)
 	GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (resourcev2.ResourceDefinition, error)
 	GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (SchemaFieldsResult, error)
+	CompletePredicate(ctx context.Context, pluginID string, request resourceauthoring.CompletionRequest) (resourceauthoring.CompletionResponse, error)
 	GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error)
 	GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error)
 	GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error)

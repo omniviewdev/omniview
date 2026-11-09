@@ -119,26 +119,8 @@ func (c *controller) ResolveTarget(ctx context.Context, pluginID string, request
 	if descriptor == nil {
 		return _result, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
 	}
-	if err := resourcev2.ValidateScope(request.Scope); err != nil {
-		return _result, err
-	}
-	scope := make(resourcev2.QueryScope, 0, len(descriptor.QueryDimensions))
-	used := make(map[string]bool, len(request.Scope))
-	for _, dimension := range descriptor.QueryDimensions {
-		constraint := resourcev2.ScopeConstraint{Dimension: dimension.Name, Match: resourcev2.ScopeAny}
-		for _, supplied := range request.Scope {
-			if supplied.Dimension == dimension.Name {
-				constraint = supplied
-				used[supplied.Dimension] = true
-				break
-			}
-		}
-		scope = append(scope, constraint)
-	}
-	if len(used) != len(request.Scope) {
-		return _result, resourcev2.NewError("INVALID_REQUEST", "Unknown query scope dimension.")
-	}
-	if err := resourcev2.ValidateScope(scope, descriptor.QueryDimensions); err != nil {
+	scope, err := normalizeQueryScope(*descriptor, request.Scope)
+	if err != nil {
 		return _result, err
 	}
 	representation := request.Representation
@@ -163,6 +145,36 @@ func (c *controller) ResolveTarget(ctx context.Context, pluginID string, request
 		return _result, err
 	}
 	return ResolvedTarget{TargetID: uuid.NewString(), Target: resourcev2.ReadTarget{Route: request.Route, Provider: catalog.Provider, Authority: authority.Authority, Type: request.Type, Scope: scope, Representation: representation}, Authority: AuthorityEvidence{Continuity: authority.Continuity, Limitations: authority.Limitations}, CatalogRevision: catalog.Revision}, nil
+}
+
+// normalizeQueryScope makes every declared query dimension explicit, defaulting
+// an omitted one to route-local any, and admits the result against the type's
+// dimensions. ResolveTarget and completion share it, so a scope accepted by one
+// is the scope the other binds into its identity.
+func normalizeQueryScope(descriptor resourcev2.ResourceType, supplied resourcev2.QueryScope) (resourcev2.QueryScope, error) {
+	if err := resourcev2.ValidateScope(supplied); err != nil {
+		return nil, err
+	}
+	scope := make(resourcev2.QueryScope, 0, len(descriptor.QueryDimensions))
+	used := make(map[string]bool, len(supplied))
+	for _, dimension := range descriptor.QueryDimensions {
+		constraint := resourcev2.ScopeConstraint{Dimension: dimension.Name, Match: resourcev2.ScopeAny}
+		for _, candidate := range supplied {
+			if candidate.Dimension == dimension.Name {
+				constraint = candidate
+				used[candidate.Dimension] = true
+				break
+			}
+		}
+		scope = append(scope, constraint)
+	}
+	if len(used) != len(supplied) {
+		return nil, resourcev2.NewError("INVALID_REQUEST", "Unknown query scope dimension.")
+	}
+	if err := resourcev2.ValidateScope(scope, descriptor.QueryDimensions); err != nil {
+		return nil, err
+	}
+	return scope, nil
 }
 
 func (c *controller) validateReference(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) error {

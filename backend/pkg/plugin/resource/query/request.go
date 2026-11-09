@@ -181,6 +181,25 @@ func (q QuerySpec) validate() error {
 	}
 	return nil
 }
+
+// ValidateDeclarations admits typed parameter declarations without values: a
+// bounded count, identifier-safe unreserved names and well-formed types. A saved
+// query and a draft being authored share these rules, so a name accepted while
+// authoring is a name the query accepts.
+func ValidateDeclarations(declarations map[string]BindingType) error {
+	if len(declarations) > 128 {
+		return limit("too many declarations")
+	}
+	for name, typ := range declarations {
+		if !parameterName.MatchString(name) || reservedNames[name] {
+			return invalid("invalid parameter name")
+		}
+		if err := validateType(typ, 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func validatePath(p DocumentFieldPath) error {
 	if p == nil {
 		return invalid("missing field path")
