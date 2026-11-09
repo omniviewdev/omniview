@@ -16,6 +16,12 @@ export interface ResourceCellProps {
    * provider's column declaration, so renderers must validate it before use.
    */
   readonly data: unknown;
+  /**
+   * The column declaration's `componentParams`, exactly as the provider declared them, or
+   * `undefined` when the declaration has none. It is provider-supplied data of unknown shape
+   * and is shared by every cell of the column: validate it before use and never mutate it.
+   */
+  readonly componentParams?: unknown;
 }
 
 /**

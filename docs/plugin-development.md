@@ -1144,7 +1144,7 @@ export const extensionRegistrations = [
 ] satisfies ExtensionRegistration<ResourceCellContribution>[];
 ```
 
-The component receives `data`, the value the column's accessor produced for the row. Its shape is provider-defined, so validate it before use. Function, class, memo, forwardRef, and lazy components are accepted.
+The component receives two props. `data` is the value the column's accessor produced for the row. `componentParams` is the column declaration's `componentParams` exactly as the provider declared it, or `undefined` when the provider declared none; use it for per-column renderer options. Both shapes are provider-defined, so validate them before use. Treat `componentParams` as read-only, because every cell of the column receives the same value. Function, class, memo, forwardRef, and lazy components are accepted.
 
 Ownership and matching are host-owned. The loader assigns the contribution ID (`<plugin-id>/<registration-id>`) and the owning plugin; nothing in the descriptor, including a `plugin` field or `meta`, grants ownership. A renderer serves only column declarations of the plugin that registered it. A renderer can serve another provider's declarations only by naming that provider in `providers`; the provider's own renderer still wins, and equally specific candidates are reported as ambiguous rather than chosen by registration order. `name` is compared exactly. `resourceKeys` are the same opaque provider-defined type IDs that key `sidebars` and `drawers`; they are compared for equality, never parsed, and wildcards are rejected. Omit them to serve every resource type that declares `name`; an exact type wins over a type-agnostic renderer.
 

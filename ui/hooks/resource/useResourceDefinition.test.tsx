@@ -34,7 +34,7 @@ function setup() {
   transport.definition.mockResolvedValue({
     columnDefs: [
       { id: 'name', header: 'Name', accessor: 'name' },
-      { id: 'status', header: 'Status', accessor: 'status', component: 'status-badge' },
+      { id: 'status', header: 'Status', accessor: 'status', component: 'status-badge', componentParams: { label: 'phase' } },
     ],
   });
   transport.handler.mockResolvedValue({});
@@ -80,6 +80,24 @@ describe('useResourceDefinition custom columns', () => {
     cleanup();
     show(cellOf(gadgets, 'status', 'Running'));
     expect(screen.getByText('Unavailable')).toBeTruthy();
+  });
+
+  it('forwards the declared componentParams to the contributed renderer', async () => {
+    const { store, columnsFor, cellOf, show } = setup();
+    const widgets = await columnsFor('widgets');
+    store.register({
+      id: 'native/status-badge',
+      plugin: 'native',
+      label: 'Status badge',
+      value: {
+        contractVersion: 1,
+        name: 'status-badge',
+        component: ({ data, componentParams }) => <span>{String(data)}|{JSON.stringify(componentParams)}</span>,
+      },
+    });
+
+    show(cellOf(widgets, 'status', 'Running'));
+    expect(screen.getByText('Running|{"label":"phase"}')).toBeTruthy();
   });
 
   it('shows the unavailable state until the plugin contributes the declared component', async () => {

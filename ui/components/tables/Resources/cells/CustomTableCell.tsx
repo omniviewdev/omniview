@@ -22,6 +22,8 @@ type Props = {
   component: string;
   /** The value the column accessor produced for this row. */
   data: unknown;
+  /** The column declaration's `componentParams`, forwarded to the renderer unchanged. */
+  componentParams?: unknown;
 };
 
 type CellStateProps = {
@@ -43,13 +45,14 @@ type ContributedCellProps = {
   registration: ExtensionContributionRegistration<ResourceCellContribution>;
   resourceKey: string;
   data: unknown;
+  componentParams?: unknown;
 };
 
 /**
  * Renders one resolved contribution behind its own boundary. The boundary resets when the
  * registration is replaced (plugin reload) or the row's value changes.
  */
-const ContributedCell: React.FC<ContributedCellProps> = ({ registration, resourceKey, data }) => {
+const ContributedCell: React.FC<ContributedCellProps> = ({ registration, resourceKey, data, componentParams }) => {
   const service = React.useContext(PluginServiceContext);
   const Renderer = registration.value.component;
 
@@ -87,10 +90,10 @@ const ContributedCell: React.FC<ContributedCellProps> = ({ registration, resourc
   );
 
   return (
-    <ErrorBoundary fallbackRender={renderFallback} onError={handleError} resetKeys={[registration, data]}>
+    <ErrorBoundary fallbackRender={renderFallback} onError={handleError} resetKeys={[registration, data, componentParams]}>
       <React.Suspense fallback={<CellState state='loading' label='Loading…' detail={`Loading cell renderer "${registration.value.name}" from plugin "${registration.plugin}".`} />}>
         <div className={styles.Cell} data-align='left' data-state='ready'>
-          <Renderer data={data} />
+          <Renderer data={data} componentParams={componentParams} />
         </div>
       </React.Suspense>
     </ErrorBoundary>
@@ -102,12 +105,12 @@ const ContributedCell: React.FC<ContributedCellProps> = ({ registration, resourc
  * resolved from the live contributions on every registry change, so plugin load, reload and
  * unload update mounted cells; nothing about a resolved renderer is cached here.
  */
-const CustomTableCell: React.FC<Props> = ({ plugin, resourceKey, component, data }) => {
+const CustomTableCell: React.FC<Props> = ({ plugin, resourceKey, component, data, componentParams }) => {
   const { contributions } = useExtensionPointSnapshot<ResourceCellContribution>(RESOURCE_CELL_EXTENSION_POINT_ID);
   const resolution = resolveResourceCell(contributions, { pluginId: plugin, resourceKey, component });
 
   if (resolution.status === 'resolved') {
-    return <ContributedCell registration={resolution.registration} resourceKey={resourceKey} data={data} />;
+    return <ContributedCell registration={resolution.registration} resourceKey={resourceKey} data={data} componentParams={componentParams} />;
   }
 
   return (

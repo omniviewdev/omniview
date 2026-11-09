@@ -282,6 +282,8 @@ renderer: ownership is the registry's host-assigned `plugin`, never descriptor d
 column declarations unless the contribution lists the provider in `providers`; `name` and the opaque
 `resourceKeys` are compared for equality; the provider's own renderer beats an opted-in foreign one and an exact
 type beats a type-agnostic renderer; equally specific candidates are ambiguous and never chosen by order.
+The renderer receives `{ data, componentParams }`: the value the column accessor produced for the row and the
+column declaration's `componentParams`, forwarded unchanged (`undefined` when the provider declared none).
 A missing, mismatched or ambiguous renderer renders an explicit **Unavailable** cell. Each contributed cell has
 its own error boundary: a crash is logged with `logPluginBoundaryError`, recorded against the contribution for
 the extension inspector, and shows **Failed to render** in that cell only. Cell crashes do not quarantine

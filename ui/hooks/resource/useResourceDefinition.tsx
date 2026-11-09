@@ -153,6 +153,7 @@ const parseColumnDef = ({
             resourceKey={resourceKey}
             data={getValue()}
             component={def.component}
+            componentParams={def.componentParams}
           />
           // in-house component
           : <TextCell

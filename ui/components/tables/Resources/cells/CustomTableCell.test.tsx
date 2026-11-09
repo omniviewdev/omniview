@@ -92,6 +92,42 @@ describe('CustomTableCell', () => {
     expect(screen.getByText('contributed').closest('[data-state]')?.getAttribute('data-state')).toBe('ready');
   });
 
+  it('forwards the column’s componentParams to the renderer exactly as declared', () => {
+    const { store, show } = setup();
+    const params = { label: 'phase', thresholds: [1, 2] };
+    const received: Array<{ data: unknown; componentParams: unknown }> = [];
+    store!.register({
+      id: 'native/status',
+      plugin: 'native',
+      label: 'Status',
+      value: contribution(({ data, componentParams }) => {
+        received.push({ data, componentParams });
+        return <span>with params</span>;
+      }),
+    });
+    show({ componentParams: params });
+    expect(screen.getByText('with params')).toBeTruthy();
+    expect(received.at(-1)?.componentParams).toBe(params);
+    expect(received.at(-1)?.data).toBe('ok');
+  });
+
+  it('passes no componentParams when the column declares none', () => {
+    const { store, show } = setup();
+    const received: Array<{ data: unknown; componentParams: unknown }> = [];
+    store!.register({
+      id: 'native/status',
+      plugin: 'native',
+      label: 'Status',
+      value: contribution(({ data, componentParams }) => {
+        received.push({ data, componentParams });
+        return <span>no params</span>;
+      }),
+    });
+    show();
+    expect(screen.getByText('no params')).toBeTruthy();
+    expect(received.at(-1)).toEqual({ data: 'ok', componentParams: undefined });
+  });
+
   it('swaps to the replacement component on reload and releases the old one', async () => {
     const { store, registry, show } = setup();
     const events: string[] = [];
@@ -258,6 +294,29 @@ describe('CustomTableCell', () => {
         expect(screen.getByText('Failed to render')).toBeTruthy();
         view.rerender(<ExtensionProvider registry={registry}>{cell({ data: 'good' })}</ExtensionProvider>);
         expect(screen.getByText('row:good')).toBeTruthy();
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('retries when the column’s componentParams change', () => {
+      const log = quiet();
+      try {
+        const { registry, store, cell } = setup();
+        store!.register({ id: 'native/status', plugin: 'native', label: 'Status', value: contribution(({ componentParams }) => {
+          const mode = typeof componentParams === 'object' && componentParams !== null && 'mode' in componentParams
+            ? String(componentParams.mode)
+            : 'none';
+          if (mode === 'bad') {
+            throw new Error('bad params');
+          }
+
+          return <span>mode:{mode}</span>;
+        }) });
+        const view = render(<ExtensionProvider registry={registry}>{cell({ componentParams: { mode: 'bad' } })}</ExtensionProvider>);
+        expect(screen.getByText('Failed to render')).toBeTruthy();
+        view.rerender(<ExtensionProvider registry={registry}>{cell({ componentParams: { mode: 'good' } })}</ExtensionProvider>);
+        expect(screen.getByText('mode:good')).toBeTruthy();
       } finally {
         log.mockRestore();
       }
