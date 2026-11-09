@@ -22,7 +22,7 @@ import { jsonToValue, valueToJSON, resourceQueryKeys, createErrorHandler, type H
 import { useQueryClient } from '@tanstack/react-query';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
-import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
+import { createLinkedResourceDrawer } from '@/features/resource-drawer/LinkedResourceDrawer';
 import { useExtensionPoint } from '@omniviewdev/runtime';
 import { RESOURCE_DRAWER_EXTENSION_POINT_ID } from '@/features/extensions/drawer/extensionPoint';
 import { RESOURCE_SIDEBAR_EXTENSION_POINT_ID } from '@/features/extensions/sidebar/extensionPoint';

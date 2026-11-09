@@ -8,7 +8,7 @@ import styles from './PluginSurfaceBoundary.module.css';
 
 // ─── Boundary Log Event ─────────────────────────────────────────────
 
-export type BoundaryKind = 'plugin-route' | 'drawer-surface' | 'modal-surface' | 'ExtensionPointRenderer';
+export type BoundaryKind = 'plugin-route' | 'drawer-surface' | 'modal-surface' | 'ExtensionPointRenderer' | 'resource-cell';
 
 export type PluginBoundaryLogEvent = {
   readonly pluginId: string;

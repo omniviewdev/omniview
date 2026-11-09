@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ExtensionPointRegistry, CONNECTION_SETTINGS_EXTENSION_POINT_ID, PLUGIN_SETTINGS_EXTENSION_POINT_ID } from '@omniviewdev/runtime';
+import { ExtensionPointRegistry, CONNECTION_SETTINGS_EXTENSION_POINT_ID, PLUGIN_SETTINGS_EXTENSION_POINT_ID, RESOURCE_CELL_EXTENSION_POINT_ID } from '@omniviewdev/runtime';
 
 import { ensureBuiltinExtensionPointsRegistered } from './registerBuiltinExtensionPoints';
 import {
@@ -378,5 +378,66 @@ describe('Extension point factories', () => {
     expect(ep.id).toBe(THEME_EXTENSION_POINT_ID);
     expect(ep.pluginId).toBe('core');
     expect(ep.mode).toBe('multiple');
+  });
+});
+
+// ─── Host-owned resource detail ownership ───────────────────────────
+
+describe.each([
+  ['sidebar', RESOURCE_SIDEBAR_EXTENSION_POINT_ID],
+  ['drawer', RESOURCE_DRAWER_EXTENSION_POINT_ID],
+])('%s ownership', (_, pointId) => {
+  beforeEach(() => {
+    ensureBuiltinExtensionPointsRegistered(registry);
+  });
+
+  it('resolves only the registering plugin’s own resource type, never a plugin named by descriptor metadata', () => {
+    const store = registry.getExtensionPoint(pointId)!;
+    store.register({ id: 'rogue/detail', plugin: 'rogue', label: 'Forged', value: 'forged', meta: { pluginId: 'victim', resourceKey: 'pods' } });
+    expect(store.provide(createResourceExtensionRenderContext('victim', 'pods'))).toEqual([]);
+    expect(store.provide(createResourceExtensionRenderContext('rogue', 'pods'))).toEqual(['forged']);
+
+    store.register({ id: 'victim/detail', plugin: 'victim', label: 'Genuine', value: 'genuine', meta: { resourceKey: 'pods' } });
+    expect(store.provide(createResourceExtensionRenderContext('victim', 'pods'))).toEqual(['genuine']);
+  });
+
+  it('compares opaque resource type IDs exactly', () => {
+    const store = registry.getExtensionPoint(pointId)!;
+    store.register({ id: 'A/detail', plugin: 'A', label: 'Detail', value: 'detail', meta: { resourceKey: 'k8s:/pods' } });
+    expect(store.provide(createResourceExtensionRenderContext('A', 'k8s:/pods'))).toEqual(['detail']);
+    expect(store.provide(createResourceExtensionRenderContext('A', 'k8s:core/pods'))).toEqual([]);
+  });
+
+  it('drops a plugin’s detail contributions on removal', () => {
+    const store = registry.getExtensionPoint(pointId)!;
+    store.register({ id: 'A/detail', plugin: 'A', label: 'Detail', value: 'detail', meta: { resourceKey: 'pods' } });
+    registry.removeContributions('A');
+    expect(store.provide(createResourceExtensionRenderContext('A', 'pods'))).toEqual([]);
+  });
+});
+
+// ─── Resource cell builtin ──────────────────────────────────────────
+
+describe('resource cell builtin', () => {
+  it('registers a core-owned point that rejects foreign ownership and malformed descriptors', () => {
+    ensureBuiltinExtensionPointsRegistered(registry);
+    const store = registry.getExtensionPoint(RESOURCE_CELL_EXTENSION_POINT_ID);
+    expect(store?.pluginId).toBe('core');
+    expect(store?.mode).toBe('multiple');
+    expect(() => store?.register({ id: 'A/cell', plugin: 'A', label: 'Cell', value: { contractVersion: 1 } })).toThrow();
+    expect(store?.listAll()).toEqual([]);
+
+    const foreign = new ExtensionPointRegistry();
+    foreign.addExtensionPoint({ id: RESOURCE_CELL_EXTENSION_POINT_ID, pluginId: 'foreign', mode: 'multiple' });
+    expect(() => {
+      ensureBuiltinExtensionPointsRegistered(foreign);
+    }).toThrow(/non-core owner/);
+  });
+
+  it('is idempotent for core-owned registration', () => {
+    ensureBuiltinExtensionPointsRegistered(registry);
+    expect(() => {
+      ensureBuiltinExtensionPointsRegistered(registry);
+    }).not.toThrow();
   });
 });

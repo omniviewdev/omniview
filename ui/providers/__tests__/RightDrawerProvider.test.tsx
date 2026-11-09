@@ -25,7 +25,7 @@ vi.mock('@omniviewdev/runtime', async () => {
 });
 
 // Resource editors are a browser-only child boundary, not part of panel sizing.
-vi.mock('@/federation/LinkedResourceDrawer', () => ({
+vi.mock('@/features/resource-drawer/LinkedResourceDrawer', () => ({
   createLinkedResourceDrawer: (...args: unknown[]) => native.drawer(...args),
 }));
 

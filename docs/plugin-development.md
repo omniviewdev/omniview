@@ -1111,6 +1111,49 @@ Resource glyphs should inherit `currentColor` and match adjacent monochrome cont
 
 The reference set is `kubernetes/ui/src/icons/resourceIcons.tsx`. Other plugins can supply their own SVG components or icon libraries without adding those libraries to the host.
 
+#### Custom resource table cells
+
+A provider asks for a custom column renderer by setting `ColumnDefinition.component` to a name. The plugin's UI supplies the renderer as a `ResourceCellContribution` at `RESOURCE_CELL_EXTENSION_POINT_ID` (`omniview/resource/cell`), through the same `extensionRegistrations` mechanism as every other contribution. The host resolves it from the extension registry; there is no remote module loader.
+
+```tsx
+import {
+  RESOURCE_CELL_EXTENSION_POINT_ID,
+  type ExtensionRegistration,
+  type ResourceCellContribution,
+  type ResourceCellProps,
+} from '@omniviewdev/runtime';
+
+function StatusCell({ data }: ResourceCellProps) {
+  return <StatusBadge status={typeof data === 'string' ? data : 'Unknown'} />;
+}
+
+export const extensionRegistrations = [
+  {
+    extensionPointId: RESOURCE_CELL_EXTENSION_POINT_ID,
+    registration: {
+      id: 'status-cell',
+      label: 'Status cell',
+      value: {
+        contractVersion: 1,
+        name: 'status', // the column declaration's `component`
+        resourceKeys: ['widgets'], // optional opaque resource type IDs
+        component: StatusCell,
+      },
+    },
+  },
+] satisfies ExtensionRegistration<ResourceCellContribution>[];
+```
+
+The component receives `data`, the value the column's accessor produced for the row. Its shape is provider-defined, so validate it before use. Function, class, memo, forwardRef, and lazy components are accepted.
+
+Ownership and matching are host-owned. The loader assigns the contribution ID (`<plugin-id>/<registration-id>`) and the owning plugin; nothing in the descriptor, including a `plugin` field or `meta`, grants ownership. A renderer serves only column declarations of the plugin that registered it. A renderer can serve another provider's declarations only by naming that provider in `providers`; the provider's own renderer still wins, and equally specific candidates are reported as ambiguous rather than chosen by registration order. `name` is compared exactly. `resourceKeys` are the same opaque provider-defined type IDs that key `sidebars` and `drawers`; they are compared for equality, never parsed, and wildcards are rejected. Omit them to serve every resource type that declares `name`; an exact type wins over a type-agnostic renderer.
+
+Cells never render blank. A column whose renderer is not registered (plugin not loaded, unloaded, wrong type, or ambiguous) shows **Unavailable**, with the plugin and component name in its tooltip. A lazy renderer shows **Loading…**. A crashing renderer shows **Failed to render** in that cell only, resets when the contribution is replaced or the row's value changes, is logged with the plugin and contribution ID, and appears as a render error in **Developer: Inspect Extensions**. Cell crashes never quarantine the contribution, because a data-dependent failure in one row must not remove the column for every other row.
+
+Plugin lifecycle drives mounted cells. Registering a renderer replaces **Unavailable** in place; reloading swaps in the new component and unmounts the old one; unloading removes the contribution immediately, so no stale renderer stays mounted or cached. The registry rejects a malformed or duplicate descriptor, and the loader logs a warning with the safe diagnostic (never contributor values) instead of failing the plugin's other contributions.
+
+Sidebar and drawer contributions follow the same ownership rule: they resolve only for the plugin that registered them, and `meta.resourceKey` selects the opaque resource type. `meta.pluginId` is ignored.
+
 #### Live data, cache ownership, and failures
 
 The host shares source sessions across resource views and releases them when their interests close. A view receives a snapshot and status, followed by updates when supported. Failed sources retain existing results and expose a retry.
