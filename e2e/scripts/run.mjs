@@ -11,7 +11,7 @@ import { retireApplicationCohort } from './cohort.mjs';
 import { initializeToolCache, readToolCache, retirePreparationHome } from './tool-cache.mjs';
 import { preparePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 import { prepareLinuxDependencies } from './browser-dependencies.mjs';
-import { resolveSDKSource } from './sdk-source.mjs';
+import { resolveKubernetesSourceRef, resolveSDKSource } from './sdk-source.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const processStarted = Date.now();
@@ -81,7 +81,7 @@ function sourceLocations() {
   return {
     omniview: root,
     'plugin-sdk': resolve(process.env.SDK_SOURCE ?? join(root, '..', 'plugin-sdk')),
-    kubernetes: join(root, 'plugins/kubernetes'),
+    kubernetes: resolve(process.env.KUBERNETES_SOURCE ?? join(root, '..', 'omniview-plugin-kubernetes')),
   };
 }
 function cacheProtectedRoots(sources, preparationRoot) {
@@ -192,7 +192,8 @@ async function main() {
     }
     const declaredSDK = resolveSDKSource(root, env);
     if (refs['plugin-sdk'] !== declaredSDK) throw Error(`SDK_SOURCE is at ${refs['plugin-sdk']} but host go.mod resolves github.com/omniviewdev/plugin-sdk to ${declaredSDK}; check out ${declaredSDK} in SDK_SOURCE`);
-    if (git(root, 'ls-tree', 'HEAD', 'plugins/kubernetes') !== `160000 commit ${refs.kubernetes}\tplugins/kubernetes`) throw Error('plugins/kubernetes checkout differs from the host gitlink; run git submodule update --init plugins/kubernetes');
+    const declaredKubernetes = resolveKubernetesSourceRef(root);
+    if (refs.kubernetes !== declaredKubernetes) throw Error(`KUBERNETES_SOURCE is at ${refs.kubernetes} but .github/kubernetes-ref selects ${declaredKubernetes}; check out ${declaredKubernetes} in KUBERNETES_SOURCE`);
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
   if (process.platform === 'linux') {

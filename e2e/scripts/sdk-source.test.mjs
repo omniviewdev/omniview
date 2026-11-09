@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { resolveSDKSource } from './sdk-source.mjs';
+import { resolveKubernetesSourceRef, resolveSDKSource } from './sdk-source.mjs';
 
 const hash = '427ef1da1f1db4f5787d384af3ae183ff31b0cd3';
 
@@ -52,4 +52,20 @@ test('preserves command and metadata parsing failures as causes', () => {
     assert.ok(error.cause instanceof SyntaxError);
     return true;
   });
+});
+
+test('reads only a full pinned Kubernetes commit from the host', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kubernetes-ref-'));
+  try {
+    mkdirSync(join(root, '.github'));
+    const pin = join(root, '.github/kubernetes-ref');
+    writeFileSync(pin, `${hash}\n`);
+    assert.equal(resolveKubernetesSourceRef(root), hash);
+    for (const invalid of ['main', 'abc', hash.toUpperCase(), `${hash}\n${hash}`]) {
+      writeFileSync(pin, invalid);
+      assert.throws(() => resolveKubernetesSourceRef(root), { message: 'Kubernetes source pin must be a full lowercase commit SHA' });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

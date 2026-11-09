@@ -56,7 +56,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          persist-credentials: false
+
+      - name: Resolve Kubernetes revision
+        id: kubernetes
+        run: echo "ref=$(cat .github/kubernetes-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Kubernetes source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/omniview-plugin-kubernetes
+          ref: ${{ steps.kubernetes.outputs.ref }}
+          path: .app-profile-sources/kubernetes
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Node
@@ -131,7 +143,7 @@ jobs:
           HOST_MODFILE: ${{ steps.host-module.outputs.modfile }}
         run: GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" -mod=readonly -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
 
-      # Build the gitlink plugin with the declared SDK and host package outputs.
+      # Build the pinned plugin with the declared SDK and host package outputs.
       # The helper retires its private collection after the profile finishes.
       - name: Profile
         shell: bash
@@ -142,7 +154,7 @@ jobs:
           GOWORK=off GOFLAGS= go run -modfile="$HOST_MODFILE" -mod=readonly -tags server ./bench/app/build-plugin \
             --host "$GITHUB_WORKSPACE" --host-ref "$(git rev-parse HEAD)" \
             --sdk "$SDK_SOURCE" --sdk-ref "${{ steps.sdk.outputs.sdk }}" \
-            --kubernetes "$GITHUB_WORKSPACE/plugins/kubernetes" --kubernetes-ref "$(git -C plugins/kubernetes rev-parse HEAD)" \
+            --kubernetes "$GITHUB_WORKSPACE/.app-profile-sources/kubernetes" --kubernetes-ref "${{ steps.kubernetes.outputs.ref }}" \
             --link-evidence "$RUNNER_TEMP/app-profile-link-protocol.json" \
             -- --runs 3
 

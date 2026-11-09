@@ -4,7 +4,7 @@
  * V2 native pages and metrics answered by fixtures.
  */
 import { describe } from 'vitest';
-import PodTable from '../../plugins/kubernetes/ui/src/components/kubernetes/table/corev1/Pod/Table';
+import PodTable from 'bench-kubernetes-pod-table';
 
 import { screenBench } from './harness/bench';
 import { PluginScreen } from './harness/providers';

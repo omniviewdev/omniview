@@ -21,9 +21,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve Kubernetes revision
+        id: kubernetes
+        run: echo "ref=$(cat .github/kubernetes-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Kubernetes source
+        uses: actions/checkout@v4
         with:
-          # The kubernetes Pod table bench renders plugin source from the submodule.
-          submodules: true
+          repository: omniviewdev/omniview-plugin-kubernetes
+          ref: ${{ steps.kubernetes.outputs.ref }}
+          path: .render-bench-sources/kubernetes
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
@@ -41,6 +50,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Kubernetes UI dependencies
+        working-directory: .render-bench-sources/kubernetes/ui
+        run: pnpm install --frozen-lockfile
+
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
@@ -54,6 +67,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run render benchmarks
+        env:
+          KUBERNETES_SOURCE: ${{ github.workspace }}/.render-bench-sources/kubernetes
         run: pnpm bench:render
 
       - name: Job summary

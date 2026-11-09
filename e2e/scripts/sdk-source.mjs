@@ -37,6 +37,12 @@ export function resolveSDKSource(root, env = process.env, execute = execFileSync
   return hash;
 }
 
+export function resolveKubernetesSourceRef(root) {
+  const hash = readFileSync(resolve(root, '.github/kubernetes-ref'), 'utf8').trim();
+  if (!/^[a-f0-9]{40}$/.test(hash)) throw new Error('Kubernetes source pin must be a full lowercase commit SHA');
+  return hash;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const mode = process.argv[2];
   if (mode !== 'github-output' && mode !== 'print') throw new Error('Expected github-output or print');
