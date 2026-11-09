@@ -27,6 +27,7 @@ import type {
   SchemaFieldsRequest,
   SchemaFieldsResult,
 } from './schema';
+import type { CompletionRequest, CompletionResponse } from './authoring';
 import type { AppError } from '../../errors/types';
 import type {
   ConnectionProfile,
@@ -109,6 +110,8 @@ export const GetResourceDefinition = (pluginID: string, route: AccessRoute, type
   invoke<ResourceDefinition>('GetResourceDefinition', pluginID, route, type);
 export const GetSchemaFields = (pluginID: string, request: SchemaFieldsRequest) =>
   invoke<SchemaFieldsResult>('GetSchemaFields', pluginID, request);
+export const CompletePredicate = (pluginID: string, request: CompletionRequest) =>
+  invoke<CompletionResponse>('CompletePredicate', pluginID, request);
 export const GetEditorSchemas = (pluginID: string, route: AccessRoute) =>
   invoke<EditorSchemaAssociation[]>('GetEditorSchemas', pluginID, route);
 export const GetEditorSchemaDocument = (pluginID: string, route: AccessRoute, documentID: string) =>

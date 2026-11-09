@@ -35,6 +35,12 @@ func predicateParser() (*cel.Env, error) {
 	return parserEnv, nil
 }
 
+// PredicateParser returns the parse-only CEL environment of profile
+// omniview.resource-predicate.v1, with its parser recursion and size limits.
+// Authoring parses drafts with the same environment that admits saved queries,
+// so there is one parser configuration. The environment is immutable and shared.
+func PredicateParser() (*cel.Env, error) { return predicateParser() }
+
 // Parse parses a previously admitted predicate without evaluating or type-checking it.
 func Parse(ctx context.Context, q QuerySpec) (ParsedPredicate, error) {
 	if err := ctx.Err(); err != nil {

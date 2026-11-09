@@ -161,6 +161,8 @@ type controller struct {
 	// schemas is the authoritative schema catalog. Its mutex is a leaf lock:
 	// never call into the controller while holding it.
 	schemas *resourcecatalog.Catalog
+	// authoring holds the per-document completion supersession state (P16).
+	authoring authoringState
 }
 
 // compile-time assertions.
