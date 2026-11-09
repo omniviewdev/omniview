@@ -577,6 +577,13 @@ Host row keys are opaque and include target membership and incarnation. Never
 derive them from display fields or calculate them in plugin JavaScript.
 
 `useResolvedResourceTarget` exposes target resolution as a query.
+Catalog and target queries are scoped to the connection's readiness generation.
+A target acquisition restarts exactly once on `RESET_REQUIRED` and invalidates
+the catalog for that route; other errors and a second reset remain errors.
+Use `useResourceTypes` for screens that should refresh stale metadata when
+reopened or visible again. Use `useResourceType` for per-row consumers: row
+mounts never refresh a stale catalog or retry a failed catalog request.
+
 `useResource({ pluginID, request })` accepts a host Get request.
 `useResources({ pluginID, request, live: true })` acquires exactly one bounded
 native page. Callers own continuation cursors. Unobserved pages discard their

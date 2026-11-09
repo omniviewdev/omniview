@@ -13,6 +13,7 @@ generic no-op window answers prevent the startup-ready marker from firing.
 pnpm bench:app                         # build, then 5 runs of every scenario (~3 min)
 pnpm bench:app --runs 3 --only pods    # some scenarios
 pnpm bench:app --no-build              # reuse bench/app/dist and the plugin bundle
+pnpm bench:app --runs 3 --only pods --cpu-throttle 4  # weaker-CPU sensitivity, not M1 hardware certification
 pnpm bench:app --headed                # watch it
 node bench/app/report.mjs              # Markdown summary of results/latest.json again
 ```
@@ -36,11 +37,12 @@ trees can also expose an `Expand` button; a document-wide lookup can click that
 unrelated control without resizing the drawer. The geometry assertion still
 requires a height change of more than 50 pixels for each of the ten toggles.
 
-The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
-30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
-honor that bound and return real next cursors; they do not return the full corpus
-as one page. Older full-list baseline timings are not comparable. The shared
-browser bridge dispatches both named V2 calls and generated binding IDs.
+The Pod scenario opens a complete 5,000-Pod source-view collection, delivered in
+256-record snapshot batches, then scrolls up to 30 viewport steps. Explicit
+finite-page requests still honor their requested page sizes and cursors. Snapshot
+batch size does not limit collection size. Compare matching collection workloads
+and CPU throttles, not older 256-row page measurements. The shared browser bridge
+dispatches both named V2 calls and generated binding IDs.
 Scroll workloads stop at the real positive scroll boundary, reject no-op steps and
 unexpected end positions, and verify the reset. Reports expose actual forward steps
 and total steps (including the reset); wall and busy per-step timings use that
@@ -171,6 +173,9 @@ the collection and report its path instead of deleting uncertain files.
   `react-dom/client` resolves to `react-dom/profiling` so `<Profiler>` works in production
   React, and `ui/main.tsx` is rewritten at build time to import `page/fake-backend.ts` first
   and wrap the root in `page/profiler.tsx`. The app's source is not changed.
+  This is the profiling build, not the normal production React build: React render, commit
+  and slowest-commit columns include profiling overhead, so these results are not
+  comparable with normal-production measurements.
 - **Fake backend.** `page/fake-backend.ts` installs the `bench/render` transport and fixtures
   (bindings → handlers by name, `emit` for backend events), and adds what the full shell
   asks for at startup: the installed plugin list, a connection, source state, log sessions.
@@ -181,7 +186,9 @@ the collection and report its path instead of deleting uncertain files.
   `/_/plugins/kubernetes/assets/` by `vite preview`, where the app's SystemJS loader
   fetches it, exactly as from `~/.omniview/plugins` in the native app.
   `OV_K8S_PLUGIN_DIST=<assets-dir>` selects an explicitly built external bundle;
-  `OV_K8S_PLUGIN_METADATA=<plugin.json>` selects its matching source metadata.
+  `OV_K8S_PLUGIN_METADATA=<plugin.json>` selects its matching source metadata. Relative
+  override paths resolve from the host root, as in `vite.config.ts` (both use
+  `plugin-bundle.mjs`), not from the working directory.
   Empty overrides and missing, empty or non-file `entry.js` entries fail before
   profiling. Without an override, the runner builds the bundled UI if missing;
   that checkout must independently satisfy the host's current consumer contract.
@@ -195,7 +202,7 @@ the collection and report its path instead of deleting uncertain files.
 |---|---|
 | `cold-start` | Fresh browser context, no plugins installed, until the startup marker. |
 | `cold-start-k8s` | As above with the kubernetes plugin; also until the plugin's home card shows. |
-| `pods` | `open`: from the home page, open the native Pod page from a 5,000-pod corpus until a row shows. `scroll`: up to 30 viewport steps within the native page, then back to top, each waiting for a painted frame. |
+| `pods` | `open`: from the home page, acquire all 5,000 Pod records until a row shows. `scroll`: up to 30 viewport steps through the collection, then back to top, each waiting for a painted frame. |
 | `logs` | `open`: Pod row menu → Logs, until the viewer shows. `stream`: 10,000 lines in batches of 100, one batch per task, until the line counter reaches 10,000. `scroll`: up to 30 viewport steps within the available log buffer, then back to top. `drawer`: minimize/expand the bottom drawer 10 times. |
 
 Every scenario runs once as a discarded warmup, then `--runs` times, each in a new browser
@@ -215,6 +222,75 @@ context.
 
 JSON (`results/latest.json`) has every run's raw values, plus page errors and backend calls
 without a fixture. Compare runs on the same machine only.
+
+## Result provenance
+
+Every result records what was measured, so it is compared only with a matching one.
+
+- **Workload.** `meta.workload` carries an `id` and the parameters this runner applied.
+  `whole-app/v1` is a complete 5,000-Pod source-view collection delivered by the
+  `bench/render` fixture in 256-record snapshot batches, scrolled for up to 30 viewport
+  steps, plus 10,000 log lines, 30 log scroll steps and 10 drawer toggles at 1440×900.
+  It assumes the selected Kubernetes UI acquires the Pod corpus through source views, as
+  the current plugin does; `plugin.bundle` says which build ran. Change the id whenever a
+  scenario's fixture, size or steps change. A result with no workload id is an **unknown
+  legacy workload**, including the older 256-row native-page runs. `report.mjs` says so and
+  never describes it as the 5,000-record collection.
+- **Frontend.** `meta.frontend` identifies every file in `bench/app/dist` by a tree
+  SHA-256. A fresh build also records its configuration hash and React variant:
+  `react-dom/profiling` by default, or normal React in archive-smoke mode.
+  With `--no-build`, the build configuration and React variant are unknown: the
+  runner identifies the reused bytes, not how an earlier process produced them.
+- **Host and plugin source.** `commit`, `dirty` and `hostSource` identify the host checkout
+  by its full HEAD, tracked dirty state, and a SHA-256 of
+  `git diff --binary --no-ext-diff --no-textconv HEAD`. Other runners can use
+  different diff flags, so their tracked-diff hashes are not necessarily interchangeable.
+  Untracked files are not part of that identity. `plugin.checkout` records a plugin commit
+  only for a repository other than the host that tracks the selected `plugin.json` and
+  contains the selected assets directory. A plugin directory inside the host repository, such
+  as an uninitialized `plugins/kubernetes` submodule, resolves to the host commit; it is
+  recorded as `unknown` with its reason, never as the host SHA. A failed git lookup is
+  `unknown` (`dirty: null`), not an empty value.
+- **Plugin bytes.** `plugin.bundle` has the file count, size, the `entry.js` SHA-256 and a
+  SHA-256 over every served file by relative path and content; `plugin.metadataSHA256`
+  identifies the selected `plugin.json`. The bundle hash, not the commit, says which bytes
+  were measured: a commit does not prove the bundle was built from it.
+
+A dirty run is reproducible only if its diff and built artifacts were retained. The hashes
+verify retained inputs; they do not recreate lost ones. Unit tests for these helpers and the
+report:
+
+```sh
+node --test bench/app/plugin-bundle.test.mjs bench/app/report.test.mjs
+```
+
+## Cluster scrolling pass, 2026-11-09
+
+[Raw measurements and limits](cluster-performance-2026-11-09.json) record the
+baseline and candidate. Their commit IDs pin only the workspace bases: the `viewportJump`
+runs record dirty host trees, and the receipt cannot be reproduced (see below). Nominal scrolling eliminated catalog
+requests and improved frame timing with fourfold CPU throttling. Overscan
+increased from 15 to 24 rows per side; fixed-height windows reuse ranges within
+four-row boundaries. Row menus and tooltips share popup owners.
+
+This is not an end-to-end success claim. The larger-jump workload regressed,
+fourfold-throttled nominal scrolling did not meet a 60-fps budget, and the fixture
+did not reproduce native black rows. The isolated CLI workspace was created from
+`origin/main`, but its live launch stalled and timed out. Static retry and stopped
+recovery failed generated-cache ownership checks. Those CLI issues were recorded;
+no owned caches were deleted to bypass validation. Real-cluster and M1 Pro
+acceptance remain unverified.
+
+Provenance of that receipt is limited. Both `viewportJump` metas record a dirty host working
+tree, the Kubernetes UI working tree's state was not recorded, and the exact diffs, build
+inputs and built bundles were not retained, so it cannot be reproduced from its commit IDs.
+The older baseline runner stored the host commit as `k8sPlugin`; the file keeps that raw value
+as `k8sPluginRaw`, marked invalid, and the baseline plugin source is unknown. The candidate's
+`k8sPlugin` came only from the metadata file's parent directory and is unverified. The receipt
+records a normal React production build, while `run.mjs` measures the profiling build
+(`react-dom/profiling`), so their timings and React columns are not comparable. The
+`viewportJump` workload ID and record count were not recorded: it is an unknown legacy
+workload, not the 5,000-record collection. No measurement was edited.
 
 ## Real resource boundary (verification-only)
 

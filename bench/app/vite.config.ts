@@ -18,11 +18,11 @@ import path from 'node:path';
 import appConfig from '../../vite.config';
 import { wailsBindingIndex } from '../vite/wails-binding-index';
 
-import { pluginAssetDirectory } from './plugin-bundle.mjs';
+import { pluginAssetDirectory, pluginMetadataFile } from './plugin-bundle.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 const here = import.meta.dirname;
 const archiveSmoke = process.env.OV_PLUGIN_ARCHIVE_SMOKE === '1';
-const pluginMetadata = path.resolve(root, process.env.OV_K8S_PLUGIN_METADATA ?? 'plugins/kubernetes/plugin.json');
+const pluginMetadata = pluginMetadataFile(root);
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
 
 /** Built plugin UI bundles served to the app, by plugin id. */

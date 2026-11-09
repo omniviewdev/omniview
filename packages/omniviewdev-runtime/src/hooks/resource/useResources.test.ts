@@ -6,6 +6,8 @@ import { useResources } from './useResources';
 import { useResolvedResourceTarget } from './useResolvedResourceTarget';
 import { useResource } from './useResource';
 import { useResourceGroups } from './useResourceGroups';
+import { useResourceTypes } from './useResourceTypes';
+import { useResourceType } from './useResourceType';
 import { useResourceMutations } from './useResourceMutations';
 import { useExecuteAction } from './useResourceActions';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
@@ -27,6 +29,7 @@ const native = vi.hoisted(() => ({
   resolveTarget: vi.fn(),
   get: vi.fn(),
   groups: vi.fn(),
+  catalog: vi.fn(),
   mutate: vi.fn(),
   action: vi.fn(),
   requireReady: vi.fn(),
@@ -36,6 +39,7 @@ vi.mock('../../resource/v2/client', () => ({
   ResolveTarget: native.resolveTarget,
   Get: native.get,
   GetResourceGroups: native.groups,
+  Catalog: native.catalog,
   Mutate: native.mutate,
   Action: native.action,
 }));
@@ -141,21 +145,63 @@ function source() {
     },
   };
 }
-function setup() {
+type Wrapper = (props: { children: React.ReactNode }) => React.ReactElement;
+function setup(queries: { refetchOnWindowFocus?: boolean } = {}) {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    defaultOptions: { queries: { retry: false, staleTime: Infinity, ...queries } },
   });
-  return {
-    client,
-    wrapper: ({ children }: { children: React.ReactNode }) =>
-      React.createElement(QueryClientProvider, { client }, children),
-  };
+  const wrapper: Wrapper = ({ children }) =>
+    React.createElement(QueryClientProvider, { client }, children);
+  return { client, wrapper };
 }
 function ready<T>(value: T) {
   return new CancellablePromise<T>((resolve) => resolve(value));
 }
 function denied<T>(message: string) {
   return new CancellablePromise<T>((_resolve, reject) => reject(new Error(message)));
+}
+
+const podsRoute = { connection: 'c' };
+const catalogKey = ['provider', 'resource-v2', 'catalog', podsRoute];
+const catalogOf = (label: string, revision = 'ovc1.binding.native') => ({
+  provider: 'provider',
+  revision,
+  types: [{ type: 'pods', displayName: label }],
+});
+const openScreen = (wrapper: Wrapper) =>
+  renderHook(() => useResourceTypes({ pluginID: 'provider', route: podsRoute }), { wrapper });
+const mountCell = (wrapper: Wrapper) =>
+  renderHook(() => useResourceType({ pluginID: 'provider', route: podsRoute, type: 'pods' }), { wrapper });
+const mountTarget = (wrapper: Wrapper) =>
+  renderHook(() => useResolvedResourceTarget({ pluginID: 'provider', route: podsRoute, type: 'items' }), { wrapper });
+function failed<T>(reason: unknown) {
+  return new CancellablePromise<T>((_resolve, reject) => reject(reason));
+}
+const hostError = (code: string, status: number) => ({ type: `omniview:resource/${code}`, title: code, status, detail: code, code });
+const resetRequired = hostError('RESET_REQUIRED', 409);
+const timedOut = hostError('TIMEOUT', 408);
+const targetOf = (targetId: string) => ({
+  targetId,
+  target: request.request.target,
+  authority: { continuity: 'connectionLocal', limitations: [] },
+  catalogRevision: 'catalog-1',
+});
+/** A long-lived screen outlives the catalog's 30 second freshness window. */
+function ageCatalog(client: QueryClient) {
+  act(() => {
+    for (const query of client.getQueryCache().findAll({ queryKey: catalogKey })) {
+      client.setQueryData(query.queryKey, query.state.data, { updatedAt: 1 });
+    }
+  });
+}
+/**
+ * Deliver the window-focus signal to every cached query. The app's QueryClient disables
+ * window-focus refetching, so each observer decides for itself whether to refresh.
+ */
+function refocus(client: QueryClient) {
+  act(() => {
+    client.getQueryCache().onFocus();
+  });
 }
 
 beforeEach(() => {
@@ -171,14 +217,10 @@ beforeEach(() => {
   });
   native.get.mockImplementation(() => ready(row));
   native.groups.mockImplementation(() => ready([]));
-  native.resolveTarget.mockImplementation(() =>
-    ready({
-      targetId: request.targetId,
-      target: request.request.target,
-      authority: { continuity: 'connectionLocal', limitations: [] },
-      catalogRevision: 'catalog-1',
-    }),
-  );
+  native.catalog.mockReset();
+  native.catalog.mockImplementation(() => ready(catalogOf('Pods')));
+  native.resolveTarget.mockReset();
+  native.resolveTarget.mockImplementation(() => ready(targetOf(request.targetId)));
 });
 
 it('waits for a complete collection snapshot, then applies source changes', async () => {
@@ -488,5 +530,305 @@ it('separates group caches by opaque route', async () => {
   );
   expect(hook.result.current.second.groups.data).toEqual([{ id: second.connection }]);
   hook.unmount();
+  client.clear();
+});
+
+const staleCauses: [string, (client: QueryClient) => Promise<void>][] = [
+  ['time', (client) => { ageCatalog(client); return Promise.resolve(); }],
+  ['invalidation while no screen was open', (client) => client.invalidateQueries({ queryKey: catalogKey })],
+];
+
+it.each(staleCauses)(
+  'refreshes a catalog gone stale by %s when a screen reopens, but not when rows mount',
+  async (_cause, makeStale) => {
+    const { client, wrapper } = setup();
+    const first = openScreen(wrapper);
+    await waitFor(() => expect(first.result.current.resourceTypes.data?.[0].displayName).toBe('Pods'));
+    first.unmount();
+    await act(async () => {
+      await makeStale(client);
+    });
+    native.catalog.mockImplementation(() => ready(catalogOf('Updated pods')));
+    // Rows mount into the stale catalog while no screen is open. Scrolling is not a refresh.
+    for (let index = 0; index < 3; index++) {
+      const cell = mountCell(wrapper);
+      expect(cell.result.current.resourceType.data?.displayName).toBe('Pods');
+      cell.unmount();
+    }
+    await act(async () => {});
+    expect(native.catalog).toHaveBeenCalledTimes(1);
+    // Reopening the screen is intentional, so it refreshes the catalog once.
+    const reopened = openScreen(wrapper);
+    await waitFor(() =>
+      expect(reopened.result.current.resourceTypes.data?.[0].displayName).toBe('Updated pods'),
+    );
+    expect(native.catalog).toHaveBeenCalledTimes(2);
+    reopened.unmount();
+    client.clear();
+  },
+);
+
+it('refreshes a stale catalog on focus for screens only, although the app disables focus refetching', async () => {
+  const { client, wrapper } = setup({ refetchOnWindowFocus: false });
+  const cell = mountCell(wrapper);
+  const page = openScreen(wrapper);
+  await waitFor(() => expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Pods'));
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  ageCatalog(client);
+  native.catalog.mockImplementation(() => ready(catalogOf('Updated pods')));
+  refocus(client);
+  await waitFor(() => expect(cell.result.current.resourceType.data?.displayName).toBe('Updated pods'));
+  // One refresh of the shared query, not one per observer.
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+
+  page.unmount();
+  ageCatalog(client);
+  native.catalog.mockImplementation(() => ready(catalogOf('Not requested')));
+  refocus(client);
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  expect(cell.result.current.resourceType.data?.displayName).toBe('Updated pods');
+  cell.unmount();
+  client.clear();
+});
+
+it('does not retry a failed catalog when rows mount, and recovers when a screen reopens', async () => {
+  native.catalog.mockImplementationOnce(() => denied('catalog timed out'));
+  const { client, wrapper } = setup();
+  const first = mountCell(wrapper);
+  await waitFor(() => expect(first.result.current.resourceType.isError).toBe(true));
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  // Scrolling mounts many rows into a catalog with no data. None may retry it.
+  for (let index = 0; index < 5; index++) {
+    mountCell(wrapper).unmount();
+  }
+  await act(async () => {});
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  // Reopening a screen retries once, and the mounted row shares the recovered catalog.
+  const page = openScreen(wrapper);
+  await waitFor(() => expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Pods'));
+  expect(first.result.current.resourceType.data?.displayName).toBe('Pods');
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  page.unmount();
+  first.unmount();
+  client.clear();
+});
+
+it('recovers a failed catalog on focus while a screen stays open', async () => {
+  native.catalog.mockImplementationOnce(() => denied('catalog timed out'));
+  const { client, wrapper } = setup({ refetchOnWindowFocus: false });
+  const page = openScreen(wrapper);
+  await waitFor(() => expect(page.result.current.resourceTypes.isError).toBe(true));
+  refocus(client);
+  await waitFor(() => expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Pods'));
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  page.unmount();
+  client.clear();
+});
+
+it('requests no catalog until the connection is ready, then loads it once', async () => {
+  native.phase = 'disconnected';
+  const { client, wrapper } = setup();
+  const page = openScreen(wrapper);
+  const cell = mountCell(wrapper);
+  await act(async () => {});
+  expect(native.catalog).not.toHaveBeenCalled();
+  expect(page.result.current.resourceTypes.data).toBeUndefined();
+  native.phase = 'connected';
+  page.rerender();
+  cell.rerender();
+  await waitFor(() => expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Pods'));
+  expect(cell.result.current.resourceType.data?.displayName).toBe('Pods');
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  page.unmount();
+  cell.unmount();
+  client.clear();
+});
+
+it('keeps mounted consumers stable across an unchanged refresh and updates their labels when the catalog changed', async () => {
+  const { client, wrapper } = setup();
+  const view = renderHook(
+    () => ({
+      page: useResourceTypes({ pluginID: 'provider', route: podsRoute }).resourceTypes,
+      cell: useResourceType({ pluginID: 'provider', route: podsRoute, type: 'pods' }).resourceType,
+    }),
+    { wrapper },
+  );
+  await waitFor(() => expect(view.result.current.cell.data?.displayName).toBe('Pods'));
+  const before = view.result.current.cell.data;
+  // An explicit refresh that returns an equivalent catalog changes nothing for a mounted cell.
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: catalogKey });
+  });
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  expect(view.result.current.cell.data).toBe(before);
+  // A changed catalog reaches the still-mounted cell and screen without remounting either.
+  native.catalog.mockImplementation(() => ready(catalogOf('Updated pods', 'ovc1.binding.changed')));
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: catalogKey });
+  });
+  await waitFor(() => expect(view.result.current.cell.data?.displayName).toBe('Updated pods'));
+  expect(view.result.current.page.data?.[0].displayName).toBe('Updated pods');
+  expect(native.catalog).toHaveBeenCalledTimes(3);
+  view.unmount();
+  client.clear();
+});
+
+it('scopes the catalog to the connection generation, so a replaced target is never served under the same connection ID', async () => {
+  const { client, wrapper } = setup();
+  const page = openScreen(wrapper);
+  const cell = mountCell(wrapper);
+  await waitFor(() => expect(cell.result.current.resourceType.data?.displayName).toBe('Pods'));
+  const before = cell.result.current.resourceType.data;
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  // A readiness publication without a new generation, such as a background check, is the same target.
+  act(() => {
+    for (const listener of [...native.listeners]) listener();
+  });
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  expect(cell.result.current.resourceType.data).toBe(before);
+  // The connection ID now reaches a different target.
+  native.catalog.mockImplementation(() => ready(catalogOf('Replacement pods', 'ovc1.replacement.native')));
+  act(() => {
+    native.generation++;
+    for (const listener of [...native.listeners]) listener();
+  });
+  expect(cell.result.current.resourceType.data).toBeUndefined();
+  expect(page.result.current.resourceTypes.data).toBeUndefined();
+  await waitFor(() => expect(cell.result.current.resourceType.data?.displayName).toBe('Replacement pods'));
+  expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Replacement pods');
+  // One load per generation, shared by both observers.
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  page.unmount();
+  cell.unmount();
+  client.clear();
+});
+
+it('rejects a catalog response that arrives after the connection generation changed', async () => {
+  const stale = Promise.withResolvers<unknown>();
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  native.catalog.mockReturnValueOnce(Object.assign(stale.promise, { cancel }));
+  const { client, wrapper } = setup();
+  const cell = mountCell(wrapper);
+  await waitFor(() => expect(native.catalog).toHaveBeenCalledTimes(1));
+  native.catalog.mockImplementation(() => ready(catalogOf('Replacement pods', 'ovc1.replacement.native')));
+  act(() => {
+    native.generation++;
+    for (const listener of [...native.listeners]) listener();
+  });
+  expect(cancel).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(cell.result.current.resourceType.data?.displayName).toBe('Replacement pods'));
+  await act(async () => stale.resolve(catalogOf('Previous target pods', 'ovc1.previous.native')));
+  expect(cell.result.current.resourceType.data?.displayName).toBe('Replacement pods');
+  expect(client.getQueryData([...catalogKey, 1])).toBeUndefined();
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  cell.unmount();
+  client.clear();
+});
+
+it('reacquires a target once when the host rejects the first resolution after a source replacement', async () => {
+  native.resolveTarget
+    .mockImplementationOnce(() => failed(resetRequired))
+    .mockImplementationOnce(() => ready(targetOf('replacement-target')));
+  const { client, wrapper } = setup();
+  const screen = openScreen(wrapper);
+  const cell = mountCell(wrapper);
+  await waitFor(() => expect(cell.result.current.resourceType.data?.displayName).toBe('Pods'));
+  native.catalog.mockImplementation(() => ready(catalogOf('Replacement pods')));
+  const errors: boolean[] = [];
+  const hook = renderHook(
+    () => {
+      const target = useResolvedResourceTarget({ pluginID: 'provider', route: podsRoute, type: 'items' });
+      errors.push(target.isError);
+      return target;
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(hook.result.current.data?.targetId).toBe('replacement-target'));
+  expect(native.resolveTarget).toHaveBeenCalledTimes(2);
+  await waitFor(() => expect(cell.result.current.resourceType.data?.displayName).toBe('Replacement pods'));
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  // The restart belongs to the same acquisition, so the rejection is never shown as an error.
+  expect(errors).not.toContain(true);
+  hook.unmount();
+  cell.unmount();
+  screen.unmount();
+  client.clear();
+});
+
+const targetFailures: [string, unknown[], number, string][] = [
+  ['a second RESET_REQUIRED', [resetRequired, resetRequired], 2, 'RESET_REQUIRED'],
+  ['another error after RESET_REQUIRED', [resetRequired, timedOut], 2, 'TIMEOUT'],
+  ['an error that is not RESET_REQUIRED, without a second request', [timedOut], 1, 'TIMEOUT'],
+];
+
+it.each(targetFailures)('surfaces %s as the target error', async (_name, failures, calls, code) => {
+  for (const failure of failures) native.resolveTarget.mockImplementationOnce(() => failed(failure));
+  const { client, wrapper } = setup();
+  const hook = mountTarget(wrapper);
+  await waitFor(() => expect(hook.result.current.isError).toBe(true));
+  expect(hook.result.current.error).toMatchObject({ code });
+  expect(hook.result.current.data).toBeUndefined();
+  expect(native.resolveTarget).toHaveBeenCalledTimes(calls);
+  hook.unmount();
+  client.clear();
+});
+
+it('re-resolves after a generation change and never exposes the previous target', async () => {
+  native.resolveTarget.mockImplementationOnce(() => ready(targetOf('first-target')));
+  const { client, wrapper } = setup();
+  const hook = mountTarget(wrapper);
+  await waitFor(() => expect(hook.result.current.data?.targetId).toBe('first-target'));
+  const replacement = Promise.withResolvers<unknown>();
+  native.resolveTarget.mockReturnValueOnce(Object.assign(replacement.promise, { cancel: vi.fn() }));
+  // The connection ID now reaches a different target.
+  act(() => {
+    native.generation++;
+    for (const listener of [...native.listeners]) listener();
+  });
+  expect(native.resolveTarget).toHaveBeenCalledTimes(2);
+  expect(hook.result.current.data).toBeUndefined();
+  await act(async () => replacement.resolve(targetOf('replacement-target')));
+  await waitFor(() => expect(hook.result.current.data?.targetId).toBe('replacement-target'));
+  expect(native.resolveTarget).toHaveBeenCalledTimes(2);
+  hook.unmount();
+  client.clear();
+});
+
+it('shares one catalog and one target resolution across mounts while the generation is unchanged', async () => {
+  const { client, wrapper } = setup();
+  const useConsumers = () => ({
+    page: useResourceTypes({ pluginID: 'provider', route: podsRoute }).resourceTypes,
+    cell: useResourceType({ pluginID: 'provider', route: podsRoute, type: 'pods' }).resourceType,
+    target: useResolvedResourceTarget({ pluginID: 'provider', route: podsRoute, type: 'items' }),
+  });
+  const view = renderHook(useConsumers, { wrapper });
+  await waitFor(() => expect(view.result.current.target.data?.targetId).toBe('target'));
+  await waitFor(() => expect(view.result.current.page.data?.[0].displayName).toBe('Pods'));
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  expect(native.resolveTarget).toHaveBeenCalledTimes(1);
+  // Rows come and go while the connection generation stays the same.
+  for (let index = 0; index < 5; index++) {
+    const row = renderHook(useConsumers, { wrapper });
+    expect(row.result.current.cell.data?.displayName).toBe('Pods');
+    expect(row.result.current.target.data?.targetId).toBe('target');
+    row.unmount();
+  }
+  // A readiness publication without a new generation changes nothing.
+  act(() => {
+    for (const listener of [...native.listeners]) listener();
+  });
+  await act(async () => {});
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  expect(native.resolveTarget).toHaveBeenCalledTimes(1);
+  // A new generation loads each once, shared by every observer.
+  act(() => {
+    native.generation++;
+    for (const listener of [...native.listeners]) listener();
+  });
+  await waitFor(() => expect(view.result.current.target.data?.targetId).toBe('target'));
+  await waitFor(() => expect(view.result.current.cell.data?.displayName).toBe('Pods'));
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  expect(native.resolveTarget).toHaveBeenCalledTimes(2);
+  view.unmount();
   client.clear();
 });

@@ -1,21 +1,18 @@
-import { skipToken, useQuery } from '@tanstack/react-query';
-import { Catalog } from '../../resource/v2/client';
 import type { AccessRoute } from '../../resource/v2/domain';
-import { useResolvedPluginId } from '../useResolvedPluginId';
-import { useConnectionReadiness } from '../connection/useConnectionReadiness';
-import { useConnectionQueryGuard } from './useConnectionQueryGuard';
+import { useResourceCatalog } from './useResourceCatalog';
 
-export const useResourceTypes = ({ pluginID: explicitPluginID, route, enabled = true }: { pluginID?: string; route: AccessRoute; enabled?: boolean }) => {
-  const pluginID = useResolvedPluginId(explicitPluginID);
-  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled });
-  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
-  const queryEnabled = enabled && !!pluginID && !!route.connection && readiness.phase === 'connected';
-  const resourceTypes = useQuery({
-    queryKey: [pluginID, 'resource-v2', 'catalog', route],
-    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => Catalog(pluginID, { route })) : skipToken,
-    select: (catalog) => catalog.types,
-    enabled: queryEnabled,
-    retry: false,
-  });
+/**
+ * Resource types a route advertises, for a screen that presents or depends on the catalog.
+ *
+ * The catalog is shared by every observer of the route and stays fresh for 30 seconds. A stale
+ * or failed catalog is refreshed when a screen using this hook mounts or the window regains
+ * focus, even though the app's QueryClient disables focus refetching. Use `useResourceType` for
+ * consumers that mount per virtualized row: they never start a refresh by mounting.
+ *
+ * Catalogs are scoped to the connection's readiness generation, so a restarted or replaced
+ * connection never serves its previous target's catalog.
+ */
+export const useResourceTypes = ({ pluginID, route, enabled = true }: { pluginID?: string; route: AccessRoute; enabled?: boolean }) => {
+  const resourceTypes = useResourceCatalog({ pluginID, route, enabled, refresh: 'whenStale', select: (catalog) => catalog.types });
   return { resourceTypes };
 };
