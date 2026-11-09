@@ -22,6 +22,8 @@ export interface BenchConfig {
   plugins?: string[];
   /** Pods returned by the kubernetes List call. */
   pods?: number;
+  /** Model a new profile with no kubeconfig contexts. */
+  emptyConnections?: boolean;
 }
 
 export interface StartupTimings {
@@ -113,9 +115,9 @@ handleAll({
   'plugin/servicewrapper.GetPlugin': (id: string) => plugins.find((p) => p.id === id) ?? null,
   'plugin/servicewrapper.GetPluginMeta': (id: string) => pluginMeta[id] ?? { id, name: id, version: '0.0.0-bench' },
   'plugin/servicewrapper.ListAvailablePlugins': () => [],
-  'resource/servicewrapper.ListConnections': () => [{ id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }],
+  'resource/servicewrapper.ListConnections': () => config.emptyConnections ? [] : [{ id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }],
   'resource/servicewrapper.ListAllConnections': () =>
-    Object.fromEntries(plugins.map((p) => [p.id, [{ id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }]])),
+    Object.fromEntries(plugins.map((p) => [p.id, config.emptyConnections ? [] : [{ id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }]])),
   'resource/servicewrapper.StartConnection': () => ({ connection: { id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }, status: 'CONNECTED' }),
   // The startup marker the cold-start script also uses (ui/features/perf/startup.ts).
   'diagnostics/diagnosticsclient.ReportStartupReady': (t: StartupTimings) => {
