@@ -117,7 +117,7 @@ func (p *benchmarkSource) Catalog(ctx context.Context, request resource.CatalogR
 		Provider: "workspace-probe", Revision: "fixture-v2-1", Coverage: resource.Coverage{Kind: "complete"},
 		Types: []resource.ResourceType{{
 			Type: scenario.Type, DisplayName: scenario.Type, IdentityDimensions: dimensions, QueryDimensions: dimensions,
-			Representations: []resource.Representation{nativeRepresentation()}, DefaultRepresentation: "native",
+			Representations: []resource.Representation{nativeRepresentation(), authoringRepresentation(request.Route.Connection)}, DefaultRepresentation: "native",
 			Capabilities: capabilities,
 		}},
 	}, nil
