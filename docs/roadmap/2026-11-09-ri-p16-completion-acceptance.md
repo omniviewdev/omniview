@@ -48,10 +48,41 @@ No `FilterField` list, type or consumer exists on `origin/main` (searched Go and
 - No permission epoch exists on the host; `accessGeneration` folds in the provider generation, connection epoch and the principal's generation slot only. Permission-aware inventory suggestions belong to P17.
 - Navigation cannot reach a field past the 128th of one node by prefix (P07 policy); the response is truncated, not wrong. Fixing it requires a reviewed P07 change.
 - Hover, signatures, diagnostics and expected-token reporting are not implemented; `draft` reports only valid/incomplete.
-- The Wails HTTP/IPC layer, the real app and a browser editor were not driven; no e2e spec was added. The runtime `authoringSession` helper is tested against a fake transport, not a live bridge. Nothing in the host UI calls it yet (P19/P20).
+- The production query editor UI is still P19/P20 work. The browser transport follow-up below drives the published runtime session against the live bridge, not an editor popup.
 - `filter(...)` keeps the receiver's item type (`TestFilterKeepsTheReceiversItemType`); `map(...)` results, arithmetic operands and ternaries resolve no members.
 - Operand extraction delimits a postfix chain lexically and then parses it; shapes outside the fuzz and draft corpus (comments inside a chain, optional `?.` syntax) are not covered by tests and may yield no suggestions.
 
 ## Proposed ledger update
 
 Work packages P16: "Implemented in this PR: host completion service `CompletePredicate` (`omniview.authoring.v1`), runtime projection and session helper; remaining: P19/P20 consumers, permission epoch, hover/diagnostics". Contract readiness C09: "cursor/replacement units (UTF-8 bytes, conversions proven), document/schema/access/environment identity, stale rejection, bounds and operator insertion rules defined in the P16 contract; descendant path-presence is reported as `context.ancestors`; builder guard generation and whole-clause NOT remain P21".
+
+## Browser transport follow-up
+
+The canonical application harness now runs `e2e/tests/plugins/authoring-transport.spec.ts`.
+The `workspace-probe` provider exposes an additional `authoring` representation with a bundled
+JSON Schema; its existing native representation remains schema-absent.
+The probe's browser module exposes the published `createCompletionSession` helper for this test.
+The helper uses its default generated Wails binding, without a mocked transport or completion response.
+
+Verified behavior:
+
+- A mid-expression field edit after emoji uses UTF-16 input offsets and UTF-8 wire ranges without changing the suffix.
+- Schema-derived operators and enum values cross the real browser/Wails/Go/provider path.
+- A one-item response reports truncation instead of claiming the inventory is complete.
+- A burst of document edits applies only the final response.
+- Switching representation, connection, resource type and scope refreshes identity and suggestions.
+- Stale schema, catalog, representation, environment and access-generation expectations return `RESET_REQUIRED`.
+
+Run from a clean clone with the pinned Kubernetes submodule initialized:
+
+```sh
+PATH=/private/tmp/p26-go/go/bin:/private/tmp/p26-node/bin:$PATH \
+SDK_SOURCE=/private/tmp/p26-plugin-sdk \
+OMNIVIEW_E2E_TOOL_CACHE_ROOT=/private/tmp/p26-toolcache/omniview-e2e-native-tool-cache-v1 \
+node e2e/scripts/run.mjs --grep 'Completion transport|Schema catalog'
+```
+
+This is focused browser/server-mode evidence, not native WebView or full-suite acceptance.
+Access expectations are tested against the existing host identity; no permission epoch or
+live permission-policy mutation is claimed. Schema changes are exercised by representation/connection
+switches, not a live provider replacing its schema document.
