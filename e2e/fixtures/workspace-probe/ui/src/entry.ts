@@ -1,5 +1,6 @@
 import {
   PluginWindow,
+  createCompletionSession,
   SETTINGS_EDITOR_EXTENSION_POINT_ID,
   type ExtensionRegistration,
   type SettingsEditorV1,
@@ -7,6 +8,9 @@ import {
 import { ProbeCounterEditor, ProbePage } from './ProbePage';
 import { resourceCellRegistrations, type ProbeResourceCellV1 } from './ResourceCell';
 import { resourceDrawers } from './ResourceDrawer';
+
+// E2E-only access to the published runtime helper; calls still use real Wails bindings.
+Object.assign(window, { __probeCompletionSession: createCompletionSession });
 
 export const plugin = new PluginWindow()
   .setRootPage(ProbePage)
