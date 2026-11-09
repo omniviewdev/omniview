@@ -21,6 +21,7 @@ import { wailsBindingIndex } from '../vite/wails-binding-index';
 import { pluginAssetDirectory, pluginMetadataFile } from './plugin-bundle.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 const here = import.meta.dirname;
+const archiveSmoke = process.env.OV_PLUGIN_ARCHIVE_SMOKE === '1';
 const pluginMetadata = pluginMetadataFile(root);
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
 
@@ -38,6 +39,9 @@ function instrumentEntry(): Plugin {
     transform(code, id) {
       if (id !== entry) return;
       if (!code.includes(render)) throw new Error(`bench/app: ${render} not found in ui/main.tsx; update instrumentEntry()`);
+      if (archiveSmoke) {
+        return `import ${JSON.stringify(path.join(here, 'page/fake-backend.ts'))};\n${code}`;
+      }
       return [
         `import ${JSON.stringify(path.join(here, 'page/fake-backend.ts'))};`,
         `import { ProfiledRoot as __ProfiledRoot } from ${JSON.stringify(path.join(here, 'page/profiler.tsx'))};`,
@@ -54,6 +58,13 @@ function servePluginAssets(): Plugin {
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url ?? '/', 'http://x');
+        // The fake transport needs no custom runtime, but Wails probes this
+        // optional script. Serve an empty script rather than a browser error.
+        if (url.pathname === '/wails/custom.js') {
+          res.setHeader('Content-Type', 'application/javascript');
+          res.end('');
+          return;
+        }
         const m = url.pathname.match(/^\/_\/plugins\/([^/]+)\/assets\/(.+)$/);
         if (m) {
           const dir = pluginAssetDirs[m[1]];
@@ -84,7 +95,7 @@ export default defineConfig({
     ...app.resolve,
     alias: [
       { find: 'virtual:bench-kubernetes-plugin', replacement: pluginMetadata },
-      { find: /^react-dom\/client$/, replacement: 'react-dom/profiling' },
+      ...(!archiveSmoke ? [{ find: /^react-dom\/client$/, replacement: 'react-dom/profiling' }] : []),
       ...alias,
     ],
   },

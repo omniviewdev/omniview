@@ -86,11 +86,12 @@ function ensurePluginBundle() {
  */
 function captureProvenance() {
   const assets = pluginAssetDirectory(root);
+  const reactDom = process.env.OV_PLUGIN_ARCHIVE_SMOKE === '1' ? 'react-dom/client' : 'react-dom/profiling';
   return {
     hostSource: gitSourceIdentity(root),
     frontend: {
       config: opts['no-build'] ? 'unknown' : 'bench/app/vite.config.ts',
-      reactDom: opts['no-build'] ? 'unknown' : 'react-dom/profiling',
+      reactDom: opts['no-build'] ? 'unknown' : reactDom,
       configSHA256: opts['no-build'] ? null : fileSHA256(configFile),
       rebuilt: !opts['no-build'],
       bundle: hashPluginBundle(path.join(here, 'dist')),

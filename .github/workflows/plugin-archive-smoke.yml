@@ -1,0 +1,83 @@
+name: Published plugin archive smoke
+
+on:
+  workflow_call:
+    inputs:
+      host-ref:
+        description: Host revision containing the archive harness
+        type: string
+        default: ''
+      archive-artifact:
+        description: Candidate plugin-archives artifact from this workflow run; empty tests the pinned published plugin
+        type: string
+        default: ''
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ui/**'
+      - 'packages/**'
+      - 'bench/app/**'
+      - 'bench/vite/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'vite.config.ts'
+      - 'plugin_asset_handler*'
+      - '.github/workflows/plugin-archive-smoke.yml'
+      - '.github/workflows/release.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/omniview
+          ref: ${{ inputs.host-ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: 'false'
+          install: false
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared packages in publication order
+        run: |
+          pnpm --filter @omniviewdev/providers build
+          pnpm --filter @omniviewdev/runtime build
+          pnpm --filter @omniviewdev/vite-plugin build
+      - name: Install pinned browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Fetch pinned published Kubernetes archive
+        shell: bash
+        if: ${{ !inputs.archive-artifact }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/kubernetes-archive"
+          curl --fail --location --retry 3 https://github.com/omniviewdev/omniview-plugin-kubernetes/releases/download/v0.19.1/kubernetes-linux_amd64.tar.gz --output "$RUNNER_TEMP/kubernetes.tar.gz"
+          echo "77e42775f7f18b36b143c81a2d6ef812c9cb4454981677e5012b942594e1a178  $RUNNER_TEMP/kubernetes.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/kubernetes.tar.gz" -C "$RUNNER_TEMP/kubernetes-archive" plugin.yaml assets
+      - name: Download candidate archive
+        if: ${{ inputs.archive-artifact }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.archive-artifact }}
+          path: ${{ runner.temp }}/candidate-archives
+      - name: Extract candidate frontend
+        if: ${{ inputs.archive-artifact }}
+        run: |
+          mkdir "$RUNNER_TEMP/kubernetes-archive"
+          tar -xzf "$RUNNER_TEMP/candidate-archives/kubernetes-linux_amd64.tar.gz" -C "$RUNNER_TEMP/kubernetes-archive" plugin.yaml assets
+      - name: Verify production archive exports and launch
+        run: node bench/app/archive-smoke.mjs --directory "$RUNNER_TEMP/kubernetes-archive"
+      - name: Verify installed plugin chunk retirement
+        run: pnpm exec vitest run ui/features/plugins/adapters/clearPlugin.test.ts

@@ -52,7 +52,7 @@
     "omniview"
   ],
   "devDependencies": {
-    "@omniviewdev/base-ui": "~0.17.0",
+    "@omniviewdev/base-ui": "~0.17.1",
     "@tanstack/react-query": "5.105.0",
     "@types/node": "26.6.5",
     "@types/react": "19.3.0",
