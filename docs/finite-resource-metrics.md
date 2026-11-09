@@ -95,6 +95,65 @@ The host reuses recent compatible results across views; refresh bypasses that re
 - Temporary collection failures keep authorized samples visible and report the error.
 - Permission, source, or configuration changes clear incompatible data. Failed setup never grants permission to reuse old data.
 
+### Virtualized tables
+
+Use `useTableMetricObservation` once in the owning table and share its returned
+`TableMetricObservation` through your view's context. This headless hook works
+with any resource owner; it has no Kubernetes, column, or component dependencies.
+
+```tsx
+import { useEffect } from 'react';
+import { MetricValue } from '@omniviewdev/base-ui/metrics';
+import { useTableMetricObservation, type TableMetricObservation } from '@omniviewdev/runtime';
+
+// In the owning table, using its current admitted HostRecord membership:
+const batch = useTableMetricObservation({
+  ownerPluginID,
+  ownerConnectionID,
+  resourceKey,
+  recordsByBody,
+  metricIDs,
+  source,
+  enabled: catalogReady,
+  loading: catalogLoading,
+  error: catalogError,
+});
+
+// Each mounted cell consumes the shared batch, not another observation hook.
+function CurrentCell({ body, metricID, batch }: {
+  body: object;
+  metricID: string;
+  batch: TableMetricObservation;
+}) {
+  useEffect(() => batch.register(body), [batch.register, body]);
+  const token = batch.tokenFor(body);
+  const sample = token ? batch.metrics.get(token)?.get(metricID) : undefined;
+  if (batch.isLoading && !sample) return <span role="status">Loading…</span>;
+  return sample?.status === 'ok' && sample.unit
+    ? <MetricValue value={sample.value} unit={sample.unit} />
+    : <span>—</span>;
+}
+```
+
+`recordsByBody` is the owning table's `WeakMap<object, HostRecord>`. Presentation
+bodies select membership; only the admitted record supplies the token, reference,
+and route. Unknown bodies do not produce targets. Multiple metric cells for one
+body share one target until the last registration is cleaned up.
+
+The runtime publishes target membership after 120 milliseconds without changes,
+pauses collection while the document is hidden, and indexes prepared results by
+host token and metric ID. Settled unavailable cells do not restart their initial
+loading state during background refresh. `loading` and `error` describe upstream
+source/catalog discovery; upstream errors block collection and loading.
+`isFetching` and `refresh()` retain the underlying observation's meaning.
+`intervalMs` defaults to 30,000; set it to zero for initial/manual collection only.
+The debounce timer batches view demand, not provider polling. The host still owns
+admission, scheduling, shared work, and result reuse.
+
+Keep column selection, source preferences, headers, bounds, and rendering in the
+owning view. Source-provider endpoint failure handling remains provider-specific;
+this hook adds neither a provider cache nor an SDK retry policy.
+
 | Pod metric | ID | Value returned |
 | --- | --- | --- |
 | CPU usage | `kubernetes.pod.cpu.usage` | Cores |
