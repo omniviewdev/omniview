@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -49,6 +50,12 @@ func TestGenericKubernetesStartupAdmissionIsScopedAndRevocable(t *testing.T) {
 		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: tool.PluginID, Connection: "cluster-b"})
 		require.Error(t, err)
 		_, err = boundary.Admit(callCtx, "resource.StartConnection", invocation.Target{Provider: "other", Connection: "cluster-a"})
+		require.Error(t, err)
+		actions := invocation.Target{Provider: tool.PluginID, Connection: "cluster-a", ResourceType: "pods", Scope: map[string]string{"resource-scope": "null", "authority": ""}}
+		_, err = boundary.Admit(callCtx, "resource.GetActions", actions)
+		require.NoError(t, err)
+		actions.Scope["authority"] = "other"
+		_, err = boundary.Admit(callCtx, "resource.GetActions", actions)
 		require.Error(t, err)
 		_, err = boundary.Admit(callCtx, "resource.Mutate", start)
 		require.Error(t, err)
@@ -160,8 +167,11 @@ func TestAuthorityUnrelatedCatalogChangeKeepsPendingConsent(t *testing.T) {
 	<-requested
 	unrelated := ToolInfo{MCPName: "other_custom", PluginID: "other", Name: "custom", Scope: ScopePlugin, Status: StatusOK}
 	a.UpdateCatalog([]ToolInfo{tool, unrelated})
-	pending := relay.ListPendingConfirmations()
-	require.Len(t, pending, 1)
+	var pending []PendingConfirmation
+	require.Eventually(t, func() bool {
+		pending = relay.ListPendingConfirmations()
+		return len(pending) == 1
+	}, 5*time.Second, 10*time.Millisecond)
 	require.NoError(t, relay.ResolveConfirmation(pending[0].ID, true))
 	require.True(t, <-resolved)
 	require.NoError(t, a.Approve(bound))

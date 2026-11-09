@@ -228,7 +228,7 @@ describe('AiToolsSettingsPage', () => {
     expect(screen.queryByText(/port saved/i)).not.toBeInTheDocument();
   });
 
-  it('groups tools and edits the bound connection rather than granting global access', async () => {
+  it('groups tools and edits global policy in global scope', async () => {
     renderPage();
 
     const kubernetes = await screen.findByRole('group', { name: 'Kubernetes' });
@@ -243,7 +243,7 @@ describe('AiToolsSettingsPage', () => {
     });
 
     expect(mocks.setToolOverride).toHaveBeenCalledWith(
-      { pluginID: 'kubernetes', connectionID: 'prod' },
+      { pluginID: '', connectionID: '' },
       'kubernetes_list_namespaces',
       { enabled: false, confirm: null },
     );

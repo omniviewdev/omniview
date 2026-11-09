@@ -359,23 +359,8 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 		if !scope.global() && t.Resource != nil && t.Resource.Route.Connection != scope.ConnectionID {
 			continue
 		}
-		if scope.global() && t.Scope == ScopeConnection && t.Resource == nil && len(toolReady) > 0 {
-			ids := make([]string, 0, len(toolReady))
-			for id := range toolReady {
-				ids = append(ids, id)
-			}
-			sort.Strings(ids)
-			for _, id := range ids {
-				view := toolView(&cfg, Scope{PluginID: t.PluginID, ConnectionID: id}, t)
-				view.ConnectionID = id
-				view.Ready = toolReady[id] && t.Status == StatusOK
-				view.Listed = listed[t.MCPName] && (view.Ready || t.ConnectionOwner != "") && cfg.ConnectionEnabled(t.PluginID, id, t)
-				out = append(out, view)
-			}
-			continue
-		}
 		effectiveScope := scope
-		if t.Resource != nil {
+		if !scope.global() && t.Resource != nil {
 			effectiveScope = Scope{PluginID: t.PluginID, ConnectionID: t.Resource.Route.Connection}
 		}
 		view := toolView(&cfg, effectiveScope, t)
@@ -395,11 +380,11 @@ func (s *ServiceWrapper) ListTools(scope Scope) ([]ToolView, error) {
 				}
 			}
 			view.Ready = view.Ready && t.Status == StatusOK
-			if !view.Ready && t.ConnectionOwner == "" {
+			if !scope.global() && !view.Ready && t.ConnectionOwner == "" && !isGenericKubernetesTool(t) {
 				view.Listed = false
 			}
-			if view.ConnectionID != "" {
-				if t.ConnectionOwner != "" {
+			if !scope.global() && view.ConnectionID != "" {
+				if t.ConnectionOwner != "" || isGenericKubernetesTool(t) {
 					_, configured := toolReady[view.ConnectionID]
 					view.Listed = view.Listed && configured
 				}

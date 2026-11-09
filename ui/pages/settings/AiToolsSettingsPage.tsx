@@ -566,13 +566,7 @@ const PluginToolGroup: React.FC<PluginToolGroupProps> = ({
           tool={tool}
           pluginID={pluginID}
           onOverride={(mcpName, override) => {
-            onOverride(
-              tool.scope === 'connection' && tool.connectionID
-                ? { pluginID: tool.pluginID, connectionID: tool.connectionID }
-                : scope,
-              mcpName,
-              override,
-            );
+            onOverride(scope, mcpName, override);
           }}
         />
       ))}

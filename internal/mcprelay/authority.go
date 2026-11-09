@@ -394,8 +394,13 @@ func (a *Authority) Authorize(p invocation.Principal, operation string, target i
 			if reflect.DeepEqual(target, invocation.Target{Provider: c.tool.PluginID}) {
 				return nil
 			}
-		case "resource.ResolveTarget", "resource.GetActions":
+		case "resource.ResolveTarget":
 			expected := invocation.Target{Provider: c.tool.PluginID, Connection: c.connection, ResourceType: target.ResourceType}
+			if target.ResourceType != "" && reflect.DeepEqual(target, expected) {
+				return nil
+			}
+		case "resource.GetActions":
+			expected := invocation.Target{Provider: c.tool.PluginID, Connection: c.connection, ResourceType: target.ResourceType, Scope: map[string]string{"resource-scope": "null", "authority": ""}}
 			if target.ResourceType != "" && reflect.DeepEqual(target, expected) {
 				return nil
 			}
