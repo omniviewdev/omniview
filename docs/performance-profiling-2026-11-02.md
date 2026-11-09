@@ -603,12 +603,16 @@ Kubernetes plugin's `docs/diagnostics.md`.
 Real IDE workload `range-overlap-15m-1h-6x-120s`: one admitted Pod, genuine
 Prometheus-compatible history, two metric cards, six alternating one-hour and
 15-minute selections with six-second dwell. Both presets use a 15-second grid.
-Viewport was 1500×950; each capture followed a 45-second idle period and lasted
-120 seconds. The accepted candidate driver completed all transitions in 38.781
+Viewport was 1500×950; each capture followed a 45-second idle period and requested
+120 seconds. The rebased final capture collected 121.999 seconds at the bounded
+two-second sampling cadence. Its driver completed all transitions in 37.414
 seconds with both charts present.
 
 - Baseline: `bf5ef2e722654f9fff829e9c300efd8a`.
-- Candidate: `8b33d1f53dc73d74795a091a3ddc0700`.
+- Rebased final candidate: `45e2cba726e122fa3a9e4292a7a1c952` (host `ef4b58ad`,
+  SDK 0.18 integration and review corrections).
+- Earlier accepted range candidate `8b33d1f53dc73d74795a091a3ddc0700` remains
+  persisted; it measured 79,411 response JSON bytes and 26 successful queries.
 - Existing `diagnostics compare` reports compatible workloads. Relevant Grafana
   query, payload and retained-state measurements are valid. Both captures have
   complete collection coverage with no errors, drops or gaps.
@@ -617,23 +621,25 @@ seconds with both charts present.
 
 | Observation | Baseline | Candidate |
 | --- | ---: | ---: |
-| Successful finite Grafana queries | 14 | 26 |
-| Validated provider response JSON bytes | 163,646 | 79,411 |
-| Successful query mean, ms | 5.486 | 6.381 |
-| Dispatch queue mean, ms | 54.000 | 182.715 |
+| Successful finite Grafana queries | 14 | 27 |
+| Validated provider response JSON bytes | 163,646 | 79,546 |
+| Successful query mean, ms | 5.486 | 5.295 |
+| Dispatch queue mean, ms | 54.000 | 216.099 |
 | Reader/provider cancellation requests | 0 / 0 | 0 / 0 |
-| Kubernetes plugin CPU, seconds | 2.08 | 2.83 |
-| Mean completed-cache bytes | 41,351 | 21,703 |
-| Final completed-cache bytes | 26,084 | 11,227 |
-| Mean displayed-snapshot bytes | 27,358 | 27,831 |
-| Final displayed-snapshot bytes | 24,334 | 24,341 |
-| Mean Kubernetes plugin RSS, bytes | 167,933,583 | 171,815,785 |
-| Final Kubernetes plugin RSS, bytes | 171,081,728 | 174,112,768 |
+| Kubernetes plugin CPU, seconds | 2.08 | 2.08 |
+| Mean completed-cache bytes | 41,351 | 19,582 |
+| Final completed-cache bytes | 26,084 | 11,600 |
+| Mean displayed-snapshot bytes | 27,358 | 27,439 |
+| Final displayed-snapshot bytes | 24,334 | 24,345 |
+| Mean Kubernetes plugin RSS, bytes | 167,933,583 | 174,330,781 |
+| Final Kubernetes plugin RSS, bytes | 171,081,728 | 178,110,464 |
 
-Claim limited to validated provider response JSON: 51.5% fewer bytes in this
-workload. Calls, queue time and mean query latency increased; no latency, CPU or
-retained-process-memory win is claimed. These bytes are serialized finite
-responses, not Prometheus HTTP traffic or physical objects/pages/bytes scanned.
+Measured validated provider response JSON is 51.4% lower in this workload.
+Calls and queue time increased; query mean changed only slightly. No latency,
+CPU or retained-process-memory win is claimed. The rebase also updates upstream
+code and SDK dependencies, so this is not an isolated attribution of those
+process measurements. These bytes are serialized finite responses, not
+Prometheus HTTP traffic or physical objects/pages/bytes scanned.
 Those source scan measurements are unavailable. Native scan counters remain zero
 because this workload uses the external source, not metrics-server.
 
@@ -652,8 +658,18 @@ displayed 60 only when the sliding domain excluded the oldest point, and restore
 61 when the new endpoint arrived. Source nulls remain gaps; no samples or source
 timestamps are fabricated.
 
-Host range-coordinator tests, Grafana tests, all 42 runtime metric-hook tests and
-the Kubernetes panel integration tests passed. Synthetic coordinator tests prove
-coverage, cancellation and authority boundaries; they are not physical provider
-scan evidence. Real native 1,000-Pod scan evidence is separate in the Kubernetes
-plugin's `docs/diagnostics.md`.
+Host metrics, telemetry and Grafana race suites passed after the review fixes.
+An additional regression reproduced failure transfer between equal grids with
+different off-grid wire ends, then passed after ownership used exact wire bounds.
+The original full runtime metric-hook and panel suites passed; the rebased
+focused runtime run passed 27 tests. Synthetic coordinator tests prove coverage,
+cancellation and authority boundaries, not physical provider scan efficiency.
+Real native 1,000-Pod evidence remains separate in the Kubernetes plugin's
+`docs/diagnostics.md`.
+
+The separate `RangeToCurrent` capability remains off for the real provider:
+its catalog supplies no physical terminal observation time or positive sample-age
+policy. Comparing the earlier accepted range build with this final build reports
+compatible workloads and the same session/source warnings, not a positive
+range-to-current performance result. Positive reuse is covered by synthetic
+Open/Attach/Refresh tests only. No current-provider call savings are claimed.
