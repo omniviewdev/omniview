@@ -16,7 +16,8 @@
  * base-ui popup's own starting style.
  */
 .Popup.Popup {
-  min-inline-size: 260px;
+  min-inline-size: min(260px, 92vw);
+  grid-template-columns: minmax(0, 1fr);
   clip-path: inset(-32px -32px -32px -32px round var(--ov-radius-lg));
   transform-origin: var(--transform-origin);
   transition:
@@ -95,6 +96,7 @@
 
 .Footer {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--ov-space-3);
   margin: var(--ov-space-1) calc(-1 * var(--ov-space-2)) 0;
   padding: var(--ov-space-2) var(--ov-space-3) var(--ov-space-1);
