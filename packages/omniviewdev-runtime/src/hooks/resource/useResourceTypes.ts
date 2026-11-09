@@ -16,6 +16,9 @@ export const useResourceTypes = ({ pluginID: explicitPluginID, route, enabled = 
     select: (catalog) => catalog.types,
     enabled: queryEnabled,
     retry: false,
+    // Virtual cells share connection metadata; mounting a new window is not a refresh.
+    staleTime: 30_000,
+    refetchOnMount: false,
   });
   return { resourceTypes };
 };

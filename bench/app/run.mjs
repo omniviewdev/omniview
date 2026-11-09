@@ -28,9 +28,12 @@ const { values: opts } = parseArgs({
     'no-build': { type: 'boolean', default: false },
     headed: { type: 'boolean', default: false },
     out: { type: 'string', default: path.join(here, 'results/latest.json') },
+    'cpu-throttle': { type: 'string', default: '1' },
   },
 });
 const RUNS = Number(opts.runs);
+const CPU_THROTTLE = Number(opts['cpu-throttle']);
+if (!Number.isFinite(CPU_THROTTLE) || CPU_THROTTLE < 1) throw new Error('--cpu-throttle must be a finite number >= 1');
 const VIEWPORT = { width: 1440, height: 900 };
 const POD_COUNT = 5_000;
 const LOG_LINES = 10_000;
@@ -91,6 +94,7 @@ async function openPage(config) {
   await page.addInitScript(installObservers);
   const cdp = await context.newCDPSession(page);
   await cdp.send('Performance.enable');
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE });
   return { page, cdp, errors, close: () => context.close() };
 }
 
@@ -151,7 +155,7 @@ async function waitForPodRow(page) {
 }
 
 /**
- * Scroll up to `pages` viewport steps within the available native page, then
+ * Scroll up to `pages` viewport steps within the available collection, then
  * return to the top. Each step waits for a painted frame, including React work
  * scheduled by the scroll handler. Runs in the page.
  */
@@ -391,14 +395,16 @@ try {
 }
 
 const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' }).stdout.trim();
+const pluginRepository = path.dirname(path.resolve(process.env.OV_K8S_PLUGIN_METADATA ?? path.join(root, 'plugins/kubernetes/plugin.json')));
 const meta = {
   date: new Date().toISOString(),
   commit: git('rev-parse', '--short', 'HEAD'),
   dirty: git('status', '--porcelain', '--untracked-files=no') !== '',
-  k8sPlugin: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: path.join(root, 'plugins/kubernetes'), encoding: 'utf8' }).stdout.trim(),
+  k8sPlugin: spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: pluginRepository, encoding: 'utf8' }).stdout.trim(),
   chromium: browser.version(),
   host: `${os.type()} ${os.arch()}, ${os.cpus()[0]?.model}, ${Math.round(os.totalmem() / 2 ** 30)} GB`,
   runs: RUNS,
+  cpuThrottle: CPU_THROTTLE,
 };
 
 fs.mkdirSync(path.dirname(opts.out), { recursive: true });

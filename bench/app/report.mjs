@@ -41,8 +41,8 @@ export function summarize({ meta, results }) {
     '### Whole-app profile (bench/app)',
     '',
     `Commit ${meta.commit}${meta.dirty ? ' (dirty)' : ''}, kubernetes plugin ${meta.k8sPlugin}, Chromium ${meta.chromium}, ${meta.host}.`,
-    `Median of ${meta.runs} runs, ms unless noted; first column also min–max. Startup times are from navigation start.`,
-    'V2 Pod scroll takes up to 30 viewport steps within the native page (currently capped at 256 records) from a 5k-pod corpus, then resets. Actual steps include the reset; per-step timings use that count. Older full-list baselines are not comparable.',
+    `Median of ${meta.runs} runs, CPU throttle ${meta.cpuThrottle ?? 1}×, ms unless noted; first column also min–max. Startup times are from navigation start.`,
+    'Pod collection scroll takes up to 30 viewport steps through 5,000 source-view records, then resets. Snapshot delivery uses 256-record batches, not a 256-row collection limit. Actual steps include the reset; per-step timings use that count. Compare only matching workloads and CPU throttles.',
     '',
   ];
   const notes = new Set();

@@ -16,6 +16,9 @@ export const useResourceType = ({ pluginID: explicitPluginID, route, type }: { p
     select: (catalog) => catalog.types.find((entry) => entry.type === type),
     enabled: queryEnabled,
     retry: false,
+    // Match useResourceTypes: virtual row mounts must not refetch the shared catalog.
+    staleTime: 30_000,
+    refetchOnMount: false,
   });
   return { resourceType };
 };

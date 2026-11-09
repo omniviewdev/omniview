@@ -13,6 +13,7 @@ generic no-op window answers prevent the startup-ready marker from firing.
 pnpm bench:app                         # build, then 5 runs of every scenario (~3 min)
 pnpm bench:app --runs 3 --only pods    # some scenarios
 pnpm bench:app --no-build              # reuse bench/app/dist and the plugin bundle
+pnpm bench:app --runs 3 --only pods --cpu-throttle 4  # weaker-CPU sensitivity, not M1 hardware certification
 pnpm bench:app --headed                # watch it
 node bench/app/report.mjs              # Markdown summary of results/latest.json again
 ```
@@ -36,11 +37,12 @@ trees can also expose an `Expand` button; a document-wide lookup can click that
 unrelated control without resizing the drawer. The geometry assertion still
 requires a height change of more than 50 pixels for each of the ten toggles.
 
-The Pod scenario opens the native page from a 5k-pod corpus, then scrolls up to
-30 viewport steps within that page. Current V2 Kubernetes requests 256 records per native page. Fixtures
-honor that bound and return real next cursors; they do not return the full corpus
-as one page. Older full-list baseline timings are not comparable. The shared
-browser bridge dispatches both named V2 calls and generated binding IDs.
+The Pod scenario opens a complete 5,000-Pod source-view collection, delivered in
+256-record snapshot batches, then scrolls up to 30 viewport steps. Explicit
+finite-page requests still honor their requested page sizes and cursors. Snapshot
+batch size does not limit collection size. Compare matching collection workloads
+and CPU throttles, not older 256-row page measurements. The shared browser bridge
+dispatches both named V2 calls and generated binding IDs.
 Scroll workloads stop at the real positive scroll boundary, reject no-op steps and
 unexpected end positions, and verify the reset. Reports expose actual forward steps
 and total steps (including the reset); wall and busy per-step timings use that
@@ -138,7 +140,7 @@ the collection and report its path instead of deleting uncertain files.
 |---|---|
 | `cold-start` | Fresh browser context, no plugins installed, until the startup marker. |
 | `cold-start-k8s` | As above with the kubernetes plugin; also until the plugin's home card shows. |
-| `pods` | `open`: from the home page, open the native Pod page from a 5,000-pod corpus until a row shows. `scroll`: up to 30 viewport steps within the native page, then back to top, each waiting for a painted frame. |
+| `pods` | `open`: from the home page, acquire all 5,000 Pod records until a row shows. `scroll`: up to 30 viewport steps through the collection, then back to top, each waiting for a painted frame. |
 | `logs` | `open`: Pod row menu → Logs, until the viewer shows. `stream`: 10,000 lines in batches of 100, one batch per task, until the line counter reaches 10,000. `scroll`: up to 30 viewport steps within the available log buffer, then back to top. `drawer`: minimize/expand the bottom drawer 10 times. |
 
 Every scenario runs once as a discarded warmup, then `--runs` times, each in a new browser
@@ -158,6 +160,22 @@ context.
 
 JSON (`results/latest.json`) has every run's raw values, plus page errors and backend calls
 without a fixture. Compare runs on the same machine only.
+
+## Cluster scrolling pass, 2026-11-09
+
+[Raw measurements and limits](cluster-performance-2026-11-09.json) record the
+source-pinned baseline and candidate. Nominal scrolling eliminated catalog
+requests and improved frame timing with fourfold CPU throttling. Overscan
+increased from 15 to 24 rows per side; fixed-height windows reuse ranges within
+four-row boundaries. Row menus and tooltips share popup owners.
+
+This is not an end-to-end success claim. The larger-jump workload regressed,
+fourfold-throttled nominal scrolling did not meet a 60-fps budget, and the fixture
+did not reproduce native black rows. The isolated CLI workspace was created from
+`origin/main`, but its live launch stalled and timed out. Static retry and stopped
+recovery failed generated-cache ownership checks. Those CLI issues were recorded;
+no owned caches were deleted to bypass validation. Real-cluster and M1 Pro
+acceptance remain unverified.
 
 ## Real resource boundary (verification-only)
 

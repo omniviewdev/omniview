@@ -6,6 +6,8 @@ import { useResources } from './useResources';
 import { useResolvedResourceTarget } from './useResolvedResourceTarget';
 import { useResource } from './useResource';
 import { useResourceGroups } from './useResourceGroups';
+import { useResourceTypes } from './useResourceTypes';
+import { useResourceType } from './useResourceType';
 import { useResourceMutations } from './useResourceMutations';
 import { useExecuteAction } from './useResourceActions';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
@@ -27,6 +29,7 @@ const native = vi.hoisted(() => ({
   resolveTarget: vi.fn(),
   get: vi.fn(),
   groups: vi.fn(),
+  catalog: vi.fn(),
   mutate: vi.fn(),
   action: vi.fn(),
   requireReady: vi.fn(),
@@ -36,6 +39,7 @@ vi.mock('../../resource/v2/client', () => ({
   ResolveTarget: native.resolveTarget,
   Get: native.get,
   GetResourceGroups: native.groups,
+  Catalog: native.catalog,
   Mutate: native.mutate,
   Action: native.action,
 }));
@@ -488,5 +492,28 @@ it('separates group caches by opaque route', async () => {
   );
   expect(hook.result.current.second.groups.data).toEqual([{ id: second.connection }]);
   hook.unmount();
+  client.clear();
+});
+
+it('reuses the catalog across virtual row mounts but honors explicit refresh', async () => {
+  const { client, wrapper } = setup();
+  const route = { connection: 'c' };
+  native.catalog.mockImplementation(() => ready({ types: [{ type: 'pods', displayName: 'Pods' }] }));
+  const page = renderHook(() => useResourceTypes({ pluginID: 'provider', route }), { wrapper });
+  await waitFor(() => expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Pods'));
+  const key = ['provider', 'resource-v2', 'catalog', route];
+  // A long-lived screen can outlive freshness; scrolling still is not refresh.
+  client.setQueryData(key, client.getQueryData(key), { updatedAt: 1 });
+  for (let index = 0; index < 3; index++) {
+    const cell = renderHook(() => useResourceType({ pluginID: 'provider', route, type: 'pods' }), { wrapper });
+    expect(cell.result.current.resourceType.data?.displayName).toBe('Pods');
+    cell.unmount();
+  }
+  expect(native.catalog).toHaveBeenCalledTimes(1);
+  native.catalog.mockImplementation(() => ready({ types: [{ type: 'pods', displayName: 'Updated pods' }] }));
+  await act(async () => { await client.invalidateQueries({ queryKey: key }); });
+  await waitFor(() => expect(page.result.current.resourceTypes.data?.[0].displayName).toBe('Updated pods'));
+  expect(native.catalog).toHaveBeenCalledTimes(2);
+  page.unmount();
   client.clear();
 });

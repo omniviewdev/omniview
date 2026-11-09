@@ -1,0 +1,350 @@
+{
+  "date": "2026-11-09",
+  "status": "not_certified_for_user_cluster_or_M1",
+  "workspace": "cluster-performance-20261109",
+  "sourceBaseCommits": {
+    "omniview": "f306d38ef83f488edd6cdaa158696b4b35558a46",
+    "kubernetes": "6e0bbc58387fccb1e241ad3ddec2b3b70b0d2b75",
+    "ui": "c21aa5062a3c3b24b7515afbcca45217a7a22222",
+    "sdk": "141d19553c0fd68902bfdcd015b6185bfcaf949f"
+  },
+  "workload": "Real production host and Kubernetes UI, 5,000 source-view records; in-page fixture backend, not a live cluster. Normal React production build without React profiling overhead.",
+  "nominalScroll": {
+    "method": "180 requestAnimationFrame steps, 60px per step, 1440x900 viewport. DOM range coverage sampling adds measurement overhead. Not compositor-paint or M1 certification.",
+    "baselineFourfold": {
+      "frames": 180,
+      "px": 10800,
+      "gaps": 0,
+      "p50": 33.60000002384186,
+      "p95": 40.5,
+      "max": 47.5,
+      "mounted": 54,
+      "calls": {
+        "github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper.Catalog": 180,
+        "backend/window/service.SaveState": 2,
+        "internal/profiling/servicewrapper.GetStatus": 2
+      }
+    },
+    "candidateFourfold": {
+      "frames": 180,
+      "px": 10800,
+      "gaps": 0,
+      "p50": 28.100000023841858,
+      "p95": 37.5,
+      "max": 40.299999952316284,
+      "mounted": 72,
+      "calls": {
+        "backend/window/service.SaveState": 2,
+        "internal/profiling/servicewrapper.GetStatus": 2
+      }
+    },
+    "candidateNative": {
+      "frames": 180,
+      "px": 10800,
+      "gaps": 0,
+      "p50": 17.100000023841858,
+      "p95": 28.299999952316284,
+      "max": 75.5,
+      "mounted": 72,
+      "calls": {
+        "internal/profiling/servicewrapper.GetStatus": 1
+      }
+    },
+    "candidateTwofold": {
+      "frames": 180,
+      "px": 10800,
+      "gaps": 0,
+      "p50": 19.299999952316284,
+      "p95": 28.300000071525574,
+      "max": 69.80000007152557,
+      "mounted": 72,
+      "calls": {
+        "internal/profiling/servicewrapper.GetStatus": 1,
+        "github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService.Heartbeat": 1
+      }
+    },
+    "tail": {
+      "lastIndex": "4999",
+      "viewportBottom": 831,
+      "lastBottom": 831,
+      "mounted": 48,
+      "hasResourceError": false
+    }
+  },
+  "viewportJump": {
+    "baseline": {
+      "meta": {
+        "date": "2026-11-09T17:01:11.550Z",
+        "commit": "f306d38e",
+        "dirty": true,
+        "k8sPlugin": "f306d38e",
+        "chromium": "156.0.8078.4",
+        "host": "Darwin arm64, Apple M5 Max, 128 GB",
+        "runs": 3,
+        "cpuThrottle": 4
+      },
+      "results": {
+        "pods": [
+          {
+            "open": {
+              "wallMs": 872.5,
+              "taskMs": 873.1760000000002,
+              "scriptMs": 508.50600000000014,
+              "layoutMs": 25.439000000000004,
+              "styleMs": 75.767,
+              "heapMB": 85.6402587890625,
+              "longTasks": 4,
+              "longTaskMaxMs": 319,
+              "blockingMs": 539,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "scroll": {
+              "wallMs": 4218.199999928474,
+              "steps": 31,
+              "forwardSteps": 30,
+              "perStepMs": 136.0709677396282,
+              "scrolledPx": 21360,
+              "taskMs": 3812.447,
+              "scriptMs": 1448.309,
+              "layoutMs": 227.02,
+              "styleMs": 1186.339,
+              "busyPerStepMs": 122.98216129032258,
+              "heapMB": 124.00357818603516,
+              "longTasks": 31,
+              "longTaskMaxMs": 149,
+              "blockingMs": 1672,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "errors": []
+          },
+          {
+            "open": {
+              "wallMs": 849,
+              "taskMs": 848.3739999999998,
+              "scriptMs": 493.72499999999997,
+              "layoutMs": 24.197000000000003,
+              "styleMs": 75.27399999999999,
+              "heapMB": 85.3000259399414,
+              "longTasks": 4,
+              "longTaskMaxMs": 309,
+              "blockingMs": 523,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "scroll": {
+              "wallMs": 4212.700000047684,
+              "steps": 31,
+              "forwardSteps": 30,
+              "perStepMs": 135.89354838863497,
+              "scrolledPx": 21360,
+              "taskMs": 3854.0979999999995,
+              "scriptMs": 1491.358,
+              "layoutMs": 222.277,
+              "styleMs": 1189.0980000000002,
+              "busyPerStepMs": 124.32574193548386,
+              "heapMB": 123.9786491394043,
+              "longTasks": 31,
+              "longTaskMaxMs": 159,
+              "blockingMs": 1746,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "errors": []
+          },
+          {
+            "open": {
+              "wallMs": 853.6000000238419,
+              "taskMs": 853.0760000000001,
+              "scriptMs": 507.93600000000015,
+              "layoutMs": 23.607999999999997,
+              "styleMs": 69.30299999999998,
+              "heapMB": 85.60323715209961,
+              "longTasks": 4,
+              "longTaskMaxMs": 327,
+              "blockingMs": 531,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "scroll": {
+              "wallMs": 4208.200000047684,
+              "steps": 31,
+              "forwardSteps": 30,
+              "perStepMs": 135.74838709831238,
+              "scrolledPx": 21360,
+              "taskMs": 3785.7439999999997,
+              "scriptMs": 1436.022,
+              "layoutMs": 224.708,
+              "styleMs": 1195.2450000000001,
+              "busyPerStepMs": 122.12077419354837,
+              "heapMB": 124.60998916625977,
+              "longTasks": 31,
+              "longTaskMaxMs": 153,
+              "blockingMs": 1652,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "errors": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "meta": {
+        "date": "2026-11-09T17:04:28.327Z",
+        "commit": "f306d38e",
+        "dirty": true,
+        "k8sPlugin": "6e0bbc5",
+        "chromium": "156.0.8078.4",
+        "host": "Darwin arm64, Apple M5 Max, 128 GB",
+        "runs": 3,
+        "cpuThrottle": 4
+      },
+      "results": {
+        "pods": [
+          {
+            "open": {
+              "wallMs": 867,
+              "taskMs": 870.9250000000002,
+              "scriptMs": 497.9600000000002,
+              "layoutMs": 26.599999999999998,
+              "styleMs": 82.236,
+              "heapMB": 75.55681228637695,
+              "longTasks": 4,
+              "longTaskMaxMs": 310,
+              "blockingMs": 537,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "scroll": {
+              "wallMs": 4436.5,
+              "steps": 31,
+              "forwardSteps": 30,
+              "perStepMs": 143.11290322580646,
+              "scrolledPx": 21360,
+              "taskMs": 4284.649,
+              "scriptMs": 1281.7530000000002,
+              "layoutMs": 269.26099999999997,
+              "styleMs": 1476.0900000000001,
+              "busyPerStepMs": 138.21448387096774,
+              "heapMB": 111.44119644165039,
+              "longTasks": 31,
+              "longTaskMaxMs": 183,
+              "blockingMs": 2155,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "errors": []
+          },
+          {
+            "open": {
+              "wallMs": 1018.3000000715256,
+              "taskMs": 1022.9600000000003,
+              "scriptMs": 603.8850000000002,
+              "layoutMs": 29.648999999999994,
+              "styleMs": 93.78200000000001,
+              "heapMB": 75.58260726928711,
+              "longTasks": 4,
+              "longTaskMaxMs": 390,
+              "blockingMs": 668,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "scroll": {
+              "wallMs": 4722.700000047684,
+              "steps": 31,
+              "forwardSteps": 30,
+              "perStepMs": 152.34516129186076,
+              "scrolledPx": 21360,
+              "taskMs": 4610.718000000001,
+              "scriptMs": 1466.1679999999997,
+              "layoutMs": 283.887,
+              "styleMs": 1548.23,
+              "busyPerStepMs": 148.73283870967745,
+              "heapMB": 104.60436248779297,
+              "longTasks": 31,
+              "longTaskMaxMs": 259,
+              "blockingMs": 2441,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "errors": []
+          },
+          {
+            "open": {
+              "wallMs": 985.6999999284744,
+              "taskMs": 986.1039999999997,
+              "scriptMs": 589.342,
+              "layoutMs": 28.308000000000007,
+              "styleMs": 92.05199999999999,
+              "heapMB": 86.42003631591797,
+              "longTasks": 4,
+              "longTaskMaxMs": 350,
+              "blockingMs": 619,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "scroll": {
+              "wallMs": 4587.5,
+              "steps": 31,
+              "forwardSteps": 30,
+              "perStepMs": 147.98387096774192,
+              "scrolledPx": 21360,
+              "taskMs": 4482.637000000001,
+              "scriptMs": 1443.994,
+              "layoutMs": 270.98599999999993,
+              "styleMs": 1503.489,
+              "busyPerStepMs": 144.60119354838713,
+              "heapMB": 106.48860549926758,
+              "longTasks": 31,
+              "longTaskMaxMs": 182,
+              "blockingMs": 2341,
+              "commits": 0,
+              "renderMs": 0,
+              "maxCommitMs": 0,
+              "slowCommits": 0
+            },
+            "errors": []
+          }
+        ]
+      }
+    }
+  },
+  "verification": {
+    "javascriptTests": 54,
+    "nativeProvider": "GOWORK=off go test ./pkg/plugin/metric -count=1 passed",
+    "typescript": "Plugin tsc --noEmit passed; shared UI declaration build passed",
+    "availability": "Provider regression proves a 404 settles failed; scrolling tokens do not refetch within 30s; cache hits do not renew expiry; expiry and reconnect recover.",
+    "ui": "Shared tooltip hover/focus/unmount and row-action selected identity/native capability updates passed. Checkbox checked/mixed pseudo-elements observed in browser."
+  },
+  "limits": [
+    "Full-viewport jump rendering regressed versus baseline. Nominal fourfold-throttled frame timing improved, but does not meet 60fps. No buttery-smooth success claim.",
+    "The baseline fixture did not reproduce black rows. Zero sampled missing ranges in both baseline and candidate is not proof of native compositor behavior.",
+    "CLI browser workspace launch stalled at starting-host and timed out after 1200 seconds. Static retry failed owned-cache validation. Recover after down failed on generated kubernetes/ui/node_modules/.tmp. Issues recorded. No live cluster end-to-end measurement.",
+    "Older baseline runner misidentified k8sPlugin as the parent host commit; authoritative sourceBaseCommits above came from the CLI manifest. Candidate runner now resolves the metadata-selected plugin repository.",
+    "No M1 Pro measurements. CPU throttling does not emulate memory bandwidth, native WKWebView or M1 graphics."
+  ]
+}
