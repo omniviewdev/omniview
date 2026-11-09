@@ -1,0 +1,86 @@
+=== RUN   TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision
+--- PASS: TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision (0.00s)
+=== RUN   TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently
+--- PASS: TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently (0.00s)
+=== RUN   TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema
+    acceptance_isolation_test.go:374: 5842 resolutions served their own schema, 158 observed RESET_REQUIRED after replacement
+--- PASS: TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema (0.07s)
+=== RUN   TestAcceptanceProviderNeutralSchemaStates
+=== RUN   TestAcceptanceProviderNeutralSchemaStates/static
+=== RUN   TestAcceptanceProviderNeutralSchemaStates/discovered
+=== RUN   TestAcceptanceProviderNeutralSchemaStates/absent
+=== RUN   TestAcceptanceProviderNeutralSchemaStates/unavailable
+=== RUN   TestAcceptanceProviderNeutralSchemaStates/unsupported
+--- PASS: TestAcceptanceProviderNeutralSchemaStates (0.01s)
+    --- PASS: TestAcceptanceProviderNeutralSchemaStates/static (0.01s)
+    --- PASS: TestAcceptanceProviderNeutralSchemaStates/discovered (0.00s)
+    --- PASS: TestAcceptanceProviderNeutralSchemaStates/absent (0.00s)
+    --- PASS: TestAcceptanceProviderNeutralSchemaStates/unavailable (0.00s)
+    --- PASS: TestAcceptanceProviderNeutralSchemaStates/unsupported (0.00s)
+=== RUN   TestAcceptanceSchemaGrantsNoOperationOrNativeFiltering
+    acceptance_profiles_test.go:482: NativeFilter "unsupported" at every field of 6 cloud and 5 container navigation positions
+--- PASS: TestAcceptanceSchemaGrantsNoOperationOrNativeFiltering (0.00s)
+=== RUN   TestAcceptanceNavigationAgreesWithAdmission
+=== RUN   TestAcceptanceNavigationAgreesWithAdmission/cloud
+=== RUN   TestAcceptanceNavigationAgreesWithAdmission/container
+--- PASS: TestAcceptanceNavigationAgreesWithAdmission (0.00s)
+    --- PASS: TestAcceptanceNavigationAgreesWithAdmission/cloud (0.00s)
+    --- PASS: TestAcceptanceNavigationAgreesWithAdmission/container (0.00s)
+=== RUN   TestAcceptanceEditorSchemaMatchesAdmission
+--- PASS: TestAcceptanceEditorSchemaMatchesAdmission (0.00s)
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_complete
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_partial_whole_body
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_unknown_whole_body
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_limitation_elsewhere
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_limitation_is_the_field
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/required_missing_outside_a_limitation_that_names_a_deeper_path
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/nested_required_inside_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/nested_required_outside_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/minItems_indeterminate_under_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/minItems_definite_when_complete
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/minItems_definite_when_limitation_is_elsewhere
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/minProperties_indeterminate_under_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/maxItems_stays_definite_under_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/uniqueItems_stays_definite_under_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/closed_object_stays_definite_under_limitation
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/present_scalar_contradiction_stays_definite
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/collection_enum_exact
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/collection_enum_with_omitted_member
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/oneOf_indeterminate_with_a_limited_branch_key
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/oneOf_definite_when_complete
+=== RUN   TestAcceptancePartialRepresentationsProviderNeutral/oneOf_definite_overlap_stays_an_error_under_limitation
+--- PASS: TestAcceptancePartialRepresentationsProviderNeutral (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_complete (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_partial_whole_body (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_unknown_whole_body (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_limitation_elsewhere (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/required_missing,_limitation_is_the_field (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/required_missing_outside_a_limitation_that_names_a_deeper_path (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/nested_required_inside_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/nested_required_outside_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/minItems_indeterminate_under_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/minItems_definite_when_complete (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/minItems_definite_when_limitation_is_elsewhere (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/minProperties_indeterminate_under_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/maxItems_stays_definite_under_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/uniqueItems_stays_definite_under_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/closed_object_stays_definite_under_limitation (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/present_scalar_contradiction_stays_definite (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/collection_enum_exact (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/collection_enum_with_omitted_member (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/oneOf_indeterminate_with_a_limited_branch_key (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/oneOf_definite_when_complete (0.00s)
+    --- PASS: TestAcceptancePartialRepresentationsProviderNeutral/oneOf_definite_overlap_stays_an_error_under_limitation (0.00s)
+=== RUN   TestAcceptanceDistinctRowAdmissionsRetainNoPerRowSchemas
+    acceptance_retention_test.go:308: sequential: 10000 distinct rows; HeapAlloc delta 112 B, HeapObjects delta 2, HeapInuse delta 0 B
+    acceptance_retention_test.go:354: concurrent: 24 workers x 700 distinct rows (16800 admitted); 295 statistics samples
+    acceptance_retention_test.go:355: sampled extremes: min {Connections:3 Entries:6 Documents:2 RetainedBytes:4436 BranchViews:2 CELProviders:2} max {Connections:3 Entries:6 Documents:2 RetainedBytes:4436 BranchViews:2 CELProviders:2}
+    acceptance_retention_test.go:363: concurrent: HeapAlloc delta 60064 B, HeapObjects delta 459, HeapInuse delta 73728 B, HeapSys delta 4194304 B
+    acceptance_retention_test.go:375: control: retaining 5000 rows' results grows HeapAlloc by 9423008 B and HeapObjects by 40456
+    acceptance_retention_test.go:404: after cleanup: HeapAlloc delta vs start 60192 B, HeapObjects delta 460
+--- PASS: TestAcceptanceDistinctRowAdmissionsRetainNoPerRowSchemas (0.91s)
+=== RUN   TestCatalogImportBoundary
+--- PASS: TestCatalogImportBoundary (0.00s)
+PASS
+ok  	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	2.543s

@@ -1,0 +1,19 @@
+$ GOWORK=off GOFLAGS= go test -run '^$' -bench . -benchmem -count=3 ./backend/pkg/resourcecatalog/
+goos: darwin
+goarch: arm64
+pkg: github.com/omniviewdev/omniview/backend/pkg/resourcecatalog
+cpu: Apple M5 Max
+BenchmarkNormalizeKubernetesCoreV1-18    	      73	  15826707 ns/op	 101.38 MB/s	19552431 B/op	  180583 allocs/op
+BenchmarkNormalizeKubernetesCoreV1-18    	      79	  15648805 ns/op	 102.53 MB/s	19552160 B/op	  180583 allocs/op
+BenchmarkNormalizeKubernetesCoreV1-18    	      74	  15437868 ns/op	 103.93 MB/s	19552090 B/op	  180583 allocs/op
+BenchmarkAdmitPod-18                     	  249932	      4797 ns/op	    5856 B/op	      33 allocs/op
+BenchmarkAdmitPod-18                     	  255976	      4918 ns/op	    5856 B/op	      33 allocs/op
+BenchmarkAdmitPod-18                     	  245421	      4868 ns/op	    5856 B/op	      33 allocs/op
+BenchmarkNavigatePodSpec-18              	   60091	     20863 ns/op	   50992 B/op	     254 allocs/op
+BenchmarkNavigatePodSpec-18              	   57416	     20096 ns/op	   50992 B/op	     254 allocs/op
+BenchmarkNavigatePodSpec-18              	   57938	     20010 ns/op	   50992 B/op	     254 allocs/op
+BenchmarkCELCompileEvalPod-18            	   34710	     34662 ns/op	   37631 B/op	     641 allocs/op
+BenchmarkCELCompileEvalPod-18            	   30980	     35180 ns/op	   37608 B/op	     641 allocs/op
+BenchmarkCELCompileEvalPod-18            	   33085	     33728 ns/op	   37609 B/op	     641 allocs/op
+PASS
+ok  	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	14.558s

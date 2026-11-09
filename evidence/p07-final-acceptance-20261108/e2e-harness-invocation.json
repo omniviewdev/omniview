@@ -1,0 +1,264 @@
+{
+  "succeeded": true,
+  "operation": "application",
+  "interactive": false,
+  "elapsedMs": 149537,
+  "budgetMs": 1800000,
+  "budgetExceeded": false,
+  "deadlineBudget": {
+    "deadline": 1794198173631,
+    "remainingMs": 1673584,
+    "interruptAfterMs": 1613584,
+    "cleanupReserveMs": 60000
+  },
+  "launchDrain": {
+    "requests": 1,
+    "drained": 1,
+    "childrenEmpty": true
+  },
+  "buildExecution": {
+    "schemaVersion": 1,
+    "succeeded": true,
+    "elapsedMs": 82259,
+    "stages": [
+      {
+        "name": "application-sdk-admission",
+        "lane": "setup",
+        "startedMs": 116,
+        "elapsedMs": 183,
+        "status": "succeeded"
+      },
+      {
+        "name": "application-vite-build-admission",
+        "lane": "ordered",
+        "startedMs": 316,
+        "elapsedMs": 2648,
+        "status": "succeeded"
+      },
+      {
+        "name": "bindings-build-once",
+        "lane": "ordered",
+        "startedMs": 2971,
+        "elapsedMs": 8239,
+        "status": "succeeded"
+      },
+      {
+        "name": "providers-build-once",
+        "lane": "ordered",
+        "startedMs": 11218,
+        "elapsedMs": 1399,
+        "status": "succeeded"
+      },
+      {
+        "name": "runtime-build-once",
+        "lane": "ordered",
+        "startedMs": 12626,
+        "elapsedMs": 4802,
+        "status": "succeeded"
+      },
+      {
+        "name": "vite-plugin-build-once",
+        "lane": "ordered",
+        "startedMs": 17436,
+        "elapsedMs": 5036,
+        "status": "succeeded"
+      },
+      {
+        "name": "plugin-ui:kubernetes-build-once",
+        "lane": "ordered",
+        "startedMs": 22480,
+        "elapsedMs": 14018,
+        "status": "succeeded"
+      },
+      {
+        "name": "plugin-ui:workspace-probe-build-once",
+        "lane": "ordered",
+        "startedMs": 36507,
+        "elapsedMs": 1335,
+        "status": "succeeded"
+      },
+      {
+        "name": "host-frontend-build-once",
+        "lane": "ordered",
+        "startedMs": 37850,
+        "elapsedMs": 19987,
+        "status": "succeeded"
+      },
+      {
+        "name": "host-backend-build-once",
+        "lane": "ordered",
+        "startedMs": 57845,
+        "elapsedMs": 10962,
+        "status": "succeeded"
+      },
+      {
+        "name": "application-vite-build-completion",
+        "lane": "ordered",
+        "startedMs": 68826,
+        "elapsedMs": 1947,
+        "status": "succeeded"
+      },
+      {
+        "name": "workspace-probe-artifact-go-build-once",
+        "lane": "plugin-go",
+        "startedMs": 70782,
+        "elapsedMs": 2448,
+        "status": "succeeded"
+      },
+      {
+        "name": "kubernetes-artifact-go-build-once",
+        "lane": "plugin-go",
+        "startedMs": 73239,
+        "elapsedMs": 9012,
+        "status": "succeeded"
+      }
+    ],
+    "plugins": [
+      {
+        "id": "workspace-probe",
+        "source": "/private/tmp/p07-acc/e2e/tmp/omniview-e2e-PZ6xgL/build-cohort/collection/workspaces/application-build/workspace-probe",
+        "artifact": "/private/tmp/p07-acc/e2e/tmp/omniview-e2e-PZ6xgL/application/workspace-probe",
+        "sdkIdentity": {
+          "Directory": "/private/tmp/p07-acc/e2e/tmp/omniview-e2e-PZ6xgL/build-cohort/collection/workspaces/application-build/plugin-sdk",
+          "Revision": "da2874ad99673675aa76f175480932fcce6bfe98",
+          "SourceDigest": "45f7988e6591203fb2c1eb1718ff267465a69bf0601125a6215f16b42d9576a5"
+        }
+      },
+      {
+        "id": "kubernetes",
+        "source": "/private/tmp/p07-acc/e2e/tmp/omniview-e2e-PZ6xgL/build-cohort/collection/workspaces/application-build/kubernetes",
+        "artifact": "/private/tmp/p07-acc/e2e/tmp/omniview-e2e-PZ6xgL/application/kubernetes",
+        "sdkIdentity": {
+          "Directory": "/private/tmp/p07-acc/e2e/tmp/omniview-e2e-PZ6xgL/build-cohort/collection/workspaces/application-build/plugin-sdk",
+          "Revision": "da2874ad99673675aa76f175480932fcce6bfe98",
+          "SourceDigest": "45f7988e6591203fb2c1eb1718ff267465a69bf0601125a6215f16b42d9576a5"
+        }
+      }
+    ]
+  },
+  "selection": {
+    "kind": "focused",
+    "groups": [
+      "layout",
+      "settings",
+      "plugins",
+      "panels",
+      "workspaces",
+      "tooling",
+      "contracts"
+    ],
+    "specs": [
+      "tests/plugins/schema-catalog.spec.ts"
+    ],
+    "reasons": [
+      "explicit full override",
+      "explicit test-name filter; not full acceptance",
+      "actual Playwright discovery before application preparation"
+    ],
+    "testFilter": "schema catalog"
+  },
+  "phases": [
+    {
+      "name": "tool-cache-validation",
+      "elapsedMs": 3
+    },
+    {
+      "name": "bootstrap-tools",
+      "elapsedMs": 11
+    },
+    {
+      "name": "dependency-install",
+      "elapsedMs": 8001
+    },
+    {
+      "name": "focused-discovery",
+      "elapsedMs": 343
+    },
+    {
+      "name": "browser-install",
+      "elapsedMs": 198
+    },
+    {
+      "name": "pinned-native-wails-tool",
+      "elapsedMs": 2609
+    },
+    {
+      "name": "safe-probe-source",
+      "elapsedMs": 84
+    },
+    {
+      "name": "committed-private-source-copies",
+      "elapsedMs": 1761
+    },
+    {
+      "name": "cohort-host-module",
+      "elapsedMs": 204
+    },
+    {
+      "name": "real-native-composition-protocol-proof",
+      "elapsedMs": 13953
+    },
+    {
+      "name": "cohort-adapter-build",
+      "elapsedMs": 3601
+    },
+    {
+      "name": "canonical-native-cohort-link",
+      "elapsedMs": 12612
+    },
+    {
+      "name": "application-build-once",
+      "elapsedMs": 82374
+    },
+    {
+      "name": "workspace-probe-artifact-finalize",
+      "elapsedMs": 2
+    },
+    {
+      "name": "kubernetes-artifact-finalize",
+      "elapsedMs": 62
+    },
+    {
+      "name": "actual-selected-package-resolution-proof",
+      "elapsedMs": 336
+    },
+    {
+      "name": "profile-launch",
+      "elapsedMs": 3015
+    },
+    {
+      "name": "application-assertions-and-worker-teardown",
+      "elapsedMs": 4841
+    },
+    {
+      "name": "application-process-teardown",
+      "elapsedMs": 74
+    },
+    {
+      "name": "owned-launch-drain",
+      "elapsedMs": 74
+    },
+    {
+      "name": "original-read-only-source-proof-after-run",
+      "elapsedMs": 96
+    },
+    {
+      "name": "canonical-build-cohort-retirement",
+      "elapsedMs": 17466
+    },
+    {
+      "name": "preparation-teardown",
+      "elapsedMs": 644
+    }
+  ],
+  "sourceRefs": {
+    "omniview": "88a227eb42793b78f7826279997a8bdb69cb9ec9",
+    "plugin-sdk": "da2874ad99673675aa76f175480932fcce6bfe98",
+    "kubernetes": "77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c",
+    "workspace-probe": "f376490f1b421b77d9e9f932399ca4be0799de2a"
+  },
+  "nativeToolCache": "explicit",
+  "declaredFrontendModes": [],
+  "retries": 0,
+  "applicationAcceptance": false
+}

@@ -1,0 +1,240 @@
+[
+  {
+    "step": "schema fields",
+    "connection": "cloud-bundled-pages",
+    "result": {
+      "catalogRevision": "ovc1.CsbkJ5_dm3wGaKthpD9RuraC-0bnOmaiQm7d_zNdhMI.QJciWkLxbBscb2U5dbsTlsL4lpIx4zjTdAvflm9t_G0",
+      "type": "compute/instance",
+      "representation": "native",
+      "schemaState": "absent",
+      "overlay": {
+        "Operations": [
+          "enumerate",
+          "get"
+        ],
+        "NativeQueryLanguages": [],
+        "HostEvaluation": "dynamic",
+        "HostEvaluationCode": "",
+        "Validation": "none",
+        "Unvalidated": null
+      },
+      "fields": [],
+      "truncated": false
+    }
+  },
+  {
+    "step": "editor associations",
+    "connection": "cloud-bundled-pages",
+    "associations": [
+      {
+        "type": "compute/instance",
+        "representation": "native",
+        "language": "yaml",
+        "modelDirectory": "file:///omniview-schema/1408dc61f6215dd8",
+        "fileMatch": "**/omniview-schema/1408dc61f6215dd8/*",
+        "status": "absent"
+      },
+      {
+        "type": "",
+        "language": "yaml",
+        "modelDirectory": "",
+        "fileMatch": "",
+        "status": "unavailable",
+        "code": "UNSUPPORTED"
+      }
+    ]
+  },
+  {
+    "step": "unreferenced documents",
+    "connection": "cloud-bundled-pages",
+    "editorDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetEditorSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Editor schema document is not referenced by this connection.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"5be74d23-895e-41fb-98e9-b774d954c2ee\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Editor schema document is not referenced by this connection.\",\"code\":\"NOT_FOUND\",\"requestId\":\"5be74d23-895e-41fb-98e9-b774d954c2ee\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    },
+    "schemaDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Schema document is not referenced by the current catalog.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"a156838f-4d92-4b8a-a518-70d3eb938152\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Schema document is not referenced by the current catalog.\",\"code\":\"NOT_FOUND\",\"requestId\":\"a156838f-4d92-4b8a-a518-70d3eb938152\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    }
+  },
+  {
+    "step": "schema fields",
+    "connection": "container-bundled-events",
+    "result": {
+      "catalogRevision": "ovc1.rScRz6bthdgqCeOnlTDmrecBj1CG9x3x0l7e9DzBtxU.IkshwP07FPPMRx0qQANaXQY2Uc0aG_U-2Bmb_nSCEWo",
+      "type": "container",
+      "representation": "native",
+      "schemaState": "absent",
+      "overlay": {
+        "Operations": [
+          "enumerate",
+          "get",
+          "sourceUpdates"
+        ],
+        "NativeQueryLanguages": [],
+        "HostEvaluation": "dynamic",
+        "HostEvaluationCode": "",
+        "Validation": "none",
+        "Unvalidated": null
+      },
+      "fields": [],
+      "truncated": false
+    }
+  },
+  {
+    "step": "editor associations",
+    "connection": "container-bundled-events",
+    "associations": [
+      {
+        "type": "container",
+        "representation": "native",
+        "language": "yaml",
+        "modelDirectory": "file:///omniview-schema/ca0a8e521089851d",
+        "fileMatch": "**/omniview-schema/ca0a8e521089851d/*",
+        "status": "absent"
+      },
+      {
+        "type": "",
+        "language": "yaml",
+        "modelDirectory": "",
+        "fileMatch": "",
+        "status": "unavailable",
+        "code": "UNSUPPORTED"
+      }
+    ]
+  },
+  {
+    "step": "unreferenced documents",
+    "connection": "container-bundled-events",
+    "editorDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetEditorSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Editor schema document is not referenced by this connection.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"17ab9532-c0ae-447c-83c7-3457b0984b00\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Editor schema document is not referenced by this connection.\",\"code\":\"NOT_FOUND\",\"requestId\":\"17ab9532-c0ae-447c-83c7-3457b0984b00\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    },
+    "schemaDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Schema document is not referenced by the current catalog.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"8b85eb4d-de0b-4f53-aad9-080854ec98f6\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Schema document is not referenced by the current catalog.\",\"code\":\"NOT_FOUND\",\"requestId\":\"8b85eb4d-de0b-4f53-aad9-080854ec98f6\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    }
+  },
+  {
+    "step": "schema fields",
+    "connection": "hypervisor-bundled-vms",
+    "result": {
+      "catalogRevision": "ovc1.uUu70PPd92btIegpm08KqY8okHhP-xAdemZeB2HZsDU.mkYlag_pL9WrZTkflBOk4fCdM8ZG-NNh5AFllN9FyWk",
+      "type": "vm",
+      "representation": "native",
+      "schemaState": "absent",
+      "overlay": {
+        "Operations": [
+          "enumerate",
+          "get"
+        ],
+        "NativeQueryLanguages": [],
+        "HostEvaluation": "dynamic",
+        "HostEvaluationCode": "",
+        "Validation": "none",
+        "Unvalidated": null
+      },
+      "fields": [],
+      "truncated": false
+    }
+  },
+  {
+    "step": "editor associations",
+    "connection": "hypervisor-bundled-vms",
+    "associations": [
+      {
+        "type": "vm",
+        "representation": "native",
+        "language": "yaml",
+        "modelDirectory": "file:///omniview-schema/98be7c689adea740",
+        "fileMatch": "**/omniview-schema/98be7c689adea740/*",
+        "status": "absent"
+      },
+      {
+        "type": "",
+        "language": "yaml",
+        "modelDirectory": "",
+        "fileMatch": "",
+        "status": "unavailable",
+        "code": "UNSUPPORTED"
+      }
+    ]
+  },
+  {
+    "step": "unreferenced documents",
+    "connection": "hypervisor-bundled-vms",
+    "editorDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetEditorSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Editor schema document is not referenced by this connection.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"11bc0244-5e40-4e10-baa1-547cd1004796\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Editor schema document is not referenced by this connection.\",\"code\":\"NOT_FOUND\",\"requestId\":\"11bc0244-5e40-4e10-baa1-547cd1004796\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    },
+    "schemaDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Schema document is not referenced by the current catalog.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"8910d7da-e041-4859-a72a-9e602be189b6\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Schema document is not referenced by the current catalog.\",\"code\":\"NOT_FOUND\",\"requestId\":\"8910d7da-e041-4859-a72a-9e602be189b6\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    }
+  },
+  {
+    "step": "schema fields",
+    "connection": "kubernetes-snapshot",
+    "result": {
+      "catalogRevision": "ovc1.1lIoDfYUktXMiAFBlQmZEEl5blR_XriwlS1dglxC8oI.TAxDB2LmzbAo7sdYqezmVFnk-mWmgCwCLinSDeCZGto",
+      "type": "core::v1::Pod",
+      "representation": "native",
+      "schemaState": "absent",
+      "overlay": {
+        "Operations": [
+          "enumerate",
+          "get"
+        ],
+        "NativeQueryLanguages": [],
+        "HostEvaluation": "dynamic",
+        "HostEvaluationCode": "",
+        "Validation": "none",
+        "Unvalidated": null
+      },
+      "fields": [],
+      "truncated": false
+    }
+  },
+  {
+    "step": "editor associations",
+    "connection": "kubernetes-snapshot",
+    "associations": [
+      {
+        "type": "core::v1::Pod",
+        "representation": "native",
+        "language": "yaml",
+        "modelDirectory": "file:///omniview-schema/2ebc2ca8fd43a011",
+        "fileMatch": "**/omniview-schema/2ebc2ca8fd43a011/*",
+        "status": "absent"
+      },
+      {
+        "type": "",
+        "language": "yaml",
+        "modelDirectory": "",
+        "fileMatch": "",
+        "status": "unavailable",
+        "code": "UNSUPPORTED"
+      }
+    ]
+  },
+  {
+    "step": "unreferenced documents",
+    "connection": "kubernetes-snapshot",
+    "editorDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetEditorSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Editor schema document is not referenced by this connection.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"6f1a214e-226c-4629-97ec-4395b7b50f53\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Editor schema document is not referenced by this connection.\",\"code\":\"NOT_FOUND\",\"requestId\":\"6f1a214e-226c-4629-97ec-4395b7b50f53\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    },
+    "schemaDocument": {
+      "code": "NOT_FOUND",
+      "message": "GetSchemaDocument failed: 422 {\"message\":\"{\\\"type\\\":\\\"omniview:resource/not-found\\\",\\\"title\\\":\\\"Not found\\\",\\\"status\\\":404,\\\"detail\\\":\\\"Schema document is not referenced by the current catalog.\\\",\\\"code\\\":\\\"NOT_FOUND\\\",\\\"requestId\\\":\\\"a6b05b7c-f7aa-43d0-bd25-2d19a77069d8\\\",\\\"recovery\\\":\\\"none\\\"}\",\"cause\":{\"type\":\"omniview:resource/not-found\",\"title\":\"Not found\",\"status\":404,\"detail\":\"Schema document is not referenced by the current catalog.\",\"code\":\"NOT_FOUND\",\"requestId\":\"a6b05b7c-f7aa-43d0-bd25-2d19a77069d8\",\"recovery\":\"none\"},\"kind\":\"RuntimeError\"}"
+    }
+  },
+  {
+    "step": "editor isolation",
+    "directories": {
+      "cloud-bundled-pages": "file:///omniview-schema/1408dc61f6215dd8",
+      "container-bundled-events": "file:///omniview-schema/ca0a8e521089851d",
+      "hypervisor-bundled-vms": "file:///omniview-schema/98be7c689adea740",
+      "kubernetes-snapshot": "file:///omniview-schema/2ebc2ca8fd43a011"
+    }
+  }
+]

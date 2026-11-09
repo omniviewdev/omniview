@@ -1,0 +1,140 @@
+# Mutation sensitivity of the new acceptance tests
+# Each mutation is applied with 'go test -overlay', so no tracked file is modified. The overlay replaces one production file with the edited copy shown by its diff.
+# Environment: GOWORK=off GOFLAGS= go test -overlay <overlay.json> -count=1 -v -run <test> <package>
+
+## M1: Observe ignores generation and epoch when deciding whether a snapshot is current
+$ diff backend/pkg/resourcecatalog/catalog.go <mutated copy>
+    124c124
+    < 	if current != nil && current.key == key && current.revision == catalog.Revision {
+    ---
+    > 	if current != nil && current.key.PluginID == key.PluginID && current.key.Connection == key.Connection && current.revision == catalog.Revision {
+$ test: TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision
+    acceptance_isolation_test.go:181: generation change must replace the snapshot
+--- FAIL: TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision (0.00s)
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	0.363s
+FAIL
+
+## M6: reference fetch deduplication is shared by every snapshot instead of one snapshot
+$ diff backend/pkg/resourcecatalog/catalog.go <mutated copy>
+    465,467c465,467
+    < 	s.fetchMu.Lock()
+    < 	if s.fetches == nil {
+    < 		s.fetches = make(map[resourcev2.SchemaDocumentReference]*documentFetch)
+    ---
+    > 	sharedFetchMu.Lock()
+    > 	if sharedFetches == nil {
+    > 		sharedFetches = make(map[resourcev2.SchemaDocumentReference]*documentFetch)
+    469c469
+    < 	flight := s.fetches[ref]
+    ---
+    > 	flight := sharedFetches[ref]
+    473c473
+    < 		s.fetches[ref] = flight
+    ---
+    > 		sharedFetches[ref] = flight
+    476c476
+    < 			s.fetchMu.Lock()
+    ---
+    > 			sharedFetchMu.Lock()
+    478,479c478,479
+    < 			if s.fetches[ref] == flight {
+    < 				delete(s.fetches, ref)
+    ---
+    > 			if sharedFetches[ref] == flight {
+    > 				delete(sharedFetches, ref)
+    482c482
+    < 			s.fetchMu.Unlock()
+    ---
+    > 			sharedFetchMu.Unlock()
+    487c487
+    < 	s.fetchMu.Unlock()
+    ---
+    > 	sharedFetchMu.Unlock()
+    493c493
+    < 	s.fetchMu.Lock()
+    ---
+    > 	sharedFetchMu.Lock()
+    495,496c495,496
+    < 	if flight.waiters == 0 && s.fetches[ref] == flight {
+    < 		delete(s.fetches, ref)
+    ---
+    > 	if flight.waiters == 0 && sharedFetches[ref] == flight {
+    > 		delete(sharedFetches, ref)
+    499c499
+    < 	s.fetchMu.Unlock()
+    ---
+    > 	sharedFetchMu.Unlock()
+    578a579,581
+    > 
+    > var sharedFetchMu sync.Mutex
+    > var sharedFetches = map[resourcev2.SchemaDocumentReference]*documentFetch{}
+$ test: TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently
+    acceptance_isolation_test.go:271: connection a: {"code":"TIMEOUT","title":"","message":"the second connection's fetch never started: the reference fetch was shared across connections"}
+--- FAIL: TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently (10.00s)
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	10.321s
+FAIL
+
+## M4: a missing required property ignores coverage and is always an error
+$ diff backend/pkg/resourcecatalog/admit.go <mutated copy>
+    698c698
+    < 	if a.coverage.Kind != completeCoverageKind && a.limited(missing) {
+    ---
+    > 	if false && a.limited(missing) {
+$ test: TestAcceptancePartialRepresentationsProviderNeutral
+    acceptance_profiles_test.go:694: admit {} under partial: {"code":"INVALID_REQUEST","title":"","message":"required property at \"/id\" is missing"}
+    acceptance_profiles_test.go:694: admit {} under unknown: {"code":"INVALID_REQUEST","title":"","message":"required property at \"/id\" is missing"}
+    acceptance_profiles_test.go:694: admit {} under partial: {"code":"INVALID_REQUEST","title":"","message":"required property at \"/id\" is missing"}
+    acceptance_profiles_test.go:694: admit {"id":"a","volumes":[{}]} under partial: {"code":"INVALID_REQUEST","title":"","message":"required property at \"/volumes/0/device\" is missing"}
+    acceptance_profiles_test.go:697: unavailable = [], want ["/placement" "/placement/zone"]
+--- FAIL: TestAcceptancePartialRepresentationsProviderNeutral (0.00s)
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	0.244s
+
+## M3a: Admit retains 512 bytes per call
+$ diff backend/pkg/resourcecatalog/admit.go <mutated copy>
+    50a51
+    > 	leakedRows = append(leakedRows, new([512]byte))
+    1045a1047,1048
+    > 
+    > var leakedRows []*[512]byte
+$ test: TestAcceptanceDistinctRowAdmissionsRetainNoPerRowSchemas
+    acceptance_retention_test.go:308: sequential: 10000 distinct rows; HeapAlloc delta 5211368 B, HeapObjects delta 10018, HeapInuse delta 5586944 B
+    acceptance_retention_test.go:311: live heap grew by 5211368 B / 10018 objects over 10000 sequential rows
+--- FAIL: TestAcceptanceDistinctRowAdmissionsRetainNoPerRowSchemas (0.07s)
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	0.260s
+FAIL
+
+## M3b: Admit retains 16 bytes per call (below the 1 MiB heap bound over 26,800 rows; caught by the object bound)
+$ diff backend/pkg/resourcecatalog/admit.go <mutated copy>
+    50a51
+    > 	leakedRows = append(leakedRows, new([16]byte))
+    1045a1047,1048
+    > 
+    > var leakedRows []*[16]byte
+$ test: TestAcceptanceDistinctRowAdmissionsRetainNoPerRowSchemas
+    acceptance_retention_test.go:308: sequential: 10000 distinct rows; HeapAlloc delta 257664 B, HeapObjects delta 10035, HeapInuse delta 270336 B
+    acceptance_retention_test.go:311: live heap grew by 257664 B / 10035 objects over 10000 sequential rows
+--- FAIL: TestAcceptanceDistinctRowAdmissionsRetainNoPerRowSchemas (0.08s)
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	0.264s
+FAIL
+
+## M7: the editor model directory hash omits the connection
+$ diff backend/pkg/plugin/resource/schema_service.go <mutated copy>
+    279c279
+    < 	sum := sha256.Sum256([]byte("omniview.editor.v1\x00" + pluginID + "\x00" + connection + "\x00" + resourceType + "\x00" + discriminator))
+    ---
+    > 	sum := sha256.Sum256([]byte("omniview.editor.v1\x00" + pluginID + "\x00" + resourceType + "\x00" + discriminator))
+$ test: TestEditorAssociationIdentityIsScopedAndRevisionStable
+    schema_identity_test.go:58: 
+        	            	expected: "file:///omniview-schema/92410528e6d340ee"
+        	            	actual  : "file:///omniview-schema/8b4cb2444d5bd698"
+    schema_identity_test.go:59: 
+        	            	expected: "**/omniview-schema/92410528e6d340ee/*"
+        	            	actual  : "**/omniview-schema/8b4cb2444d5bd698/*"
+    schema_identity_test.go:81: 
+        	            	expected: "file:///omniview-schema/aa5bff0a33eaffdc"
+

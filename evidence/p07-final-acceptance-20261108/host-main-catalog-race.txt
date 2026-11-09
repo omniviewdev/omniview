@@ -1,0 +1,516 @@
+=== RUN   TestAdmitAbsentSchemaIsStructuralOnly
+--- PASS: TestAdmitAbsentSchemaIsStructuralOnly (0.00s)
+=== RUN   TestAdmitRootMustBeMap
+--- PASS: TestAdmitRootMustBeMap (0.00s)
+=== RUN   TestAdmitOpenAPINullable
+--- PASS: TestAdmitOpenAPINullable (0.00s)
+=== RUN   TestAdmitUnions
+--- PASS: TestAdmitUnions (0.00s)
+=== RUN   TestAdmitClosedObjectRejectsExtraKey
+--- PASS: TestAdmitClosedObjectRejectsExtraKey (0.00s)
+=== RUN   TestAdmitAdditionalSchemaChecksUndeclaredValues
+--- PASS: TestAdmitAdditionalSchemaChecksUndeclaredValues (0.00s)
+=== RUN   TestAdmitEnumUsesExactTaggedEquality
+--- PASS: TestAdmitEnumUsesExactTaggedEquality (0.00s)
+=== RUN   TestAdmitIntOrStringBothEncodings
+--- PASS: TestAdmitIntOrStringBothEncodings (0.00s)
+=== RUN   TestAdmitKubernetesValidationsAreReduced
+--- PASS: TestAdmitKubernetesValidationsAreReduced (0.00s)
+=== RUN   TestAdmitTimestampRequiresDateTimeFormat
+--- PASS: TestAdmitTimestampRequiresDateTimeFormat (0.00s)
+=== RUN   TestAdmitEnforcedConstraints
+--- PASS: TestAdmitEnforcedConstraints (0.00s)
+=== RUN   TestAdmitBinary64NumericConstraints
+--- PASS: TestAdmitBinary64NumericConstraints (0.00s)
+=== RUN   TestAdmitPartialUnionBranches
+--- PASS: TestAdmitPartialUnionBranches (0.00s)
+=== RUN   TestAdmitMissingRequiredFollowsCoverage
+--- PASS: TestAdmitMissingRequiredFollowsCoverage (0.00s)
+=== RUN   TestAdmitFailedBranchLeavesNoUnavailablePaths
+--- PASS: TestAdmitFailedBranchLeavesNoUnavailablePaths (0.00s)
+=== RUN   TestAdmitWorkBudgetBoundary
+--- PASS: TestAdmitWorkBudgetBoundary (0.00s)
+=== RUN   TestAdmitUnconstrainedValuesConsumeWork
+--- PASS: TestAdmitUnconstrainedValuesConsumeWork (0.00s)
+=== RUN   TestAdmitDeepEqualityConsumesWork
+--- PASS: TestAdmitDeepEqualityConsumesWork (0.00s)
+=== RUN   TestDeepEqualityChecksCancellation
+--- PASS: TestDeepEqualityChecksCancellation (0.00s)
+=== RUN   TestAdmitContextCancellation
+--- PASS: TestAdmitContextCancellation (0.00s)
+=== RUN   TestAdmitRecursiveSchema
+--- PASS: TestAdmitRecursiveSchema (0.00s)
+=== RUN   TestAdmitDoesNotBuildBranchViews
+--- PASS: TestAdmitDoesNotBuildBranchViews (0.00s)
+=== RUN   TestAdmitKubernetesPod
+--- PASS: TestAdmitKubernetesPod (0.36s)
+=== RUN   TestAdmitLocalizedCollectionLiteral
+=== RUN   TestAdmitLocalizedCollectionLiteral/oneOf_definite_overlap
+=== RUN   TestAdmitLocalizedCollectionLiteral/enum_exact
+=== RUN   TestAdmitLocalizedCollectionLiteral/anyOf_limited_missing_key
+=== RUN   TestAdmitLocalizedCollectionLiteral/anyOf_confirmed_nested_scalar
+=== RUN   TestAdmitLocalizedCollectionLiteral/nested_scalar
+=== RUN   TestAdmitLocalizedCollectionLiteral/nested_missing_key
+=== RUN   TestAdmitLocalizedCollectionLiteral/missing_key_outside_literal
+=== RUN   TestAdmitLocalizedCollectionLiteral/whole_object
+=== RUN   TestAdmitLocalizedCollectionLiteral/list_limited_index
+=== RUN   TestAdmitLocalizedCollectionLiteral/list_possible_omitted_index
+=== RUN   TestAdmitLocalizedCollectionLiteral/list_nested_scalar
+=== RUN   TestAdmitLocalizedCollectionLiteral/scalar_mismatch
+--- PASS: TestAdmitLocalizedCollectionLiteral (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/oneOf_definite_overlap (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/enum_exact (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/anyOf_limited_missing_key (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/anyOf_confirmed_nested_scalar (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/nested_scalar (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/nested_missing_key (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/missing_key_outside_literal (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/whole_object (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/list_limited_index (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/list_possible_omitted_index (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/list_nested_scalar (0.00s)
+    --- PASS: TestAdmitLocalizedCollectionLiteral/scalar_mismatch (0.00s)
+=== RUN   TestAdmitOmissionSensitiveCollections
+=== RUN   TestAdmitOmissionSensitiveCollections/complete_minimum
+=== RUN   TestAdmitOmissionSensitiveCollections/partial_root_minimum
+=== RUN   TestAdmitOmissionSensitiveCollections/unknown_root_minimum
+=== RUN   TestAdmitOmissionSensitiveCollections/containing_path
+=== RUN   TestAdmitOmissionSensitiveCollections/below_path
+=== RUN   TestAdmitOmissionSensitiveCollections/ancestor_path
+=== RUN   TestAdmitOmissionSensitiveCollections/segment_boundary
+=== RUN   TestAdmitOmissionSensitiveCollections/escaped_boundary
+=== RUN   TestAdmitOmissionSensitiveCollections/nested_const_missing
+=== RUN   TestAdmitOmissionSensitiveCollections/nested_enum_missing
+=== RUN   TestAdmitOmissionSensitiveCollections/list_leading_omission
+=== RUN   TestAdmitOmissionSensitiveCollections/list_interior_omission
+=== RUN   TestAdmitOmissionSensitiveCollections/list_omitted_limited_first_member
+=== RUN   TestAdmitOmissionSensitiveCollections/list_omitted_limited_last_member
+=== RUN   TestAdmitOmissionSensitiveCollections/list_alternative_first_match
+=== RUN   TestAdmitOmissionSensitiveCollections/list_alternative_last_match
+=== RUN   TestAdmitOmissionSensitiveCollections/list_unlisted_omitted_member
+=== RUN   TestAdmitOmissionSensitiveCollections/list_nested_uncertain
+=== RUN   TestAdmitOmissionSensitiveCollections/list_limited_member
+=== RUN   TestAdmitOmissionSensitiveCollections/list_unlimited_membership
+=== RUN   TestAdmitOmissionSensitiveCollections/list_disjoint
+=== RUN   TestAdmitOmissionSensitiveCollections/list_equal_length_disjoint
+=== RUN   TestAdmitOmissionSensitiveCollections/list_too_long
+=== RUN   TestAdmitOmissionSensitiveCollections/list_complete_leading_omission
+=== RUN   TestAdmitOmissionSensitiveCollections/const_present_conflict
+=== RUN   TestAdmitOmissionSensitiveCollections/enum_disjoint
+=== RUN   TestAdmitOmissionSensitiveCollections/scalar_conflict
+=== RUN   TestAdmitOmissionSensitiveCollections/extra_enum_key
+=== RUN   TestAdmitOmissionSensitiveCollections/unlimited_missing_key
+=== RUN   TestAdmitOmissionSensitiveCollections/maximum_items
+=== RUN   TestAdmitOmissionSensitiveCollections/maximum_properties
+=== RUN   TestAdmitOmissionSensitiveCollections/duplicate_items
+=== RUN   TestAdmitOmissionSensitiveCollections/closed_extra
+=== RUN   TestAdmitOmissionSensitiveCollections/deduplicate_root
+--- PASS: TestAdmitOmissionSensitiveCollections (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/complete_minimum (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/partial_root_minimum (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/unknown_root_minimum (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/containing_path (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/below_path (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/ancestor_path (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/segment_boundary (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/escaped_boundary (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/nested_const_missing (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/nested_enum_missing (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_leading_omission (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_interior_omission (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_omitted_limited_first_member (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_omitted_limited_last_member (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_alternative_first_match (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_alternative_last_match (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_unlisted_omitted_member (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_nested_uncertain (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_limited_member (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_unlimited_membership (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_disjoint (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_equal_length_disjoint (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_too_long (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/list_complete_leading_omission (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/const_present_conflict (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/enum_disjoint (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/scalar_conflict (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/extra_enum_key (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/unlimited_missing_key (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/maximum_items (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/maximum_properties (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/duplicate_items (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/closed_extra (0.00s)
+    --- PASS: TestAdmitOmissionSensitiveCollections/deduplicate_root (0.00s)
+=== RUN   TestAdmitCollectionCombinators
+=== RUN   TestAdmitCollectionCombinators/all_uncertain
+=== RUN   TestAdmitCollectionCombinators/all_definite_failure
+=== RUN   TestAdmitCollectionCombinators/any_confirmed
+=== RUN   TestAdmitCollectionCombinators/any_uncertain
+=== RUN   TestAdmitCollectionCombinators/any_definite_failure
+=== RUN   TestAdmitCollectionCombinators/one_ambiguous
+=== RUN   TestAdmitCollectionCombinators/one_maximum_ambiguity
+=== RUN   TestAdmitCollectionCombinators/one_unique_ambiguity
+=== RUN   TestAdmitCollectionCombinators/one_closed_ambiguity
+=== RUN   TestAdmitCollectionCombinators/one_optional_ambiguity
+=== RUN   TestAdmitCollectionCombinators/one_item_ambiguity
+=== RUN   TestAdmitCollectionCombinators/one_unconstrained_optional_overlap
+=== RUN   TestAdmitCollectionCombinators/one_unconstrained_referenced_overlap
+=== RUN   TestAdmitCollectionCombinators/one_present_scalar_contradiction
+=== RUN   TestAdmitCollectionCombinators/one_definite_overlap
+=== RUN   TestAdmitCollectionCombinators/one_uncertain_only
+=== RUN   TestAdmitCollectionCombinators/one_definite_failure
+--- PASS: TestAdmitCollectionCombinators (0.01s)
+    --- PASS: TestAdmitCollectionCombinators/all_uncertain (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/all_definite_failure (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/any_confirmed (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/any_uncertain (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/any_definite_failure (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_ambiguous (0.01s)
+    --- PASS: TestAdmitCollectionCombinators/one_maximum_ambiguity (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_unique_ambiguity (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_closed_ambiguity (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_optional_ambiguity (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_item_ambiguity (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_unconstrained_optional_overlap (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_unconstrained_referenced_overlap (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_present_scalar_contradiction (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_definite_overlap (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_uncertain_only (0.00s)
+    --- PASS: TestAdmitCollectionCombinators/one_definite_failure (0.00s)
+=== RUN   TestPartialConstraintComparisonChargesWorkAndCancellation
+--- PASS: TestPartialConstraintComparisonChargesWorkAndCancellation (0.00s)
+=== RUN   TestPartialUnionProofSharesAdmissionBudget
+--- PASS: TestPartialUnionProofSharesAdmissionBudget (0.03s)
+=== RUN   TestResolveStaticDiscoveredAndAbsent
+--- PASS: TestResolveStaticDiscoveredAndAbsent (0.00s)
+=== RUN   TestResolveUnavailableBinding
+--- PASS: TestResolveUnavailableBinding (0.00s)
+=== RUN   TestResolveRootAndDialectFailures
+--- PASS: TestResolveRootAndDialectFailures (0.00s)
+=== RUN   TestResolveValidationReducedOnlyForReachableConstraints
+--- PASS: TestResolveValidationReducedOnlyForReachableConstraints (0.00s)
+=== RUN   TestResolveBooleanFalseSchemaIsReduced
+--- PASS: TestResolveBooleanFalseSchemaIsReduced (0.00s)
+=== RUN   TestIsolationAcrossConnections
+--- PASS: TestIsolationAcrossConnections (0.00s)
+=== RUN   TestObserveSnapshotIdentityAndRevisionReplacement
+--- PASS: TestObserveSnapshotIdentityAndRevisionReplacement (0.00s)
+=== RUN   TestResolveRetiredDuringResolutionDoesNotLeak
+--- PASS: TestResolveRetiredDuringResolutionDoesNotLeak (0.00s)
+=== RUN   TestResolveFetchVerificationAndCaching
+--- PASS: TestResolveFetchVerificationAndCaching (0.00s)
+=== RUN   TestResolveSingleFlight
+--- PASS: TestResolveSingleFlight (0.03s)
+=== RUN   TestSharedFetchSurvivesCallerCancellation
+--- PASS: TestSharedFetchSurvivesCallerCancellation (0.00s)
+=== RUN   TestSharedFetchCancelsAfterLastWaiter
+--- PASS: TestSharedFetchCancelsAfterLastWaiter (0.00s)
+=== RUN   TestSharedFetchChecksDialectPerBinding
+--- PASS: TestSharedFetchChecksDialectPerBinding (0.00s)
+=== RUN   TestResolveHonoursCancellationWhileWaiting
+--- PASS: TestResolveHonoursCancellationWhileWaiting (0.00s)
+=== RUN   TestRetentionLimits
+--- PASS: TestRetentionLimits (0.00s)
+=== RUN   TestResolveAux
+--- PASS: TestResolveAux (0.00s)
+=== RUN   TestResolveAuxLifecycleFailurePreservesPublishedDocuments
+=== RUN   TestResolveAuxLifecycleFailurePreservesPublishedDocuments/CANCELLED
+=== RUN   TestResolveAuxLifecycleFailurePreservesPublishedDocuments/TIMEOUT
+=== RUN   TestResolveAuxLifecycleFailurePreservesPublishedDocuments/RESET_REQUIRED
+--- PASS: TestResolveAuxLifecycleFailurePreservesPublishedDocuments (0.00s)
+    --- PASS: TestResolveAuxLifecycleFailurePreservesPublishedDocuments/CANCELLED (0.00s)
+    --- PASS: TestResolveAuxLifecycleFailurePreservesPublishedDocuments/TIMEOUT (0.00s)
+    --- PASS: TestResolveAuxLifecycleFailurePreservesPublishedDocuments/RESET_REQUIRED (0.00s)
+=== RUN   TestActionInputSchemasAreNotEntries
+--- PASS: TestActionInputSchemasAreNotEntries (0.00s)
+=== RUN   TestEditorJSONRendersDraft07
+--- PASS: TestEditorJSONRendersDraft07 (0.00s)
+=== RUN   TestEditorJSONSizeLimit
+--- PASS: TestEditorJSONSizeLimit (0.00s)
+=== RUN   TestEditorJSONRetainedBytesLimit
+=== RUN   TestEditorJSONRetainedBytesLimit/exact
+=== RUN   TestEditorJSONRetainedBytesLimit/one_byte_over
+--- PASS: TestEditorJSONRetainedBytesLimit (0.00s)
+    --- PASS: TestEditorJSONRetainedBytesLimit/exact (0.00s)
+    --- PASS: TestEditorJSONRetainedBytesLimit/one_byte_over (0.00s)
+=== RUN   TestEditorJSONConcurrentRetainedBytesLimit
+--- PASS: TestEditorJSONConcurrentRetainedBytesLimit (0.00s)
+=== RUN   TestEditorJSONSharedDocumentChargesOnce
+--- PASS: TestEditorJSONSharedDocumentChargesOnce (0.00s)
+=== RUN   TestNavigateAbsentSchemaIsEmpty
+--- PASS: TestNavigateAbsentSchemaIsEmpty (0.00s)
+=== RUN   TestNavigateIsolatesConnectionsWithTheSameTypeName
+--- PASS: TestNavigateIsolatesConnectionsWithTheSameTypeName (0.00s)
+=== RUN   TestNavigateRecursiveRefThreeLevels
+--- PASS: TestNavigateRecursiveRefThreeLevels (0.00s)
+=== RUN   TestNavigateOpenAPINullableMapAndArray
+--- PASS: TestNavigateOpenAPINullableMapAndArray (0.00s)
+=== RUN   TestNavigateOverlappingAnyOfConditions
+--- PASS: TestNavigateOverlappingAnyOfConditions (0.00s)
+=== RUN   TestNavigateAllOfListsUnconditionalFields
+--- PASS: TestNavigateAllOfListsUnconditionalFields (0.00s)
+=== RUN   TestNavigateUnresolvablePath
+--- PASS: TestNavigateUnresolvablePath (0.00s)
+=== RUN   TestNavigateFieldTruncationBoundary
+--- PASS: TestNavigateFieldTruncationBoundary (0.00s)
+=== RUN   TestNavigateVisitTruncationBoundary
+--- PASS: TestNavigateVisitTruncationBoundary (0.00s)
+=== RUN   TestNavigateSharedReferencesPreserveEveryBranch
+--- PASS: TestNavigateSharedReferencesPreserveEveryBranch (0.00s)
+=== RUN   TestNavigateSharedNestedUnionKeepsDistinctConditionPaths
+--- PASS: TestNavigateSharedNestedUnionKeepsDistinctConditionPaths (0.00s)
+=== RUN   TestNavigateBranchViewBudgetRetriesWithoutDuplicateMembers
+--- PASS: TestNavigateBranchViewBudgetRetriesWithoutDuplicateMembers (0.00s)
+=== RUN   TestNavigateBranchViewBudgetsSharedPropertyDeclarations
+--- PASS: TestNavigateBranchViewBudgetsSharedPropertyDeclarations (0.00s)
+=== RUN   TestNavigateSharedUnionDAGStopsBeforeCachingExpansion
+--- PASS: TestNavigateSharedUnionDAGStopsBeforeCachingExpansion (0.01s)
+=== RUN   TestNavigateBuildsAtMostOneViewPerUnionNode
+--- PASS: TestNavigateBuildsAtMostOneViewPerUnionNode (0.00s)
+=== RUN   TestCELCheckingMapping
+--- PASS: TestCELCheckingMapping (0.00s)
+=== RUN   TestNavigateKubernetesPodContainers
+--- PASS: TestNavigateKubernetesPodContainers (0.67s)
+=== RUN   TestNormalizeStructuralAndEnforcedKeywords
+--- PASS: TestNormalizeStructuralAndEnforcedKeywords (0.00s)
+=== RUN   TestNormalizeIsDeterministic
+--- PASS: TestNormalizeIsDeterministic (0.00s)
+=== RUN   TestNormalizeRecursiveRefIsALink
+--- PASS: TestNormalizeRecursiveRefIsALink (0.00s)
+=== RUN   TestNormalize2020KeepsRefSiblings
+--- PASS: TestNormalize2020KeepsRefSiblings (0.00s)
+=== RUN   TestNormalizeRefsToNestedDefinitionsAndPercentEncoding
+--- PASS: TestNormalizeRefsToNestedDefinitionsAndPercentEncoding (0.00s)
+=== RUN   TestNormalizeRefsIntoIgnoredRefSiblings
+=== RUN   TestNormalizeRefsIntoIgnoredRefSiblings/http://json-schema.org/draft-07/schema#
+=== RUN   TestNormalizeRefsIntoIgnoredRefSiblings/openapi-3.0
+--- PASS: TestNormalizeRefsIntoIgnoredRefSiblings (0.00s)
+    --- PASS: TestNormalizeRefsIntoIgnoredRefSiblings/http://json-schema.org/draft-07/schema# (0.00s)
+    --- PASS: TestNormalizeRefsIntoIgnoredRefSiblings/openapi-3.0 (0.00s)
+=== RUN   TestNormalizeCountsDefinitionsInsideIgnoredRefSibling
+--- PASS: TestNormalizeCountsDefinitionsInsideIgnoredRefSibling (0.00s)
+=== RUN   TestNormalizeRejectsBadRefs
+=== RUN   TestNormalizeRejectsBadRefs/bad_type
+=== RUN   TestNormalizeRejectsBadRefs/bad_minLength
+=== RUN   TestNormalizeRejectsBadRefs/bad_multiple
+=== RUN   TestNormalizeRejectsBadRefs/self_cycle
+=== RUN   TestNormalizeRejectsBadRefs/allOf_cycle
+=== RUN   TestNormalizeRejectsBadRefs/non-string
+=== RUN   TestNormalizeRejectsBadRefs/duplicate_key
+=== RUN   TestNormalizeRejectsBadRefs/empty_enum
+=== RUN   TestNormalizeRejectsBadRefs/unresolved
+=== RUN   TestNormalizeRejectsBadRefs/not_a_schema
+=== RUN   TestNormalizeRejectsBadRefs/pure_cycle
+=== RUN   TestNormalizeRejectsBadRefs/bad_schema
+=== RUN   TestNormalizeRejectsBadRefs/empty_anyOf
+--- PASS: TestNormalizeRejectsBadRefs (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/bad_type (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/bad_minLength (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/bad_multiple (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/self_cycle (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/allOf_cycle (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/non-string (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/duplicate_key (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/empty_enum (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/unresolved (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/not_a_schema (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/pure_cycle (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/bad_schema (0.00s)
+    --- PASS: TestNormalizeRejectsBadRefs/empty_anyOf (0.00s)
+=== RUN   TestNormalizeIntegralValueBoundaries
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/-9223372036854775808
+=== RUN   TestNormalizeIntegralValueBoundaries/const/-9223372036854775808
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/9223372036854775807
+=== RUN   TestNormalizeIntegralValueBoundaries/const/9223372036854775807
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/9223372036854775808
+=== RUN   TestNormalizeIntegralValueBoundaries/const/9223372036854775808
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/18446744073709551615
+=== RUN   TestNormalizeIntegralValueBoundaries/const/18446744073709551615
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/-9223372036854775809
+=== RUN   TestNormalizeIntegralValueBoundaries/const/-9223372036854775809
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/18446744073709551616
+=== RUN   TestNormalizeIntegralValueBoundaries/const/18446744073709551616
+=== RUN   TestNormalizeIntegralValueBoundaries/enum/999999999999999999999999999999999999999999999
+=== RUN   TestNormalizeIntegralValueBoundaries/const/999999999999999999999999999999999999999999999
+--- PASS: TestNormalizeIntegralValueBoundaries (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/-9223372036854775808 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/-9223372036854775808 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/9223372036854775807 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/9223372036854775807 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/9223372036854775808 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/9223372036854775808 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/18446744073709551615 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/18446744073709551615 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/-9223372036854775809 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/-9223372036854775809 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/18446744073709551616 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/18446744073709551616 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/enum/999999999999999999999999999999999999999999999 (0.00s)
+    --- PASS: TestNormalizeIntegralValueBoundaries/const/999999999999999999999999999999999999999999999 (0.00s)
+=== RUN   TestNormalizeNestedIntegralOverflow
+--- PASS: TestNormalizeNestedIntegralOverflow (0.00s)
+=== RUN   TestNormalizeNonIntegralTokensRemainDouble
+--- PASS: TestNormalizeNonIntegralTokensRemainDouble (0.00s)
+=== RUN   TestNormalizePrefixItemsReducesItemsToAny
+=== RUN   TestNormalizePrefixItemsReducesItemsToAny/{"type":"integer"}
+=== RUN   TestNormalizePrefixItemsReducesItemsToAny/false
+=== RUN   TestNormalizePrefixItemsReducesItemsToAny/true
+--- PASS: TestNormalizePrefixItemsReducesItemsToAny (0.00s)
+    --- PASS: TestNormalizePrefixItemsReducesItemsToAny/{"type":"integer"} (0.00s)
+    --- PASS: TestNormalizePrefixItemsReducesItemsToAny/false (0.00s)
+    --- PASS: TestNormalizePrefixItemsReducesItemsToAny/true (0.00s)
+=== RUN   TestNormalizePrefixItemsPreservesItemsInOtherDialects
+=== RUN   TestNormalizePrefixItemsPreservesItemsInOtherDialects/http://json-schema.org/draft-07/schema#
+=== RUN   TestNormalizePrefixItemsPreservesItemsInOtherDialects/openapi-3.0
+--- PASS: TestNormalizePrefixItemsPreservesItemsInOtherDialects (0.00s)
+    --- PASS: TestNormalizePrefixItemsPreservesItemsInOtherDialects/http://json-schema.org/draft-07/schema# (0.00s)
+    --- PASS: TestNormalizePrefixItemsPreservesItemsInOtherDialects/openapi-3.0 (0.00s)
+=== RUN   TestNormalizeRecursionThroughStructureIsAllowed
+--- PASS: TestNormalizeRecursionThroughStructureIsAllowed (0.00s)
+=== RUN   TestNormalizeExternalAndAnchorRefsAreUnvalidatedAny
+--- PASS: TestNormalizeExternalAndAnchorRefsAreUnvalidatedAny (0.00s)
+=== RUN   TestNormalizeExternalRefDiscardsSiblings
+=== RUN   TestNormalizeExternalRefDiscardsSiblings/https://example.com/schema
+=== RUN   TestNormalizeExternalRefDiscardsSiblings/other.json
+=== RUN   TestNormalizeExternalRefDiscardsSiblings/#anchor
+--- PASS: TestNormalizeExternalRefDiscardsSiblings (0.00s)
+    --- PASS: TestNormalizeExternalRefDiscardsSiblings/https://example.com/schema (0.00s)
+    --- PASS: TestNormalizeExternalRefDiscardsSiblings/other.json (0.00s)
+    --- PASS: TestNormalizeExternalRefDiscardsSiblings/#anchor (0.00s)
+=== RUN   TestNormalizeRetainsEnumAndConstStrings
+--- PASS: TestNormalizeRetainsEnumAndConstStrings (0.00s)
+=== RUN   TestNormalizeOpenAPINullable
+--- PASS: TestNormalizeOpenAPINullable (0.00s)
+=== RUN   TestNormalizeNumericExclusiveBoundsKeepStricter
+--- PASS: TestNormalizeNumericExclusiveBoundsKeepStricter (0.00s)
+=== RUN   TestNormalizeIntOrString
+--- PASS: TestNormalizeIntOrString (0.00s)
+=== RUN   TestAdmitIntOrStringPreservesOtherConstraints
+=== RUN   TestAdmitIntOrStringPreservesOtherConstraints/"type":"string","format":"int-or-string"
+=== RUN   TestAdmitIntOrStringPreservesOtherConstraints/"type":"string","x-kubernetes-int-or-string":true
+--- PASS: TestAdmitIntOrStringPreservesOtherConstraints (0.00s)
+    --- PASS: TestAdmitIntOrStringPreservesOtherConstraints/"type":"string","format":"int-or-string" (0.00s)
+    --- PASS: TestAdmitIntOrStringPreservesOtherConstraints/"type":"string","x-kubernetes-int-or-string":true (0.00s)
+=== RUN   TestNormalizeIntOrStringFormatDialectScope
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/draft2020_string
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/draft2020_boolean
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/draft07_string
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/draft07_boolean
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/openapi_boolean
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/openapi_no_type
+=== RUN   TestNormalizeIntOrStringFormatDialectScope/openapi_string
+--- PASS: TestNormalizeIntOrStringFormatDialectScope (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/draft2020_string (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/draft2020_boolean (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/draft07_string (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/draft07_boolean (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/openapi_boolean (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/openapi_no_type (0.00s)
+    --- PASS: TestNormalizeIntOrStringFormatDialectScope/openapi_string (0.00s)
+=== RUN   TestAdmitIntOrStringFormatDialectScope
+=== RUN   TestAdmitIntOrStringFormatDialectScope/draft2020_string
+=== RUN   TestAdmitIntOrStringFormatDialectScope/draft07_boolean
+=== RUN   TestAdmitIntOrStringFormatDialectScope/openapi_boolean
+=== RUN   TestAdmitIntOrStringFormatDialectScope/openapi_string
+--- PASS: TestAdmitIntOrStringFormatDialectScope (0.00s)
+    --- PASS: TestAdmitIntOrStringFormatDialectScope/draft2020_string (0.00s)
+    --- PASS: TestAdmitIntOrStringFormatDialectScope/draft07_boolean (0.00s)
+    --- PASS: TestAdmitIntOrStringFormatDialectScope/openapi_boolean (0.00s)
+    --- PASS: TestAdmitIntOrStringFormatDialectScope/openapi_string (0.00s)
+=== RUN   TestNormalizeKubernetesExtensions
+--- PASS: TestNormalizeKubernetesExtensions (0.00s)
+=== RUN   TestNormalizeUnvalidatedKeywords
+--- PASS: TestNormalizeUnvalidatedKeywords (0.00s)
+=== RUN   TestNormalizeDialects
+--- PASS: TestNormalizeDialects (0.00s)
+=== RUN   TestNormalizePolicyBoundaries
+=== RUN   TestNormalizePolicyBoundaries/MaxDocumentBytes/https://json-schema.org/draft/2020-12/schema
+=== RUN   TestNormalizePolicyBoundaries/MaxDocumentNodes/https://json-schema.org/draft/2020-12/schema
+=== RUN   TestNormalizePolicyBoundaries/MaxDocumentNodes/openapi-3.0
+=== RUN   TestNormalizePolicyBoundaries/MaxDefinitions/https://json-schema.org/draft/2020-12/schema
+=== RUN   TestNormalizePolicyBoundaries/MaxDefinitions/openapi-3.0
+=== RUN   TestNormalizePolicyBoundaries/MaxDepth/https://json-schema.org/draft/2020-12/schema
+=== RUN   TestNormalizePolicyBoundaries/MaxRefChain/https://json-schema.org/draft/2020-12/schema
+=== RUN   TestNormalizePolicyBoundaries/MaxUnionBranches/https://json-schema.org/draft/2020-12/schema
+=== RUN   TestNormalizePolicyBoundaries/MaxUnionBranches/openapi-3.0
+=== RUN   TestNormalizePolicyBoundaries/MaxEnumValues/https://json-schema.org/draft/2020-12/schema
+--- PASS: TestNormalizePolicyBoundaries (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxDocumentBytes/https://json-schema.org/draft/2020-12/schema (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxDocumentNodes/https://json-schema.org/draft/2020-12/schema (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxDocumentNodes/openapi-3.0 (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxDefinitions/https://json-schema.org/draft/2020-12/schema (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxDefinitions/openapi-3.0 (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxDepth/https://json-schema.org/draft/2020-12/schema (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxRefChain/https://json-schema.org/draft/2020-12/schema (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxUnionBranches/https://json-schema.org/draft/2020-12/schema (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxUnionBranches/openapi-3.0 (0.00s)
+    --- PASS: TestNormalizePolicyBoundaries/MaxEnumValues/https://json-schema.org/draft/2020-12/schema (0.00s)
+=== RUN   TestNormalizeOpenAPIIgnoresNonSchemaSections
+--- PASS: TestNormalizeOpenAPIIgnoresNonSchemaSections (0.00s)
+=== RUN   TestOverlayNativeQueryLanguagesRequireTheCapability
+--- PASS: TestOverlayNativeQueryLanguagesRequireTheCapability (0.00s)
+=== RUN   TestOverlayStatesForEachResolveOutcome
+--- PASS: TestOverlayStatesForEachResolveOutcome (0.00s)
+=== RUN   TestOverlayUnavailableBindingPreservesReasonClassification
+=== RUN   TestOverlayUnavailableBindingPreservesReasonClassification/UNSUPPORTED
+=== RUN   TestOverlayUnavailableBindingPreservesReasonClassification/INVALID_REQUEST
+=== RUN   TestOverlayUnavailableBindingPreservesReasonClassification/RESOURCE_LIMIT
+--- PASS: TestOverlayUnavailableBindingPreservesReasonClassification (0.00s)
+    --- PASS: TestOverlayUnavailableBindingPreservesReasonClassification/UNSUPPORTED (0.00s)
+    --- PASS: TestOverlayUnavailableBindingPreservesReasonClassification/INVALID_REQUEST (0.00s)
+    --- PASS: TestOverlayUnavailableBindingPreservesReasonClassification/RESOURCE_LIMIT (0.00s)
+=== RUN   TestRetentionSequentialAdmitNavigate
+    retention_test.go:160: HeapAlloc delta 15272 B (before 1214704, after 1229976)
+    retention_test.go:161: HeapInuse delta 8192 B, HeapSys delta -32768 B
+    retention_test.go:166: RSS not measured on darwin
+--- PASS: TestRetentionSequentialAdmitNavigate (0.63s)
+=== RUN   TestConcurrentMixedWorkloadMatchesSequential
+    retention_test.go:234: sequential {Connections:4 Entries:8 Documents:2 RetainedBytes:3225 BranchViews:1 CELProviders:2} concurrent {Connections:4 Entries:8 Documents:2 RetainedBytes:3225 BranchViews:1 CELProviders:2}
+--- PASS: TestConcurrentMixedWorkloadMatchesSequential (5.89s)
+=== RUN   TestCleanupReleasesEveryDocument
+--- PASS: TestCleanupReleasesEveryDocument (0.00s)
+PASS
+ok  	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog	9.092s
+=== RUN   TestClosedStructRejectsUnknownField
+--- PASS: TestClosedStructRejectsUnknownField (0.01s)
+=== RUN   TestNavigationAgreesWithCELShape
+=== RUN   TestNavigationAgreesWithCELShape/ref
+=== RUN   TestNavigationAgreesWithCELShape/annotated
+=== RUN   TestNavigationAgreesWithCELShape/ownAllOf
+=== RUN   TestNavigationAgreesWithCELShape/ownRef
+=== RUN   TestNavigationAgreesWithCELShape/multiple
+--- PASS: TestNavigationAgreesWithCELShape (0.00s)
+    --- PASS: TestNavigationAgreesWithCELShape/ref (0.00s)
+    --- PASS: TestNavigationAgreesWithCELShape/annotated (0.00s)
+    --- PASS: TestNavigationAgreesWithCELShape/ownAllOf (0.00s)
+    --- PASS: TestNavigationAgreesWithCELShape/ownRef (0.00s)
+    --- PASS: TestNavigationAgreesWithCELShape/multiple (0.00s)
+=== RUN   TestListExistsStartsWith
+--- PASS: TestListExistsStartsWith (0.00s)
+=== RUN   TestOpenObjectMapLabelLookup
+--- PASS: TestOpenObjectMapLabelLookup (0.00s)
+=== RUN   TestInt64FormatExactComparison
+--- PASS: TestInt64FormatExactComparison (0.00s)
+=== RUN   TestScalarMapping
+--- PASS: TestScalarMapping (0.00s)
+=== RUN   TestUnionAndNullablePathsAreDynAndEvaluate
+--- PASS: TestUnionAndNullablePathsAreDynAndEvaluate (0.00s)
+=== RUN   TestAbsentSchemaIsDyn
+--- PASS: TestAbsentSchemaIsDyn (0.00s)
+=== RUN   TestRevisionTracksRevisionsContentKeyTracksContent
+--- PASS: TestRevisionTracksRevisionsContentKeyTracksContent (0.00s)
+=== RUN   TestProviderBuiltOncePerDocument
+--- PASS: TestProviderBuiltOncePerDocument (0.06s)
+=== RUN   TestNewEnvironmentRequiresEntry
+--- PASS: TestNewEnvironmentRequiresEntry (0.00s)
+=== RUN   TestToCEL
+--- PASS: TestToCEL (0.00s)
+=== RUN   TestKubernetesPod
+--- PASS: TestKubernetesPod (0.35s)
+=== RUN   TestMissingOptionalFieldAgreesWithDyn
+--- PASS: TestMissingOptionalFieldAgreesWithDyn (0.00s)
+=== RUN   TestFieldGetterReportsMissingKey
+--- PASS: TestFieldGetterReportsMissingKey (0.00s)
+=== RUN   TestConcurrentCompileSharesOneProvider
+--- PASS: TestConcurrentCompileSharesOneProvider (1.15s)
+PASS
+ok  	github.com/omniviewdev/omniview/backend/pkg/resourcecatalog/celtypes	3.006s
