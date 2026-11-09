@@ -120,10 +120,9 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 
 	res.Header().Set("Content-Type", contentType)
 
-	// if remoteEntry.js, do NOT cache
-	if strings.HasSuffix(requestedFilename, "entry.js") {
-		res.Header().Set("Cache-Control", "no-store")
-	}
+	// Plugin updates replace stable chunk and stylesheet filenames in place.
+	// Every asset must bypass persistent caches, not just the entry module.
+	res.Header().Set("Cache-Control", "no-store")
 
 	if _, err = res.Write(fileData); err != nil {
 		h.logger.Errorw(ctx, "error serving file", "error", err)

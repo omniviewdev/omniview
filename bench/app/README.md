@@ -46,6 +46,63 @@ unexpected end positions, and verify the reset. Reports expose actual forward st
 and total steps (including the reset); wall and busy per-step timings use that
 actual total rather than the requested 30-step budget.
 
+## Published plugin archive acceptance
+
+Run the production frontend against an extracted release archive, without
+rebuilding or linking the plugin:
+
+```bash
+node bench/app/archive-smoke.mjs --directory /absolute/path/extracted-plugin
+```
+
+The directory must contain `plugin.yaml` and `assets/` from the same archive.
+Verify the archive's SHA-256 before extraction. Install the frozen host
+dependencies, build providers → runtime → Vite plugin, and install the pinned
+Playwright Chromium first, as above. The harness removes its temporary build and
+closes its browser and HTTP server on success or failure.
+
+This gate uses the production React renderer, host shared-module registry,
+SystemJS loader, and published Kubernetes frontend bytes. It checks the homepage,
+the empty-kubeconfig plugin route, and cluster-search interaction. Every shipped
+System.register module, including lazy routes, has its named external imports
+checked against the actual host namespaces. A missing export, route failure,
+uncaught exception, or console error fails acceptance.
+
+The Wails backend is a deterministic in-page fixture. This is not proof of native
+WKWebView behavior, real Kubernetes/backend lifecycle, archive installation, or
+every lazy screen's behavior. Keep the real application E2E suite as a separate
+gate. Add workload-specific tests when changing resource views or connections.
+
+`.github/workflows/plugin-archive-smoke.yml` runs on relevant host PRs and is a
+mandatory dependency of both desktop publication and npm publication. Its default
+input pins a published Kubernetes archive and checksum. Update that pin only
+after the intended compatibility cohort is published and tested.
+
+Plugin release workflows can call this reusable workflow with `host-ref` and
+`archive-artifact` (an artifact from the same workflow run containing
+`kubernetes-linux_amd64.tar.gz`). This tests the candidate bytes before marketplace
+publication, rather than testing an already published version or rebuilding from
+linked source. Merge the host workflow before merging a plugin caller.
+
+### Upgrade-state regression
+
+Plugin bundles use stable chunk names such as `entry2.js`. Clearing only the
+SystemJS entry leaves child modules alive; loading new code can then read old
+minified exports and fail with an undefined function. `clearPlugin.test.ts`
+executes two real SystemJS generations with changed child exports and checks that
+another plugin's registry entries survive retirement.
+
+The asset handler also sends `Cache-Control: no-store` for every plugin asset,
+not only `entry.js`. `plugin_asset_handler_test.go` checks updated bytes and cache
+policy for entry modules, child chunks, lazy chunks, and stylesheets.
+
+These are confirmed invalidation defects, not proof of the exact reported
+`Is()/ls` incident. Deleting `~/.omniview` fixed that incident but removed the
+failing profile. Do not recommend deleting a profile as routine recovery: retain
+a private copy first, record the host/plugin versions and stack, and compare
+installed asset hashes with the release archive. Do not upload kubeconfigs,
+credentials, or the full profile.
+
 ## Reproducible application sources
 
 CI resolves the SDK commit from the host's declared `go.mod` dependency and
