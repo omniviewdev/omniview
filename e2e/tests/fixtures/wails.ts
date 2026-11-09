@@ -17,6 +17,7 @@ const BINDINGS_ROOT = resolve(
 export const Service = {
   exec: 'backend/pkg/plugin/exec/servicewrapper.ts',
   plugins: 'backend/pkg/plugin/servicewrapper.ts',
+  resource: 'backend/pkg/plugin/resource/servicewrapper.ts',
   settings: 'backend/pkg/settings/binding.ts',
   windows: 'backend/window/service.ts',
 } as const;
