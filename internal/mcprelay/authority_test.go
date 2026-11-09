@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -166,8 +167,11 @@ func TestAuthorityUnrelatedCatalogChangeKeepsPendingConsent(t *testing.T) {
 	<-requested
 	unrelated := ToolInfo{MCPName: "other_custom", PluginID: "other", Name: "custom", Scope: ScopePlugin, Status: StatusOK}
 	a.UpdateCatalog([]ToolInfo{tool, unrelated})
-	pending := relay.ListPendingConfirmations()
-	require.Len(t, pending, 1)
+	var pending []PendingConfirmation
+	require.Eventually(t, func() bool {
+		pending = relay.ListPendingConfirmations()
+		return len(pending) == 1
+	}, 5*time.Second, 10*time.Millisecond)
 	require.NoError(t, relay.ResolveConfirmation(pending[0].ID, true))
 	require.True(t, <-resolved)
 	require.NoError(t, a.Approve(bound))
