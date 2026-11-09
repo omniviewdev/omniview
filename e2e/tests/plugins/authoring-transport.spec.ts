@@ -108,17 +108,22 @@ test('Completion transport: real schema edits, supersession and identity fences'
       };
       const facts = [];
       const members = ['schemaRevision', 'catalogRevision', 'representationRevision', 'environmentRevision', 'accessGeneration'] as const;
+      const expected = Object.fromEntries(members.map(member => [member, baseline.identity[member]]));
+      const accepted = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': 'e2e-authoring' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': 'authoring-baseline', methodID: id, args: ['workspace-probe', { ...payload, ...expected }] } }) });
+      const baselineResult = { status: accepted.status, body: await accepted.text() };
       for (const [index, member] of members.entries()) {
-        const draft = { ...payload, documentRevision: index + 1, requestId: `fence-${index}`, [member]: baseline.identity[member] + '-stale' };
+        const draft = { ...payload, ...expected, documentRevision: index + 2, requestId: `fence-${index}`, [member]: baseline.identity[member] + '-stale' };
         const response = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': 'e2e-authoring' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `authoring-fence-${index}`, methodID: id, args: ['workspace-probe', draft] } }) });
         facts.push({ member, status: response.status, body: await response.text() });
       }
 
-      return facts;
+      return { baselineResult, facts };
     }, { id, baseline: result.fields });
-    for (const fence of fenced) {
+    expect(fenced.baselineResult.status, fenced.baselineResult.body).toBe(200);
+    for (const fence of fenced.facts) {
       expect(fence.status, fence.member).toBeGreaterThanOrEqual(400);
       expect(fence.body, fence.member).toContain('RESET_REQUIRED');
+      expect(fence.body, fence.member).toContain(fence.member);
     }
 
     await testInfo.attach('completion-transport.json', { body: JSON.stringify({ result, fenced }, null, 2), contentType: 'application/json' });

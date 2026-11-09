@@ -141,7 +141,7 @@ test.describe('Schema catalog', () => {
         await test.step(`${connection}: the editor association is absent and bound to its own model directory`, async () => {
           const associations = await callBinding<EditorSchemaAssociation[]>(request, Service.resource, 'GetEditorSchemas', pluginID, route);
           facts.push({ step: 'editor associations', connection, associations });
-          const catalogAssociations = associations.filter((association) => association.type !== '' && association.representation === 'native');
+          const catalogAssociations = associations.filter((association) => association.type !== '');
           expect(catalogAssociations).toHaveLength(1);
           const [association] = catalogAssociations;
           expect(association).toMatchObject({ type, representation: 'native', language: 'yaml', status: 'absent' });
