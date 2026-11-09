@@ -9,13 +9,19 @@ const unrelated = `${base}${pluginId}-other/assets/entry2.js`;
 
 function registerGeneration(name: string, value: string): void {
   systemJs.register(`${root}entry2.js`, [], exportValue => ({
-    execute() { exportValue(name, () => value); },
+    execute() {
+      exportValue(name, () => value);
+    },
   }));
   systemJs.register(`${root}entry.js`, ['./entry2.js'], exportValue => {
     let render: () => string;
     return {
-      setters: [module => { render = module[name] as () => string; }],
-      execute() { exportValue('render', () => render()); },
+      setters: [module => {
+        render = module[name] as () => string;
+      }],
+      execute() {
+        exportValue('render', () => render());
+      },
     };
   });
 }
