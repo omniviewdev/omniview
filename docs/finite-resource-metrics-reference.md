@@ -52,6 +52,9 @@ Limits apply before dispatch and before publication:
 - A request contains 1–256 targets and 1–32 unique metric IDs. Provider batches also respect the catalog's `MaxTargets`.
 - `current` forbids duration, range times, and step. `range` accepts either positive `DurationMs` without absolute bounds or fixed `StartTime`/`EndTime` with duration zero. Both require positive step, a domain no longer than 31 days, and a domain/step quotient below 10,000.
 - A delivered response contains at most 10,000 range points and at most 4 MiB of JSON. These limits also apply after merging cached and in-flight contributions. Overflow returns `RESOURCE_LIMIT`, not truncated success.
+  Pending range assemblies enforce these same caller-projected limits after
+  each contribution, even without a progress callback. An over-budget reader
+  detaches immediately; only provider work no other reader needs is canceled.
 - `IntervalMs` is zero for initial/manual reads, or 1,000–3,600,000 milliseconds for host-scheduled refreshes. Collection has a 30-second deadline.
 - The coordinator bounds shared work to four I/O slots, 512 interests, and 32,768 requested target/metric pairs. Active or pending observations also have a 512-reservation limit and a 16 MiB displayed-sample budget.
 - Completed response reuse expires after 30 seconds and is bounded to 64 entries/8 MiB. Catalog reuse expires after 30 seconds and is bounded to 64 entries, each at most 64 KiB. Neither cache lifetime defines sample freshness.
@@ -62,9 +65,16 @@ Coverage-aware reuse requires every selected provider descriptor to declare `Ran
 
 The coordinator clips completed contributions, joins compatible overlapping work and dispatches only uncovered intervals. Subqueries may repeat one boundary point because the wire requires strictly ordered bounds. Existing TTLs and budgets still apply, including assembled response limits. Manual refresh bypasses completed reuse. This uses the existing completed cache, not another sample cache.
 
+Newer complete coverage owns its points and its omissions. An older incomplete
+or negative exact-domain cache entry cannot overwrite that coverage. A `missing`
+answer to only one fragment does not prove absence across the full request:
+the collection finishes incomplete unless the answer covered the whole domain.
+
 Range-to-current reuse is a separate, default-off provider capability, `RangeToCurrent`, requiring both query shapes. It promises identical value, unit, identity, dimensions, source and measurement-window semantics independent of range bounds or step. Owner range-reuse hints do not grant it.
 
 After exact-current cache lookup, an eligible current request may reuse a complete successful range result from the existing bounded cache. The result must carry a numeric terminal point, actual physical `ObservedAt`, and a positive catalog `MaxSampleAge`. Neither the terminal evaluation time nor the physical observation may be future-dated; the physical observation must not follow the terminal evaluation and must still satisfy the current freshness policy. A null terminal point is not replaced with an earlier value. Cache expiry, authority, projection, configuration, catalog and generation fences remain mandatory. Manual refresh bypasses this reuse.
+  A later complete gap, omitted terminal point or empty evaluation blocks an
+  older numeric promotion; the coordinator collects current data instead.
 
 The delivered current result retains the physical observation time and measurement window, copies the terminal value and removes range points. Providers lacking the explicit capability, including the current built-in Grafana integration, continue collecting current samples normally.
 
@@ -87,7 +97,7 @@ prepareMetricResults(
 
 Use the snapshot's own catalog and the targets whose tokens belong to that snapshot. A separate catalog request may describe another source generation.
 
-Prepared result IDs use source, canonical resource identity, metric ID, and dimensions, not caller tokens or result order. The hook retains compatible displayed data during refresh, filters out replaced resource incarnations, and clears invalidated data.
+Prepared result IDs use source, canonical resource identity, metric ID, and dimensions, not caller tokens or result order. The hook retains compatible selected history during refresh, filters out replaced resource incarnations, and clears invalidated data. A metric's own source override is part of compatibility even when the catalog-default source stays unchanged: replacing it clears that metric's retained prepared results before partial-frame retention. Unselected history never prevents a new target or metric from showing partial progress on a different step.
 
 Each result also exposes readonly `resourceReference` and `resourceRoute` from its admitted target. Use those fields for identity chips. Do not parse `resourceIdentity` or treat returned series dimensions as resource identity.
 

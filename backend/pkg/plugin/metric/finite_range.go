@@ -203,7 +203,28 @@ func finiteExcludeRangeSpans(result sdk.ResourceMetricResult, covered ...finiteR
 	return result
 }
 
-func finiteMergeRangeResult(current, incoming sdk.ResourceMetricResult, preferIncoming bool) (sdk.ResourceMetricResult, error) {
+// finiteMergedLength counts the points in the union of two ordered series, so a
+// merge can check its bound before it allocates the merged series.
+func finiteMergedLength(a, b []sdk.ResourceMetricPoint) int {
+	count, i, j := 0, 0, 0
+	for i < len(a) && j < len(b) {
+		switch a[i].Time.Compare(b[j].Time) {
+		case -1:
+			i++
+		case 1:
+			j++
+		default:
+			i++
+			j++
+		}
+		count++
+	}
+	return count + len(a) - i + len(b) - j
+}
+
+// finiteMergeRangeResult combines two results of one pair. limit caps the points
+// of the merged series; it is checked before any storage is allocated for them.
+func finiteMergeRangeResult(current, incoming sdk.ResourceMetricResult, preferIncoming bool, limit int) (sdk.ResourceMetricResult, error) {
 	if current.Status == "" || current.Status == "missing" {
 		return incoming, nil
 	}
@@ -216,7 +237,11 @@ func finiteMergeRangeResult(current, incoming sdk.ResourceMetricResult, preferIn
 	if current.IdentityScope != incoming.IdentityScope || !maps.Equal(current.Dimensions, incoming.Dimensions) || !reflect.DeepEqual(current.Source, incoming.Source) || current.Window != incoming.Window || !reflect.DeepEqual(current.ObservedAt, incoming.ObservedAt) {
 		return sdk.ResourceMetricResult{}, finiteError("INVALID_REQUEST", "Range result identity changed while combining coverage.")
 	}
-	points := make([]sdk.ResourceMetricPoint, 0, len(current.Points)+len(incoming.Points))
+	length := finiteMergedLength(current.Points, incoming.Points)
+	if length > limit {
+		return sdk.ResourceMetricResult{}, finiteError("RESOURCE_LIMIT", "Assembled metric sample limit exceeded.")
+	}
+	points := make([]sdk.ResourceMetricPoint, 0, length)
 	a, b := 0, 0
 	for a < len(current.Points) && b < len(incoming.Points) {
 		switch current.Points[a].Time.Compare(incoming.Points[b].Time) {
@@ -244,6 +269,37 @@ func finiteMergeRangeResult(current, incoming sdk.ResourceMetricResult, preferIn
 	}
 	current.Points = points
 	return current, nil
+}
+
+// recountRange recounts the points w has assembled across all of its pairs. A
+// delivery calls it first: the total that only assembly maintains goes stale
+// when a refresh drops cache-served pairs from the reader.
+func (w *finiteWaiter) recountRange() {
+	w.rangePoints = 0
+	for _, result := range w.results {
+		w.rangePoints += len(result.Points)
+	}
+}
+
+// rangeRoom is how many points the pair's series may hold while every other
+// pair keeps what it has assembled. It only bounds allocation; the caller's
+// projected response is checked exactly by holdRange.
+func (w *finiteWaiter) rangeRoom(pair finitePair) int {
+	return sdk.MaxFinitePoints - w.rangePoints + len(w.results[pair].Points)
+}
+
+// holdRange stores the pair's assembled result. It then checks what the caller
+// would receive right now: token aliases applied, SDK validation and the exact
+// encoded byte cap. A reader whose held contributions exceed one response
+// budget fails now, whether or not it reports progress. Its caller detaches the
+// reader, which retires any provider work no other reader still needs.
+func (w *finiteWaiter) holdRange(pair finitePair, result sdk.ResourceMetricResult) error {
+	points := w.rangePoints - len(w.results[pair].Points) + len(result.Points)
+	if points > sdk.MaxFinitePoints {
+		return finiteError("RESOURCE_LIMIT", "Assembled metric sample limit exceeded.")
+	}
+	w.results[pair], w.rangePoints = result, points
+	return finiteWaiterReply(w, true).err
 }
 
 func finiteReuseCapabilities(q sdk.ResourceMetricsQuery, catalog *sdk.ResourceMetricsCatalog) (bool, bool) {
@@ -287,9 +343,17 @@ func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteC
 		}
 		pure := finitePureRangeResult(result, cached, query.Step)
 		if exact && (!entry.complete || !pure) {
+			if len(w.rangeCoverage[pair]) > 0 {
+				// Entries are visited newest first, so this answer is older than
+				// the coverage already settled. It cannot overwrite that coverage's
+				// values or omitted points; the remaining holes are fetched.
+				continue
+			}
 			// Preserve exact-domain negative and incomplete reuse. Neither can
 			// establish pointwise coverage of another domain.
-			w.results[pair] = result
+			if err := w.holdRange(pair, result); err != nil {
+				return err
+			}
 			w.done[pair] = true
 			w.missing--
 			w.complete = w.complete && entry.complete
@@ -300,11 +364,13 @@ func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteC
 			// Older entries only fill holes: coverage a newer contribution
 			// settled stays final, including the points it omitted.
 			result = finiteExcludeRangeSpans(finiteClipRangeResult(result, span), w.rangeCoverage[pair]...)
-			merged, err := finiteMergeRangeResult(w.results[pair], result, false)
+			merged, err := finiteMergeRangeResult(w.results[pair], result, false, w.rangeRoom(pair))
 			if err != nil {
 				return err
 			}
-			w.results[pair] = merged
+			if err = w.holdRange(pair, merged); err != nil {
+				return err
+			}
 			w.rangeCoverage[pair] = finiteAddCoverage(w.rangeCoverage[pair], span, query.Step)
 			if _, missing := f.nextFiniteRangeLocked(w, pair, false); !missing {
 				w.done[pair] = true
@@ -324,7 +390,9 @@ func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteC
 // series says anything beyond the domain its job asked for. Any other answer
 // finishes a reader only when the job asked one of that reader's own fetches.
 // For a borrower it describes another domain, so the pair stays open and the
-// coordinator asks for the reader's own domain instead.
+// coordinator asks for the reader's own domain instead. A missing answer to a
+// fragment of the reader's domain is no evidence about the rest of it: it never
+// extends coverage and leaves the pair incomplete.
 func (f *finiteCoordinator) acceptRangeResultLocked(
 	w *finiteWaiter, job *finiteJob, pair finitePair, result sdk.ResourceMetricResult, present, complete bool,
 	warnings []string,
@@ -332,6 +400,15 @@ func (f *finiteCoordinator) acceptRangeResultLocked(
 	reusable := present && complete && result.Status == "ok"
 	if !reusable && !f.finiteRangeOwnsLocked(w, job, pair) {
 		return nil
+	}
+	domain, incoming := finiteQuerySpan(w.query), finiteQuerySpan(job.query)
+	span, overlaps := finiteIntersectSpan(domain, incoming)
+	if present && result.Status == "missing" && (!span.start.Equal(domain.start) || !span.end.Equal(domain.end)) {
+		// Missing is not pointwise evidence: it describes the bounds it was asked
+		// for. With only a fragment of this reader's domain answered, the whole
+		// evaluation stays unknown, so the pair finishes incomplete rather than
+		// ok, and the fragment is not asked again.
+		complete = false
 	}
 	w.complete = w.complete && complete && present
 	w.warnings = mergeFiniteWarnings(w.warnings, warnings)
@@ -342,13 +419,13 @@ func (f *finiteCoordinator) acceptRangeResultLocked(
 	}
 	if result.Status != "ok" && result.Status != "missing" {
 		// A failed subrange cannot be presented as a successful whole range.
-		w.results[pair] = result
+		if err := w.holdRange(pair, result); err != nil {
+			return err
+		}
 		w.done[pair] = true
 		w.missing--
 		return nil
 	}
-	domain, incoming := finiteQuerySpan(w.query), finiteQuerySpan(job.query)
-	span, overlaps := finiteIntersectSpan(domain, incoming)
 	if !overlaps {
 		return nil
 	}
@@ -361,11 +438,13 @@ func (f *finiteCoordinator) acceptRangeResultLocked(
 		// omits are absent now and must not return from older contributions.
 		current = finiteExcludeRangeSpans(current, span)
 	}
-	merged, err := finiteMergeRangeResult(current, finiteClipRangeResult(result, span), true)
+	merged, err := finiteMergeRangeResult(current, finiteClipRangeResult(result, span), true, w.rangeRoom(pair))
 	if err != nil {
 		return err
 	}
-	w.results[pair] = merged
+	if err = w.holdRange(pair, merged); err != nil {
+		return err
+	}
 	if complete {
 		w.rangeCoverage[pair] = finiteAddCoverage(w.rangeCoverage[pair], span, w.query.Step)
 	}
@@ -432,8 +511,23 @@ func (f *finiteCoordinator) progressWaiterLocked(w *finiteWaiter) {
 	}
 }
 
+// finiteRangeTerminal returns the last grid point a complete range answer
+// settled and the sample at it. A nil sample is a source gap or a point the
+// answer omitted: a complete answer settles every grid point of its domain. When
+// the domain ends after now its last grid points cannot have been evaluated yet,
+// so the last point returned stands in for its end.
+func finiteRangeTerminal(entry *finiteCacheEntry, result sdk.ResourceMetricResult, now time.Time) (time.Time, *float64) {
+	if last := len(result.Points) - 1; last >= 0 &&
+		(!result.Points[last].Time.Before(entry.evaluated) || entry.evaluated.After(now)) {
+		return result.Points[last].Time, result.Points[last].Value
+	}
+	return entry.evaluated, nil
+}
+
 // applyCurrentRangeCacheLocked only fills pairs not answered by exact current
 // reuse. It reads the existing range entries; no promoted sample cache is made.
+// A later terminal gap or omission settles that evaluation as absent, and no
+// older numeric sample may stand in for it.
 func (f *finiteCoordinator) applyCurrentRangeCacheLocked(w *finiteWaiter, catalog *sdk.ResourceMetricsCatalog, now time.Time) {
 	if w.maxSampleAge <= 0 {
 		return
@@ -448,9 +542,9 @@ func (f *finiteCoordinator) applyCurrentRangeCacheLocked(w *finiteWaiter, catalo
 				continue
 			}
 			var best sdk.ResourceMetricResult
-			var bestEvaluation time.Time
+			var bestEvaluation, absent time.Time
 			var warnings []string
-			found := false
+			found, bestIndex, absentIndex := false, -1, -1
 			for index := len(f.cache) - 1; index >= 0; index-- {
 				entry := &f.cache[index]
 				if entry.rangeToCurrentKey != w.rangeToCurrentKey || !entry.complete ||
@@ -459,22 +553,30 @@ func (f *finiteCoordinator) applyCurrentRangeCacheLocked(w *finiteWaiter, catalo
 					continue
 				}
 				result, exists := entry.pairs[pair]
-				if !exists || result.Status != "ok" || result.Value != nil ||
-					result.ObservedAt == nil || len(result.Points) == 0 {
+				if !exists || result.Status != "ok" || result.Value != nil {
 					continue
 				}
-				point := result.Points[len(result.Points)-1]
-				if point.Value == nil || point.Time.After(now) || result.ObservedAt.After(point.Time) ||
+				evaluation, sample := finiteRangeTerminal(entry, result, now)
+				if sample == nil {
+					// Entries are visited newest first, so a gap at the same
+					// evaluation time as a numeric sample is the newer answer.
+					if !evaluation.IsZero() && !evaluation.After(now) && (absentIndex < 0 || evaluation.After(absent)) {
+						absent, absentIndex = evaluation, index
+					}
+					continue
+				}
+				if result.ObservedAt == nil || evaluation.After(now) || result.ObservedAt.After(evaluation) ||
 					!now.Before(result.ObservedAt.Add(w.maxSampleAge)) {
 					continue
 				}
 				if found && (result.ObservedAt.Before(*best.ObservedAt) ||
-					(result.ObservedAt.Equal(*best.ObservedAt) && !point.Time.After(bestEvaluation))) {
+					(result.ObservedAt.Equal(*best.ObservedAt) && !evaluation.After(bestEvaluation))) {
 					continue
 				}
-				best, bestEvaluation, warnings, found = result, point.Time, entry.warnings, true
+				best, bestEvaluation, bestIndex, warnings, found = result, evaluation, index, entry.warnings, true
 			}
-			if !found {
+			if !found || (absentIndex >= 0 && (absent.After(bestEvaluation) ||
+				(absent.Equal(bestEvaluation) && absentIndex > bestIndex))) {
 				continue
 			}
 			best.Value = best.Points[len(best.Points)-1].Value

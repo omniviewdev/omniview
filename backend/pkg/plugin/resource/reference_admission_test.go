@@ -98,16 +98,37 @@ func TestAdmitReferenceDistinguishesProviderMismatchFromRetiredAuthority(t *test
 		{name: "provider", code: "INVALID_REQUEST", mutate: func(reference *resourcev2.ResourceReference) { reference.Address.Provider = "other-provider" }},
 		{name: "authority", code: "RESET_REQUIRED", mutate: func(reference *resourcev2.ResourceReference) { reference.Address.Authority += "-retired" }},
 	} {
-		t.Run(mismatch.name, func(t *testing.T) {
-			ctrl, _ := newTestControllerWithEmitter(t)
-			provider := &mockProvider{}
-			registerActionTestPlugin(ctrl, "p1", provider)
-			input := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
-			mismatch.mutate(&input.Reference)
-			_, err := ctrl.AdmitReference(testInvocationContext(), "exec.CreateSession", "p1", input.Route, input.Reference)
-			require.Error(t, err)
-			require.Equal(t, mismatch.code, requireAppError(t, err).Code)
-		})
+		// A reference judged against a catalog an earlier admission of the same
+		// batch acquired must be classified like one that acquired its own.
+		for _, shared := range []bool{false, true} {
+			name := mismatch.name
+			if shared {
+				name += "/shared batch catalog"
+			}
+			t.Run(name, func(t *testing.T) {
+				ctrl, _ := newTestControllerWithEmitter(t)
+				provider := &mockProvider{}
+				registerActionTestPlugin(ctrl, "p1", provider)
+				input := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
+				acquire := provider.CatalogFunc
+				catalogCalls := 0
+				provider.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+					catalogCalls++
+					return acquire(ctx, request)
+				}
+				ctx := testInvocationContext()
+				if shared {
+					ctx = WithAdmissionBatch(ctx)
+					_, err := ctrl.AdmitReference(ctx, "exec.CreateSession", "p1", input.Route, input.Reference)
+					require.NoError(t, err)
+				}
+				mismatch.mutate(&input.Reference)
+				_, err := ctrl.AdmitReference(ctx, "exec.CreateSession", "p1", input.Route, input.Reference)
+				require.Error(t, err)
+				require.Equal(t, mismatch.code, requireAppError(t, err).Code)
+				require.Equal(t, 1, catalogCalls, "one catalog acquisition serves the whole pass")
+			})
+		}
 	}
 }
 

@@ -238,3 +238,93 @@ func TestFiniteRangeToCurrentManualRefreshFetchesCurrentSample(t *testing.T) {
 	require.Equal(t, int32(2), provider.queries.Load())
 	require.NoError(t, c.CloseMetricsObservation(ctx, "current-from-range"))
 }
+
+// A complete answer settles every grid point of its domain. A source gap or an
+// omitted terminal point at a later evaluation means there is no current sample
+// then, and an older numeric terminal point must not stand in for it.
+func TestFiniteRangeToCurrentLaterGapOrOmissionBlocksOlderNumericSample(t *testing.T) {
+	// A window's bounds are offsets from the base window's end; terminal says what
+	// the source returned at its last grid point.
+	type windowRead struct {
+		start, end time.Duration
+		terminal   string
+	}
+	for _, tc := range []struct {
+		name     string
+		reads    []windowRead
+		promoted bool
+	}{
+		{name: "newer terminal gap", reads: []windowRead{{-10 * time.Second, 0, "numeric"}, {-9 * time.Second, time.Second, "gap"}}},
+		{name: "newer omitted terminal point", reads: []windowRead{{-10 * time.Second, 0, "numeric"}, {-9 * time.Second, time.Second, "omitted"}}},
+		{name: "newer answer without points", reads: []windowRead{{-10 * time.Second, 0, "numeric"}, {-9 * time.Second, time.Second, "empty"}}},
+		{name: "same evaluation fetched later as a gap", reads: []windowRead{{-10 * time.Second, 0, "numeric"}, {-20 * time.Second, 0, "gap"}}},
+		{name: "older terminal gap", promoted: true, reads: []windowRead{{-15 * time.Second, -5 * time.Second, "gap"}, {-10 * time.Second, 0, "numeric"}}},
+		{name: "same evaluation fetched later as a sample", promoted: true, reads: []windowRead{{-20 * time.Second, 0, "gap"}, {-10 * time.Second, 0, "numeric"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, provider, ctx, spec := finiteCurrentRangeProvider(t, true, 2*time.Minute)
+			original := provider.response
+			provider.response = func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
+				response := original(query)
+				if query.Shape != "range" {
+					return response
+				}
+				for _, window := range tc.reads {
+					if !query.StartTime.Equal(spec.EndTime.Add(window.start)) {
+						continue
+					}
+					points := response.Results[0].Points
+					switch window.terminal {
+					case "gap":
+						points[len(points)-1].Value = nil
+					case "omitted":
+						response.Results[0].Points = points[:len(points)-1]
+					case "empty":
+						response.Results[0].Points = nil
+					}
+				}
+				return response
+			}
+			for _, window := range tc.reads {
+				read := spec
+				read.StartTime, read.EndTime = spec.EndTime.Add(window.start), spec.EndTime.Add(window.end)
+				require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, read)).err)
+			}
+			got := finiteTestReceive(t, finiteTestRead(c, ctx, finiteTestSpec("current", "pod-a", "cpu")))
+			require.NoError(t, got.err)
+			if tc.promoted {
+				require.Equal(t, 0.25, *got.data.Results[0].Value)
+				require.Equal(t, int32(len(tc.reads)), provider.queries.Load(), "the newest evaluation answers current without another read")
+				return
+			}
+			require.Equal(t, 0.75, *got.data.Results[0].Value, "current must come from its own provider evaluation")
+			require.Equal(t, int32(len(tc.reads)+1), provider.queries.Load())
+		})
+	}
+}
+
+func TestFiniteRangeToCurrentWindowEndingInTheFutureKeepsItsLastEvaluatedSample(t *testing.T) {
+	c, provider, ctx, spec := finiteCurrentRangeProvider(t, true, 2*time.Minute)
+	original := provider.response
+	evaluated := spec.EndTime
+	provider.response = func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
+		response := original(query)
+		if query.Shape == "range" {
+			// A source can only have evaluated up to the present.
+			points := response.Results[0].Points
+			for len(points) > 0 && points[len(points)-1].Time.After(evaluated) {
+				points = points[:len(points)-1]
+			}
+			observed := evaluated.Add(-time.Second)
+			response.Results[0].Points, response.Results[0].ObservedAt = points, &observed
+		}
+		return response
+	}
+	spec.StartTime, spec.EndTime = evaluated.Add(-5*time.Second), evaluated.Add(time.Hour)
+	require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, spec)).err)
+	got := finiteTestReceive(t, finiteTestRead(c, ctx, finiteTestSpec("current", "pod-a", "cpu")))
+	require.NoError(t, got.err)
+	require.Equal(t, 0.25, *got.data.Results[0].Value)
+	require.Equal(t, evaluated.Add(-time.Second), *got.data.Results[0].ObservedAt)
+	require.Equal(t, int32(1), provider.queries.Load(), "the evaluated sample answers current without another read")
+}

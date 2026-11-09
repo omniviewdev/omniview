@@ -19,7 +19,7 @@ import (
 func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) {
 	reviewed := ReviewedReleases()
 	require.NotEmpty(t, reviewed)
-	newer := Published{Module: Module, Version: "v0.19.0", ModuleSum: fixturePublished().ModuleSum, GoModSum: fixturePublished().GoModSum}
+	newer := Published{Module: Module, Version: "v0.99.0", ModuleSum: fixturePublished().ModuleSum, GoModSum: fixturePublished().GoModSum}
 	policy := NewReleasePolicy(FloorVersion, append(reviewed, newer)...)
 	admit := func(policy Policy, published Published) error {
 		identity, err := NewPublishedIdentity(published)
@@ -57,7 +57,7 @@ func TestReleasePolicyAdmitsOnlyReviewedReleasesAtOrAboveTheFloor(t *testing.T) 
 		"far below the floor":        {policy, withVersion(pinned, "v0.1.0"), "below the accepted floor"},
 		"pseudo-version":             {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.17.1-0.20261108000000-abcdefabcdef")), withVersion(pinned, "v0.17.1-0.20261108000000-abcdefabcdef"), "not a released tag"},
 		"prerelease":                 {NewReleasePolicy(FloorVersion, withVersion(pinned, "v0.18.0-rc.1")), withVersion(pinned, "v0.18.0-rc.1"), "not a released tag"},
-		"unreviewed release":         {policy, withVersion(pinned, "v0.18.1"), "not a release this controller has reviewed"},
+		"unreviewed release":         {policy, withVersion(pinned, "v0.99.1"), "not a release this controller has reviewed"},
 		"unreviewed future release":  {ReleasePolicy(), withVersion(pinned, "v1.0.0"), "not a release this controller has reviewed"},
 		"module checksum differs":    {ReleasePolicy(), Published{Module: Module, Version: pinned.Version, ModuleSum: wrongSum, GoModSum: pinned.GoModSum}, "differ from the reviewed release"},
 		"go.mod checksum differs":    {ReleasePolicy(), Published{Module: Module, Version: pinned.Version, ModuleSum: pinned.ModuleSum, GoModSum: wrongSum}, "differ from the reviewed release"},

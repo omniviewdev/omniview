@@ -355,6 +355,63 @@ func TestFiniteManualRefreshUpgradesCachedPairsWithoutRepeatingActivePairs(t *te
 	require.Equal(t, int32(3), p.queries.Load(), "manual refresh repeated a still-active pair")
 }
 
+func TestFiniteManualRefreshCompletesPartiallyCoveredRangeWithFreshCachedSpan(t *testing.T) {
+	c, provider, ctx := finiteRangeProvider(t, true)
+	seed := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(3, 7)))
+	require.NoError(t, seed.err)
+	finiteTestReceive(t, provider.calls)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		select {
+		case <-pc.Context.Done():
+			return nil, pc.Context.Err()
+		case <-release:
+		}
+		response := finiteRangeResponse(query)
+		for _, result := range response.Results {
+			for _, point := range result.Points {
+				if point.Value != nil {
+					*point.Value += 1000
+				}
+			}
+		}
+		return response, nil
+	}
+	spec := finiteRangeSpec(0, 10)
+	events := make(chan MetricsObservationSnapshot, 32)
+	_, err := c.OpenMetricsObservation(ctx, OpenMetricsObservationRequest{ClientToken: "partial-refresh", Spec: spec}, func(snapshot MetricsObservationSnapshot) { events <- snapshot })
+	require.NoError(t, err)
+	require.NoError(t, c.AttachMetricsObservation(ctx, "partial-refresh"))
+	nextFiniteSnapshot(t, events, func(snapshot MetricsObservationSnapshot) bool {
+		return snapshot.Data != nil && snapshot.Fetching && !snapshot.Data.Complete
+	})
+	left, right := finiteTestReceive(t, provider.calls), finiteTestReceive(t, provider.calls)
+	require.Equal(t, spec.StartTime, left.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), right.StartTime)
+	require.NoError(t, c.RefreshMetricsObservation(ctx, "partial-refresh"))
+	require.NoError(t, c.RefreshMetricsObservation(ctx, "partial-refresh"))
+	cachedSpan := finiteTestReceive(t, provider.calls)
+	require.Equal(t, finiteRangeTestStart.Add(3*time.Second), cachedSpan.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), cachedSpan.EndTime)
+	close(release)
+	complete := nextFiniteSnapshot(t, events, func(snapshot MetricsObservationSnapshot) bool {
+		return snapshot.Data != nil && !snapshot.Fetching
+	})
+	require.Empty(t, complete.Error)
+	require.True(t, complete.Data.Complete)
+	points := complete.Data.Results[0].Points
+	require.Len(t, points, 11)
+	for i, point := range points {
+		if i == 4 {
+			require.Nil(t, point.Value, "a source gap must not become zero")
+			continue
+		}
+		require.NotNil(t, point.Value)
+		require.Equal(t, float64(i*i)+1000, *point.Value, "point %d kept stale cached coverage", i)
+	}
+	require.Equal(t, int32(4), provider.queries.Load(), "refresh duplicated provider work")
+}
+
 func TestFiniteCloseCancelsOpenBeforeAcknowledgement(t *testing.T) {
 	c, p, ctx := finiteTestController(t)
 	entered := make(chan struct{})

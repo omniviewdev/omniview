@@ -235,7 +235,15 @@ An empty target or metric list disables collection. Each source catalog declares
 | `stepMs` | Use the resolution of displayed history, not a pending replacement request |
 | `isPartial` | Indicate that displayed data is incomplete; check `isFetching` separately for active collection |
 
-Range progress keeps data, domain and step together. A partial update does not erase already displayed numeric samples in the requested window. Until non-regressing progress arrives, retained history keeps its original domain and step. An absent pair in an incomplete frame is pending, not proof of a missing source sample. A final incomplete frame remains partial without staying busy.
+Range progress keeps data, domain and step together. A partial update does not
+erase selected numeric samples from the same source inside the requested window.
+Until non-regressing progress arrives, that history keeps its original domain
+and step. Another Pod's history does not block a new selection's partial frame,
+even when the resolution changes. A metric's source change clears only that
+metric's incompatible history; unchanged metrics retain their displayed domain
+and step. An absent pair in an incomplete frame is pending, not proof of a
+missing source sample. A final incomplete frame remains partial without staying
+busy.
 
 ### `useMetricViewPreferences(pluginID, resourceKey, defaults?)`
 

@@ -262,3 +262,102 @@ it('does not remove loaded history while a refresh collects omitted intervals', 
   expect(result.current.results[0].points.map(point => point.timeMs)).toEqual([...hour.slice(1), domain.domain_end].map(time => Date.parse(time)));
   expect(result.current).toMatchObject({ isPartial: false, isFetching: false });
 });
+
+const fixedHour = { startTime: '2026-11-05T09:00:00Z', endTime: '2026-11-05T10:00:00Z' };
+
+it('shows a new Pod\'s partial frame through a step change when only another Pod\'s history is retained', () => {
+  const { result, rerender } = renderHook(({ targets, stepMs }) => useMetricObservation({ ...base, targets, shape: 'range', ...fixedHour, stepMs }),
+    { initialProps: { targets: [target('pod-a')], stepMs: 15000 } });
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  rerender({ targets: [target('pod-b')], stepMs: 30000 });
+  act(() => transport.receivers[1](frame('pod-b', { data: null, fetching: true, domain_start: null, domain_end: null })));
+  expect(result.current.results).toEqual([]);
+  expect(result.current).toMatchObject({ isLoading: true, domain: null, stepMs: null });
+  act(() => transport.receivers[1](rangeFrame('pod-b', hour.slice(1), { fetching: true }, false)));
+  expect(result.current.results.map(item => item.resourceToken)).toEqual(['pod-b']);
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual(hour.slice(1).map(time => Date.parse(time)));
+  expect(result.current).toMatchObject({ isPartial: true, isFetching: true, isLoading: false, stepMs: 30000,
+    domain: { startMs: Date.parse('2026-11-05T09:00:00Z'), endMs: Date.parse('2026-11-05T10:00:00Z') } });
+  // The new Pod's own samples are selected history from now on.
+  act(() => transport.receivers[1](rangeFrame('pod-b', hour.slice(2), { fetching: true }, false)));
+  expect(result.current.results[0].points).toHaveLength(2);
+  act(() => transport.receivers[1](rangeFrame('pod-b', hour, { fetching: false })));
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: false, stepMs: 30000 });
+  expect(result.current.results[0].points).toHaveLength(3);
+});
+
+it('keeps selected history on its original step while a partial frame on a new step collects', () => {
+  const { result, rerender } = renderHook(({ stepMs }) => useMetricObservation({ ...base, targets: [target('pod-a')], shape: 'range', ...fixedHour, stepMs }),
+    { initialProps: { stepMs: 15000 } });
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  rerender({ stepMs: 30000 });
+  act(() => transport.receivers[1](rangeFrame('pod-a', hour, { fetching: true }, false)));
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: true, stepMs: 15000 });
+  expect(result.current.results[0].points).toHaveLength(3);
+  act(() => transport.receivers[1](rangeFrame('pod-a', hour.slice(1), { fetching: false })));
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: false, stepMs: 30000 });
+  expect(result.current.results[0].points).toHaveLength(2);
+});
+
+it('does not hold a recreated Pod to its previous incarnation\'s history through a step change', () => {
+  const { result, rerender } = renderHook(({ targets, stepMs }) => useMetricObservation({ ...base, targets, shape: 'range', ...fixedHour, stepMs }),
+    { initialProps: { targets: [target('pod-a')], stepMs: 15000 } });
+  act(() => transport.receivers[0](rangeFrame('pod-a', hour)));
+  rerender({ targets: [target('pod-a', 'uid-2')], stepMs: 30000 });
+  act(() => transport.receivers[1](rangeFrame('pod-a', hour.slice(2), { fetching: true }, false)));
+  expect(result.current.results.map(item => [item.resourceReference.incarnation, item.points.length])).toEqual([['uid-2', 1]]);
+  expect(result.current).toMatchObject({ isPartial: true, isFetching: true, stepMs: 30000 });
+});
+
+const nativeLane = { plugin_id: 'inventory', connection_id: 'tenant', datasource_uid: '', datasource_kind: '', native: true };
+const externalLane = (datasource_uid: string) => ({ plugin_id: 'grafana', connection_id: 'observability', datasource_uid, datasource_kind: 'prometheus', native: false });
+// The catalog default stays native while one metric's own lane resolves to another provider.
+const mixedCatalog = (provider: string) => ({ ...catalog, source: nativeLane, metrics: [
+  { id: 'cpu', unit: 'cores', source: nativeLane }, { id: 'memory', unit: 'bytes', source: externalLane(provider) }] }) as ResourceMetricsCatalog;
+const mixedFrame = (provider: string, series: Record<string, readonly string[]>, extra: Partial<MetricsObservationSnapshot> = {}, complete = true) => frame('pod-a', {
+  catalog: mixedCatalog(provider),
+  data: { complete, warnings: [], results: Object.entries(series).map(([metric_id, times]) => ({ resource_token: 'pod-a', metric_id, status: 'ok', value: null,
+    points: times.map(time => ({ time, value: 0.25 })), observed_at: null, window: Duration.$zero, dimensions: {}, identity_scope: 'name', message: '' })) },
+  ...extra,
+});
+
+it('shows the replacement lease\'s partial frame instead of retaining history from a metric\'s previous source', () => {
+  const { result, rerender } = renderHook(({ intervalMs }) => useMetricObservation({ ...base, intervalMs, metricIDs: ['memory'],
+    targets: [target('pod-a')], shape: 'range', ...fixedHour, stepMs: 15000 }), { initialProps: { intervalMs: 0 } });
+  act(() => transport.receivers[0](mixedFrame('prom-a', { memory: hour })));
+  expect(result.current.results[0].source).toEqual(externalLane('prom-a'));
+  rerender({ intervalMs: 30000 });
+  act(() => transport.receivers[1](mixedFrame('prom-b', { memory: hour.slice(2) }, { fetching: true }, false)));
+  expect(result.current.results).toHaveLength(1);
+  expect(result.current.results[0].source).toEqual(externalLane('prom-b'));
+  expect(result.current.results[0].points.map(point => point.timeMs)).toEqual([Date.parse(hour[2])]);
+  expect(result.current).toMatchObject({ isPartial: true, isFetching: true, isLoading: false });
+});
+
+it('drops only the history of the metric whose own source changed and keeps the rest at its original domain and step', () => {
+  const { result, rerender } = renderHook(({ intervalMs }) => useMetricObservation({ ...base, intervalMs, metricIDs: ['cpu', 'memory'],
+    targets: [target('pod-a')], shape: 'range', ...fixedHour, stepMs: 15000 }), { initialProps: { intervalMs: 0 } });
+  const shown = () => result.current.results.map(item => [item.metricID, item.source?.datasource_uid, item.points.length]);
+  act(() => transport.receivers[0](mixedFrame('prom-a', { cpu: hour, memory: hour })));
+  const domain = result.current.domain;
+  expect(shown()).toEqual([['cpu', '', 3], ['memory', 'prom-a', 3]]);
+  rerender({ intervalMs: 30000 });
+  // Unchanged sources keep their history while a partial frame omits it.
+  act(() => transport.receivers[1](mixedFrame('prom-a', { memory: hour.slice(2) }, { fetching: true }, false)));
+  expect(shown()).toEqual([['cpu', '', 3], ['memory', 'prom-a', 3]]);
+  // The acknowledgement already names the new provider; the old provider's history leaves.
+  act(() => transport.receivers[1](frame('pod-a', { data: null, fetching: true, catalog: mixedCatalog('prom-b'), domain_start: null, domain_end: null })));
+  expect(shown()).toEqual([['cpu', '', 3]]);
+  expect(result.current.catalog).toEqual(mixedCatalog('prom-b'));
+  expect(result.current).toMatchObject({ domain, stepMs: 15000, isLoading: false });
+  // A partial frame that lacks cpu neither replaces cpu's history nor brings the old memory back.
+  act(() => transport.receivers[1](mixedFrame('prom-b', { memory: hour.slice(2) }, { fetching: true }, false)));
+  expect(shown()).toEqual([['cpu', '', 3]]);
+  expect(result.current).toMatchObject({ domain, stepMs: 15000, isPartial: false });
+  act(() => transport.receivers[1](mixedFrame('prom-b', { cpu: hour, memory: hour.slice(2) }, { fetching: true }, false)));
+  expect(shown()).toEqual([['cpu', '', 3], ['memory', 'prom-b', 1]]);
+  expect(result.current.isPartial).toBe(true);
+  act(() => transport.receivers[1](mixedFrame('prom-b', { cpu: hour, memory: hour })));
+  expect(shown()).toEqual([['cpu', '', 3], ['memory', 'prom-b', 3]]);
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: false });
+});

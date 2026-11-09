@@ -673,3 +673,32 @@ policy. Comparing the earlier accepted range build with this final build reports
 compatible workloads and the same session/source warnings, not a positive
 range-to-current performance result. Positive reuse is covered by synthetic
 Open/Attach/Refresh tests only. No current-provider call savings are claimed.
+
+### Release integration and independent browser review
+
+The reviewed SDK prerequisite is now published as
+[`v0.19.0`](https://github.com/omniviewdev/plugin-sdk/releases/tag/v0.19.0),
+from SDK #72 merge `141d19553c0fd68902bfdcd015b6185bfcaf949f`.
+The host and Kubernetes integration pins consume that release, not a
+pseudo-version. The host release policy deliberately advances its floor with its
+pin and appends the released module's verified checksum tuple; it does not admit
+unreviewed tags or relax checksum, capability or source-selection checks.
+These dependency changes do not retroactively change the measured revisions above.
+
+An independent reviewer exercised the actual integrated browser surface:
+library usage, steady-state composition parity, preserved interactions, and
+rendered range changes all passed. The review covered 15-minute, one-hour,
+six-hour and custom ranges; resolution, refresh, display/layout choices, adding
+and removing metrics, source information, keyboard interaction and real source
+gaps. Retained frames kept their actual domain and step. Raw provider point
+comparisons matched the displayed series. The removed specialist audit hook was
+not reinstated, and no formal removed-gate attestation is claimed.
+
+One shared-library limitation remains:
+[`omniviewdev/ui#117`](https://github.com/omniviewdev/ui/issues/117).
+The shared `MetricPanel` partial-status row participates in layout: observed
+342-pixel cards temporarily grew to 370.8 pixels, then returned to baseline.
+Steady-state and updating-only geometry matched; partial-state geometry did not.
+No consumer CSS, copied composition or hidden partial status works around this
+gap. This browser review does not establish native-webview behavior, a
+20,000-Pod result, or positive range-to-current provider reuse.

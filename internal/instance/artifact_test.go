@@ -474,7 +474,7 @@ func newPublishedFixture(t *testing.T) publishedFixture {
 	uuid := world.PublishPinned("github.com/google/uuid")
 	// Publish before the workspace fixture moves HOME away from the module cache
 	// the pinned SDK is read from.
-	other := world.PublishSDK("v0.18.1", nil)
+	other := world.PublishSDK("v0.99.0", nil)
 	workspace := artifactWorkspaceFixture(t)
 	binary, identity := publishedBuild(t, world, "plugin", sdk, uuid)
 	require.NoError(t, RecordBuiltArtifact(workspace, "plugin", binary, identity))
@@ -608,7 +608,7 @@ func TestPublishedArtifactIsRevokedByTheCurrentReleasePolicy(t *testing.T) {
 		"below the floor":                    "v0.16.0",
 		"pseudo-version":                     "v0.17.1-0.20260101000000-abcdefabcdef",
 		"prerelease":                         "v0.18.0-rc.1",
-		"unreviewed release above the floor": "v0.18.1",
+		"unreviewed release above the floor": "v0.99.0",
 		"unreviewed future release":          "v1.0.0",
 		"reviewed version, other checksums":  devsdk.FloorVersion,
 	} {

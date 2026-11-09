@@ -86,9 +86,12 @@ function targetIdentity(target: ResourceMetricTarget): string {
     [...(address.scope ?? [])].map(scope => [scope.dimension, scope.value]).sort(([a], [b]) => a.localeCompare(b)),
     address.id, target.reference.incarnation ?? null]);
 }
-function sourceIdentity(catalog: ResourceMetricsCatalog | null | undefined): string {
-  const source = catalog?.source;
+function sourceKey(source: MetricSourceRef | null | undefined): string {
   return JSON.stringify(source ? [source.plugin_id, source.connection_id, source.datasource_uid, source.datasource_kind, source.native === true] : null);
+}
+/** The source each described metric resolves to: its own lane, else the catalog default. */
+function laneSources(catalog: ResourceMetricsCatalog | null | undefined): Map<string, string> {
+  return new Map((catalog?.metrics ?? []).map(metric => [metric.id, sourceKey(metric.source ?? catalog?.source)] as const));
 }
 /**
  * An incomplete frame can precede its first result. It still answers a request that
@@ -134,7 +137,7 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
     if (!resourceIdentity) continue;
     const descriptor = descriptors.get(result.metric_id);
     const resultSource = result.source ?? descriptor?.source ?? catalog?.source ?? null;
-    const source = JSON.stringify(resultSource ? [resultSource.plugin_id, resultSource.connection_id, resultSource.datasource_uid, resultSource.datasource_kind, resultSource.native === true] : null);
+    const source = sourceKey(resultSource);
     const dimensionEntries = Object.entries(result.dimensions ?? {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
       .sort(([a], [b]) => a.localeCompare(b));
@@ -182,11 +185,38 @@ interface ObservationState {
   error: Error | null;
 }
 
-/** Pending intervals must not erase samples already visible in the requested window. */
+/**
+ * A metric whose own lane source changed (a mixed catalog's per-metric override, which
+ * the catalog's default source does not show) belongs to the old provider. Its retained
+ * history leaves before a partial frame is weighed against what stays on display. The
+ * raw snapshot stays whole; `prepared` is the exposed view.
+ */
+function withoutChangedSources(displayed: DisplayedSnapshot | null, catalog: ResourceMetricsCatalog | null): DisplayedSnapshot | null {
+  if (!displayed || !catalog) return displayed;
+  const held = laneSources(displayed.snapshot.catalog), next = laneSources(catalog);
+  let prepared: PreparedMetricResult[] | null = null;
+  for (let index = 0; index < displayed.prepared.length; index++) {
+    const result = displayed.prepared[index];
+    const before = held.get(result.metricID), after = next.get(result.metricID);
+    if (before !== undefined && after !== undefined && before !== after) {
+      prepared ??= displayed.prepared.slice(0, index);
+    } else {
+      prepared?.push(result);
+    }
+  }
+  if (!prepared) return displayed;
+  return prepared.length ? { ...displayed, prepared: Object.freeze(prepared) } : null;
+}
+
+/**
+ * Pending intervals must not erase samples already visible in the requested window.
+ * Only selected history obliges a frame: another Pod's or metric's samples are not the
+ * request's to keep. A frame on a new step cannot keep samples of the old one, so
+ * selected history on the old step holds the display until a complete frame arrives.
+ */
 function preservesDisplayedRange(previous: DisplayedSnapshot, incoming: readonly PreparedMetricResult[], snapshot: MetricsObservationSnapshot, input: UseMetricObservationOptions): boolean {
-  if (previous.stepMs !== (input.stepMs ?? null)) return false;
   const start = epoch(snapshot.domain_start), end = epoch(snapshot.domain_end);
-  if (start === null || end === null) return false;
+  const resampled = previous.stepMs !== (input.stepMs ?? null);
   const targets = new Set(input.targets.map(targetIdentity));
   const metrics = new Set(input.metricIDs);
   const candidates = new Map(incoming.map(result => [result.id, result]));
@@ -195,8 +225,8 @@ function preservesDisplayedRange(previous: DisplayedSnapshot, incoming: readonly
     const next = candidates.get(held.id);
     let cursor = 0;
     for (const point of held.points) {
-      if (point.value === null || point.timeMs < start || point.timeMs > end) continue;
-      if (!next) return false;
+      if (point.value === null || (start !== null && end !== null && (point.timeMs < start || point.timeMs > end))) continue;
+      if (resampled || start === null || end === null || !next) return false;
       while (cursor < next.points.length && next.points[cursor].timeMs < point.timeMs) cursor++;
       if (next.points[cursor]?.timeMs !== point.timeMs) return false;
     }
@@ -209,14 +239,16 @@ function preservesDisplayedRange(previous: DisplayedSnapshot, incoming: readonly
  * Compatible range/step changes retain one displayed snapshot and its original
  * domain and step. Resource incarnations and metric selection are intersected
  * synchronously: a newly opened Pod never displays another Pod's retained sample.
- * Source changes, denied/invalidated delivery, and failed observation setup clear
- * incompatible data.
+ * Source changes (the catalog default or one metric's own lane), denied/invalidated
+ * delivery, and failed observation setup clear incompatible data.
  *
  * A host that is still collecting may publish incomplete frames (`isPartial`) that
- * omit pairs it has not reached: an absent result is pending, never missing. While
- * such a frame holds no result yet, `isLoading` stays true and `domain` and `stepMs`
- * already describe it. `isFetching` alone says whether collection continues, so a
- * final incomplete frame stays partial without loading.
+ * omit pairs it has not reached: an absent result is pending, never missing. Such a
+ * frame replaces the displayed snapshot unless it would erase selected samples that
+ * are still inside its window; history of other Pods, other metrics or a replaced
+ * source never obliges it. While such a frame holds no result yet, `isLoading` stays
+ * true and `domain` and `stepMs` already describe it. `isFetching` alone says whether
+ * collection continues, so a final incomplete frame stays partial without loading.
  *
  * @example
  * useMetricObservation({ ownerPluginID: 'kubernetes', ownerConnectionID: connectionID,
@@ -256,8 +288,8 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
         if (retired) return;
         const receivedAtMs = Date.now();
         setState(previous => {
-          const compatible = previous.authority === scope && (!snapshot.catalog || !previous.catalog || sourceIdentity(snapshot.catalog) === sourceIdentity(previous.catalog));
-          let displayed = compatible ? previous.displayed : null;
+          const compatible = previous.authority === scope && (!snapshot.catalog || !previous.catalog || sourceKey(snapshot.catalog.source) === sourceKey(previous.catalog.source));
+          let displayed = compatible ? withoutChangedSources(previous.displayed, snapshot.catalog) : null;
           if (snapshot.invalidated) displayed = null;
           else if (snapshot.data != null) {
             const prepared = prepareMetricResults(snapshot, snapshot.catalog, input.targets);

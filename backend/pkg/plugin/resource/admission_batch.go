@@ -49,10 +49,12 @@ func admissionBatchFrom(ctx context.Context) *admissionBatch {
 }
 
 // WithAdmissionBatch scopes reference admissions made with the returned context
-// to one admission instant: the route catalog, its validation and the authority
-// resolution for a resource type are acquired once and shared. Every reference
-// is still individually authorized, address-checked and generation-fenced.
-// Discard the context when the batch of admissions completes; never retain it
+// to one sequential admission pass: the route catalog, its validation and the
+// authority resolution for a resource type are acquired once and shared by the
+// admissions that follow. Every reference is still individually authorized,
+// address-checked and generation-fenced.
+// The batch does not coordinate overlapping admissions, so never share it between
+// goroutines. Discard the context when the pass completes; never retain it
 // across deliveries, where a catalog or authority may have changed.
 func WithAdmissionBatch(ctx context.Context) context.Context {
 	if admissionBatchFrom(ctx) != nil {

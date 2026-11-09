@@ -60,6 +60,7 @@ type finiteWaiter struct {
 	finished            bool
 	rangeReuse          bool
 	rangeCoverage       map[finitePair][]finiteRangeSpan
+	rangePoints         int
 	progress            chan struct{}
 }
 type finiteJob struct {
@@ -97,6 +98,7 @@ type finiteCacheEntry struct {
 	bytes             int
 	rangeReuse        bool
 	start, end        time.Time
+	evaluated         time.Time
 }
 
 func mergeFiniteWarnings(current, incoming []string) []string {
@@ -402,7 +404,9 @@ func (c *controller) admitFinite(ctx context.Context, spec MetricsObservationSpe
 // work stops when its final interested reader retires. Each delivery re-admits
 // all requested references, including cache hits. No background UI work starts.
 // Collection has a 30-second deadline, four shared I/O slots, at most 512
-// interests and 32768 requested pairs. A response is at most 4 MiB/10000 points.
+// interests and 32768 requested pairs. A response is at most 4 MiB/10000 points,
+// and a coverage-reusing range reader that has assembled more across its pairs
+// fails at once and retires any work no other reader needs.
 // Completed exact-pair cache retains samples for at most 30 seconds, within
 // 64 entries/8 MiB and the source's known live-sample age policy. Catalogs retain
 // at most 64 entries of 64 KiB for 30 seconds.
@@ -1310,6 +1314,10 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 		}
 		if job.query.Shape == "range" && job.rangeToCurrentKey != "" {
 			entry.rangeToCurrentKey = job.rangeToCurrentKey
+			// A complete answer settles every grid point through the last one its
+			// domain evaluates. Range-to-current reuse reads a gap or an omission
+			// there as absence instead of falling back to an older sample.
+			entry.evaluated = finiteQuerySpan(job.query).end
 			entry.bytes += len(entry.rangeToCurrentKey) + 16
 		}
 		if job.query.Shape == "current" && job.maxSampleAge > 0 {
@@ -1350,7 +1358,11 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 			f.finishWaiter(w, err)
 			continue
 		}
-		if !w.rangeReuse {
+		if w.rangeReuse {
+			// Recount before adding: a refresh can have dropped cache-served pairs
+			// since this reader last assembled.
+			w.recountRange()
+		} else {
 			w.complete = w.complete && response.Complete
 			w.warnings = mergeFiniteWarnings(w.warnings, response.Warnings)
 		}

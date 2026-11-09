@@ -315,9 +315,15 @@ func (c *controller) RefreshMetricsObservation(ctx context.Context, token string
 		return nil
 	}
 	for pair := range o.waiter.cachedPairs {
+		// A partially covered pair is cache-served but still counted as missing.
+		// Only a settled pair re-enters the missing count; every dropped pair
+		// forgets its coverage so a fresh collection reloads its cached span.
+		if o.waiter.done[pair] {
+			o.waiter.missing++
+		}
 		delete(o.waiter.results, pair)
 		delete(o.waiter.done, pair)
-		o.waiter.missing++
+		delete(o.waiter.rangeCoverage, pair)
 		delete(o.waiter.cachedPairs, pair)
 	}
 	f.pending[o.waiter] = true
