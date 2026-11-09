@@ -1,4 +1,4 @@
-import { RESOURCE_EDITOR_EXTENSION_POINT } from '@omniviewdev/runtime';
+import { RESOURCE_CELL_EXTENSION_POINT_ID, RESOURCE_EDITOR_EXTENSION_POINT } from '@omniviewdev/runtime';
 import type { RouteObject } from 'react-router';
 import { assertValidTransition } from './transitions';
 import { normalizeContributions, extractDeclaredDependencies } from './normalization';
@@ -44,6 +44,17 @@ const BACKEND_PHASES = new Set<string>([
 function isBackendPluginPhase(value: string): value is BackendPluginPhase {
   return BACKEND_PHASES.has(value);
 }
+
+// ─── Contribution rejection ─────────────────────────────────────────
+
+/**
+ * Extension points whose registry validates contribution descriptors. A rejected or duplicate
+ * contribution is logged and skipped, so it cannot fail the plugin's unrelated contributions.
+ */
+const REJECTABLE_CONTRIBUTION_POINTS: ReadonlySet<string> = new Set([
+  RESOURCE_EDITOR_EXTENSION_POINT,
+  RESOURCE_CELL_EXTENSION_POINT_ID,
+]);
 
 // ─── Default plugin state factory ───────────────────────────────────
 
@@ -1438,13 +1449,22 @@ export class PluginService {
             `Contribution "${c.contributionId}" held pending — extension point "${c.extensionPointId}" not yet registered`,
             { pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
           );
-        } else if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
-          this.deps.log.warn('Rejected resource editor contribution', { pluginId, contributionId: c.contributionId });
+        } else if (REJECTABLE_CONTRIBUTION_POINTS.has(c.extensionPointId)) {
+          this.logRejectedContribution(c, err);
         } else {
           throw err;
         }
       }
     }
+  }
+
+  private logRejectedContribution(c: NormalizedContribution, err: unknown): void {
+    this.deps.log.warn(`Rejected ${c.extensionPointId} contribution`, {
+      pluginId: c.pluginId,
+      contributionId: c.contributionId,
+      extensionPointId: c.extensionPointId,
+      reason: err instanceof Error ? err.message : String(err),
+    });
   }
 
   private replayContributionsForExtensionPoints(
@@ -1492,8 +1512,8 @@ export class PluginService {
               `Discarded stale duplicate pending contribution "${c.contributionId}" for "${c.extensionPointId}"`,
               { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
             );
-          } else if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
-            this.deps.log.warn('Rejected resource editor contribution', { pluginId: c.pluginId, contributionId: c.contributionId });
+          } else if (REJECTABLE_CONTRIBUTION_POINTS.has(c.extensionPointId)) {
+            this.logRejectedContribution(c, err);
           } else {
             throw err;
           }
@@ -1540,8 +1560,8 @@ export class PluginService {
               continue;
             }
 
-            if (c.extensionPointId === RESOURCE_EDITOR_EXTENSION_POINT) {
-              this.deps.log.warn('Rejected resource editor contribution', { pluginId: pid, contributionId: c.contributionId });
+            if (REJECTABLE_CONTRIBUTION_POINTS.has(c.extensionPointId)) {
+              this.logRejectedContribution(c, err);
               continue;
             }
 

@@ -1,5 +1,6 @@
 export * from './provider'
 export * from './registry'
 export * from './resource-editor'
+export * from './resource-cell'
 export * from './connection-settings'
 export * from './plugin-settings'

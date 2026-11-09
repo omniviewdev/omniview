@@ -30,7 +30,7 @@ func main() {
 			},
 		},
 	})
-	plugin.RegisterCapability("resource", &resourceplugin.GRPCPlugin{Impl: controller, SettingsProvider: plugin.SettingsProvider})
+	plugin.RegisterCapability("resource", &resourceplugin.GRPCPlugin{Impl: &benchmarkProvider{Controller: controller}, SettingsProvider: plugin.SettingsProvider})
 	plugin.Serve()
 }
 

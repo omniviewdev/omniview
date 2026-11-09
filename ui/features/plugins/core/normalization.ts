@@ -53,7 +53,7 @@ export function normalizeLegacySidebar(
     contributionId: `${pluginId}/sidebar/${resourceKey}`,
     value: component,
     label: `${pluginId} sidebar for ${resourceKey}`,
-    meta: { pluginId, resourceKey },
+    meta: { resourceKey },
   };
 }
 
@@ -75,7 +75,7 @@ export function normalizeLegacyDrawer(
     contributionId: `${pluginId}/drawer/${resourceKey}`,
     value: factory,
     label: `${pluginId} drawer for ${resourceKey}`,
-    meta: { pluginId, resourceKey },
+    meta: { resourceKey },
   };
 }
 

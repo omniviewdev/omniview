@@ -1,5 +1,16 @@
 import { RESOURCE_EDITOR_EXTENSION_POINT } from './resource-editor';
+import { RESOURCE_CELL_EXTENSION_POINT_ID } from './resource-cell';
 import { validateResourceEditorContribution } from '../extensions/resource-editor';
+import { validateResourceCellContribution } from '../extensions/resource-cell';
+
+/**
+ * Descriptors the registry itself guards, by extension point ID. A rejected contribution is
+ * never stored, so a malformed descriptor cannot reach a consumer. Diagnostics never echo values.
+ */
+const CONTRIBUTION_VALIDATORS: ReadonlyMap<string, (value: unknown) => string | null> = new Map([
+  [RESOURCE_EDITOR_EXTENSION_POINT, validateResourceEditorContribution],
+  [RESOURCE_CELL_EXTENSION_POINT_ID, validateResourceCellContribution],
+]);
 
 /**
  * Context that can be passed to the registry to provide additional information to the matcher.
@@ -163,9 +174,9 @@ export class ExtensionPointStore<TValue = unknown, TContext = ExtensionRenderCon
    * Register a contribution. Throws if the contribution ID already exists.
    */
   register(contribution: ExtensionContributionRegistration<TValue>): void {
-    if (this.id === RESOURCE_EDITOR_EXTENSION_POINT) {
-      const error = validateResourceEditorContribution(contribution.value);
-      if (error) throw new Error(error);
+    const error = CONTRIBUTION_VALIDATORS.get(this.id)?.(contribution.value);
+    if (error) {
+      throw new Error(error);
     }
     if (this._contributions.has(contribution.id)) {
       throw new Error(

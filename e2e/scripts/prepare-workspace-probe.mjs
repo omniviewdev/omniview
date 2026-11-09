@@ -15,6 +15,8 @@ const files = [
   'go.sum',
   'plugin.yaml',
   'pkg/main.go',
+  'pkg/presentation.go',
+  'pkg/presentation_test.go',
   'pkg/resource-benchmark.go',
   'pkg/resource-benchmark_test.go',
   'pkg/resource-events_test.go',
@@ -28,7 +30,10 @@ const files = [
   'ui/src/entry.ts',
   'ui/src/ProbePage.tsx',
   'ui/src/ResourceBenchmark.tsx',
+  'ui/src/ResourceCell.tsx',
+  'ui/src/ResourceDrawer.tsx',
   'ui/src/probe.css',
+  'ui/src/probeState.ts',
 ];
 
 async function main() {

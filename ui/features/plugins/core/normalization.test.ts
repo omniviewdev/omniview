@@ -67,7 +67,7 @@ describe('normalizeLegacySidebar', () => {
     expect(result.extensionPointId).toBe(RESOURCE_SIDEBAR_EXTENSION_POINT_ID);
     expect(result.contributionId).toBe('pluginA/sidebar/core::v1::Pod');
     expect(result.value).toBe(SidebarA);
-    expect(result.meta).toEqual({ pluginId: 'pluginA', resourceKey: 'core::v1::Pod' });
+    expect(result.meta).toEqual({ resourceKey: 'core::v1::Pod' });
   });
 
   it('generates stable contribution ID', () => {
@@ -87,7 +87,7 @@ describe('normalizeLegacyDrawer', () => {
     expect(result.extensionPointId).toBe(RESOURCE_DRAWER_EXTENSION_POINT_ID);
     expect(result.contributionId).toBe('pluginA/drawer/core::v1::Pod');
     expect(result.value).toBe(DrawerFactoryA);
-    expect(result.meta).toEqual({ pluginId: 'pluginA', resourceKey: 'core::v1::Pod' });
+    expect(result.meta).toEqual({ resourceKey: 'core::v1::Pod' });
   });
 });
 
@@ -162,14 +162,13 @@ describe('normalizeContributions', () => {
     expect(a[0].contributionId).toBe(b[0].contributionId);
   });
 
-  it('sidebar contribution meta includes pluginId and resourceKey (Group 13.1 #4)', () => {
+  it('sidebar contribution meta carries only the opaque resource key; ownership is the host-assigned plugin (Group 13.1 #4)', () => {
     const validated = makeValidated({
       sidebars: { 'core::v1::Pod': SidebarA },
     });
     const result = normalizeContributions('pluginA', validated);
-    const meta = result[0].meta as { pluginId: string; resourceKey: string };
-    expect(meta.pluginId).toBe('pluginA');
-    expect(meta.resourceKey).toBe('core::v1::Pod');
+    expect(result[0].pluginId).toBe('pluginA');
+    expect(result[0].meta).toEqual({ resourceKey: 'core::v1::Pod' });
   });
 
   it('multiple sidebars per plugin (Group 13.1 #5)', () => {

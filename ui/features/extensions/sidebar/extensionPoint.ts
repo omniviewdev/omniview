@@ -7,7 +7,8 @@ export const RESOURCE_SIDEBAR_EXTENSION_POINT_ID = 'omniview/resource/sidebar/in
  * Create the builtin resource sidebar extension point definition.
  *
  * Mode: single — at most one sidebar component matches per { pluginId, resourceKey }.
- * Matcher: structured context, no string parsing.
+ * Matcher: structured context, no string parsing. Ownership is the host-assigned
+ * `contribution.plugin`; `meta.resourceKey` is only the opaque resource type ID.
  */
 export function createResourceSidebarExtensionPoint(): ExtensionPointSettings<
   ResourceExtensionRenderContext,
@@ -25,8 +26,8 @@ export function createResourceSidebarExtensionPoint(): ExtensionPointSettings<
         return false;
       }
 
-      const meta = contribution.meta as { pluginId?: string; resourceKey?: string } | undefined;
-      return meta?.resourceKey === context.resourceKey && meta?.pluginId === context.pluginId;
+      const meta = contribution.meta as { resourceKey?: string } | undefined;
+      return contribution.plugin === context.pluginId && meta?.resourceKey === context.resourceKey;
     },
     select: (contributions) => contributions[0],
   };

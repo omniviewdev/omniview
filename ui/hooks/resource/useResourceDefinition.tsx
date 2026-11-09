@@ -147,11 +147,13 @@ const parseColumnDef = ({
       },
       cell: ({ getValue, row }) =>
         !!def.component
-          // using a custom federated component
+          // a component the provider declared, resolved from the extension registry
           ? <CustomTableCell
             plugin={pluginID}
+            resourceKey={resourceKey}
             data={getValue()}
             component={def.component}
+            componentParams={def.componentParams}
           />
           // in-house component
           : <TextCell

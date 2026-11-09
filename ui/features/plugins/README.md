@@ -254,8 +254,9 @@ Extension points are the primary way plugins contribute UI to the host.
 ### Built-in Extension Points
 
 Defined in `ui/features/extensions/registerBuiltinExtensionPoints.ts`:
-- `sidebar:resource:{group}:{version}:{kind}` — Resource detail sidebars
-- `drawer:resource:{group}:{version}:{kind}` — Resource detail drawers
+- `omniview/resource/sidebar/infopanel` — Resource detail sidebars, keyed by the registering plugin and an opaque resource type ID
+- `omniview/resource/drawer` — Resource detail drawers, keyed the same way
+- `omniview/resource/cell` — Custom resource table cells declared by provider columns
 - `dashboard:widget` — Dashboard widgets
 - `homepage:card` — Homepage cards
 - `logviewer:toolbar:action` — Log viewer toolbar actions
@@ -265,6 +266,42 @@ Resource drawers receive canonical `reference`, `route`, `representation`, and h
 The generic resource table uses catalog type IDs without parsing provider-specific group/version tuples. It uses only an explicit provider default representation or a user selection, exposes declared query scope dimensions, and follows native page cursors. Watch counts retain their decimal strings and count kind instead of converting them to JavaScript numbers.
 
 Editor schemas carry canonical schema bindings. The host fetches each referenced schema document once per route and revision, registers that shared document, and links each resource editor to its declared root. YAML editor parsing retains integer precision before canonical mutation encoding.
+
+### Resource Table Cells
+
+A provider names a custom column renderer in `ColumnDefinition.component`. A plugin supplies it as a
+`ResourceCellContribution` registered at `RESOURCE_CELL_EXTENSION_POINT_ID` (`omniview/resource/cell`) through
+its existing `extensionRegistrations`; there is no module-federation loader and no second registry. The
+host registers the core-owned point in `registerBuiltinExtensionPoints.ts`, and the registry rejects
+malformed descriptors (`validateResourceCellContribution`) and duplicate IDs. The loader logs a rejected
+contribution with its safe diagnostic and keeps the plugin's other contributions.
+
+`CustomTableCell` resolves renderers from `useExtensionPointSnapshot`, so register, reload and unload update
+mounted cells without any cached renderer reference. The pure `resolveResourceCell` selects the single
+renderer: ownership is the registry's host-assigned `plugin`, never descriptor data; a plugin serves only its own
+column declarations unless the contribution lists the provider in `providers`; `name` and the opaque
+`resourceKeys` are compared for equality; the provider's own renderer beats an opted-in foreign one and an exact
+type beats a type-agnostic renderer; equally specific candidates are ambiguous and never chosen by order.
+The renderer receives `{ data, componentParams }`: the value the column accessor produced for the row and the
+column declaration's `componentParams`, forwarded unchanged (`undefined` when the provider declared none).
+A missing, mismatched or ambiguous renderer renders an explicit **Unavailable** cell. Each contributed cell has
+its own error boundary: a crash is logged with `logPluginBoundaryError`, recorded against the contribution for
+the extension inspector, and shows **Failed to render** in that cell only. Cell crashes do not quarantine
+the contribution. The sidebar and drawer points use the same ownership rule: `contribution.plugin` must be the
+plugin whose resource type is requested, and `meta.resourceKey` selects the type.
+
+The generic linked-resource drawer (`ui/features/resource-drawer/`) is the host fallback used when no plugin
+drawer is registered for a resource type.
+
+Open drawers follow the plugin lifecycle too. `RightDrawerProvider` keeps the registrations an open drawer was
+built from (`DrawerSources`: the plugin drawer factory, or the plugin sidebar the linked-resource drawer renders as
+its overview) next to the drawer. When an unload removes them or a reload replaces them, the provider swaps the
+drawer, in that same render, for the host-owned unavailable drawer (`createUnavailableDrawer`). That drawer
+references nothing the plugin supplied, so no retired plugin component stays mounted or reachable from provider
+state; a drawer whose resource was still being read when its plugin unloaded opens directly in that state.
+A reloaded plugin does not take over an already-open drawer: reopening the resource resolves the new
+registration. Components a caller passes straight to `openDrawer` were not resolved from the registry, so the host
+has no contribution to retire and leaves them alone.
 
 ### Kubernetes Resource Editors
 

@@ -7,6 +7,7 @@ import {
   RESOURCE_DRAWER_EXTENSION_POINT_ID,
   createResourceDrawerExtensionPoint,
 } from './drawer/extensionPoint';
+import { RESOURCE_CELL_EXTENSION_POINT_ID, createResourceCellExtensionPoint } from '@omniviewdev/runtime';
 import {
   THEME_EXTENSION_POINT_ID,
   createThemeExtensionPoint,
@@ -30,6 +31,7 @@ export function ensureBuiltinExtensionPointsRegistered(
 ): void {
   registerIfAbsent(registry, RESOURCE_SIDEBAR_EXTENSION_POINT_ID, createResourceSidebarExtensionPoint);
   registerIfAbsent(registry, RESOURCE_DRAWER_EXTENSION_POINT_ID, createResourceDrawerExtensionPoint);
+  registerIfAbsent(registry, RESOURCE_CELL_EXTENSION_POINT_ID, createResourceCellExtensionPoint);
   registerIfAbsent(registry, THEME_EXTENSION_POINT_ID, createThemeExtensionPoint);
   registerIfAbsent(registry, GLOBAL_SEARCH_EXTENSION_POINT_ID, createGlobalSearchExtensionPoint);
   registerIfAbsent(registry, SETTINGS_EDITOR_EXTENSION_POINT_ID, () => ({
