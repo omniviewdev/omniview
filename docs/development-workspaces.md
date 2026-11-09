@@ -565,14 +565,13 @@ cancelled, missing or skipped jobs cannot make the gate green.
 
 Canonical E2E and whole-app profiling resolve the SDK commit from the host's
 `go.mod` using Go module download metadata. The SDK checkout must match that
-commit. UI packages come from the host lockfile. Kubernetes comes from a clean
-external checkout at the commit in `.github/kubernetes-ref`. Set
-`KUBERNETES_SOURCE` to that checkout; E2E defaults to the sibling
-`omniview-plugin-kubernetes` directory if unset. Source identity registration,
-mandatory probes, conservative selection, and native payload cache rules remain
+commit. UI packages come from the host lockfile. CI uses the latest published
+Kubernetes plugin release. Locally, set `KUBERNETES_SOURCE` to a clean checkout
+at your chosen commit; E2E defaults to the sibling `omniview-plugin-kubernetes`
+directory if unset. Source identity registration records the selected commit.
+Mandatory probes, conservative selection, and native payload cache rules remain
 unchanged.
 
-Update `.github/kubernetes-ref` when selecting a different Kubernetes commit.
 Run final acceptance from a clean, committed host checkout with clean SDK and
 Kubernetes checkouts at their selected commits.
 Ignored dependency/build outputs are not source evidence. A worktree containing

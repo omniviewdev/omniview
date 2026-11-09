@@ -76,8 +76,8 @@ do not prove canonical preparation, acceptance and cleanup succeeded.
 
 Canonical CI and whole-app profiling resolve the SDK checkout commit from the
 host's `go.mod` using Go module download metadata. UI packages come from the host
-lockfile, and Kubernetes comes from the external checkout at the commit in
-`.github/kubernetes-ref`.
+lockfile. CI uses the latest published Kubernetes plugin release; local runs use
+the selected Kubernetes checkout.
 In source mode, managed workspaces identify their linked SDK checkout by HEAD and source digest,
 including dirty source changes; this identity is not a sandbox. A published-mode workspace has no checkout: it is browser mode only.
 
@@ -125,7 +125,7 @@ link to serve an interactive website.
 
 For a locally generated report, use `pnpm --dir e2e report`. To run the canonical
 suite locally, select a clean SDK checkout at the commit resolved from the host
-`go.mod` and a clean Kubernetes checkout at `.github/kubernetes-ref`:
+`go.mod` and a clean Kubernetes checkout at your chosen commit:
 
 ```sh
 SDK_SOURCE=/absolute/path/to/plugin-sdk \

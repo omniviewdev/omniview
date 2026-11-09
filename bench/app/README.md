@@ -110,10 +110,10 @@ credentials, or the full profile.
 
 CI resolves the SDK commit from the host's declared `go.mod` dependency and
 checks out that commit for the managed workspace. UI packages come from the host
-lockfile; Kubernetes comes from the commit in `.github/kubernetes-ref`. The
-host input remains the exact checked-out PR commit, or the selected branch
-commit for manual dispatch. Managed workspaces record the SDK checkout's commit
-and source digest, rather than requiring an approval revision.
+lockfile; CI checks out the latest published Kubernetes GitHub release tag and
+passes its full checked-out commit to the builder. The host input remains the
+exact checked-out PR commit, or the selected branch commit for manual dispatch.
+Managed workspaces record the SDK checkout's commit and source digest.
 
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph
@@ -132,13 +132,13 @@ must both declare `allowBuilds.esbuild: true`, with Kubernetes retaining
 `unrs-resolver: false`. The managed install still uses `--ignore-scripts`; the
 builder does not rewrite policies, approve all scripts, or relax peers.
 
-With installed/built host packages, check out the pinned Kubernetes revision and
-the SDK commit resolved by the host module:
+With installed/built host packages, select a compatible Kubernetes source checkout
+and the SDK commit resolved by the host module. The builder uses the selected
+Kubernetes checkout's committed HEAD; it does not include uncommitted changes:
 
 ```bash
 export KUBERNETES_SOURCE=/absolute/path/omniview-plugin-kubernetes
-KUBERNETES_COMMIT="$(cat .github/kubernetes-ref)"
-git -C "$KUBERNETES_SOURCE" checkout --detach "$KUBERNETES_COMMIT"
+KUBERNETES_COMMIT="$(git -C "$KUBERNETES_SOURCE" rev-parse HEAD)"
 SDK_SOURCE=/absolute/path/plugin-sdk
 SDK_COMMIT="$(node e2e/scripts/sdk-source.mjs print)"
 git -C "$SDK_SOURCE" checkout --detach "$SDK_COMMIT"

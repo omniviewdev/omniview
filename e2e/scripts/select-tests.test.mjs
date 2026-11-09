@@ -56,7 +56,7 @@ test('small consumer contracts run alone for fixture edits and accompany product
   ]).groups, ['layout', 'settings', 'workspaces', 'tooling']);
 });
 test('core, unknown, fixture and dependency paths always force full', () => {
-  for (const path of ['internal/devworkspace/watch.go', 'unclassified.txt', 'e2e/tests/fixtures/browser-errors.spec.ts', 'packages/omniviewdev-runtime/src/index.ts', 'go.mod', 'go.sum', 'package.json', 'pnpm-lock.yaml', '.github/kubernetes-ref', 'ui/main.tsx']) {
+  for (const path of ['internal/devworkspace/watch.go', 'unclassified.txt', 'e2e/tests/fixtures/browser-errors.spec.ts', 'packages/omniviewdev-runtime/src/index.ts', 'go.mod', 'go.sum', 'package.json', 'pnpm-lock.yaml', 'ui/main.tsx']) {
     assert.equal(selected([change('README.md'), change(path)]).kind, 'full', path);
   }
 });

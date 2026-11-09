@@ -15,11 +15,13 @@ node bench/render/report.mjs           # Markdown table from results/latest.json
 First run locally: `pnpm exec playwright install chromium` and `task packages`.
 
 Run the suite from the host checkout with an external Kubernetes checkout. CI
-uses the revision recorded in `.github/kubernetes-ref`. To reproduce it:
+checks out the latest published GitHub release tag and saves its full commit in
+the `render-bench-results` artifact as `kubernetes-commit.txt`. Locally, select
+the compatible checkout and revision to measure, then install its dependencies:
 
 ```bash
 export KUBERNETES_SOURCE=/absolute/path/omniview-plugin-kubernetes
-git -C "$KUBERNETES_SOURCE" checkout --detach "$(cat .github/kubernetes-ref)"
+git -C "$KUBERNETES_SOURCE" rev-parse HEAD
 pnpm --dir "$KUBERNETES_SOURCE/ui" install --frozen-lockfile
 ```
 
