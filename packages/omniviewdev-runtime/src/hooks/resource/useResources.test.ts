@@ -188,9 +188,11 @@ const targetOf = (targetId: string) => ({
 });
 /** A long-lived screen outlives the catalog's 30 second freshness window. */
 function ageCatalog(client: QueryClient) {
-  for (const query of client.getQueryCache().findAll({ queryKey: catalogKey })) {
-    client.setQueryData(query.queryKey, query.state.data, { updatedAt: 1 });
-  }
+  act(() => {
+    for (const query of client.getQueryCache().findAll({ queryKey: catalogKey })) {
+      client.setQueryData(query.queryKey, query.state.data, { updatedAt: 1 });
+    }
+  });
 }
 /**
  * Deliver the window-focus signal to every cached query. The app's QueryClient disables

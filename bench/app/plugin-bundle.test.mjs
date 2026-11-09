@@ -49,9 +49,9 @@ test('a nonempty regular entry is accepted without changing it', (t) => {
 });
 
 test('relative plugin metadata resolves from the host root, as the Vite config does', () => {
-  // Resolving from the working directory instead would not land on /kubernetes.
-  assert.equal(pluginMetadataFile('/host', '../kubernetes/plugin.json'), '/kubernetes/plugin.json');
-  assert.equal(pluginMetadataFile('/host', '/elsewhere/plugin.json'), '/elsewhere/plugin.json');
+  // Relative traversal stays rooted at the selected host on every platform.
+  assert.equal(pluginMetadataFile('/host', '../kubernetes/plugin.json'), path.resolve('/host', '../kubernetes/plugin.json'));
+  assert.equal(pluginMetadataFile('/host', '/elsewhere/plugin.json'), path.resolve('/elsewhere/plugin.json'));
   assert.throws(() => pluginMetadataFile('/host', ''), /OV_K8S_PLUGIN_METADATA/);
   assert.throws(() => pluginMetadataFile('/host', '  '), /OV_K8S_PLUGIN_METADATA/);
 });

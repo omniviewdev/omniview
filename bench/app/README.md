@@ -242,7 +242,9 @@ Every result records what was measured, so it is compared only with a matching o
   With `--no-build`, the build configuration and React variant are unknown: the
   runner identifies the reused bytes, not how an earlier process produced them.
 - **Host and plugin source.** `commit`, `dirty` and `hostSource` identify the host checkout
-  by its full HEAD and a SHA-256 of `git diff --binary HEAD`, as `real-resource.mjs` does.
+  by its full HEAD, tracked dirty state, and a SHA-256 of
+  `git diff --binary --no-ext-diff --no-textconv HEAD`. Other runners can use
+  different diff flags, so their tracked-diff hashes are not necessarily interchangeable.
   Untracked files are not part of that identity. `plugin.checkout` records a plugin commit
   only for a repository other than the host that tracks the selected `plugin.json` and
   contains the selected assets directory. A plugin directory inside the host repository, such

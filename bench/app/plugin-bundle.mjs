@@ -91,8 +91,8 @@ function gitOutput(directory, args, { executable = 'git', bytes = false } = {}) 
 }
 
 /**
- * Identity of a checkout as bench/app/real-resource.mjs records it: the full
- * HEAD, whether tracked files differ from it, and a hash of that tracked diff.
+ * Full HEAD, tracked dirty state and a hash of this runner's tracked binary diff.
+ * External diff and textconv are disabled; hashes from runners using other flags can differ.
  * Untracked files are not part of this identity. A dirty checkout is only
  * reproducible if its diff and built artifacts were retained; the hash lets
  * a retained diff be verified, nothing more.
