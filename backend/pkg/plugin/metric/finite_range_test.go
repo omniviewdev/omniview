@@ -931,14 +931,18 @@ func TestFiniteRangeReaderOverEncodedBudgetFailsWhileOtherWorkPends(t *testing.T
 
 // Each contributor fits the response budget alone. Together they do not, and the
 // reader must fail from the cache before it fetches a pair that could never fit.
+// A contributor's warnings are part of what it adds: distinct ones, valid alone,
+// still sum to more than a response can carry.
 func TestFiniteRangeReaderOverBudgetFailsBeforeFetchingItsOtherPairs(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		last    int
 		message int
+		warning int
 	}{
 		{name: "points", last: sdk.MaxFinitePoints/2 + 999},
 		{name: "bytes", last: 10, message: 3 << 20},
+		{name: "warnings", last: 10, warning: 3 << 20},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, provider, ctx := finiteRangeProvider(t, true)
@@ -947,6 +951,10 @@ func TestFiniteRangeReaderOverBudgetFailsBeforeFetchingItsOtherPairs(t *testing.
 				response := finiteRangeResponse(query)
 				for i := range response.Results {
 					response.Results[i].Message = strings.Repeat("x", tc.message)
+				}
+				if tc.warning > 0 {
+					// Distinct per metric, so the reader's deduplicated warnings add up.
+					response.Warnings = []string{query.MetricIDs[0] + strings.Repeat("w", tc.warning)}
 				}
 				return response
 			}

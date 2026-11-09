@@ -99,6 +99,7 @@ type finiteCacheEntry struct {
 	rangeReuse        bool
 	start, end        time.Time
 	evaluated         time.Time
+	reached           time.Time
 }
 
 func mergeFiniteWarnings(current, incoming []string) []string {
@@ -1305,7 +1306,8 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 				}
 			}
 		}
-		entry := finiteCacheEntry{partition: job.partition, pairs: resultMap, complete: response.Complete, warnings: response.Warnings, until: time.Now().Add(finiteCacheTTL), key: job.key, epoch: job.epoch, sourceKey: job.sourceKey, sourceEpoch: job.sourceEpoch, configuration: job.configuration, bytes: size}
+		landed := time.Now()
+		entry := finiteCacheEntry{partition: job.partition, pairs: resultMap, complete: response.Complete, warnings: response.Warnings, until: landed.Add(finiteCacheTTL), key: job.key, epoch: job.epoch, sourceKey: job.sourceKey, sourceEpoch: job.sourceEpoch, configuration: job.configuration, bytes: size}
 		entry.configurationKeys = job.configurationKeys
 		entry.rangeReuse = job.rangeReuse
 		if job.rangeReuse {
@@ -1316,8 +1318,11 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 			entry.rangeToCurrentKey = job.rangeToCurrentKey
 			// A complete answer settles every grid point through the last one its
 			// domain evaluates. Range-to-current reuse reads a gap or an omission
-			// there as absence instead of falling back to an older sample.
+			// there as absence instead of falling back to an older sample. An
+			// answer with no point settles only the grid points its source had
+			// reached when it landed, never ones a later lookup finds in the past.
 			entry.evaluated = finiteQuerySpan(job.query).end
+			entry.reached = finiteReachedPoint(job.query, landed)
 			entry.bytes += len(entry.rangeToCurrentKey) + 16
 		}
 		if job.query.Shape == "current" && job.maxSampleAge > 0 {
@@ -1366,6 +1371,7 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 			w.complete = w.complete && response.Complete
 			w.warnings = mergeFiniteWarnings(w.warnings, response.Warnings)
 		}
+		merged := false
 		for pair := range job.pairs {
 			if !w.pairs[pair] || w.done[pair] {
 				continue
@@ -1378,6 +1384,7 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 					f.finishWaiter(w, failure)
 					break
 				}
+				merged = true
 				continue
 			}
 			w.done[pair] = true
@@ -1386,6 +1393,14 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 				w.results[pair] = r
 			} else {
 				w.complete = false
+			}
+		}
+		if merged && !w.finished {
+			// One check per delivery, after every answer and warning of the job
+			// has landed and before this reader can wait on anything else.
+			if failure := w.checkRange(); failure != nil {
+				f.removeWaiterLocked(w)
+				f.finishWaiter(w, failure)
 			}
 		}
 		if w.finished {

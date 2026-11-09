@@ -600,10 +600,25 @@ func TestPublishedArtifactRefusesChangedBytes(t *testing.T) {
 
 func TestPublishedArtifactIsRevokedByTheCurrentReleasePolicy(t *testing.T) {
 	// The load-time policy is the compiled-in production one, with no injection
-	// point: it refuses everything below the floor, every non-release, every
-	// release the controller has not reviewed, and the floor release itself when
-	// the recorded checksums are not the reviewed ones. (The record below uses
-	// checksums that are not the reviewed row of any version.)
+	// point. A genuinely reviewed older tuple must be refused by the raised
+	// floor, not merely because its checksums are unreviewed.
+	t.Run("reviewed v0.18.0 below the floor", func(t *testing.T) {
+		workspace := artifactWorkspaceFixture(t)
+		binary := filepath.Join(t.TempDir(), "plugin")
+		require.NoError(t, os.WriteFile(binary, []byte("fixture"), 0700))
+		identity, err := devsdk.NewPublishedIdentity(devsdk.Published{
+			Module: devsdk.Module, Version: "v0.18.0",
+			ModuleSum: "h1:DLcNbTghtD/Jc2knt+vBJAj+mJRTpuEgHx1lUOdqnso=",
+			GoModSum:  "h1:7ZjIDHv7L0YEHsy3Ld2CHKGr/HHTNY4wUrzVyfYRR8E=",
+		})
+		require.NoError(t, err)
+		require.NoError(t, RecordBuiltArtifact(workspace, "plugin", binary, identity))
+		preflight, prepare := requireRefused(t, workspace, binary)
+		require.ErrorIs(t, preflight, devsdk.ErrNotAccepted)
+		require.ErrorIs(t, prepare, devsdk.ErrNotAccepted)
+	})
+
+	// These records use checksums that are not a reviewed row of any version.
 	for name, version := range map[string]string{
 		"below the floor":                    "v0.16.0",
 		"pseudo-version":                     "v0.17.1-0.20260101000000-abcdefabcdef",

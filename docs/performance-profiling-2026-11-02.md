@@ -600,17 +600,19 @@ Kubernetes plugin's `docs/diagnostics.md`.
 
 ## Issue 416: coverage-aware range reuse
 
-Real IDE workload `range-overlap-15m-1h-6x-120s`: one admitted Pod, genuine
-Prometheus-compatible history, two metric cards, six alternating one-hour and
-15-minute selections with six-second dwell. Both presets use a 15-second grid.
-Viewport was 1500×950; each capture followed a 45-second idle period and requested
-120 seconds. The rebased final capture collected 121.999 seconds at the bounded
-two-second sampling cadence. Its driver completed all transitions in 37.414
-seconds with both charts present.
+Historical real IDE workload `range-overlap-15m-1h-6x-120s`: one admitted Pod,
+genuine Prometheus-compatible history, two metric cards, six alternating
+one-hour and 15-minute selections with six-second dwell. Both presets use a
+15-second grid. Operator setup used a 1500×950 viewport and a 45-second idle
+before each requested 120-second capture. The baseline collected 120.000 seconds
+in 61 samples; the pre-final-review candidate collected 121.999 seconds in 62
+samples. Its driver completed the transitions in 37.414 seconds and checked both
+charts at each action. Driver artifacts do not independently record the idle,
+viewport or theme, and action checks are not continuous rendering proof.
 
 - Baseline: `bf5ef2e722654f9fff829e9c300efd8a`.
-- Rebased final candidate: `45e2cba726e122fa3a9e4292a7a1c952` (host `ef4b58ad`,
-  SDK 0.18 integration and review corrections).
+- Pre-final-review candidate: `45e2cba726e122fa3a9e4292a7a1c952` (host `ef4b58ad`,
+  SDK 0.18 integration, before the final automated-review correctness fixes).
 - Earlier accepted range candidate `8b33d1f53dc73d74795a091a3ddc0700` remains
   persisted; it measured 79,411 response JSON bytes and 26 successful queries.
 - Existing `diagnostics compare` reports compatible workloads. Relevant Grafana
@@ -634,14 +636,19 @@ seconds with both charts present.
 | Mean Kubernetes plugin RSS, bytes | 167,933,583 | 174,330,781 |
 | Final Kubernetes plugin RSS, bytes | 171,081,728 | 178,110,464 |
 
-Measured validated provider response JSON is 51.4% lower in this workload.
-Calls and queue time increased; query mean changed only slightly. No latency,
-CPU or retained-process-memory win is claimed. The rebase also updates upstream
-code and SDK dependencies, so this is not an isolated attribution of those
-process measurements. These bytes are serialized finite responses, not
-Prometheus HTTP traffic or physical objects/pages/bytes scanned.
-Those source scan measurements are unavailable. Native scan counters remain zero
-because this workload uses the external source, not metrics-server.
+The raw validated provider response JSON total is 51.4% lower across these
+capture windows. Totals are not time-normalized: the candidate ran about two
+seconds longer. Queries include capture-start and background refresh traffic,
+not only the six transitions. Calls and queue time increased; query mean changed
+only slightly. No latency, CPU or retained-process-memory win is claimed.
+Retained-state means are not matched steady-state measurements: the baseline
+started with 26,084 cache bytes at session uptime 3,822 seconds, versus about
+10.4 KB at uptime 358 seconds in the candidate. The rebase also updates upstream
+code and SDK dependencies, limiting causal attribution. These bytes are
+serialized finite responses, not Prometheus HTTP traffic or physical
+objects/pages/bytes scanned. Those external-source scan measurements are
+unavailable. Native scan counters remain zero because this workload uses the
+external source, not metrics-server.
 
 An intermediate corrected capture (`64fa2da27ae589d52ed400aea05f8b38`) lacked
 matching cancellation series in its fresh session. The existing pipeline now
@@ -685,14 +692,15 @@ pin and appends the released module's verified checksum tuple; it does not admit
 unreviewed tags or relax checksum, capability or source-selection checks.
 These dependency changes do not retroactively change the measured revisions above.
 
-An independent reviewer exercised the actual integrated browser surface:
-library usage, steady-state composition parity, preserved interactions, and
-rendered range changes all passed. The review covered 15-minute, one-hour,
-six-hour and custom ranges; resolution, refresh, display/layout choices, adding
-and removing metrics, source information, keyboard interaction and real source
-gaps. Retained frames kept their actual domain and step. Raw provider point
-comparisons matched the displayed series. The removed specialist audit hook was
-not reinstated, and no formal removed-gate attestation is claimed.
+Independent reviewers exercised the actual integrated browser surface at
+`ef4b58ad` and `6d816409`: library usage, steady-state composition parity,
+preserved interactions and rendered range changes passed. The combined reviews
+covered 15-minute, one-hour, six-hour and custom ranges; resolution, refresh,
+display/layout choices, adding and removing metrics, source information,
+keyboard interaction and real source gaps. Retained frames kept their actual
+domain and step. Raw provider point comparisons in the first review matched the
+displayed series. The removed specialist audit hook was not reinstated, and no
+formal removed-gate attestation is claimed.
 
 One shared-library limitation remains:
 [`omniviewdev/ui#117`](https://github.com/omniviewdev/ui/issues/117).
@@ -702,3 +710,66 @@ Steady-state and updating-only geometry matched; partial-state geometry did not.
 No consumer CSS, copied composition or hidden partial status works around this
 gap. This browser review does not establish native-webview behavior, a
 20,000-Pod result, or positive range-to-current provider reuse.
+
+### Post-review smoke and environment cleanup
+
+The first SDK 0.19 post-review capture,
+`1516c97efd5a4e5bf53b0aced6408253`, supplies a real baseline before the final
+contribution-budget and inherited-source resumption corrections. After those
+corrections, `ec62e34834c8ba8c61bc6ee163b3cf36` repeated the same
+`range-overlap-15m-1h-6x-120s` workload. Both have complete diagnostic collection
+coverage with zero errors, drops or gaps. Their six-action drivers took 36.415
+and 36.531 seconds, checking two charts without a resource-error surface at each
+step. The final receipt explicitly records a 45,002 ms idle, 1500×950 viewport,
+DPR 1.25 and dark color scheme; its action checks are not continuous rendering
+proof.
+
+| SDK 0.19 smoke observation | Before final corrections | After final corrections |
+| --- | ---: | ---: |
+| Collection seconds / samples | 122.001 / 62 | 120.001 / 61 |
+| Successful finite Grafana queries | 28 | 28 |
+| Validated provider response JSON bytes | 86,861 | 90,440 |
+| Successful query mean, ms | 3.313 | 3.562 |
+| Dispatch queue mean, ms | 182.613 | 236.218 |
+| Reader/provider cancellation requests | 0 / 0 | 0 / 0 |
+| Kubernetes plugin CPU, seconds | 2.11 | 2.05 |
+| Mean / final completed-cache bytes | 21,042 / 20,137 | 20,626 / 15,937 |
+| Mean / final displayed-snapshot bytes | 26,946 / 24,356 | 26,990 / 24,347 |
+| Mean / final Kubernetes plugin RSS, bytes | 225,289,249 / 225,329,152 | 212,643,101 / 212,713,472 |
+
+Existing `diagnostics compare` accepts this before/after pair and the original
+baseline against the final capture, with different-session and unknown-source
+warnings. No additional performance win is claimed: provider calls were
+unchanged, payload and query/queue means increased, and CPU/RSS differences
+span process lifetimes. Totals are not time-normalized and include capture-start
+and background refreshes, not only range transitions. Initial retained state,
+refresh phase and provider history differ.
+
+Four stale clusters and 17 nodes were removed and Docker restarted before the
+SDK 0.19 captures. Prometheus restarted and its history contained gaps; ambient
+inventory and table-column state differ from the original historical baseline.
+Complete diagnostic collection does not mean gap-free provider history.
+The earlier native 1,000-Pod lab was removed during the requested cleanup; its
+persisted captures remain historical evidence, not a live lab.
+
+The served host retained the workspace's managed source-SDK overlay; public
+consumer verification separately used the released SDK without a replacement.
+All 49 runtime metric-hook tests and the non-incremental runtime typecheck
+passed. Both new source-retention regressions were observed failing before their
+corrections, including the catalog-less-frame fence. Compiler-only original
+Go sources reproduced cached-warning dispatch overflow and three future-empty
+promotion failures; the final full metric race suite passed in 78.20 seconds.
+The reviewed SDK 0.18 tuple was rejected at both artifact admission boundaries
+under the current floor. Both Kubernetes panel suites passed 23 tests against
+the final rebuilt linked runtime; the UI policy check passed. The earlier
+resource race suite and full host CI were green on `6d816409`; final PR checks
+are reported on host #447.
+
+An independent delta review also passed all four dimensions on the final
+rebuilt generation `ac2e0b88-2a4a-413e-a80a-478466dabbe2`: actual pixels,
+15-minute/one-hour/six-hour transitions, refresh, keyboard interaction and
+retained domains matched the earlier composition. The shared partial-status
+growth in #117 remained unchanged. Mixed per-metric source changes were not
+exercised against a real alternative provider; the two failing-before hook
+regressions and source review establish those cases, not live-provider evidence.
+Native-webview pixels and a verified served-source fingerprint remain unproved.

@@ -283,22 +283,36 @@ func (w *finiteWaiter) recountRange() {
 
 // rangeRoom is how many points the pair's series may hold while every other
 // pair keeps what it has assembled. It only bounds allocation; the caller's
-// projected response is checked exactly by holdRange.
+// projected response is checked exactly by checkRange.
 func (w *finiteWaiter) rangeRoom(pair finitePair) int {
 	return sdk.MaxFinitePoints - w.rangePoints + len(w.results[pair].Points)
 }
 
-// holdRange stores the pair's assembled result. It then checks what the caller
-// would receive right now: token aliases applied, SDK validation and the exact
-// encoded byte cap. A reader whose held contributions exceed one response
-// budget fails now, whether or not it reports progress. Its caller detaches the
-// reader, which retires any provider work no other reader still needs.
+// holdRange stores the pair's assembled result. Its strict point bound is cheap
+// enough to hold for every pair. The encoded response budget is not, and is left
+// to checkRange.
 func (w *finiteWaiter) holdRange(pair finitePair, result sdk.ResourceMetricResult) error {
 	points := w.rangePoints - len(w.results[pair].Points) + len(result.Points)
 	if points > sdk.MaxFinitePoints {
 		return finiteError("RESOURCE_LIMIT", "Assembled metric sample limit exceeded.")
 	}
 	w.results[pair], w.rangePoints = result, points
+	return nil
+}
+
+// checkRange checks what the caller would receive right now: token aliases
+// applied, SDK validation and the exact encoded byte cap. Every call encodes the
+// whole reply under the coordinator lock, so a contribution calls it once: one
+// cache entry, or one provider job, after all of its results and warnings are
+// held and before the reader can wait on other work. A reader whose held
+// contributions exceed one response budget fails now, whether or not it reports
+// progress. Its caller detaches the reader, which retires any provider work no
+// other reader still needs. A reader with nothing missing finishes at once, and
+// finishing checks the same reply.
+func (w *finiteWaiter) checkRange() error {
+	if w.missing == 0 {
+		return nil
+	}
 	return finiteWaiterReply(w, true).err
 }
 
@@ -321,6 +335,9 @@ func finiteReuseCapabilities(q sdk.ResourceMetricsQuery, catalog *sdk.ResourceMe
 	return rangeReuse && matched == len(q.MetricIDs), rangeToCurrent
 }
 
+// applyRangeCacheLocked merges one completed cache entry into w. The entry is
+// one contribution: its warnings join the reply with its results, and the exact
+// response budget is checked once after both.
 func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteCacheEntry) error {
 	if !entry.rangeReuse {
 		return nil
@@ -333,6 +350,7 @@ func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteC
 	}
 	span, _ := finiteIntersectSpan(cached, requested)
 	exact := entry.start.Equal(w.query.StartTime) && entry.end.Equal(w.query.EndTime)
+	applied := false
 	for pair := range w.pairs {
 		if w.done[pair] {
 			continue
@@ -381,9 +399,13 @@ func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteC
 			w.cachedPairs = map[finitePair]bool{}
 		}
 		w.cachedPairs[pair] = true
-		w.warnings = mergeFiniteWarnings(w.warnings, entry.warnings)
+		applied = true
 	}
-	return nil
+	if !applied {
+		return nil
+	}
+	w.warnings = mergeFiniteWarnings(w.warnings, entry.warnings)
+	return w.checkRange()
 }
 
 // acceptRangeResultLocked merges one job answer into w. Only a complete ok point
@@ -393,6 +415,8 @@ func (f *finiteCoordinator) applyRangeCacheLocked(w *finiteWaiter, entry finiteC
 // coordinator asks for the reader's own domain instead. A missing answer to a
 // fragment of the reader's domain is no evidence about the rest of it: it never
 // extends coverage and leaves the pair incomplete.
+// The caller checks the reply once, after every pair and warning of the job has
+// landed.
 func (f *finiteCoordinator) acceptRangeResultLocked(
 	w *finiteWaiter, job *finiteJob, pair finitePair, result sdk.ResourceMetricResult, present, complete bool,
 	warnings []string,
@@ -515,13 +539,35 @@ func (f *finiteCoordinator) progressWaiterLocked(w *finiteWaiter) {
 // settled and the sample at it. A nil sample is a source gap or a point the
 // answer omitted: a complete answer settles every grid point of its domain. When
 // the domain ends after now its last grid points cannot have been evaluated yet,
-// so the last point returned stands in for its end.
+// so the last point returned stands in for its end. An answer with no point has
+// none to stand in: it settled, as absent, only the grid points its source had
+// reached when it landed, however late it is read.
 func finiteRangeTerminal(entry *finiteCacheEntry, result sdk.ResourceMetricResult, now time.Time) (time.Time, *float64) {
-	if last := len(result.Points) - 1; last >= 0 &&
-		(!result.Points[last].Time.Before(entry.evaluated) || entry.evaluated.After(now)) {
+	last := len(result.Points) - 1
+	if last < 0 {
+		return entry.reached, nil
+	}
+	if !result.Points[last].Time.Before(entry.evaluated) || entry.evaluated.After(now) {
 		return result.Points[last].Time, result.Points[last].Value
 	}
 	return entry.evaluated, nil
+}
+
+// finiteReachedPoint returns the last grid point of q's domain that was already
+// evaluable at the given time: the domain's end once it has passed, otherwise
+// the last point of the domain's own grid not after it. It is the zero time when
+// the domain begins later. The time is never rounded onto another grid, and no
+// source observation time or sample is implied.
+func finiteReachedPoint(q sdk.ResourceMetricsQuery, at time.Time) time.Time {
+	domain := finiteQuerySpan(q)
+	switch {
+	case at.Before(domain.start):
+		return time.Time{}
+	case !at.Before(domain.end):
+		return domain.end
+	}
+	steps := int64(at.Sub(domain.start) / q.Step)
+	return domain.start.Add(time.Duration(steps) * q.Step)
 }
 
 // applyCurrentRangeCacheLocked only fills pairs not answered by exact current

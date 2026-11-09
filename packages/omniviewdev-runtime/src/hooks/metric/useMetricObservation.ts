@@ -189,16 +189,19 @@ interface ObservationState {
  * A metric whose own lane source changed (a mixed catalog's per-metric override, which
  * the catalog's default source does not show) belongs to the old provider. Its retained
  * history leaves before a partial frame is weighed against what stays on display. The
- * raw snapshot stays whole; `prepared` is the exposed view.
+ * raw snapshot stays whole; `prepared` is the exposed view. A data frame that carried no
+ * catalog is judged against the last catalog the observation held (`observed`).
  */
-function withoutChangedSources(displayed: DisplayedSnapshot | null, catalog: ResourceMetricsCatalog | null): DisplayedSnapshot | null {
-  if (!displayed || !catalog) return displayed;
-  const held = laneSources(displayed.snapshot.catalog), next = laneSources(catalog);
+function withoutChangedSources(displayed: DisplayedSnapshot | null, observed: ResourceMetricsCatalog | null, catalog: ResourceMetricsCatalog | null): DisplayedSnapshot | null {
+  const heldCatalog = displayed?.snapshot.catalog ?? observed;
+  if (!displayed || !catalog || !heldCatalog) return displayed;
+  const held = laneSources(heldCatalog), next = laneSources(catalog);
+  // A result without a descriptor resolves to its catalog's default source.
+  const heldDefault = sourceKey(heldCatalog.source), nextDefault = sourceKey(catalog.source);
   let prepared: PreparedMetricResult[] | null = null;
   for (let index = 0; index < displayed.prepared.length; index++) {
     const result = displayed.prepared[index];
-    const before = held.get(result.metricID), after = next.get(result.metricID);
-    if (before !== undefined && after !== undefined && before !== after) {
+    if ((held.get(result.metricID) ?? heldDefault) !== (next.get(result.metricID) ?? nextDefault)) {
       prepared ??= displayed.prepared.slice(0, index);
     } else {
       prepared?.push(result);
@@ -288,8 +291,8 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
         if (retired) return;
         const receivedAtMs = Date.now();
         setState(previous => {
-          const compatible = previous.authority === scope && (!snapshot.catalog || !previous.catalog || sourceKey(snapshot.catalog.source) === sourceKey(previous.catalog.source));
-          let displayed = compatible ? withoutChangedSources(previous.displayed, snapshot.catalog) : null;
+          const compatible = previous.authority === scope;
+          let displayed = compatible ? withoutChangedSources(previous.displayed, previous.catalog, snapshot.catalog) : null;
           if (snapshot.invalidated) displayed = null;
           else if (snapshot.data != null) {
             const prepared = prepareMetricResults(snapshot, snapshot.catalog, input.targets);

@@ -361,3 +361,51 @@ it('drops only the history of the metric whose own source changed and keeps the 
   expect(shown()).toEqual([['cpu', '', 3], ['memory', 'prom-b', 3]]);
   expect(result.current).toMatchObject({ isPartial: false, isFetching: false });
 });
+
+// cpu inherits the catalog default while memory keeps its own lane.
+const inheritedCatalog = (defaultSource: typeof nativeLane, provider: string) => ({ ...catalog, source: defaultSource, metrics: [
+  { id: 'cpu', unit: 'cores' }, { id: 'memory', unit: 'bytes', source: externalLane(provider) }] }) as ResourceMetricsCatalog;
+const inheritedFrame = (defaultSource: typeof nativeLane, series: Record<string, readonly string[]>, extra: Partial<MetricsObservationSnapshot> = {}, complete = true) =>
+  mixedFrame('prom-a', series, { catalog: inheritedCatalog(defaultSource, 'prom-a'), ...extra }, complete);
+
+it('keeps an explicit-source metric\'s history through a pause when only the inherited default source changes', () => {
+  const { result, rerender } = renderHook(({ enabled }) => useMetricObservation({ ...base, enabled, metricIDs: ['cpu', 'memory'],
+    targets: [target('pod-a')], shape: 'range', ...fixedHour, stepMs: 15000 }), { initialProps: { enabled: true } });
+  const shown = () => result.current.results.map(item => [item.metricID, item.source?.datasource_uid, item.points.length]);
+  act(() => transport.receivers[0](inheritedFrame(nativeLane, { cpu: hour, memory: hour })));
+  const domain = result.current.domain;
+  expect(shown()).toEqual([['cpu', '', 3], ['memory', 'prom-a', 3]]);
+  rerender({ enabled: false });
+  rerender({ enabled: true });
+  // The acknowledgement names a new default provider; only the metric that inherits it leaves.
+  act(() => transport.receivers[1](frame('pod-a', { data: null, fetching: true, catalog: inheritedCatalog(externalLane('prom-default'), 'prom-a'), domain_start: null, domain_end: null })));
+  expect(shown()).toEqual([['memory', 'prom-a', 3]]);
+  expect(result.current).toMatchObject({ domain, stepMs: 15000, isLoading: false });
+  // A partial frame that omits the unchanged metric's history is not allowed to erase it.
+  act(() => transport.receivers[1](inheritedFrame(externalLane('prom-default'), { cpu: hour.slice(2) }, { fetching: true }, false)));
+  expect(shown()).toEqual([['memory', 'prom-a', 3]]);
+  expect(result.current).toMatchObject({ domain, stepMs: 15000, isPartial: false });
+  act(() => transport.receivers[1](inheritedFrame(externalLane('prom-default'), { cpu: hour.slice(2), memory: hour }, { fetching: true }, false)));
+  expect(shown()).toEqual([['cpu', 'prom-default', 1], ['memory', 'prom-a', 3]]);
+  expect(result.current.isPartial).toBe(true);
+  act(() => transport.receivers[1](inheritedFrame(externalLane('prom-default'), { cpu: hour, memory: hour })));
+  expect(shown()).toEqual([['cpu', 'prom-default', 3], ['memory', 'prom-a', 3]]);
+  expect(result.current).toMatchObject({ isPartial: false, isFetching: false });
+});
+
+it('drops inherited history shown by a catalog-less data frame when the next acknowledgement changes the default source', () => {
+  const { result, rerender } = renderHook(({ enabled }) => useMetricObservation({ ...base, enabled, metricIDs: ['cpu', 'memory'],
+    targets: [target('pod-a')], shape: 'range', ...fixedHour, stepMs: 15000 }), { initialProps: { enabled: true } });
+  const shown = () => result.current.results.map(item => [item.metricID, item.points.length]);
+  act(() => transport.receivers[0](frame('pod-a', { data: null, fetching: true, catalog: inheritedCatalog(nativeLane, 'prom-a'), domain_start: null, domain_end: null })));
+  // A complete data frame may omit its catalog; the observation still holds the acknowledged one.
+  act(() => transport.receivers[0](inheritedFrame(nativeLane, { cpu: hour, memory: hour }, { catalog: null })));
+  expect(shown()).toEqual([['cpu', 3], ['memory', 3]]);
+  expect(result.current.catalog).toEqual(inheritedCatalog(nativeLane, 'prom-a'));
+  const domain = result.current.domain;
+  rerender({ enabled: false });
+  rerender({ enabled: true });
+  act(() => transport.receivers[1](frame('pod-a', { data: null, fetching: true, catalog: inheritedCatalog(externalLane('prom-default'), 'prom-a'), domain_start: null, domain_end: null })));
+  expect(shown()).toEqual([['memory', 3]]);
+  expect(result.current).toMatchObject({ domain, stepMs: 15000, isLoading: false });
+});

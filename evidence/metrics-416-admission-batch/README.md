@@ -14,7 +14,7 @@ A per-read trace of one 57-target refresh (provider call about 50 ms) showed 4.1
 
 ## Measurements (`diagnostics capture`, 100 s, same workload)
 
-| Run | Plugin gRPC calls | Plugin CPU s | Provider queries | Response bytes | Namespace LISTs (metrics-server) | Bytes scanned (metrics-server) | Settle, scroll median | Settle, return median |
+| Run | Host-wide gRPC calls | Plugin CPU s | Provider queries | Response bytes | Namespace LISTs (metrics-server) | Bytes scanned (metrics-server) | Settle, scroll median | Settle, return median |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | baseline 1 | 9,169 | 26.86 | 11 | 201,631 | 110 | 1,154,375 | 3.74 s | 4.57 s |
 | baseline 2 | 9,591 | 26.87 | 12 | 194,130 | 106 | 1,112,247 | 3.52 s | 3.15 s |
@@ -30,7 +30,7 @@ Caveats, stated plainly:
 - Namespace LISTs and scanned bytes fall with that query count. Scan work **per provider query** is unchanged (about 10 LISTs, 5x the returned bytes).
 - Plugin RSS is higher in the candidate runs (mean 365 MB → 392 MB; separate process lifetimes). Not investigated; the change is host-only.
 - Cancellation coverage is unavailable in the included comparisons: the first lacks candidate cancellation series, and the second lacks both pipeline cancellation series. These runs do not establish zero cancellations.
-- `diagnostics compare` does not report histogram *counts*. The historical gRPC call totals above were derived from persisted capture endpoints (last count minus first). Ground truth for scanned objects/bytes came from metrics-server's own `apiserver_request_total` / `apiserver_response_sizes`, because this earlier plugin build did not yet report native scan counts. Later native-collector instrumentation and the separate real 1,000-Pod comparison are documented in the Kubernetes plugin's `docs/diagnostics.md`.
+- `diagnostics compare` does not report histogram *counts*. The historical host-wide gRPC call totals above were derived from persisted capture endpoints (last count minus first). `rpc.client.call.duration` has no plugin label, so those totals are not Kubernetes-attributed. Ground truth for scanned objects/bytes came from metrics-server's own `apiserver_request_total` / `apiserver_response_sizes`, because this earlier plugin build did not yet report native scan counts. Later native-collector instrumentation and the separate real 1,000-Pod comparison are documented in the Kubernetes plugin's `docs/diagnostics.md`.
 
 ## Reproduction prerequisites
 

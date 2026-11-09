@@ -328,3 +328,56 @@ func TestFiniteRangeToCurrentWindowEndingInTheFutureKeepsItsLastEvaluatedSample(
 	require.Equal(t, evaluated.Add(-time.Second), *got.data.Results[0].ObservedAt)
 	require.Equal(t, int32(1), provider.queries.Load(), "the evaluated sample answers current without another read")
 }
+
+// An answer with no point settles, as absent, only the points of its own grid
+// that its source had reached when it landed. Its window ends in the future, but
+// a later lookup does not find more of it in the past, and a window that began
+// after the answer landed settled nothing. Only older numeric terminal samples
+// are blocked: a later evaluation stays eligible, however coarse its grid.
+func TestFiniteRangeToCurrentEmptyWindowEndingInTheFutureSettlesOnlyGridPointsAlreadyReached(t *testing.T) {
+	// Offsets are from the numeric window's end, the evaluation it settles.
+	type windowRead struct {
+		start, end, step time.Duration
+	}
+	numeric := windowRead{-10 * time.Second, 0, time.Second}
+	for _, tc := range []struct {
+		name     string
+		reads    []windowRead
+		promoted bool
+	}{
+		{name: "grid point reached after the numeric evaluation", reads: []windowRead{numeric, {-5 * time.Second, time.Hour, time.Second}}},
+		{name: "same answer fetched before the numeric window", reads: []windowRead{{-5 * time.Second, time.Hour, time.Second}, numeric}},
+		{name: "coarser grid last reached before the numeric evaluation", promoted: true, reads: []windowRead{numeric, {-30 * time.Second, time.Hour, time.Minute}}},
+		{name: "grid point at the numeric evaluation fetched later", reads: []windowRead{numeric, {-time.Minute, time.Hour, time.Minute}}},
+		{name: "grid point at the numeric evaluation fetched earlier", promoted: true, reads: []windowRead{{-time.Minute, time.Hour, time.Minute}, numeric}},
+		{name: "window beginning after the answer landed", promoted: true, reads: []windowRead{numeric, {time.Minute, time.Hour, time.Second}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, provider, ctx, spec := finiteCurrentRangeProvider(t, true, 2*time.Minute)
+			original := provider.response
+			provider.response = func(query sdk.ResourceMetricsQuery) *sdk.ResourceMetricsResponse {
+				response := original(query)
+				if query.Shape == "range" && query.EndTime.After(spec.EndTime) {
+					// The source reports nothing, and no observation time, for it.
+					response.Results[0].Points, response.Results[0].ObservedAt = nil, nil
+				}
+				return response
+			}
+			for _, window := range tc.reads {
+				read := spec
+				read.StartTime, read.EndTime = spec.EndTime.Add(window.start), spec.EndTime.Add(window.end)
+				read.StepMs = int(window.step / time.Millisecond)
+				require.NoError(t, finiteTestReceive(t, finiteTestRead(c, ctx, read)).err)
+			}
+			got := finiteTestReceive(t, finiteTestRead(c, ctx, finiteTestSpec("current", "pod-a", "cpu")))
+			require.NoError(t, got.err)
+			if tc.promoted {
+				require.Equal(t, 0.25, *got.data.Results[0].Value)
+				require.Equal(t, int32(len(tc.reads)), provider.queries.Load(), "the numeric evaluation answers current without another read")
+				return
+			}
+			require.Equal(t, 0.75, *got.data.Results[0].Value, "current must come from its own provider evaluation")
+			require.Equal(t, int32(len(tc.reads)+1), provider.queries.Load())
+		})
+	}
+}
