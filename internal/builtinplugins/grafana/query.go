@@ -47,7 +47,20 @@ func (p *Provider) GetResourceMetricsCatalog(ctx *types.PluginContext, req metri
 				if err := definitionError(d); err != nil {
 					return nil, err
 				}
-				out.Metrics = append(out.Metrics, metric.FiniteMetricDescriptor{ID: d.ID, Name: d.Name, ResourceKey: key, Unit: d.Unit, Shapes: d.SupportedShapes})
+				// The host clears owner declarations on effective-definition edits.
+				// This provider implements pure, grid-aligned point evaluations;
+				// it does not infer independence by parsing arbitrary query text.
+				out.Metrics = append(out.Metrics, metric.FiniteMetricDescriptor{
+					ID:             d.ID,
+					Name:           d.Name,
+					ResourceKey:    key,
+					Unit:           d.Unit,
+					Shapes:         d.SupportedShapes,
+					RangeReuse:     d.RangeReuse,
+					Description:    "",
+					Source:         nil,
+					RangeToCurrent: false,
+				})
 			}
 		}
 	}

@@ -91,7 +91,7 @@ func TestPublishedSDKChangeDuringABuildIsATypedExit4Refusal(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, g.verifyUnchangedSDK(context.Background(), plugin, before), "an unchanged SDK is accepted")
 
-	current = publishedTuple(t, "v0.19.0")
+	current = publishedTuple(t, "v0.99.0")
 	err = g.verifyUnchangedSDK(context.Background(), plugin, before)
 	var failure *devcontract.Error
 	require.ErrorAs(t, err, &failure)
@@ -114,7 +114,7 @@ func TestBuildReuseFingerprintBindsTheSDKModeAndPublishedIdentity(t *testing.T) 
 		require.NoError(t, err)
 		return inputs
 	}
-	floor, newer := fingerprint(publishedTuple(t, devsdk.FloorVersion)), fingerprint(publishedTuple(t, "v0.19.0"))
+	floor, newer := fingerprint(publishedTuple(t, devsdk.FloorVersion)), fingerprint(publishedTuple(t, "v0.99.0"))
 	require.Contains(t, floor, "published")
 	require.Contains(t, floor, devsdk.FloorVersion)
 	require.Contains(t, floor, fixtureModuleSum)

@@ -26,7 +26,7 @@ func TestWorldPolicyExtendsTheProductionRulesWithTheServedReleases(t *testing.T)
 	table := devsdk.ReviewedReleases()
 	world := sdktest.New(t)
 	floor := world.PublishSDK(devsdk.FloorVersion, nil)
-	newer := world.PublishSDK("v0.19.0", nil)
+	newer := world.PublishSDK("v0.99.0", nil)
 	uuid := world.PublishPinned("github.com/google/uuid")
 
 	require.NoError(t, admit(t, world.Policy(), floor), "the floor release needs no extra row")

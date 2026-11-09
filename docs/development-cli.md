@@ -484,10 +484,11 @@ is cloned, fetched or added automatically, and consumer Go files are never
 edited. `--reviewed-sdk-revision` stays removed.
 
 Published mode accepts a released tag at or above the controller's own pinned
-SDK (`devsdk.FloorVersion`, `v0.17.0` today) whose module checksum and go.mod
+SDK (`devsdk.FloorVersion`, currently `v0.19.0`) whose module checksum and go.mod
 checksum equal a row of the controller's compiled-in reviewed-release table. The
-table is append-only and holds only `v0.17.0` today, equal to the controller's own
-`go.sum` lines. A branch's own `go.sum` cannot attest itself: it must agree with a
+table is append-only and retains `v0.17.0`, `v0.18.0` and `v0.19.0`; the current
+pin's row equals the controller's own `go.sum` lines. A branch's own `go.sum`
+cannot attest itself: it must agree with a
 row the controller already reviewed. An unknown version or a different checksum
 tuple is refused with `sdk_release_untrusted` (exit 4), saying the release is not
 reviewed by this controller; rebuild the controller from a host checkout that

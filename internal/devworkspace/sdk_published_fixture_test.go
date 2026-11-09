@@ -70,7 +70,7 @@ func newPubEnv(t *testing.T) *pubEnv {
 	env := &pubEnv{t: t, world: world, home: home}
 	env.sdk = world.PublishSDK(devsdk.FloorVersion, nil)
 	env.uuid = world.PublishPinned("github.com/google/uuid")
-	env.other = world.PublishSDK("v0.18.1", nil)
+	env.other = world.PublishSDK("v0.98.1", nil)
 	env.policy = world.Policy(env.other)
 	return env
 }

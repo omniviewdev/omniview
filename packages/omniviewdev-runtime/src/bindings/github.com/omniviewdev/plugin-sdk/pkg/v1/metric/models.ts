@@ -205,6 +205,38 @@ export class FiniteMetricDescriptor {
      */
     "source"?: MetricSourceRef | null;
 
+    /**
+     * RangeReuse is the provider's opt-in to coverage-aware range reuse. It
+     * requires the range shape; false or absent never permits reuse. Setting it
+     * guarantees that every ok range result for this metric is a pure point
+     * series: Points are pointwise evaluations on the grid StartTime+n*Step, and
+     * for the same query context and Step each point's value and presence do not
+     * depend on StartTime, EndTime or which other points were requested.
+     * Opted-in ok results leave Value and ObservedAt unset and Window zero;
+     * cross-bound assembly cannot transplant range-wide sample metadata.
+     * IdentityScope, Source and Dimensions must remain compatible. Non-ok and
+     * incomplete results establish no cross-bound coverage. Reuse does not imply
+     * current equivalence or immutable history: cache TTL still governs staleness.
+     * The descriptor, not an owner's MetricDefinition.RangeReuse declaration,
+     * is the opt-in, and a provider may decline that declaration.
+     */
+    "range_reuse"?: boolean;
+
+    /**
+     * RangeToCurrent separately allows the latest range point to represent a
+     * cached current sample. Both current and range shapes are required.
+     * The provider guarantees equivalent value semantics, unit, identity,
+     * source, dimensions and sampling window independent of range bounds/step.
+     * ObservedAt must be the actual source time associated with that last point,
+     * and Window its source sampling window, not range-wide metadata.
+     * Hosts still require a complete ok response, a numeric terminal point,
+     * known positive MaxSampleAge, fresh nonfuture source/evaluation times and
+     * an unexpired cache entry. A terminal gap never falls back to an older point.
+     * Point.Time does not establish source age and never replaces ObservedAt.
+     * Absence of this flag never permits range-to-current reuse.
+     */
+    "range_to_current"?: boolean;
+
     /** Creates a new FiniteMetricDescriptor instance. */
     constructor($$source: Partial<FiniteMetricDescriptor> = {}) {
         if (!("id" in $$source)) {
@@ -396,6 +428,15 @@ export class MetricDefinition {
     "batch_strategy": string;
     "revision": string;
     "native": boolean;
+
+    /**
+     * RangeReuse is the owner's declaration that this authored definition meets
+     * the FiniteMetricDescriptor.RangeReuse guarantee. It requires the range
+     * shape. It is not an opt-in: the provider's descriptor decides and may
+     * decline, and a host clears the declaration unless the effective definition
+     * is exactly the owner-authored one.
+     */
+    "range_reuse"?: boolean;
 
     /** Creates a new MetricDefinition instance. */
     constructor($$source: Partial<MetricDefinition> = {}) {

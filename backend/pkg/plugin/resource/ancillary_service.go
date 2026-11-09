@@ -19,7 +19,35 @@ func ancillaryUnsupported() error {
 }
 
 // admitAncillaryCatalog binds metadata admission without requiring Get support.
+// Within an admission batch (see WithAdmissionBatch) the catalog, its validation
+// and authority resolution are acquired once per resource type; every reference
+// still passes the generation fence and its own address/authority checks.
 func (c *controller) admitAncillaryCatalog(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, route resourcev2.AccessRoute, typ string, reference *resourcev2.ResourceReference) (context.Context, resourcev2.Catalog, error) {
+	batch, key := admissionBatchFrom(ctx), admissionBatchKey{}
+	if batch != nil && typ != "" {
+		key = admissionBatchKey{plugin: pluginID, route: route, generation: generation, epoch: captureCatalogAdmission(ctx, generation).epoch, typ: typ}
+		if entry, ok := batch.lookup(key); ok {
+			c.pluginsMu.RLock()
+			err := c.currentGenerationLocked(ctx, pluginID, generation)
+			if err == nil && reference != nil {
+				// A foreign provider is an invalid request, not a retired authority:
+				// judge it before authority currency, as the admission that acquired
+				// this catalog did.
+				err = checkAncillaryProvider(entry.catalog.Provider, reference)
+			}
+			if err == nil && reference != nil && !c.referenceCurrentLocked(pluginID, route, *reference) {
+				err = resourcev2.NewError("RESET_REQUIRED", "Observation authority retired.")
+			}
+			c.pluginsMu.RUnlock()
+			if err != nil {
+				return ctx, entry.catalog, err
+			}
+			if err := checkAncillaryReference(entry.catalog, entry.authority, typ, reference); err != nil {
+				return ctx, entry.catalog, err
+			}
+			return resourcev2.WithCatalogRevision(ctx, entry.catalog.Revision), entry.catalog, nil
+		}
+	}
 	catalog, err := provider.Catalog(ctx, resourcev2.CatalogRequest{Route: route})
 	if err == nil {
 		err = resourcev2.ValidateCatalog(catalog)
@@ -38,29 +66,39 @@ func (c *controller) admitAncillaryCatalog(ctx context.Context, pluginID string,
 		if err != nil {
 			return ctx, catalog, err
 		}
-		if reference != nil {
-			if reference.Address.Provider != catalog.Provider {
-				return ctx, catalog, resourcev2.NewError("INVALID_REQUEST", "Reference provider does not match this route catalog.")
-			}
-			if reference.Address.Authority != authority.Authority {
-				return ctx, catalog, resourcev2.NewError("RESET_REQUIRED", "Reference authority is no longer current for this route.")
-			}
-			found := false
-			for _, descriptor := range catalog.Types {
-				if descriptor.Type == typ {
-					found = true
-					if err := resourcev2.ValidateAddress(reference.Address, descriptor.IdentityDimensions); err != nil {
-						return ctx, catalog, err
-					}
-					break
-				}
-			}
-			if !found {
-				return ctx, catalog, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
-			}
+		if err := checkAncillaryReference(catalog, authority, typ, reference); err != nil {
+			return ctx, catalog, err
+		}
+		if batch != nil {
+			batch.store(key, admissionBatchEntry{catalog: catalog, authority: authority})
 		}
 	}
 	return resourcev2.WithCatalogRevision(ctx, catalog.Revision), catalog, nil
+}
+
+func checkAncillaryProvider(catalogProvider string, reference *resourcev2.ResourceReference) error {
+	if reference.Address.Provider != catalogProvider {
+		return resourcev2.NewError("INVALID_REQUEST", "Reference provider does not match this route catalog.")
+	}
+	return nil
+}
+
+func checkAncillaryReference(catalog resourcev2.Catalog, authority AuthorityResolution, typ string, reference *resourcev2.ResourceReference) error {
+	if reference == nil {
+		return nil
+	}
+	if err := checkAncillaryProvider(catalog.Provider, reference); err != nil {
+		return err
+	}
+	if reference.Address.Authority != authority.Authority {
+		return resourcev2.NewError("RESET_REQUIRED", "Reference authority is no longer current for this route.")
+	}
+	for _, descriptor := range catalog.Types {
+		if descriptor.Type == typ {
+			return resourcev2.ValidateAddress(reference.Address, descriptor.IdentityDimensions)
+		}
+	}
+	return resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
 }
 
 func (c *controller) GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (out []resourcev2.ResourceGroup, retErr error) {

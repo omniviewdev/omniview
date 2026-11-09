@@ -265,8 +265,8 @@ func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t 
 }
 
 func TestPublishedManagedBuildRefusesAnSDKChangedDuringTheBuild(t *testing.T) {
-	build := newPublishedBuild(t, nil, "v0.19.0")
-	second := build.extra["v0.19.0"]
+	build := newPublishedBuild(t, nil, "v0.99.0")
+	second := build.extra["v0.99.0"]
 	alternate := filepath.Join(sdktest.TempDir(t), "go.mod.alt")
 	require.NoError(t, os.WriteFile(alternate, []byte(fmt.Sprintf("module example.com/plugin\n\ngo 1.27.0\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
 		second.Module, second.Version, build.uuid.Module, build.uuid.Version)), 0o600))

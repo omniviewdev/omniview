@@ -37,7 +37,9 @@ Pass `context.Context` through Go session/query entrypoints, including exec, log
 
 Source precedence is explicit request `Source`, saved owner-connection/resource view selection, per-metric/owner binding source, profile default, then the owner's native source. Saved view modes are `inherit`, `native`, and `external`. Native mode overrides per-metric source choices; inherit restores lower-layer selection. `BindingID` identifies an actual owner binding only. External mappings retain approved owner scope. Invalid explicit sources fail without fallback. Provider-private contexts carry selected source credentials, never owner credentials.
 
-The host admits every target before collection and re-admits every delivery, including cache hits. Owner and source connections have independent generation fences. Configuration dependencies are scoped to the selected owner binding, view tuple, source connection, and consumed mappings. Unrelated owner/source edits preserve active work and completed cache. Matching edits cancel old work, clear stale snapshots, and re-resolve attached observations without requiring new client tokens. Source deletion shows an explicit error; fixing that selected source can recover the same observation.
+Batch reuse also checks current authority assignments on every hit. A concurrent catalog observation can retire an authority without replacing the plugin process or advancing the connection epoch; cached admission must reject that reference.
+
+The host admits every target before collection and re-admits every delivery, including cache hits. Targets of one admission pass share a single route-catalog acquisition per resource type (`resource.WithAdmissionBatch`); every reference is still individually authorized, address-checked and generation-fenced, and a batch never outlives its pass. Owner and source connections have independent generation fences. Configuration dependencies are scoped to the selected owner binding, view tuple, source connection, and consumed mappings. Unrelated owner/source edits preserve active work and completed cache. Matching edits cancel old work, clear stale snapshots, and re-resolve attached observations without requiring new client tokens. Source deletion shows an explicit error; fixing that selected source can recover the same observation.
 
 Mapping revisions hash effective selected source, public scope, and applicable lane mappings, never the whole configuration document. Native lanes omit unused external mappings. Compatible metric subsets share exact requested pairs. Mixed source lanes validate every catalog before sample collection and preserve per-result source provenance. A merged catalog's descriptor `Source` overrides its default `Source`.
 
@@ -50,11 +52,44 @@ Limits apply before dispatch and before publication:
 - A request contains 1–256 targets and 1–32 unique metric IDs. Provider batches also respect the catalog's `MaxTargets`.
 - `current` forbids duration, range times, and step. `range` accepts either positive `DurationMs` without absolute bounds or fixed `StartTime`/`EndTime` with duration zero. Both require positive step, a domain no longer than 31 days, and a domain/step quotient below 10,000.
 - A delivered response contains at most 10,000 range points and at most 4 MiB of JSON. These limits also apply after merging cached and in-flight contributions. Overflow returns `RESOURCE_LIMIT`, not truncated success.
+  Pending range assemblies enforce these same caller-projected limits once per
+  cached entry or provider answer, after its results and warnings are merged,
+  even without a progress callback. Point bounds apply before merge allocation.
+  An over-budget reader detaches immediately; only provider work no other reader
+  needs is canceled.
 - `IntervalMs` is zero for initial/manual reads, or 1,000–3,600,000 milliseconds for host-scheduled refreshes. Collection has a 30-second deadline.
 - The coordinator bounds shared work to four I/O slots, 512 interests, and 32,768 requested target/metric pairs. Active or pending observations also have a 512-reservation limit and a 16 MiB displayed-sample budget.
-- Completed response reuse expires after two seconds and is bounded to 64 entries/8 MiB. Catalog reuse expires after 30 seconds and is bounded to 64 entries, each at most 64 KiB. Neither cache lifetime defines sample freshness.
+- Completed response reuse expires after 30 seconds and is bounded to 64 entries/8 MiB. Catalog reuse expires after 30 seconds and is bounded to 64 entries, each at most 64 KiB. Neither cache lifetime defines sample freshness.
 
-For a relative range, the host aligns the collection end to an epoch-millisecond step boundary and computes start as end minus duration. The stored observation remains relative; every collection resolves a new immutable domain. The actual aligned domain partitions shared work and completed cache. Relative Open leaves domain fields absent. While refreshing, displayed data retains its old domain; successful publication replaces data and domain together. Failed or invalidated relative collections clear both data and domain. Absolute ranges remain fixed.
+For a relative range, the host aligns the collection end to an epoch-millisecond step boundary and computes start as end minus duration. The stored observation remains relative; every collection resolves a new immutable domain. Relative Open leaves domain fields absent. Displayed data retains its own domain and resolution while a replacement is pending. Publication replaces data and domain together. Failed or invalidated relative collections clear both data and domain. Absolute ranges remain fixed.
+
+Coverage-aware reuse requires every selected provider descriptor to declare `RangeReuse`. Otherwise bounds remain part of the exact-domain partition. Opted-in ranges can share complete, pure point series only when step and grid phase match; authority, catalog, connection generations, configuration, projections, source, dimensions and identity scope remain fenced. Owner declarations do not authorize reuse: edited or overridden definitions lose inherited declarations, and the executing provider must opt in separately. No provider query language is inspected by the coordinator.
+
+The coordinator clips completed contributions, joins compatible overlapping work and dispatches only uncovered intervals. Subqueries may repeat one boundary point because the wire requires strictly ordered bounds. Existing TTLs and budgets still apply, including assembled response limits. Manual refresh bypasses completed reuse. This uses the existing completed cache, not another sample cache.
+
+Newer complete coverage owns its points and its omissions. An older incomplete
+or negative exact-domain cache entry cannot overwrite that coverage. A `missing`
+answer to only one fragment does not prove absence across the full request:
+the collection finishes incomplete unless the answer covered the whole domain.
+
+Range-to-current reuse is a separate, default-off provider capability, `RangeToCurrent`, requiring both query shapes. It promises identical value, unit, identity, dimensions, source and measurement-window semantics independent of range bounds or step. Owner range-reuse hints do not grant it.
+
+After exact-current cache lookup, an eligible current request may reuse a complete successful range result from the existing bounded cache. The result must carry a numeric terminal point, actual physical `ObservedAt`, and a positive catalog `MaxSampleAge`. Neither the terminal evaluation time nor the physical observation may be future-dated; the physical observation must not follow the terminal evaluation and must still satisfy the current freshness policy. A null terminal point is not replaced with an earlier value. Cache expiry, authority, projection, configuration, catalog and generation fences remain mandatory. Manual refresh bypasses this reuse.
+  A later complete gap, omitted terminal point or empty evaluation blocks an
+  older numeric promotion; the coordinator collects current data instead.
+  For an empty future-ending answer, a conservative current-recheck fence is
+  fixed to the last original-grid point at receipt; later lookups cannot
+  advance it. A future-only window sets no fence. SDK 0.19 supplies no negative
+  evaluation watermark, so receipt is not proof of source evaluation time and
+  never replaces `ObservedAt`. Delayed insertion can conservatively cause an
+  extra current query. Avoiding that query requires explicit source evidence,
+  not a host-clock assumption.
+
+The delivered current result retains the physical observation time and measurement window, copies the terminal value and removes range points. Providers lacking the explicit capability, including the current built-in Grafana integration, continue collecting current samples normally.
+
+A range collection may publish immutable incomplete frames with `Complete=false` and `Fetching=true`. Their domain is the requested evaluation window, not a claim that every interval has loaded. Missing pairs are pending, not source-proven absence. The hook retains its one displayed snapshot when a partial frame would remove numeric samples still inside the requested window; retained data keeps its original domain and step. Non-regressing progress can expand the displayed coverage. A final incomplete frame ends fetching without claiming completeness. The companion Kubernetes panel change in [plugin PR #222](https://github.com/omniviewdev/omniview-plugin-kubernetes/pull/222) sets the shared chart's `maxGapMs` from the displayed step so unloaded intervals and source gaps are not bridged. Older pinned plugin versions do not provide that chart guarantee; deploy the matching runtime and panel changes together before enabling owner range-reuse declarations.
+
+Once an observation retains a complete snapshot, compatible refreshes do not publish intermediate frames over it. This preserves the original samples, catalog, domain and byte accounting if a later source fails operationally. Full success replaces the snapshot atomically; operational failure retains it and reports the error. Authority, configuration and other invalidating failures still clear it. Initial, invalidated and incomplete observations can publish partial progress without retaining a second snapshot.
 
 
 ## Preparing snapshots directly
@@ -71,7 +106,12 @@ prepareMetricResults(
 
 Use the snapshot's own catalog and the targets whose tokens belong to that snapshot. A separate catalog request may describe another source generation.
 
-Prepared result IDs use source, canonical resource identity, metric ID, and dimensions, not caller tokens or result order. The hook retains compatible displayed data during refresh, filters out replaced resource incarnations, and clears invalidated data.
+Prepared result IDs use source, canonical resource identity, metric ID, and dimensions, not caller tokens or result order. The hook retains compatible selected history during refresh, filters out replaced resource incarnations, and clears invalidated data. A metric's own source override is part of compatibility even when the catalog-default source stays unchanged: replacing it clears that metric's retained prepared results before partial-frame retention. Unselected history never prevents a new target or metric from showing partial progress on a different step.
+An inherited default-source change does not discard an unchanged explicit
+metric lane's history. Replacement acknowledgements filter sources per metric,
+including after a pause. If a displayed data frame omitted its catalog, the
+last observed catalog supplies that source fence; authority and invalidation
+checks still apply.
 
 Each result also exposes readonly `resourceReference` and `resourceRoute` from its admitted target. Use those fields for identity chips. Do not parse `resourceIdentity` or treat returned series dimensions as resource identity.
 

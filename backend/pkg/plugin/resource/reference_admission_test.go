@@ -98,15 +98,97 @@ func TestAdmitReferenceDistinguishesProviderMismatchFromRetiredAuthority(t *test
 		{name: "provider", code: "INVALID_REQUEST", mutate: func(reference *resourcev2.ResourceReference) { reference.Address.Provider = "other-provider" }},
 		{name: "authority", code: "RESET_REQUIRED", mutate: func(reference *resourcev2.ResourceReference) { reference.Address.Authority += "-retired" }},
 	} {
-		t.Run(mismatch.name, func(t *testing.T) {
-			ctrl, _ := newTestControllerWithEmitter(t)
-			provider := &mockProvider{}
-			registerActionTestPlugin(ctrl, "p1", provider)
-			input := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
-			mismatch.mutate(&input.Reference)
-			_, err := ctrl.AdmitReference(testInvocationContext(), "exec.CreateSession", "p1", input.Route, input.Reference)
-			require.Error(t, err)
-			require.Equal(t, mismatch.code, requireAppError(t, err).Code)
-		})
+		// A reference judged against a catalog an earlier admission of the same
+		// batch acquired must be classified like one that acquired its own.
+		for _, shared := range []bool{false, true} {
+			name := mismatch.name
+			if shared {
+				name += "/shared batch catalog"
+			}
+			t.Run(name, func(t *testing.T) {
+				ctrl, _ := newTestControllerWithEmitter(t)
+				provider := &mockProvider{}
+				registerActionTestPlugin(ctrl, "p1", provider)
+				input := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
+				acquire := provider.CatalogFunc
+				catalogCalls := 0
+				provider.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+					catalogCalls++
+					return acquire(ctx, request)
+				}
+				ctx := testInvocationContext()
+				if shared {
+					ctx = WithAdmissionBatch(ctx)
+					_, err := ctrl.AdmitReference(ctx, "exec.CreateSession", "p1", input.Route, input.Reference)
+					require.NoError(t, err)
+				}
+				mismatch.mutate(&input.Reference)
+				_, err := ctrl.AdmitReference(ctx, "exec.CreateSession", "p1", input.Route, input.Reference)
+				require.Error(t, err)
+				require.Equal(t, mismatch.code, requireAppError(t, err).Code)
+				require.Equal(t, 1, catalogCalls, "one catalog acquisition serves the whole pass")
+			})
+		}
 	}
+}
+
+func TestAdmitReferenceBatchSharesCatalogButAuthorizesEveryReference(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	provider := &mockProvider{}
+	registerActionTestPlugin(ctrl, "p1", provider)
+	input := admittedActionRequest(t, ctrl, "p1", "conn-1", "pods", "restart")
+	catalogCalls := 0
+	provider.CatalogFunc = func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+		catalogCalls++
+		return canonicalTestCatalog("p1", "pods"), nil
+	}
+	authorized := 0
+	ctrl.boundary = invocation.NewBoundary(invocation.AuthorizeFunc(func(_ invocation.Principal, _ string, target invocation.Target) error {
+		authorized++
+		if target.Object == "denied" {
+			return errors.New("denied")
+		}
+		return nil
+	}))
+	reference := func(id string) resourcev2.ResourceReference {
+		ref := input.Reference
+		ref.Address.ID = id
+		return ref
+	}
+	batch := WithAdmissionBatch(testInvocationContext())
+	var last context.Context
+	for _, id := range []string{"a", "b", "c", "d"} {
+		ctx, err := ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, reference(id))
+		require.NoError(t, err)
+		last = ctx
+	}
+	require.Equal(t, 1, catalogCalls, "catalog is acquired once per batch and type")
+	require.Equal(t, 8, authorized, "every reference is admitted and reauthorized individually")
+
+	_, err := ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, reference("denied"))
+	require.Error(t, err)
+	require.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
+
+	stale := reference("e")
+	stale.Address.Authority += "-retired"
+	_, err = ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, stale)
+	require.Error(t, err)
+	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code, "shared authority still rejects a stale reference")
+	require.Equal(t, 1, catalogCalls)
+
+	// The admitted context must not carry the batch into delivery-time admissions.
+	_, err = ctrl.AdmitReference(last, "metric.Query", "p1", input.Route, reference("f"))
+	require.NoError(t, err)
+	require.Equal(t, 2, catalogCalls, "a context returned from admission starts a new catalog acquisition")
+
+	// A concurrent catalog observation can retire authority without replacing
+	// the plugin process or advancing the connection epoch.
+	ctrl.finite.mu.Lock()
+	resolver := ctrl.finite.authorities["p1"]
+	_, err = resolver.ObserveCatalog("p1", input.Route.Connection, authorityTestCatalog("p1", nil))
+	ctrl.finite.mu.Unlock()
+	require.NoError(t, err)
+	_, err = ctrl.AdmitReference(batch, "metric.Query", "p1", input.Route, reference("g"))
+	require.Error(t, err)
+	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
 }

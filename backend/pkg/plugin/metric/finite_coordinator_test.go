@@ -355,6 +355,63 @@ func TestFiniteManualRefreshUpgradesCachedPairsWithoutRepeatingActivePairs(t *te
 	require.Equal(t, int32(3), p.queries.Load(), "manual refresh repeated a still-active pair")
 }
 
+func TestFiniteManualRefreshCompletesPartiallyCoveredRangeWithFreshCachedSpan(t *testing.T) {
+	c, provider, ctx := finiteRangeProvider(t, true)
+	seed := finiteTestReceive(t, finiteTestRead(c, ctx, finiteRangeSpec(3, 7)))
+	require.NoError(t, seed.err)
+	finiteTestReceive(t, provider.calls)
+	release := make(chan struct{})
+	provider.query = func(pc *types.PluginContext, query sdk.ResourceMetricsQuery) (*sdk.ResourceMetricsResponse, error) {
+		select {
+		case <-pc.Context.Done():
+			return nil, pc.Context.Err()
+		case <-release:
+		}
+		response := finiteRangeResponse(query)
+		for _, result := range response.Results {
+			for _, point := range result.Points {
+				if point.Value != nil {
+					*point.Value += 1000
+				}
+			}
+		}
+		return response, nil
+	}
+	spec := finiteRangeSpec(0, 10)
+	events := make(chan MetricsObservationSnapshot, 32)
+	_, err := c.OpenMetricsObservation(ctx, OpenMetricsObservationRequest{ClientToken: "partial-refresh", Spec: spec}, func(snapshot MetricsObservationSnapshot) { events <- snapshot })
+	require.NoError(t, err)
+	require.NoError(t, c.AttachMetricsObservation(ctx, "partial-refresh"))
+	nextFiniteSnapshot(t, events, func(snapshot MetricsObservationSnapshot) bool {
+		return snapshot.Data != nil && snapshot.Fetching && !snapshot.Data.Complete
+	})
+	left, right := finiteTestReceive(t, provider.calls), finiteTestReceive(t, provider.calls)
+	require.Equal(t, spec.StartTime, left.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), right.StartTime)
+	require.NoError(t, c.RefreshMetricsObservation(ctx, "partial-refresh"))
+	require.NoError(t, c.RefreshMetricsObservation(ctx, "partial-refresh"))
+	cachedSpan := finiteTestReceive(t, provider.calls)
+	require.Equal(t, finiteRangeTestStart.Add(3*time.Second), cachedSpan.StartTime)
+	require.Equal(t, finiteRangeTestStart.Add(7*time.Second), cachedSpan.EndTime)
+	close(release)
+	complete := nextFiniteSnapshot(t, events, func(snapshot MetricsObservationSnapshot) bool {
+		return snapshot.Data != nil && !snapshot.Fetching
+	})
+	require.Empty(t, complete.Error)
+	require.True(t, complete.Data.Complete)
+	points := complete.Data.Results[0].Points
+	require.Len(t, points, 11)
+	for i, point := range points {
+		if i == 4 {
+			require.Nil(t, point.Value, "a source gap must not become zero")
+			continue
+		}
+		require.NotNil(t, point.Value)
+		require.Equal(t, float64(i*i)+1000, *point.Value, "point %d kept stale cached coverage", i)
+	}
+	require.Equal(t, int32(4), provider.queries.Load(), "refresh duplicated provider work")
+}
+
 func TestFiniteCloseCancelsOpenBeforeAcknowledgement(t *testing.T) {
 	c, p, ctx := finiteTestController(t)
 	entered := make(chan struct{})
@@ -592,6 +649,106 @@ func TestFiniteObservationRetainsOperationalFailureButClearsAuthorityFailure(t *
 			}
 		})
 	}
+}
+
+func TestFiniteMixedRangeRefreshRetainsCompleteSnapshotThroughLaterSourceFailure(t *testing.T) {
+	for _, code := range []string{"UNAVAILABLE", "DENIED"} {
+		t.Run(code, func(t *testing.T) { testFiniteMixedRangeRefresh(t, code) })
+	}
+}
+
+// The default source answers CPU and a second source answers memory, so every
+// collection reads its two lanes in order and the second lane fails on demand.
+func testFiniteMixedRangeRefresh(t *testing.T, code string) {
+	c, _, ctx := finiteTestController(t)
+	external := addFinitePrivateProvider(t, c)
+	close(external.release)
+	one, two := finitePrivateSource("one"), finitePrivateSource("two")
+	_, err := c.SaveMetricSourceDefaults(ctx, sdk.MetricSourceDefaults{Source: &one})
+	require.NoError(t, err)
+	_, err = c.SaveMetricBinding(ctx, sdk.MetricBinding{Signal: "metrics", ResourcePluginID: "kubernetes", ResourceConnectionID: "cluster", Overrides: []sdk.MetricDefinitionOverride{{MetricID: "memory", Source: &two}}})
+	require.NoError(t, err)
+	external.response = finiteRangeResponse
+	var fail atomic.Bool
+	external.failure = func(q sdk.ResourceMetricsQuery) error {
+		if fail.Load() && q.Source.ConnectionID == "two" {
+			return finiteError(code, "later source failure")
+		}
+		return nil
+	}
+	spec := finiteTestSpec("row", "pod-a", "cpu", "memory")
+	// Every collection resolves a newer window, which retained history must not adopt.
+	spec.Shape, spec.DurationMs, spec.StepMs = "range", 1000, 100
+	events := make(chan MetricsObservationSnapshot, 32)
+	_, err = c.OpenMetricsObservation(ctx, OpenMetricsObservationRequest{ClientToken: "mixed-refresh", Spec: spec}, func(s MetricsObservationSnapshot) { events <- s })
+	require.NoError(t, err)
+	require.NoError(t, c.AttachMetricsObservation(ctx, "mixed-refresh"))
+	// With nothing retained, the first source still reports honest progress.
+	progress := nextFiniteSnapshot(t, events, func(s MetricsObservationSnapshot) bool { return s.Data != nil && s.Fetching })
+	require.False(t, progress.Data.Complete)
+	require.Len(t, progress.Data.Results, 1)
+	require.Equal(t, "cpu", progress.Data.Results[0].MetricID)
+	initial := nextFiniteSnapshot(t, events, func(s MetricsObservationSnapshot) bool { return s.Data != nil && !s.Fetching })
+	require.Empty(t, initial.Error)
+	require.True(t, initial.Data.Complete)
+	require.Len(t, initial.Data.Results, 2)
+	require.Len(t, initial.Catalog.Metrics, 2)
+	require.NotNil(t, initial.DomainStart)
+	require.NotNil(t, initial.DomainEnd)
+	f := c.finiteCoordinator()
+	f.mu.Lock()
+	beforeBytes := f.snapshotBytes
+	f.mu.Unlock()
+	require.Positive(t, beforeBytes)
+	for range 2 {
+		finiteTestReceive(t, external.calls)
+	}
+	fail.Store(true)
+	require.NoError(t, c.RefreshMetricsObservation(ctx, "mixed-refresh"))
+	var refreshing []MetricsObservationSnapshot
+	failed := nextFiniteSnapshot(t, events, func(s MetricsObservationSnapshot) bool {
+		refreshing = append(refreshing, s)
+		return s.Error != "" && !s.Fetching
+	})
+	// The first source answered for a newer window, then the later source failed.
+	refreshed := finiteTestReceive(t, external.calls)
+	require.Equal(t, one, refreshed.Source)
+	require.True(t, refreshed.StartTime.After(*initial.DomainStart))
+	require.Equal(t, two, finiteTestReceive(t, external.calls).Source)
+	// No frame before the outcome may replace retained history with a fragment.
+	for _, frame := range refreshing[:len(refreshing)-1] {
+		require.Equal(t, initial.Data, frame.Data, "the first source must not replace the retained snapshot")
+		require.Equal(t, initial.Catalog, frame.Catalog)
+		require.Equal(t, initial.DomainStart, frame.DomainStart)
+		require.Equal(t, initial.DomainEnd, frame.DomainEnd)
+		require.False(t, frame.Invalidated)
+	}
+	require.Contains(t, failed.Error, "later source failure")
+	f.mu.Lock()
+	afterBytes := f.snapshotBytes
+	f.mu.Unlock()
+	if code == "UNAVAILABLE" {
+		require.False(t, failed.Invalidated)
+		require.Equal(t, initial.Data, failed.Data)
+		require.Equal(t, initial.Catalog, failed.Catalog)
+		require.Equal(t, initial.DomainStart, failed.DomainStart)
+		require.Equal(t, initial.DomainEnd, failed.DomainEnd)
+		require.Equal(t, beforeBytes, afterBytes)
+	} else {
+		require.True(t, failed.Invalidated)
+		require.Nil(t, failed.Data)
+		require.Nil(t, failed.Catalog)
+		require.Nil(t, failed.DomainStart)
+		require.Nil(t, failed.DomainEnd)
+		require.Zero(t, afterBytes)
+	}
+	// Only a refresh in which every source succeeds replaces the snapshot.
+	fail.Store(false)
+	require.NoError(t, c.RefreshMetricsObservation(ctx, "mixed-refresh"))
+	recovered := nextFiniteSnapshot(t, events, func(s MetricsObservationSnapshot) bool { return s.Data != nil && s.Data.Complete && !s.Fetching })
+	require.Empty(t, recovered.Error)
+	require.False(t, recovered.Invalidated)
+	require.True(t, recovered.DomainStart.After(*initial.DomainStart))
 }
 
 func TestFiniteObservationAdmissionFailureClearsRetainedSamples(t *testing.T) {

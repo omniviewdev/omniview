@@ -25,7 +25,7 @@ func TestSDKStatusReportsDeclaredThenVerifiedThenHistoricalEvidence(t *testing.T
 	}, declared.Consumers)
 
 	supervisor := &workspaceSupervisor{workspace: w, status: Status{Workspace: w, SDK: declared}}
-	resolved := publishedTuple(t, "v0.17.2")
+	resolved := publishedTuple(t, "v0.98.0")
 	supervisor.observeSDK("omniview", resolved)
 	source, err := fakeSDKIdentity(t.TempDir(), strings.Repeat("a", 40), strings.Repeat("c", 64))
 	require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestSDKStatusReportsDeclaredThenVerifiedThenHistoricalEvidence(t *testing.T
 	live := supervisor.snapshot().SDK
 	require.NotNil(t, live)
 	require.Equal(t, SDKConsumer{
-		RepositoryID: "omniview", RequiredVersion: devsdk.FloorVersion, ResolvedVersion: "v0.17.2",
+		RepositoryID: "omniview", RequiredVersion: devsdk.FloorVersion, ResolvedVersion: "v0.98.0",
 		ModuleSum: fixtureModuleSum, GoModSum: fixtureGoModSum, Verification: SDKVerified,
 	}, live.Consumers[0], "the declared requirement and the verified effective version are distinct facts")
 	require.Equal(t, SDKUnresolved, live.Consumers[1].Verification)
@@ -49,7 +49,7 @@ func TestSDKStatusReportsDeclaredThenVerifiedThenHistoricalEvidence(t *testing.T
 	raw, err := json.Marshal(Status{SDK: history})
 	require.NoError(t, err)
 	require.Contains(t, string(raw), `"sdk":{"mode":"published"`)
-	require.Contains(t, string(raw), `"resolvedVersion":"v0.17.2"`)
+	require.Contains(t, string(raw), `"resolvedVersion":"v0.98.0"`)
 }
 
 func TestSDKStatusOfASourceWorkspaceNamesTheSelectedRepositoryOnly(t *testing.T) {

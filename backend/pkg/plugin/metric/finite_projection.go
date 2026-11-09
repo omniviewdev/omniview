@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
@@ -151,6 +152,9 @@ func (c *controller) projectFinite(ctx context.Context, ownerPlugin, ownerConnec
 	if len(fields) == 0 && identity == nil {
 		return q, nil, errors.New("authoritative resource identity guard is unavailable")
 	}
+	// Targets share the route catalog within one admission instant; each guard
+	// still fences its own reference. Every delivery re-runs guards in a new batch.
+	batch := resource.WithAdmissionBatch(ctx)
 	guards := make([]func(context.Context) error, 0, len(q.Targets))
 	for i := range q.Targets {
 		if err := ctx.Err(); err != nil {
@@ -163,12 +167,12 @@ func (c *controller) projectFinite(ctx context.Context, ownerPlugin, ownerConnec
 		var guard func(context.Context) error
 		if len(fields) == 0 {
 			var err error
-			guard, err = identity(ctx, "metric.Query", ownerPlugin, target.Route, target.Reference)
+			guard, err = identity(batch, "metric.Query", ownerPlugin, target.Route, target.Reference)
 			if err != nil {
 				return q, nil, err
 			}
 		} else {
-			body, observedGuard, err := reader(ctx, ownerPlugin, target.Route, target.Reference, paths)
+			body, observedGuard, err := reader(batch, ownerPlugin, target.Route, target.Reference, paths)
 			if err != nil {
 				return q, nil, err
 			}
@@ -200,8 +204,9 @@ func (c *controller) projectFinite(ctx context.Context, ownerPlugin, ownerConnec
 	digest := sha256.Sum256(projection)
 	q.Context.ProjectionRevision = hex.EncodeToString(digest[:])
 	deliver := func() error {
+		delivery := resource.WithAdmissionBatch(ctx)
 		for _, guard := range guards {
-			if err := guard(ctx); err != nil {
+			if err := guard(delivery); err != nil {
 				return err
 			}
 		}

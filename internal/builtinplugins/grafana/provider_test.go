@@ -338,6 +338,18 @@ func TestCatalogUsesOnlyInjectedDefinitions(t *testing.T) {
 	if err != nil || len(catalog.Metrics) != 2 {
 		t.Fatalf("catalog=%+v err=%v", catalog, err)
 	}
+	if err := metric.ValidateResourceMetricsCatalog(catalog); err != nil {
+		t.Fatalf("provider catalog cannot cross the SDK boundary: %v", err)
+	}
+	for _, descriptor := range catalog.Metrics {
+		source := catalog.Source
+		if descriptor.Source != nil {
+			source = *descriptor.Source
+		}
+		if source != request.Source {
+			t.Fatalf("metric %q lost its selected source: %+v", descriptor.ID, source)
+		}
+	}
 	request.Context.Definitions = nil
 	catalog, err = p.GetResourceMetricsCatalog(nil, request)
 	if err != nil || len(catalog.Metrics) != 0 {
