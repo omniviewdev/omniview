@@ -381,3 +381,55 @@ func TestFiniteRangeToCurrentEmptyWindowEndingInTheFutureSettlesOnlyGridPointsAl
 		})
 	}
 }
+
+func TestFiniteRangeToCurrentLaterLookupDoesNotAdvanceEmptyAnswerFence(t *testing.T) {
+	base := time.Date(2026, time.November, 1, 12, 0, 0, 0, time.UTC)
+	pair := finitePair{"target", "cpu"}
+	value, observed := 0.25, base.Add(4*time.Second)
+	catalog := &sdk.ResourceMetricsCatalog{
+		Metrics: []sdk.FiniteMetricDescriptor{{ID: "cpu", RangeToCurrent: true}},
+	}
+	query := sdk.ResourceMetricsQuery{
+		StartTime: base.Add(-20 * time.Second), EndTime: base.Add(time.Minute),
+		Step: 10 * time.Second,
+	}
+	cache := []finiteCacheEntry{
+		{
+			rangeToCurrentKey: "same-authority", complete: true,
+			until: base.Add(30 * time.Second), evaluated: query.EndTime,
+			reached: finiteReachedPoint(query, base),
+			pairs: map[finitePair]sdk.ResourceMetricResult{
+				pair: {ResourceToken: pair.target, MetricID: pair.metric, Status: "ok"},
+			},
+		},
+		{
+			rangeToCurrentKey: "same-authority", complete: true,
+			until: base.Add(30 * time.Second), evaluated: base.Add(5 * time.Second),
+			pairs: map[finitePair]sdk.ResourceMetricResult{
+				pair: {
+					ResourceToken: pair.target, MetricID: pair.metric, Status: "ok",
+					ObservedAt: &observed,
+					Points:     []sdk.ResourceMetricPoint{{Time: base.Add(5 * time.Second), Value: &value}},
+				},
+			},
+		},
+	}
+	for _, offset := range []time.Duration{6 * time.Second, 11 * time.Second} {
+		t.Run(offset.String(), func(t *testing.T) {
+			w := &finiteWaiter{
+				rangeToCurrentKey: "same-authority", maxSampleAge: time.Minute,
+				workTargets: map[string]sdk.ResourceMetricTarget{pair.target: {Token: pair.target}},
+				pairs:       map[finitePair]bool{pair: true}, done: map[finitePair]bool{},
+				results: map[finitePair]sdk.ResourceMetricResult{}, missing: 1,
+			}
+			f := &finiteCoordinator{cache: cache}
+			// Both entries remain valid, including after the next empty-range
+			// grid point at +10s. Lookup time must not turn it into new absence.
+			f.applyCurrentRangeCacheLocked(w, catalog, base.Add(offset))
+			require.True(t, w.done[pair], "the numeric answer must still satisfy current")
+			require.Zero(t, w.missing)
+			require.NotNil(t, w.results[pair].Value)
+			require.Equal(t, value, *w.results[pair].Value)
+		})
+	}
+}

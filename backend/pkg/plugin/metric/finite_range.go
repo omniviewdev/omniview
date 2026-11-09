@@ -535,13 +535,13 @@ func (f *finiteCoordinator) progressWaiterLocked(w *finiteWaiter) {
 	}
 }
 
-// finiteRangeTerminal returns the last grid point a complete range answer
-// settled and the sample at it. A nil sample is a source gap or a point the
-// answer omitted: a complete answer settles every grid point of its domain. When
-// the domain ends after now its last grid points cannot have been evaluated yet,
-// so the last point returned stands in for its end. An answer with no point has
-// none to stand in: it settled, as absent, only the grid points its source had
-// reached when it landed, however late it is read.
+// finiteRangeTerminal returns a complete range's terminal point and its sample.
+// A nil sample prevents promotion from an older answer; it is never a value.
+// For an empty future-ending answer, reached is a conservative current-recheck
+// fence on the original grid, fixed at receipt. The SDK supplies no negative
+// evaluation watermark, so this is not proof of when the source evaluated it.
+// A delayed receipt can force an extra current query. It never establishes a
+// physical observation time, and a later lookup cannot advance the fence.
 func finiteRangeTerminal(entry *finiteCacheEntry, result sdk.ResourceMetricResult, now time.Time) (time.Time, *float64) {
 	last := len(result.Points) - 1
 	if last < 0 {

@@ -773,3 +773,14 @@ growth in #117 remained unchanged. Mixed per-metric source changes were not
 exercised against a real alternative provider; the two failing-before hook
 regressions and source review establish those cases, not live-provider evidence.
 Native-webview pixels and a verified served-source fingerprint remain unproved.
+
+A final review clarified two evidence limits without changing production
+behavior after the final capture. Empty future-range receipt time is only a
+conservative current-recheck fence, not a negative source-evaluation watermark;
+the SDK has no such watermark. Delayed insertion can therefore cost an extra
+current query rather than justify an unsupported reuse assumption. A fixed-time
+selector regression confirms that looking up before and after the next grid
+point does not advance the stored fence while both entries remain valid. All
+range-to-current race tests passed in the focused run. The earlier admission
+table now labels metrics-server request counts and response bytes explicitly;
+those counters never established server-internal scanned objects or bytes.

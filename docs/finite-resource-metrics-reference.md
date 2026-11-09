@@ -77,9 +77,13 @@ Range-to-current reuse is a separate, default-off provider capability, `RangeToC
 After exact-current cache lookup, an eligible current request may reuse a complete successful range result from the existing bounded cache. The result must carry a numeric terminal point, actual physical `ObservedAt`, and a positive catalog `MaxSampleAge`. Neither the terminal evaluation time nor the physical observation may be future-dated; the physical observation must not follow the terminal evaluation and must still satisfy the current freshness policy. A null terminal point is not replaced with an earlier value. Cache expiry, authority, projection, configuration, catalog and generation fences remain mandatory. Manual refresh bypasses this reuse.
   A later complete gap, omitted terminal point or empty evaluation blocks an
   older numeric promotion; the coordinator collects current data instead.
-  An empty future-ending answer settles only through the last point on its own
-  grid already reached when it landed. A window that began later establishes
-  no current absence; a later lookup cannot advance its claimed coverage.
+  For an empty future-ending answer, a conservative current-recheck fence is
+  fixed to the last original-grid point at receipt; later lookups cannot
+  advance it. A future-only window sets no fence. SDK 0.19 supplies no negative
+  evaluation watermark, so receipt is not proof of source evaluation time and
+  never replaces `ObservedAt`. Delayed insertion can conservatively cause an
+  extra current query. Avoiding that query requires explicit source evidence,
+  not a host-clock assumption.
 
 The delivered current result retains the physical observation time and measurement window, copies the terminal value and removes range points. Providers lacking the explicit capability, including the current built-in Grafana integration, continue collecting current samples normally.
 

@@ -1316,11 +1316,11 @@ func (f *finiteCoordinator) runJob(ctx context.Context, job *finiteJob, base Met
 		}
 		if job.query.Shape == "range" && job.rangeToCurrentKey != "" {
 			entry.rangeToCurrentKey = job.rangeToCurrentKey
-			// A complete answer settles every grid point through the last one its
-			// domain evaluates. Range-to-current reuse reads a gap or an omission
-			// there as absence instead of falling back to an older sample. An
-			// answer with no point settles only the grid points its source had
-			// reached when it landed, never ones a later lookup finds in the past.
+			// Keep the empty-answer recheck fence on this query's grid at receipt.
+			// This is not a source evaluation watermark or a physical observation
+			// time. With no negative watermark in the SDK, delayed receipt can
+			// conservatively require a current query; later lookups cannot advance
+			// the fence.
 			entry.evaluated = finiteQuerySpan(job.query).end
 			entry.reached = finiteReachedPoint(job.query, landed)
 			entry.bytes += len(entry.rangeToCurrentKey) + 16
