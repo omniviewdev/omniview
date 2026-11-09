@@ -106,6 +106,10 @@ To begin transforming your DevOps experience with Omniview, follow these steps:
 
 This build's UI runs on `@omniviewdev/base-ui` and no longer ships MUI, Emotion or the legacy `@omniviewdev/ui` design system to plugins. Plugins whose UI still imports those packages (older releases from the upstream marketplace) will not load; use plugin releases built against base-ui.
 
+The shared UI cohort uses Base UI `~0.17.0`, AI UI `~6.1.11`, and Editors `~6.2.2`. The runtime's development and peer dependencies must use the same Base UI minor. Plugins using in-flow Card actions, outline StatusDot indicators, or in-picker upload metadata require the matching host cohort; the development/nightly compatibility baseline is `0.32.1`.
+
+Compose card content and independent actions through the shared Card slots. Base UI owns the token-driven frame, rounded selection rail, hover/focus states, density and motion; consumer views must not replace that chrome with local colors or positioning overrides.
+
 For contributors: resource-toolbar controls should consistently request `size="sm"` and rely on the shared density scale rather than fixed pixel heights.
 
 Neutral buttons and labeled selection controls share quiet decorative borders
