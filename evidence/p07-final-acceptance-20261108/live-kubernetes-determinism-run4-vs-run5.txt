@@ -1,0 +1,21 @@
+# diff of key result lines: run4 vs run5 (final harness revision; separate go test processes => separate plugin child processes; same cluster state; Event counts and a few live-churn means can move because the cluster keeps emitting events/status updates)
+7c7
+< ROW Pod            rep=kubernetes.object.v1/v1        type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.8 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+---
+> ROW Pod            rep=kubernetes.object.v1/v1        type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.6 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+66c66
+< ROW Pod[model]     rep=kubernetes.model.v1/v1         type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3041 meanWork=967.4 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+---
+> ROW Pod[model]     rep=kubernetes.model.v1/v1         type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3041 meanWork=967.2 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+153c153
+< PHASE7 first run: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.756 | second run: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 | identical counts=true
+---
+> PHASE7 first run: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 | second run: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 | identical counts=true
+155,157c155,157
+< PHASE7b round 1: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.756 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+< PHASE7b round 2: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.756 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+< PHASE7b round 3: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.756 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+---
+> PHASE7b round 1: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+> PHASE7b round 2: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+> PHASE7b round 3: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2

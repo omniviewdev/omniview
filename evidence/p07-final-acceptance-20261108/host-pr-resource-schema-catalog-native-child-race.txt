@@ -1,0 +1,246 @@
+# github.com/omniviewdev/omniview/backend/pkg/plugin/resource.test
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/go.o) was built for newer 'macOS' version (13.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000027.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000028.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000029.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000030.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000031.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000032.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000033.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000034.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000035.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000036.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000037.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000038.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000039.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000040.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000041.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000042.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000043.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+ld: warning: object file (/private/var/folders/vl/d7zsykns7bb1bhgr1qq_yysm0000gn/T/go-link-1105629846/000044.o) was built for newer 'macOS' version (27.0) than being linked (11.0)
+=== RUN   TestAuthorityCatalogMembershipChangesPreserveActiveCohort
+--- PASS: TestAuthorityCatalogMembershipChangesPreserveActiveCohort (0.02s)
+=== RUN   TestRepeatedStartPreservesCatalogObservation
+--- PASS: TestRepeatedStartPreservesCatalogObservation (0.01s)
+=== RUN   TestCatalogBindingConnectPreservesConfiguredInventory
+--- PASS: TestCatalogBindingConnectPreservesConfiguredInventory (0.02s)
+=== RUN   TestCatalogBindingMetadataChurnPreservesAuthority
+--- PASS: TestCatalogBindingMetadataChurnPreservesAuthority (0.01s)
+=== RUN   TestCatalogBindingAppliedBeforeGetRejectsOldAuthority
+--- PASS: TestCatalogBindingAppliedBeforeGetRejectsOldAuthority (0.01s)
+=== RUN   TestCatalogBindingBlockedOldCatalogCannotRevertNewBinding
+--- PASS: TestCatalogBindingBlockedOldCatalogCannotRevertNewBinding (0.01s)
+=== RUN   TestCatalogBindingUniqueReturnAndRetiredEpochRejection
+--- PASS: TestCatalogBindingUniqueReturnAndRetiredEpochRejection (0.02s)
+=== RUN   TestCatalogBindingInvalidRevisionFailsClosed
+=== RUN   TestCatalogBindingInvalidRevisionFailsClosed/revision=""
+=== RUN   TestCatalogBindingInvalidRevisionFailsClosed/revision="native-revision"
+=== RUN   TestCatalogBindingInvalidRevisionFailsClosed/revision="ovc1.invalid.invalid"
+--- PASS: TestCatalogBindingInvalidRevisionFailsClosed (0.00s)
+    --- PASS: TestCatalogBindingInvalidRevisionFailsClosed/revision="" (0.00s)
+    --- PASS: TestCatalogBindingInvalidRevisionFailsClosed/revision="native-revision" (0.00s)
+    --- PASS: TestCatalogBindingInvalidRevisionFailsClosed/revision="ovc1.invalid.invalid" (0.00s)
+=== RUN   TestCatalogBindingRetiredProofLimitNeverEvicts
+--- PASS: TestCatalogBindingRetiredProofLimitNeverEvicts (0.06s)
+=== RUN   TestCatalogBindingExplicitAdmissionEpochRejectsLateObservation
+--- PASS: TestCatalogBindingExplicitAdmissionEpochRejectsLateObservation (0.02s)
+=== RUN   TestCatalogBindingChangingSourceRejectsObservation
+--- PASS: TestCatalogBindingChangingSourceRejectsObservation (0.00s)
+=== RUN   TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities
+=== RUN   TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities/unknown
+=== RUN   TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities/connectionLocal
+=== RUN   TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities/stableNative
+--- PASS: TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities (0.05s)
+    --- PASS: TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities/unknown (0.01s)
+    --- PASS: TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities/connectionLocal (0.02s)
+    --- PASS: TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities/stableNative (0.02s)
+=== RUN   TestCapturedRouteCatalogEpochFencesAuthorityPersistence
+--- PASS: TestCapturedRouteCatalogEpochFencesAuthorityPersistence (0.02s)
+=== RUN   TestResolveReferenceStaleCatalogCannotPolluteNewRouteAuthority
+--- PASS: TestResolveReferenceStaleCatalogCannotPolluteNewRouteAuthority (0.02s)
+=== RUN   TestProfileChangeBlocksNewReadsAndRetiresInFlightGetAndCatalog
+--- PASS: TestProfileChangeBlocksNewReadsAndRetiresInFlightGetAndCatalog (0.05s)
+=== RUN   TestGetActions_PinsMetadataCatalogWithoutGetCapability
+--- PASS: TestGetActions_PinsMetadataCatalogWithoutGetCapability (0.01s)
+=== RUN   TestStreamAction_ProducerRetainsAdmittedCatalogRevision
+--- PASS: TestStreamAction_ProducerRetainsAdmittedCatalogRevision (0.02s)
+=== RUN   TestGetActions_DoesNotRepairStaleCatalogAdmission
+--- PASS: TestGetActions_DoesNotRepairStaleCatalogAdmission (0.02s)
+=== RUN   TestCatalog_PluginNotFound
+--- PASS: TestCatalog_PluginNotFound (0.00s)
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/remove-profile
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/reset-profile
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/load
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/start
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/stop
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/check
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/scope
+=== RUN   TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/save-profile
+--- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/remove-profile (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/reset-profile (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/load (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/start (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/stop (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/check (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/scope (0.00s)
+    --- PASS: TestCatalogOnlyConnectionOperationsAreExplicitlyUnsupported/save-profile (0.00s)
+=== RUN   TestFiniteGet_RevalidatesCurrentCatalog
+--- PASS: TestFiniteGet_RevalidatesCurrentCatalog (0.02s)
+=== RUN   TestGetEditorSchemasDerivesAssociationsFromCatalog
+--- PASS: TestGetEditorSchemasDerivesAssociationsFromCatalog (0.01s)
+=== RUN   TestGetEditorSchemasIsolatesConnections
+--- PASS: TestGetEditorSchemasIsolatesConnections (0.01s)
+=== RUN   TestSchemaSnapshotRejectsRetiredEpochWithoutReplacingCurrent
+--- PASS: TestSchemaSnapshotRejectsRetiredEpochWithoutReplacingCurrent (0.00s)
+=== RUN   TestGetEditorSchemasAuxiliarySchemas
+--- PASS: TestGetEditorSchemasAuxiliarySchemas (0.00s)
+=== RUN   TestGetEditorSchemasAuxiliaryFailureKeepsCatalogAssociations
+--- PASS: TestGetEditorSchemasAuxiliaryFailureKeepsCatalogAssociations (0.00s)
+=== RUN   TestGetEditorSchemasAuxiliaryCancellationAborts
+--- PASS: TestGetEditorSchemasAuxiliaryCancellationAborts (0.00s)
+=== RUN   TestGetEditorSchemasReferenceFetchCancellationAborts
+--- PASS: TestGetEditorSchemasReferenceFetchCancellationAborts (0.00s)
+=== RUN   TestGetEditorSchemas_PluginNotFound
+--- PASS: TestGetEditorSchemas_PluginNotFound (0.00s)
+=== RUN   TestGetEditorSchemasRejectsRetiredGenerationResult
+--- PASS: TestGetEditorSchemasRejectsRetiredGenerationResult (0.00s)
+=== RUN   TestGetSchemaFieldsNavigatesCatalogSchema
+--- PASS: TestGetSchemaFieldsNavigatesCatalogSchema (0.00s)
+=== RUN   TestGetSchemaFieldsReportsSchemaStates
+--- PASS: TestGetSchemaFieldsReportsSchemaStates (0.00s)
+=== RUN   TestGetSchemaFieldsReturnsTransientFetchErrors
+--- PASS: TestGetSchemaFieldsReturnsTransientFetchErrors (0.00s)
+=== RUN   TestOnPluginStart_CatalogOnlyDoesNotRequireUpdateListener
+--- PASS: TestOnPluginStart_CatalogOnlyDoesNotRequireUpdateListener (0.00s)
+=== RUN   TestCatalog_ResourceMetadataAndCapabilities
+--- PASS: TestCatalog_ResourceMetadataAndCapabilities (0.00s)
+=== RUN   TestCatalog_ProviderError
+--- PASS: TestCatalog_ProviderError (0.00s)
+=== RUN   TestPresentation_SchemaDocument
+--- PASS: TestPresentation_SchemaDocument (0.00s)
+=== RUN   TestPresentation_SchemaDocumentRejectsUnreferencedReference
+--- PASS: TestPresentation_SchemaDocumentRejectsUnreferencedReference (0.00s)
+=== RUN   TestL3_05_CatalogOnlyProviderViaGRPC
+--- PASS: TestL3_05_CatalogOnlyProviderViaGRPC (0.00s)
+=== RUN   TestGRPCGetRequiresAcceptedCatalogPin
+--- PASS: TestGRPCGetRequiresAcceptedCatalogPin (0.00s)
+=== RUN   TestActualSDKChildHostFiniteBoundary
+=== RUN   TestActualSDKChildHostFiniteBoundary/read-only
+2026-11-08T22:07:51.707-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture", "-test.run=^TestCurrentSDKChild$"]
+2026-11-08T22:07:51.710-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture pid=94777
+2026-11-08T22:07:51.710-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture
+2026-11-08T22:07:51.968-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:51.968-0600 [DEBUG] plugin.source-session-fixture: plugin address: address=/tmp/p45-native-62896455/plugin164088073 network=unix timestamp=2026-11-08T22:07:51.968-0600
+2026-11-08T22:07:51.970-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:52.006-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:52.006-0600 [ERROR] p45-native-verification.runtime: rpc call completed with error: timestamp=2026-11-08T22:07:52.006005-06:00 plugin_id=p45-native-verification method=/omniview.resource.v2.ResourceProvider/Call duration=8.5775ms grpc_code=Canceled error="rpc error: code = Canceled desc = resource call cancelled"
+2026-11-08T22:07:52.022-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:52.022-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:52.022861-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=52.607917ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:52.022-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:52.023-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture id=94777
+2026-11-08T22:07:52.023-0600 [DEBUG] plugin: plugin exited
+=== RUN   TestActualSDKChildHostFiniteBoundary/get-only
+2026-11-08T22:07:52.025-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture", "-test.run=^TestCurrentSDKChild$"]
+2026-11-08T22:07:52.028-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture pid=94779
+2026-11-08T22:07:52.029-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture
+2026-11-08T22:07:52.036-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:52.036-0600 [DEBUG] plugin.source-session-fixture: plugin address: address=/tmp/p45-native-1217014793/plugin3373309291 network=unix timestamp=2026-11-08T22:07:52.036-0600
+2026-11-08T22:07:52.037-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:52.055-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:52.055-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:52.055949-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=18.636458ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:52.056-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:52.056-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture id=94779
+2026-11-08T22:07:52.056-0600 [DEBUG] plugin: plugin exited
+=== RUN   TestActualSDKChildHostFiniteBoundary/native-query-only
+2026-11-08T22:07:52.058-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture", "-test.run=^TestCurrentSDKChild$"]
+2026-11-08T22:07:52.061-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture pid=94780
+2026-11-08T22:07:52.061-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture
+2026-11-08T22:07:52.068-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:52.069-0600 [DEBUG] plugin.source-session-fixture: plugin address: network=unix address=/tmp/p45-native-2432924758/plugin3260262300 timestamp=2026-11-08T22:07:52.068-0600
+2026-11-08T22:07:52.069-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:52.088-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:52.088-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:52.088817-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=18.671333ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:52.088-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:52.089-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture id=94780
+2026-11-08T22:07:52.089-0600 [DEBUG] plugin: plugin exited
+=== RUN   TestActualSDKChildHostFiniteBoundary/catalog-only
+2026-11-08T22:07:52.091-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture", "-test.run=^TestCurrentSDKChild$"]
+2026-11-08T22:07:52.094-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture pid=94781
+2026-11-08T22:07:52.094-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture
+2026-11-08T22:07:52.101-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:52.101-0600 [DEBUG] plugin.source-session-fixture: plugin address: address=/tmp/p45-native-3375474805/plugin1173982677 network=unix timestamp=2026-11-08T22:07:52.101-0600
+2026-11-08T22:07:52.102-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:52.116-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:52.116-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:52.116389-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=13.822875ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:52.116-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:52.117-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostFiniteBoundary3828346095/001/source-session-fixture id=94781
+2026-11-08T22:07:52.117-0600 [DEBUG] plugin: plugin exited
+--- PASS: TestActualSDKChildHostFiniteBoundary (1.90s)
+    --- PASS: TestActualSDKChildHostFiniteBoundary/read-only (0.32s)
+    --- PASS: TestActualSDKChildHostFiniteBoundary/get-only (0.03s)
+    --- PASS: TestActualSDKChildHostFiniteBoundary/native-query-only (0.03s)
+    --- PASS: TestActualSDKChildHostFiniteBoundary/catalog-only (0.03s)
+=== RUN   TestActualSDKChildHostCatalogGenerationFence
+=== RUN   TestActualSDKChildHostCatalogGenerationFence/restore-A=false
+2026-11-08T22:07:52.740-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture", "-test.run=^TestGenerationChild$"]
+2026-11-08T22:07:52.743-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture pid=94851
+2026-11-08T22:07:52.743-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture
+2026-11-08T22:07:52.956-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:52.956-0600 [DEBUG] plugin.source-session-fixture: plugin address: address=/tmp/p45-native-3108126244/plugin1724086255 network=unix timestamp=2026-11-08T22:07:52.956-0600
+2026-11-08T22:07:52.957-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:52.992-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:52.992-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:52.992777-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=35.249834ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:52.992-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:52.993-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture id=94851
+2026-11-08T22:07:52.993-0600 [DEBUG] plugin: plugin exited
+=== RUN   TestActualSDKChildHostCatalogGenerationFence/restore-A=true
+2026-11-08T22:07:52.995-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture", "-test.run=^TestGenerationChild$"]
+2026-11-08T22:07:52.998-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture pid=94857
+2026-11-08T22:07:52.998-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture
+2026-11-08T22:07:53.005-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:53.005-0600 [DEBUG] plugin.source-session-fixture: plugin address: address=/tmp/p45-native-4190740949/plugin3554072071 network=unix timestamp=2026-11-08T22:07:53.005-0600
+2026-11-08T22:07:53.006-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:53.049-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.049-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:53.049549-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=42.934083ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:53.049-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:53.050-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildHostCatalogGenerationFence3886563778/001/source-session-fixture id=94857
+2026-11-08T22:07:53.050-0600 [DEBUG] plugin: plugin exited
+--- PASS: TestActualSDKChildHostCatalogGenerationFence (0.93s)
+    --- PASS: TestActualSDKChildHostCatalogGenerationFence/restore-A=false (0.26s)
+    --- PASS: TestActualSDKChildHostCatalogGenerationFence/restore-A=true (0.06s)
+=== RUN   TestActualSDKChildSchemaCatalog
+2026-11-08T22:07:53.722-0600 [DEBUG] plugin: starting plugin: path=/tmp/p07-acc/tmp/TestActualSDKChildSchemaCatalog2152455183/001/source-session-fixture args=["/tmp/p07-acc/tmp/TestActualSDKChildSchemaCatalog2152455183/001/source-session-fixture", "-test.run=^TestCurrentSDKChild$"]
+2026-11-08T22:07:53.724-0600 [DEBUG] plugin: plugin started: path=/tmp/p07-acc/tmp/TestActualSDKChildSchemaCatalog2152455183/001/source-session-fixture pid=94876
+2026-11-08T22:07:53.724-0600 [DEBUG] plugin: waiting for RPC address: plugin=/tmp/p07-acc/tmp/TestActualSDKChildSchemaCatalog2152455183/001/source-session-fixture
+2026-11-08T22:07:53.933-0600 [DEBUG] plugin: using plugin: version=1
+2026-11-08T22:07:53.933-0600 [DEBUG] plugin.source-session-fixture: plugin address: network=unix address=/tmp/p45-native-2617974211/plugin837931562 timestamp=2026-11-08T22:07:53.933-0600
+2026-11-08T22:07:53.934-0600 [TRACE] plugin.stdio: waiting for stdio data
+2026-11-08T22:07:53.940-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.940-0600 [ERROR] p45-native-verification.runtime: rpc call completed with error: timestamp=2026-11-08T22:07:53.94022-06:00 plugin_id=p45-native-verification method=/omniview.resource.v2.ResourceAncillary/Call duration="132µs" grpc_code=Unimplemented error="rpc error: code = Unimplemented desc = resource operation failed"
+2026-11-08T22:07:53.948-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.948-0600 [ERROR] p45-native-verification.runtime: rpc call completed with error: timestamp=2026-11-08T22:07:53.948113-06:00 plugin_id=p45-native-verification method=/omniview.resource.v2.ResourceAncillary/Call duration="8.583µs" grpc_code=Unimplemented error="rpc error: code = Unimplemented desc = resource operation failed"
+2026-11-08T22:07:53.950-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.950-0600 [ERROR] p45-native-verification.runtime: rpc call completed with error: timestamp=2026-11-08T22:07:53.950634-06:00 plugin_id=p45-native-verification method=/omniview.resource.v2.ResourceAncillary/Call duration="9.875µs" grpc_code=Unimplemented error="rpc error: code = Unimplemented desc = resource operation failed"
+2026-11-08T22:07:53.953-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.953-0600 [ERROR] p45-native-verification.runtime: rpc call completed with error: timestamp=2026-11-08T22:07:53.953233-06:00 plugin_id=p45-native-verification method=/omniview.resource.v2.ResourceAncillary/Call duration="8.833µs" grpc_code=Unimplemented error="rpc error: code = Unimplemented desc = resource operation failed"
+2026-11-08T22:07:53.954-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.954-0600 [ERROR] p45-native-verification.runtime: rpc call completed with error: timestamp=2026-11-08T22:07:53.954543-06:00 plugin_id=p45-native-verification method=/omniview.resource.v2.ResourceAncillary/Call duration="7.5µs" grpc_code=Unimplemented error="rpc error: code = Unimplemented desc = resource operation failed"
+2026-11-08T22:07:53.980-0600 [DEBUG] plugin.source-session-fixture: 2026-11-08T22:07:53.980-0600 [ERROR] p45-native-verification.runtime: stream closed with error: timestamp=2026-11-08T22:07:53.980223-06:00 plugin_id=p45-native-verification method=/plugin.GRPCBroker/StartStream duration=45.680042ms grpc_code=Canceled error="rpc error: code = Canceled desc = context canceled"
+2026-11-08T22:07:53.980-0600 [DEBUG] plugin.stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = connection error: desc = \"error reading from server: EOF\""
+2026-11-08T22:07:53.981-0600 [INFO]  plugin: plugin process exited: plugin=/tmp/p07-acc/tmp/TestActualSDKChildSchemaCatalog2152455183/001/source-session-fixture id=94876
+2026-11-08T22:07:53.981-0600 [DEBUG] plugin: plugin exited
+--- PASS: TestActualSDKChildSchemaCatalog (0.93s)
+=== RUN   TestExpectedCatalogPinNotOverwrittenByActualHostAdmission
+--- PASS: TestExpectedCatalogPinNotOverwrittenByActualHostAdmission (0.01s)
+=== RUN   TestObservedProjectionUsesSchemaCacheWithoutResourceGet
+--- PASS: TestObservedProjectionUsesSchemaCacheWithoutResourceGet (0.01s)
+=== RUN   TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations
+=== RUN   TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations/http://json-schema.org/draft-07/schema#
+=== RUN   TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations/https://json-schema.org/draft/2020-12/schema
+--- PASS: TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations (0.00s)
+    --- PASS: TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations/http://json-schema.org/draft-07/schema# (0.00s)
+    --- PASS: TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations/https://json-schema.org/draft/2020-12/schema (0.00s)
+=== RUN   TestAdmitReferenceBoundsAcceptedCatalogRevision
+--- PASS: TestAdmitReferenceBoundsAcceptedCatalogRevision (0.01s)
+=== RUN   TestRelationshipBootstrapPinsOneCompleteCatalog
+--- PASS: TestRelationshipBootstrapPinsOneCompleteCatalog (0.01s)
+=== RUN   TestEditorAssociationIdentityIsScopedAndRevisionStable
+--- PASS: TestEditorAssociationIdentityIsScopedAndRevisionStable (0.00s)
+=== RUN   TestSourceCatalogAdmittedOncePerGeneration
+--- PASS: TestSourceCatalogAdmittedOncePerGeneration (0.01s)
+=== RUN   TestSourceCatalogRevisionOnReopenAndRefresh
+--- PASS: TestSourceCatalogRevisionOnReopenAndRefresh (0.01s)
+=== RUN   TestSourceViewChangesShareLargeSchemaScratch
+--- PASS: TestSourceViewChangesShareLargeSchemaScratch (0.05s)
+PASS
+ok  	github.com/omniviewdev/omniview/backend/pkg/plugin/resource	5.738s

@@ -1,0 +1,53 @@
+$ GOWORK=off go test -count=1 -v -run 'TestSchemaBindingJSONRejectsRemovedValidationClaims|TestEditorSchemaKeyLanguageAndDuplicateRules|TestEditorSchemaKeyCrossesProtoAdapters|TestCoveragePathsAreLimitedSubtreePointers|TestSchemaDocumentBindingAndLocalRoot|TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields' github.com/omniviewdev/plugin-sdk/pkg/resource/v2
+=== RUN   TestEditorSchemaKeyCrossesProtoAdapters
+--- PASS: TestEditorSchemaKeyCrossesProtoAdapters (0.00s)
+=== RUN   TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields
+=== RUN   TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields/above_field_count
+=== RUN   TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields/document_boundary
+=== RUN   TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields/above_document_boundary
+--- PASS: TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields (0.24s)
+    --- PASS: TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields/above_field_count (0.01s)
+    --- PASS: TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields/document_boundary (0.15s)
+    --- PASS: TestSchemaDocumentByteBudgetDoesNotCountBytesAsFields/above_document_boundary (0.08s)
+=== RUN   TestSchemaDocumentBindingAndLocalRoot
+--- PASS: TestSchemaDocumentBindingAndLocalRoot (0.00s)
+=== RUN   TestEditorSchemaKeyLanguageAndDuplicateRules
+--- PASS: TestEditorSchemaKeyLanguageAndDuplicateRules (0.00s)
+=== RUN   TestSchemaBindingJSONRejectsRemovedValidationClaims
+--- PASS: TestSchemaBindingJSONRejectsRemovedValidationClaims (0.00s)
+=== RUN   TestCoveragePathsAreLimitedSubtreePointers
+--- PASS: TestCoveragePathsAreLimitedSubtreePointers (0.00s)
+PASS
+ok  	github.com/omniviewdev/plugin-sdk/pkg/resource/v2	0.508s
+
+$ GOWORK=off go test -count=1 -v -run 'TestActualRPCServerRejectsDuplicateAuxiliaryEditorSchemas|TestActualRPCClientRejectsDuplicateAuxiliaryEditorSchemas|TestActualRPCSchemaUnavailableReasonRetainsNativeSchemas|TestActualGRPCCanonicalAncillaryWorkflows|TestSchemaUnavailableReasonStrictAdmissionBeforeDecode' github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin
+=== RUN   TestActualGRPCCanonicalAncillaryWorkflows
+--- PASS: TestActualGRPCCanonicalAncillaryWorkflows (0.00s)
+=== RUN   TestActualRPCSchemaUnavailableReasonRetainsNativeSchemas
+--- PASS: TestActualRPCSchemaUnavailableReasonRetainsNativeSchemas (0.00s)
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/available/FORBIDDEN
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/absent/FORBIDDEN
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/forbidden
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/FORBIDDEN_secret
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/https://credential.invalid
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/UNREVIEWED_CODE
+=== RUN   TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/FORBIDDEN_é
+--- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/available/FORBIDDEN (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/absent/FORBIDDEN (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/ (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/forbidden (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/FORBIDDEN_secret (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/https://credential.invalid (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/UNREVIEWED_CODE (0.00s)
+    --- PASS: TestSchemaUnavailableReasonStrictAdmissionBeforeDecode/unavailable/FORBIDDEN_é (0.00s)
+=== RUN   TestActualRPCServerRejectsDuplicateAuxiliaryEditorSchemas
+--- PASS: TestActualRPCServerRejectsDuplicateAuxiliaryEditorSchemas (0.00s)
+=== RUN   TestActualRPCClientRejectsDuplicateAuxiliaryEditorSchemas
+--- PASS: TestActualRPCClientRejectsDuplicateAuxiliaryEditorSchemas (0.00s)
+PASS
+ok  	github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin	0.329s

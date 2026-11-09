@@ -1,0 +1,212 @@
+# versions
+date: 2026-11-09T03:54:40Z
+host base commit: 38867c35b819f2283900ce54109c86d5bb028c59 (origin/main per assignment; clone of /private/tmp/omniview-p07 detached at that SHA)
+plugin pin: 77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c (host gitlink plugins/kubernetes)
+host go.mod SDK: github.com/omniviewdev/plugin-sdk v0.18.0 (host harness test binary reports v0.18.0)
+plugin go.mod SDK: github.com/omniviewdev/plugin-sdk v0.16.0 (embedded in plugin binary: v0.16.0)
+
+kind: kind v0.30.0 go1.25.0 darwin/arm64
+kindest/node image: kindest/node:v1.35.0 id=4613778f3cfc digest=sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661
+node container: p07-acceptance-control-plane kindest/node:v1.35.0 Up 13 minutes
+kubectl client: Client Version: v1.33.0
+docker: client=29.9.2 server=29.9.2
+go (host harness build): go version go1.27.0 darwin/arm64
+go (plugin build): go version go1.26.1 darwin/arm64 GOEXPERIMENT=jsonv2
+plugin binary: sha256=dac430ac3582cfa0adb6d3d73f7e3857b25d4f1d8255e7dee11f67cff08c6bc6 (/tmp/p07-acc/live/bin/plugin: go1.26.1-X:jsonv2)
+macOS: 27.0.1 arch=arm64
+plugin build command: cd k8s-plugin && GOWORK=off GOFLAGS= GOEXPERIMENT=jsonv2 GOTMPDIR=/tmp/p07-acc/live/tmp go build -o /tmp/p07-acc/live/bin/plugin ./pkg   (Makefile build target: GOEXPERIMENT=jsonv2 go build -o bin/plugin ./pkg)
+harness run command: cd host && P07_PLUGIN_BINARY=... P07_PLUGIN_YAML=... P07_KUBECONFIG=... P07_WORK=... P07_REPORT=... GOWORK=off GOTMPDIR=/tmp/p07-acc/live/tmp go test ./backend/pkg/plugin/resource/ -run '^TestP07LiveKubernetesAcceptance$' -count=1 -v -timeout 45m
+
+# runs
+# runs 1-3 used earlier revisions of the harness; runs 4-5 used the final revision stored in live-harness-source.go.txt
+# run1: 81 pods (before exotic pods); run2-5: 90 pods
+
+# plugin source quotes and build provenance
+### host base (clone /tmp/p07-acc/live/host, detached)
+38867c35b819f2283900ce54109c86d5bb028c59
+160000 commit 77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c	plugins/kubernetes
+20:	github.com/omniviewdev/plugin-sdk v0.18.0
+
+### plugin pin (clone /tmp/p07-acc/live/k8s-plugin, detached)
+77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c
+77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c 2026-11-06 19:08:42 -0600 fix: finalize metrics provider release and safety checks
+
+### plugin go.mod SDK + replace
+3:go 1.25.0
+13:	github.com/omniviewdev/plugin-sdk v0.16.0
+184:replace google.golang.org/grpc => github.com/omniviewdev/grpc-go v1.79.3-0.20261103012409-4c6f1d1c4e10
+
+### plugin Makefile build target
+.PHONY: build build-ui update lint install package storybook storybook-build
+
+# Every Go subprocess uses this module, never an enclosing go.work or GOFLAGS.
+override export GOWORK := off
+override export GOFLAGS :=
+export OMNIVIEW_DEV_CLI
+STORYBOOK_PORT ?= 6006
+STORYBOOK_HOST ?= 127.0.0.1
+
+# Extract version from git tag
+VERSION := $(shell git describe --tags --abbrev=0 | sed 's/^v//')
+PLATFORMS := linux/amd64 windows/amd64 darwin/amd64 darwin/arm64
+
+build:
+	rm -rf bin && rm -f kubernetes.tar.gz
+	mkdir bin && GOEXPERIMENT=jsonv2 go build -o bin/plugin ./pkg
+	cd ui && pnpm run build
+
+build-ui:
+	cd ui && pnpm run build
+
+### plugin binary build info
+bin/plugin: go1.26.1-X:jsonv2
+	dep	github.com/hashicorp/go-plugin	v1.7.0	h1:YghfQH/0QmPNc/AZMTFE3ac8fipZyZECHdDPshfk+mA=
+	dep	github.com/omniviewdev/plugin-sdk	v0.16.0	h1:q3jMU47l+0APFGpEdbJ4d5NmAnwaloV+siwiu3G4OOU=
+	build	GOEXPERIMENT=jsonv2
+	build	vcs=git
+	build	vcs.revision=77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c
+	build	vcs.time=2026-11-07T01:08:42Z
+	build	vcs.modified=false
+dac430ac3582cfa0adb6d3d73f7e3857b25d4f1d8255e7dee11f67cff08c6bc6  bin/plugin
+
+### native_schema.go:305-307 (correctNativeTimeSchemas doc) and :373-390 (Time/MicroTime correction)
+      1	// correctNativeTimeSchemas changes only the two Kubernetes time components.
+      2	// The input remains untouched, and unchanged documents retain their exact bytes.
+      3	func correctNativeTimeSchemas(data []byte) ([]byte, error) {
+      4				if (level == 0 && name == "components") || (level == 1 && name == "schemas") {
+      5					if err := walk(i, level+1); err != nil {
+      6						return err
+      7					}
+      8				} else if level == 2 && (name == "io.k8s.apimachinery.pkg.apis.meta.v1.Time" || name == "io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime") {
+      9					var fields map[string]json.RawMessage
+     10					if err := json.Unmarshal(data[i:end], &fields); err != nil || fields == nil {
+     11						return fmt.Errorf("invalid native OpenAPI component %q: expected object", name)
+     12					}
+     13					if !bytes.Equal(bytes.TrimSpace(fields["nullable"]), []byte("true")) {
+     14						fields["nullable"] = json.RawMessage("true")
+     15						corrected, err := json.Marshal(fields)
+     16						if err != nil {
+     17							return fmt.Errorf("invalid native OpenAPI component %q: %w", name, err)
+     18						}
+     19						replacements = append(replacements, replacement{start: i, end: end, body: corrected})
+     20					}
+     21				}
+
+### native_schema.go:245 (correction applied before digest/revision) and :252-253
+		data, err = correctNativeTimeSchemas(data)
+		if err != nil {
+			for _, token := range tokens {
+				failures[token] = err
+			}
+			continue
+		}
+		digest := sha256.Sum256(data)
+		revision := hex.EncodeToString(digest[:])
+			result[token] = nativeSchemaDocument{Document: data, Root: root, Revision: revision}
+
+### native_catalog_assembly.go:28-36 (binding)
+			key := nativeSchemaKey(token, binding.GVR, served.GVR)
+			if document, ok := schemas[key]; ok {
+				ref := resourcev2.SchemaDocumentReference{ID: "kubernetes.openapi.v3/" + gv, Revision: document.Revision}
+				revision := document.Revision
+				representation.Schema = resourcev2.SchemaBinding{
+					State: "available", Revision: &revision, Dialect: resourcev2.DialectOpenAPI30, Root: document.Root,
+					DocumentRef: &ref,
+				}
+				documents[ref] = resourcev2.SchemaDocument{Reference: ref, Dialect: resourcev2.DialectOpenAPI30, Document: document.Document}
+
+### native_read.go:356-390 (model projection + partial coverage Paths)
+	// Copy only the two maps changed by projection, never the resource body.
+	bodyObject := object.Object
+	if strings.HasPrefix(representation.ID, nativeModelRepresentationVersion+"/") {
+		if metadata, ok := bodyObject["metadata"].(map[string]any); ok {
+			if _, present := metadata["managedFields"]; present {
+				bodyObject = maps.Clone(bodyObject)
+				projectedMetadata := maps.Clone(metadata)
+				delete(projectedMetadata, "managedFields")
+				bodyObject["metadata"] = projectedMetadata
+			}
+		}
+	}
+	body, err := resourcev2.ValueFromNative(bodyObject)
+	if err != nil {
+		return resourcev2.Record{}, err
+	}
+	return resourcev2.Record{
+		Reference:      resourcev2.ResourceReference{Address: address, Incarnation: nativeOptionalToken(string(object.GetUID()))},
+		Body:           body,
+		Representation: representation,
+		Coverage:       nativeRepresentationCoverage(representation),
+		SourceRevision: nativeOptionalToken(object.GetResourceVersion()),
+	}, nil
+}
+
+func nativeRepresentationCoverage(representation resourcev2.Representation) resourcev2.Coverage {
+	if strings.HasPrefix(representation.ID, nativeModelRepresentationVersion+"/") {
+		return resourcev2.Coverage{Kind: "partial", Paths: []string{"/metadata/managedFields"}, Reason: "Kubernetes model projection omits metadata.managedFields"}
+	}
+	return nativeCompleteCoverage()
+}
+
+func nativeCompleteCoverage() resourcev2.Coverage {
+	return resourcev2.Coverage{Kind: "complete", Paths: []string{}}
+}
+
+### constants
+k8s-plugin/pkg/plugin/resource/native_provider.go:17:const nativeRepresentationVersion = "kubernetes.object.v1"
+k8s-plugin/pkg/plugin/resource/native_read.go:26:	nativeModelRepresentationVersion = "kubernetes.model.v1"
+
+# disposable cluster commands
+# Exact commands used to build the disposable cluster (K = kubectl --kubeconfig /tmp/p07-acc/live/kubeconfig --context kind-p07-acceptance)
+KUBECONFIG=/tmp/p07-acc/live/kubeconfig kind create cluster --name p07-acceptance --image kindest/node:v1.35.0 --kubeconfig /tmp/p07-acc/live/kubeconfig --wait 300s
+  # (kind create was killed by my own 600 s tool timeout while the node was still becoming Ready; cluster container kept running)
+kind export kubeconfig --name p07-acceptance --kubeconfig /tmp/p07-acc/live/kubeconfig
+$K apply -f manifests/00-base.yaml ; $K apply -f manifests/10-web.yaml ; $K apply -f manifests/20-data-batch.yaml ; $K apply -f manifests/30-ops-edge.yaml
+  # first apply of 10-web.yaml rejected one Deployment (YAML bool `true` as exec command); fixed to "true" and re-applied
+$K patch cronjob nightly-report -n p07-batch -p '{"spec":{"suspend":true}}'          # after 2 scheduled runs
+$K create job --from=cronjob/nightly-report manual-report -n p07-batch
+$K debug debug-target -n p07-ops --image=busybox:1.37 --target=app -c debugger -- sleep 1000000     # ephemeral container
+$K delete pod terminating-pod -n p07-ops --grace-period=7200 --wait=false                              # stays Terminating
+$K rollout restart deployment/api-backend -n p07-web                                                    # extra ReplicaSet revision
+$K patch configmap web-env -n p07-web --type merge -p '{"data":{"EXTRA":"1"}}'
+$K label node p07-acceptance-control-plane p07/lab=acceptance --overwrite
+$K annotate node p07-acceptance-control-plane p07/note=live-acceptance --overwrite
+$K label deployment web-frontend -n p07-web p07/labelled=true --overwrite
+$K apply --server-side --field-manager=p07-ssa --force-conflicts -f - <<< Deployment ssa-demo (2 replicas, p07-edge)
+$K apply -f - <<< Namespace p07-doomed + ConfigMap hold with finalizer p07/hold ; $K delete namespace p07-doomed --wait=false   # Terminating namespace
+$K apply -f manifests/40-exotic.yaml ; $K annotate pod exotic-volumes -n p07-ops p07/big="<65536 x characters>"
+
+# kind create (output as captured; the create call itself was interrupted by a tool timeout while the node became Ready)
+Creating cluster "p07-acceptance" ...
+ • Ensuring node image (kindest/node:v1.35.0) 🖼  ...
+ ✓ Ensuring node image (kindest/node:v1.35.0) 🖼
+ • Preparing nodes 📦   ...
+ ✓ Preparing nodes 📦 
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Installing StorageClass 💾  ...
+ ✓ Installing StorageClass 💾
+ • Waiting ≤ 5m0s for control-plane = Ready ⏳  ...
+
+# cluster cleanup
+# 2026-11-09T03:57:57Z kind get clusters (before delete)
+kind
+p07-acceptance
+
+# kind delete cluster --name p07-acceptance --kubeconfig /tmp/p07-acc/live/kubeconfig
+Deleting cluster "p07-acceptance" ...
+Deleted nodes: ["p07-acceptance-control-plane"]
+exit=0
+
+# kind get clusters (after delete)
+kind
+
+# docker ps -a filter p07
+(end)
+
+# other kind node containers still present (names only)
+      1 kind

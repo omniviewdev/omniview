@@ -1,0 +1,86 @@
+# e2e harness: toolchain actually used
+== versions actually used (PATH from /tmp/p07-acc/e2e/env.sh)
+node: v26.13.0 at /tmp/p07-acc/e2e/node/node-v26.13.0-darwin-arm64/bin/node
+node tarball: node-v26.13.0-darwin-arm64.tar.gz from https://nodejs.org/dist/v26.13.0/, sha256 verified against SHASUMS256.txt from the same site: node-v26.13.0-darwin-arm64.tar.gz: OK
+  SHASUMS256.txt line: d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6  node-v26.13.0-darwin-arm64.tar.gz
+pnpm: 12.14.0 at /opt/homebrew/opt/pnpm/bin/pnpm
+go: go version go1.27.0 darwin/arm64 at ~/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.darwin-arm64/bin/go  (official go1.27.0 distribution Go had already unpacked in ~/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.darwin-arm64, executed read-only)
+homebrew go, GOTOOLCHAIN=local: go version go1.26.1 darwin/arm64  (insufficient: harness phase application-build-once failed with: go: module <cohort>/plugin-sdk requires go >= 1.27.0 (running go 1.26.1); see e2e-cache-only-attempt1-go1.26.1.txt)
+task: 3.45.5
+playwright: 1.64.1
+chromium: Chrome for Testing 156.0.8078.4 (playwright chromium v1248), installed by the harness browser-install phase
+uname: Darwin 27.0.0 arm64
+sw_vers: 27.0.1
+host go.mod: go 1.27.0;	github.com/omniviewdev/plugin-sdk v0.18.0;	github.com/wailsapp/wails/v3 v3.1.0;
+app build flags (from harness output): -tags server,devcontrol,e2eapplication (Wails server mode, binary Omniview-server, browser endpoint)
+
+# node tarball checksum
+node-v26.13.0-darwin-arm64.tar.gz: OK
+
+# SDK source resolved by e2e/scripts/sdk-source.mjs (node e2e/scripts/sdk-source.mjs print)
+da2874ad99673675aa76f175480932fcce6bfe98
+
+# clone used for the run
+== clone
+88a227eb42793b78f7826279997a8bdb69cb9ec9 P07 Acceptance <p07-acceptance@example.invalid> test(e2e): drive the host schema catalog against the real workspace probe
+38867c35b819f2283900ce54109c86d5bb028c59 Joshua Pare <65102852+joshuapare@users.noreply.github.com> feat(extensions): resolve custom resource cells through the extension registry (P26) (#448)
+base: 38867c35b819f2283900ce54109c86d5bb028c59
+branch: p07-e2e
+submodule plugins/kubernetes: 77cf9f58d35dc6e339c64d0efa4ca58ee3bf243c
+plugin-sdk: da2874ad99673675aa76f175480932fcce6bfe98 tag v0.18.0
+
+ e2e/tests/plugins/schema-catalog.spec.ts | 191 +++++++++++++++++++++++++++++++
+ 1 file changed, 191 insertions(+)
+trailers in commit message:
+0
+
+# focused run (canonical)
+meta:
+start 2026-11-09T03:52:53Z
+go version go1.27.0 darwin/arm64
+v26.13.0
+12.14.0
+88a227eb42793b78f7826279997a8bdb69cb9ec9
+end 2026-11-09T03:55:23Z
+exit: exit=0
+--- Playwright output (from 'Running 1 test')
+Running 1 test using 1 worker
+
+[schema-catalog] [{"step":"schema fields","connection":"cloud-bundled-pages","result":{"catalogRevision":"ovc1.CsbkJ5_dm3wGaKthpD9RuraC-0bnOmaiQm7d_zNdhMI.QJciWkLxbBscb2U5dbsTlsL4lpIx4zjTdAvflm9t_G0","type":"compute/instance","representation":"native","schemaState":"absent","overlay":{"Operations":["enumerate","get"],"NativeQueryLanguages":[],"HostEvaluation":"dynamic","HostEvaluationCode":"","Val
+  ✓  1 tests/plugins/schema-catalog.spec.ts:107:3 › Schema catalog › a provider that declares no schema stays absent, dynamic and isolated on every connection (1.2s)
+
+  1 passed (4.6s)
+
+# repeat run
+start 2026-11-09T03:56:20Z
+88a227eb42793b78f7826279997a8bdb69cb9ec9
+end 2026-11-09T03:58:37Z
+exit: exit=0
+Running 1 test using 1 worker
+
+[schema-catalog] [{"step":"schema fields","connection":"cloud-bundled-pages","result":{"catalogRevision":"ovc1.-mSG9BxWD_ess6FmmAM_b8oq-uaNyo7an7eLekr6iHQ.WJhKBSjQvSfPLErOutCiytqxb4yUJSUPE7Maa9XaVxc","type":"compute/instance","representation":"native","schemaState":"absent","overlay":{"Operations":["enumerate","get"],"NativeQueryLanguages":[],"HostEvaluation":"dynamic","HostEvaluationCode":"","Val
+  ✓  1 tests/plugins/schema-catalog.spec.ts:107:3 › Schema catalog › a provider that declares no schema stays absent, dynamic and isolated on every connection (1.1s)
+
+  1 passed (3.7s)
+
+# first attempt of the spec (wrong assumption about the catalog revision; fixed before the runs above)
+start 2026-11-09T03:48:19Z
+go version go1.27.0 darwin/arm64
+v26.13.0
+12.14.0
+end 2026-11-09T03:50:34Z
+exit: exit=1
+555:    Expected: "fixture-v2-1"
+556:    Received: "ovc1.a0BdEMUY4RWbFGnXX5stlMmHTrAZ42BF8-gGzqPy2lk.N4CuePH8W2DNa5xXyHD-ICPLjChE99t52-v4MK7i9i0"
+560:    > 123 |           expect(result.catalogRevision, 'the catalog the host observed came from the real probe process').toBe(catalogRevision);
+569:    test-results/plugins-schema-catalog-Sch-3f1a8-solated-on-every-connection/test-failed-1.png
+582:  1 failed
+585:E2E: Playwright failed or reached its inclusive assertion deadline on the first attempt
+
+# harness attempt with the wrong Go (Homebrew go1.26.1); every earlier phase passed
+go: module /private/tmp/p07-acc/e2e/tmp/omniview-e2e-LBoSKI/build-cohort/collection/workspaces/application-build/plugin-sdk requires go >= 1.27.0 (running go 1.26.1)
+exit status 1
+E2E: /private/tmp/p07-acc/e2e/tmp/omniview-e2e-LBoSKI/build-cohort/cohort-tool failed on its first attempt (1)
+E2E private preparation retained: /private/tmp/p07-acc/e2e/tmp/omniview-e2e-LBoSKI
+exit=1
+end 2026-11-09T03:42:48Z

@@ -1,0 +1,37 @@
+$ pnpm vitest run --reporter=verbose ui/providers/monaco/schemaRegistry.spec.ts ui/providers/monaco/useSchemaRegistration.test.tsx
+
+ RUN  v5.0.5 /private/tmp/omniview-p07
+
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > registers a rendered document once and maps each association to its root 2ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > keeps JSON and YAML registrations separate 0ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > rejects a missing rendered document without replacing existing registration 0ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > rejects an available association without a document ID 0ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > does not invent a schema for non-available associations 0ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > replaces one route without changing another route 0ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > merges plugins and removes only the requested route or plugin 0ms
+ ✓ ui/providers/monaco/schemaRegistry.spec.ts > canonical editor schema registry > batches registrations into one diagnostics update 0ms
+ ✓ ui/providers/monaco/useSchemaRegistration.test.tsx > keeps a connection registered until its last consumer unmounts 11ms
+
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+   Start at  21:38:22
+   Duration  565ms (environment 77%, setup 13%, import 5%, tests 2%, transform 2%, worker 2%)
+
+
+$ (cd packages/omniviewdev-runtime && pnpm vitest run --reporter=verbose src/hooks/resource/useEditorSchemas.test.ts)
+
+ RUN  v5.0.5 /private/tmp/omniview-p07/packages/omniviewdev-runtime
+
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > fetches each unique available document once and skips non-available associations 66ms
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > keeps associations unpublished while a later document is pending or fails 69ms
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > cancels an owned editor-document request when its consumer unmounts 55ms
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > clears schemas while disconnected and reacquires them after reconnecting 113ms
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > derives model paths from the matching catalog or auxiliary association 58ms
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > fetches schema fields under the schema-fields key 55ms
+ ✓ src/hooks/resource/useEditorSchemas.test.ts > reacquires schema fields after readiness generation changes 109ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  21:38:24
+   Duration  1.08s (tests 59%, environment 29%, import 7%, transform 5%)
+

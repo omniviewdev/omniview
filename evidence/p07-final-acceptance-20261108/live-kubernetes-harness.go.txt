@@ -1,0 +1,1183 @@
+package resource
+
+// TEMPORARY P07 (#85) live-acceptance harness. It exists only in the scratch
+// clone /tmp/p07-acc/live/host and is never committed.
+//
+// Real components exercised:
+//   - the Kubernetes plugin binary built from the host gitlink pin, running as
+//     a go-plugin gRPC child process (resource capability, multiplexed broker,
+//     same ClientConfig shape as backend/pkg/plugin/loader.go createBackend);
+//   - the host resource controller (OnPluginInit/OnPluginStart through
+//     plugintypes.NewExternalBackend, StartConnection, Catalog,
+//     GetSchemaFields, GetEditorSchemas, GetEditorSchemaDocument,
+//     GetSchemaDocument, ResolveTarget, Enumerate);
+//   - the host resourcecatalog (Observe/Entry/Resolve/Admit/Navigate);
+//   - a real kind v1.35.0 cluster reached through a kubeconfig in a scratch HOME.
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"regexp"
+	"runtime/debug"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	hclog "github.com/hashicorp/go-hclog"
+	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+	"github.com/stretchr/testify/require"
+)
+
+const (
+	p07PluginID          = "kubernetes"
+	p07MainConn          = "kind-p07-acceptance"
+	p07DocDigestPrefix   = "omniview.schema-doc.v1\x00"
+	p07TimeComponent     = "io.k8s.apimachinery.pkg.apis.meta.v1.Time"
+	p07MicroTimeComponent = "io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime"
+)
+
+type p07Env struct {
+	Binary, PluginYAML, Kubeconfig, Work, Report, Context string
+}
+
+func p07Config(t *testing.T) p07Env {
+	t.Helper()
+	get := func(key string) string {
+		value := os.Getenv(key)
+		require.NotEmpty(t, value, key)
+		return value
+	}
+	return p07Env{
+		Binary: get("P07_PLUGIN_BINARY"), PluginYAML: get("P07_PLUGIN_YAML"), Kubeconfig: get("P07_KUBECONFIG"),
+		Work: get("P07_WORK"), Report: get("P07_REPORT"), Context: p07MainConn,
+	}
+}
+
+type p07Report struct{ out io.Writer }
+
+func (r p07Report) f(format string, args ...any) { fmt.Fprintf(r.out, format+"\n", args...) }
+
+func p07Err(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+	var app *apperror.AppError
+	if errors.As(err, &app) {
+		return fmt.Sprintf("AppError{code=%q type=%q status=%d detail=%q}", app.Code, app.Type, app.Status, app.Detail)
+	}
+	return fmt.Sprintf("%s: %v", resource.ErrorCode(err), err)
+}
+
+func p07Marshal(v any) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buffer.Bytes(), "\n"), nil
+}
+
+func p07Kubectl(t *testing.T, env p07Env, args ...string) string {
+	t.Helper()
+	full := append([]string{"--kubeconfig", env.Kubeconfig, "--context", env.Context}, args...)
+	command := exec.Command("kubectl", full...)
+	command.Env = []string{"PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin", "HOME=" + filepath.Join(env.Work, "kubectl-home")}
+	var output []byte
+	var err error
+	for range 5 {
+		output, err = command.Output()
+		if err == nil {
+			break
+		}
+		time.Sleep(3 * time.Second)
+		command = exec.Command("kubectl", full...)
+		command.Env = []string{"PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin", "HOME=" + filepath.Join(env.Work, "kubectl-home")}
+	}
+	require.NoError(t, err, "kubectl %v", args)
+	return string(output)
+}
+
+// p07StripTimeNullable removes nullable from the two Kubernetes time components
+// of an OpenAPI document and re-encodes it without touching unrelated subtrees.
+func p07StripTimeNullable(document []byte) ([]byte, int, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(document, &top); err != nil {
+		return nil, 0, err
+	}
+	var components map[string]json.RawMessage
+	if err := json.Unmarshal(top["components"], &components); err != nil {
+		return nil, 0, err
+	}
+	var schemas map[string]json.RawMessage
+	if err := json.Unmarshal(components["schemas"], &schemas); err != nil {
+		return nil, 0, err
+	}
+	stripped := 0
+	for _, name := range []string{p07TimeComponent, p07MicroTimeComponent} {
+		raw, ok := schemas[name]
+		if !ok {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, 0, err
+		}
+		if _, present := fields["nullable"]; !present {
+			continue
+		}
+		delete(fields, "nullable")
+		encoded, err := p07Marshal(fields)
+		if err != nil {
+			return nil, 0, err
+		}
+		schemas[name] = encoded
+		stripped++
+	}
+	encodedSchemas, err := p07Marshal(schemas)
+	if err != nil {
+		return nil, 0, err
+	}
+	components["schemas"] = encodedSchemas
+	encodedComponents, err := p07Marshal(components)
+	if err != nil {
+		return nil, 0, err
+	}
+	top["components"] = encodedComponents
+	out, err := p07Marshal(top)
+	return out, stripped, err
+}
+
+func p07Component(document []byte, name string) (string, bool) {
+	var top struct {
+		Components struct {
+			Schemas map[string]json.RawMessage `json:"schemas"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(document, &top); err != nil {
+		return "", false
+	}
+	raw, ok := top.Components.Schemas[name]
+	return string(raw), ok
+}
+
+func p07HostDigest(dialect string, document []byte) string {
+	sum := sha256.Sum256([]byte(p07DocDigestPrefix + dialect + "\x00" + string(document)))
+	return hex.EncodeToString(sum[:])
+}
+
+func p07SHA(document []byte) string {
+	sum := sha256.Sum256(document)
+	return hex.EncodeToString(sum[:])
+}
+
+type p07Plugin struct {
+	client  *goplugin.Client
+	backend *plugintypes.ExternalBackend
+}
+
+func p07StartPlugin(t *testing.T, env p07Env, rep p07Report) *p07Plugin {
+	t.Helper()
+	home := filepath.Join(env.Work, "home")
+	state := filepath.Join(env.Work, "state")
+	sockets, err := os.MkdirTemp("/tmp/p07-acc/live", "s-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(sockets) })
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".kube"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(env.Work, "kubectl-home"), 0o700))
+	pluginDir := filepath.Join(state, "plugins", p07PluginID)
+	require.NoError(t, os.MkdirAll(pluginDir, 0o700))
+	manifest, err := os.ReadFile(env.PluginYAML)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(pluginDir, "plugin.yaml"), manifest, 0o600))
+	kubeconfig, err := os.ReadFile(env.Kubeconfig)
+	require.NoError(t, err)
+	homeKubeconfig := filepath.Join(home, ".kube", "config")
+	require.NoError(t, os.WriteFile(homeKubeconfig, kubeconfig, 0o600))
+	for _, context := range []string{"p07-a", "p07-b"} {
+		command := exec.Command("kubectl", "--kubeconfig", homeKubeconfig, "config", "set-context", context, "--cluster="+p07MainConn, "--user="+p07MainConn)
+		command.Env = []string{"PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin", "HOME=" + filepath.Join(env.Work, "kubectl-home")}
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, string(output))
+	}
+
+	meta := config.PluginMeta{ID: p07PluginID}
+	handshake := meta.GenerateHandshakeConfig()
+	command := exec.Command(env.Binary)
+	command.Env = []string{
+		"HOME=" + home, "USERPROFILE=" + home, "TMPDIR=" + sockets, "TMP=" + sockets, "TEMP=" + sockets,
+		"PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin",
+		"XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "XDG_CACHE_HOME=" + filepath.Join(home, "cache"), "XDG_DATA_HOME=" + filepath.Join(home, "data"),
+		"OMNIVIEW_STATE_DIR=" + state, "OMNIVIEW_TELEMETRY_ENABLED=false", "OMNIVIEW_TELEMETRY_PROFILING=false",
+		handshake.MagicCookieKey + "=" + handshake.MagicCookieValue, "PLUGIN_PROTOCOL_VERSIONS=1",
+	}
+	logFile, err := os.Create(filepath.Join(env.Work, "plugin-child.log"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logFile.Close() })
+	client := goplugin.NewClient(&goplugin.ClientConfig{
+		HandshakeConfig:     handshake,
+		VersionedPlugins:    map[int]goplugin.PluginSet{1: {"resource": &resourceplugin.GRPCPlugin{}}},
+		GRPCBrokerMultiplex: true,
+		GRPCDialOptions:     sdk.GRPCDialOptions(),
+		Cmd:                 command,
+		SkipHostEnv:         true,
+		StartTimeout:        120 * time.Second,
+		AllowedProtocols:    []goplugin.Protocol{goplugin.ProtocolGRPC},
+		Logger:              hclog.New(&hclog.LoggerOptions{Name: p07PluginID, Output: logFile, Level: hclog.Debug}),
+	})
+	t.Cleanup(client.Kill)
+	rpc, err := client.Client()
+	require.NoError(t, err)
+	backend := plugintypes.NewExternalBackend(client, rpc)
+	reattach := client.ReattachConfig()
+	rep.f("PLUGIN child started: binary=%s pid=%d protocol=%s addr=%s negotiated-version=%d", env.Binary, reattach.Pid, reattach.Protocol, reattach.Addr.String(), backend.NegotiatedVersion())
+	return &p07Plugin{client: client, backend: backend}
+}
+
+type p07Harness struct {
+	t        *testing.T
+	ctx      context.Context
+	rep      p07Report
+	env      p07Env
+	ctrl     *controller
+	route    resource.AccessRoute
+	catalog  resource.Catalog
+	schemas  *resourcecatalog.Catalog
+	snapshot *resourcecatalog.Snapshot
+}
+
+func (h *p07Harness) fetch(ctx context.Context, reference resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
+	return h.ctrl.GetSchemaDocument(ctx, p07PluginID, h.route, reference)
+}
+
+func (h *p07Harness) descriptor(token string) (resource.ResourceType, bool) {
+	for _, candidate := range h.catalog.Types {
+		if candidate.Type == token {
+			return candidate, true
+		}
+	}
+	return resource.ResourceType{}, false
+}
+
+func (h *p07Harness) enumerate(token, representation string, limit int) ([]resource.Record, int, error) {
+	target, err := h.ctrl.ResolveTarget(h.ctx, p07PluginID, ResolveTargetRequest{Route: h.route, Type: token, Representation: representation, Scope: resource.QueryScope{}})
+	if err != nil {
+		return nil, 0, fmt.Errorf("ResolveTarget: %s", p07Err(err))
+	}
+	request := HostEnumerateRequest{TargetID: target.TargetID, Request: resource.EnumerateRequest{Target: target.Target, PageSize: 100}}
+	var records []resource.Record
+	pages := 0
+	for {
+		page, err := h.ctrl.Enumerate(h.ctx, p07PluginID, request)
+		if err != nil {
+			return records, pages, fmt.Errorf("Enumerate page %d: %s", pages+1, p07Err(err))
+		}
+		pages++
+		for _, record := range page.Records {
+			records = append(records, record.Record)
+		}
+		if page.SourcePage.NextCursor == nil || len(records) >= limit {
+			break
+		}
+		request.Request.Cursor = page.SourcePage.NextCursor
+	}
+	return records, pages, nil
+}
+
+type p07TypeResult struct {
+	Label, Token, Representation string
+	SchemaState, ResolveErr      string
+	Validation                   string
+	Unvalidated                  []resourcecatalog.Constraint
+	Records, Admitted, Rejected  int
+	Pages                        int
+	EnumerateErr                 string
+	AdmitValidation              map[string]int
+	Messages                     map[string]int
+	RejectSamples                map[string][]string
+	MaxWorkRecord                string
+	Work                         []int
+	CoverageKinds                map[string]int
+	UnavailableRecords           int
+	UnavailableSamples           map[string]int
+	RepresentationMismatch       int
+}
+
+func (r p07TypeResult) maxWork() int {
+	maximum := 0
+	for _, value := range r.Work {
+		if value > maximum {
+			maximum = value
+		}
+	}
+	return maximum
+}
+
+func (r p07TypeResult) meanWork() float64 {
+	if len(r.Work) == 0 {
+		return 0
+	}
+	total := 0
+	for _, value := range r.Work {
+		total += value
+	}
+	return float64(total) / float64(len(r.Work))
+}
+
+// p07MinWork binary-searches the smallest successful Policy.MaxAdmissionWork,
+// all other policy fields default, per contract section 9 "Admission work".
+func p07MinWork(ctx context.Context, schema *resourcecatalog.Schema, body resource.Value, coverage resource.Coverage) (int, error) {
+	policy := resourcecatalog.DefaultPolicy()
+	low, high := 1, policy.MaxAdmissionWork
+	policy.MaxAdmissionWork = high
+	if _, err := resourcecatalog.Admit(ctx, schema, body, coverage, policy); err != nil {
+		return 0, err
+	}
+	for low < high {
+		middle := low + (high-low)/2
+		policy.MaxAdmissionWork = middle
+		if _, err := resourcecatalog.Admit(ctx, schema, body, coverage, policy); err == nil {
+			high = middle
+		} else if resource.ErrorCode(err) == "RESOURCE_LIMIT" {
+			low = middle + 1
+		} else {
+			return 0, err
+		}
+	}
+	return low, nil
+}
+
+func (h *p07Harness) admitRecords(label, token, representation string, records []resource.Record, schema *resourcecatalog.Schema, measureWork bool) p07TypeResult {
+	result := p07TypeResult{
+		Label: label, Token: token, Representation: representation, Records: len(records),
+		AdmitValidation: map[string]int{}, Messages: map[string]int{}, RejectSamples: map[string][]string{}, CoverageKinds: map[string]int{}, UnavailableSamples: map[string]int{},
+	}
+	if schema != nil {
+		result.Validation = schema.Validation
+		result.Unvalidated = schema.Unvalidated
+	} else {
+		result.Validation = "none"
+	}
+	policy := resourcecatalog.DefaultPolicy()
+	for index := range records {
+		record := records[index]
+		result.CoverageKinds[record.Coverage.Kind+fmt.Sprintf("%v", record.Coverage.Paths)]++
+		if record.Representation.ID != representation {
+			result.RepresentationMismatch++
+		}
+		admission, err := resourcecatalog.Admit(h.ctx, schema, record.Body, record.Coverage, policy)
+		if err != nil {
+			result.Rejected++
+			message := resource.ErrorCode(err) + ": " + err.Error()
+			result.Messages[message]++
+			if len(result.RejectSamples[message]) < 3 {
+				namespace := ""
+				for _, entry := range record.Reference.Address.Scope {
+					namespace += entry.Dimension + "=" + entry.Value + ","
+				}
+				result.RejectSamples[message] = append(result.RejectSamples[message], namespace+"id="+record.Reference.Address.ID)
+			}
+			continue
+		}
+		result.Admitted++
+		result.AdmitValidation[admission.Validation]++
+		if len(admission.UnavailablePaths) != 0 {
+			result.UnavailableRecords++
+			for _, path := range admission.UnavailablePaths {
+				result.UnavailableSamples[path]++
+			}
+		}
+		if measureWork {
+			work, err := p07MinWork(h.ctx, schema, record.Body, record.Coverage)
+			require.NoError(h.t, err, "%s %s", token, record.Reference.Address.ID)
+			if work > result.maxWork() {
+				scope := ""
+				for _, entry := range record.Reference.Address.Scope {
+					scope += entry.Dimension + "=" + entry.Value + ","
+				}
+				result.MaxWorkRecord = scope + "id=" + record.Reference.Address.ID
+			}
+			result.Work = append(result.Work, work)
+		}
+	}
+	return result
+}
+
+var p07Index = regexp.MustCompile(`/[0-9]+`)
+
+func (r p07TypeResult) print(rep p07Report, verbose bool) {
+	status := r.SchemaState
+	if r.ResolveErr != "" {
+		status += " resolveErr=" + r.ResolveErr
+	}
+	rep.f("ROW %-14s rep=%-30s type=%-46s schema=%s validation=%s unvalidated=%d records=%d admitted=%d rejected=%d maxWork=%d meanWork=%.1f maxWorkRecord=%q pages=%d unavailableRecords=%d repMismatch=%d",
+		r.Label, r.Representation, r.Token, status, r.Validation, len(r.Unvalidated), r.Records, r.Admitted, r.Rejected, r.maxWork(), r.meanWork(), r.MaxWorkRecord, r.Pages, r.UnavailableRecords, r.RepresentationMismatch)
+	if r.EnumerateErr != "" {
+		rep.f("     enumerateErr=%s", r.EnumerateErr)
+	}
+	coverage := make([]string, 0, len(r.CoverageKinds))
+	for key, count := range r.CoverageKinds {
+		coverage = append(coverage, fmt.Sprintf("%s x%d", key, count))
+	}
+	sort.Strings(coverage)
+	if len(coverage) != 0 {
+		rep.f("     recordCoverage: %s", strings.Join(coverage, "; "))
+	}
+	outcomes := make([]string, 0, len(r.AdmitValidation))
+	for key, count := range r.AdmitValidation {
+		outcomes = append(outcomes, fmt.Sprintf("%s x%d", key, count))
+	}
+	sort.Strings(outcomes)
+	if len(outcomes) != 0 {
+		rep.f("     admissionValidation: %s", strings.Join(outcomes, "; "))
+	}
+	if len(r.UnavailableSamples) != 0 {
+		keys := make([]string, 0, len(r.UnavailableSamples))
+		for key, count := range r.UnavailableSamples {
+			keys = append(keys, fmt.Sprintf("%s x%d", key, count))
+		}
+		sort.Strings(keys)
+		rep.f("     unavailablePaths: %s", strings.Join(keys, "; "))
+	}
+	messages := make([]string, 0, len(r.Messages))
+	for message := range r.Messages {
+		messages = append(messages, message)
+	}
+	sort.Strings(messages)
+	for _, message := range messages {
+		rep.f("     REJECT x%d %s", r.Messages[message], message)
+		rep.f("       sample records: %v", r.RejectSamples[message])
+	}
+	if len(r.Messages) > 1 {
+		normalized := map[string]int{}
+		for message, count := range r.Messages {
+			normalized[p07Index.ReplaceAllString(message, "/N")] += count
+		}
+		keys := make([]string, 0, len(normalized))
+		for key := range normalized {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			rep.f("     REJECT-NORMALIZED x%d %s", normalized[key], key)
+		}
+	}
+	if verbose {
+		for _, constraint := range r.Unvalidated {
+			rep.f("     unvalidated: pointer=%q keyword=%q", constraint.Pointer, constraint.Keyword)
+		}
+	}
+}
+
+func (h *p07Harness) resolveEntry(token, representation string) (*resourcecatalog.Entry, *resourcecatalog.Schema, error) {
+	entry, err := h.snapshot.Entry(token, representation)
+	if err != nil {
+		return nil, nil, err
+	}
+	schema, err := entry.Resolve(h.ctx, h.fetch)
+	return entry, schema, err
+}
+
+// runType enumerates every record of one catalog type and admits each body with
+// the record's own Coverage against the schema resolved from the published binding.
+func (h *p07Harness) runType(label, token, representation string, measureWork bool) (p07TypeResult, []resource.Record, *resourcecatalog.Schema) {
+	entry, schema, resolveErr := h.resolveEntry(token, representation)
+	records, pages, enumerateErr := h.enumerate(token, representation, 5000)
+	var result p07TypeResult
+	if resolveErr != nil {
+		result = p07TypeResult{Label: label, Token: token, Representation: representation, Records: len(records), ResolveErr: p07Err(resolveErr), Messages: map[string]int{}, AdmitValidation: map[string]int{}, CoverageKinds: map[string]int{}, UnavailableSamples: map[string]int{}}
+	} else {
+		result = h.admitRecords(label, token, representation, records, schema, measureWork)
+	}
+	if entry != nil {
+		result.SchemaState = entry.Binding.State
+	}
+	result.Pages = pages
+	if enumerateErr != nil {
+		result.EnumerateErr = enumerateErr.Error()
+	}
+	return result, records, schema
+}
+
+// controlSchema resolves the same binding against the served bytes with the
+// Time/MicroTime nullable correction removed (harness-only mutation).
+func (h *p07Harness) controlSchema(token, representation string) (*resourcecatalog.Schema, int, error) {
+	entry, err := h.snapshot.Entry(token, representation)
+	if err != nil {
+		return nil, 0, err
+	}
+	if entry.Binding.DocumentRef == nil {
+		return nil, 0, fmt.Errorf("binding has no document reference")
+	}
+	served, err := h.ctrl.GetSchemaDocument(h.ctx, p07PluginID, h.route, *entry.Binding.DocumentRef)
+	if err != nil {
+		return nil, 0, err
+	}
+	mutated, stripped, err := p07StripTimeNullable(served.Document)
+	if err != nil {
+		return nil, 0, err
+	}
+	catalog := resource.Catalog{Provider: h.catalog.Provider, Revision: "p07-control", Types: []resource.ResourceType{entry.Descriptor}}
+	isolated := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
+	snapshot := isolated.Observe(resourcecatalog.ConnectionKey{PluginID: p07PluginID, Generation: "p07-control", Connection: "control", Epoch: 1}, catalog)
+	controlEntry, err := snapshot.Entry(token, representation)
+	if err != nil {
+		return nil, 0, err
+	}
+	schema, err := controlEntry.Resolve(h.ctx, func(context.Context, resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
+		return resource.SchemaDocument{Reference: *entry.Binding.DocumentRef, Dialect: served.Dialect, Document: json.RawMessage(mutated)}, nil
+	})
+	return schema, stripped, err
+}
+
+func p07WithoutPath(value resource.Value, path ...string) resource.Value {
+	out := resource.Value{Kind: "map", Map: make(map[string]resource.Value, len(value.Map))}
+	for key, child := range value.Map {
+		out.Map[key] = child
+	}
+	if len(path) == 1 {
+		delete(out.Map, path[0])
+		return out
+	}
+	if child, ok := out.Map[path[0]]; ok {
+		out.Map[path[0]] = p07WithoutPath(child, path[1:]...)
+	}
+	return out
+}
+
+func p07KubectlResource(token string) string {
+	group, resourceName, _ := strings.Cut(strings.TrimPrefix(token, "k8s:"), "/")
+	if group == "" {
+		return resourceName
+	}
+	return resourceName + "." + group
+}
+
+func p07KubectlCount(t *testing.T, env p07Env, resourceName string) int {
+	output := p07Kubectl(t, env, "get", resourceName, "-A", "--no-headers")
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func p07KubectlPodCount(t *testing.T, env p07Env) int {
+	output := p07Kubectl(t, env, "get", "pods", "-A", "--no-headers")
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func TestP07LiveKubernetesAcceptance(t *testing.T) {
+	env := p07Config(t)
+	reportFile, err := os.Create(env.Report)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reportFile.Close() })
+	rep := p07Report{out: io.MultiWriter(os.Stdout, reportFile)}
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(testInvocationContext(), 40*time.Minute)
+	defer cancel()
+
+	rep.f("=== P07 LIVE KUBERNETES ACCEPTANCE HARNESS ===")
+	rep.f("started: %s", started.UTC().Format(time.RFC3339))
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range info.Deps {
+			if dep.Path == "github.com/omniviewdev/plugin-sdk" {
+				rep.f("host test binary SDK: %s %s", dep.Path, dep.Version)
+			}
+		}
+	}
+	rep.f("kubectl client: %s", strings.ReplaceAll(strings.TrimSpace(p07Kubectl(t, env, "version", "--client")), "\n", " | "))
+	rep.f("apiserver /version: %s", strings.ReplaceAll(strings.TrimSpace(p07Kubectl(t, env, "get", "--raw", "/version")), "\n", " "))
+	rep.f("kubectl get nodes: %s", strings.ReplaceAll(strings.TrimSpace(p07Kubectl(t, env, "get", "nodes", "--no-headers")), "\n", " | "))
+
+	// ---- Phase 1: real plugin child + real host controller -----------------
+	plugin := p07StartPlugin(t, env, rep)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	meta := config.PluginMeta{ID: p07PluginID}
+	ctrl.OnPluginInit(p07PluginID, meta)
+	require.NoError(t, ctrl.OnPluginStart(p07PluginID, meta, plugin.backend))
+	t.Cleanup(func() { _ = ctrl.OnPluginStop(p07PluginID, meta) })
+	connections, err := ctrl.ListConnections(ctx, p07PluginID)
+	require.NoError(t, err)
+	ids := make([]string, 0, len(connections))
+	for _, connection := range connections {
+		ids = append(ids, connection.ID)
+	}
+	sort.Strings(ids)
+	rep.f("PHASE1 host ListConnections after OnPluginStart: %v", ids)
+	require.Contains(t, ids, p07MainConn)
+
+	startedAt := time.Now()
+	status, err := ctrl.StartConnection(ctx, p07PluginID, p07MainConn)
+	require.NoError(t, err)
+	rep.f("PHASE1 StartConnection(%s): status=%s details=%q elapsed=%s", p07MainConn, status.Status, status.Details, time.Since(startedAt).Round(time.Millisecond))
+	route := resource.AccessRoute{Connection: p07MainConn}
+
+	catalog, err := ctrl.Catalog(ctx, p07PluginID, resource.CatalogRequest{Route: route})
+	require.NoError(t, err)
+	schemas := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
+	snapshot := schemas.Observe(resourcecatalog.ConnectionKey{PluginID: p07PluginID, Generation: "p07-acceptance-fresh", Connection: p07MainConn, Epoch: 1}, catalog)
+	h := &p07Harness{t: t, ctx: ctx, rep: rep, env: env, ctrl: ctrl, route: route, catalog: catalog, schemas: schemas, snapshot: snapshot}
+
+	// ---- Phase 2: catalog + published bindings -------------------------------
+	states := map[string]int{}
+	references := map[resource.SchemaDocumentReference]int{}
+	enumerable := 0
+	for _, descriptor := range catalog.Types {
+		for _, representation := range descriptor.Representations {
+			if representation.ID == descriptor.DefaultRepresentation {
+				states[representation.Schema.State]++
+				if representation.Schema.DocumentRef != nil {
+					references[*representation.Schema.DocumentRef]++
+				}
+			}
+		}
+		for _, capability := range descriptor.Capabilities {
+			if capability.Operation == resource.OperationEnumerate {
+				enumerable++
+				break
+			}
+		}
+	}
+	rep.f("PHASE2 host Catalog: provider=%s revision=%s types=%d enumerable=%d defaultRepresentationBindingStates=%v distinctDocumentRefs=%d catalogCoverage=%+v",
+		catalog.Provider, catalog.Revision, len(catalog.Types), enumerable, states, len(references), catalog.Coverage)
+	podDescriptor, found := h.descriptor("k8s:/pods")
+	require.True(t, found, "pod type must be in catalog")
+	for _, representation := range podDescriptor.Representations {
+		encoded, _ := p07Marshal(representation)
+		rep.f("PHASE2 Pod representation: %s", encoded)
+	}
+	rep.f("PHASE2 Pod descriptor: default=%s model=%s capabilities=%d nativeQueries=%d", podDescriptor.DefaultRepresentation, podDescriptor.ModelRepresentation, len(podDescriptor.Capabilities), len(podDescriptor.NativeQueries))
+	var podBinding resource.SchemaBinding
+	for _, representation := range podDescriptor.Representations {
+		if representation.ID == podDescriptor.DefaultRepresentation {
+			podBinding = representation.Schema
+		}
+	}
+	require.NotNil(t, podBinding.DocumentRef)
+
+	// Host schema methods against the real child.
+	paths := []struct {
+		label string
+		path  []resourcecatalog.PathSegment
+	}{
+		{"root", nil},
+		{"spec", []resourcecatalog.PathSegment{{Kind: "field", Name: "spec"}}},
+		{"spec/containers", []resourcecatalog.PathSegment{{Kind: "field", Name: "spec"}, {Kind: "field", Name: "containers"}}},
+		{"spec/containers/item", []resourcecatalog.PathSegment{{Kind: "field", Name: "spec"}, {Kind: "field", Name: "containers"}, {Kind: "item"}}},
+		{"status/conditions/item", []resourcecatalog.PathSegment{{Kind: "field", Name: "status"}, {Kind: "field", Name: "conditions"}, {Kind: "item"}}},
+	}
+	for _, step := range paths {
+		result, err := ctrl.GetSchemaFields(ctx, p07PluginID, SchemaFieldsRequest{Route: route, Type: "k8s:/pods", Path: step.path})
+		require.NoError(t, err, step.label)
+		names := make([]string, 0, len(result.Fields))
+		for _, field := range result.Fields {
+			names = append(names, field.Segment.Kind+":"+field.Segment.Name)
+		}
+		rep.f("PHASE2 GetSchemaFields Pod %-24s schemaState=%s dialect=%s schemaRevision=%s hostEvaluation=%s validation=%s unvalidated=%d nativeQueryLanguages=%v operations=%d fields=%d truncated=%v/%s",
+			step.label, result.SchemaState, result.Dialect, result.SchemaRevision, result.Overlay.HostEvaluation, result.Overlay.Validation, len(result.Overlay.Unvalidated), result.Overlay.NativeQueryLanguages, len(result.Overlay.Operations), len(result.Fields), result.Truncated, result.TruncationReason)
+		rep.f("PHASE2   catalogRevision=%s fields=%s", result.CatalogRevision, strings.Join(names, ","))
+		for _, field := range result.Fields {
+			if step.label == "status/conditions/item" && (field.Segment.Name == "lastProbeTime" || field.Segment.Name == "lastTransitionTime") {
+				encoded, _ := p07Marshal(field)
+				rep.f("PHASE2   FieldInfo %s: %s", field.Segment.Name, encoded)
+			}
+			if field.NativeFilter != "unsupported" {
+				rep.f("PHASE2   NATIVEFILTER-VIOLATION %s %s", field.Segment.Name, field.NativeFilter)
+			}
+		}
+	}
+
+	associations, err := ctrl.GetEditorSchemas(ctx, p07PluginID, route)
+	require.NoError(t, err)
+	statusCounts := map[string]int{}
+	distinctDocuments := map[string]bool{}
+	var podAssociation EditorSchemaAssociation
+	for _, association := range associations {
+		statusCounts[association.Status]++
+		if association.DocumentID != "" {
+			distinctDocuments[association.DocumentID] = true
+		}
+		if association.Type == "k8s:/pods" {
+			podAssociation = association
+		}
+	}
+	rep.f("PHASE2 GetEditorSchemas: associations=%d statusCounts=%v distinctDocumentIds=%d", len(associations), statusCounts, len(distinctDocuments))
+	encoded, _ := p07Marshal(podAssociation)
+	rep.f("PHASE2 Pod association: %s", encoded)
+	for _, association := range associations {
+		if association.Type == "" || association.Status != "available" {
+			encoded, _ := p07Marshal(association)
+			rep.f("PHASE2 non-catalog-or-unavailable association: %s", encoded)
+		}
+	}
+	require.Equal(t, "available", podAssociation.Status)
+
+	rendered, err := ctrl.GetEditorSchemaDocument(ctx, p07PluginID, route, podAssociation.DocumentID)
+	require.NoError(t, err)
+	var renderedDocument struct {
+		Schema      string                     `json:"$schema"`
+		Definitions map[string]json.RawMessage `json:"definitions"`
+	}
+	require.NoError(t, json.Unmarshal(rendered.Schema, &renderedDocument))
+	rep.f("PHASE2 GetEditorSchemaDocument(Pod documentId): bytes=%d sha256=%s jsonValid=%v $schema=%s definitions=%d returnedDocumentId=%s root=%s",
+		len(rendered.Schema), p07SHA(rendered.Schema), json.Valid(rendered.Schema), renderedDocument.Schema, len(renderedDocument.Definitions), rendered.DocumentID, podAssociation.Root)
+	_, bogusErr := ctrl.GetEditorSchemaDocument(ctx, p07PluginID, route, strings.Repeat("0", 64))
+	rep.f("PHASE2 GetEditorSchemaDocument(unreferenced digest): %s", p07Err(bogusErr))
+
+	served, err := ctrl.GetSchemaDocument(ctx, p07PluginID, route, *podBinding.DocumentRef)
+	require.NoError(t, err)
+	rep.f("PHASE2 GetSchemaDocument(Pod ref %+v): bytes=%d dialect=%s referenceEqual=%v", *podBinding.DocumentRef, len(served.Document), served.Dialect, served.Reference == *podBinding.DocumentRef)
+	rep.f("PHASE2 DIGESTS bindingRevision=%s documentRefRevision=%s sha256(servedBytes)=%s hostDigest=sha256(prefix+dialect+NUL+bytes)=%s editorAssociationDocumentId=%s",
+		*podBinding.Revision, podBinding.DocumentRef.Revision, p07SHA(served.Document), p07HostDigest(served.Dialect, served.Document), podAssociation.DocumentID)
+	rep.f("PHASE2 DIGEST CHECKS: bindingRevision==sha256(servedBytes): %v; documentRefRevision==bindingRevision: %v; associationDocumentId==hostDigest: %v; associationDocumentId==sha256(servedBytes): %v",
+		*podBinding.Revision == p07SHA(served.Document), podBinding.DocumentRef.Revision == *podBinding.Revision, podAssociation.DocumentID == p07HostDigest(served.Dialect, served.Document), podAssociation.DocumentID == p07SHA(served.Document))
+	timeComponent, timePresent := p07Component(served.Document, p07TimeComponent)
+	microComponent, microPresent := p07Component(served.Document, p07MicroTimeComponent)
+	rep.f("PHASE2 SERVED %s present=%v: %s", p07TimeComponent, timePresent, timeComponent)
+	rep.f("PHASE2 SERVED %s present=%v: %s", p07MicroTimeComponent, microPresent, microComponent)
+	require.True(t, timePresent)
+	require.True(t, microPresent)
+
+	podTypeEntry, podSchema, err := h.resolveEntry("k8s:/pods", podDescriptor.DefaultRepresentation)
+	require.NoError(t, err)
+	require.NotNil(t, podSchema)
+	rep.f("PHASE2 Pod schema (fresh host catalog): entryState=%s dialect=%s schemaRevision=%s validation=%s unvalidated=%d documentDigest=%x nodes=%d root=%d",
+		podTypeEntry.Binding.State, podSchema.Dialect, podSchema.SchemaRevision, podSchema.Validation, len(podSchema.Unvalidated), podSchema.Document.Digest, len(podSchema.Document.Nodes)-1, podSchema.Root)
+	keywordCounts := map[string]int{}
+	for _, constraint := range podSchema.Unvalidated {
+		keywordCounts[constraint.Keyword]++
+	}
+	rep.f("PHASE2 Pod schema unvalidated keyword histogram: %v", keywordCounts)
+	rep.f("PHASE2 controller catalog Stats after schema calls: %+v", ctrl.schemas.Stats())
+
+	// Every catalog type through host GetSchemaFields (root path): overlay evidence.
+	evaluation := map[string]int{}
+	var notChecked []string
+	nativeFilterViolations, withQueryLanguages, totalFields := 0, 0, 0
+	for _, descriptor := range catalog.Types {
+		result, err := ctrl.GetSchemaFields(ctx, p07PluginID, SchemaFieldsRequest{Route: route, Type: descriptor.Type})
+		if err != nil {
+			evaluation["error "+p07Err(err)]++
+			continue
+		}
+		evaluation[result.Overlay.HostEvaluation+"/validation="+result.Overlay.Validation+"/binding="+result.SchemaState]++
+		if result.Overlay.HostEvaluation != resourcecatalog.HostEvaluationSchemaChecked {
+			notChecked = append(notChecked, descriptor.Type+":"+result.Overlay.HostEvaluation+"("+result.SchemaState+")")
+		}
+		if len(result.Overlay.NativeQueryLanguages) != 0 {
+			withQueryLanguages++
+		}
+		totalFields += len(result.Fields)
+		for _, field := range result.Fields {
+			if field.NativeFilter != "unsupported" {
+				nativeFilterViolations++
+			}
+		}
+	}
+	sort.Strings(notChecked)
+	rep.f("PHASE2 GetSchemaFields root for every catalog type (%d): overlay outcomes=%v typesWithNativeQueryLanguages=%d totalRootFields=%d nativeFilterNotUnsupported=%d", len(catalog.Types), evaluation, withQueryLanguages, totalFields, nativeFilterViolations)
+	rep.f("PHASE2 types whose overlay is not schemaChecked: %v", notChecked)
+
+	// ---- Phase 3: kubectl pod count + Pod admission (corrected served document) ---
+	pre := p07KubectlPodCount(t, env)
+	podResult, podRecords, _ := h.runType("Pod", "k8s:/pods", podDescriptor.DefaultRepresentation, true)
+	post := p07KubectlPodCount(t, env)
+	podResult.print(rep, true)
+	rep.f("PHASE3 kubectl get pods -A --no-headers | wc -l: before=%d after=%d; host Enumerate records=%d (admitted+rejected=%d)", pre, post, len(podRecords), podResult.Admitted+podResult.Rejected)
+	if len(podRecords) != 0 {
+		first := podRecords[0]
+		_, hasManaged := first.Body.Map["metadata"].Map["managedFields"]
+		rep.f("PHASE3 default-representation Pod body preserves metadata.managedFields=%v coverage=%+v representation=%s revision=%s", hasManaged, first.Coverage, first.Representation.ID, first.Representation.Revision)
+	}
+	rep.f("PHASE3 enumerated Pod count equals kubectl count (before=%d after=%d enumerated=%d): %v", pre, post, podResult.Records, pre == podResult.Records && post == podResult.Records)
+
+	// ---- Phase 4: control (nullable removed) against the same live Pod bodies ------
+	controlSchema, stripped, err := h.controlSchema("k8s:/pods", podDescriptor.DefaultRepresentation)
+	require.NoError(t, err)
+	rep.f("PHASE4 CONTROL: removed nullable from %d component(s) in the served Pod GroupVersion document (harness-only mutation)", stripped)
+	controlResult := h.admitRecords("Pod-CONTROL", "k8s:/pods", podDescriptor.DefaultRepresentation, podRecords, controlSchema, true)
+	controlResult.SchemaState = "available(control: nullable removed)"
+	controlResult.Pages = podResult.Pages
+	controlResult.print(rep, false)
+	controlPath := []resourcecatalog.PathSegment{{Kind: "field", Name: "status"}, {Kind: "field", Name: "conditions"}, {Kind: "item"}}
+	for label, schema := range map[string]*resourcecatalog.Schema{"corrected": podSchema, "control": controlSchema} {
+		navigation, err := resourcecatalog.Navigate(ctx, schema, controlPath, resourcecatalog.DefaultPolicy())
+		require.NoError(t, err)
+		for _, field := range navigation.Fields {
+			if field.Segment.Name == "lastProbeTime" {
+				encoded, _ := p07Marshal(field)
+				rep.f("PHASE4 Navigate(status/conditions/item) %s schema lastProbeTime: %s", label, encoded)
+			}
+		}
+	}
+
+	// ---- Phase 5: required type table (default + model representation) ---------------
+	required := []struct{ label, token string }{
+		{"Deployment", "k8s:apps/deployments"}, {"ConfigMap", "k8s:/configmaps"}, {"Service", "k8s:/services"}, {"Node", "k8s:/nodes"},
+		{"Namespace", "k8s:/namespaces"}, {"Event", "k8s:/events"}, {"ReplicaSet", "k8s:apps/replicasets"}, {"StatefulSet", "k8s:apps/statefulsets"},
+		{"DaemonSet", "k8s:apps/daemonsets"}, {"Job", "k8s:batch/jobs"}, {"CronJob", "k8s:batch/cronjobs"}, {"PVC", "k8s:/persistentvolumeclaims"}, {"Secret", "k8s:/secrets"},
+	}
+	rep.f("PHASE5 === required types, default representation, corrected published documents ===")
+	type tally struct{ records, admitted, rejected, maxWork int }
+	table := map[string]tally{"Pod": {podResult.Records, podResult.Admitted, podResult.Rejected, podResult.maxWork()}}
+	requiredRecords := map[string][]resource.Record{"Pod": podRecords}
+	seen := map[string]bool{"k8s:/pods": true}
+	for _, entry := range required {
+		descriptor, ok := h.descriptor(entry.token)
+		if !ok {
+			rep.f("ROW %-14s MISSING from catalog: %s", entry.label, entry.token)
+			continue
+		}
+		result, records, _ := h.runType(entry.label, entry.token, descriptor.DefaultRepresentation, true)
+		result.print(rep, false)
+		if entry.token != "k8s:/events" {
+			resourceName := p07KubectlResource(entry.token)
+			rep.f("     kubectl get %s -A --no-headers | wc -l = %d (enumerated %d, admitted+rejected %d)", resourceName, p07KubectlCount(t, env, resourceName), result.Records, result.Admitted+result.Rejected)
+		}
+		table[entry.label] = tally{result.Records, result.Admitted, result.Rejected, result.maxWork()}
+		requiredRecords[entry.label] = records
+		seen[entry.token] = true
+	}
+	rep.f("PHASE5 === required types, MODEL representation (partial coverage /metadata/managedFields) ===")
+	for _, entry := range append([]struct{ label, token string }{{"Pod", "k8s:/pods"}}, required...) {
+		descriptor, ok := h.descriptor(entry.token)
+		if !ok || descriptor.ModelRepresentation == "" {
+			continue
+		}
+		result, records, _ := h.runType(entry.label+"[model]", entry.token, descriptor.ModelRepresentation, true)
+		result.print(rep, false)
+		if entry.label == "Pod" && len(records) != 0 {
+			_, hasManaged := records[0].Body.Map["metadata"].Map["managedFields"]
+			rep.f("PHASE5 model-representation Pod body has metadata.managedFields=%v coverage=%+v", hasManaged, records[0].Coverage)
+		}
+	}
+
+	// ---- Phase 6: control for the other required types (informational) ----------------
+	rep.f("PHASE6 === control (nullable removed) over the same live bodies of the other required types ===")
+	for _, entry := range required {
+		descriptor, ok := h.descriptor(entry.token)
+		if !ok || len(requiredRecords[entry.label]) == 0 {
+			continue
+		}
+		schema, _, err := h.controlSchema(entry.token, descriptor.DefaultRepresentation)
+		if err != nil {
+			rep.f("ROW %-14s control resolve error: %s", entry.label+"-CONTROL", p07Err(err))
+			continue
+		}
+		result := h.admitRecords(entry.label+"-CONTROL", entry.token, descriptor.DefaultRepresentation, requiredRecords[entry.label], schema, false)
+		result.SchemaState = "available(control: nullable removed)"
+		result.print(rep, false)
+	}
+
+	// ---- Phase 7: determinism: second Pod run with fresh catalog and fresh enumeration ----
+	rep.f("PHASE7 === determinism: second in-process Pod run (fresh host catalog snapshot, fresh enumeration) ===")
+	secondCatalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
+	secondSnapshot := secondCatalog.Observe(resourcecatalog.ConnectionKey{PluginID: p07PluginID, Generation: "p07-acceptance-second", Connection: p07MainConn, Epoch: 2}, catalog)
+	second := &p07Harness{t: t, ctx: ctx, rep: rep, env: env, ctrl: ctrl, route: route, catalog: catalog, schemas: secondCatalog, snapshot: secondSnapshot}
+	secondResult, _, _ := second.runType("Pod#2", "k8s:/pods", podDescriptor.DefaultRepresentation, true)
+	secondResult.print(rep, false)
+	rep.f("PHASE7 first run: records=%d admitted=%d rejected=%d maxWork=%d meanWork=%.3f | second run: records=%d admitted=%d rejected=%d maxWork=%d meanWork=%.3f | identical counts=%v",
+		podResult.Records, podResult.Admitted, podResult.Rejected, podResult.maxWork(), podResult.meanWork(),
+		secondResult.Records, secondResult.Admitted, secondResult.Rejected, secondResult.maxWork(), secondResult.meanWork(),
+		podResult.Records == secondResult.Records && podResult.Admitted == secondResult.Admitted && podResult.Rejected == secondResult.Rejected && podResult.maxWork() == secondResult.maxWork())
+
+	// Determinism on the very same captured bodies: three fresh catalogs, each
+	// resolving the published binding again over gRPC, then admitting every Pod.
+	rep.f("PHASE7b === determinism on the SAME captured Pod bodies: three fresh host catalogs/resolutions ===")
+	var referenceWork []int
+	for round := 1; round <= 3; round++ {
+		roundCatalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
+		roundSnapshot := roundCatalog.Observe(resourcecatalog.ConnectionKey{PluginID: p07PluginID, Generation: fmt.Sprintf("p07-same-bodies-%d", round), Connection: p07MainConn, Epoch: uint64(10 + round)}, catalog)
+		repeat := &p07Harness{t: t, ctx: ctx, rep: rep, env: env, ctrl: ctrl, route: route, catalog: catalog, schemas: roundCatalog, snapshot: roundSnapshot}
+		_, roundSchema, err := repeat.resolveEntry("k8s:/pods", podDescriptor.DefaultRepresentation)
+		require.NoError(t, err)
+		roundResult := repeat.admitRecords(fmt.Sprintf("Pod-same#%d", round), "k8s:/pods", podDescriptor.DefaultRepresentation, podRecords, roundSchema, true)
+		if referenceWork == nil {
+			referenceWork = roundResult.Work
+		}
+		rep.f("PHASE7b round %d: records=%d admitted=%d rejected=%d maxWork=%d meanWork=%.3f maxWorkRecord=%q perRecordWorkVectorIdenticalToRound1=%v documentDigest=%x schemaRevision=%s",
+			round, roundResult.Records, roundResult.Admitted, roundResult.Rejected, roundResult.maxWork(), roundResult.meanWork(), roundResult.MaxWorkRecord, reflect.DeepEqual(referenceWork, roundResult.Work), roundSchema.Document.Digest, roundSchema.SchemaRevision)
+	}
+
+	// ---- Phase 8: coverage semantics on a real live Pod body ---------------------------------
+	rep.f("PHASE8 === coverage semantics on a real live Pod body with required spec.containers removed ===")
+	if len(podRecords) != 0 {
+		mutilated := p07WithoutPath(podRecords[0].Body, "spec", "containers")
+		for _, probe := range []struct {
+			label    string
+			coverage resource.Coverage
+		}{
+			{"complete", resource.Coverage{Kind: "complete", Paths: []string{}}},
+			{"partial paths=[/metadata/managedFields] (the adapter's model-projection coverage)", resource.Coverage{Kind: "partial", Paths: []string{"/metadata/managedFields"}, Reason: "Kubernetes model projection omits metadata.managedFields"}},
+			{"partial paths=[/spec]", resource.Coverage{Kind: "partial", Paths: []string{"/spec"}, Reason: "probe"}},
+			{"partial paths=[] (whole body limited)", resource.Coverage{Kind: "partial", Paths: []string{}, Reason: "probe"}},
+			{"unknown paths=[]", resource.Coverage{Kind: "unknown", Paths: []string{}, Reason: "probe"}},
+		} {
+			admission, err := resourcecatalog.Admit(ctx, podSchema, mutilated, probe.coverage, resourcecatalog.DefaultPolicy())
+			if err != nil {
+				rep.f("PHASE8 %-85s -> REJECT %s: %s", probe.label, resource.ErrorCode(err), err.Error())
+			} else {
+				rep.f("PHASE8 %-85s -> ADMIT validation=%s unavailablePaths=%v", probe.label, admission.Validation, admission.UnavailablePaths)
+			}
+		}
+		// A definite present-data violation under limiting coverage stays an error.
+		wrongType := podRecords[0].Body
+		spec := wrongType.Map["spec"]
+		containers := spec.Map["containers"]
+		if len(containers.List) != 0 {
+			badContainers := resource.Value{Kind: "list", List: append([]resource.Value{}, containers.List...)}
+			container := badContainers.List[0]
+			badContainer := resource.Value{Kind: "map", Map: map[string]resource.Value{}}
+			for key, value := range container.Map {
+				badContainer.Map[key] = value
+			}
+			badContainer.Map["image"] = resource.Value{Kind: "int64", Int: "5"}
+			badContainers.List[0] = badContainer
+			badSpec := resource.Value{Kind: "map", Map: map[string]resource.Value{}}
+			for key, value := range spec.Map {
+				badSpec.Map[key] = value
+			}
+			badSpec.Map["containers"] = badContainers
+			badBody := resource.Value{Kind: "map", Map: map[string]resource.Value{}}
+			for key, value := range wrongType.Map {
+				badBody.Map[key] = value
+			}
+			badBody.Map["spec"] = badSpec
+			_, err := resourcecatalog.Admit(ctx, podSchema, badBody, resource.Coverage{Kind: "partial", Paths: []string{}, Reason: "probe"}, resourcecatalog.DefaultPolicy())
+			rep.f("PHASE8 spec.containers[0].image = int64 5 under partial paths=[] -> %s", p07Err(err))
+		}
+	}
+
+	// ---- Phase 9: published document vs native API server document -------------------
+	rep.f("PHASE9 === native OpenAPI document vs published document, every referenced GroupVersion ===")
+	refList := make([]resource.SchemaDocumentReference, 0, len(references))
+	for reference := range references {
+		refList = append(refList, reference)
+	}
+	sort.Slice(refList, func(i, j int) bool { return refList[i].ID < refList[j].ID })
+	identical, exact, withTime, nullableOnBoth, failures, outsideEqualCount := 0, 0, 0, 0, 0, 0
+	totalServed := 0
+	for _, reference := range refList {
+		gv := strings.TrimPrefix(reference.ID, "kubernetes.openapi.v3/")
+		path := "/openapi/v3/apis/" + gv
+		if !strings.Contains(gv, "/") {
+			path = "/openapi/v3/api/" + gv
+		}
+		native := []byte(p07Kubectl(t, env, "get", "--raw", path))
+		published, err := ctrl.GetSchemaDocument(ctx, p07PluginID, route, reference)
+		require.NoError(t, err, reference.ID)
+		totalServed += len(published.Document)
+		strippedPublished, removed, err := p07StripTimeNullable(published.Document)
+		require.NoError(t, err)
+		var a, b any
+		decoder := json.NewDecoder(bytes.NewReader(strippedPublished))
+		decoder.UseNumber()
+		require.NoError(t, decoder.Decode(&a))
+		decoder = json.NewDecoder(bytes.NewReader(native))
+		decoder.UseNumber()
+		require.NoError(t, decoder.Decode(&b))
+		same := reflect.DeepEqual(a, b)
+		nativeTime, nativeTimePresent := p07Component(native, p07TimeComponent)
+		nativeMicro, nativeMicroPresent := p07Component(native, p07MicroTimeComponent)
+		publishedTime, _ := p07Component(published.Document, p07TimeComponent)
+		publishedMicro, _ := p07Component(published.Document, p07MicroTimeComponent)
+		// Byte-level preservation: replace the two component bodies by a
+		// placeholder in both documents; every other byte must be identical.
+		outside := func(document []byte) ([]byte, bool) {
+			out := document
+			for _, name := range []string{p07TimeComponent, p07MicroTimeComponent} {
+				component, ok := p07Component(document, name)
+				if !ok {
+					continue
+				}
+				if bytes.Count(out, []byte(component)) != 1 {
+					return nil, false
+				}
+				out = bytes.Replace(out, []byte(component), []byte("<COMPONENT:"+name+">"), 1)
+			}
+			return out, true
+		}
+		nativeOutside, nativeOutsideOK := outside(native)
+		publishedOutside, publishedOutsideOK := outside(published.Document)
+		outsideEqual := nativeOutsideOK && publishedOutsideOK && bytes.Equal(nativeOutside, publishedOutside)
+		expectedDelta := 0
+		for _, pair := range [][2]string{{nativeTime, publishedTime}, {nativeMicro, publishedMicro}} {
+			expectedDelta += len(pair[1]) - len(pair[0])
+		}
+		if outsideEqual {
+			outsideEqualCount++
+		}
+		if reference.ID == "kubernetes.openapi.v3/v1" {
+			rep.f("PHASE9 NATIVE   %s: %s", p07TimeComponent, nativeTime)
+			rep.f("PHASE9 PUBLISHED %s: %s", p07TimeComponent, publishedTime)
+			rep.f("PHASE9 NATIVE   %s: %s", p07MicroTimeComponent, nativeMicro)
+			rep.f("PHASE9 PUBLISHED %s: %s", p07MicroTimeComponent, publishedMicro)
+		}
+		hasNullable := func(component string) bool {
+			var fields map[string]json.RawMessage
+			return json.Unmarshal([]byte(component), &fields) == nil && string(bytes.TrimSpace(fields["nullable"])) == "true"
+		}
+		timeCorrect := (!nativeTimePresent || hasNullable(publishedTime)) && (!nativeMicroPresent || hasNullable(publishedMicro))
+		if same {
+			identical++
+		} else {
+			failures++
+		}
+		if bytes.Equal(native, published.Document) {
+			exact++
+		}
+		if nativeTimePresent || nativeMicroPresent {
+			withTime++
+			if timeCorrect {
+				nullableOnBoth++
+			}
+		}
+		rep.f("PHASE9 %-44s nativeBytes=%d publishedBytes=%d delta=%d componentBodyDelta=%d bytesOutsideTheTwoComponentsIdentical=%v semanticallyEqualAfterRemovingCorrection=%v exactBytesEqual=%v timeComponents(native/time=%v micro=%v) publishedNullableOnPresent=%v removedByStrip=%d revisionIsSha256OfPublished=%v",
+			reference.ID, len(native), len(published.Document), len(published.Document)-len(native), expectedDelta, outsideEqual, same, bytes.Equal(native, published.Document), nativeTimePresent, nativeMicroPresent, timeCorrect, removed, reference.Revision == p07SHA(published.Document))
+	}
+	rep.f("PHASE9 SUMMARY documents=%d publishedTotalBytes=%d semanticallyEqualAfterRemovingCorrection=%d notEqual=%d exactBytesEqual=%d bytesOutsideTheTwoComponentsIdentical=%d documentsWithTimeComponents=%d publishedNullableOnAllPresent=%d", len(refList), totalServed, identical, failures, exact, outsideEqualCount, withTime, nullableOnBoth)
+
+	// ---- Phase 10: sweep every other enumerable catalog type -------------------------------
+	rep.f("PHASE10 === sweep: all other enumerable catalog types, default representation ===")
+	sweepTotals := tally{}
+	for _, descriptor := range catalog.Types {
+		if seen[descriptor.Type] {
+			continue
+		}
+		listable := false
+		for _, capability := range descriptor.Capabilities {
+			if capability.Operation == resource.OperationEnumerate {
+				listable = true
+			}
+		}
+		if !listable || descriptor.DefaultRepresentation == "" {
+			continue
+		}
+		result, _, _ := h.runType(descriptor.DisplayName, descriptor.Type, descriptor.DefaultRepresentation, true)
+		result.print(rep, false)
+		sweepTotals.records += result.Records
+		sweepTotals.admitted += result.Admitted
+		sweepTotals.rejected += result.Rejected
+		if result.maxWork() > sweepTotals.maxWork {
+			sweepTotals.maxWork = result.maxWork()
+		}
+	}
+	rep.f("PHASE10 SWEEP TOTALS records=%d admitted=%d rejected=%d maxWork=%d", sweepTotals.records, sweepTotals.admitted, sweepTotals.rejected, sweepTotals.maxWork)
+	labels := make([]string, 0, len(table))
+	for label := range table {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	for _, label := range labels {
+		rep.f("TABLE %-12s records=%d admitted=%d rejected=%d maxWork=%d", label, table[label].records, table[label].admitted, table[label].rejected, table[label].maxWork)
+	}
+
+	// ---- Phase 11: two connections to the same cluster -----------------------------------
+	rep.f("PHASE11 === two more kubeconfig contexts (p07-a, p07-b) onto the SAME cluster ===")
+	statsBefore := ctrl.schemas.Stats()
+	routes := map[string]resource.AccessRoute{p07MainConn: route}
+	for _, name := range []string{"p07-a", "p07-b"} {
+		connectionStatus, err := ctrl.StartConnection(ctx, p07PluginID, name)
+		require.NoError(t, err, name)
+		rep.f("PHASE11 StartConnection(%s): status=%s", name, connectionStatus.Status)
+		routes[name] = resource.AccessRoute{Connection: name}
+	}
+	perConnection := map[string]map[string]EditorSchemaAssociation{}
+	perConnectionDocs := map[string]map[string]bool{}
+	for name, access := range routes {
+		list, err := ctrl.GetEditorSchemas(ctx, p07PluginID, access)
+		require.NoError(t, err, name)
+		perConnection[name] = map[string]EditorSchemaAssociation{}
+		perConnectionDocs[name] = map[string]bool{}
+		for _, association := range list {
+			perConnection[name][association.Type+"|"+association.Key] = association
+			if association.DocumentID != "" {
+				perConnectionDocs[name][association.DocumentID] = true
+			}
+		}
+		pod := perConnection[name]["k8s:/pods|"]
+		rep.f("PHASE11 GetEditorSchemas(%s): associations=%d distinctDocumentIds=%d Pod: modelDirectory=%s fileMatch=%s documentId=%s status=%s", name, len(list), len(perConnectionDocs[name]), pod.ModelDirectory, pod.FileMatch, pod.DocumentID, pod.Status)
+	}
+	mainPod, aPod, bPod := perConnection[p07MainConn]["k8s:/pods|"], perConnection["p07-a"]["k8s:/pods|"], perConnection["p07-b"]["k8s:/pods|"]
+	rep.f("PHASE11 Pod ModelDirectory distinct across connections=%v FileMatch distinct=%v DocumentID identical across connections=%v", mainPod.ModelDirectory != aPod.ModelDirectory && aPod.ModelDirectory != bPod.ModelDirectory && mainPod.ModelDirectory != bPod.ModelDirectory,
+		mainPod.FileMatch != aPod.FileMatch && aPod.FileMatch != bPod.FileMatch && mainPod.FileMatch != bPod.FileMatch, mainPod.DocumentID == aPod.DocumentID && aPod.DocumentID == bPod.DocumentID)
+	allDirectoriesDistinct := true
+	directories := map[string]string{}
+	for name, associations := range perConnection {
+		for key, association := range associations {
+			if association.ModelDirectory == "" {
+				continue
+			}
+			if other, clash := directories[association.ModelDirectory]; clash {
+				allDirectoriesDistinct = false
+				rep.f("PHASE11 MODEL DIRECTORY CLASH %s: %s vs %s", association.ModelDirectory, other, name+"/"+key)
+			}
+			directories[association.ModelDirectory] = name + "/" + key
+		}
+	}
+	rep.f("PHASE11 all (connection,type) ModelDirectories distinct=%v (count=%d)", allDirectoriesDistinct, len(directories))
+	onlyInOne := 0
+	for name, docs := range perConnectionDocs {
+		for other, otherDocs := range perConnectionDocs {
+			if name == other {
+				continue
+			}
+			for digest := range docs {
+				if !otherDocs[digest] {
+					onlyInOne++
+					rep.f("PHASE11 digest %s referenced by %s but not %s", digest, name, other)
+				}
+			}
+		}
+	}
+	rep.f("PHASE11 digests referenced by one connection but not another: %d", onlyInOne)
+	docMain, err := ctrl.GetEditorSchemaDocument(ctx, p07PluginID, routes[p07MainConn], mainPod.DocumentID)
+	require.NoError(t, err)
+	docB, err := ctrl.GetEditorSchemaDocument(ctx, p07PluginID, routes["p07-b"], mainPod.DocumentID)
+	rep.f("PHASE11 GetEditorSchemaDocument(p07-b, digest first referenced via %s): err=%s bytesEqualToMain=%v", p07MainConn, p07Err(err), err == nil && bytes.Equal(docMain.Schema, docB.Schema))
+	_, err = ctrl.GetEditorSchemaDocument(ctx, p07PluginID, routes["p07-a"], strings.Repeat("0", 64))
+	rep.f("PHASE11 GetEditorSchemaDocument(p07-a, unreferenced digest): %s", p07Err(err))
+	fieldsA, err := ctrl.GetSchemaFields(ctx, p07PluginID, SchemaFieldsRequest{Route: routes["p07-a"], Type: "k8s:/pods"})
+	require.NoError(t, err)
+	fieldsB, err := ctrl.GetSchemaFields(ctx, p07PluginID, SchemaFieldsRequest{Route: routes["p07-b"], Type: "k8s:/pods"})
+	require.NoError(t, err)
+	rep.f("PHASE11 GetSchemaFields Pod root: p07-a catalogRevision=%s schemaRevision=%s fields=%d | p07-b catalogRevision=%s schemaRevision=%s fields=%d | equal fields=%v", fieldsA.CatalogRevision, fieldsA.SchemaRevision, len(fieldsA.Fields), fieldsB.CatalogRevision, fieldsB.SchemaRevision, len(fieldsB.Fields), reflect.DeepEqual(fieldsA.Fields, fieldsB.Fields))
+	statsAfter := ctrl.schemas.Stats()
+	rep.f("PHASE11 controller catalog Stats: before(main only)=%+v after(3 connections)=%+v", statsBefore, statsAfter)
+	_, err = ctrl.StopConnection(ctx, p07PluginID, "p07-b")
+	require.NoError(t, err)
+	rep.f("PHASE11 StopConnection(p07-b) ok; Stats=%+v", ctrl.schemas.Stats())
+	_, err = ctrl.GetEditorSchemaDocument(ctx, p07PluginID, routes["p07-b"], mainPod.DocumentID)
+	rep.f("PHASE11 GetEditorSchemaDocument(p07-b after StopConnection): %s", p07Err(err))
+	docAfter, err := ctrl.GetEditorSchemaDocument(ctx, p07PluginID, routes["p07-a"], mainPod.DocumentID)
+	rep.f("PHASE11 GetEditorSchemaDocument(p07-a still started, same digest): err=%s bytes=%d", p07Err(err), len(docAfter.Schema))
+
+	rep.f("=== DONE elapsed=%s ===", time.Since(started).Round(time.Second))
+}

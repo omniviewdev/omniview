@@ -1,0 +1,408 @@
+=== P07 LIVE KUBERNETES ACCEPTANCE HARNESS ===
+started: 2026-11-09T03:55:56Z
+host test binary SDK: github.com/omniviewdev/plugin-sdk v0.18.0
+kubectl client: Client Version: v1.33.0 | Kustomize Version: v5.6.0
+apiserver /version: {   "major": "1",   "minor": "35",   "emulationMajor": "1",   "emulationMinor": "35",   "minCompatibilityMajor": "1",   "minCompatibilityMinor": "34",   "gitVersion": "v1.35.0",   "gitCommit": "66452049f3d692768c39c797b21b793dce80314e",   "gitTreeState": "clean",   "buildDate": "2025-12-17T12:32:07Z",   "goVersion": "go1.25.5",   "compiler": "gc",   "platform": "linux/arm64" }
+kubectl get nodes: p07-acceptance-control-plane   Ready   control-plane   29m   v1.35.0
+PLUGIN child started: binary=/tmp/p07-acc/live/bin/plugin pid=33993 protocol=grpc addr=/tmp/p07-acc/live/s-1022782104/plugin2180379331 negotiated-version=1
+PHASE1 host ListConnections after OnPluginStart: [kind-p07-acceptance p07-a p07-b]
+PHASE1 StartConnection(kind-p07-acceptance): status=CONNECTED details="" elapsed=475ms
+PHASE2 host Catalog: provider=kubernetes revision=ovc1.SxqNEZQVSd84GP_sYQXiEOisZVbWVUlz5LTJ5DGGf_g.ICtYsBNnh6WmVccY5JHtW6pu8VozoJigtXHdr60Tes4 types=70 enumerable=62 defaultRepresentationBindingStates=map[absent:5 available:65] distinctDocumentRefs=21 catalogCoverage={Kind:complete Paths:[] Reason:}
+PHASE2 Pod representation: {"id":"kubernetes.object.v1/v1","revision":"kubernetes.object.v1/v1","schema":{"state":"available","revision":"86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2","dialect":"openapi-3.0","root":"#/components/schemas/io.k8s.api.core.v1.Pod","documentRef":{"id":"kubernetes.openapi.v3/v1","revision":"86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2"}}}
+PHASE2 Pod representation: {"id":"kubernetes.model.v1/v1","revision":"kubernetes.model.v1/v1","schema":{"state":"available","revision":"86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2","dialect":"openapi-3.0","root":"#/components/schemas/io.k8s.api.core.v1.Pod","documentRef":{"id":"kubernetes.openapi.v3/v1","revision":"86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2"}}}
+PHASE2 Pod descriptor: default=kubernetes.object.v1/v1 model=kubernetes.model.v1/v1 capabilities=8 nativeQueries=1
+PHASE2 GetSchemaFields Pod root                     schemaState=available dialect=openapi-3.0 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 hostEvaluation=schemaChecked validation=reduced unvalidated=29 nativeQueryLanguages=[kubernetes-label-selector.v1] operations=8 fields=5 truncated=false/
+PHASE2   catalogRevision=ovc1.SxqNEZQVSd84GP_sYQXiEOisZVbWVUlz5LTJ5DGGf_g.ICtYsBNnh6WmVccY5JHtW6pu8VozoJigtXHdr60Tes4 fields=field:apiVersion,field:kind,field:metadata,field:spec,field:status
+PHASE2 GetSchemaFields Pod spec                     schemaState=available dialect=openapi-3.0 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 hostEvaluation=schemaChecked validation=reduced unvalidated=29 nativeQueryLanguages=[kubernetes-label-selector.v1] operations=8 fields=42 truncated=false/
+PHASE2   catalogRevision=ovc1.SxqNEZQVSd84GP_sYQXiEOisZVbWVUlz5LTJ5DGGf_g.ICtYsBNnh6WmVccY5JHtW6pu8VozoJigtXHdr60Tes4 fields=field:activeDeadlineSeconds,field:affinity,field:automountServiceAccountToken,field:containers,field:dnsConfig,field:dnsPolicy,field:enableServiceLinks,field:ephemeralContainers,field:hostAliases,field:hostIPC,field:hostNetwork,field:hostPID,field:hostUsers,field:hostname,field:hostnameOverride,field:imagePullSecrets,field:initContainers,field:nodeName,field:nodeSelector,field:os,field:overhead,field:preemptionPolicy,field:priority,field:priorityClassName,field:readinessGates,field:resourceClaims,field:resources,field:restartPolicy,field:runtimeClassName,field:schedulerName,field:schedulingGates,field:securityContext,field:serviceAccount,field:serviceAccountName,field:setHostnameAsFQDN,field:shareProcessNamespace,field:subdomain,field:terminationGracePeriodSeconds,field:tolerations,field:topologySpreadConstraints,field:volumes,field:workloadRef
+PHASE2 GetSchemaFields Pod spec/containers          schemaState=available dialect=openapi-3.0 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 hostEvaluation=schemaChecked validation=reduced unvalidated=29 nativeQueryLanguages=[kubernetes-label-selector.v1] operations=8 fields=1 truncated=false/
+PHASE2   catalogRevision=ovc1.SxqNEZQVSd84GP_sYQXiEOisZVbWVUlz5LTJ5DGGf_g.ICtYsBNnh6WmVccY5JHtW6pu8VozoJigtXHdr60Tes4 fields=item:
+PHASE2 GetSchemaFields Pod spec/containers/item     schemaState=available dialect=openapi-3.0 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 hostEvaluation=schemaChecked validation=reduced unvalidated=29 nativeQueryLanguages=[kubernetes-label-selector.v1] operations=8 fields=25 truncated=false/
+PHASE2   catalogRevision=ovc1.SxqNEZQVSd84GP_sYQXiEOisZVbWVUlz5LTJ5DGGf_g.ICtYsBNnh6WmVccY5JHtW6pu8VozoJigtXHdr60Tes4 fields=field:args,field:command,field:env,field:envFrom,field:image,field:imagePullPolicy,field:lifecycle,field:livenessProbe,field:name,field:ports,field:readinessProbe,field:resizePolicy,field:resources,field:restartPolicy,field:restartPolicyRules,field:securityContext,field:startupProbe,field:stdin,field:stdinOnce,field:terminationMessagePath,field:terminationMessagePolicy,field:tty,field:volumeDevices,field:volumeMounts,field:workingDir
+PHASE2 GetSchemaFields Pod status/conditions/item   schemaState=available dialect=openapi-3.0 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 hostEvaluation=schemaChecked validation=reduced unvalidated=29 nativeQueryLanguages=[kubernetes-label-selector.v1] operations=8 fields=7 truncated=false/
+PHASE2   catalogRevision=ovc1.SxqNEZQVSd84GP_sYQXiEOisZVbWVUlz5LTJ5DGGf_g.ICtYsBNnh6WmVccY5JHtW6pu8VozoJigtXHdr60Tes4 fields=field:lastProbeTime,field:lastTransitionTime,field:message,field:observedGeneration,field:reason,field:status,field:type
+PHASE2   FieldInfo lastProbeTime: {"Segment":{"Kind":"field","Name":"lastProbeTime"},"Types":["null","string"],"Format":"date-time","Title":"","Description":"Last time we probed the condition.","Enum":null,"Presence":"optional","Nullable":"yes","Applicability":"unconditional","Conditions":null,"CELChecking":"dynamic","HasChildren":false,"NativeFilter":"unsupported"}
+PHASE2   FieldInfo lastTransitionTime: {"Segment":{"Kind":"field","Name":"lastTransitionTime"},"Types":["null","string"],"Format":"date-time","Title":"","Description":"Last time the condition transitioned from one status to another.","Enum":null,"Presence":"optional","Nullable":"yes","Applicability":"unconditional","Conditions":null,"CELChecking":"dynamic","HasChildren":false,"NativeFilter":"unsupported"}
+PHASE2 GetEditorSchemas: associations=70 statusCounts=map[absent:5 available:65] distinctDocumentIds=21
+PHASE2 Pod association: {"type":"k8s:/pods","representation":"kubernetes.object.v1/v1","language":"yaml","modelDirectory":"file:///omniview-schema/4772ad462c0990b1","fileMatch":"**/omniview-schema/4772ad462c0990b1/*","documentId":"3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12","root":"#/definitions/n137","status":"available"}
+PHASE2 non-catalog-or-unavailable association: {"type":"audit:polaris","representation":"kubernetes.polaris-audit.v1","language":"yaml","modelDirectory":"file:///omniview-schema/548eb1f03ea469dd","fileMatch":"**/omniview-schema/548eb1f03ea469dd/*","status":"absent"}
+PHASE2 non-catalog-or-unavailable association: {"type":"helm:charts","representation":"helm-native-v1","language":"yaml","modelDirectory":"file:///omniview-schema/b99e3afaa2bcf8f8","fileMatch":"**/omniview-schema/b99e3afaa2bcf8f8/*","status":"absent"}
+PHASE2 non-catalog-or-unavailable association: {"type":"helm:releases","representation":"helm-native-v1","language":"yaml","modelDirectory":"file:///omniview-schema/bb81a9e1f240987b","fileMatch":"**/omniview-schema/bb81a9e1f240987b/*","status":"absent"}
+PHASE2 non-catalog-or-unavailable association: {"type":"helm:repositories","representation":"helm-native-v1","language":"yaml","modelDirectory":"file:///omniview-schema/089debb34cd43c42","fileMatch":"**/omniview-schema/089debb34cd43c42/*","status":"absent"}
+PHASE2 non-catalog-or-unavailable association: {"type":"kubernetes:editor-queries","representation":"kubernetes.editor-query.v1","language":"yaml","modelDirectory":"file:///omniview-schema/582cea1884934220","fileMatch":"**/omniview-schema/582cea1884934220/*","status":"absent"}
+PHASE2 GetEditorSchemaDocument(Pod documentId): bytes=447840 sha256=5091229c6c4c39b51fa40397bba7602408c34f1b7cd74cd2e1cd17b6506bc8b4 jsonValid=true $schema=http://json-schema.org/draft-07/schema# definitions=1931 returnedDocumentId=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 root=#/definitions/n137
+PHASE2 GetEditorSchemaDocument(unreferenced digest): AppError{code="NOT_FOUND" type="omniview:resource/not-found" status=404 detail="Editor schema document is not referenced by this connection."}
+PHASE2 GetSchemaDocument(Pod ref {ID:kubernetes.openapi.v3/v1 Revision:86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2}): bytes=1455626 dialect=openapi-3.0 referenceEqual=true
+PHASE2 DIGESTS bindingRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 documentRefRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 sha256(servedBytes)=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 hostDigest=sha256(prefix+dialect+NUL+bytes)=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 editorAssociationDocumentId=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12
+PHASE2 DIGEST CHECKS: bindingRevision==sha256(servedBytes): true; documentRefRevision==bindingRevision: true; associationDocumentId==hostDigest: true; associationDocumentId==sha256(servedBytes): false
+PHASE2 SERVED io.k8s.apimachinery.pkg.apis.meta.v1.Time present=true: {"description":"Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.","format":"date-time","nullable":true,"type":"string"}
+PHASE2 SERVED io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime present=true: {"description":"MicroTime is version of Time with microsecond level precision.","format":"date-time","nullable":true,"type":"string"}
+PHASE2 Pod schema (fresh host catalog): entryState=available dialect=openapi-3.0 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 validation=reduced unvalidated=29 documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 nodes=1931 root=137
+PHASE2 Pod schema unvalidated keyword histogram: map[x-kubernetes-list-type:27 x-kubernetes-unions:2]
+PHASE2 controller catalog Stats after schema calls: {Connections:1 Entries:137 Documents:21 RetainedBytes:11138644 BranchViews:0 CELProviders:0}
+PHASE2 GetSchemaFields root for every catalog type (70): overlay outcomes=map[dynamic/validation=none/binding=absent:5 schemaChecked/validation=reduced/binding=available:65] typesWithNativeQueryLanguages=58 totalRootFields=345 nativeFilterNotUnsupported=0
+PHASE2 types whose overlay is not schemaChecked: [audit:polaris:dynamic(absent) helm:charts:dynamic(absent) helm:releases:dynamic(absent) helm:repositories:dynamic(absent) kubernetes:editor-queries:dynamic(absent)]
+ROW Pod            rep=kubernetes.object.v1/v1        type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.6 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x90
+     admissionValidation: reduced x90
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.AppArmorProfile" keyword="x-kubernetes-unions"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.Container/properties/env" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.Container/properties/ports" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.Container/properties/volumeDevices" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.Container/properties/volumeMounts" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.ContainerRestartRuleOnExitCodes/properties/values" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.ContainerStatus/properties/allocatedResourcesStatus" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.ContainerStatus/properties/volumeMounts" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.EphemeralContainer/properties/env" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.EphemeralContainer/properties/ports" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.EphemeralContainer/properties/volumeDevices" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.EphemeralContainer/properties/volumeMounts" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/containers" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/ephemeralContainers" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/hostAliases" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/imagePullSecrets" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/initContainers" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/resourceClaims" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/schedulingGates" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/topologySpreadConstraints" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodSpec/properties/volumes" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodStatus/properties/conditions" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodStatus/properties/podIPs" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.PodStatus/properties/resourceClaimStatuses" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.ResourceRequirements/properties/claims" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.ResourceStatus/properties/resources" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.api.core.v1.SeccompProfile" keyword="x-kubernetes-unions"
+     unvalidated: pointer="/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta/properties/finalizers" keyword="x-kubernetes-list-type"
+     unvalidated: pointer="/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta/properties/ownerReferences" keyword="x-kubernetes-list-type"
+PHASE3 kubectl get pods -A --no-headers | wc -l: before=90 after=90; host Enumerate records=90 (admitted+rejected=90)
+PHASE3 default-representation Pod body preserves metadata.managedFields=true coverage={Kind:complete Paths:[] Reason:} representation=kubernetes.object.v1/v1 revision=kubernetes.object.v1/v1
+PHASE3 enumerated Pod count equals kubectl count (before=90 after=90 enumerated=90): true
+PHASE4 CONTROL: removed nullable from 2 component(s) in the served Pod GroupVersion document (harness-only mutation)
+ROW Pod-CONTROL    rep=kubernetes.object.v1/v1        type=k8s:/pods                                      schema=available(control: nullable removed) validation=reduced unvalidated=29 records=90 admitted=0 rejected=90 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x90
+     REJECT x90 INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/status/conditions/0/lastProbeTime\" has kind null, schema at \"/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.Time\" allows string"}
+       sample records: [namespace=kube-system,id=coredns-7d764666f9-d5brn namespace=kube-system,id=coredns-7d764666f9-s26v7 namespace=kube-system,id=etcd-p07-acceptance-control-plane]
+PHASE4 Navigate(status/conditions/item) corrected schema lastProbeTime: {"Segment":{"Kind":"field","Name":"lastProbeTime"},"Types":["null","string"],"Format":"date-time","Title":"","Description":"Last time we probed the condition.","Enum":null,"Presence":"optional","Nullable":"yes","Applicability":"unconditional","Conditions":null,"CELChecking":"dynamic","HasChildren":false,"NativeFilter":"unsupported"}
+PHASE4 Navigate(status/conditions/item) control schema lastProbeTime: {"Segment":{"Kind":"field","Name":"lastProbeTime"},"Types":["string"],"Format":"date-time","Title":"","Description":"Last time we probed the condition.","Enum":null,"Presence":"optional","Nullable":"no","Applicability":"unconditional","Conditions":null,"CELChecking":"partial","HasChildren":false,"NativeFilter":"unsupported"}
+PHASE5 === required types, default representation, corrected published documents ===
+ROW Deployment     rep=kubernetes.object.v1/apps/v1   type=k8s:apps/deployments                           schema=available validation=reduced unvalidated=24 records=15 admitted=15 rejected=0 maxWork=2283 meanWork=672.5 maxWorkRecord="namespace=p07-web,id=web-frontend" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x15
+     admissionValidation: reduced x15
+     kubectl get deployments.apps -A --no-headers | wc -l = 15 (enumerated 15, admitted+rejected 15)
+ROW ConfigMap      rep=kubernetes.object.v1/v1        type=k8s:/configmaps                                schema=available validation=reduced unvalidated=2 records=26 admitted=26 rejected=0 maxWork=127 meanWork=87.9 maxWorkRecord="namespace=p07-web,id=web-env" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x26
+     admissionValidation: reduced x26
+     kubectl get configmaps -A --no-headers | wc -l = 26 (enumerated 26, admitted+rejected 26)
+ROW Service        rep=kubernetes.object.v1/v1        type=k8s:/services                                  schema=available validation=reduced unvalidated=4 records=11 admitted=11 rejected=0 maxWork=267 meanWork=187.5 maxWorkRecord="namespace=kube-system,id=kube-dns" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x11
+     admissionValidation: reduced x11
+     kubectl get services -A --no-headers | wc -l = 11 (enumerated 11, admitted+rejected 11)
+ROW Node           rep=kubernetes.object.v1/v1        type=k8s:/nodes                                     schema=available validation=reduced unvalidated=5 records=1 admitted=1 rejected=0 maxWork=1001 meanWork=1001.0 maxWorkRecord="id=p07-acceptance-control-plane" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+     kubectl get nodes -A --no-headers | wc -l = 1 (enumerated 1, admitted+rejected 1)
+ROW Namespace      rep=kubernetes.object.v1/v1        type=k8s:/namespaces                                schema=available validation=reduced unvalidated=3 records=11 admitted=11 rejected=0 maxWork=304 meanWork=122.0 maxWorkRecord="id=p07-doomed" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x11
+     admissionValidation: reduced x11
+     kubectl get namespaces -A --no-headers | wc -l = 11 (enumerated 11, admitted+rejected 11)
+ROW Event          rep=kubernetes.object.v1/v1        type=k8s:/events                                    schema=available validation=reduced unvalidated=2 records=931 admitted=931 rejected=0 maxWork=152 meanWork=149.0 maxWorkRecord="namespace=kube-system,id=coredns-7d764666f9-d5brn.18e6437208e1cb84" pages=10 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x931
+     admissionValidation: reduced x931
+ROW ReplicaSet     rep=kubernetes.object.v1/apps/v1   type=k8s:apps/replicasets                           schema=available validation=reduced unvalidated=24 records=16 admitted=16 rejected=0 maxWork=2158 meanWork=579.9 maxWorkRecord="namespace=p07-web,id=web-frontend-7cf96769db" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x16
+     admissionValidation: reduced x16
+     kubectl get replicasets.apps -A --no-headers | wc -l = 16 (enumerated 16, admitted+rejected 16)
+ROW StatefulSet    rep=kubernetes.object.v1/apps/v1   type=k8s:apps/statefulsets                          schema=available validation=reduced unvalidated=25 records=1 admitted=1 rejected=0 maxWork=764 meanWork=764.0 maxWorkRecord="namespace=p07-data,id=redis" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+     kubectl get statefulsets.apps -A --no-headers | wc -l = 1 (enumerated 1, admitted+rejected 1)
+ROW DaemonSet      rep=kubernetes.object.v1/apps/v1   type=k8s:apps/daemonsets                            schema=available validation=reduced unvalidated=24 records=3 admitted=3 rejected=0 maxWork=753 meanWork=599.0 maxWorkRecord="namespace=kube-system,id=kindnet" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x3
+     admissionValidation: reduced x3
+     kubectl get daemonsets.apps -A --no-headers | wc -l = 3 (enumerated 3, admitted+rejected 3)
+ROW Job            rep=kubernetes.object.v1/batch/v1  type=k8s:batch/jobs                                 schema=available validation=reduced unvalidated=26 records=6 admitted=6 rejected=0 maxWork=513 meanWork=460.5 maxWorkRecord="namespace=p07-batch,id=indexed-job" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x6
+     admissionValidation: reduced x6
+     kubectl get jobs.batch -A --no-headers | wc -l = 6 (enumerated 6, admitted+rejected 6)
+ROW CronJob        rep=kubernetes.object.v1/batch/v1  type=k8s:batch/cronjobs                             schema=available validation=reduced unvalidated=24 records=1 admitted=1 rejected=0 maxWork=384 meanWork=384.0 maxWorkRecord="namespace=p07-batch,id=nightly-report" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+     kubectl get cronjobs.batch -A --no-headers | wc -l = 1 (enumerated 1, admitted+rejected 1)
+ROW PVC            rep=kubernetes.object.v1/v1        type=k8s:/persistentvolumeclaims                    schema=available validation=reduced unvalidated=3 records=6 admitted=6 rejected=0 maxWork=296 meanWork=265.5 maxWorkRecord="namespace=p07-data,id=data-archive" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x6
+     admissionValidation: reduced x6
+     kubectl get persistentvolumeclaims -A --no-headers | wc -l = 6 (enumerated 6, admitted+rejected 6)
+ROW Secret         rep=kubernetes.object.v1/v1        type=k8s:/secrets                                   schema=available validation=reduced unvalidated=2 records=7 admitted=7 rejected=0 maxWork=98 meanWork=91.1 maxWorkRecord="namespace=kube-system,id=bootstrap-token-abcdef" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x7
+     admissionValidation: reduced x7
+     kubectl get secrets -A --no-headers | wc -l = 7 (enumerated 7, admitted+rejected 7)
+PHASE5 === required types, MODEL representation (partial coverage /metadata/managedFields) ===
+ROW Pod[model]     rep=kubernetes.model.v1/v1         type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3041 meanWork=967.2 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x90
+     admissionValidation: reduced x90
+PHASE5 model-representation Pod body has metadata.managedFields=false coverage={Kind:partial Paths:[/metadata/managedFields] Reason:Kubernetes model projection omits metadata.managedFields}
+ROW Deployment[model] rep=kubernetes.model.v1/apps/v1    type=k8s:apps/deployments                           schema=available validation=reduced unvalidated=24 records=15 admitted=15 rejected=0 maxWork=1818 meanWork=490.7 maxWorkRecord="namespace=p07-web,id=web-frontend" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x15
+     admissionValidation: reduced x15
+ROW ConfigMap[model] rep=kubernetes.model.v1/v1         type=k8s:/configmaps                                schema=available validation=reduced unvalidated=2 records=26 admitted=26 rejected=0 maxWork=59 meanWork=45.5 maxWorkRecord="namespace=p07-doomed,id=hold" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x26
+     admissionValidation: reduced x26
+ROW Service[model] rep=kubernetes.model.v1/v1         type=k8s:/services                                  schema=available validation=reduced unvalidated=4 records=11 admitted=11 rejected=0 maxWork=198 meanWork=134.2 maxWorkRecord="namespace=kube-system,id=kube-dns" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x11
+     admissionValidation: reduced x11
+ROW Node[model]    rep=kubernetes.model.v1/v1         type=k8s:/nodes                                     schema=available validation=reduced unvalidated=5 records=1 admitted=1 rejected=0 maxWork=763 meanWork=763.0 maxWorkRecord="id=p07-acceptance-control-plane" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x1
+     admissionValidation: reduced x1
+ROW Namespace[model] rep=kubernetes.model.v1/v1         type=k8s:/namespaces                                schema=available validation=reduced unvalidated=3 records=11 admitted=11 rejected=0 maxWork=193 meanWork=75.6 maxWorkRecord="id=p07-doomed" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x11
+     admissionValidation: reduced x11
+ROW Event[model]   rep=kubernetes.model.v1/v1         type=k8s:/events                                    schema=available validation=reduced unvalidated=2 records=931 admitted=931 rejected=0 maxWork=107 meanWork=104.6 maxWorkRecord="namespace=kube-system,id=coredns-7d764666f9-d5brn.18e6437208e1cb84" pages=10 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x931
+     admissionValidation: reduced x931
+ROW ReplicaSet[model] rep=kubernetes.model.v1/apps/v1    type=k8s:apps/replicasets                           schema=available validation=reduced unvalidated=24 records=16 admitted=16 rejected=0 maxWork=1748 meanWork=422.6 maxWorkRecord="namespace=p07-web,id=web-frontend-7cf96769db" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x16
+     admissionValidation: reduced x16
+ROW StatefulSet[model] rep=kubernetes.model.v1/apps/v1    type=k8s:apps/statefulsets                          schema=available validation=reduced unvalidated=25 records=1 admitted=1 rejected=0 maxWork=571 meanWork=571.0 maxWorkRecord="namespace=p07-data,id=redis" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x1
+     admissionValidation: reduced x1
+ROW DaemonSet[model] rep=kubernetes.model.v1/apps/v1    type=k8s:apps/daemonsets                            schema=available validation=reduced unvalidated=24 records=3 admitted=3 rejected=0 maxWork=548 meanWork=429.3 maxWorkRecord="namespace=kube-system,id=kindnet" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x3
+     admissionValidation: reduced x3
+ROW Job[model]     rep=kubernetes.model.v1/batch/v1   type=k8s:batch/jobs                                 schema=available validation=reduced unvalidated=26 records=6 admitted=6 rejected=0 maxWork=397 meanWork=344.5 maxWorkRecord="namespace=p07-batch,id=indexed-job" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x6
+     admissionValidation: reduced x6
+ROW CronJob[model] rep=kubernetes.model.v1/batch/v1   type=k8s:batch/cronjobs                             schema=available validation=reduced unvalidated=24 records=1 admitted=1 rejected=0 maxWork=237 meanWork=237.0 maxWorkRecord="namespace=p07-batch,id=nightly-report" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x1
+     admissionValidation: reduced x1
+ROW PVC[model]     rep=kubernetes.model.v1/v1         type=k8s:/persistentvolumeclaims                    schema=available validation=reduced unvalidated=3 records=6 admitted=6 rejected=0 maxWork=162 meanWork=147.0 maxWorkRecord="namespace=p07-data,id=data-redis-1" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x6
+     admissionValidation: reduced x6
+ROW Secret[model]  rep=kubernetes.model.v1/v1         type=k8s:/secrets                                   schema=available validation=reduced unvalidated=2 records=7 admitted=7 rejected=0 maxWork=56 meanWork=49.6 maxWorkRecord="namespace=kube-system,id=bootstrap-token-abcdef" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: partial[/metadata/managedFields] x7
+     admissionValidation: reduced x7
+PHASE6 === control (nullable removed) over the same live bodies of the other required types ===
+ROW Deployment-CONTROL rep=kubernetes.object.v1/apps/v1   type=k8s:apps/deployments                           schema=available(control: nullable removed) validation=reduced unvalidated=24 records=15 admitted=15 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x15
+     admissionValidation: reduced x15
+ROW ConfigMap-CONTROL rep=kubernetes.object.v1/v1        type=k8s:/configmaps                                schema=available(control: nullable removed) validation=reduced unvalidated=2 records=26 admitted=26 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x26
+     admissionValidation: reduced x26
+ROW Service-CONTROL rep=kubernetes.object.v1/v1        type=k8s:/services                                  schema=available(control: nullable removed) validation=reduced unvalidated=4 records=11 admitted=11 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x11
+     admissionValidation: reduced x11
+ROW Node-CONTROL   rep=kubernetes.object.v1/v1        type=k8s:/nodes                                     schema=available(control: nullable removed) validation=reduced unvalidated=5 records=1 admitted=1 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW Namespace-CONTROL rep=kubernetes.object.v1/v1        type=k8s:/namespaces                                schema=available(control: nullable removed) validation=reduced unvalidated=3 records=11 admitted=11 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x11
+     admissionValidation: reduced x11
+ROW Event-CONTROL  rep=kubernetes.object.v1/v1        type=k8s:/events                                    schema=available(control: nullable removed) validation=reduced unvalidated=2 records=931 admitted=0 rejected=931 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x931
+     REJECT x924 INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/eventTime\" has kind null, schema at \"/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime\" allows string"}
+       sample records: [namespace=default,id=p07-acceptance-control-plane.18e642ac10f09ab9 namespace=default,id=p07-acceptance-control-plane.18e642ac10f0b611 namespace=default,id=p07-acceptance-control-plane.18e642ac10f0c464]
+     REJECT x7 INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/firstTimestamp\" has kind null, schema at \"/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.Time\" allows string"}
+       sample records: [namespace=default,id=p07-acceptance-control-plane.18e642eb534ba105 namespace=default,id=p07-acceptance-control-plane.18e6437db968712a namespace=kube-system,id=coredns-7d764666f9-d5brn.18e642e86f985788]
+     REJECT-NORMALIZED x924 INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/eventTime\" has kind null, schema at \"/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime\" allows string"}
+     REJECT-NORMALIZED x7 INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/firstTimestamp\" has kind null, schema at \"/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.Time\" allows string"}
+ROW ReplicaSet-CONTROL rep=kubernetes.object.v1/apps/v1   type=k8s:apps/replicasets                           schema=available(control: nullable removed) validation=reduced unvalidated=24 records=16 admitted=16 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x16
+     admissionValidation: reduced x16
+ROW StatefulSet-CONTROL rep=kubernetes.object.v1/apps/v1   type=k8s:apps/statefulsets                          schema=available(control: nullable removed) validation=reduced unvalidated=25 records=1 admitted=1 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW DaemonSet-CONTROL rep=kubernetes.object.v1/apps/v1   type=k8s:apps/daemonsets                            schema=available(control: nullable removed) validation=reduced unvalidated=24 records=3 admitted=3 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x3
+     admissionValidation: reduced x3
+ROW Job-CONTROL    rep=kubernetes.object.v1/batch/v1  type=k8s:batch/jobs                                 schema=available(control: nullable removed) validation=reduced unvalidated=26 records=6 admitted=6 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x6
+     admissionValidation: reduced x6
+ROW CronJob-CONTROL rep=kubernetes.object.v1/batch/v1  type=k8s:batch/cronjobs                             schema=available(control: nullable removed) validation=reduced unvalidated=24 records=1 admitted=1 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW PVC-CONTROL    rep=kubernetes.object.v1/v1        type=k8s:/persistentvolumeclaims                    schema=available(control: nullable removed) validation=reduced unvalidated=3 records=6 admitted=6 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x6
+     admissionValidation: reduced x6
+ROW Secret-CONTROL rep=kubernetes.object.v1/v1        type=k8s:/secrets                                   schema=available(control: nullable removed) validation=reduced unvalidated=2 records=7 admitted=7 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=0 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x7
+     admissionValidation: reduced x7
+PHASE7 === determinism: second in-process Pod run (fresh host catalog snapshot, fresh enumeration) ===
+ROW Pod#2          rep=kubernetes.object.v1/v1        type=k8s:/pods                                      schema=available validation=reduced unvalidated=29 records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.6 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x90
+     admissionValidation: reduced x90
+PHASE7 first run: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 | second run: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 | identical counts=true
+PHASE7b === determinism on the SAME captured Pod bodies: three fresh host catalogs/resolutions ===
+PHASE7b round 1: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+PHASE7b round 2: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+PHASE7b round 3: records=90 admitted=90 rejected=0 maxWork=3338 meanWork=1156.589 maxWorkRecord="namespace=p07-web,id=exotic-ten-containers" perRecordWorkVectorIdenticalToRound1=true documentDigest=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2
+PHASE8 === coverage semantics on a real live Pod body with required spec.containers removed ===
+PHASE8 complete                                                                              -> REJECT INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"required property at \"/spec/containers\" is missing"}
+PHASE8 partial paths=[/metadata/managedFields] (the adapter's model-projection coverage)     -> REJECT INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"required property at \"/spec/containers\" is missing"}
+PHASE8 partial paths=[/spec]                                                                 -> ADMIT validation=reduced unavailablePaths=[/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchExpressions /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchExpressions/0/values /spec/containers /spec/nodeSelector /spec/tolerations /spec/volumes /spec/volumes/0/configMap/items /spec/volumes/1/projected/sources /spec/volumes/1/projected/sources/1/configMap/items /spec/volumes/1/projected/sources/2/downwardAPI/items]
+PHASE8 partial paths=[] (whole body limited)                                                 -> ADMIT validation=reduced unavailablePaths=[/metadata/labels /metadata/managedFields /metadata/ownerReferences /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchExpressions /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchExpressions/0/values /spec/containers /spec/nodeSelector /spec/tolerations /spec/volumes /spec/volumes/0/configMap/items /spec/volumes/1/projected/sources /spec/volumes/1/projected/sources/1/configMap/items /spec/volumes/1/projected/sources/2/downwardAPI/items /status/conditions /status/containerStatuses /status/containerStatuses/0/allocatedResources /status/containerStatuses/0/resources/limits /status/containerStatuses/0/resources/requests /status/containerStatuses/0/user/linux/supplementalGroups /status/containerStatuses/0/volumeMounts /status/hostIPs /status/podIPs]
+PHASE8 unknown paths=[]                                                                      -> ADMIT validation=reduced unavailablePaths=[/metadata/labels /metadata/managedFields /metadata/ownerReferences /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchExpressions /spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchExpressions/0/values /spec/containers /spec/nodeSelector /spec/tolerations /spec/volumes /spec/volumes/0/configMap/items /spec/volumes/1/projected/sources /spec/volumes/1/projected/sources/1/configMap/items /spec/volumes/1/projected/sources/2/downwardAPI/items /status/conditions /status/containerStatuses /status/containerStatuses/0/allocatedResources /status/containerStatuses/0/resources/limits /status/containerStatuses/0/resources/requests /status/containerStatuses/0/user/linux/supplementalGroups /status/containerStatuses/0/volumeMounts /status/hostIPs /status/podIPs]
+PHASE8 spec.containers[0].image = int64 5 under partial paths=[] -> INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/spec/containers/0/image\" has kind int64, schema at \"/components/schemas/io.k8s.api.core.v1.Container/properties/image\" allows string"}
+PHASE9 === native OpenAPI document vs published document, every referenced GroupVersion ===
+PHASE9 kubernetes.openapi.v3/admissionregistration.k8s.io/v1 nativeBytes=315697 publishedBytes=315713 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/apiextensions.k8s.io/v1 nativeBytes=142258 publishedBytes=142274 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/apiregistration.k8s.io/v1 nativeBytes=104689 publishedBytes=104705 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/apps/v1                nativeBytes=668312 publishedBytes=668328 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/authentication.k8s.io/v1 nativeBytes=32049 publishedBytes=32065 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/authorization.k8s.io/v1 nativeBytes=56188 publishedBytes=56204 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/autoscaling/v2         nativeBytes=145725 publishedBytes=145741 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/batch/v1               nativeBytes=414738 publishedBytes=414754 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/certificates.k8s.io/v1 nativeBytes=117989 publishedBytes=118005 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/coordination.k8s.io/v1 nativeBytes=107713 publishedBytes=107745 delta=32 componentBodyDelta=32 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=true) publishedNullableOnPresent=true removedByStrip=2 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/discovery.k8s.io/v1    nativeBytes=116759 publishedBytes=116775 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/events.k8s.io/v1       nativeBytes=111805 publishedBytes=111837 delta=32 componentBodyDelta=32 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=true) publishedNullableOnPresent=true removedByStrip=2 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/flowcontrol.apiserver.k8s.io/v1 nativeBytes=180197 publishedBytes=180213 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/networking.k8s.io/v1   nativeBytes=369313 publishedBytes=369329 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/node.k8s.io/v1         nativeBytes=97814 publishedBytes=97830 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/policy/v1              nativeBytes=125246 publishedBytes=125262 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/rbac.authorization.k8s.io/v1 nativeBytes=278244 publishedBytes=278260 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/resource.k8s.io/v1     nativeBytes=346325 publishedBytes=346341 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/scheduling.k8s.io/v1   nativeBytes=91371 publishedBytes=91387 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 kubernetes.openapi.v3/storage.k8s.io/v1      nativeBytes=439228 publishedBytes=439244 delta=16 componentBodyDelta=16 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=false) publishedNullableOnPresent=true removedByStrip=1 revisionIsSha256OfPublished=true
+PHASE9 NATIVE   io.k8s.apimachinery.pkg.apis.meta.v1.Time: {"description":"Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.","type":"string","format":"date-time"}
+PHASE9 PUBLISHED io.k8s.apimachinery.pkg.apis.meta.v1.Time: {"description":"Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.","format":"date-time","nullable":true,"type":"string"}
+PHASE9 NATIVE   io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime: {"description":"MicroTime is version of Time with microsecond level precision.","type":"string","format":"date-time"}
+PHASE9 PUBLISHED io.k8s.apimachinery.pkg.apis.meta.v1.MicroTime: {"description":"MicroTime is version of Time with microsecond level precision.","format":"date-time","nullable":true,"type":"string"}
+PHASE9 kubernetes.openapi.v3/v1                     nativeBytes=1455594 publishedBytes=1455626 delta=32 componentBodyDelta=32 bytesOutsideTheTwoComponentsIdentical=true semanticallyEqualAfterRemovingCorrection=true exactBytesEqual=false timeComponents(native/time=true micro=true) publishedNullableOnPresent=true removedByStrip=2 revisionIsSha256OfPublished=true
+PHASE9 SUMMARY documents=21 publishedTotalBytes=5717638 semanticallyEqualAfterRemovingCorrection=21 notEqual=0 exactBytesEqual=0 bytesOutsideTheTwoComponentsIdentical=21 documentsWithTimeComponents=21 publishedNullableOnAllPresent=21
+PHASE10 === sweep: all other enumerable catalog types, default representation ===
+ROW ComponentStatus rep=kubernetes.object.v1/v1        type=k8s:/componentstatuses                         schema=available validation=reduced unvalidated=3 records=3 admitted=3 rejected=0 maxWork=35 meanWork=35.0 maxWorkRecord="id=scheduler" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x3
+     admissionValidation: reduced x3
+ROW Endpoints      rep=kubernetes.object.v1/v1        type=k8s:/endpoints                                 schema=available validation=reduced unvalidated=2 records=10 admitted=10 rejected=0 maxWork=304 meanWork=234.8 maxWorkRecord="namespace=p07-web,id=web-frontend" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x10
+     admissionValidation: reduced x10
+ROW LimitRange     rep=kubernetes.object.v1/v1        type=k8s:/limitranges                               schema=available validation=reduced unvalidated=2 records=1 admitted=1 rejected=0 maxWork=191 meanWork=191.0 maxWorkRecord="namespace=p07-web,id=web-limits" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW PersistentVolume rep=kubernetes.object.v1/v1        type=k8s:/persistentvolumes                         schema=available validation=reduced unvalidated=2 records=5 admitted=5 rejected=0 maxWork=282 meanWork=282.0 maxWorkRecord="id=pvc-7434c375-d866-4a98-917d-21661c2cb45d" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x5
+     admissionValidation: reduced x5
+ROW PodTemplate    rep=kubernetes.object.v1/v1        type=k8s:/podtemplates                              schema=available validation=reduced unvalidated=23 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ReplicationController rep=kubernetes.object.v1/v1        type=k8s:/replicationcontrollers                    schema=available validation=reduced unvalidated=24 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ResourceQuota  rep=kubernetes.object.v1/v1        type=k8s:/resourcequotas                            schema=available validation=reduced unvalidated=2 records=1 admitted=1 rejected=0 maxWork=307 meanWork=307.0 maxWorkRecord="namespace=p07-web,id=web-quota" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW ServiceAccount rep=kubernetes.object.v1/v1        type=k8s:/serviceaccounts                           schema=available validation=reduced unvalidated=3 records=51 admitted=51 rejected=0 maxWork=101 meanWork=34.2 maxWorkRecord="namespace=p07-web,id=web-sa" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x51
+     admissionValidation: reduced x51
+ROW MutatingWebhookConfiguration rep=kubernetes.object.v1/admissionregistration.k8s.io/v1 type=k8s:admissionregistration.k8s.io/mutatingwebhookconfigurations schema=available validation=reduced unvalidated=4 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ValidatingAdmissionPolicy rep=kubernetes.object.v1/admissionregistration.k8s.io/v1 type=k8s:admissionregistration.k8s.io/validatingadmissionpolicies schema=available validation=reduced unvalidated=5 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ValidatingAdmissionPolicyBinding rep=kubernetes.object.v1/admissionregistration.k8s.io/v1 type=k8s:admissionregistration.k8s.io/validatingadmissionpolicybindings schema=available validation=reduced unvalidated=3 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ValidatingWebhookConfiguration rep=kubernetes.object.v1/admissionregistration.k8s.io/v1 type=k8s:admissionregistration.k8s.io/validatingwebhookconfigurations schema=available validation=reduced unvalidated=4 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW CustomResourceDefinition rep=kubernetes.object.v1/apiextensions.k8s.io/v1 type=k8s:apiextensions.k8s.io/customresourcedefinitions schema=available validation=reduced unvalidated=4 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW APIService     rep=kubernetes.object.v1/apiregistration.k8s.io/v1 type=k8s:apiregistration.k8s.io/apiservices         schema=available validation=reduced unvalidated=3 records=21 admitted=21 rejected=0 maxWork=128 meanWork=127.8 maxWorkRecord="id=v1.admissionregistration.k8s.io" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x21
+     admissionValidation: reduced x21
+ROW ControllerRevision rep=kubernetes.object.v1/apps/v1   type=k8s:apps/controllerrevisions                   schema=available validation=reduced unvalidated=2 records=4 admitted=4 rejected=0 maxWork=234 meanWork=204.0 maxWorkRecord="namespace=kube-system,id=kindnet-6466974556" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x4
+     admissionValidation: reduced x4
+ROW HorizontalPodAutoscaler rep=kubernetes.object.v1/autoscaling/v2 type=k8s:autoscaling/horizontalpodautoscalers       schema=available validation=reduced unvalidated=3 records=1 admitted=1 rejected=0 maxWork=409 meanWork=409.0 maxWorkRecord="namespace=p07-edge,id=scalable" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW CertificateSigningRequest rep=kubernetes.object.v1/certificates.k8s.io/v1 type=k8s:certificates.k8s.io/certificatesigningrequests schema=available validation=reduced unvalidated=3 records=1 admitted=1 rejected=0 maxWork=242 meanWork=242.0 maxWorkRecord="id=csr-mxppc" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW Lease          rep=kubernetes.object.v1/coordination.k8s.io/v1 type=k8s:coordination.k8s.io/leases                 schema=available validation=reduced unvalidated=2 records=4 admitted=4 rejected=0 maxWork=112 meanWork=102.2 maxWorkRecord="namespace=kube-node-lease,id=p07-acceptance-control-plane" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x4
+     admissionValidation: reduced x4
+ROW EndpointSlice  rep=kubernetes.object.v1/discovery.k8s.io/v1 type=k8s:discovery.k8s.io/endpointslices            schema=available validation=reduced unvalidated=3 records=10 admitted=10 rejected=0 maxWork=451 meanWork=338.7 maxWorkRecord="namespace=p07-web,id=web-frontend-hdcgq" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x10
+     admissionValidation: reduced x10
+ROW Event          rep=kubernetes.object.v1/events.k8s.io/v1 type=k8s:events.k8s.io/events                       schema=available validation=reduced unvalidated=2 records=931 admitted=931 rejected=0 maxWork=152 meanWork=148.2 maxWorkRecord="namespace=kube-system,id=coredns-7d764666f9-d5brn.18e6437208e1cb84" pages=10 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x931
+     admissionValidation: reduced x931
+ROW FlowSchema     rep=kubernetes.object.v1/flowcontrol.apiserver.k8s.io/v1 type=k8s:flowcontrol.apiserver.k8s.io/flowschemas   schema=available validation=reduced unvalidated=10 records=11 admitted=11 rejected=0 maxWork=293 meanWork=275.3 maxWorkRecord="id=system-leader-election" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x11
+     admissionValidation: reduced x11
+ROW PriorityLevelConfiguration rep=kubernetes.object.v1/flowcontrol.apiserver.k8s.io/v1 type=k8s:flowcontrol.apiserver.k8s.io/prioritylevelconfigurations schema=available validation=reduced unvalidated=5 records=8 admitted=8 rejected=0 maxWork=140 meanWork=133.5 maxWorkRecord="id=global-default" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x8
+     admissionValidation: reduced x8
+ROW IngressClass   rep=kubernetes.object.v1/networking.k8s.io/v1 type=k8s:networking.k8s.io/ingressclasses           schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW Ingress        rep=kubernetes.object.v1/networking.k8s.io/v1 type=k8s:networking.k8s.io/ingresses                schema=available validation=reduced unvalidated=2 records=1 admitted=1 rejected=0 maxWork=252 meanWork=252.0 maxWorkRecord="namespace=p07-web,id=web-ingress" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW IPAddress      rep=kubernetes.object.v1/networking.k8s.io/v1 type=k8s:networking.k8s.io/ipaddresses              schema=available validation=reduced unvalidated=2 records=7 admitted=7 rejected=0 maxWork=103 meanWork=103.0 maxWorkRecord="id=10.96.0.1" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x7
+     admissionValidation: reduced x7
+ROW NetworkPolicy  rep=kubernetes.object.v1/networking.k8s.io/v1 type=k8s:networking.k8s.io/networkpolicies          schema=available validation=reduced unvalidated=2 records=1 admitted=1 rejected=0 maxWork=279 meanWork=279.0 maxWorkRecord="namespace=p07-web,id=web-policy" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW ServiceCIDR    rep=kubernetes.object.v1/networking.k8s.io/v1 type=k8s:networking.k8s.io/servicecidrs             schema=available validation=reduced unvalidated=3 records=1 admitted=1 rejected=0 maxWork=230 meanWork=230.0 maxWorkRecord="id=kubernetes" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW RuntimeClass   rep=kubernetes.object.v1/node.k8s.io/v1 type=k8s:node.k8s.io/runtimeclasses                 schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW PodDisruptionBudget rep=kubernetes.object.v1/policy/v1 type=k8s:policy/poddisruptionbudgets                schema=available validation=reduced unvalidated=3 records=1 admitted=1 rejected=0 maxWork=214 meanWork=214.0 maxWorkRecord="namespace=p07-web,id=web-pdb" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW ClusterRoleBinding rep=kubernetes.object.v1/rbac.authorization.k8s.io/v1 type=k8s:rbac.authorization.k8s.io/clusterrolebindings schema=available validation=reduced unvalidated=2 records=58 admitted=58 rejected=0 maxWork=131 meanWork=113.2 maxWorkRecord="id=system:public-info-viewer" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x58
+     admissionValidation: reduced x58
+ROW ClusterRole    rep=kubernetes.object.v1/rbac.authorization.k8s.io/v1 type=k8s:rbac.authorization.k8s.io/clusterroles     schema=available validation=reduced unvalidated=2 records=72 admitted=72 rejected=0 maxWork=1327 meanWork=260.8 maxWorkRecord="id=admin" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x72
+     admissionValidation: reduced x72
+ROW RoleBinding    rep=kubernetes.object.v1/rbac.authorization.k8s.io/v1 type=k8s:rbac.authorization.k8s.io/rolebindings     schema=available validation=reduced unvalidated=2 records=13 admitted=13 rejected=0 maxWork=149 meanWork=118.7 maxWorkRecord="namespace=kube-system,id=system::leader-locking-kube-controller-manager" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x13
+     admissionValidation: reduced x13
+ROW Role           rep=kubernetes.object.v1/rbac.authorization.k8s.io/v1 type=k8s:rbac.authorization.k8s.io/roles            schema=available validation=reduced unvalidated=2 records=13 admitted=13 rejected=0 maxWork=181 meanWork=129.0 maxWorkRecord="namespace=kube-public,id=system:controller:bootstrap-signer" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x13
+     admissionValidation: reduced x13
+ROW DeviceClass    rep=kubernetes.object.v1/resource.k8s.io/v1 type=k8s:resource.k8s.io/deviceclasses              schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ResourceClaim  rep=kubernetes.object.v1/resource.k8s.io/v1 type=k8s:resource.k8s.io/resourceclaims             schema=available validation=reduced unvalidated=5 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ResourceClaimTemplate rep=kubernetes.object.v1/resource.k8s.io/v1 type=k8s:resource.k8s.io/resourceclaimtemplates     schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ResourceSlice  rep=kubernetes.object.v1/resource.k8s.io/v1 type=k8s:resource.k8s.io/resourceslices             schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW PriorityClass  rep=kubernetes.object.v1/scheduling.k8s.io/v1 type=k8s:scheduling.k8s.io/priorityclasses          schema=available validation=reduced unvalidated=2 records=3 admitted=3 rejected=0 maxWork=89 meanWork=82.3 maxWorkRecord="id=p07-high" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x3
+     admissionValidation: reduced x3
+ROW CSIDriver      rep=kubernetes.object.v1/storage.k8s.io/v1 type=k8s:storage.k8s.io/csidrivers                  schema=available validation=reduced unvalidated=3 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW CSINode        rep=kubernetes.object.v1/storage.k8s.io/v1 type=k8s:storage.k8s.io/csinodes                    schema=available validation=reduced unvalidated=3 records=1 admitted=0 rejected=1 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     REJECT x1 INVALID_REQUEST: {"code":"INVALID_REQUEST","title":"","message":"value at \"/spec/drivers\" has kind null, schema at \"/components/schemas/io.k8s.api.storage.v1.CSINodeSpec/properties/drivers\" allows array"}
+       sample records: [id=p07-acceptance-control-plane]
+ROW CSIStorageCapacity rep=kubernetes.object.v1/storage.k8s.io/v1 type=k8s:storage.k8s.io/csistoragecapacities        schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW StorageClass   rep=kubernetes.object.v1/storage.k8s.io/v1 type=k8s:storage.k8s.io/storageclasses              schema=available validation=reduced unvalidated=2 records=1 admitted=1 rejected=0 maxWork=91 meanWork=91.0 maxWorkRecord="id=standard" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: reduced x1
+ROW VolumeAttachment rep=kubernetes.object.v1/storage.k8s.io/v1 type=k8s:storage.k8s.io/volumeattachments           schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW VolumeAttributesClass rep=kubernetes.object.v1/storage.k8s.io/v1 type=k8s:storage.k8s.io/volumeattributesclasses     schema=available validation=reduced unvalidated=2 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW Release        rep=helm-native-v1                 type=helm:releases                                  schema=absent validation=none unvalidated=0 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW Repository     rep=helm-native-v1                 type=helm:repositories                              schema=absent validation=none unvalidated=0 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW Chart          rep=helm-native-v1                 type=helm:charts                                    schema=absent validation=none unvalidated=0 records=0 admitted=0 rejected=0 maxWork=0 meanWork=0.0 maxWorkRecord="" pages=1 unavailableRecords=0 repMismatch=0
+ROW ClusterBenchmark rep=kubernetes.polaris-audit.v1    type=audit:polaris                                  schema=absent validation=none unvalidated=0 records=1 admitted=1 rejected=0 maxWork=16576 meanWork=16576.0 maxWorkRecord="id=cluster" pages=1 unavailableRecords=0 repMismatch=0
+     recordCoverage: complete[] x1
+     admissionValidation: none x1
+PHASE10 SWEEP TOTALS records=1235 admitted=1234 rejected=1 maxWork=16576
+TABLE ConfigMap    records=26 admitted=26 rejected=0 maxWork=127
+TABLE CronJob      records=1 admitted=1 rejected=0 maxWork=384
+TABLE DaemonSet    records=3 admitted=3 rejected=0 maxWork=753
+TABLE Deployment   records=15 admitted=15 rejected=0 maxWork=2283
+TABLE Event        records=931 admitted=931 rejected=0 maxWork=152
+TABLE Job          records=6 admitted=6 rejected=0 maxWork=513
+TABLE Namespace    records=11 admitted=11 rejected=0 maxWork=304
+TABLE Node         records=1 admitted=1 rejected=0 maxWork=1001
+TABLE PVC          records=6 admitted=6 rejected=0 maxWork=296
+TABLE Pod          records=90 admitted=90 rejected=0 maxWork=3338
+TABLE ReplicaSet   records=16 admitted=16 rejected=0 maxWork=2158
+TABLE Secret       records=7 admitted=7 rejected=0 maxWork=98
+TABLE Service      records=11 admitted=11 rejected=0 maxWork=267
+TABLE StatefulSet  records=1 admitted=1 rejected=0 maxWork=764
+PHASE11 === two more kubeconfig contexts (p07-a, p07-b) onto the SAME cluster ===
+PHASE11 StartConnection(p07-a): status=CONNECTED
+PHASE11 StartConnection(p07-b): status=CONNECTED
+PHASE11 GetEditorSchemas(kind-p07-acceptance): associations=70 distinctDocumentIds=21 Pod: modelDirectory=file:///omniview-schema/4772ad462c0990b1 fileMatch=**/omniview-schema/4772ad462c0990b1/* documentId=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 status=available
+PHASE11 GetEditorSchemas(p07-a): associations=70 distinctDocumentIds=21 Pod: modelDirectory=file:///omniview-schema/a33105f773816b20 fileMatch=**/omniview-schema/a33105f773816b20/* documentId=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 status=available
+PHASE11 GetEditorSchemas(p07-b): associations=70 distinctDocumentIds=21 Pod: modelDirectory=file:///omniview-schema/0399436438dc0acd fileMatch=**/omniview-schema/0399436438dc0acd/* documentId=3a18edfefabca55a947217e9e99d88601938fafdd5bac25b8545bf297a89af12 status=available
+PHASE11 Pod ModelDirectory distinct across connections=true FileMatch distinct=true DocumentID identical across connections=true
+PHASE11 all (connection,type) ModelDirectories distinct=true (count=210)
+PHASE11 digests referenced by one connection but not another: 0
+PHASE11 GetEditorSchemaDocument(p07-b, digest first referenced via kind-p07-acceptance): err=<nil> bytesEqualToMain=true
+PHASE11 GetEditorSchemaDocument(p07-a, unreferenced digest): AppError{code="NOT_FOUND" type="omniview:resource/not-found" status=404 detail="Editor schema document is not referenced by this connection."}
+PHASE11 GetSchemaFields Pod root: p07-a catalogRevision=ovc1.ErqDAgzknoBpMJKVLv7wMxmENFHQSj6kzVEQfTtYcLk.z6YBsYKyr9MtMzncsPLvPY-skIY__AS96BE2F66DhTU schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 fields=5 | p07-b catalogRevision=ovc1.gKxs6VN2mDoFCaRakEt0nBJrBsXAgmIptyYLDKBeOhI.iEkb6LzYu5VZ5DRYEvBkXuc2xFlhYUYkbCGSYVjE0ms schemaRevision=86412b24ba08cf26b7d92b2afb58903f2a70ec9e5529fbfb814fbbb5bdc9d4c2 fields=5 | equal fields=true
+PHASE11 controller catalog Stats: before(main only)={Connections:1 Entries:137 Documents:21 RetainedBytes:11138644 BranchViews:0 CELProviders:0} after(3 connections)={Connections:3 Entries:411 Documents:21 RetainedBytes:11138644 BranchViews:0 CELProviders:0}
+PHASE11 StopConnection(p07-b) ok; Stats={Connections:2 Entries:274 Documents:21 RetainedBytes:11138644 BranchViews:0 CELProviders:0}
+PHASE11 GetEditorSchemaDocument(p07-b after StopConnection): AppError{code="INVALID_REQUEST" type="omniview:validation" status=400 detail="resource operation failed"}
+PHASE11 GetEditorSchemaDocument(p07-a still started, same digest): err=<nil> bytes=447840
+=== DONE elapsed=1m14s ===
