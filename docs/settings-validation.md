@@ -215,6 +215,13 @@ metric points, native Loki streams, and host Pyroscope profiles carry the
 if an indexed Loki stream label is required. External plugin Pyroscope profiles
 require a plugin rebuilt with SDK support for the client ID.
 
+Resource action traces and lifecycle logs identify the plugin, connection, resource type,
+resource ID, and action. Admission and terminal stages distinguish accepted work,
+provider completion, cancellation, and lost observation. Streaming producer spans
+remain open until the provider returns, including for adopted background actions.
+Diagnostics classify errors without exporting action inputs or provider error messages.
+Resource identifiers are included, so configure trace and log access accordingly.
+
 OTLP traces and metrics use their own endpoint and authentication settings.
 For OTLP HTTP, use a base URL such as `https://collector.example/otlp`.
 The host adds `/v1/traces`, `/v1/metrics`, or `/v1/logs` to that base.
