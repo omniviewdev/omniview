@@ -1,19 +1,20 @@
-/** Backend answers every screen needs: settings, plugin metadata, connections, and idle activity subscriptions. */
+/** Backend answers every screen needs: settings, plugin metadata, connections, the activity service and host services. */
 import { handleAll } from '../harness/backend';
+import { installActivityFixture, type ActivityFixture } from './activity';
+import { installHostFixtures, type HostFixture } from './host';
 
 export const BENCH_CONNECTION_ID = 'bench';
 
-export function installDefaultFixtures(): void {
-  let activitySubscriptionID = 0;
+export interface DefaultFixtures {
+  activity: ActivityFixture;
+  host: HostFixture;
+}
+
+export function installDefaultFixtures(): DefaultFixtures {
+  // Whole protocols, not stubs: see fixtures/activity.ts and fixtures/host.ts.
+  const activity = installActivityFixture();
+  const host = installHostFixtures();
   handleAll({
-    'activity.FrontendService.Subscribe': () => ({
-      id: `bench-activity-${++activitySubscriptionID}`,
-      snapshot: { revision: 0, records: [] },
-    }),
-    'activity.FrontendService.Attach': () => ({ revision: 0, records: [] }),
-    'activity.FrontendService.Snapshot': () => ({ revision: 0, records: [] }),
-    'activity.FrontendService.Heartbeat': () => undefined,
-    'activity.FrontendService.Unsubscribe': () => undefined,
     'internal/settings/servicewrapper.Values': () => ({}),
     'internal/settings/servicewrapper.ListSettings': () => ({}),
     'internal/settings/servicewrapper.GetCategories': () => [],
@@ -27,4 +28,5 @@ export function installDefaultFixtures(): void {
     'resource/servicewrapper.ListConnections': () => [{ id: BENCH_CONNECTION_ID, name: 'bench', labels: {} }],
     'resource/servicewrapper.ListAllConnections': () => ({}),
   });
+  return { activity, host };
 }

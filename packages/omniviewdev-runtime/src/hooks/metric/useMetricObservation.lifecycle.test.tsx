@@ -177,6 +177,33 @@ it('does not retain old samples after an unacknowledged reentry setup failure', 
   expect(result.current.error?.message).toBe('Session admission failed');
 });
 
+it('keeps one Error while the host repeats a failure, and gives a new one when the message changes, the failure clears or the authority changes', () => {
+  const failure = (error: string) => frame('pod-a', { data: null, catalog: null, error });
+  const { result, rerender } = renderHook(({ bindingID }) => useMetricObservation({ ...base, bindingID, targets: [target('pod-a')] }),
+    { initialProps: { bindingID: 'binding-a' } });
+  act(() => transport.receivers[0](failure('Provider unreachable')));
+  const reported = result.current.error;
+  expect(reported?.message).toBe('Provider unreachable');
+  act(() => transport.receivers[0](failure('Provider unreachable')));
+  expect(result.current.error).toBe(reported);
+  act(() => transport.receivers[0](failure('Provider timed out')));
+  expect(result.current.error).not.toBe(reported);
+  expect(result.current.error?.message).toBe('Provider timed out');
+  const changed = result.current.error;
+  act(() => transport.receivers[0](frame('pod-a', { data: null, catalog: null, fetching: true })));
+  expect(result.current.error).toBeNull();
+  act(() => transport.receivers[0](failure('Provider timed out')));
+  expect(result.current.error?.message).toBe('Provider timed out');
+  expect(result.current.error).not.toBe(changed);
+  // Another binding is another authority: the same message there is a new failure.
+  const repeated = result.current.error;
+  rerender({ bindingID: 'binding-b' });
+  expect(result.current.error).toBeNull();
+  act(() => transport.receivers[1](failure('Provider timed out')));
+  expect(result.current.error?.message).toBe('Provider timed out');
+  expect(result.current.error).not.toBe(repeated);
+});
+
 const hour = ['2026-11-05T09:00:00Z', '2026-11-05T09:30:00Z', '2026-11-05T10:00:00Z'];
 const rangeFrame = (name: string, times: readonly string[], extra: Partial<MetricsObservationSnapshot> = {}, complete = true) => frame(name, {
   data: { complete, warnings: [], results: [{ resource_token: name, metric_id: 'cpu', status: 'ok', value: null,
@@ -408,4 +435,25 @@ it('drops inherited history shown by a catalog-less data frame when the next ack
   act(() => transport.receivers[1](frame('pod-a', { data: null, fetching: true, catalog: inheritedCatalog(externalLane('prom-default'), 'prom-a'), domain_start: null, domain_end: null })));
   expect(shown()).toEqual([['memory', 3]]);
   expect(result.current).toMatchObject({ domain, stepMs: 15000, isLoading: false });
+});
+
+it('keeps the result objects a newer frame repeats unchanged and replaces only the ones that moved', () => {
+  const { result } = renderHook(() => useMetricObservation({ ...base, targets: [target('pod-a'), target('pod-b')] }));
+  const sampleOf = (name: string, value: number) => ({ resource_token: name, metric_id: 'cpu', status: 'ok', value,
+    observed_at: '2026-11-05T10:00:00Z', window: 15 * Duration.Second, dimensions: {}, points: [], identity_scope: 'name', message: '' });
+  const pods = (a: number, b: number) => frame('pod-a', { data: { complete: true, warnings: [], results: [sampleOf('pod-a', a), sampleOf('pod-b', b)] } });
+  act(() => transport.receivers[0](pods(0.25, 0.5)));
+  const [a, b] = result.current.results;
+  expect([a.value, b.value]).toEqual([0.25, 0.5]);
+  act(() => transport.receivers[0](pods(0.25, 0.5)));
+  expect(result.current.results[0]).toBe(a);
+  expect(result.current.results[1]).toBe(b);
+  act(() => transport.receivers[0](pods(0.25, 0.75)));
+  expect(result.current.results[0]).toBe(a);
+  expect(result.current.results[1]).not.toBe(b);
+  expect(result.current.results[1].value).toBe(0.75);
+  // Time still moves the freshness of every result, repeated or not.
+  act(() => vi.advanceTimersByTime(120_000));
+  expect(result.current.results.map(item => item.freshness)).toEqual(['delayed', 'delayed']);
+  expect(result.current.results[0]).not.toBe(a);
 });

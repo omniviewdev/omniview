@@ -1,23 +1,22 @@
-import type { DataTableFeatures } from '@omniviewdev/base-ui';
+import type { DataTableInstance } from '@omniviewdev/base-ui';
 import React from 'react';
 
 import { Checkbox, IconButton, Popover, Separator, Text } from '@omniviewdev/base-ui';
 
 // icons
 import { LuColumns2, LuSettings2 } from 'react-icons/lu';
-import { type Column } from '@tanstack/react-table';
 import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
 
 import styles from './ColumnFilter.module.css';
 
 type Props = {
   anchorEl: HTMLElement | undefined;
-  columns: Array<Column<DataTableFeatures, ResourceTableRow>>;
+  table: DataTableInstance<ResourceTableRow>;
   onClose: () => void;
   onClick: React.MouseEventHandler<HTMLAnchorElement>;
 };
 
-const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) => {
+const ColumnFilter: React.FC<Props> = ({ anchorEl, table, onClose, onClick }) => {
   const open = Boolean(anchorEl);
 
   return (
@@ -49,21 +48,25 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) 
           <Popover.Popup id={'table-filter-menu'} className={styles.Popup}>
             <Text weight="semibold" size="sm" className={styles.Heading}><LuColumns2 size={14}/> Columns</Text>
             <Separator />
-            <div className={styles.ColumnList}>
-              {columns.filter(col => col.getCanHide()).map((column) => (
-                <Checkbox
-                  key={column.columnDef.id}
-                  size='sm'
-                  checked={column.getIsVisible()}
-                  onCheckedChange={(checked) => {
-                    column.toggleVisibility(checked);
-                  }}
-                  className={styles.ColumnRow}
-                >
-                  {column.columnDef.header?.toString()}
-                </Checkbox>
-              ))}
-            </div>
+            <table.Subscribe selector={(state) => state.columnVisibility}>
+              {() => (
+                <div className={styles.ColumnList}>
+                  {table.getAllFlatColumns().filter(col => col.getCanHide()).map((column) => (
+                    <Checkbox
+                      key={column.id}
+                      size='sm'
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(checked) => {
+                        column.toggleVisibility(checked);
+                      }}
+                      className={styles.ColumnRow}
+                    >
+                      {column.columnDef.header?.toString()}
+                    </Checkbox>
+                  ))}
+                </div>
+              )}
+            </table.Subscribe>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

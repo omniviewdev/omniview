@@ -9,9 +9,10 @@ import { LuCircleAlert } from 'react-icons/lu';
 
 // project imports
 import useResourceDefinition from '@/hooks/resource/useResourceDefinition';
-import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
-import { useResources, useResolvedResourceTarget, valueToJSON, valueToJSONText, parseAppError, type QueryScope, type ResourceType } from '@omniviewdev/runtime';
+import type { ResourceColumnMeta, ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
+import { useResources, useResolvedResourceTarget, valueToJSONText, parseAppError, type QueryScope, type ResourceType } from '@omniviewdev/runtime';
 import ResourceTableContainer from './ResourceTableContainer';
+import { projectResourceRows } from './rows';
 import styles from './index.module.css';
 
 
@@ -31,6 +32,14 @@ type Props = {
   resourceType: ResourceType;
 };
 
+// Without a presentation definition, every record shows its canonical identity and raw body. Nothing
+// here changes between renders, so the columns keep their identity.
+const genericMeta: ResourceColumnMeta = { dataTableCellDependencies: 'data' };
+const GENERIC_COLUMNS: Array<ColumnDef<DataTableFeatures, ResourceTableRow>> = [
+  { id: 'id', header: 'ID', accessorFn: (row) => row.record.record.reference.address.id, meta: genericMeta },
+  { id: 'scope', header: 'Scope', accessorFn: (row) => row.record.record.reference.address.scope.map((entry: { dimension: string; value: string }) => `${entry.dimension}=${entry.value}`).join(', '), meta: genericMeta },
+  { id: 'body', header: 'Raw body', accessorFn: (row) => valueToJSONText(row.record.record.body), meta: genericMeta },
+];
 
 /**
  * Display the complete collection for an enumerable resource type.
@@ -57,15 +66,8 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
     enabled: true,
     live: true,
   });
-  const rows = useMemo(() => resources.data?.records.map((record) => ({
-    record,
-    data: valueToJSON(record.record.body),
-  })) ?? [], [resources.data]);
-  const genericColumns: Array<ColumnDef<DataTableFeatures, ResourceTableRow>> = [
-    { id: 'id', header: 'ID', accessorFn: (row) => row.record.record.reference.address.id },
-    { id: 'scope', header: 'Scope', accessorFn: (row) => row.record.record.reference.address.scope.map((entry: { dimension: string; value: string }) => `${entry.dimension}=${entry.value}`).join(', ') },
-    { id: 'body', header: 'Raw body', accessorFn: (row) => valueToJSONText(row.record.record.body) },
-  ];
+  // Records a patch left alone keep their rows, so only changed records render again.
+  const rows = useMemo(() => projectResourceRows(resources.data?.records ?? []), [resources.data]);
   const presentationFailure = parseAppError(definitionError).code !== 'UNSUPPORTED';
 
   if (!selectedRepresentation && !(isError && presentationFailure)) {
@@ -157,7 +159,7 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
 
 
   return (
-    <Stack direction="column" spacing={2}>
+    <Stack direction="column" spacing={2} className={styles.Table}>
       <Stack direction="row" spacing={2}>
         <select aria-label="Resource representation" value={selectedRepresentation} onChange={(event) => {
           setRepresentation(event.target.value);
@@ -183,12 +185,14 @@ const EnumerableResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKe
         ))}
       </Stack>
       <ResourceTableContainer
-        columns={columns.defs.length ? columns.defs : genericColumns}
+        columns={columns.defs.length ? columns.defs : GENERIC_COLUMNS}
         data={rows}
         pluginID={pluginID}
         connectionID={connectionID}
         resourceKey={resourceKey}
         initialColumnVisibility={columns.visibility}
+        actions={columns.actions}
+        label={resourceType.displayName || resourceKey}
       />
     </Stack>
   );

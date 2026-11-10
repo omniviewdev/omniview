@@ -1,8 +1,8 @@
 import React from 'react';
-import { CancelledError, hashKey, skipToken, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { CancelledError, hashKey, replaceEqualDeep, skipToken, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { Enumerate } from '../../resource/v2/client';
 import { openSourceView, type SourceViewClient, type SourceViewSnapshot } from '../../resource/v2/sourceView';
-import type { HostEnumerateRequest, HostSourceStatus, ResourceView } from '../../resource/v2/host';
+import type { HostEnumerateRequest, HostRecord, HostSourceStatus, ResourceView } from '../../resource/v2/host';
 import { resourceQueryKeys } from '../../resourceQueryKeys';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useConnectionReadiness } from '../connection/useConnectionReadiness';
@@ -47,10 +47,22 @@ function releaseView(key: string, entry: ViewEntry) {
   void entry.client.then((client) => client.close(), () => {});
 }
 
+const recordLists = new WeakMap<ReadonlyMap<string, HostRecord>, readonly HostRecord[]>();
+
+/** One records array per published map, shared by every page built from that snapshot. */
+function recordsOf(records: ReadonlyMap<string, HostRecord>): readonly HostRecord[] {
+  let list = recordLists.get(records);
+  if (!list) {
+    list = [...records.values()];
+    recordLists.set(records, list);
+  }
+  return list;
+}
+
 function pageFromSnapshot(snapshot: SourceViewSnapshot): ResourceView {
   const status = snapshot.status;
   return {
-    records: [...snapshot.records.values()],
+    records: recordsOf(snapshot.records),
     sourcePage: { count: status?.count ?? { kind: 'unknown' }, coverage: { kind: 'unknown', paths: [] }, consistency: 'unknown' },
     view: snapshot.viewGeneration ? {
       viewGeneration: snapshot.viewGeneration,
@@ -59,6 +71,27 @@ function pageFromSnapshot(snapshot: SourceViewSnapshot): ResourceView {
       count: status?.count ?? { kind: 'unknown' },
     } : undefined,
   };
+}
+
+/**
+ * The source view keeps every unchanged record as the same object, so a collection page needs no deep
+ * comparison. It keeps the previous records array when it holds the same objects in the same order, and
+ * the previous `sourcePage` and `view` when equal. A positional deep comparison would instead pair each
+ * record after a delete with whichever record now stands at its old index, and replace everything it
+ * could not match with copies that no decoded row, selection or metric target recognizes.
+ */
+function sharePage(previous: unknown, next: unknown): unknown {
+  const before = previous as ResourceView | undefined;
+  const after = next as ResourceView;
+  if (!before) return after;
+  const isSameList = before.records === after.records
+    || (before.records.length === after.records.length && before.records.every((record, index) => record === after.records[index]));
+  const records = isSameList ? before.records : after.records;
+  const sourcePage = replaceEqualDeep(before.sourcePage, after.sourcePage);
+  const view = replaceEqualDeep(before.view, after.view);
+  if (records === before.records && sourcePage === before.sourcePage && view === before.view) return before;
+  if (records === after.records && sourcePage === after.sourcePage && view === after.view) return after;
+  return { ...after, records, sourcePage, view };
 }
 
 function firstSnapshot(client: SourceViewClient, signal: AbortSignal): Promise<ResourceView> {
@@ -127,12 +160,24 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     void entry.client.then((client) => {
       if (!active) return;
       publish();
+      let hasPublishedStatus = false;
+      let publishedStatus: HostSourceStatus | undefined;
       const update = () => {
         if (!active || !isConnectionReadinessCurrent(pluginID, connectionID, generation)) return;
         const snapshot = client.getSnapshot();
-        setSourceSnapshot({ key: viewKey, status: snapshot.status });
+        // Avoid dispatching even an equal state: React may render once before bailing out.
+        if (!hasPublishedStatus || publishedStatus !== snapshot.status) {
+          hasPublishedStatus = true;
+          publishedStatus = snapshot.status;
+          setSourceSnapshot({ key: viewKey, status: snapshot.status });
+        }
         if (snapshot.complete && snapshot.status?.state !== 'failed' && snapshot.status?.state !== 'closed') {
-          queryClient.setQueryData(queryKey, pageFromSnapshot(snapshot));
+          // A cache write notifies every observer, so a page equal to the healthy one held is not written.
+          // An errored or invalidated entry is written even then: a source that recovered clears it.
+          const state = queryClient.getQueryState<ResourceView>(queryKey);
+          const held = state?.status === 'success' && !state.isInvalidated ? state.data : undefined;
+          const page = sharePage(held, pageFromSnapshot(snapshot)) as ResourceView;
+          if (page !== held) queryClient.setQueryData(queryKey, page);
         }
       };
       unsubscribe = client.subscribe(update);
@@ -150,7 +195,8 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     ? ({ signal, queryKey: key }: { signal: AbortSignal; queryKey: QueryKey }) => collection
       ? collectionQuery(currentEntry!, signal, key) : enumerate(stableRequest, signal, key)
     : skipToken;
-  const resourcesQuery = useQuery({ queryKey, queryFn, enabled: queryEnabled && (!collection || !!currentEntry), retry: false, gcTime: 0, placeholderData: undefined });
+  const resourcesQuery = useQuery({ queryKey, queryFn, enabled: queryEnabled && (!collection || !!currentEntry), retry: false, gcTime: 0, placeholderData: undefined,
+    structuralSharing: collection ? sharePage : true });
   const refetchResources = resourcesQuery.refetch;
   const refresh = React.useCallback(async (...args: Parameters<typeof refetchResources>) => {
     if (collection && currentEntry) await (await currentEntry.client).refresh();
@@ -173,7 +219,7 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const acquiredResources = useQuery({
     queryKey: acquiredQueryKey,
     queryFn: queryEnabled && acquiredRequest && !collection ? ({ signal, queryKey: key }) => enumerate(acquiredRequest, signal, key) : skipToken,
-    enabled: false, retry: false, gcTime: 0, placeholderData: undefined,
+    enabled: false, retry: false, gcTime: 0, placeholderData: undefined, structuralSharing: collection ? sharePage : true,
   });
   const acquired = React.useMemo<AcquiredResourcePage | undefined>(() => acquiredRequest && acquiredResources.data
     ? { request: acquiredRequest, page: acquiredResources.data } : undefined, [acquiredRequest, acquiredResources.data]);

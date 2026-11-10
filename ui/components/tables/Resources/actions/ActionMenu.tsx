@@ -13,6 +13,7 @@ import { type Actions } from './types';
 import DeleteAction from './DeleteAction';
 import styles from './ActionMenu.module.css';
 import type { HostRecord } from '@omniviewdev/runtime';
+import type { ResourceTableRow } from '@/hooks/resource/useResourceDefinition';
 
 type Props = {
   plugin: string;
@@ -27,18 +28,35 @@ type ActionMenuListProps = Props & {
   dismissMenu: () => void;
 };
 
-const ActionMenu: React.FC<Props> = (props) => {
-  const [open, setOpen] = React.useState(false);
-  // Once opened, keep the popup mounted so a confirmation dialog launched from one of
-  // its items survives the menu closing. Rows that were never opened render no popup.
-  const [everOpened, setEverOpened] = React.useState(false);
+/** Resource actions read the body as a plain object. Rows with any other body have no action menu. */
+export const isActionableBody = (value: unknown): value is Record<string, unknown> => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
 
-  const handleOpenChange = React.useCallback((next: boolean) => {
-    setOpen(next);
-    if (next) {
-      setEverOpened(true);
-    }
-  }, []);
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+const RowMenuHandle = React.createContext<React.ComponentProps<typeof Menu.Trigger>['handle']>(undefined);
+
+type ActionMenuScopeProps = {
+  /** The actions every row offers. Absent until the provider's action handlers are known. */
+  actions?: Actions;
+  plugin: string;
+  connection: string;
+  resource: string;
+  children: React.ReactNode;
+};
+
+/**
+ * One menu owns the popup for every row trigger of a table. Rows mount a button that carries its
+ * row as the payload, so scrolling mounts no per-row menu state and the menu always acts on the
+ * row that opened it.
+ */
+export const ActionMenuScope: React.FC<ActionMenuScopeProps> = ({ actions, plugin, connection, resource, children }) => {
+  const [handle] = React.useState(() => Menu.createHandle<unknown>());
+  const [open, setOpen] = React.useState(false);
 
   // dismiss the menu when the user scrolls
   React.useEffect(() => {
@@ -47,40 +65,76 @@ const ActionMenu: React.FC<Props> = (props) => {
     }
 
     const handleScroll = () => {
-      setOpen(false);
+      handle.close();
     };
 
     window.addEventListener('scroll', handleScroll, true);
     return () => {
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [open]);
+  }, [open, handle]);
 
   return (
-    <Menu.Root open={open} onOpenChange={handleOpenChange}>
-      <Menu.Trigger
-        render={
-          <IconButton
-            size="sm"
-            variant="ghost"
-            color="neutral"
-            aria-label="Resource actions"
-            className={styles.Trigger}
-          >
-            <LuEllipsis />
-          </IconButton>
-        }
-      />
-      <Menu.Portal keepMounted={everOpened}>
-        <Menu.Positioner side="bottom" align="end" sideOffset={4} className={styles.Positioner}>
-          <Menu.Popup id={'resource-context-menu'} size="sm" className={styles.Popup}>
-            <ActionsMenuList {...props} dismissMenu={() => {
-              setOpen(false);
-            }}/>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+    <RowMenuHandle.Provider value={handle}>
+      {children}
+      <Menu.Root handle={handle} onOpenChange={setOpen}>
+        {({ payload }) => {
+          const row = payload as ResourceTableRow | undefined;
+          if (actions === undefined || row === undefined || !isActionableBody(row.data)) {
+            return null;
+          }
+
+          // Once opened, keep the popup mounted so a confirmation dialog launched from one of
+          // its items survives the menu closing. The row key resets the items for the next row.
+          return (
+            <Menu.Portal keepMounted>
+              <Menu.Positioner side="bottom" align="end" sideOffset={4} className={styles.Positioner}>
+                <Menu.Popup id={'resource-context-menu'} size="sm" className={styles.Popup}>
+                  <ActionsMenuList
+                    key={row.record.key}
+                    plugin={plugin}
+                    connection={connection}
+                    resource={resource}
+                    record={row.record}
+                    data={row.data}
+                    actions={actions}
+                    dismissMenu={() => {
+                      handle.close();
+                    }}
+                  />
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          );
+        }}
+      </Menu.Root>
+    </RowMenuHandle.Provider>
+  );
+};
+
+/** The button that opens the table's action menu for one row. Render it inside an `ActionMenuScope`. */
+export const ActionMenuTrigger: React.FC<{ row: ResourceTableRow }> = ({ row }) => {
+  const handle = React.useContext(RowMenuHandle);
+  if (handle === undefined) {
+    throw new Error('Resource row actions require ActionMenuScope.');
+  }
+
+  return (
+    <Menu.Trigger
+      handle={handle}
+      payload={row}
+      render={
+        <IconButton
+          size="sm"
+          variant="ghost"
+          color="neutral"
+          aria-label="Resource actions"
+          className={styles.Trigger}
+        >
+          <LuEllipsis />
+        </IconButton>
+      }
+    />
   );
 };
 
@@ -153,5 +207,5 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
   );
 };
 
-ActionMenu.displayName = 'ActionMenu';
-export default ActionMenu;
+ActionMenuScope.displayName = 'ActionMenuScope';
+ActionMenuTrigger.displayName = 'ActionMenuTrigger';

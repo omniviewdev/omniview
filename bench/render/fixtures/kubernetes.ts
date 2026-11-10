@@ -111,9 +111,62 @@ function podMetrics(pods: Pod[]) {
   return { 'metrics-server': { success: true, results } };
 }
 
+/** What the fixture's source views have delivered, for reports and for waiting on completeness. */
+export interface SourceViewStats {
+  viewId: string;
+  mode: 'snapshot' | 'snapshotAndUpdates';
+  generation: number;
+  /** Last sequence number emitted in the current generation. */
+  sequence: number;
+  /** True once the current generation's snapshotEnd was emitted and until the next resync. */
+  complete: boolean;
+  /** A complete view that accepts live `changes` (snapshotAndUpdates mode). */
+  following: boolean;
+  snapshotBatches: number;
+  snapshotRecords: number;
+  snapshotEnds: number;
+  changeEvents: number;
+  upserts: number;
+  removes: number;
+  resets: number;
+}
+
+/**
+ * One backend change batch. `replace` keeps the pod's incarnation (same uid, so the record
+ * key is unchanged and the row updates in place). `recreate` is delete-then-create: the old
+ * incarnation is removed and a new uid is upserted under the same name and namespace, so
+ * the record key changes while the address key does not.
+ */
+export interface PodChange {
+  replace?: Array<{ index: number; pod: Pod }>;
+  recreate?: Array<{ index: number; pod: Pod }>;
+}
+
+export interface PodChangeResult {
+  /** `changes` events emitted, at most one per live view. */
+  events: number;
+  upserts: number;
+  removes: number;
+}
+
+export interface PodsFixture {
+  /** Current backend corpus. Entries are replaced, never mutated, so held snapshots stay immutable. */
+  pods(): readonly Pod[];
+  /**
+   * Apply a change to the corpus and deliver it to every complete live view as one
+   * `changes` event with the next sequence number of the view's current generation.
+   * A view that is still snapshotting or resyncing misses it, exactly as it would on the
+   * host: its next snapshot already carries the change.
+   */
+  applyChange(change: PodChange): PodChangeResult;
+  views(): SourceViewStats[];
+}
+
 /** Serve the Kubernetes corpus through the current host-owned V2 resource contract. */
-export function servePods(pods: Pod[]): void {
-  const metrics = podMetrics(pods);
+export function servePods(initial: Pod[]): PodsFixture {
+  const metrics = podMetrics(initial);
+  // The corpus is the backend's state. Copy it so a caller's array is never mutated.
+  const corpus: Pod[] = [...initial];
   const provider = 'kubernetes';
   const authority = `bench:${BENCH_CONNECTION_ID}`;
   const type = 'k8s:/pods';
@@ -122,32 +175,44 @@ export function servePods(pods: Pod[]): void {
     schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED' },
   };
   const coverage = { kind: 'complete', paths: [] };
-  const count = { kind: 'exact', value: String(pods.length) };
+  const count = { kind: 'exact', value: String(corpus.length) };
   const authorityDisclosure = { continuity: 'connectionLocal' as const, limitations: [] };
-  const views = new Map<string, { request: HostSourceViewRequest; generation: number; sequence: number; mode: 'snapshot' | 'snapshotAndUpdates' }>();
+  interface ViewState extends Omit<SourceViewStats, 'viewId'> { request: HostSourceViewRequest }
+  const views = new Map<string, ViewState>();
   let nextView = 0;
-  const select = (target: HostSourceViewRequest['target']) => pods.filter((pod) => target.scope.every((entry) =>
-    entry.match === 'any' || (entry.dimension === 'namespace' && entry.values.includes(pod.metadata.namespace))));
-  const records = (request: HostSourceViewRequest, selected: Pod[]) => selected.map((pod) => {
+  const selects = (target: HostSourceViewRequest['target'], pod: Pod) => target.scope.every((entry) =>
+    entry.match === 'any' || (entry.dimension === 'namespace' && entry.values.includes(pod.metadata.namespace)));
+  const select = (target: HostSourceViewRequest['target']) => corpus.filter((pod) => selects(target, pod));
+  const record = (request: Pick<HostSourceViewRequest, 'targetId' | 'target'>, pod: Pod) => {
     const address = { provider, authority, type, scope: [{ dimension: 'namespace', value: pod.metadata.namespace }], id: pod.metadata.name };
     return {
       key: JSON.stringify([address, pod.metadata.uid]), addressKey: JSON.stringify(address), targetId: request.targetId, route: request.target.route,
       record: { reference: { address, incarnation: pod.metadata.uid }, body: jsonToValue(pod), representation, coverage, sourceRevision: pod.metadata.resourceVersion },
     };
-  });
+  };
+  const records = (request: HostSourceViewRequest, selected: Pod[]) => selected.map((pod) => record(request, pod));
   const sync = (viewId: string) => {
     const view = views.get(viewId);
     if (!view) throw new Error(`Unknown benchmark source view: ${viewId}`);
     const topic = `resource/source-view/${viewId}`;
     if (view.generation) {
+      view.resets++;
       emit(topic, { viewId, viewGeneration: String(view.generation), sequence: String(++view.sequence), kind: 'reset', reset: { reason: 'resync', message: '' } });
     }
+    view.complete = false;
+    view.following = false;
     const generation = String(++view.generation);
     const selected = records(view.request, select(view.request.target));
     view.sequence = 0;
     for (let i = 0; i < selected.length; i += 256) {
-      emit(topic, { viewId, viewGeneration: generation, sequence: String(++view.sequence), kind: 'snapshot', records: selected.slice(i, i + 256) });
+      const batch = selected.slice(i, i + 256);
+      view.snapshotBatches++;
+      view.snapshotRecords += batch.length;
+      emit(topic, { viewId, viewGeneration: generation, sequence: String(++view.sequence), kind: 'snapshot', records: batch });
     }
+    view.snapshotEnds++;
+    view.complete = true;
+    view.following = view.mode === 'snapshotAndUpdates';
     emit(topic, {
       viewId, viewGeneration: generation, sequence: String(++view.sequence), kind: 'snapshotEnd',
       status: { state: view.mode === 'snapshot' ? 'finished' : 'following', mode: view.mode,
@@ -155,6 +220,41 @@ export function servePods(pods: Pod[]): void {
         coverage: { enumeration: 'exhausted', consistency: 'bestEffort', limitations: [] },
         count: { kind: 'exact', value: String(selected.length) } },
     });
+  };
+  const applyChange = (change: PodChange): PodChangeResult => {
+    const upserted: Pod[] = [];
+    const removed: Pod[] = [];
+    for (const { index, pod } of change.replace ?? []) {
+      if (!corpus[index]) throw new Error(`Unknown benchmark pod index: ${index}`);
+      corpus[index] = pod;
+      upserted.push(pod);
+    }
+    for (const { index, pod } of change.recreate ?? []) {
+      if (!corpus[index]) throw new Error(`Unknown benchmark pod index: ${index}`);
+      removed.push(corpus[index]);
+      corpus[index] = pod;
+      upserted.push(pod);
+    }
+    const result: PodChangeResult = { events: 0, upserts: 0, removes: 0 };
+    for (const [viewId, view] of views) {
+      if (!view.following) continue;
+      const upserts = upserted.filter((pod) => selects(view.request.target, pod)).map((pod) => record(view.request, pod));
+      const removes = removed.filter((pod) => selects(view.request.target, pod)).map((pod) => {
+        const { key, addressKey } = record(view.request, pod);
+        return { key, addressKey };
+      });
+      if (!upserts.length && !removes.length) continue;
+      view.changeEvents++;
+      view.upserts += upserts.length;
+      view.removes += removes.length;
+      result.events++;
+      result.upserts += upserts.length;
+      result.removes += removes.length;
+      emit(`resource/source-view/${viewId}`, {
+        viewId, viewGeneration: String(view.generation), sequence: String(++view.sequence), kind: 'changes', upserts, removes,
+      });
+    }
+    return result;
   };
   handleAll({
     'resource/servicewrapper.Catalog': () => ({
@@ -193,7 +293,26 @@ export function servePods(pods: Pod[]): void {
         },
       };
     },
-    'resource/servicewrapper.ScopeValues': () => [...new Set(pods.map((pod) => pod.metadata.namespace))],
+    'resource/servicewrapper.ScopeValues': () => [...new Set(corpus.map((pod) => pod.metadata.namespace))],
+    // The host's generic resource table builds its columns from this definition. The fixture's Pods
+    // have no exec handler (the real backend rejects a type without one), so the row-action column
+    // is absent, as it is for any type without a handler.
+    'resource/servicewrapper.GetResourceDefinition': (_plugin: string, _route: unknown, resourceType: string) => {
+      if (resourceType !== type) throw new Error(`Unsupported benchmark resource type: ${resourceType}`);
+      return {
+        columnDefs: [
+          { id: 'name', header: 'Name', accessor: 'metadata.name' },
+          { id: 'namespace', header: 'Namespace', accessor: 'metadata.namespace' },
+          { id: 'phase', header: 'Status', accessor: 'status.phase' },
+          { id: 'node', header: 'Node', accessor: 'spec.nodeName' },
+          { id: 'podIP', header: 'Pod IP', accessor: 'status.podIP' },
+          { id: 'created', header: 'Created', accessor: 'metadata.creationTimestamp' },
+        ],
+      };
+    },
+    'exec/servicewrapper.GetHandler': () => {
+      throw new Error('No exec handler is registered for this resource type');
+    },
     'resource/servicewrapper.GetSourceStates': (_plugin: string, route: unknown) => ({
       route, types: { [type]: { state: 'following', mode: 'snapshotAndUpdates', continuity: 'bestEffort', count } },
     }),
@@ -201,7 +320,10 @@ export function servePods(pods: Pod[]): void {
       if (request.target.type !== type) throw new Error(`Unsupported benchmark resource type: ${request.target.type}`);
       const viewId = `bench-${++nextView}`;
       const mode = request.updates === 'none' ? 'snapshot' : 'snapshotAndUpdates';
-      views.set(viewId, { request, generation: 0, sequence: 0, mode });
+      views.set(viewId, {
+        request, mode, generation: 0, sequence: 0, complete: false, following: false,
+        snapshotBatches: 0, snapshotRecords: 0, snapshotEnds: 0, changeEvents: 0, upserts: 0, removes: 0, resets: 0,
+      });
       return { viewId, topic: `resource/source-view/${viewId}`, mode };
     },
     'resource/servicewrapper.SyncSourceView': (_plugin: string, viewId: string) => sync(viewId),
@@ -209,6 +331,8 @@ export function servePods(pods: Pod[]): void {
     'resource/servicewrapper.CloseSourceView': (_plugin: string, viewId: string) => {
       const view = views.get(viewId);
       if (view) {
+        view.following = false;
+        view.resets++;
         emit(`resource/source-view/${viewId}`, { viewId, viewGeneration: String(view.generation || 1),
           sequence: String(++view.sequence), kind: 'reset', reset: { reason: 'closed', message: '' } });
         views.delete(viewId);
@@ -217,4 +341,9 @@ export function servePods(pods: Pod[]): void {
     'resource/servicewrapper.RetryConnectionSources': () => null,
     'metric/servicewrapper.QueryAll': () => metrics,
   });
+  return {
+    pods: () => corpus,
+    applyChange,
+    views: () => [...views].map(([viewId, { request: _request, ...stats }]) => ({ viewId, ...stats })),
+  };
 }

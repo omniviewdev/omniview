@@ -37,8 +37,24 @@ export type ActivityContextValue = {
   restoreFocus?: () => void;
 };
 export const ActivityContext = createContext<ActivityContextValue | undefined>(undefined);
+/**
+ * The actions the provider binds to its store once. They never change while the provider lives, so
+ * a reader of only these wakes on no activity update, however often records change.
+ */
+export type ActivityActionsValue = Pick<
+  ActivityContextValue,
+  'notify' | 'openNotifications' | 'startResourceAction' | 'requestCancellation'
+>;
+export const ActivityActionsContext = createContext<ActivityActionsValue | undefined>(undefined);
+/** The unread count alone. A number replaces itself only when it changes, so its readers wake only then. */
+export const NotificationCountContext = createContext<number | undefined>(undefined);
 function useActivityContext() {
   const value = useContext(ActivityContext);
+  if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
+  return value;
+}
+function useActivityActionsContext() {
+  const value = useContext(ActivityActionsContext);
   if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
   return value;
 }
@@ -71,11 +87,13 @@ export function useActivities() {
   };
 }
 export function useNotifications() {
-  const { notify, openNotifications, notificationCount } = useActivityContext();
+  const { notify, openNotifications } = useActivityActionsContext();
+  const notificationCount = useContext(NotificationCountContext);
+  if (notificationCount === undefined) throw new Error('Activity hooks must be used within ActivityProvider');
   return { notify, openNotifications, notificationCount };
 }
 export function useActivityActions() {
-  const { startResourceAction, requestCancellation } = useActivityContext();
+  const { startResourceAction, requestCancellation } = useActivityActionsContext();
   return { startResourceAction, requestCancellation };
 }
 export { useActivityContext };

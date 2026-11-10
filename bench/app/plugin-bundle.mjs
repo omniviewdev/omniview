@@ -55,21 +55,33 @@ export function fileSHA256(file) {
  * cannot say which bytes were measured.
  */
 export function hashPluginBundle(assets) {
+  return hashDirectoryTree(assets);
+}
+
+/**
+ * Every regular file below `directory` by relative path and content: file count, bytes, the
+ * SHA-256 of `entry.js` when there is one, and a tree SHA-256. `exclude` lists relative POSIX
+ * paths left out of the hash, for a sidecar that describes the tree and so cannot be part of it.
+ */
+export function hashDirectoryTree(directory, { exclude = [] } = {}) {
+  const skipped = new Set(exclude);
   const files = [];
   const visited = new Set();
-  const walk = (directory) => {
-    const real = fs.realpathSync(directory);
+  const walk = (current) => {
+    const real = fs.realpathSync(current);
     if (visited.has(real)) return;
     visited.add(real);
-    for (const name of fs.readdirSync(directory)) {
-      const file = path.join(directory, name);
+    for (const name of fs.readdirSync(current)) {
+      const file = path.join(current, name);
       const stat = fs.statSync(file);
       if (stat.isDirectory()) walk(file);
-      else if (stat.isFile()) files.push({ file, name: path.relative(assets, file).split(path.sep).join('/') });
-      else throw new Error(`Kubernetes UI bundle entry is neither a regular file nor a directory: ${file}`);
+      else if (stat.isFile()) {
+        const relative = path.relative(directory, file).split(path.sep).join('/');
+        if (!skipped.has(relative)) files.push({ file, name: relative });
+      } else throw new Error(`Bundle entry is neither a regular file nor a directory: ${file}`);
     }
   };
-  walk(assets);
+  walk(directory);
   files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const tree = createHash('sha256');
   let bytes = 0;

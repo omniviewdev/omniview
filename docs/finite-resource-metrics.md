@@ -140,18 +140,62 @@ body share one target until the last registration is cleaned up. Replace the map
 whenever records or membership change; never mutate it in place.
 
 Ask `isLoadingFor(body, metricID)` for each cell. It is `true` while an admitted
-cell for a selected metric has no sample and an answer is still expected: its
-registration awaits publication, the document is hidden, or its request has not
-answered. It is `false` once the cell holds any sample (unavailable and failed
-samples are answers), once the request settled without one, after an error, and
-when the cell can never be collected: disabled collection, an unselected metric,
-or a body the table did not admit. `loading` keeps such cells pending while
-source/catalog discovery runs. A new row therefore shows loading beside samples
-that are already displayed, never an unavailable value, and a settled empty cell
-does not spin again during background refresh. The returned function changes
-whenever any cell's answer can change, so memoized cells re-render. `isLoading`
-is only the table-level aggregate: upstream discovery, or a published request
-that has answered nothing yet.
+cell for a selected metric has no sample and no answer to it has arrived: its
+registration awaits publication, the document is hidden, or no request that
+included the cell has answered. It is `false` once the cell holds any sample
+(unavailable and failed samples are answers), once a request that included it
+settled without one, after an error, and when the cell can never be collected:
+disabled collection, an unselected metric, or a body the table did not admit.
+`loading` keeps such cells pending while source/catalog discovery runs. A new row
+therefore shows loading beside samples that are already displayed, never an
+unavailable value.
+
+A cell that settled without a sample, including one whose provider failed, stays
+settled. It does not spin again during background refresh, nor when other rows
+join or leave the table and the host is asked about a different set of targets.
+Only the request that completed last is remembered, as the targets it asked for
+under each metric, so a row or metric that request did not include loads until a
+request that includes it answers, and a row that left the table loads again when
+it returns. An answer never crosses a change of plugin, connection, resource
+type, binding or source, and a recreated resource, which keeps its host token
+with a new incarnation, is a new row. The returned function changes whenever any
+cell's answer can change, so memoized cells re-render. `isLoading` is only the
+table-level aggregate: upstream discovery, or a published request for which no
+cell holds a sample or an answer yet.
+
+#### Cells that re-render alone
+
+`batch` and its accessors change whenever any answer can, so every cell that reads
+them through context re-renders for another row's sample, or for a collection
+update that left its own answer as it was. A table with many mounted cells can
+share `batch.cells` instead. It is an additive view of the same observation and
+registry, answers by the same rules as `tokenFor`, `metrics` and `isLoadingFor`,
+and leaves those accessors as they are for consumers that read the whole table.
+
+```tsx
+import { createContext, useContext } from 'react';
+import { useTableMetricCell, type TableMetricCells } from '@omniviewdev/runtime';
+
+const Cells = createContext<TableMetricCells | null>(null);
+// <Cells.Provider value={batch.cells}>{table}</Cells.Provider>
+
+function CurrentCell({ body, metricID }: { body: object; metricID: string }) {
+  const { sample, isLoading } = useTableMetricCell(useContext(Cells)!, body, metricID);
+  if (sample?.status === 'ok' && sample.unit) return <MetricValue value={sample.value} unit={sample.unit} />;
+  return isLoading ? <span role="status">Loading…</span> : <span>—</span>;
+}
+```
+
+`cells` keeps one identity for the life of the owning hook, so sharing it through
+context re-renders nothing by itself, and `useTableMetricCell` registers its body
+for as long as the cell is mounted. A cell re-renders only when its own answer
+changes: its `sample`, its `isLoading` or the table's `error`. A sample that a
+newer frame repeats unchanged keeps its object, and so does a failure that the
+host repeats, so one moved sample, one repeated frame, one offscreen record
+update or a replaced `recordsByBody` that changes no answer does not re-render
+the cells it did not touch. A different failure, or one that clears, reaches every
+cell. Keep the observation itself out of the cells' context: it changes when its
+table-level state does.
 
 The runtime publishes target membership after 120 milliseconds without changes,
 and no later than 250 milliseconds after the first unpublished change, so
@@ -161,8 +205,9 @@ keep their samples and the host keeps the same observation until the replacement
 bodies publish. Retained targets never cross a change of plugin, connection, or
 resource type, and a source change still clears samples at once. A recreated
 resource keeps its host token with a new incarnation: `tokenFor` returns
-`undefined` while only the previous incarnation's samples are held for that
-token, so a cell never shows the previous resource's value. The timers stop
+`undefined`, and its cell's `sample` stays `undefined`, while only the previous
+incarnation's samples are held for that token, so a cell never shows the previous
+resource's value. The timers stop
 when the owning table unmounts, whichever order React cleans up the table and
 its cells, and a StrictMode replay re-arms the demand that was still
 unpublished.
@@ -313,7 +358,7 @@ An empty target or metric list disables collection. Each source catalog declares
 | `catalog` | Discover the selected source's metrics and capabilities |
 | `isLoading` | Show initial loading, including an incomplete empty frame while collection continues |
 | `isFetching` | Show a refresh without clearing existing data |
-| `error` | Report a collection failure |
+| `error` | Report a collection failure. A failure the host repeats keeps the same `Error` object until it changes or clears |
 | `refresh()` | Request an immediate refresh |
 | `domain` | Read the displayed history range, when available |
 | `stepMs` | Use the resolution of displayed history, not a pending replacement request |

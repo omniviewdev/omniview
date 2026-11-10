@@ -207,6 +207,42 @@ describe('shared activity presentation', () => {
     expect(within(toast).getByRole('button', { name: 'Expand activity' })).toBeTruthy();
   });
 
+  it('wakes a reader of only the actions on no activity update, and a reader of the unread count only when it changes', async () => {
+    const renders = { actions: 0, count: 0 };
+    function ActionsProbe() {
+      useActivityActions();
+      renders.actions++;
+      return null;
+    }
+    function CountProbe() {
+      const { notificationCount } = useNotifications();
+      renders.count++;
+      return <output aria-label="unread">{notificationCount}</output>;
+    }
+    render(
+      <ToastProvider>
+        <ActivityProvider>
+          <ActionsProbe />
+          <CountProbe />
+        </ActivityProvider>
+      </ToastProvider>,
+    );
+    await waitFor(() => expect(native.attach).toHaveBeenCalled());
+    await act(async () => {});
+    const settled = { ...renders };
+    const task = record('Work', true);
+    act(() => publish(task));
+    expect(screen.getByLabelText('unread').textContent).toBe('1');
+    expect(renders).toEqual({ actions: settled.actions, count: settled.count + 1 });
+    // A task's progress changes its record, not the unread count: neither reader renders.
+    const progressed = { ...task, revision: ++revision, updatedAt: '2026-11-03T00:00:09Z' };
+    act(() => publish(progressed));
+    expect(renders).toEqual({ actions: settled.actions, count: settled.count + 1 });
+    act(() => publish({ ...progressed, revision: ++revision, visibility: { ...progressed.visibility, read: true } }));
+    expect(screen.getByLabelText('unread').textContent).toBe('0');
+    expect(renders).toEqual({ actions: settled.actions, count: settled.count + 2 });
+  });
+
   it('retains plain diagnostics, copy feedback and trusted remediation', async () => {
     const retry = vi.fn();
     const writeText = vi.fn().mockResolvedValue(undefined);

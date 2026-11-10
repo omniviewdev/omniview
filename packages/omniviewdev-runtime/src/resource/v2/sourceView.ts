@@ -1,9 +1,14 @@
+import { replaceEqualDeep } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
 import { CloseSourceView, OpenSourceView, RefreshSourceView, SyncSourceView } from './client';
-import type { HostRecord, HostSourceStatus, HostSourceViewEvent, HostSourceViewOpened, HostSourceViewRequest } from './host';
+import type { HostRecord, HostRecordRemoval, HostSourceStatus, HostSourceViewEvent, HostSourceViewOpened, HostSourceViewRequest } from './host';
 
 export interface SourceViewSnapshot {
   viewGeneration?: string;
+  /**
+   * Current records by host key. A map handed out here is never modified afterwards. A record that a
+   * later snapshot repeats unchanged is the same object, so a reader can tell which records moved.
+   */
   records: ReadonlyMap<string, HostRecord>;
   status?: HostSourceStatus;
   complete: boolean;
@@ -29,6 +34,8 @@ if (typeof window !== 'undefined') {
 export async function openSourceView(pluginID: string, request: HostSourceViewRequest): Promise<SourceViewClient> {
   const opened = await OpenSourceView(pluginID, request);
   let snapshot: SourceViewSnapshot = { records: new Map(), complete: false };
+  /** The current records while no reader has received them yet: the only map a patch may edit in place. */
+  let writable: Map<string, HostRecord> | undefined;
   let staging: Map<string, HostRecord> | undefined;
   let generation: string | undefined;
   let rejectedGeneration: string | undefined;
@@ -84,6 +91,25 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     void SyncSourceView(pluginID, opened.viewId).catch(error => fail(String(error)));
   }
 
+  /**
+   * Apply one patch by host key. A record the patch repeats unchanged keeps its object, and a patch that
+   * changes nothing keeps the map itself. A map a reader has received is never modified: the first change
+   * after a read copies it once, and the patches that follow before the next read edit that copy.
+   */
+  function applyChanges(removes: readonly HostRecordRemoval[], upserts: readonly HostRecord[]): ReadonlyMap<string, HostRecord> {
+    let draft = writable;
+    for (const removal of removes) {
+      if ((draft ?? snapshot.records).has(removal.key)) (draft ??= new Map(snapshot.records)).delete(removal.key);
+    }
+    for (const record of upserts) {
+      const held = (draft ?? snapshot.records).get(record.key);
+      const shared = held === undefined ? record : replaceEqualDeep(held, record);
+      if (shared !== held) (draft ??= new Map(snapshot.records)).set(record.key, shared);
+    }
+    writable = draft;
+    return draft ?? snapshot.records;
+  }
+
   function accept(event: HostSourceViewEvent) {
     if (closed || failed || event.viewId !== opened.viewId) return;
     // Reset is a control event: overflow can discard events preceding it.
@@ -119,23 +145,28 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
         if (!staging) { resync(); return; }
         for (const record of event.records ?? []) staging.set(record.key, record);
         break;
-      case 'snapshotEnd':
+      case 'snapshotEnd': {
         if (!staging || !event.status) { resync(); return; }
-        update({ records: staging, viewGeneration: generation, status: event.status, complete: true }, 'snapshotEnd');
+        // A new generation repeats most of the records it replaces: those keep their objects.
+        for (const [key, record] of staging) {
+          const held = snapshot.records.get(key);
+          if (held !== undefined) staging.set(key, replaceEqualDeep(held, record));
+        }
+        writable = staging;
+        update({ records: staging, viewGeneration: generation, status: replaceEqualDeep(snapshot.status, event.status), complete: true }, 'snapshotEnd');
         staging = undefined;
         break;
-      case 'changes': {
+      }
+      case 'changes':
         if (staging) { resync(); return; }
-        const records = new Map(snapshot.records);
-        for (const removal of event.removes ?? []) records.delete(removal.key);
-        for (const record of event.upserts ?? []) records.set(record.key, record);
-        update({ records }, 'changes');
+        update({ records: applyChanges(event.removes ?? [], event.upserts ?? []) }, 'changes');
+        break;
+      case 'status': {
+        if (staging || !event.status) { resync(); return; }
+        const status = replaceEqualDeep(snapshot.status, event.status);
+        if (status !== snapshot.status) update({ status });
         break;
       }
-      case 'status':
-        if (staging || !event.status) { resync(); return; }
-        update({ status: event.status });
-        break;
       default:
         resync();
     }
@@ -145,7 +176,10 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
   const client: SourceViewClient = {
     mode: opened.mode,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    getSnapshot() { return snapshot; },
+    getSnapshot() {
+      writable = undefined;
+      return snapshot;
+    },
     async refresh() {
       const wasFailed = failed;
       failed = false;

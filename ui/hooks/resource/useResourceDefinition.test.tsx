@@ -22,7 +22,8 @@ vi.mock('@omniviewdev/runtime/api', async (original) => ({
   ExecClient: { GetHandler: transport.handler },
 }));
 
-import useResourceDefinition, { type ResourceTableRow } from './useResourceDefinition';
+import useResourceDefinition, { type ResourceColumnMeta, type ResourceTableRow } from './useResourceDefinition';
+import { FIXTURE_COLUMN_DEFS } from '@/components/tables/Resources/testing/fixture';
 
 type Columns = Array<ColumnDef<DataTableFeatures, ResourceTableRow>>;
 
@@ -60,7 +61,7 @@ function setup() {
   };
 
   const show = (element: React.ReactNode) => render(<ExtensionProvider registry={registry}>{element}</ExtensionProvider>);
-  return { store, columnsFor, cellOf, show };
+  return { store, columnsFor, cellOf, show, providers };
 }
 
 describe('useResourceDefinition custom columns', () => {
@@ -122,5 +123,105 @@ describe('useResourceDefinition custom columns', () => {
     show(cellOf(widgets, 'name', 'w'));
     expect(screen.getByText('w')).toBeTruthy();
     expect(screen.queryByText('Unavailable')).toBeNull();
+  });
+});
+
+type Providers = React.JSXElementConstructor<{ children: React.ReactNode }>;
+
+/** Both the definition and the action handlers load separately. Wait until the columns reflect both. */
+async function settledColumns(providers: Providers) {
+  const hook = renderHook(() => useResourceDefinition({ pluginID: 'native', connectionID: 'c1', resourceKey: 'widgets' }), { wrapper: providers });
+  await waitFor(() => {
+    expect(hook.result.current.columns.actions).toBeDefined();
+  });
+  return hook;
+}
+
+const columnOf = (columns: Columns, id: string) => columns.find((def) => def.id === id)!;
+const metaOf = (columns: Columns, id: string) => columnOf(columns, id).meta as ResourceColumnMeta | undefined;
+const reader = (columns: Columns, id: string) => {
+  const { accessorFn } = columnOf(columns, id) as { accessorFn: (row: ResourceTableRow, index: number) => unknown };
+  return (data: unknown) => accessorFn({ record: {} as ResourceTableRow['record'], data }, 0);
+};
+
+describe('useResourceDefinition generic table columns', () => {
+  it('keeps the same columns across renders, so mounted cells keep their renderers', async () => {
+    const { providers } = setup();
+    const { result, rerender } = await settledColumns(providers);
+    const settled = result.current.columns;
+
+    rerender();
+
+    expect(result.current.columns).toBe(settled);
+    expect(result.current.columns.defs).toBe(settled.defs);
+  });
+
+  it('declares selection and actions as controls of their own and plugin components as content-sized', async () => {
+    const { providers } = setup();
+    const { result } = await settledColumns(providers);
+    const { defs } = result.current.columns;
+
+    expect(defs.map((def) => def.id)).toEqual(['select', 'name', 'status', 'menu']);
+    expect(metaOf(defs, 'select')).toMatchObject({ opensDetail: false });
+    expect(metaOf(defs, 'menu')).toMatchObject({ opensDetail: false });
+    expect(metaOf(defs, 'status')).toMatchObject({ rowHeight: 'content' });
+    expect(metaOf(defs, 'name')?.rowHeight).toBeUndefined();
+    expect(metaOf(defs, 'name')).toMatchObject({ dataTableCellDependencies: 'data' });
+  });
+
+  it('keeps a declared width exact, shares the space among the rest and starts hidden columns hidden', async () => {
+    const { providers } = setup();
+    transport.definition.mockResolvedValue({ columnDefs: FIXTURE_COLUMN_DEFS });
+    const { result } = await settledColumns(providers);
+    const { defs, visibility } = result.current.columns;
+
+    expect(columnOf(defs, 'size')).toMatchObject({ size: 80, minSize: 80, maxSize: 80, enableResizing: false });
+    expect(metaOf(defs, 'size')).toMatchObject({ align: 'right' });
+    expect(columnOf(defs, 'name')).not.toHaveProperty('size');
+    expect(visibility).toEqual({ name: true, phase: true, size: true, owner: false });
+  });
+
+  it('reads values by priority and applies a value map in declaration order without logging', async () => {
+    const { providers } = setup();
+    transport.definition.mockResolvedValue({
+      columnDefs: [
+        { id: 'phase', header: 'Phase', accessor: 'status.phase', accessorPriority: 'FIRST', valueMap: { '^Run': 'Go', 'ning$': 'ing!' } },
+        { id: 'last', header: 'Last', accessor: 'a,b', accessorPriority: 'LAST' },
+        { id: 'all', header: 'All', accessor: 'a,b' },
+      ],
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const { result } = await settledColumns(providers);
+    const { defs } = result.current.columns;
+
+    expect(reader(defs, 'phase')({ status: { phase: 'Running' } })).toBe('Going!');
+    expect(reader(defs, 'phase')({ status: { phase: 'Pending' } })).toBe('Pending');
+    expect(reader(defs, 'last')({ a: 'x', b: 'y' })).toBe('y');
+    expect(reader(defs, 'all')({ a: 'x', b: 'y' })).toEqual(['x', 'y']);
+    expect(reader(defs, 'all')({ a: 'x' })).toBe('x');
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it('offers no action menu for a body that is not an object', async () => {
+    const { providers, show } = setup();
+    const { result } = await settledColumns(providers);
+    const menu = columnOf(result.current.columns.defs, 'menu');
+
+    show((menu.cell as (context: unknown) => React.ReactElement)({ row: { original: { data: ['not', 'an', 'object'], record: {} } } }));
+
+    expect(screen.getByText('Resource actions require an object body.')).toBeTruthy();
+  });
+
+  it('has no columns and no actions while the definition is unavailable', async () => {
+    const { providers } = setup();
+    transport.definition.mockRejectedValue(new Error('unavailable'));
+    const { result } = renderHook(() => useResourceDefinition({ pluginID: 'native', connectionID: 'c1', resourceKey: 'widgets' }), { wrapper: providers });
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(result.current.columns).toEqual({ defs: [], visibility: {}, actions: undefined });
   });
 });

@@ -172,18 +172,24 @@ the collection and report its path instead of deleting uncertain files.
 
 ## How it works
 
-- **Build.** `vite.config.ts` here builds the app like `vite.config.ts` at the root, plus:
-  `react-dom/client` resolves to `react-dom/profiling` so `<Profiler>` works in production
-  React, and `ui/main.tsx` is rewritten at build time to import `page/fake-backend.ts` first
-  and wrap the root in `page/profiler.tsx`. The app's source is not changed.
-  This is the profiling build, not the normal production React build: React render, commit
-  and slowest-commit columns include profiling overhead, so these results are not
-  comparable with normal-production measurements.
+- **Build.** `vite.config.ts` here loads the selected host checkout's own `vite.config.ts` (its
+  `--app-root`, default this checkout) and adds only instrumentation: `ui/main.tsx` is rewritten
+  at build time to import `page/fake-backend.ts` first, and an inline script at the top of
+  `index.html` reads the page config. The app's source and build settings are not changed;
+  in particular the minifier is whatever the app config says. `--react profiling` (the default
+  of the legacy scenarios) also resolves `react-dom/client` to `react-dom/profiling` and wraps
+  the root in `page/profiler.tsx`, so `<Profiler>` works in production React. That is an
+  attribution build: React render, commit and slowest-commit columns include profiling
+  overhead, and React's profiling renderer adds its own logging, so its timings are never
+  comparable with a normal build's. `--react normal` keeps the app's production React and adds
+  no `<Profiler>`. Archive smoke (`OV_PLUGIN_ARCHIVE_SMOKE=1`) is a separate acceptance gate,
+  not a way to select a build: `run.mjs` refuses to start with it set.
 - **Fake backend.** `page/fake-backend.ts` installs the `bench/render` transport and fixtures
   (bindings → handlers by name, `emit` for backend events), and adds what the full shell
   asks for at startup: the installed plugin list, a connection, source state, log sessions.
-  The page reads its setup from `window.__OV_BENCH__` (`{ plugins, pods }`), set by the
-  runner before navigation, and exposes controls on `window.__ovBench`. Calls are answered
+  The page reads its setup from `window.__OV_BENCH__` (`{ plugins, pods, metrics, instance, … }`),
+  set by the runner before navigation, or from the `ovbench` query parameter in a page opened
+  without a runner, and exposes controls on `window.__ovBench`. Calls are answered
   in-page, so there is no IPC cost in the numbers.
 - **Plugin.** The real Kubernetes UI `dist/assets` directory is served at
   `/_/plugins/kubernetes/assets/` by `vite preview`, where the app's SystemJS loader
@@ -240,11 +246,14 @@ Every result records what was measured, so it is compared only with a matching o
   scenario's fixture, size or steps change. A result with no workload id is an **unknown
   legacy workload**, including the older 256-row native-page runs. `report.mjs` says so and
   never describes it as the 5,000-record collection.
-- **Frontend.** `meta.frontend` identifies every file in `bench/app/dist` by a tree
-  SHA-256. A fresh build also records its configuration hash and React variant:
-  `react-dom/profiling` by default, or normal React in archive-smoke mode.
-  With `--no-build`, the build configuration and React variant are unknown: the
-  runner identifies the reused bytes, not how an earlier process produced them.
+- **Frontend.** `meta.frontend` identifies every file in the served `dist` by a tree SHA-256
+  (the build manifest `.ov-bench-build.json` is excluded: it describes the tree). It records
+  the React variant (`reactBuild`, `reactDom`), the minifier Vite resolved
+  (`minify.effective`) and whether it was the app's own setting or forced, and the state of the
+  build manifest. A build made by this runner carries a manifest; with `--no-build` the React
+  variant, minifier and build provenance are taken from it only while it verifies against the
+  bytes present. Without a verified manifest they are `unknown`: the runner identifies the
+  reused bytes, not how an earlier process produced them.
 - **Host and plugin source.** `commit`, `dirty` and `hostSource` identify the host checkout
   by its full HEAD, tracked dirty state, and a SHA-256 of
   `git diff --binary --no-ext-diff --no-textconv HEAD`. Other runners can use
@@ -265,8 +274,214 @@ verify retained inputs; they do not recreate lost ones. Unit tests for these hel
 report:
 
 ```sh
-node --test bench/app/plugin-bundle.test.mjs bench/app/report.test.mjs
+node --test bench/app/plugin-bundle.test.mjs bench/app/report.test.mjs bench/app/report-scroll.test.mjs \
+  bench/app/stats.test.mjs bench/app/wheel-driver.test.mjs bench/app/options.test.mjs bench/app/provenance.test.mjs
 ```
+
+## Scroll and metric baselines (#460)
+
+The scroll scenarios measure Pods-table scrolling with the real production frontend, the real
+Kubernetes plugin bundle and a fixture backend in the page. They have their own workload ids,
+protocol, build selection and report, separate from the legacy scenarios above. Everything they
+record is **renderer-only fixture evidence**: no IPC, no native Omniview backend, no host or
+plugin process. A Chromium result is not WKWebView, and a requestAnimationFrame interval is not
+compositor output.
+
+### Baseline and candidate builds
+
+The harness lives in one checkout (the candidate) and builds any host checkout selected by
+`--app-root`, so the same harness bytes measure both. Nothing is written into the selected
+checkout: the build goes to `--dist`, its `vite.config.ts` is read with Vite's runner loader (no
+`.vite-temp`), and the optimizer cache is redirected next to `dist`. The selected checkout needs
+its dependencies installed and the Kubernetes UI built; the harness installs nothing.
+
+```sh
+# Baseline: its frontend sources, UI packages and plugin bundle, built by the candidate's harness.
+node bench/app/run.mjs --build-only --react normal --label baseline \
+  --app-root /abs/baseline/omniview \
+  --plugin-assets /abs/baseline/kubernetes/ui/dist/assets \
+  --plugin-metadata /abs/baseline/kubernetes/plugin.json \
+  --dist .local/bench-app/builds/baseline-normal/dist
+
+# Candidate: the harness checkout itself.
+node bench/app/run.mjs --build-only --react normal --label candidate \
+  --plugin-assets /abs/candidate/kubernetes/ui/dist/assets \
+  --plugin-metadata /abs/candidate/kubernetes/plugin.json \
+  --dist .local/bench-app/builds/candidate-normal/dist
+```
+
+`--react normal` builds the app's own production configuration: its React is the production
+build and no `<Profiler>` exists, and the minifier is whatever `vite.config.ts` says (today
+`minify: false`, an unminified bundle of about 22 MB; the report prints the resolved value).
+`--react profiling` is the attribution build described above. `--minify on|off` forces the
+minifier for an intentionally different build; it is recorded as forced, and `report.mjs
+--compare` refuses to pair it with an app-configured build.
+
+Each build writes `.ov-bench-build.json` beside its bytes: the React variant, the minifier Vite
+actually resolved, mode, the host's git state and tracked-diff hash, the harness tree hash and,
+for `@omniviewdev/base-ui`, `ai-ui`, `editors`, `providers` and `runtime`, the resolved real
+path, version, the git identity of a linked checkout and the tree hash of the `dist` the app
+consumed. A declared range such as `~0.17.1` proves none of this: whether a source-linked build
+or a published package was bundled shows in `source` (`linked-checkout`, `package-store`,
+`host-workspace`) and the hashes. A reused build is trusted only as far as its manifest
+verifies against the bytes present, and a scroll scenario refuses one that does not.
+
+### Running
+
+```sh
+node bench/app/run.mjs --no-build --dist .local/bench-app/builds/baseline-normal/dist --label baseline \
+  --only scroll --metrics healthy,unavailable,hidden --cpu-throttle 1,4 \
+  --plugin-assets /abs/baseline/kubernetes/ui/dist/assets --plugin-metadata /abs/baseline/kubernetes/plugin.json
+node bench/app/run.mjs --no-build --dist .local/bench-app/builds/candidate-normal/dist --label candidate \
+  --only scroll --metrics healthy,unavailable,hidden --cpu-throttle 1,4 \
+  --plugin-assets /abs/candidate/kubernetes/ui/dist/assets --plugin-metadata /abs/candidate/kubernetes/plugin.json
+node bench/app/report.mjs --compare .local/bench-app/results/<baseline>.json .local/bench-app/results/<candidate>.json
+```
+
+Run baseline and candidate serially, on the same machine, with nothing else competing for CPU.
+Results and a Markdown report go to `.local/bench-app/results/` (ignored by git); `--out` and
+`--markdown` override. Add `--smoke` for a quick check that a cell works (2 s warmup, one 3 s
+trial); it is reported as a deviation from the reference protocol. A browser and the preview
+server are closed on success, failure and SIGINT/SIGTERM.
+
+| Option | Meaning |
+|---|---|
+| `--only scroll` | `pods-paced`, `pods-reversal`, `pods-jump` (or name them); the legacy scenarios stay the default |
+| `--react normal\|profiling` | Required for scroll scenarios (a reused build supplies it from its manifest) |
+| `--app-root`, `--dist`, `--no-build`, `--build-only`, `--label` | Which checkout is built, where, whether to reuse it |
+| `--plugin-assets`, `--plugin-metadata` | The Kubernetes UI `dist/assets` and `plugin.json` served and recorded (same as the `OV_K8S_PLUGIN_*` variables) |
+| `--metrics hidden,unavailable,healthy` | Metric state of the Pod table (see Fixtures); one cell each |
+| `--updates none,sparse`, `--update-rate`, `--update-batch`, `--update-recreate-every`, `--update-seed`, `--metric-refresh-ms`, `--metric-changed-fraction` | The declared sparse-update workload |
+| `--cpu-throttle 1,4` | CDP CPU throttling per cell (the legacy scenarios take one value) |
+| `--warmup-seconds 30 --trial-seconds 20 --trials 3` | The reference protocol (also the defaults) |
+| `--speed 1200 --input-hz 60 --reversal-segment-seconds 2 --jump-pages 30` | Declared input |
+| `--pods 5000` | Pods served |
+| `--capture full\|frames\|off`, `--mutations`, `--no-raw`, `--overhead-control` | Sampler scope, row/node mutation counting (default on only for profiling), raw series in the JSON, and one light-capture plus one no-capture control trial |
+| `--serve-only`, `--port` | Build if needed and serve for a native WebView (below) |
+
+### Workloads
+
+A cell is (scenario, metric state, update workload, CPU throttle), keyed
+`pods-paced[metrics=healthy,updates=none,cpu=4x]`. Its workload id and declared parameters are
+recorded, and the compare report pairs only equal ones.
+
+| Id | Driver | What it is |
+|---|---|---|
+| `pods-paced/v1` | Node→CDP wheel | Constant downward velocity (default 1,200 px/s) as wheel events at a declared cadence (default 60/s) for the trial length |
+| `pods-reversal/v1` | Node→CDP wheel | The same input with the direction reversed every segment (default 2 s), oscillating between two offsets that keep a margin from both scroll boundaries |
+| `pods-jump/v1` | in-page settling driver | The existing viewport-jump workload (the scroll step of `whole-app/v1`): up to 30 viewport-sized jumps, each waiting for a painted frame, then a reset. It does not measure continuous input; its duration is the workload's, not `--trial-seconds` |
+
+Wheel input is never driven from the page. A rAF- or timer-driven `scrollTop` loop inside the
+page slows down exactly when JavaScript stalls and hides the lag it should expose. The driver
+(`wheel-driver.mjs`) sends `Input.dispatchMouseEvent` events from Node on an absolute schedule,
+never waits for an acknowledgement before the next, and records for each event when it was due,
+when it was sent and when the browser acknowledged it. It does no layout and no `flushSync`, and
+it rests a pointer over the table first, as a user's is. Before the warmup it sends a short known
+burst and compares it with what the page saw and the table did; a delta scale other than 1 is
+applied and recorded, and input that does not scroll at all is an error.
+
+Per cell: page load to the first row and a table whose height implies the served Pods, a check
+that the metric state is what the cell declares (hidden columns must open no observation; healthy
+and unavailable must complete one, else the cell fails), an idle refresh-rate probe, the
+calibration, the warmup (the same workload, unmeasured), then the trials with a one-second
+quiesce between them.
+
+### What is recorded per trial
+
+Two windows. The **input window** runs from the first wheel event the driver sent to the last
+(the declared duration; the jump driver's own run): frame intervals, coverage and scroll lag are
+computed over it. The **capture window** runs from `capture.start` to `capture.stop`, the input
+window plus the time the table needs to settle: CDP counters, long tasks and React totals cover it.
+
+| Signal | Source and meaning |
+|---|---|
+| Frame intervals | Deltas of requestAnimationFrame timestamps, with p50/p90/p95/p99/max by nearest rank (a real frame, never interpolated), counts above 20, 33.4, 50 and 100 ms, an estimate of missed refresh slots against the measured idle cadence, and the largest gaps with their time |
+| Coverage | Per frame, the fraction of the visible body (below the sticky header) covered by mounted rows, how far mounted rows extend beyond each viewport edge in px (negative is an uncovered strip), and the mounted-row count. Holes are samples below 0.999; samples at a scroll boundary are counted, not scored |
+| Input delivery | Requested px; what the page's wheel listener saw (events, px, delay between the event's own timestamp and its handler); scroll position at input end and after settling; residual and delivered fraction; path length |
+| Scroll lag | Distance between where the declared input says the viewport should be (a step function of the planned schedule) and the sampled scroll position, on epoch clocks (`performance.timeOrigin + now` on both sides), in px and in ms at the declared speed |
+| Main thread | CDP `Performance.getMetrics` deltas: task, script, layout and style durations, thread time, layout and style-recalc counts, node objects (`cdpNodes`: attached **and detached**, not yet collected: churn, not retained DOM), listeners, heap. Long tasks and long animation frames where the engine has them |
+| DOM | Attached elements in the document (start, end, max), separate from `cdpNodes` |
+| React (profiling build) | Commits split mount/update with their durations, base duration, slowest commit, a bounded list of slow commits |
+| Mutations (`--mutations`) | Top-level rows and nodes added and removed, attribute changes: mount churn without React |
+| Bridge, demand, updates | Backend calls by name; metric observation opens, attaches, refreshes, closes, targets requested; the update ledger (events, upserts, removes, recreated) |
+| Errors | Page errors, console errors, failed requests and HTTP ≥ 400 per trial and at load, visible alerts and status messages at ready, backend calls answered with no fixture |
+
+A signal the engine does not supply is `null`, shown as a dash in the report: never zero.
+
+### Fixtures
+
+The fixtures speak the current host protocols; a handler that returned `null` would be neither a
+healthy nor an unavailable provider.
+
+- **Source views** (`bench/render/fixtures/kubernetes.ts`): snapshots in 256-record batches, then
+  `changes` events with the view's real `viewGeneration` and the next `sequence`, `upserts` and
+  `removes` keyed by the host record key. A recreated Pod is a remove of the old incarnation's key
+  and an upsert under a new uid.
+- **Sparse updates** (`fixtures/updates.ts`): `--updates sparse` emits a declared number of
+  `changes` events per second, each touching a declared number of Pods drawn uniformly from the
+  whole corpus by a seeded generator (restart count, phase flip, and every Nth touch a
+  delete-and-recreate), and refreshes metric samples on a declared period for a declared fraction
+  of targets. The runner asserts nothing about row selection or sort/filter semantics; those are
+  for focused tests. It records the update ledger and the fixture's corpus size and per-view
+  sequence counters, nothing about what the table showed afterwards.
+- **Metrics** (`fixtures/metrics.ts`): `GetMetricViewSourceSelection` (the host's default
+  `inherit`), `GetResourceMetricsCatalog` (the native catalog: CPU in cores, memory in bytes),
+  `OpenMetricsObservation` → `AttachMetricsObservation` → `metric/observation` events with the
+  generation/sequence fence, a progress frame and a data frame, refresh on the observation's own
+  interval, `CloseMetricsObservation`. `healthy` answers `ok` with values and source times.
+  `unavailable` answers what the Kubernetes native provider answers when the metrics API is
+  absent: every pair `failed` with its message, `complete: false`, the scan failure as a
+  warning; the catalog and columns are present and the cells show a gap. `hidden` serves the
+  healthy provider and seeds the plugin's persisted column visibility (the choice a user makes
+  by hiding the columns), so no metric column exists and no observation may open.
+- **Activity** (`fixtures/activity.ts`): the whole Activity FrontendService protocol with
+  revisions and `activity/change/<id>` events. The former stubs left every producer call
+  unhandled, so the first notification crashed the store and surfaced an "Activity observation"
+  error toast.
+- **Instance identity**: with `instance: "production"` in the page config the build's bootstrap
+  script embeds the boot identity a native host embeds, and `GetInstanceInfo` answers the matching
+  descriptor, so the shell shows no "Instance unavailable" chip. Without it (the legacy
+  scenarios, archive smoke) the page is a plain preview, as before.
+
+### Native WebView use
+
+The sampler and controls are page code, not CDP, so a WKWebView driven by hand reads the same
+numbers. Serve the built frontend and open the printed URL:
+
+```sh
+node bench/app/run.mjs --serve-only --no-build --dist <dist> \
+  --plugin-assets <assets> --plugin-metadata <plugin.json> --port 9400
+# http://127.0.0.1:9400/?ovbench={"plugins":["kubernetes"],"pods":5000,"metrics":"healthy","instance":"production"}#/_plugin/kubernetes/cluster/bench/resources/k8s%3A%2Fpods
+```
+
+In the page, `window.__ovBench.help()` lists the API. A typical session:
+`await scroll.prepare({ expectedRows: 5000 })` (returns `wheelPoint`), `await capture.probeRefresh()`,
+`capture.start({ raw: false })`, scroll with a trusted native pointer over `wheelPoint`,
+`await scroll.waitSettled()`, `capture.stop()`, `fixture.stats()`. Unsupported signals (long
+tasks, long animation frames, JS heap, CDP-only counters) are reported as unsupported or null. The
+WKWebView is the actual frontend with the fixture backend: it is not the native Omniview backend or
+IPC, and it is not an M1-class native acceptance run.
+
+### Limits
+
+- requestAnimationFrame callbacks and DOM geometry are not compositor output or pixels. Coverage
+  compares mounted rows with the scroll offset the main thread sees, which can lag the
+  compositor's; the margins beyond the viewport edges bound the lead that is absorbed. Keep native
+  pixel evidence separate.
+- The sampler reads geometry in the frame callback. That can run style and layout earlier than the
+  frame would and costs something. `--overhead-control` adds one `frames` trial and one `off`
+  trial, then reports per-second CDP differences. Each control is a single sample.
+  The `off` control cannot measure frame intervals; `frames` cannot measure viewport coverage or input lag.
+- Headless Chromium paces frames at a virtual 60 Hz; the measured idle cadence is recorded, and a
+  display that is not about 60 Hz is flagged because 120 Hz runs are kept separate.
+- Wheel events can be coalesced by the browser before the page sees them; `page saw` records
+  what arrived. CDP CPU throttling slows the renderer's main thread only.
+- Three trials do not support a significance claim; the compare report's verdict uses a fixed 2%
+  band. The nominal-scroll targets printed for paced cells are informational, not a gate.
+- The fixture is in-page: no IPC cost, no host or plugin process, no network. Metric and update
+  rates are declared fixture rates, not measured cluster rates.
+- Heap, retained DOM growth over repeated open/scroll/close cycles, renderer/host/plugin memory
+  and native pixels are not measured here.
 
 ## Cluster scrolling pass, 2026-11-09
 
@@ -517,3 +732,86 @@ exited PIDs or processes younger than two seconds. This age guard avoids the
 same-second ambiguity of `ps` start timestamps.
 Neither tool selects or mutates a cluster. Do not use an uncontrolled sampler smoke
 or a reducer speedup as evidence of lower native Graphics/WebContent CPU.
+
+## Capture modes, the page and runner contract, and the generic table surface
+
+`--capture` selects how much the page samples during a trial:
+
+| Mode | Flag | What the page samples | Null by design |
+|---|---|---|---|
+| full (default) | `--capture full` | frame intervals from one `requestAnimationFrame` loop; per-frame viewport coverage, scroll offset and mounted rows (every `--coverage-every` frames, default 1); wheel and scroll accounting; long tasks; long animation frames; an all-DOM element count at most once a second | nothing the engine supports |
+| light | `--capture frames` | frame intervals and long tasks | coverage, scroll position at input end, lag, wheel accounting |
+| none | `--capture off` | nothing; Node still records its own timing and CDP counters | every page signal |
+
+To price the capture, run the measured trials at `full` with `--overhead-control`. After the measured trials of each cell the runner adds one control trial at `frames` and one at `off`, and reports the per-second CDP difference in task, script, style and layout time (full − frames is the geometry reads, frames − off is the frame loop). Each control is a single sample, so treat a small difference as noise:
+
+```
+node bench/app/run.mjs --no-build --dist <dist> --label <x> --only pods-paced --metrics healthy --cpu-throttle 4 --overhead-control --plugin-assets … --plugin-metadata …
+```
+
+Never compare timings across capture modes, and never compare a `--capture off` or `frames` run with a `full` one for the signals the lighter mode does not have.
+
+### Page and runner contract
+
+The sampler is bundled into the app build, so a build and a runner from different harness revisions can disagree. Three guards fail loudly instead of reporting required fields as null:
+
+- A reused build whose manifest names a different harness revision than the runner is refused for scroll scenarios. Rebuild with `--build-only`, or pass `--allow-harness-drift` for a diagnostic run that must not be compared. The recorded `meta.harness.builtWith` is the revision that built the page.
+- Before a cell measures anything, the page's `capture.capabilities().schema` must equal `CAPTURE_SCHEMA` in `capture-contract.mjs` (bump it whenever the page's result shape or option handling changes).
+- Every trial is checked against its mode. A full capture must have coverage samples, the scroll position at the end of input, input accounting and, for wheel workloads, lag; the trial fails with the reason otherwise.
+
+The page also ignores options passed as `undefined`, so a runner that has no value for an option gets the default.
+
+### Generic host table surface (`--surface generic`)
+
+`--surface plugin` (default) measures the Kubernetes plugin's own Pod table. `--surface generic` measures the host's generic resource table over the same 5000 Pods: the route `#/resources/kubernetes/bench?type=k8s%3A%2Fpods` is the host's `ResourceBrowser`, which mounts `components/tables/Resources` (`EnumerableResourceTable` → `ResourceTableContainer`) for any type that advertises `enumerate`. The fixture serves the same Pod source view and a resource definition with six columns (Name, Namespace, Status, Node, Pod IP, Created). The Pods have no exec handler, so there is no row-action column, and there are no metric columns, so `--metrics` does not apply and cells are keyed `generic:<scenario>[metrics=none,…]`. The sampler, workloads and input are unchanged (the table container and rows carry the same `data-ov-table-container` and `tbody > tr[data-index]` hooks). Generic and plugin cells never pair in a comparison. For a native WebView, load the same hash route with `?ovbench=`.
+
+## Local renderer sprint (#459)
+
+This pass uses CLI-managed candidate and frozen-baseline workspaces, the same
+`58011ba2993e` harness, normal production React, 5,000 fixture Pods and independent
+60 Hz wheel input. Baseline commits: host `605ee4ea171570ac39d7882a4baa636e92bd3ecf`,
+UI `05ea0050b6dd3ede23cbfa638a624df8fe20b8e2`, Kubernetes
+`c082860e746a413f04294c4d4772d8deffe38b9d`.
+These are renderer measurements with an in-page backend, not native IPC or
+real-cluster measurements. No CI or release workflow changes belong to this pass.
+
+Early matched runs used 30 seconds of warmup and three 20-second trials:
+
+| Workload | Baseline | Initial candidate | Meaning |
+|---|---:|---:|---|
+| Healthy metrics, 4× CPU, sparse immutable updates: median frame p95 | 1,199.9 ms | 250 ms | Combined early fixes; still unacceptable |
+| Healthy metrics, 4× CPU, no updates: median frame p95 | 116.6 ms | 150.1 ms | No established scrolling improvement |
+| Generic table mounted rows, short functional smoke | 5,000 | 36 resting / 48 peak | Bounded DOM, not a frame-time comparison |
+
+The initial candidate is not the final implementation. Later profiles identified
+repeated alphanumeric sorting as a major sparse-update cost. A deterministic
+5,000-record probe applied 50 immutable two-row updates, including deletion and
+recreation. It compared exact sorted IDs and current record objects after every
+update. Upstream sorting made 2,747,070 comparisons; adaptive input ordering made
+250,068. Fifty no-op renders added no comparisons. This proves reduced comparison
+work, not a corresponding frame-time speedup. The temporary probe was removed;
+behavioral sorting regressions remain in the shared UI suite.
+
+Later wall-time runs are not acceptance evidence: host load reached 73 on
+18 cores, independent input delivery stalled, and the unchanged control build
+also slowed. Do not attribute those results to candidate code. Repeat matched
+normal/throttled, metric-state and live-update runs on a quiet local host before
+claiming a frame budget. CPU throttling does not certify M1 Pro performance.
+
+Functional browser checks exercised generic-table selection, sorting, search,
+column hide/show and source-view teardown. DOM coverage does not prove compositor
+pixels are never blank. Native WKWebView, real backend behavior and final
+frame-time acceptance remain separate gates. Raw profiles stay local; this pass
+does not upload cluster data or add Grafana diagnostics.
+
+The final linked functional build mounted 56 resting rows and at most 92 rows
+across distant positions in the 5,000-Pod collection. At each settled stop,
+unavailable metrics had zero busy cells and zero pulsing skeletons, with no
+resource-error notices. Keyboard focus exposed the full healthy metric value
+and reference text. Closing the connection tab left no source views and no
+active metric observations.
+
+A later serial baseline/candidate reference rerun still failed the frame budget
+and input-delivery gate: driver lateness p95 exceeded one second in every
+candidate trial. Keep those raw receipts as failed diagnostics, not accepted
+performance evidence. Do not merge on the strength of comparison counts alone.

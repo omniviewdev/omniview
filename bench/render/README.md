@@ -61,6 +61,16 @@ relative to the host. Production React and JSX are the default. Use
   Log creation consumes the current encoded JSON request and preserves its correlation
   ID and session options in the current session DTO. Drawer and whole-app fixtures
   retain live sessions until the real close call removes them; unknown session reads fail.
+  `servePods` returns a controller. `applyChange` delivers a change batch to every complete
+  live source view as one `changes` event with the view's real `viewGeneration` and the next
+  `sequence` (`upserts`, and `removes` keyed by the host record key; a recreated Pod is a remove
+  and an upsert under a new uid), and `views()` counts what each view delivered.
+  `fixtures/updates.ts` drives a declared, seeded sparse-update workload through it.
+  `fixtures/metrics.ts` answers the current finite-metrics protocol (view source selection,
+  catalog, open/attach/refresh/close observation and `metric/observation` events) as a healthy
+  provider or as an absent metrics API. `fixtures/activity.ts` implements the whole Activity
+  FrontendService protocol; an unhandled call resolves to `null`, which is neither a healthy nor
+  an unavailable provider, so a fixture must answer each call a scenario makes.
 - The Kubernetes Pod table is rendered from the selected external checkout against
   the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get
   them at runtime through the shared-deps import map). Record the checkout commit
