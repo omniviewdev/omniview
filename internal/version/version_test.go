@@ -13,7 +13,7 @@ func TestResolveCompatibilityVersion(t *testing.T) {
 		{"stable tag prefix is normalized", "v0.27.3", false, "0.27.3"},
 		{"build metadata does not alter compatibility", "0.27.3+build.9", false, "0.27.3"},
 		{"development label cannot inflate capabilities", "99.0.0", true, sourceCompatibilityVersion},
-		{"nightly uses source baseline", "0.0.0-nightly.20261103", false, sourceCompatibilityVersion},
+		{"nightly includes 0.35.1 capabilities", "0.0.0-nightly.20261110", true, "0.35.1"},
 		{"release candidate uses source baseline", "0.28.0-rc1", false, sourceCompatibilityVersion},
 		{"PR label uses source baseline", "pr-build-macos", false, sourceCompatibilityVersion},
 		{"malformed semantic version uses source baseline", "0.27.invalid", false, sourceCompatibilityVersion},
