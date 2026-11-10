@@ -777,6 +777,23 @@ The page also ignores options passed as `undefined`, so a runner that has no val
 
 ## Local renderer sprint (#459)
 
+The latest [Metal-backed evidence](renderer-sprint-metal-evidence-2026-11-10.json)
+records the frozen baseline, the current candidate, and rejected window experiments.
+It includes 128 scroll-trial summaries, twelve fresh-context startup samples, build
+and source fingerprints, and actual-surface checks for healthy, unavailable and hidden
+metrics. Timing ran serially on the M5 Max with hardware compositing and rasterization.
+The shorter diagnostic protocols and measured 120 Hz display are recorded, not treated
+as the reference protocol or an M1 substitute.
+
+The shared UI now supports explicit immutable-row text-sort reuse and one inspection
+tooltip root per table. Kubernetes confines its changing record context to the active
+row menu and keeps namespace controls keyboard-accessible. Neither wider retained
+windows nor two/eight-row batching passed the tail-latency checks; four-row batching
+and the requested overscan remain unchanged. Longer baseline live-update captures
+must not be used for matched total-work speedup percentages. Startup and healthy
+target-demand costs are included. The remaining throttled frame stalls keep the PRs
+in draft. No CI or Grafana changes are required.
+
 Early recordings used CLI-managed candidate and frozen-baseline workspaces, the
 `58011ba2993e` harness, normal production React, 5,000 fixture Pods and independent
 60 Hz wheel input. Baseline commits: host `605ee4ea171570ac39d7882a4baa636e92bd3ecf`,

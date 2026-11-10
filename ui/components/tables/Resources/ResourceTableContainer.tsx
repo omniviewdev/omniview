@@ -77,6 +77,8 @@ const TABLE_FEATURES: DataTableFeatureFlags = {
 };
 
 const DEFAULT_SORTING: SortingState = [{ id: 'name', desc: false }];
+/** Resource projections retain immutable host records across sparse patches. */
+const TABLE_META = { dataTableImmutableRows: true } as const;
 
 /** Selection and actions stay in view while the other columns scroll. */
 const COLUMN_PINNING: ColumnPinningState = { start: ['select'], end: ['menu'] };
@@ -132,6 +134,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   const table = useDataTable<ResourceTableRow>({
     data,
     columns,
+    meta: TABLE_META,
     features: TABLE_FEATURES,
     enableMultiSort: true,
     getRowId,
