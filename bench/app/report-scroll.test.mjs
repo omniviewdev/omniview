@@ -16,7 +16,8 @@ function result({ reactDom = 'react-dom/client', p95 = [18, 19, 17], minify = fa
     hostSource: { state: 'identified', head: 'f'.repeat(40), short: 'abc1234', dirty: false, trackedDiffSHA256: 'b'.repeat(64) },
     plugin: { checkout: { state: 'identified', short: 'def5678', dirty: false }, bundle: { treeSHA256: 'c'.repeat(64) } },
     harness: { treeSHA256: harness, files: 20 },
-    engine: { name: 'chromium', version: '140.0' },
+    engine: { name: 'chromium', version: '140.0', headless: false,
+      graphics: { state: 'available', compositing: 'enabled', rasterization: 'enabled', renderer: 'test GPU' } },
     environment: { cpuModel: 'Apple M1', osRelease: '25.0' },
     ui: { '@omniviewdev/base-ui': { state: 'resolved', declared: '~0.17.1', version: '0.17.1', source: 'linked-checkout', git: { state: 'identified', short: '05ea005', dirty: false }, dist: { treeSHA256: 'e'.repeat(64) } } },
     label: 'baseline',
@@ -109,6 +110,22 @@ test('comparing normal and profiling builds refuses to compute any delta', () =>
 test('comparing builds with different minifiers or harness bytes is refused', () => {
   assert.match(compare(result(), result({ minify: 'esbuild' })), /minifier differs/);
   assert.match(compare(result(), result({ harness: '1'.repeat(64) })), /harness bytes differ/);
+});
+
+test('graphics mode changes cannot produce a performance delta', () => {
+  for (const change of [
+    (engine) => { engine.headless = true; },
+    (engine) => { engine.graphics.compositing = 'disabled_software'; },
+    (engine) => { engine.graphics.rasterization = 'disabled_software'; },
+    (engine) => { engine.graphics.renderer = 'different GPU'; },
+    (engine) => { delete engine.graphics; },
+  ]) {
+    const candidate = result({ p95: [1, 1, 1] });
+    change(candidate.meta.engine);
+    const text = compare(result(), candidate);
+    assert.match(text, /Not comparable/);
+    assert.doesNotMatch(text, /\| frame interval p95 ms \|/);
+  }
 });
 
 test('comparable results show medians, ranges and a verdict with a tolerance band', () => {

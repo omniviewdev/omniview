@@ -297,6 +297,13 @@ export function summarize({ meta, results }) {
     );
   }
   out.push(frontendLine(meta.frontend));
+  const graphics = meta.engine?.graphics;
+  out.push(graphics?.state === 'available'
+    ? `Graphics: ${graphics.renderer}; compositing ${graphics.compositing}, rasterization ${graphics.rasterization}; ${meta.engine.headless ? 'headless' : 'headed'}.`
+    : 'Graphics acceleration was not recorded or could not be verified.');
+  if (graphics?.compositing !== 'enabled' || graphics?.rasterization !== 'enabled') {
+    out.push('**Diagnostic frame timings only: hardware compositing and rasterization are not verified.**');
+  }
   if (meta.label || meta.appRoot) out.push(`Label ${meta.label ?? DASH}; app root ${meta.appRoot ?? DASH}.`);
   if (meta.ui) out.push(...uiLines(meta.ui));
   if (meta.harness?.treeSHA256) out.push(`Harness bytes: tree sha256 ${meta.harness.treeSHA256.slice(0, 12)} (${meta.harness.files} files); harness checkout ${sourceLabel(meta.harness.git?.short, meta.harness.git?.dirty)}.`);
@@ -420,6 +427,14 @@ function comparability(a, b) {
   if (bf.minify?.setting && bf.minify.setting !== 'app') reasons.push(`the candidate forced the minifier (${bf.minify.setting}), so it is not the app's own production build`);
   if (a.meta.harness?.treeSHA256 && b.meta.harness?.treeSHA256 && a.meta.harness.treeSHA256 !== b.meta.harness.treeSHA256) reasons.push('the harness bytes differ: the two runs did not use the same harness');
   if (a.meta.engine?.name !== b.meta.engine?.name || a.meta.engine?.version !== b.meta.engine?.version) reasons.push(`engine differs (${a.meta.engine?.name} ${a.meta.engine?.version} vs ${b.meta.engine?.name} ${b.meta.engine?.version})`);
+  if (a.meta.engine?.headless !== b.meta.engine?.headless) reasons.push('browser presentation differs: headed and headless runs are not comparable');
+  const ag = a.meta.engine?.graphics;
+  const bg = b.meta.engine?.graphics;
+  if (ag?.state !== 'available' || bg?.state !== 'available') {
+    reasons.push('graphics capabilities are unverified: repeat both runs with recorded renderer capabilities');
+  } else if (!same(ag, bg)) {
+    reasons.push('graphics capabilities differ: compare the same renderer, compositing and rasterization modes');
+  }
   if (a.meta.environment?.cpuModel !== b.meta.environment?.cpuModel || a.meta.environment?.osRelease !== b.meta.environment?.osRelease) reasons.push('the machine or OS differs: compare runs on the same machine only');
   return reasons;
 }

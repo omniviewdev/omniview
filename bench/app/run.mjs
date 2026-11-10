@@ -152,6 +152,30 @@ browser = await chromium.launch({
   args: ['--enable-precise-memory-info'],
 });
 
+// Headless Chromium can silently use software graphics on a GPU-equipped host.
+// Record the renderer's capabilities, not just the Node process's machine.
+let graphics;
+const graphicsSession = await browser.newBrowserCDPSession();
+try {
+  const { gpu } = await graphicsSession.send('SystemInfo.getInfo');
+  graphics = {
+    state: 'available',
+    compositing: gpu.featureStatus.gpu_compositing,
+    rasterization: gpu.featureStatus.rasterization,
+    renderer: gpu.auxAttributes.glRenderer,
+    devices: gpu.devices.map(({ vendorString, deviceString, driverVendor, driverVersion }) => ({
+      vendorString, deviceString, driverVendor, driverVersion,
+    })),
+  };
+} catch (error) {
+  graphics = { state: 'unavailable', reason: String(error.message) };
+} finally {
+  await graphicsSession.detach();
+}
+if (graphics.compositing !== 'enabled' || graphics.rasterization !== 'enabled') {
+  console.warn('Graphics acceleration is not verified. Frame timings are diagnostic only. Try --headed and check the recorded graphics capabilities.');
+}
+
 // ---------------------------------------------------------------- provenance
 
 /**
@@ -500,7 +524,7 @@ const meta = {
   appRoot: buildManifest?.appRoot ?? appRoot,
   harness: { ...harnessIdentity(harnessRoot), builtWith: buildManifest?.harness?.treeSHA256 ?? null },
   ui: buildManifest ? buildManifest.ui : { observedAtRunNotAtBuild: true, packages: uiPackageProvenance(appRoot) },
-  engine: { name: 'chromium', version: browser.version(), headless: !opts.headed, playwright: playwrightVersion, fixture: 'in-page fake Wails transport (no IPC, no native backend)' },
+  engine: { name: 'chromium', version: browser.version(), headless: !opts.headed, graphics, playwright: playwrightVersion, fixture: 'in-page fake Wails transport (no IPC, no native backend)' },
   environment: { node: process.version, platform: process.platform, arch: os.arch(), osRelease: os.release(), cpuModel: os.cpus()[0]?.model ?? null, cpuCount: os.cpus().length, memoryGB: Math.round(os.totalmem() / 2 ** 30) },
   ...(cells.length ? {
     protocol: { reference: REFERENCE_PROTOCOL, deviations: protocolDeviations(opts, { reactBuild }) },

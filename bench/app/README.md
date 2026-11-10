@@ -13,10 +13,20 @@ generic no-op window answers prevent the startup-ready marker from firing.
 pnpm bench:app                         # build, then 5 runs of every scenario (~3 min)
 pnpm bench:app --runs 3 --only pods    # some scenarios
 pnpm bench:app --no-build              # reuse bench/app/dist and the plugin bundle
-pnpm bench:app --runs 3 --only pods --cpu-throttle 4  # weaker-CPU sensitivity, not M1 hardware certification
+pnpm bench:app --headed --runs 3 --only pods --cpu-throttle 4  # weaker-CPU sensitivity, not M1 hardware certification
 pnpm bench:app --headed                # watch it
 node bench/app/report.mjs              # Markdown summary of results/latest.json again
 ```
+
+Desktop frame-time acceptance requires verified hardware graphics. Use `--headed`
+on macOS and check the report's graphics line: both compositing and rasterization
+must be enabled. Headless Chromium on this workstation selected SwiftShader and
+disabled GPU compositing/rasterization despite the host having an M5 Max GPU.
+Those runs remain useful CPU/software-renderer diagnostics, not native smoothness
+certification. Headed and headless results, different graphics modes, and results
+without graphics provenance are not paired for percentage comparisons. The
+runner records the actual GPU renderer and driver rather than inferring them
+from the host CPU. This does not change CI or require any external service.
 
 Also `task perf:app -- <args>`. First run locally: `pnpm install --frozen-lockfile`,
 `task packages` (providers → runtime → Vite plugin) and
