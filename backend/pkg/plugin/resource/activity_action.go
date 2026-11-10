@@ -15,6 +15,8 @@ import (
 // Streaming actions retain their native-ready establishment barrier; finite
 // actions expose no cancellation capability because their protocol has none.
 func (c *controller) PrepareActivityAction(ctx context.Context, pluginID string, input resourcev2.ActionRequest, observer func(ActionSnapshot)) (cancel func() error, start func(), retErr error) {
+	ctx, diagnostic := c.beginActionDiagnostic(ctx, "resource.Action.Prepare", pluginID, input)
+	defer func() { diagnostic.finish(ctx, "admission", retErr) }()
 	ctx, err := c.admit(ctx, "resource.Action", actionTarget(pluginID, input))
 	if err != nil {
 		return nil, nil, err
@@ -86,6 +88,9 @@ func (c *controller) runPreparedActivityAction(
 	observer func(ActionSnapshot),
 ) {
 	nativeCtx, stop := context.WithTimeout(context.WithoutCancel(sessionCtx), actionLifetime)
+	nativeCtx, diagnostic := c.beginActionDiagnostic(nativeCtx, "resource.Action", pluginID, input)
+	var diagnosticErr error
+	defer func() { diagnostic.finish(nativeCtx, "completion", diagnosticErr) }()
 	stopGeneration := context.AfterFunc(generation.ctx, stop)
 	defer stop()
 	defer stopGeneration()
@@ -106,6 +111,7 @@ func (c *controller) runPreparedActivityAction(
 	defer stopObservation()
 
 	value, err := c.executePreparedAction(nativeCtx, pluginID, input, generation, descriptor, actionDescriptor, actioner)
+	diagnosticErr = err
 	var event ActionEventDTO
 	if err != nil {
 		if nativeCtx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -115,6 +121,7 @@ func (c *controller) runPreparedActivityAction(
 		}
 	} else {
 		event, err = actionEvent(resourcev2.ActionEvent{Type: "complete", Data: &value}, requestID)
+		diagnosticErr = err
 		if err != nil {
 			event = ActionEventDTO{Type: "error", Error: apperror.ForResource(err, requestID)}
 		}

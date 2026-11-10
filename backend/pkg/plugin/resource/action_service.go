@@ -30,6 +30,8 @@ func (c *controller) AdoptStreamAction(ctx context.Context, pluginID string, inp
 }
 
 func (c *controller) streamAction(ctx context.Context, pluginID string, input resource.ActionRequest, observer func(ActionSnapshot)) (id string, retErr error) {
+	ctx, admission := c.beginActionDiagnostic(ctx, "resource.StreamAction.Admission", pluginID, input)
+	defer func() { admission.finish(ctx, "admission", retErr) }()
 	ctx, err := c.admit(ctx, "resource.StreamAction", actionTarget(pluginID, input))
 	if err != nil {
 		return "", err
@@ -105,13 +107,26 @@ func (c *controller) streamAction(ctx context.Context, pluginID string, input re
 		}
 	}()
 	events := make(chan resource.ActionEvent, streamChannelBuffer)
+	producerCtx, producerDiagnostic := c.beginActionDiagnostic(producerCtx, "resource.StreamAction", pluginID, input)
+	producerDiagnostic.observationDone = make(chan struct{})
+	defer func() {
+		if !transferred {
+			close(producerDiagnostic.observationDone)
+		}
+	}()
 	result := make(chan error, 1)
 	go func() {
-		if err := c.currentGeneration(sessionCtx, pluginID, generation); err != nil {
-			result <- err
+		var producerErr error
+		defer func() {
+			<-producerDiagnostic.observationDone
+			producerDiagnostic.finish(producerCtx, "producer_completion", producerErr)
+		}()
+		if producerErr = c.currentGeneration(sessionCtx, pluginID, generation); producerErr != nil {
+			result <- producerErr
 			return
 		}
-		result <- streamer.StreamAction(producerCtx, input, events)
+		producerErr = streamer.StreamAction(producerCtx, input, events)
+		result <- producerErr
 	}()
 	var completed bool
 	var resultErr error
@@ -207,6 +222,10 @@ func actionEvent(event resource.ActionEvent, requestID string) (ActionEventDTO, 
 	return snapshot.Event, nil
 }
 func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, events <-chan resource.ActionEvent, result <-chan error, completed bool, resultErr error, descriptor *resource.ActionDescriptor) {
+	diagnostic := actionDiagnosticFromContext(ctx)
+	if diagnostic != nil && diagnostic.observationDone != nil {
+		defer close(diagnostic.observationDone)
+	}
 	done := ctx.Done()
 	if handle.observer != nil {
 		done = nil
@@ -214,22 +233,27 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 	for {
 		if completed && len(events) == 0 {
 			if handle.observer != nil {
+				diagnostic.record(ctx, "observation", "unknown", resultErr)
 				// EOF or an RPC error without a validated terminal event does
 				// not establish the remote mutation's outcome.
 				c.actions.update(handle, actionObservationLostEvent(handle.request.ID()), true)
 				return
 			}
 			if resultErr != nil {
+				diagnostic.record(ctx, "terminal", "error", resultErr)
 				c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(resultErr, handle.request.ID())}, true)
 			} else {
+				diagnostic.record(ctx, "terminal", "success", nil)
 				c.actions.update(handle, ActionEventDTO{Type: "complete"}, true)
 			}
 			return
 		}
 		select {
 		case <-handle.observationDone:
+			diagnostic.record(ctx, "observation", "closed", nil)
 			return
 		case <-done:
+			diagnostic.record(ctx, "terminal", "canceled", context.Cause(ctx))
 			c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(context.Cause(ctx), handle.request.ID())}, true)
 			return
 		case resultErr = <-result:
@@ -252,6 +276,17 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 			}
 			terminal := safe.Type == "error" || safe.Type == "complete"
 			c.actions.update(handle, safe, terminal)
+			if terminal {
+				outcome := "success"
+				diagnosticErr := err
+				if safe.Type == "error" {
+					outcome = "error"
+					if diagnosticErr == nil && event.Error != nil {
+						diagnosticErr = event.Error
+					}
+				}
+				diagnostic.record(ctx, "terminal", outcome, diagnosticErr)
+			}
 			if terminal {
 				return
 			}

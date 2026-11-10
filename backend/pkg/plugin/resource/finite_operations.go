@@ -370,8 +370,8 @@ func (c *controller) Mutate(ctx context.Context, pluginID string, request resour
 }
 
 func (c *controller) Action(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (_result resourcev2.Value, retErr error) {
-	ctx, span := tracer.Start(ctx, "resource.Action")
-	defer span.End()
+	ctx, diagnostic := c.beginActionDiagnostic(ctx, "resource.Action", pluginID, request)
+	defer func() { diagnostic.finish(ctx, "completion", retErr) }()
 	target := actionTarget(pluginID, request)
 	ctx, err := c.admit(ctx, "resource.Action", target)
 	if err != nil {
