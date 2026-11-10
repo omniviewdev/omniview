@@ -193,6 +193,8 @@ safe diagnostics without preventing valid siblings from loading.
 
 Telemetry and profiling read this prepared provider. Bootstrap supplies live
 effects and scoped change notifications; it does not reload or persist settings.
+Telemetry endpoint and authentication settings are visible regardless of plugin
+development state. The authentication value remains a sensitive setting.
 The plugin controller owns capability connections, schema provenance, and
 hydration, not another public settings write API.
 

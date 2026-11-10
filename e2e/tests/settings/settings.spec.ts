@@ -95,7 +95,7 @@ test.describe('Settings', () => {
     await expect(settingRow(settings, 'terminal.fontSize')).toBeHidden();
   });
 
-  test('hides developer-only settings unless a plugin runs in dev mode', async ({ page }) => {
+  test('shows telemetry connection settings without a development plugin', async ({ page }) => {
     await page.goto('/');
     const plugins = await callBinding<Array<Record<string, unknown>>>(page.request, Service.plugins, 'ListPlugins');
     const settings = await openSettingsWindow(page, undefined, async (settingsPage) => {
@@ -105,10 +105,12 @@ test.describe('Settings', () => {
     });
     await settings.getByRole('option', { name: 'Telemetry', exact: true }).click();
     await expect(settingRow(settings, 'telemetry.enabled')).toBeVisible();
-    await expect(settingRow(settings, 'telemetry.endpoint_otlp')).toBeHidden();
+    for (const id of ['endpoint_otlp', 'endpoint_pyroscope', 'auth_header', 'auth_value']) {
+      await expect(settingRow(settings, `telemetry.${id}`)).toBeVisible();
+    }
   });
 
-  test('shows developer-only settings when a plugin runs in dev mode', async ({ page }) => {
+  test('shows telemetry connection settings with a development plugin', async ({ page }) => {
     await page.goto('/');
     const plugins = await callBinding<Array<Record<string, unknown>>>(page.request, Service.plugins, 'ListPlugins');
     expect(plugins.some((plugin) => plugin.id === 'workspace-probe')).toBe(true);
@@ -118,6 +120,8 @@ test.describe('Settings', () => {
       });
     });
     await settings.getByRole('option', { name: 'Telemetry', exact: true }).click();
-    await expect(settingRow(settings, 'telemetry.endpoint_otlp')).toBeVisible();
+    for (const id of ['endpoint_otlp', 'endpoint_pyroscope', 'auth_header', 'auth_value']) {
+      await expect(settingRow(settings, `telemetry.${id}`)).toBeVisible();
+    }
   });
 });

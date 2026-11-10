@@ -82,7 +82,6 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Description: "OTLP HTTP endpoint for traces, metrics, and logs (e.g., localhost:4318)",
 			Type:        settings.Text,
 			Default:     defaults.OTLPEndpoint,
-			DevOnly:     true,
 		},
 		"endpoint_pyroscope": {
 			ID:          "endpoint_pyroscope",
@@ -90,7 +89,6 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Description: "Pyroscope endpoint for continuous profiling (e.g., localhost:4040)",
 			Type:        settings.Text,
 			Default:     defaults.PyroscopeEndpoint,
-			DevOnly:     true,
 		},
 		"auth_header": {
 			ID:          "auth_header",
@@ -98,7 +96,6 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Description: "HTTP header name for authentication (e.g., Authorization for Grafana Cloud)",
 			Type:        settings.Text,
 			Default:     defaults.AuthHeader,
-			DevOnly:     true,
 		},
 		"auth_value": {
 			ID:          "auth_value",
@@ -107,7 +104,6 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Type:        settings.Password,
 			Default:     defaults.AuthValue,
 			Sensitive:   true,
-			DevOnly:     true,
 		},
 	}
 }

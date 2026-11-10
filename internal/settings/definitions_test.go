@@ -36,6 +36,22 @@ func TestDefinitionsUseModeSpecificTelemetryDefaults(t *testing.T) {
 	assert.Equal(t, telemetry.DefaultConfig(false).LogsShipLevel, Telemetry.Settings["logs_ship_level"].Default)
 }
 
+func TestTelemetryConnectionSettingsRemainVisible(t *testing.T) {
+	for _, isDev := range []bool{false, true} {
+		for _, category := range Definitions(isDev) {
+			if category.ID != "telemetry" {
+				continue
+			}
+			for _, id := range []string{"endpoint_otlp", "endpoint_pyroscope", "auth_header", "auth_value"} {
+				setting, ok := category.Settings[id]
+				require.True(t, ok, "missing %s", id)
+				assert.False(t, setting.DevOnly, "mode=%v setting=%s", isDev, id)
+			}
+			assert.True(t, category.Settings["auth_value"].Sensitive)
+		}
+	}
+}
+
 func TestProfilingDefinitionsRemainVisibleInEveryBuild(t *testing.T) {
 	for _, isDev := range []bool{false, true} {
 		var developer settings.Category
