@@ -175,6 +175,53 @@ Compiler and delivery work cannot be credited with eliminating browser stages th
 | R13 | P3 | Prototype a simpler pinned-pane/positioning architecture if tracing justifies it | H: larger renderer change after local causal ablations | Key/focus/selection/scroll geometry or frame tails regress |
 | R14 | P2 | Bound animation/raster work and verify reduced motion | G/H: static unavailable metrics already fixed; inspect actual active animation tracks | Placeholders or decorative transitions mask missing data or recur unnecessarily |
 
+### Backend, plugin and transport work that reaches the UI
+
+Source-read findings from the merged cohort. Every cost is a hypothesis until the experiment in the row runs. Paths: `H` = host `omniview/`, `K` = `omniview-plugin-kubernetes/`.
+
+| ID | Priority | Opportunity | Evidence / next experiment | Reject or withhold when… |
+|---|---|---|---|---|
+| B01 | P1 | Stop shipping `metadata.managedFields` to tables | F: `K pkg/plugin/resource/resourcers/base.go:117` watch conversion ignores the representation; only the model representation strips it and no table selects it | A projection drops fields an editor, drawer or MCP consumer still needs |
+| B02 | P1 | Batch informer changes into one frame instead of one frame per event | F: `K base.go:533` emits per event; `H backend/pkg/plugin/resource/source_view.go:717` emits per frame | Deletes, ordering or snapshot-end semantics change, or latency grows past the measured budget |
+| B03 | P1 | Remove discarded encodes and repeated size walks on the emit path | F: `H source_view.go:537` marshals only for `len`; Wails re-marshals the same value per window | Payload bytes, validation or event identity change |
+| B04 | P1 | Stop marshal-then-unmarshal round trips while holding the session lock | F: `H source_session.go:872-935` re-decodes the member just encoded; `s.mu` also gates `GetSourceStates` | Validation coverage or record identity weakens |
+| B05 | P2 | Size view chunks from ingest-time sizes instead of re-decoding every member per view sync | F: `H source_view.go:304-328` and `:606-720` decode and envelope each member twice per sync | Chunk limits, ordering or per-view isolation break |
+| B06 | P2 | Acquire sessions on demand instead of every list+watch type at connect | F: `K native_catalog_assembly.go:65` sets `AcquireOnConnect`; `H connection_updates.go:28-48` opens per-type sessions | Expected tables lose warm data or first-open latency regresses |
+| B07 | P2 | Skip graph dirty marking when extracted edges are unchanged | F: `H .../graph/graph_indexer.go:32` always removes and re-adds derived edges; UI refetches on 1 s debounced `graph/CHANGED` | Edge deletions or late relationship arrivals stop invalidating |
+| B08 | P1 | Shorten the connect path's repeated catalog validation | F: `H authority.go:132` and `catalog_binding.go:37` re-observe/validate the catalog per type and per target; `controller.go:653` emits status only afterwards | Authority resolution or permission checks become stale |
+| B09 | P2 | Use read locks for unchanged binding comparisons | F: `H catalog_binding.go:122` takes the controller write lock for a no-op compare, blocking record observation | Binding swaps can race or be missed |
+| B10 | P1 | Stop publishing two full metric snapshots per tick | F: `H backend/pkg/plugin/metric/finite_observation.go:385` publishes a fetching frame carrying old data, then the result | Fetching/error state stops reaching cells |
+| B11 | P2 | Cache canonical address keys instead of re-encoding per record per pass | F: `H registry/identity.go:14` validates, sorts and JSON-encodes on every call, reached from store, indexer and row identity | Address identity or incarnation fencing changes |
+| B12 | P2 | Reduce metric source scans and serial cluster queries | F: `K pkg/plugin/metric/native.go:337` scans namespaces serially; `prometheus.go:1257` issues ~14-17 serial queries with per-query debug logging | Partial/failed sources become indistinguishable from healthy ones |
+| B13 | P2 | Route window-targeted events to their window | F: Wails `transport_event_ipc.go:26` dispatches to every window; JS filters after parsing | Multi-window observers that legitimately need the event stop receiving it |
+
+### Application shell, panels and persistent sessions
+
+| ID | Priority | Opportunity | Evidence / next experiment | Reject or withhold when… |
+|---|---|---|---|---|
+| A01 | P1 | Coalesce footer connection-status work | F: `H ui/.../useConnectionStatus.ts` recomputes aggregates and a new Map per `source/STATE`; the footer is always mounted | Sync/readiness states stop reflecting actual connections |
+| A02 | P1 | Stop computing extension diagnostics snapshots nobody reads | F: `H ui/features/extensions/diagnostics/ExtensionDiagnosticsBridge.tsx` recomputes up to 2000 rows per registry notify while the Inspector is closed | The Inspector loses history it is expected to show |
+| A03 | P2 | Release connection-state dialogs and their polling on close | F: `H ui/features/connectionState/ConnectionStateProvider.tsx` never clears `target`; `useSourceStates` polls every 3 s | Reopen loses progress or retry affordances |
+| A04 | P1 | Narrow activity/notification context reads to what callers use | F: `H ui/.../AppStatusFooter.tsx` and 8+ providers read full activity context for a count or `notify` | Progress, counts or operation state stop updating |
+| A05 | P1 | Remove unread state from drawer context values | F: `H ui/providers/RightDrawerProvider.tsx` includes `isOpen` in the memo; no reader uses it | A consumer actually needs open state |
+| A06 | P2 | Stop instantiating full plugin inventory for a boolean dev flag | F: `H ui/hooks/useDevMode.ts` uses `useInstalledPlugins`, multiplying listeners and invalidations | Dev-server or plugin status stops updating |
+| A07 | P2 | Avoid whole-snapshot plugin notifications and per-notify router rebuilds | F: `H ui/features/plugins/core/PluginService.ts:1706` nulls the cached snapshot on every notify; `workspaceController`/`tabRouters` rebuild routers per `routeVersion` | Plugin load/unload, dev reload or route registration regress |
+| A08 | P2 | Throttle viewport reporting outside drags | F: `H ui/features/windows/viewport.ts:25` reports per resize event | Tear-off hit-testing needs live size |
+| A09 | P1 | Defer log search off the keystroke render path | F: `H ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogSearch.ts` scans synchronously during render with a 100 ms budget | Match counts, highlighting or follow behavior break |
+| A10 | P1 | Stop full-buffer rescans per streaming frame | F: same LogViewer hooks rescan on eviction and rebuild filtered arrays per version at a 100k cap | Eviction correctness or source filters change |
+| A11 | P1 | Release terminal listeners and hidden terminal work | F: `H .../Terminal.tsx:410` discards unsubscribers; theme/resize effects run for hidden terminals | Reattach, resize or theme correctness regresses |
+| A12 | P2 | Avoid recomputing Monaco themes and schema registration per mount/toggle | F: `U editors/src/themes/monaco.ts` forces style reads per token; `H ui/providers/monaco/schemaRegistry.ts` re-parses and re-sends the whole schema set | Theming, validation or diff rendering changes |
+| A13 | P2 | Collapse duplicate settings snapshot fetches and narrow settings fan-out | F: `R hooks/settings/useScopedSettings.ts` refreshes on commit and again on `settings/changed`; all `useSettings()` readers re-render | Settings freshness across windows regresses |
+| A14 | P2 | Gate idle polls and heartbeats on visibility | F: activity heartbeat and development/profiling status polls run while hidden | Status needed while hidden becomes stale |
+
+### Native window and compositing
+
+| ID | Priority | Opportunity | Evidence / next experiment | Reject or withhold when… |
+|---|---|---|---|---|
+| N01 | P1 | Measure the translucent macOS backdrop against an opaque window | F: `H main.go:827` sets `MacBackdropTranslucent`; H: window-wide blending adds per-frame compositor work | Opaque windows are accepted without comparing recorded frames, or the visual contract is changed without a decision |
+| N02 | P2 | Measure `backdrop-filter` overlays in menus, popovers and dialogs | F: `U base-ui/src/components/{menu,popover,alert-dialog}/*.module.css` blur full-viewport backdrops | Overlay dismissal, contrast or focus behavior changes |
+| N03 | P2 | Bound always-running pulse animations in shell indicators | F: infinite pulses in `status-dot`, `badge` and `card` CSS driven by footer sync/dev chips | A pulse is the only signal that work is in progress |
+
 ### Workers: researched, deliberately gated
 
 The pinned Table **9.3.1** packages export `experimental-worker-plugin`; no dependency upgrade is needed to investigate it. The [official guide][worker-guide] calls it experimental, describes a shadow-table pipeline and compact result permutations, and gives roughly 100,000 rows as a starting heuristic **or fewer rows with expensive functions**. That is neither proof of a 5,000-row benefit nor a reason to dismiss measured expensive processing at 5,000 rows.
