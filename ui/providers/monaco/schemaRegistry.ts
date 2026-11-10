@@ -25,6 +25,7 @@ class SchemaRegistry {
   private readonly schemas = new Map<string, EditorSchemaEntry[]>();
   private flushScheduled = false;
   private lastFlushedYamlSchemas: Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }> = [];
+  private flushPromise: Promise<void> = Promise.resolve();
 
   /**
    * Register schemas for a plugin + connection pair.
@@ -159,6 +160,11 @@ class SchemaRegistry {
     return this.lastFlushedYamlSchemas;
   }
 
+  /** Resolves after the currently scheduled schema update reaches Monaco. */
+  async whenFlushed(): Promise<void> {
+    return this.flushPromise;
+  }
+
   private scheduleFlush(): void {
     if (this.flushScheduled) {
       return;
@@ -166,13 +172,16 @@ class SchemaRegistry {
 
     this.flushScheduled = true;
     // Batch updates to avoid thrashing Monaco on rapid schema registration
-    queueMicrotask(() => {
+    const previous = this.flushPromise;
+    this.flushPromise = previous.catch(() => undefined).then(async () => {
       this.flushScheduled = false;
-      this.flush();
+      return this.flush();
     });
+    // Consumers observe failure through whenFlushed; unobserved cleanup must not reject globally.
+    void this.flushPromise.catch(() => undefined);
   }
 
-  private flush(): void {
+  private async flush(): Promise<void> {
     const yamlSchemas: Array<{
       uri: string;
       fileMatch: string[];
@@ -205,7 +214,7 @@ class SchemaRegistry {
     this.lastFlushedYamlSchemas = yamlSchemas;
 
     // Update YAML schemas via monaco-yaml
-    void monacoYaml.update({
+    await monacoYaml.update({
       enableSchemaRequest: true,
       schemas: yamlSchemas,
     });

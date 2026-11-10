@@ -1629,3 +1629,28 @@ A ready stream can remain empty while following. Finite empty streams complete
 normally; they are not lost connections. Source-scoped errors, removal, and EOF
 must not terminate other sources. Only session-scoped `STREAM_ENDED` ends the
 whole viewer. Each viewer removes only its own event listeners on disconnect.
+
+## 9. Editor schema demand
+
+Resource navigation must not acquire or register editor-only schemas. Mount the
+host-owned `window.__omniviewEditorSchemaBoundary` React lifecycle slot around a
+schema-aware Monaco surface, passing `pluginID`, `connectionID`, and `children`.
+For a typed resource model, pass `resourceType` and its schema-bound `modelPath`
+so unavailable schemas for one model cannot borrow another model's status.
+Check for the slot before using it: older hosts must show an explicit
+compatibility warning rather than claiming schema support.
+The slot ships with the host application and requires no new runtime package
+export; adopt it only with the corresponding compatible host release or source.
+
+The boundary uses the same `useSchemaRegistration` owner as host editors.
+Equivalent concurrent consumers share registration, and the final close removes
+it. A newer schema result replaces the current registration; closing an older
+consumer never restores a retired result. Runtime schema queries retain their
+connection-generation and rendered-document identity guards. Enable model-path
+queries only while the owning editor is open.
+
+Children mount after the registry's asynchronous Monaco schema update completes.
+Loading, request/update failures, and absent schemas remain distinct. Failure
+keeps the editor usable without schema completion/validation and offers an
+explicit retry. This lifecycle slot does not change SDK-v2 schema bindings,
+availability states, or catalog acquisition.
