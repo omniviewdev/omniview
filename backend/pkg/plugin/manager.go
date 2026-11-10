@@ -41,6 +41,7 @@ type TelemetryEnvConfig struct {
 	Enabled           bool
 	OTLPEndpoint      string
 	AuthToken         string
+	ClientID          string
 	Profiling         bool
 	PyroscopeEndpoint string
 	Cleanup           func()

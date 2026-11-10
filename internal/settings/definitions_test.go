@@ -2,6 +2,7 @@ package categories
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,6 +78,19 @@ func TestTelemetryLogFormatValidation(t *testing.T) {
 		assert.True(t, setting.Validation(value).Valid, "expected valid: %v", value)
 	}
 	for _, value := range []any{"", "OTLP", "other", true, nil} {
+		assert.False(t, setting.Validation(value).Valid, "expected invalid: %v", value)
+	}
+}
+
+func TestTelemetryClientIDSetting(t *testing.T) {
+	setting := Telemetry.Settings["client_id"]
+	assert.Equal(t, settings.Text, setting.Type)
+	assert.Empty(t, setting.Default)
+	assert.True(t, setting.RequiresRestart)
+	for _, value := range []any{"", "site-A_1.example", strings.Repeat("a", 64)} {
+		assert.True(t, setting.Validation(value).Valid, "expected valid: %v", value)
+	}
+	for _, value := range []any{nil, true, "with space", "bad/label", "é", strings.Repeat("a", 65)} {
 		assert.False(t, setting.Validation(value).Valid, "expected invalid: %v", value)
 	}
 }

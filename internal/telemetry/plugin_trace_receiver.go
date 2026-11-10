@@ -99,6 +99,15 @@ func (s *Service) pluginTraceHandler(
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		clientID := clientIDFromResource(s.resource)
+		for _, rs := range data.GetResourceSpans() {
+			setTraceClientID(rs.GetResource(), clientID)
+		}
+		body, err = proto.Marshal(&data)
+		if err != nil || len(body) > pluginTraceLimit {
+			http.Error(w, "invalid traces", http.StatusBadRequest)
+			return
+		}
 		forwardPluginTraces(w, r, client, cfg, body)
 	})
 }

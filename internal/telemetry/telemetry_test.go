@@ -55,6 +55,28 @@ func TestServiceDisabled(t *testing.T) {
 	require.NoError(t, svc.Shutdown(context.Background()))
 }
 
+func TestClientIDRemainsAtStartupAcrossConfigChanges(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	svc := New(Config{ClientID: "startup"}, "test", "commit", "date", false, t.TempDir())
+	require.NoError(t, svc.Init(context.Background()))
+	defer func() { _ = svc.Shutdown(context.Background()) }()
+	require.Equal(t, "startup", clientIDFromResource(svc.Resource()))
+	assert.Equal(t, "startup", svc.ClientID())
+	require.NoError(t, svc.ApplyConfig(context.Background(), Config{ClientID: "changed"}))
+	assert.Equal(t, "startup", clientIDFromResource(svc.Resource()))
+	assert.Equal(t, "startup", svc.ClientID())
+}
+
+func TestClientIDRejectsInvalidConfiguration(t *testing.T) {
+	svc := New(Config{ClientID: "invalid label"}, "test", "commit", "date", false, t.TempDir())
+	require.ErrorContains(t, svc.Init(context.Background()), "invalid telemetry client ID")
+
+	svc = New(Config{ClientID: "valid"}, "test", "commit", "date", false, t.TempDir())
+	require.ErrorContains(t, svc.ApplyConfig(context.Background(), Config{ClientID: "invalid label"}),
+		"invalid telemetry client ID")
+	require.Equal(t, "valid", svc.Config().ClientID)
+}
+
 func TestServiceEnabledTracesOnly(t *testing.T) {
 	t.Cleanup(resetGlobalOTel)
 
@@ -455,8 +477,9 @@ func TestMetricsShipToOTLPCollector(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	svc := New(Config{Enabled: true, Metrics: true, OTLPEndpoint: server.URL + "/otlp"},
-		"test", "commit", "date", false, t.TempDir())
+	cfg := Config{Enabled: true, Metrics: true, OTLPEndpoint: server.URL + "/otlp"}.
+		WithSettings(map[string]any{"client_id": "site-1"})
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
 	diagnosticsService, err := diagnostics.New(diagnostics.Options{Directory: t.TempDir()})
 	require.NoError(t, err)
 	svc.SetDiagnostics(diagnosticsService)
@@ -473,6 +496,16 @@ func TestMetricsShipToOTLPCollector(t *testing.T) {
 		for _, scope := range resource.GetScopeMetrics() {
 			for _, metric := range scope.GetMetrics() {
 				if metric.GetName() == "test.shipped.counter" {
+					labels := map[string]string{}
+					for _, kv := range metric.GetSum().GetDataPoints()[0].GetAttributes() {
+						labels[kv.GetKey()] = kv.GetValue().GetStringValue()
+					}
+					assert.Equal(t, "site-1", labels["omniview_client_id"])
+					attributes := map[string]string{}
+					for _, kv := range resource.GetResource().GetAttributes() {
+						attributes[kv.GetKey()] = kv.GetValue().GetStringValue()
+					}
+					assert.Equal(t, "site-1", attributes["omniview.client.id"])
 					require.EqualValues(t, 7, metric.GetSum().GetDataPoints()[0].GetAsInt())
 					found = true
 				}

@@ -204,6 +204,17 @@ instead of falling back to OTLP. Loki tenant and authentication settings are
 independent of OTLP settings.
 Loki endpoint and header fields validate before save without exposing their values.
 
+Set **Telemetry > Client ID** to distinguish installations that share a
+collector. The value is optional and must not contain secrets. Use at most 64
+ASCII letters, digits, underscores, hyphens, or periods. Restart Omniview after
+changing it. An empty value does not add a client label.
+
+OTLP traces and logs carry the `omniview.client.id` resource attribute. OTLP
+metric points, native Loki streams, and host Pyroscope profiles carry the
+`omniview_client_id` label. OTLP collectors must promote the resource attribute
+if an indexed Loki stream label is required. External plugin Pyroscope profiles
+require a plugin rebuilt with SDK support for the client ID.
+
 OTLP traces and metrics use their own endpoint and authentication settings.
 For OTLP HTTP, use a base URL such as `https://collector.example/otlp`.
 The host adds `/v1/traces`, `/v1/metrics`, or `/v1/logs` to that base.

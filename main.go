@@ -882,6 +882,7 @@ func pluginTelemetryConfig(svc *telemetry.Service, id string) (plugin.TelemetryE
 		Enabled:           true,
 		OTLPEndpoint:      endpoint,
 		AuthToken:         token,
+		ClientID:          svc.ClientID(),
 		Profiling:         cfg.Profiling,
 		PyroscopeEndpoint: cfg.PyroscopeEndpoint,
 		Cleanup:           cleanup,

@@ -509,6 +509,7 @@ func (pm *pluginManager) createBackend(
 			"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT="+cfg.OTLPEndpoint,
 			"OMNIVIEW_TELEMETRY_AUTH_HEADER=Authorization",
 			"OMNIVIEW_TELEMETRY_AUTH_VALUE="+cfg.AuthToken,
+			"OMNIVIEW_TELEMETRY_CLIENT_ID="+cfg.ClientID,
 			"OMNIVIEW_TELEMETRY_PROFILING="+strconv.FormatBool(cfg.Profiling),
 			"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT="+cfg.PyroscopeEndpoint,
 		)

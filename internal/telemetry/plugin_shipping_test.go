@@ -36,8 +36,9 @@ func TestPluginLogsReachOTLPCollector(t *testing.T) {
 	}))
 	defer server.Close()
 	ctx := context.Background()
-	svc := New(Config{Enabled: true, LogsShip: true, LogsShipLevel: "warn", OTLPEndpoint: server.URL + "/otlp"},
-		"test", "commit", "date", false, t.TempDir())
+	cfg := Config{Enabled: true, LogsShip: true, LogsShipLevel: "warn", OTLPEndpoint: server.URL + "/otlp"}.
+		WithSettings(map[string]any{"client_id": "work-laptop"})
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
 	require.NoError(t, svc.Init(ctx))
 	defer func() { _ = svc.Shutdown(ctx) }()
 	manager, err := pluginlog.NewManager(t.TempDir(), pluginlog.DefaultRotation())
@@ -50,7 +51,15 @@ func TestPluginLogsReachOTLPCollector(t *testing.T) {
 	_, err = io.WriteString(manager.Stream("example"), "2026-01-01T00:00:00Z [ERROR] plugin failure\n")
 	require.NoError(t, err)
 	require.NoError(t, svc.LoggerProvider().ForceFlush(ctx))
-	require.True(t, hasPluginLog(<-requests), "plugin record and identity were not exported")
+	request := <-requests
+	require.True(t, hasPluginLog(request), "plugin record and identity were not exported")
+	var clientID string
+	for _, item := range request.GetResourceLogs()[0].GetResource().GetAttributes() {
+		if item.GetKey() == "omniview.client.id" {
+			clientID = item.GetValue().GetStringValue()
+		}
+	}
+	require.Equal(t, "work-laptop", clientID)
 }
 
 func hasPluginLog(request *collectorlogs.ExportLogsServiceRequest) bool {

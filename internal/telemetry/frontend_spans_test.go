@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/resource"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -74,4 +76,48 @@ func TestFrontendSpansRejectUntrustedInput(t *testing.T) {
 	require.Error(t, binding.IngestFrontendSignals(`{"spans":[]}`))
 	require.Error(t, binding.IngestFrontendSignals(`{"spans":[{"name":"secret"}]}`))
 	require.Error(t, binding.IngestFrontendSignals(`{"spans":[{"name":"frontend.startup","traceId":"invalid"}]}`))
+}
+
+func TestFrontendSpansUseStartupClientID(t *testing.T) {
+	for _, clientID := range []string{"", "installation-a"} {
+		t.Run(clientID, func(t *testing.T) {
+			received := make(chan *collectortrace.ExportTraceServiceRequest, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if !assert.NoError(t, err) {
+					http.Error(w, "invalid body", http.StatusBadRequest)
+					return
+				}
+				var request collectortrace.ExportTraceServiceRequest
+				if !assert.NoError(t, proto.Unmarshal(body, &request)) {
+					http.Error(w, "invalid traces", http.StatusBadRequest)
+					return
+				}
+				received <- &request
+			}))
+			defer server.Close()
+			svc := &Service{
+				cfg:      Config{Enabled: true, Traces: true, OTLPEndpoint: server.URL},
+				resource: resource.NewSchemaless(attribute.String("omniview.client.id", clientID)),
+			}
+			now := time.Now().Unix()
+			payload := fmt.Sprintf(`{"spans":[{"name":"frontend.startup",`+
+				`"traceId":"0123456789abcdef0123456789abcdef","spanId":"0123456789abcdef",`+
+				`"start":[%d,0],"end":[%d,1]}]}`, now, now)
+			require.NoError(t, NewTelemetryBinding(svc).IngestFrontendSignals(payload))
+			request := <-received
+			require.Len(t, request.GetResourceSpans(), 1)
+			var ids []string
+			for _, attr := range request.GetResourceSpans()[0].GetResource().GetAttributes() {
+				if attr.GetKey() == "omniview.client.id" {
+					ids = append(ids, attr.GetValue().GetStringValue())
+				}
+			}
+			if clientID == "" {
+				require.Empty(t, ids)
+			} else {
+				require.Equal(t, []string{clientID}, ids)
+			}
+		})
+	}
 }
