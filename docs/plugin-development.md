@@ -39,7 +39,7 @@ or build metadata. Releasing a new stable patch does not require a second versio
 constant to be updated.
 
 Development, nightly, prerelease, and non-version build labels use the explicit
-source capability baseline (`0.30.2`). Advance that baseline when development
+source capability baseline (`0.35.1`). Advance that baseline when development
 source gains a coordinated host/runtime/SDK capability; do not derive capabilities
 from labels such as `0.0.0-nightly...` or `pr-build-macos`.
 
