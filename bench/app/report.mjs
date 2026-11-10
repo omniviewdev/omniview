@@ -426,6 +426,12 @@ function comparability(a, b) {
   if (af.minify?.setting && af.minify.setting !== 'app') reasons.push(`the baseline forced the minifier (${af.minify.setting}), so it is not the app's own production build`);
   if (bf.minify?.setting && bf.minify.setting !== 'app') reasons.push(`the candidate forced the minifier (${bf.minify.setting}), so it is not the app's own production build`);
   if (a.meta.harness?.treeSHA256 && b.meta.harness?.treeSHA256 && a.meta.harness.treeSHA256 !== b.meta.harness.treeSHA256) reasons.push('the harness bytes differ: the two runs did not use the same harness');
+  // The page sampler runs inside the measured frames: its mode, coverage interval and mutation observer change what is timed.
+  for (const [name, label] of [['capture', 'capture mode (--capture)'], ['coverageEvery', 'coverage sampling interval (--coverage-every)'], ['mutations', 'mutation counting (--mutations)']]) {
+    const x = a.meta.options?.[name];
+    const y = b.meta.options?.[name];
+    if (!same(x, y)) reasons.push(`${label} differs (${JSON.stringify(x ?? 'unknown')} vs ${JSON.stringify(y ?? 'unknown')}): the page sampler adds different work to the measured frames`);
+  }
   if (a.meta.engine?.name !== b.meta.engine?.name || a.meta.engine?.version !== b.meta.engine?.version) reasons.push(`engine differs (${a.meta.engine?.name} ${a.meta.engine?.version} vs ${b.meta.engine?.name} ${b.meta.engine?.version})`);
   if (a.meta.engine?.headless !== b.meta.engine?.headless) reasons.push('browser presentation differs: headed and headless runs are not comparable');
   const ag = a.meta.engine?.graphics;

@@ -339,10 +339,10 @@ verifies against the bytes present, and a scroll scenario refuses one that does 
 ### Running
 
 ```sh
-node bench/app/run.mjs --no-build --dist .local/bench-app/builds/baseline-normal/dist --label baseline \
+node bench/app/run.mjs --no-build --react normal --dist .local/bench-app/builds/baseline-normal/dist --label baseline \
   --only scroll --metrics healthy,unavailable,hidden --cpu-throttle 1,4 \
   --plugin-assets /abs/baseline/kubernetes/ui/dist/assets --plugin-metadata /abs/baseline/kubernetes/plugin.json
-node bench/app/run.mjs --no-build --dist .local/bench-app/builds/candidate-normal/dist --label candidate \
+node bench/app/run.mjs --no-build --react normal --dist .local/bench-app/builds/candidate-normal/dist --label candidate \
   --only scroll --metrics healthy,unavailable,hidden --cpu-throttle 1,4 \
   --plugin-assets /abs/candidate/kubernetes/ui/dist/assets --plugin-metadata /abs/candidate/kubernetes/plugin.json
 node bench/app/report.mjs --compare .local/bench-app/results/<baseline>.json .local/bench-app/results/<candidate>.json
@@ -357,7 +357,7 @@ server are closed on success, failure and SIGINT/SIGTERM.
 | Option | Meaning |
 |---|---|
 | `--only scroll` | `pods-paced`, `pods-reversal`, `pods-jump` (or name them); the legacy scenarios stay the default |
-| `--react normal\|profiling` | Required for scroll scenarios (a reused build supplies it from its manifest) |
+| `--react normal\|profiling` | Required for scroll scenarios, `--build-only` and `--serve-only`, a reused `--no-build` build included: a reused build is never assumed to be one variant. A verified manifest that names the other variant is refused |
 | `--app-root`, `--dist`, `--no-build`, `--build-only`, `--label` | Which checkout is built, where, whether to reuse it |
 | `--plugin-assets`, `--plugin-metadata` | The Kubernetes UI `dist/assets` and `plugin.json` served and recorded (same as the `OV_K8S_PLUGIN_*` variables) |
 | `--metrics hidden,unavailable,healthy` | Metric state of the Pod table (see Fixtures); one cell each |
@@ -459,7 +459,7 @@ The sampler and controls are page code, not CDP, so a WKWebView driven by hand r
 numbers. Serve the built frontend and open the printed URL:
 
 ```sh
-node bench/app/run.mjs --serve-only --no-build --dist <dist> \
+node bench/app/run.mjs --serve-only --no-build --react normal --dist <dist> \
   --plugin-assets <assets> --plugin-metadata <plugin.json> --port 9400
 # http://127.0.0.1:9400/?ovbench={"plugins":["kubernetes"],"pods":5000,"metrics":"healthy","instance":"production"}#/_plugin/kubernetes/cluster/bench/resources/k8s%3A%2Fpods
 ```
@@ -756,10 +756,10 @@ or a reducer speedup as evidence of lower native Graphics/WebContent CPU.
 To price the capture, run the measured trials at `full` with `--overhead-control`. After the measured trials of each cell the runner adds one control trial at `frames` and one at `off`, and reports the per-second CDP difference in task, script, style and layout time (full − frames is the geometry reads, frames − off is the frame loop). Each control is a single sample, so treat a small difference as noise:
 
 ```
-node bench/app/run.mjs --no-build --dist <dist> --label <x> --only pods-paced --metrics healthy --cpu-throttle 4 --overhead-control --plugin-assets … --plugin-metadata …
+node bench/app/run.mjs --no-build --react normal --dist <dist> --label <x> --only pods-paced --metrics healthy --cpu-throttle 4 --overhead-control --plugin-assets … --plugin-metadata …
 ```
 
-Never compare timings across capture modes, and never compare a `--capture off` or `frames` run with a `full` one for the signals the lighter mode does not have.
+Never compare timings across capture modes, and never compare a `--capture off` or `frames` run with a `full` one for the signals the lighter mode does not have. `report.mjs --compare` refuses to pair results whose recorded `--capture`, `--coverage-every` or `--mutations` differ. Results written before the runner recorded `--coverage-every` pair only with each other.
 
 ### Page and runner contract
 
@@ -778,8 +778,8 @@ The page also ignores options passed as `undefined`, so a runner that has no val
 ## Local renderer sprint (#459)
 
 The latest [Metal-backed evidence](renderer-sprint-metal-evidence-2026-11-10.json)
-records the frozen baseline, the current candidate, and rejected window experiments.
-It includes 128 scroll-trial summaries, twelve fresh-context startup samples, build
+records the frozen baseline, the current candidate, and rejected experiments.
+It includes 188 scroll-trial summaries, twelve fresh-context startup samples, build
 and source fingerprints, and actual-surface checks for healthy, unavailable and hidden
 metrics. Timing ran serially on the M5 Max with hardware compositing and rasterization.
 The shorter diagnostic protocols and measured 120 Hz display are recorded, not treated
@@ -793,6 +793,23 @@ and the requested overscan remain unchanged. Longer baseline live-update capture
 must not be used for matched total-work speedup percentages. Startup and healthy
 target-demand costs are included. The remaining throttled frame stalls keep the PRs
 in draft. No CI or Grafana changes are required.
+
+The follow-up pass also rejected forced row compositor layers, scalar-cell memoization,
+normal-flow rows with spacers, non-inheriting row-position CSS properties, and DOM shell
+recycling. Lower node churn, style or JavaScript totals did not justify worse frame
+tails or layout costs. Recorder
+overhead was measured separately: the full recorder added about 54 ms of main-thread
+work per second over one recorder-off control; it did not explain the remaining stalls.
+Metric viewport changes can refresh timestamps even when sample values stay unchanged.
+The fixture used this same behavior on both sides; no metadata was dropped to improve
+the timings.
+
+Review fixes require an explicit React mode for reused scroll builds and refuse
+comparisons with different capture settings. The earlier 172 trials use the archived
+`be3dfbc9b7ec` harness; the 16 shell-recycling trials use the reviewed `a64bbc0af097`
+harness. Each experiment compares only matching harness bytes. Rebuild both sides
+before recording with the updated harness; do not bypass its hash guard or compare
+captures across harness cohorts.
 
 Early recordings used CLI-managed candidate and frozen-baseline workspaces, the
 `58011ba2993e` harness, normal production React, 5,000 fixture Pods and independent

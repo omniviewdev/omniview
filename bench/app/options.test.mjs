@@ -25,8 +25,31 @@ test('scroll scenarios must say which React build they measure', () => {
   assert.deepEqual(parse('--only', 'scroll', '--react', 'normal').scroll, [...SCROLL_SCENARIOS]);
 });
 
-test('a reused build may omit --react: its manifest says what it is', () => {
-  assert.doesNotThrow(() => parse('--only', 'scroll', '--no-build'));
+test('a reused build must still say which React build it measures', () => {
+  for (const argv of [['--only', 'scroll'], ['--only', 'pods,pods-paced'], ['--only', 'pods-jump'], ['--serve-only']]) {
+    assert.throws(() => parse(...argv, '--no-build'), /--react normal\|profiling is required/, argv.join(' '));
+  }
+  assert.doesNotThrow(() => parse('--serve-only', '--no-build', '--react', 'normal'));
+  // The legacy scenarios keep their profiling default when they reuse a build.
+  const legacy = parse('--no-build');
+  assert.equal(legacy.react, 'profiling');
+  assert.equal(legacy.reactExplicit, false);
+});
+
+test('the React build named for a reused scroll build sets its mutation default, results and build paths', () => {
+  const normal = parse('--only', 'scroll', '--no-build', '--react', 'normal', '--label', 'baseline');
+  assert.equal(normal.react, 'normal');
+  assert.equal(normal.reactExplicit, true);
+  assert.equal(normal.mutations, false, 'a normal build is not measured with the mutation observer unless asked');
+  assert.equal(normal.out, '/h/omniview/.local/bench-app/results/baseline-normal-20261109T100000Z.json');
+  assert.match(normal.dist, /\/\.local\/bench-app\/builds\/baseline-[0-9a-f]{8}-normal\/dist$/);
+  assert.equal(parse('--only', 'scroll', '--no-build', '--react', 'normal', '--mutations').mutations, true);
+
+  const profiling = parse('--only', 'scroll', '--no-build', '--react', 'profiling', '--label', 'baseline');
+  assert.equal(profiling.react, 'profiling');
+  assert.equal(profiling.mutations, true);
+  assert.equal(profiling.out, '/h/omniview/.local/bench-app/results/baseline-profiling-20261109T100000Z.json');
+  assert.match(profiling.dist, /\/\.local\/bench-app\/builds\/baseline-[0-9a-f]{8}-profiling\/dist$/);
 });
 
 test('the legacy scenarios take a single CPU throttle; scroll cells may take several', () => {

@@ -23,7 +23,7 @@ vi.mock('@omniviewdev/runtime/api', async (original) => ({
 }));
 
 import useResourceDefinition, { type ResourceColumnMeta, type ResourceTableRow } from './useResourceDefinition';
-import { FIXTURE_COLUMN_DEFS } from '@/components/tables/Resources/testing/fixture';
+import { FIXTURE_COLUMN_DEFS, makeHostRecord } from '@/components/tables/Resources/testing/fixture';
 
 type Columns = Array<ColumnDef<DataTableFeatures, ResourceTableRow>>;
 
@@ -138,10 +138,10 @@ async function settledColumns(providers: Providers) {
 }
 
 const columnOf = (columns: Columns, id: string) => columns.find((def) => def.id === id)!;
-const metaOf = (columns: Columns, id: string) => columnOf(columns, id).meta as ResourceColumnMeta | undefined;
+const metaOf = (columns: Columns, id: string): ResourceColumnMeta | undefined => columnOf(columns, id).meta;
 const reader = (columns: Columns, id: string) => {
   const { accessorFn } = columnOf(columns, id) as { accessorFn: (row: ResourceTableRow, index: number) => unknown };
-  return (data: unknown) => accessorFn({ record: {} as ResourceTableRow['record'], data }, 0);
+  return (data: unknown) => accessorFn({ record: makeHostRecord(0), data }, 0);
 };
 
 describe('useResourceDefinition generic table columns', () => {

@@ -5,7 +5,7 @@ import { compare, summarize } from './report.mjs';
 
 const KEY = 'pods-paced[metrics=healthy,updates=none,cpu=1x]';
 
-function result({ reactDom = 'react-dom/client', p95 = [18, 19, 17], minify = false, harness = 'd'.repeat(64), deviations = [], task = 8400 } = {}) {
+function result({ reactDom = 'react-dom/client', p95 = [18, 19, 17], minify = false, harness = 'd'.repeat(64), deviations = [], task = 8400, options = {} } = {}) {
   const meta = {
     date: '2026-11-09T00:00:00.000Z', commit: 'abc1234', dirty: false, k8sPlugin: 'def5678', chromium: '140.0', host: 'test machine', runs: 5, cpuThrottle: 1,
     frontend: {
@@ -23,6 +23,7 @@ function result({ reactDom = 'react-dom/client', p95 = [18, 19, 17], minify = fa
     label: 'baseline',
     appRoot: '/work/baseline/omniview',
     protocol: { deviations },
+    options: { capture: 'full', coverageEvery: 1, mutations: false, ...options },
     scenarios: {
       [KEY]: {
         definition: {
@@ -110,6 +111,29 @@ test('comparing normal and profiling builds refuses to compute any delta', () =>
 test('comparing builds with different minifiers or harness bytes is refused', () => {
   assert.match(compare(result(), result({ minify: 'esbuild' })), /minifier differs/);
   assert.match(compare(result(), result({ harness: '1'.repeat(64) })), /harness bytes differ/);
+});
+
+test('results sampled with different capture settings cannot produce a performance delta', () => {
+  for (const [options, reason] of [
+    [{ capture: 'frames' }, /capture mode \(--capture\) differs \("full" vs "frames"\)/],
+    [{ coverageEvery: 2 }, /coverage sampling interval \(--coverage-every\) differs \(1 vs 2\)/],
+    [{ mutations: true }, /mutation counting \(--mutations\) differs \(false vs true\)/],
+  ]) {
+    const text = compare(result(), result({ p95: [1, 1, 1], options }));
+    assert.match(text, /Not comparable — no deltas are computed/);
+    assert.match(text, reason);
+    assert.doesNotMatch(text, /\| frame interval p95 ms \|/);
+  }
+});
+
+test('a capture setting only one result recorded is a mismatch; one neither recorded cannot differ', () => {
+  const unrecorded = () => {
+    const earlier = result();
+    delete earlier.meta.options.coverageEvery;
+    return earlier;
+  };
+  assert.doesNotMatch(compare(unrecorded(), unrecorded()), /Not comparable/);
+  assert.match(compare(unrecorded(), result()), /coverage sampling interval \(--coverage-every\) differs \("unknown" vs 1\)/);
 });
 
 test('graphics mode changes cannot produce a performance delta', () => {

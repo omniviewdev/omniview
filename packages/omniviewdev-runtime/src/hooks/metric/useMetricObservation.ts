@@ -391,7 +391,7 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
       lease.current = currentLease;
     } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
     return () => { retired = true; currentLease?.close(); if (lease.current === currentLease) lease.current = null; };
-  }, [identity]);
+  }, [identity, request]);
   const current = state.authority === authority ? state : null;
   const displayed = current?.displayed ?? null;
   const prepared = displayed?.prepared ?? EMPTY;

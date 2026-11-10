@@ -123,7 +123,7 @@ export function parseOptions(argv, { harnessRoot, cwd = process.cwd(), env = pro
   if (values.react !== undefined && !['normal', 'profiling'].includes(values.react)) {
     throw new Error(`--react must be normal or profiling, not ${JSON.stringify(values.react)}`);
   }
-  if (needsReact && values.react === undefined && !values['no-build']) {
+  if (needsReact && values.react === undefined) {
     throw new Error('--react normal|profiling is required here: say which React build is being measured (normal for timing, profiling for React attribution)');
   }
   if (!['app', 'on', 'off'].includes(values.minify)) throw new Error(`--minify must be app, on or off, not ${JSON.stringify(values.minify)}`);

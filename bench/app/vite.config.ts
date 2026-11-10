@@ -69,7 +69,11 @@ async function appConfig(): Promise<UserConfig> {
 
 export default defineConfig(async () => {
   const app = await appConfig();
-  const alias = Object.entries((app.resolve?.alias ?? {}) as Record<string, string>).map(([find, replacement]) => ({ find, replacement }));
+  // Vite takes aliases as an array of `{ find, replacement }` entries or as a `{ find: replacement }` object: keep the first, convert the second.
+  const appAlias = app.resolve?.alias ?? [];
+  const alias = Array.isArray(appAlias)
+    ? appAlias
+    : Object.entries(appAlias as Record<string, string>).map(([find, replacement]) => ({ find, replacement }));
   const outDir = process.env.OV_BENCH_DIST ? path.resolve(process.env.OV_BENCH_DIST) : path.join(here, 'dist');
   return {
     ...app,

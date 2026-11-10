@@ -75,7 +75,7 @@ function ensurePluginBundle() {
     requirePluginBundle(pluginAssets);
     return;
   }
-  const ui = path.join(kubernetesSource(root), 'ui');
+  const ui = path.join(kubernetesSource(appRoot), 'ui');
   if (!fs.existsSync(path.join(ui, 'package.json'))) {
     throw new Error(`Kubernetes checkout not found at ${ui}; set KUBERNETES_SOURCE to an external checkout`);
   }
@@ -536,7 +536,7 @@ const meta = {
       metricChangedFraction: opts.metricChangedFraction, metricDelayMs: opts.metricDelayMs,
       warmupSeconds: opts.warmupSeconds, trialSeconds: opts.trialSeconds, trials: opts.trials,
       speedPxPerSecond: opts.speed, inputHz: opts.inputHz, reversalSegmentSeconds: opts.reversalSegmentSeconds, jumpPages: opts.jumpPages,
-      capture: opts.capture, mutations: opts.mutations, raw: opts.raw, overheadControl: opts.overheadControl, smoke: opts.smoke,
+      capture: opts.capture, coverageEvery: opts.coverageEvery, mutations: opts.mutations, raw: opts.raw, overheadControl: opts.overheadControl, smoke: opts.smoke,
     },
   } : {}),
 };
