@@ -7,6 +7,34 @@ import (
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
+// validateLokiSetting validates one setting without exposing its value.
+func validateLokiSetting(field string) func(any) settings.ValidationResult {
+	return func(value any) settings.ValidationResult {
+		text, ok := value.(string)
+		if !ok {
+			return settings.ValidationResult{Code: "loki_type", Message: "Enter a valid Loki setting."}
+		}
+		endpoint, tenant, header, authValue := "http://localhost", "", "", ""
+		switch field {
+		case "endpoint":
+			if text == "" {
+				return settings.ValidationResult{Valid: true, Code: "loki_valid", Message: "Loki setting is valid."}
+			}
+			endpoint = text
+		case "tenant":
+			tenant = text
+		case "header":
+			header = text
+		case "value":
+			header, authValue = "Authorization", text
+		}
+		if err := telemetry.ValidateLokiConfig(endpoint, tenant, header, authValue); err != nil {
+			return settings.ValidationResult{Code: "loki_invalid", Message: "Enter a valid Loki endpoint or HTTP header."}
+		}
+		return settings.ValidationResult{Valid: true, Code: "loki_valid", Message: "Loki setting is valid."}
+	}
+}
+
 // buildTelemetrySettings derives the UI and runtime defaults from the same
 // mode-specific telemetry configuration.
 func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
@@ -136,6 +164,7 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Description: "Full Loki push URL, for example https://loki.example.com/loki/api/v1/push. Required when shipping logs in Loki format.",
 			Type:        settings.Text,
 			Default:     defaults.LokiEndpoint,
+			Validator:   validateLokiSetting("endpoint"),
 		},
 		"loki_tenant_id": {
 			ID:          "loki_tenant_id",
@@ -143,6 +172,7 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Description: "Optional Loki tenant sent in the X-Scope-OrgID header.",
 			Type:        settings.Text,
 			Default:     defaults.LokiTenantID,
+			Validator:   validateLokiSetting("tenant"),
 		},
 		"loki_auth_header": {
 			ID:          "loki_auth_header",
@@ -150,6 +180,7 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Description: "Optional HTTP authentication header name for Loki.",
 			Type:        settings.Text,
 			Default:     defaults.LokiAuthHeader,
+			Validator:   validateLokiSetting("header"),
 		},
 		"loki_auth_value": {
 			ID:          "loki_auth_value",
@@ -158,6 +189,7 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Type:        settings.Password,
 			Default:     defaults.LokiAuthValue,
 			Sensitive:   true,
+			Validator:   validateLokiSetting("value"),
 		},
 		"endpoint_pyroscope": {
 			ID:          "endpoint_pyroscope",

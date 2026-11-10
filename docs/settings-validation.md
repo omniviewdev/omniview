@@ -202,6 +202,7 @@ of a Loki endpoint, determines the exporter. Loki mode requires a full **Loki
 Log Endpoint** when shipping is enabled; a missing endpoint reports an error
 instead of falling back to OTLP. Loki tenant and authentication settings are
 independent of OTLP settings.
+Loki endpoint and header fields validate before save without exposing their values.
 
 OTLP traces and metrics use their own endpoint and authentication settings.
 By default the separate **OTLP Log Endpoint** is empty, so OTLP logs reuse that

@@ -81,6 +81,32 @@ func TestTelemetryLogFormatValidation(t *testing.T) {
 	}
 }
 
+func TestLokiSettingsValidation(t *testing.T) {
+	cases := []struct {
+		id      string
+		valid   []any
+		invalid []any
+	}{
+		{"endpoint_loki", []any{"", "https://loki.example.test/loki/api/v1/push"}, []any{"loki.example.test", "ftp://loki.example.test", "https://user:pass@example.test", true}},
+		{"loki_tenant_id", []any{"", "cluster"}, []any{"cluster\nsecret", true}},
+		{"loki_auth_header", []any{"", "Authorization"}, []any{"Bad Header", "Content-Type", "x-scope-orgid", true}},
+		{"loki_auth_value", []any{"", "Bearer secret"}, []any{"secret\nvalue", true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			setting := Telemetry.Settings[tc.id]
+			for _, value := range tc.valid {
+				assert.True(t, setting.Validation(value).Valid)
+			}
+			for _, value := range tc.invalid {
+				result := setting.Validation(value)
+				assert.False(t, result.Valid)
+				assert.NotContains(t, result.Message, "secret")
+			}
+		})
+	}
+}
+
 func TestProfilingDefinitionsRemainVisibleInEveryBuild(t *testing.T) {
 	for _, isDev := range []bool{false, true} {
 		var developer settings.Category

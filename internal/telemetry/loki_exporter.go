@@ -29,17 +29,25 @@ type lokiLogExporter struct {
 
 // NewLokiLogExporter creates an exporter for a complete Loki push URL.
 func NewLokiLogExporter(endpoint, tenant, authHeader, authValue string) (sdklog.Exporter, error) {
-	u, err := url.Parse(endpoint)
-	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-		return nil, fmt.Errorf("invalid Loki push URL")
-	}
-	if !httpguts.ValidHeaderFieldValue(tenant) || (authHeader != "" && (!httpguts.ValidHeaderFieldName(authHeader) || !httpguts.ValidHeaderFieldValue(authValue))) || (authHeader == "" && authValue != "") {
-		return nil, fmt.Errorf("invalid Loki request headers")
-	}
-	if authHeader != "" && (http.CanonicalHeaderKey(authHeader) == "Content-Type" || http.CanonicalHeaderKey(authHeader) == "X-Scope-Orgid") {
-		return nil, fmt.Errorf("Loki auth header conflicts with a required header")
+	if err := ValidateLokiConfig(endpoint, tenant, authHeader, authValue); err != nil {
+		return nil, err
 	}
 	return &lokiLogExporter{endpoint: endpoint, tenant: tenant, authHeader: authHeader, authValue: authValue, client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+}
+
+// ValidateLokiConfig validates the destination and headers for a Loki exporter.
+func ValidateLokiConfig(endpoint, tenant, authHeader, authValue string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return fmt.Errorf("invalid Loki push URL")
+	}
+	if !httpguts.ValidHeaderFieldValue(tenant) || (authHeader != "" && (!httpguts.ValidHeaderFieldName(authHeader) || !httpguts.ValidHeaderFieldValue(authValue))) || (authHeader == "" && authValue != "") {
+		return fmt.Errorf("invalid Loki request headers")
+	}
+	if authHeader != "" && (http.CanonicalHeaderKey(authHeader) == "Content-Type" || http.CanonicalHeaderKey(authHeader) == "X-Scope-Orgid") {
+		return fmt.Errorf("Loki auth header conflicts with a required header")
+	}
+	return nil
 }
 
 type lokiPush struct {
@@ -67,6 +75,7 @@ type lokiLine struct {
 	DroppedAttributes int            `json:"dropped_attributes,omitempty"`
 }
 
+// Export sends each batch as a Loki JSON push request.
 func (e *lokiLogExporter) Export(ctx context.Context, records []sdklog.Record) error {
 	if e.shutdown.Load() {
 		return sdklog.ErrExporterShutdown
@@ -167,6 +176,7 @@ func lokiValue(v attribute.Value) any {
 	return v.AsInterface()
 }
 
+// Shutdown prevents new exports and releases idle HTTP connections.
 func (e *lokiLogExporter) Shutdown(ctx context.Context) error {
 	if e.shutdown.Swap(true) {
 		return nil
@@ -175,6 +185,7 @@ func (e *lokiLogExporter) Shutdown(ctx context.Context) error {
 	return ctx.Err()
 }
 
+// ForceFlush reports cancellation; the exporter does not buffer records.
 func (e *lokiLogExporter) ForceFlush(ctx context.Context) error {
 	if e.shutdown.Load() {
 		return nil
