@@ -195,7 +195,7 @@ Telemetry and profiling read this prepared provider. Bootstrap supplies live
 effects and scoped change notifications; it does not reload or persist settings.
 Telemetry endpoint and authentication settings are visible regardless of plugin
 development state. Authentication values are sensitive settings.
-The telemetry master switch and **Ship Logs** control external host log shipping;
+The telemetry master switch and **Ship Logs** control host and plugin process log shipping;
 the default **Log Export Format** is **OpenTelemetry (OTLP)**. Select **Loki**
 to use its native JSON push API instead. The selected format, not the presence
 of a Loki endpoint, determines the exporter. Loki mode requires a full **Loki
@@ -205,6 +205,17 @@ independent of OTLP settings.
 Loki endpoint and header fields validate before save without exposing their values.
 
 OTLP traces and metrics use their own endpoint and authentication settings.
+For OTLP HTTP, use a base URL such as `https://collector.example/otlp`.
+The host adds `/v1/traces`, `/v1/metrics`, or `/v1/logs` to that base.
+Use HTTPS for remote collectors. A URL without a scheme uses HTTP.
+The host also accepts a complete signal URL or a custom collector path.
+External plugins use their own SDK exporter and may need a complete trace URL.
+The host does not pass its OTLP authentication credentials to external plugins.
+Plugin telemetry settings take effect when the plugin process starts.
+Restart the plugin after a telemetry configuration change.
+Frontend startup and interaction spans use the host trace endpoint and
+authentication. These spans contain no event targets, text, or span attributes.
+The frontend bridge uses bounded, best-effort delivery without retries.
 By default the separate **OTLP Log Endpoint** is empty, so OTLP logs reuse that
 endpoint and its authentication. Set an OTLP log endpoint to use a different
 destination, with its own optional authentication header and tenant ID. Trace
@@ -213,9 +224,11 @@ log tenant ID sends `X-Scope-OrgID` to the selected OTLP log endpoint; Loki's
 tenant ID sends the same header to Loki. Empty separate endpoint and authentication
 settings are the defaults.
 
-Local log files remain enabled in either mode. Logs can contain sensitive data;
-use trusted endpoints and review their access. Shipping covers the host telemetry
-log stream, not external plugin process log files or cluster workload log sessions.
+Local log files remain enabled in either mode. Host and plugin logs can contain
+sensitive data; use trusted endpoints and review their access. Plugin process
+logs use the configured shipping level and include the plugin ID. Plugin log
+lines of 64 KiB or more remain in local files but are not shipped. Cluster
+workload log sessions are not shipped.
 The plugin controller owns capability connections, schema provenance, and
 hydration, not another public settings write API.
 

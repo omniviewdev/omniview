@@ -126,6 +126,8 @@ func (c *controller) admitOperationCatalog(ctx context.Context, pluginID string,
 }
 
 func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequest) (_result HostRecord, retErr error) {
+	ctx, span := tracer.Start(ctx, "resource.Get")
+	defer span.End()
 	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "get")
 	defer func() { op.End(retErr) }()
@@ -200,6 +202,8 @@ func exactReadTarget(request resourcev2.GetRequest, descriptor resourcev2.Resour
 }
 
 func (c *controller) Enumerate(ctx context.Context, pluginID string, input HostEnumerateRequest) (_result HostSourcePage, retErr error) {
+	ctx, span := tracer.Start(ctx, "resource.Enumerate")
+	defer span.End()
 	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "enumerate")
 	defer func() { op.End(retErr) }()
@@ -251,6 +255,8 @@ func (c *controller) Enumerate(ctx context.Context, pluginID string, input HostE
 }
 
 func (c *controller) NativeQuery(ctx context.Context, pluginID string, input HostNativeQueryRequest) (_result HostSourcePage, retErr error) {
+	ctx, span := tracer.Start(ctx, "resource.NativeQuery")
+	defer span.End()
 	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "query")
 	defer func() { op.End(retErr) }()
@@ -321,6 +327,8 @@ func hostPage(ctx context.Context, generation *pluginState, targetID string, tar
 }
 
 func (c *controller) Mutate(ctx context.Context, pluginID string, request resourcev2.MutationRequest) (_result resourcev2.Record, retErr error) {
+	ctx, span := tracer.Start(ctx, "resource.Mutate")
+	defer span.End()
 	ctx = telemetry.WithPlugin(ctx, pluginID)
 	op := telemetry.BeginOperation(ctx, "resource", "mutate")
 	defer func() { op.End(retErr) }()
@@ -362,6 +370,8 @@ func (c *controller) Mutate(ctx context.Context, pluginID string, request resour
 }
 
 func (c *controller) Action(ctx context.Context, pluginID string, request resourcev2.ActionRequest) (_result resourcev2.Value, retErr error) {
+	ctx, span := tracer.Start(ctx, "resource.Action")
+	defer span.End()
 	target := actionTarget(pluginID, request)
 	ctx, err := c.admit(ctx, "resource.Action", target)
 	if err != nil {

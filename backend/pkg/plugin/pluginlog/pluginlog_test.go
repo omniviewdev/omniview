@@ -1,6 +1,7 @@
 package pluginlog
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	otellog "go.opentelemetry.io/otel/log"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 )
 
 // ---- Manager lifecycle ----
@@ -653,5 +659,88 @@ func TestDefaultRotation(t *testing.T) {
 	opts := DefaultRotation()
 	if opts.MaxSizeMB <= 0 || opts.MaxBackups <= 0 || opts.MaxAgeDays <= 0 {
 		t.Fatal("default rotation options should have positive values")
+	}
+}
+
+type remoteCapture struct {
+	records []sdklog.Record
+}
+
+func (*remoteCapture) Enabled(context.Context, sdklog.EnabledParameters) bool { return true }
+func (c *remoteCapture) OnEmit(_ context.Context, record *sdklog.Record) error {
+	c.records = append(c.records, record.Clone())
+	return nil
+}
+func (*remoteCapture) Shutdown(context.Context) error   { return nil }
+func (*remoteCapture) ForceFlush(context.Context) error { return nil }
+
+func TestRemoteShippingIndependentOfSubscribersAndRuntimeSettings(t *testing.T) {
+	mgr, err := NewManager(t.TempDir(), DefaultRotation())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mgr.Close()
+	capture := &remoteCapture{}
+	provider := sdklog.NewLoggerProvider(sdklog.WithProcessor(capture))
+	defer func() {
+		if shutdownErr := provider.Shutdown(context.Background()); shutdownErr != nil {
+			t.Errorf("shutdown log provider: %v", shutdownErr)
+		}
+	}()
+	enabled, level := true, "warn"
+	mgr.OnRemote(RemoteSink(provider.Logger("plugin-test"), func() (bool, string) {
+		return enabled, level
+	}))
+	var uiCount int
+	mgr.OnEmit(func(LogEntry) { uiCount++ })
+	stream := mgr.Stream("alpha")
+	fmt.Fprintln(stream, "2024-01-15T10:30:00.000Z [INFO] ignored")
+	fmt.Fprintln(stream, "2024-01-15T10:30:00.000Z [ERROR] remote error")
+	if len(capture.records) != 1 || uiCount != 0 {
+		t.Fatalf("remote records = %d, UI events = %d", len(capture.records), uiCount)
+	}
+	record := capture.records[0]
+	if record.Severity() != otellog.SeverityError || record.Body().AsString() != "remote error" {
+		t.Fatalf("unexpected remote record: severity=%v body=%v", record.Severity(), record.Body())
+	}
+	wantTime, _ := time.Parse(time.RFC3339Nano, "2024-01-15T10:30:00.000Z")
+	if !record.Timestamp().Equal(wantTime) {
+		t.Fatalf("timestamp = %v", record.Timestamp())
+	}
+	attrs := map[string]string{}
+	record.WalkAttributes(func(kv attribute.KeyValue) bool {
+		attrs[string(kv.Key)] = kv.Value.AsString()
+		return true
+	})
+	if attrs["plugin.id"] != "alpha" || attrs["log.source"] != "plugin" {
+		t.Fatalf("attributes = %v", attrs)
+	}
+	mgr.Subscribe("alpha")
+	level = "debug"
+	fmt.Fprintln(stream, "2024-01-15T10:30:00.000Z [DEBUG] now shipped")
+	enabled = false
+	fmt.Fprintln(stream, "2024-01-15T10:30:00.000Z [ERROR] disabled")
+	enabled, level = true, "error"
+	fmt.Fprintln(stream, "2024-01-15T10:30:00.000Z [WARN] below new level")
+	fmt.Fprintln(mgr.Stream("beta"), "2024-01-15T10:30:00.000Z [FATAL] fatal error")
+	if len(capture.records) != 3 || uiCount != 3 {
+		t.Fatalf("remote records = %d, UI events = %d", len(capture.records), uiCount)
+	}
+	if capture.records[1].Severity() != otellog.SeverityDebug || capture.records[2].Severity() != otellog.SeverityFatal {
+		t.Fatalf("unexpected severities: %v, %v", capture.records[1].Severity(), capture.records[2].Severity())
+	}
+}
+
+func TestRemoteShippingBoundsOversizedLines(t *testing.T) {
+	mgr, err := NewManager(t.TempDir(), DefaultRotation())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mgr.Close()
+	var entries []LogEntry
+	mgr.OnRemote(func(entry LogEntry) { entries = append(entries, entry) })
+	fmt.Fprint(mgr.Stream("alpha"), strings.Repeat("x", 128*1024)+"\n2024-01-15T10:30:00.000Z [WARN] after oversized\n")
+	if len(entries) != 1 || entries[0].Message != "after oversized" || entries[0].Level != "warn" {
+		t.Fatalf("unexpected shipped entries: %+v", entries)
 	}
 }

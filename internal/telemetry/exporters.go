@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
@@ -14,10 +15,31 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
+// otlpSignalURL accepts a shared OTLP base or a complete signal endpoint.
+// Preserve nonstandard paths, which may be explicit collector routes.
+func otlpSignalURL(endpoint, signal string) string {
+	if !strings.Contains(endpoint, "://") {
+		endpoint = "http://" + endpoint
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint
+	}
+	path := strings.TrimRight(u.Path, "/")
+	switch {
+	case path == "" || path == "/otlp":
+		u.Path = path + "/v1/" + signal
+	case strings.HasSuffix(path, "/v1/traces"), strings.HasSuffix(path, "/v1/metrics"),
+		strings.HasSuffix(path, "/v1/logs"):
+		u.Path = path[:strings.LastIndex(path, "/")+1] + signal
+	}
+	return u.String()
+}
+
 // NewTraceExporter creates an OTLP HTTP trace exporter.
 func NewTraceExporter(ctx context.Context, endpoint, authHeader, authValue string) (sdktrace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpointURL(endpoint),
+		otlptracehttp.WithEndpointURL(otlpSignalURL(endpoint, "traces")),
 	}
 	if authHeader != "" && authValue != "" {
 		opts = append(opts, otlptracehttp.WithHeaders(map[string]string{authHeader: authValue}))
@@ -28,7 +50,7 @@ func NewTraceExporter(ctx context.Context, endpoint, authHeader, authValue strin
 // NewMetricExporter creates an OTLP HTTP metric exporter.
 func NewMetricExporter(ctx context.Context, endpoint, authHeader, authValue string) (sdkmetric.Exporter, error) {
 	opts := []otlpmetrichttp.Option{
-		otlpmetrichttp.WithEndpointURL(endpoint),
+		otlpmetrichttp.WithEndpointURL(otlpSignalURL(endpoint, "metrics")),
 	}
 	if authHeader != "" && authValue != "" {
 		opts = append(opts, otlpmetrichttp.WithHeaders(map[string]string{authHeader: authValue}))
@@ -39,7 +61,7 @@ func NewMetricExporter(ctx context.Context, endpoint, authHeader, authValue stri
 // NewLogExporter creates an OTLP HTTP log exporter.
 func NewLogExporter(ctx context.Context, endpoint, authHeader, authValue, tenantID string) (sdklog.Exporter, error) {
 	opts := []otlploghttp.Option{
-		otlploghttp.WithEndpointURL(endpoint),
+		otlploghttp.WithEndpointURL(otlpSignalURL(endpoint, "logs")),
 	}
 	headers := make(map[string]string)
 	if authHeader != "" && authValue != "" {

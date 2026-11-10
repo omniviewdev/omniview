@@ -15,6 +15,7 @@ export * as McpRelayClient from './bindings/github.com/omniviewdev/omniview/inte
 export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';
 export * as UIClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/servicewrapper';
 export * as DiagnosticsClient from './bindings/github.com/omniviewdev/omniview/backend/diagnostics/diagnosticsclient';
+export * as TelemetryClient from './bindings/github.com/omniviewdev/omniview/internal/telemetry/telemetrybinding';
 export * as LogsClient from './logs';
 export * as MetricClient from './metric';
 export * as DataClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/data/servicewrapper';
