@@ -95,6 +95,25 @@ test.describe('Settings', () => {
     await expect(settingRow(settings, 'terminal.fontSize')).toBeHidden();
   });
 
+  test('saves a log shipping mode and independent telemetry endpoints', async ({ appPage }) => {
+    const settings = await openSettingsCategory(appPage, 'Telemetry');
+    await chooseSetting(settings, 'telemetry.logs_format', 'Loki');
+    await settingRow(settings, 'telemetry.endpoint_otlp').getByRole('textbox').fill('https://traces.example.test/v1/traces');
+    await settingRow(settings, 'telemetry.endpoint_otlp_logs').getByRole('textbox').fill('https://logs.example.test/otlp/v1/logs');
+    await settingRow(settings, 'telemetry.endpoint_loki').getByRole('textbox').fill('https://loki.example.test/loki/api/v1/push');
+    await saveSettings(settings);
+
+    expect(await storedValue(settings, 'telemetry.logs_format')).toBe('loki');
+    expect(await storedValue(settings, 'telemetry.endpoint_otlp')).toBe('https://traces.example.test/v1/traces');
+    expect(await storedValue(settings, 'telemetry.endpoint_otlp_logs')).toBe('https://logs.example.test/otlp/v1/logs');
+    expect(await storedValue(settings, 'telemetry.endpoint_loki')).toBe('https://loki.example.test/loki/api/v1/push');
+
+    await chooseSetting(settings, 'telemetry.logs_format', 'OpenTelemetry (OTLP)');
+    await saveSettings(settings);
+    expect(await storedValue(settings, 'telemetry.logs_format')).toBe('otlp');
+    expect(await storedValue(settings, 'telemetry.endpoint_loki')).toBe('https://loki.example.test/loki/api/v1/push');
+  });
+
   test('shows telemetry connection settings without a development plugin', async ({ page }) => {
     await page.goto('/');
     const plugins = await callBinding<Array<Record<string, unknown>>>(page.request, Service.plugins, 'ListPlugins');

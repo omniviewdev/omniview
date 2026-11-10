@@ -41,6 +41,15 @@ type Config struct {
 	LogsShipLevel     string
 	Profiling         bool
 	OTLPEndpoint      string
+	LogFormat         string
+	OTLPLogEndpoint   string
+	OTLPLogAuthHeader string
+	OTLPLogAuthValue  string
+	OTLPLogTenantID   string
+	LokiEndpoint      string
+	LokiTenantID      string
+	LokiAuthHeader    string
+	LokiAuthValue     string
 	PyroscopeEndpoint string
 	AuthHeader        string
 	AuthValue         string
@@ -64,6 +73,7 @@ func DefaultConfig(isDev bool) Config {
 			Metrics:           true,
 			LogsShip:          true,
 			LogsShipLevel:     levelDebug,
+			LogFormat:         "otlp",
 			Profiling:         true,
 			OTLPEndpoint:      orDefault(buildOTLPEndpoint, "localhost:4318"),
 			PyroscopeEndpoint: orDefault(buildPyroscopeEndpoint, "localhost:4040"),
@@ -77,6 +87,7 @@ func DefaultConfig(isDev bool) Config {
 		Metrics:           true,
 		LogsShip:          true,
 		LogsShipLevel:     levelWarn,
+		LogFormat:         "otlp",
 		Profiling:         false,
 		OTLPEndpoint:      buildOTLPEndpoint,
 		PyroscopeEndpoint: buildPyroscopeEndpoint,
@@ -108,6 +119,33 @@ func (c Config) WithSettings(vals map[string]any) Config {
 	}
 	if v, ok := vals["endpoint_otlp"].(string); ok {
 		c.OTLPEndpoint = v
+	}
+	if v, ok := vals["logs_format"].(string); ok {
+		c.LogFormat = v
+	}
+	if v, ok := vals["endpoint_otlp_logs"].(string); ok {
+		c.OTLPLogEndpoint = v
+	}
+	if v, ok := vals["otlp_logs_auth_header"].(string); ok {
+		c.OTLPLogAuthHeader = v
+	}
+	if v, ok := vals["otlp_logs_auth_value"].(string); ok {
+		c.OTLPLogAuthValue = v
+	}
+	if v, ok := vals["otlp_logs_tenant_id"].(string); ok {
+		c.OTLPLogTenantID = v
+	}
+	if v, ok := vals["endpoint_loki"].(string); ok {
+		c.LokiEndpoint = v
+	}
+	if v, ok := vals["loki_tenant_id"].(string); ok {
+		c.LokiTenantID = v
+	}
+	if v, ok := vals["loki_auth_header"].(string); ok {
+		c.LokiAuthHeader = v
+	}
+	if v, ok := vals["loki_auth_value"].(string); ok {
+		c.LokiAuthValue = v
 	}
 	if v, ok := vals["endpoint_pyroscope"].(string); ok {
 		c.PyroscopeEndpoint = v

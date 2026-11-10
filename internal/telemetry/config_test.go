@@ -15,6 +15,7 @@ func TestDefaultDevConfig(t *testing.T) {
 	assert.Equal(t, "debug", cfg.LogsShipLevel)
 	assert.True(t, cfg.Profiling)
 	assert.Equal(t, "localhost:4318", cfg.OTLPEndpoint)
+	assert.Equal(t, "otlp", cfg.LogFormat)
 	assert.Equal(t, "localhost:4040", cfg.PyroscopeEndpoint)
 }
 
@@ -27,5 +28,21 @@ func TestDefaultProdConfig(t *testing.T) {
 	assert.Equal(t, "warn", cfg.LogsShipLevel)
 	assert.False(t, cfg.Profiling)
 	assert.Empty(t, cfg.OTLPEndpoint)
+	assert.Equal(t, "otlp", cfg.LogFormat)
 	assert.Empty(t, cfg.PyroscopeEndpoint)
+}
+
+func TestLogSettingsOverlay(t *testing.T) {
+	cfg := DefaultConfig(false).WithSettings(map[string]any{
+		"logs_format":           "loki",
+		"endpoint_otlp_logs":    "https://logs.example/otlp",
+		"otlp_logs_auth_header": "Authorization",
+		"otlp_logs_auth_value":  "secret",
+		"otlp_logs_tenant_id":   "tenant",
+	})
+	assert.Equal(t, "loki", cfg.LogFormat)
+	assert.Equal(t, "https://logs.example/otlp", cfg.OTLPLogEndpoint)
+	assert.Equal(t, "Authorization", cfg.OTLPLogAuthHeader)
+	assert.Equal(t, "secret", cfg.OTLPLogAuthValue)
+	assert.Equal(t, "tenant", cfg.OTLPLogTenantID)
 }
