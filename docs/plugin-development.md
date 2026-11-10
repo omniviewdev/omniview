@@ -1157,6 +1157,8 @@ Ownership and matching are host-owned. The loader assigns the contribution ID (`
 
 Cells never render blank. A column whose renderer is not registered (plugin not loaded, unloaded, wrong type, or ambiguous) shows **Unavailable**, with the plugin and component name in its tooltip. A lazy renderer shows **Loading…**. A crashing renderer shows **Failed to render** in that cell only, resets when the contribution is replaced or the row's value changes, is logged with the plugin and contribution ID, and appears as a render error in **Developer: Inspect Extensions**. Cell crashes never quarantine the contribution, because a data-dependent failure in one row must not remove the column for every other row.
 
+The host's generic resource table draws every column, custom or not, in the shared `DataTable`, so only the rows in view are mounted. Rows have a fixed height. A column that sets `component` is the exception: the host cannot size what a renderer produces, so while such a column is visible the table measures its rows and a cell may grow taller than the standard row. Keep a custom renderer within one row where you can, because measured rows cost layout work while the user scrolls. A column with `width` keeps exactly that width. The other columns start at 150 px and grow to share the remaining space, and the table scrolls sideways instead of narrowing a column below its size. The selection and row-action columns stay pinned at the table's edges.
+
 Plugin lifecycle drives mounted cells. Registering a renderer replaces **Unavailable** in place; reloading swaps in the new component and unmounts the old one; unloading removes the contribution immediately, so no stale renderer stays mounted or cached. The registry rejects a malformed or duplicate descriptor, and the loader logs a warning with the safe diagnostic (never contributor values) instead of failing the plugin's other contributions.
 
 Sidebar and drawer contributions follow the same ownership rule: they resolve only for the plugin that registered them, and `meta.resourceKey` selects the opaque resource type. `meta.pluginId` is ignored. They also follow the same lifecycle: when a plugin unloads, or reloads and replaces its registrations, a drawer that is already open for one of its resources is replaced by an **Unavailable** drawer instead of keeping the retired plugin's components mounted. Reopen the resource to use the reloaded plugin's drawer.
@@ -1175,8 +1177,10 @@ Use the public cache keys when storing native snapshots:
 
 Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. The runtime attaches to the view topic before synchronization, stages snapshot chunks until `snapshotEnd`, and applies ordered changes by host record key. Close the view when it is no longer needed. A reset starts a new view generation; continuity and coverage describe the source's guarantees.
 
+A snapshot's `records` map is never modified after `getSnapshot()` returns it, and a record that a later change or generation repeats unchanged is the same object, matched by host key. Compare objects to learn which records moved; a change that repeats everything keeps the map itself, a status event that repeats the status publishes nothing, and every change event still advances `event.revision`. `useResources({collection: true})` builds its page from that map, so `acquired.page.records` keeps its identity when only the status or count changed.
+
 The PR workflow runs `src/resource/v2/sourceView.test.ts` from `packages/omniviewdev-runtime`.
-The suite checks atomic snapshots, frame-batched notifications, continuity gaps, and view retirement.
+The suite checks atomic snapshots, frame-batched notifications, continuity gaps, record identity, and view retirement.
 
 Use the cache query's signal for shared native work and the request signal to fence obsolete search publication. Cancelling a search must not cancel another table's shared fetch. Resource/action execution still performs its own fresh identity and authorization checks instead of trusting discovery cache freshness.
 

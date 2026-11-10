@@ -5,6 +5,7 @@ import type { MetricUnit, NumericPoint } from '@omniviewdev/base-ui/metrics';
 import type { MetricSourceRef, ResourceMetricTarget, ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import { observeMetrics, type MetricObservationLease } from './observationClient';
+import { targetIdentity } from './targetIdentity';
 import type { ResourceReference, AccessRoute, ScopeEntry } from '../../resource/v2/domain';
 export type { ResourceMetricTarget } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 export type { ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
@@ -80,11 +81,36 @@ const units: Readonly<Record<string, MetricUnit>> = {
   bytes_per_second: { kind: 'rate', numerator: 'bytes' }, count_per_second: { kind: 'rate', numerator: 'count' },
 };
 
-function targetIdentity(target: ResourceMetricTarget): string {
-  const address = target.reference.address;
-  return JSON.stringify([target.route.connection, address.provider, address.authority, address.type,
-    [...(address.scope ?? [])].map(scope => [scope.dimension, scope.value]).sort(([a], [b]) => a.localeCompare(b)),
-    address.id, target.reference.incarnation ?? null]);
+/** Copied admitted identity of one target, built once per target object rather than once per delivered snapshot. */
+interface AdmittedTarget {
+  readonly identity: string;
+  readonly reference: PreparedMetricResult['resourceReference'];
+  readonly route: PreparedMetricResult['resourceRoute'];
+}
+const admissions = new WeakMap<ResourceMetricTarget, AdmittedTarget>();
+function admittedTarget(target: ResourceMetricTarget): AdmittedTarget {
+  let admitted = admissions.get(target);
+  if (!admitted) {
+    const reference: ResourceReference = {
+      incarnation: target.reference.incarnation ?? undefined,
+      address: {
+        provider: target.reference.address.provider,
+        authority: target.reference.address.authority,
+        type: target.reference.address.type,
+        id: target.reference.address.id,
+        scope: Object.freeze((target.reference.address.scope ?? []).map((scope: ScopeEntry) =>
+          Object.freeze({ dimension: scope.dimension, value: scope.value }))),
+      },
+    };
+    const route: AccessRoute = { connection: target.route.connection };
+    admitted = {
+      identity: targetIdentity(target),
+      reference: Object.freeze({ incarnation: reference.incarnation, address: Object.freeze(reference.address) }),
+      route: Object.freeze(route),
+    };
+    admissions.set(target, admitted);
+  }
+  return admitted;
 }
 function sourceKey(source: MetricSourceRef | null | undefined): string {
   return JSON.stringify(source ? [source.plugin_id, source.connection_id, source.datasource_uid, source.datasource_kind, source.native === true] : null);
@@ -111,30 +137,12 @@ function sharesRequest(displayed: DisplayedSnapshot, targets: readonly ResourceM
  */
 export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null, catalog: ResourceMetricsCatalog | null, targets: readonly ResourceMetricTarget[]): readonly PreparedMetricResult[] {
   if (!snapshot?.data || snapshot.invalidated) return EMPTY;
-  const identities = new Map(targets.map(target => [target.token, targetIdentity(target)]));
-  const admitted = new Map(targets.map(target => {
-    const reference: ResourceReference = {
-      incarnation: target.reference.incarnation ?? undefined,
-      address: {
-        provider: target.reference.address.provider,
-        authority: target.reference.address.authority,
-        type: target.reference.address.type,
-        id: target.reference.address.id,
-        scope: Object.freeze((target.reference.address.scope ?? []).map((scope: ScopeEntry) =>
-          Object.freeze({ dimension: scope.dimension, value: scope.value }))),
-      },
-    };
-    const route: AccessRoute = { connection: target.route.connection };
-    return [target.token, {
-      reference: Object.freeze({ incarnation: reference.incarnation, address: Object.freeze(reference.address) }),
-      route: Object.freeze(route),
-    }] as const;
-  }));
+  const admitted = new Map(targets.map(target => [target.token, admittedTarget(target)] as const));
   const descriptors = new Map(catalog?.metrics?.map(metric => [metric.id, metric]));
   const results: PreparedMetricResult[] = [];
   for (const result of snapshot.data.results ?? []) {
-    const resourceIdentity = identities.get(result.resource_token);
-    if (!resourceIdentity) continue;
+    const target = admitted.get(result.resource_token);
+    if (!target) continue;
     const descriptor = descriptors.get(result.metric_id);
     const resultSource = result.source ?? descriptor?.source ?? catalog?.source ?? null;
     const source = sourceKey(resultSource);
@@ -151,10 +159,10 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
       return timeMs === null ? [] : [Object.freeze({ timeMs, value: finite(point.value) })];
     }));
     results.push(Object.freeze({
-      id: JSON.stringify([source, resourceIdentity, result.metric_id, dimensionEntries]),
-      resourceIdentity, resourceToken: result.resource_token, metricID: result.metric_id, status: result.status,
-      resourceReference: admitted.get(result.resource_token)!.reference,
-      resourceRoute: admitted.get(result.resource_token)!.route,
+      id: JSON.stringify([source, target.identity, result.metric_id, dimensionEntries]),
+      resourceIdentity: target.identity, resourceToken: result.resource_token, metricID: result.metric_id, status: result.status,
+      resourceReference: target.reference,
+      resourceRoute: target.route,
       value: result.status === 'ok' ? finite(result.value) : null,
       points, observedAt, windowMs: result.window / 1_000_000,
       freshUntilMs, freshness: 'unknown',
@@ -164,6 +172,67 @@ export function prepareMetricResults(snapshot: MetricsObservationSnapshot | null
     }));
   }
   return Object.freeze(results);
+}
+
+function sameDimensions(a: PreparedMetricResult['dimensions'], b: PreparedMetricResult['dimensions']): boolean {
+  if (a === b) return true;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(key => a[key] === b[key]);
+}
+function samePoints(a: readonly NumericPoint[], b: readonly NumericPoint[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index++) {
+    if (a[index].timeMs !== b[index].timeMs || a[index].value !== b[index].value) return false;
+  }
+  return true;
+}
+function sameReference(a: PreparedMetricResult['resourceReference'], b: PreparedMetricResult['resourceReference']): boolean {
+  if (a === b) return true;
+  return a.incarnation === b.incarnation && a.address.provider === b.address.provider
+    && a.address.authority === b.address.authority && a.address.type === b.address.type && a.address.id === b.address.id
+    && a.address.scope.length === b.address.scope.length
+    && a.address.scope.every((scope, index) => scope.dimension === b.address.scope[index].dimension && scope.value === b.address.scope[index].value);
+}
+/** Every field a reader can observe. Freshness is evaluated later, so it is equal by construction. */
+function sameResult(a: PreparedMetricResult, b: PreparedMetricResult): boolean {
+  return a.resourceIdentity === b.resourceIdentity && a.resourceToken === b.resourceToken && a.metricID === b.metricID
+    && a.status === b.status && a.value === b.value && a.observedAt === b.observedAt && a.windowMs === b.windowMs
+    && a.freshUntilMs === b.freshUntilMs && a.message === b.message && a.identityScope === b.identityScope
+    && a.unit === b.unit && a.resourceRoute.connection === b.resourceRoute.connection
+    && sameReference(a.resourceReference, b.resourceReference)
+    && (a.source === b.source || (a.source !== null && b.source !== null && a.source.plugin_id === b.source.plugin_id
+      && a.source.connection_id === b.source.connection_id && a.source.datasource_uid === b.source.datasource_uid
+      && a.source.datasource_kind === b.source.datasource_kind && a.source.native === b.source.native))
+    && sameDimensions(a.dimensions, b.dimensions) && samePoints(a.points, b.points);
+}
+/**
+ * A newer snapshot repeats most results unchanged. A result equal to the one displayed for the same
+ * series keeps that object, and a snapshot that changed nothing keeps the whole array, so readers can
+ * tell which samples actually moved. Nothing is ever kept that differs in a field a reader can observe.
+ */
+function reusePrepared(previous: readonly PreparedMetricResult[] | undefined, next: readonly PreparedMetricResult[]): readonly PreparedMetricResult[] {
+  if (!previous?.length || !next.length) return next;
+  const held = new Map<string, PreparedMetricResult>();
+  for (const result of previous) if (!held.has(result.id)) held.set(result.id, result);
+  let identical = previous.length === next.length;
+  const merged = next.map((result, index) => {
+    const prior = held.get(result.id);
+    const chosen = prior !== undefined && sameResult(prior, result) ? prior : result;
+    if (chosen !== previous[index]) identical = false;
+    return chosen;
+  });
+  return identical ? previous : Object.freeze(merged);
+}
+const evaluations = new WeakMap<PreparedMetricResult, PreparedMetricResult>();
+/** A result as presented under the current clock and request token. An unchanged presentation keeps one identity. */
+function evaluate(result: PreparedMetricResult, token: string, freshness: PreparedMetricResult['freshness']): PreparedMetricResult {
+  if (token === result.resourceToken && freshness === result.freshness) return result;
+  const held = evaluations.get(result);
+  if (held?.resourceToken === token && held.freshness === freshness) return held;
+  const evaluated = Object.freeze({ ...result, resourceToken: token, freshness });
+  evaluations.set(result, evaluated);
+  return evaluated;
 }
 
 interface DisplayedSnapshot {
@@ -253,24 +322,34 @@ function preservesDisplayedRange(previous: DisplayedSnapshot, incoming: readonly
  * true and `domain` and `stepMs` already describe it. `isFetching` alone says whether
  * collection continues, so a final incomplete frame stays partial without loading.
  *
+ * A host that repeats the failure it already reported keeps one `Error` object while the
+ * owner, binding and source stay the same, so a reader that compares it can tell a repeated
+ * failure from a new one. A frame without a failure clears `error`; a different message, or
+ * a change of owner, binding or source, gives a new `Error`.
+ *
  * @example
  * useMetricObservation({ ownerPluginID: 'kubernetes', ownerConnectionID: connectionID,
  *   resourceKey: 'k8s:/pods', targets: observedTargets,
  *   metricIDs: ['kubernetes.pod.cpu.usage'], intervalMs: 30000 });
  */
 export function useMetricObservation(options: UseMetricObservationOptions) {
-  // Canonical sets prevent presentation reordering from reopening observations.
-  const identity = JSON.stringify({ ...options,
-    targets: [...options.targets].sort((a, b) => targetIdentity(a).localeCompare(targetIdentity(b)) || a.token.localeCompare(b.token)),
-    metricIDs: [...new Set(options.metricIDs)].sort(),
-  });
+  const { ownerPluginID, ownerConnectionID, resourceKey, bindingID, source, targets, metricIDs, shape, startTime, endTime, durationMs, stepMs, intervalMs, enabled } = options;
+  const metricKey = JSON.stringify([...new Set(metricIDs)].sort());
+  // Canonical sets prevent presentation reordering from reopening observations. The serialization
+  // is rebuilt only when an input changes: a table renders far more often than its targets change.
+  const identity = useMemo(() => JSON.stringify({ ownerPluginID, ownerConnectionID, resourceKey, bindingID, source,
+    targets: targets.map(target => [targetIdentity(target), target] as const)
+      .sort(([a, left], [b, right]) => a.localeCompare(b) || left.token.localeCompare(right.token))
+      .map(([, target]) => target),
+    metricIDs: JSON.parse(metricKey) as string[], shape, startTime, endTime, durationMs, stepMs, intervalMs, enabled,
+  }), [ownerPluginID, ownerConnectionID, resourceKey, bindingID, source, targets, metricKey, shape, startTime, endTime, durationMs, stepMs, intervalMs, enabled]);
   const request = useMemo(() => JSON.parse(identity) as UseMetricObservationOptions, [identity]);
-  const authority = JSON.stringify([request.ownerPluginID, request.ownerConnectionID, request.resourceKey, request.bindingID, request.source]);
+  const authority = useMemo(() => JSON.stringify([request.ownerPluginID, request.ownerConnectionID, request.resourceKey, request.bindingID, request.source]), [request]);
   const lease = useRef<MetricObservationLease | null>(null);
   const [state, setState] = useState<ObservationState>({ authority: '', displayed: null, catalog: null, requestIdentity: '', settled: false, fetching: false, error: null });
   const [clockMs, setClockMs] = useState(Date.now);
   useEffect(() => {
-    const input = JSON.parse(identity) as UseMetricObservationOptions;
+    const input = request;
     const scope = JSON.stringify([input.ownerPluginID, input.ownerConnectionID, input.resourceKey, input.bindingID, input.source]);
     if (input.enabled === false || !input.ownerConnectionID || !input.targets.length || !input.metricIDs.length) return;
     let retired = false;
@@ -295,21 +374,24 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
           let displayed = compatible ? withoutChangedSources(previous.displayed, previous.catalog, snapshot.catalog) : null;
           if (snapshot.invalidated) displayed = null;
           else if (snapshot.data != null) {
-            const prepared = prepareMetricResults(snapshot, snapshot.catalog, input.targets);
+            const prepared = reusePrepared(displayed?.prepared, prepareMetricResults(snapshot, snapshot.catalog, input.targets));
             if (!displayed || input.shape !== 'range' || !snapshot.fetching || snapshot.data.complete !== false ||
                 preservesDisplayedRange(displayed, prepared, snapshot, input)) {
               displayed = { snapshot, prepared, targets: input.targets, metricIDs: input.metricIDs, stepMs: input.stepMs ?? null, receivedAtMs };
             }
           }
+          // A frame that repeats the failure already reported under this owner, binding and source keeps its Error,
+          // so readers can tell a repeated failure from a new one. A frame without a failure clears it.
+          const error = !snapshot.error ? null : compatible && previous.error?.message === snapshot.error ? previous.error : new Error(snapshot.error);
           return { authority: scope, displayed, catalog: snapshot.invalidated ? null : snapshot.catalog ?? (compatible ? previous.catalog : null), requestIdentity: identity,
             settled: snapshot.data != null || !!snapshot.error || snapshot.invalidated,
-            fetching: snapshot.fetching, error: snapshot.error ? new Error(snapshot.error) : null };
+            fetching: snapshot.fetching, error };
         });
       }, fail);
       lease.current = currentLease;
     } catch (error) { fail(error instanceof Error ? error : new Error(String(error))); }
     return () => { retired = true; currentLease?.close(); if (lease.current === currentLease) lease.current = null; };
-  }, [identity]);
+  }, [identity, request]);
   const current = state.authority === authority ? state : null;
   const displayed = current?.displayed ?? null;
   const prepared = displayed?.prepared ?? EMPTY;
@@ -335,8 +417,9 @@ export function useMetricObservation(options: UseMetricObservationOptions) {
       const token = tokens.get(result.resourceIdentity);
       if (token === undefined || !metrics.has(result.metricID)) { changed = true; continue; }
       const freshness = result.freshUntilMs === null ? 'unknown' : evaluatedAt >= result.freshUntilMs ? 'delayed' : 'fresh';
-      if (token === result.resourceToken && result.freshness === freshness) selected.push(result);
-      else { changed = true; selected.push(Object.freeze({ ...result, resourceToken: token, freshness })); }
+      const evaluated = evaluate(result, token, freshness);
+      if (evaluated !== result) changed = true;
+      selected.push(evaluated);
     }
     return changed ? Object.freeze(selected) : prepared;
   }, [prepared, request, clockMs, displayed?.receivedAtMs]);

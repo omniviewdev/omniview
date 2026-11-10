@@ -11,46 +11,40 @@
   width: 100%;
 }
 
-.TableContainer {
-  background-color: inherit;
-  width: 100%;
-  border-radius: 4px;
+/*
+ * The DataTable frame fills the space under the toolbar. Its scroll container
+ * owns all scrolling, so only the rows in view are mounted.
+ */
+.Table {
   flex: 1;
-  overflow: scroll;
   min-height: 0;
-  border: 1px solid var(--ov-color-border-default);
-  /* Hide the scrollbars */
-  scrollbar-width: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.TableContainer::-webkit-scrollbar {
+.Container {
+  flex: 1;
+  min-height: 0;
+  /* Hide the scrollbars */
+  scrollbar-width: none;
+}
+
+.Container::-webkit-scrollbar {
   display: none;
 }
 
-.SortButton {
-  display: flex;
-  align-items: center;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-weight: bold;
-  color: var(--ov-color-brand-500);
+/* Rows open their resource on click, and their text stays selectable. */
+.Body > tr {
   cursor: pointer;
-  text-decoration: none;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-.SortButton:focus-visible {
-  outline: 2px solid var(--ov-color-border-focus);
-  outline-offset: 1px;
+/* Fixed-height rows are one line tall: long text is cut off, never wrapped into the next row. */
+.Body > tr[data-ov-fixed-height='true'] > td {
+  white-space: nowrap;
 }
 
-.SortIcon {
-  transition: 0.2s;
-}
-
-.SortIcon[data-desc='true'] {
-  transform: rotate(180deg);
+.Body > tr[data-ov-fixed-height='true'] > td > span {
+  text-overflow: ellipsis;
 }

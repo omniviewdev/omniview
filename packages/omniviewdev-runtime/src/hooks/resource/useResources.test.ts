@@ -301,6 +301,86 @@ it('shares a source view until its last observer unmounts', async () => {
   client.clear();
 });
 
+it('writes the page and re-renders only when a notification changed something a consumer can see', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  let renders = 0;
+  const hook = renderHook(() => {
+    renders++;
+    return useResources({ pluginID: 'provider', request, collection: true });
+  }, { wrapper });
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  const complete = { viewGeneration: 'g1', records: new Map([['one', row]]), status: status('following'), complete: true };
+  act(() => view.publish(complete));
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toEqual([row]));
+  await waitFor(() => expect(hook.result.current.resources.isFetching).toBe(false));
+  await act(async () => {});
+  const { page } = hook.result.current.acquired!;
+  const write = vi.spyOn(client, 'setQueryData');
+  const settled = renders;
+  // The same records under the same status are the same state, however many times they are announced.
+  act(() => view.publish({ ...complete }));
+  act(() => view.publish({ ...complete }));
+  expect(write).not.toHaveBeenCalled();
+  expect(renders).toBe(settled);
+  expect(hook.result.current.acquired?.page).toBe(page);
+  // A changed count is a changed page, but the records it describes are still the same list.
+  act(() => view.publish({ ...complete, status: { ...status('following'), count: { kind: 'exact', value: '2' } } }));
+  await waitFor(() => expect(hook.result.current.acquired?.page.view?.count).toEqual({ kind: 'exact', value: '2' }));
+  expect(hook.result.current.acquired?.page).not.toBe(page);
+  expect(hook.result.current.acquired?.page.records).toBe(page.records);
+  hook.unmount();
+  client.clear();
+});
+
+it('keeps the records after a delete as the very objects the source view holds', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  const named = (key: string): HostRecord => ({ ...row, key, addressKey: key });
+  const [a, b, c, d] = ['a', 'b', 'c', 'd'].map(named);
+  const snapshotOf = (...held: HostRecord[]) => ({
+    viewGeneration: 'g1', records: new Map(held.map((item) => [item.key, item])), status: status('following'), complete: true,
+  });
+  act(() => view.publish(snapshotOf(a, b, c, d)));
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toHaveLength(4));
+  // b leaves the middle of the list and the records after it move up one place. None of them is replaced.
+  act(() => view.publish(snapshotOf(a, c, d)));
+  await waitFor(() => expect(hook.result.current.acquired?.page.records).toHaveLength(3));
+  const records = hook.result.current.acquired!.page.records;
+  expect(records[0]).toBe(a);
+  expect(records[1]).toBe(c);
+  expect(records[2]).toBe(d);
+  hook.unmount();
+  client.clear();
+});
+
+it('clears a failed refresh once the source recovers, even when its records did not change', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), { wrapper });
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  const records = new Map([['one', row]]);
+  act(() => view.publish({ viewGeneration: 'g1', records, status: status('following'), complete: true }));
+  await waitFor(() => expect(hook.result.current.resources.isSuccess).toBe(true));
+  act(() => view.publish({ viewGeneration: 'g1', records, status: status('failed'), complete: true }));
+  await act(async () => {
+    await hook.result.current.resources.refetch();
+  });
+  await waitFor(() => expect(hook.result.current.resources.isError).toBe(true));
+  // The last acquired page stays on screen while the source is down.
+  expect(hook.result.current.acquired?.page.records).toEqual([row]);
+  act(() => view.publish({ viewGeneration: 'g1', records, status: status('following'), complete: true }));
+  await waitFor(() => expect(hook.result.current.resources.isError).toBe(false));
+  expect(hook.result.current.acquired?.page.records).toEqual([row]);
+  hook.unmount();
+  client.clear();
+});
+
 it('surfaces a failed source view open as a query error', async () => {
   native.open.mockRejectedValue(new Error('Plugin does not support source sessions.'));
   const { client, wrapper } = setup();

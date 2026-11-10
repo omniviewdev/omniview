@@ -1,24 +1,33 @@
 #!/usr/bin/env node
 /**
- * Whole-app profiling: the production frontend (profiling build, see
- * vite.config.ts here) in Playwright Chromium with the Wails backend faked in
- * the page. Runs scripted scenarios and writes JSON plus a Markdown summary.
- * See bench/app/README.md.
+ * Whole-app profiling: the production frontend of a selected host checkout, in Playwright
+ * Chromium with the Wails backend faked in the page. Runs scripted scenarios and writes JSON
+ * plus a Markdown summary. See bench/app/README.md.
  *
  *   node bench/app/run.mjs [--runs 5] [--only cold-start,pods] [--no-build] [--headed] [--out file.json]
+ *
+ * Scroll baselines (paced wheel input, reversals, jumps; metric states; sparse updates):
+ *
+ *   node bench/app/run.mjs --react normal --only scroll --cpu-throttle 1,4 \
+ *     --app-root /path/to/host --plugin-assets <kubernetes ui dist/assets> --plugin-metadata <plugin.json>
+ *
+ * `--build-only` builds and stops; `--serve-only` builds if needed and serves the frontend for a
+ * native WebView. Nothing is written into `--app-root`.
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { parseArgs } from 'node:util';
 
 import { chromium } from 'playwright';
-import { build, preview } from 'vite';
 
+import { buildFrontend, readBuildManifest, requireAppRoot, startPreview } from './build.mjs';
+import { parseOptions, protocolDeviations, REFERENCE_PROTOCOL } from './options.mjs';
 import {
   fileSHA256,
   gitSourceIdentity,
+  hashDirectoryTree,
   hashPluginBundle,
   kubernetesSource,
   pluginAssetDirectory,
@@ -26,23 +35,18 @@ import {
   pluginMetadataFile,
   requirePluginBundle,
 } from './plugin-bundle.mjs';
-const here = import.meta.dirname;
-const root = path.resolve(here, '../..');
-const configFile = path.join(here, 'vite.config.ts');
+import { harnessIdentity, MANIFEST_NAME, uiPackageProvenance } from './provenance.mjs';
+import { runScrollCell } from './scroll-cells.mjs';
+import { scrollPages } from './scroll-driver.mjs';
+import { buildCells } from './workloads.mjs';
 
-const { values: opts } = parseArgs({
-  options: {
-    runs: { type: 'string', default: '5' },
-    only: { type: 'string' },
-    'no-build': { type: 'boolean', default: false },
-    headed: { type: 'boolean', default: false },
-    out: { type: 'string', default: path.join(here, 'results/latest.json') },
-    'cpu-throttle': { type: 'string', default: '1' },
-  },
-});
-const RUNS = Number(opts.runs);
-const CPU_THROTTLE = Number(opts['cpu-throttle']);
-if (!Number.isFinite(CPU_THROTTLE) || CPU_THROTTLE < 1) throw new Error('--cpu-throttle must be a finite number >= 1');
+const here = import.meta.dirname;
+const harnessRoot = path.resolve(here, '../..');
+const opts = parseOptions(process.argv.slice(2), { harnessRoot });
+const appRoot = opts.appRoot;
+
+const RUNS = opts.runs;
+const CPU_THROTTLE = opts.cpuThrottles[0];
 const VIEWPORT = { width: 1440, height: 900 };
 const POD_COUNT = 5_000;
 const LOG_LINES = 10_000;
@@ -50,10 +54,10 @@ const SCROLL_PAGES = 30;
 const DRAWER_TOGGLES = 10;
 const POD_NAME = /^[a-z-]+-[0-9a-f]{10}-[0-9a-f]{5}$/;
 
-// Identity of what the scenarios measure, recorded in every result. Change `id` whenever a scenario's
-// fixture, record count or steps change, so results of different workloads are never compared as if they
-// matched. bench/app/README.md defines what each id measures; results without an id are unknown legacy
-// workloads. The parameters are the ones this runner actually applies.
+// Identity of what the legacy scenarios measure, recorded in every result that includes them. Change
+// `id` whenever a scenario's fixture, record count or steps change, so results of different workloads
+// are never compared as if they matched. bench/app/README.md defines what each id measures; results
+// without an id are unknown legacy workloads. The parameters are the ones this runner actually applies.
 const WORKLOAD = {
   id: 'whole-app/v1',
   viewport: VIEWPORT,
@@ -61,15 +65,17 @@ const WORKLOAD = {
   logs: { lines: LOG_LINES, scrollPages: SCROLL_PAGES, drawerToggles: DRAWER_TOGGLES },
 };
 
-// ---------------------------------------------------------------- build + serve
+// ---------------------------------------------------------------- plugin, build, serve
+
+const pluginAssets = opts.pluginAssets ? pluginAssetDirectory(appRoot, opts.pluginAssets) : pluginAssetDirectory(appRoot);
+const pluginMetadata = opts.pluginMetadata ? pluginMetadataFile(appRoot, opts.pluginMetadata) : pluginMetadataFile(appRoot);
 
 function ensurePluginBundle() {
-  const assets = pluginAssetDirectory(root);
-  if (process.env.OV_K8S_PLUGIN_DIST !== undefined || fs.existsSync(path.join(assets, 'entry.js'))) {
-    requirePluginBundle(assets);
+  if (opts.pluginAssets || process.env.OV_K8S_PLUGIN_DIST !== undefined || fs.existsSync(path.join(pluginAssets, 'entry.js'))) {
+    requirePluginBundle(pluginAssets);
     return;
   }
-  const ui = path.join(kubernetesSource(root), 'ui');
+  const ui = path.join(kubernetesSource(appRoot), 'ui');
   if (!fs.existsSync(path.join(ui, 'package.json'))) {
     throw new Error(`Kubernetes checkout not found at ${ui}; set KUBERNETES_SOURCE to an external checkout`);
   }
@@ -78,55 +84,135 @@ function ensurePluginBundle() {
     const r = spawnSync('pnpm', args, { cwd: ui, stdio: 'inherit' });
     if (r.status !== 0) throw new Error(`pnpm ${args.join(' ')} failed in ${ui}`);
   }
-  requirePluginBundle(assets);
+  requirePluginBundle(pluginAssets);
 }
+
+let server;
+let browser;
+let closing = false;
+async function cleanup() {
+  if (closing) return;
+  closing = true;
+  await browser?.close().catch(() => undefined);
+  if (server) await new Promise((resolve) => server.httpServer.close(resolve));
+}
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+  process.on(signal, () => { void cleanup().finally(() => process.exit(code)); });
+}
+
+// The app root's dependencies matter only when building (buildFrontend checks them); a reused build needs none.
+let buildInfo;
+if (opts.noBuild) {
+  requirePluginBundle(pluginAssets);
+  buildInfo = readBuildManifest(opts.dist);
+  if (buildInfo.state !== 'verified' && opts.scroll.length) {
+    throw new Error(`a reused build must carry a verified manifest to be measured by a scroll scenario (${buildInfo.reason}); rebuild it with this runner`);
+  }
+  if (buildInfo.state === 'verified' && opts.scroll.length && !opts.allowHarnessDrift) {
+    // The page sampler is bundled into the build; the runner reads what it returns. A runner edited
+    // after the build would read results the page never produced and report them as missing.
+    const built = buildInfo.manifest.harness?.treeSHA256;
+    const running = harnessIdentity(harnessRoot).treeSHA256;
+    if (built !== running) {
+      throw new Error(`the build was made by harness ${built?.slice(0, 12) ?? 'unknown'} and this runner is harness ${running.slice(0, 12)}: the page sampler and the runner can disagree. Rebuild it with this runner (--build-only), or pass --allow-harness-drift for a diagnostic run that is never compared.`);
+    }
+  }
+  if (buildInfo.state === 'verified' && opts.reactExplicit && buildInfo.manifest.react !== opts.react) {
+    throw new Error(`--react ${opts.react} contradicts the reused build, which is ${buildInfo.manifest.react}`);
+  }
+} else {
+  ensurePluginBundle();
+  console.log(`Building the ${opts.react} frontend of ${appRoot}\n  into ${opts.dist} …`);
+  const manifest = await buildFrontend({ harnessRoot, options: opts, pluginAssets, pluginMetadata });
+  buildInfo = { state: 'verified', manifest };
+  console.log(`Built ${manifest.bundle.files} files, ${(manifest.bundle.bytes / 2 ** 20).toFixed(1)} MB, tree sha256 ${manifest.bundle.treeSHA256.slice(0, 12)}; minify ${JSON.stringify(manifest.minify.effective)}, React ${manifest.reactDom}, ${manifest.buildMs} ms.`);
+}
+if (opts.buildOnly) {
+  console.log(JSON.stringify({ dist: opts.dist, manifest: path.join(opts.dist, MANIFEST_NAME), react: buildInfo.manifest.react, minify: buildInfo.manifest.minify, bundle: buildInfo.manifest.bundle }, null, 2));
+  process.exit(0);
+}
+
+const buildManifest = buildInfo.state === 'verified' ? buildInfo.manifest : null;
+const reactBuild = buildManifest?.react ?? 'unknown';
+
+server = await startPreview({ harnessRoot, dist: opts.dist, pluginAssets, port: opts.port });
+const baseURL = server.resolvedUrls.local[0];
+
+if (opts.serveOnly) {
+  const config = encodeURIComponent(JSON.stringify({ plugins: ['kubernetes'], pods: opts.pods, metrics: 'healthy', instance: 'production' }));
+  console.log(`Serving the ${reactBuild} frontend (${opts.dist}) at ${baseURL}\n`
+    + `Native WebView URL (edit the ovbench JSON for metrics hidden|unavailable|healthy):\n`
+    + `  ${baseURL}?ovbench=${config}#/_plugin/kubernetes/cluster/bench/resources/${encodeURIComponent('k8s:/pods')}\n`
+    + 'In the page: window.__ovBench.help(). Press Ctrl-C to stop.');
+  await new Promise(() => {});
+}
+
+browser = await chromium.launch({
+  headless: !opts.headed,
+  args: ['--enable-precise-memory-info'],
+});
+
+// Headless Chromium can silently use software graphics on a GPU-equipped host.
+// Record the renderer's capabilities, not just the Node process's machine.
+let graphics;
+const graphicsSession = await browser.newBrowserCDPSession();
+try {
+  const { gpu } = await graphicsSession.send('SystemInfo.getInfo');
+  graphics = {
+    state: 'available',
+    compositing: gpu.featureStatus.gpu_compositing,
+    rasterization: gpu.featureStatus.rasterization,
+    renderer: gpu.auxAttributes.glRenderer,
+    devices: gpu.devices.map(({ vendorString, deviceString, driverVendor, driverVersion }) => ({
+      vendorString, deviceString, driverVendor, driverVersion,
+    })),
+  };
+} catch (error) {
+  graphics = { state: 'unavailable', reason: String(error.message) };
+} finally {
+  await graphicsSession.detach();
+}
+if (graphics.compositing !== 'enabled' || graphics.rasterization !== 'enabled') {
+  console.warn('Graphics acceleration is not verified. Frame timings are diagnostic only. Try --headed and check the recorded graphics capabilities.');
+}
+
+// ---------------------------------------------------------------- provenance
 
 /**
  * Identify the sources and plugin bytes about to be measured. The plugin commit is a claim about a real
  * checkout, never a guess from the metadata file's parent directory, which can belong to the host repository.
  */
 function captureProvenance() {
-  const assets = pluginAssetDirectory(root);
-  const reactDom = process.env.OV_PLUGIN_ARCHIVE_SMOKE === '1' ? 'react-dom/client' : 'react-dom/profiling';
+  const manifest = buildManifest;
+  const claimed = gitSourceIdentity(appRoot);
   return {
-    hostSource: gitSourceIdentity(root),
+    // A verified manifest records the source that was built; without one only the claimed app root can say.
+    hostSource: manifest?.hostSource ?? claimed,
+    currentHostSource: manifest && path.resolve(manifest.appRoot) === appRoot ? claimed : null,
     frontend: {
-      config: opts['no-build'] ? 'unknown' : 'bench/app/vite.config.ts',
-      reactDom: opts['no-build'] ? 'unknown' : reactDom,
-      configSHA256: opts['no-build'] ? null : fileSHA256(configFile),
-      rebuilt: !opts['no-build'],
-      bundle: hashPluginBundle(path.join(here, 'dist')),
+      config: manifest ? 'bench/app/vite.config.ts' : 'unknown',
+      reactBuild,
+      reactDom: manifest?.reactDom ?? 'unknown',
+      minify: manifest?.minify ?? null,
+      configSHA256: manifest ? fileSHA256(path.join(harnessRoot, 'bench/app/vite.config.ts')) : null,
+      rebuilt: !opts.noBuild,
+      manifest: { state: buildInfo.state, reason: buildInfo.reason ?? null },
+      distDir: opts.dist,
+      bundle: hashDirectoryTree(opts.dist, { exclude: [MANIFEST_NAME] }),
     },
     plugin: {
       selection: {
-        assets: process.env.OV_K8S_PLUGIN_DIST === undefined ? 'default' : 'override',
-        metadata: process.env.OV_K8S_PLUGIN_METADATA === undefined ? 'default' : 'override',
+        assets: opts.pluginAssets || process.env.OV_K8S_PLUGIN_DIST !== undefined ? 'override' : 'default',
+        metadata: opts.pluginMetadata || process.env.OV_K8S_PLUGIN_METADATA !== undefined ? 'override' : 'default',
       },
-      checkout: pluginCheckoutIdentity({ hostRoot: root, metadataFile: pluginMetadata, assets }),
+      checkout: pluginCheckoutIdentity({ hostRoot: appRoot, metadataFile: pluginMetadata, assets: pluginAssets }),
       metadataSHA256: fileSHA256(pluginMetadata),
-      bundle: hashPluginBundle(assets),
+      bundle: hashPluginBundle(pluginAssets),
     },
   };
 }
 
-// An invalid override fails before any build or measurement; vite.config.ts resolves it the same way.
-const pluginMetadata = pluginMetadataFile(root);
-if (!opts['no-build']) {
-  ensurePluginBundle();
-  console.log('Building the profiling bundle (bench/app/dist)…');
-  await build({ configFile, logLevel: 'warn' });
-}
-if (opts['no-build']) requirePluginBundle(pluginAssetDirectory(root));
-const provenance = captureProvenance();
-const server = await preview({ configFile, logLevel: 'warn' });
-const baseURL = server.resolvedUrls.local[0];
-
-const browser = await chromium.launch({
-  headless: !opts.headed,
-  args: ['--enable-precise-memory-info'],
-});
-
-// ---------------------------------------------------------------- page plumbing
+// ---------------------------------------------------------------- page plumbing (legacy scenarios)
 
 /** In every page: collect long tasks from the start of navigation. */
 function installObservers() {
@@ -157,15 +243,17 @@ async function cdpMetrics(cdp) {
 /**
  * Run `action` and report what it cost: wall time (as measured by the action in
  * the page, or around it), main-thread time from CDP, long tasks, React commits.
+ * The React columns exist only in the profiling build; the normal build has no <Profiler>,
+ * so they are null, never zero.
  */
 async function measure(s, action) {
   const before = await cdpMetrics(s.cdp);
-  const t0 = await s.page.evaluate(() => { window.__ovProfile.take(); return performance.now(); });
+  const t0 = await s.page.evaluate(() => { window.__ovProfile?.take(); return performance.now(); });
   const result = (await action()) ?? {};
   const t1 = await s.page.evaluate(() => performance.now());
   const after = await cdpMetrics(s.cdp);
   const tail = await s.page.evaluate((since) => ({
-    profile: window.__ovProfile.take(),
+    profile: window.__ovProfile ? window.__ovProfile.take() : null,
     longTasks: window.__ovLongTasks.filter((t) => t.start >= since),
   }), t0);
   const busy = cpu(before, after);
@@ -195,6 +283,7 @@ function longTaskStats(tasks) {
   };
 }
 function react(p) {
+  if (!p) return { commits: null, renderMs: null, maxCommitMs: null, slowCommits: null };
   return { commits: p.commits, renderMs: p.actualMs, maxCommitMs: p.maxActualMs, slowCommits: p.slowCommits };
 }
 
@@ -203,56 +292,6 @@ const podsRoute = (id) => `#/_plugin/kubernetes/cluster/${id}/resources/${encode
 /** Wait (polling every frame) until a pod name is on screen. */
 async function waitForPodRow(page) {
   await page.getByText(POD_NAME).first().waitFor({ timeout: 30_000 });
-}
-
-/**
- * Scroll up to `pages` viewport steps within the available collection, then
- * return to the top. Each step waits for a painted frame, including React work
- * scheduled by the scroll handler. Runs in the page.
- */
-function scrollPages({ pages, kind }) {
-  const b = window.__ovBench;
-  let target = null;
-  if (kind === 'logs') {
-    // The log list: the nearest scroll area around the viewer's search box.
-    for (let n = document.querySelector('input[placeholder="Search in logs"]'); n && !target; n = n.parentElement) target = b.dom.findScrollable(n);
-  } else {
-    target = b.dom.findScrollable(document.body);
-  }
-  if (!target) throw new Error(`no scrollable ${kind} area`);
-  const settle = () => new Promise((r) => requestAnimationFrame(() => setTimeout(() => requestAnimationFrame(r), 0)));
-  return (async () => {
-    target.scrollTop = 0;
-    await settle();
-    const viewport = target.clientHeight;
-    const range = target.scrollHeight - viewport;
-    if (viewport <= 0 || range <= 0 || !Number.isSafeInteger(pages) || pages <= 0) {
-      throw new Error(`${kind}: no positive bounded scroll workload`);
-    }
-    const forwardSteps = Math.min(pages, Math.ceil(range / viewport));
-    const expectedEnd = Math.min(forwardSteps * viewport, range);
-    const t0 = performance.now();
-    let previous = target.scrollTop;
-    for (let i = 1; i <= forwardSteps; i++) {
-      const expected = Math.min(i * viewport, range);
-      target.scrollTop = expected;
-      await settle();
-      const actual = target.scrollTop;
-      if (actual <= previous || Math.abs(actual - expected) > 1) {
-        throw new Error(`${kind}: scroll step ${i} did not reach ${expected}px (was ${actual}px)`);
-      }
-      previous = actual;
-    }
-    const end = target.scrollTop;
-    target.scrollTop = 0;
-    await settle();
-    const wallMs = performance.now() - t0;
-    if (end <= 0 || Math.abs(end - expectedEnd) > 1 || target.scrollTop > 1) {
-      throw new Error(`${kind}: bounded scroll or reset failed (${end}px, reset ${target.scrollTop}px)`);
-    }
-    const steps = forwardSteps + 1;
-    return { wallMs, steps, forwardSteps, perStepMs: wallMs / steps, scrolledPx: end };
-  })();
 }
 
 /**
@@ -274,7 +313,7 @@ async function openRowMenu(page) {
   await page.mouse.click(at.x, at.y);
 }
 
-// ---------------------------------------------------------------- scenarios
+// ---------------------------------------------------------------- legacy scenarios
 
 const scenarios = {
   /** Shell only, no plugins: comparable to the native cold-start script (empty state dir). */
@@ -394,7 +433,7 @@ async function coldStart(config, untilReady) {
       const nav = performance.getEntriesByType('navigation')[0];
       return {
         nav: { responseEnd: nav.responseEnd, domContentLoaded: nav.domContentLoadedEventEnd, load: nav.loadEventEnd },
-        profile: window.__ovProfile.take(),
+        profile: window.__ovProfile ? window.__ovProfile.take() : null,
         longTasks: window.__ovLongTasks,
         calls: window.__ovBench.takeCalls(),
         unhandled: window.__ovBench.unhandledCalls(),
@@ -424,12 +463,12 @@ async function coldStart(config, untilReady) {
 
 // ---------------------------------------------------------------- run + report
 
-const selected = opts.only ? opts.only.split(',') : Object.keys(scenarios);
-for (const name of selected) if (!scenarios[name]) throw new Error(`unknown scenario ${name}; have ${Object.keys(scenarios).join(', ')}`);
-
 const results = {};
+const scenarioMeta = {};
+const failures = [];
+const cells = buildCells(opts);
 try {
-  for (const name of selected) {
+  for (const name of opts.legacy) {
     // One discarded warmup run (disk cache, V8 code cache for the preview server's files).
     process.stdout.write(`${name}: warmup`);
     await scenarios[name]();
@@ -440,12 +479,32 @@ try {
     }
     process.stdout.write('\n');
   }
+  const env = { browser, baseURL, options: opts, reactBuild };
+  for (const cell of cells) {
+    process.stdout.write(`${cell.key}: warmup ${opts.warmupSeconds}s, trial`);
+    const cellResult = await runScrollCell(env, cell);
+    process.stdout.write('\n');
+    results[cell.key] = cellResult.trials;
+    scenarioMeta[cell.key] = cellResult.session;
+    if (cellResult.failed) {
+      failures.push(cell.key);
+      console.error(`${cell.key} failed: ${cellResult.session.failure.split('\n')[0]}`);
+    }
+  }
 } finally {
-  await browser.close();
-  await new Promise((r) => server.httpServer.close(r));
+  const version = browser.version();
+  await cleanup();
+  browser = { version: () => version };
 }
 
-const { hostSource, plugin } = provenance;
+const provenance = captureProvenance();
+const { hostSource, plugin, frontend } = provenance;
+let playwrightVersion = null;
+try {
+  playwrightVersion = createRequire(import.meta.url)('playwright/package.json').version;
+} catch {
+  // Not resolvable through the package exports; the version stays unknown.
+}
 const meta = {
   date: new Date().toISOString(),
   commit: hostSource.short ?? 'unknown',
@@ -455,16 +514,45 @@ const meta = {
   host: `${os.type()} ${os.arch()}, ${os.cpus()[0]?.model}, ${Math.round(os.totalmem() / 2 ** 30)} GB`,
   runs: RUNS,
   cpuThrottle: CPU_THROTTLE,
-  workload: WORKLOAD,
-  // Reusing a bundle cannot establish which React build produced it. Its bytes remain identified.
-  frontend: provenance.frontend,
+  ...(opts.legacy.length ? { workload: WORKLOAD } : {}),
+  // Reusing a bundle cannot establish which React build produced it without a verified manifest. Its bytes remain identified.
+  frontend,
   hostSource,
+  currentHostSource: provenance.currentHostSource,
   plugin,
+  label: opts.label,
+  appRoot: buildManifest?.appRoot ?? appRoot,
+  harness: { ...harnessIdentity(harnessRoot), builtWith: buildManifest?.harness?.treeSHA256 ?? null },
+  ui: buildManifest ? buildManifest.ui : { observedAtRunNotAtBuild: true, packages: uiPackageProvenance(appRoot) },
+  engine: { name: 'chromium', version: browser.version(), headless: !opts.headed, graphics, playwright: playwrightVersion, fixture: 'in-page fake Wails transport (no IPC, no native backend)' },
+  environment: { node: process.version, platform: process.platform, arch: os.arch(), osRelease: os.release(), cpuModel: os.cpus()[0]?.model ?? null, cpuCount: os.cpus().length, memoryGB: Math.round(os.totalmem() / 2 ** 30) },
+  ...(cells.length ? {
+    protocol: { reference: REFERENCE_PROTOCOL, deviations: protocolDeviations(opts, { reactBuild }) },
+    scenarios: scenarioMeta,
+    options: {
+      command: process.argv.slice(2),
+      react: opts.react, minify: opts.minify, configLoader: opts.configLoader, cpuThrottles: opts.cpuThrottles, pods: opts.pods,
+      metrics: opts.metrics, updates: opts.updates, update: opts.update, metricRefreshMs: opts.metricRefreshMs,
+      metricChangedFraction: opts.metricChangedFraction, metricDelayMs: opts.metricDelayMs,
+      warmupSeconds: opts.warmupSeconds, trialSeconds: opts.trialSeconds, trials: opts.trials,
+      speedPxPerSecond: opts.speed, inputHz: opts.inputHz, reversalSegmentSeconds: opts.reversalSegmentSeconds, jumpPages: opts.jumpPages,
+      capture: opts.capture, coverageEvery: opts.coverageEvery, mutations: opts.mutations, raw: opts.raw, overheadControl: opts.overheadControl, smoke: opts.smoke,
+    },
+  } : {}),
 };
+
 
 fs.mkdirSync(path.dirname(opts.out), { recursive: true });
 fs.writeFileSync(opts.out, JSON.stringify({ meta, results }, null, 2));
 const summary = (await import('./report.mjs')).summarize({ meta, results });
 process.stdout.write('\n' + summary);
+if (opts.markdown) {
+  fs.mkdirSync(path.dirname(opts.markdown), { recursive: true });
+  fs.writeFileSync(opts.markdown, summary);
+}
 if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + '\n');
-console.log(`\nWrote ${path.relative(process.cwd(), opts.out)}`);
+console.log(`\nWrote ${path.relative(process.cwd(), opts.out)}${opts.markdown ? ` and ${path.relative(process.cwd(), opts.markdown)}` : ''}`);
+if (failures.length) {
+  console.error(`${failures.length} cell(s) failed: ${failures.join(', ')}`);
+  process.exitCode = 1;
+}

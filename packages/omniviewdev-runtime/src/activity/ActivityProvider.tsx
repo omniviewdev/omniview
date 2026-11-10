@@ -1,7 +1,13 @@
 import React from 'react';
 import { parseAppError } from '../errors/parseAppError';
 import { activityClient } from './client';
-import { ActivityContext, type ActivityContextValue } from './context';
+import {
+  ActivityActionsContext,
+  ActivityContext,
+  NotificationCountContext,
+  type ActivityActionsValue,
+  type ActivityContextValue,
+} from './context';
 import { ActivityStore, connectActivityStore, isActiveTask } from './store';
 import type {
   ActivityAction,
@@ -176,12 +182,27 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
     },
     [store],
   );
+  // The unread count and the actions are read apart from the rest of the activity state, so a reader
+  // of either wakes only when its own value changes: a task's progress changes neither.
+  const notificationCount = React.useMemo(
+    () => view.records.filter((record) => !record.visibility.read).length,
+    [view.records],
+  );
+  const actions = React.useMemo<ActivityActionsValue>(
+    () => ({
+      notify,
+      openNotifications: store.openNotifications,
+      startResourceAction,
+      requestCancellation,
+    }),
+    [notify, store, startResourceAction, requestCancellation],
+  );
   const value = React.useMemo<ActivityContextValue>(
     () => ({
       store,
       records: view.records,
       activeTasks: view.records.filter(isActiveTask),
-      notificationCount: view.records.filter((record) => !record.visibility.read).length,
+      notificationCount,
       centerOpen: view.centerOpen,
       filter: view.filter,
       openNotifications: store.openNotifications,
@@ -201,6 +222,7 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
       canHandleAction: (action) => action.kind === 'cancel-task',
     }),
     [
+      notificationCount,
       store,
       view,
       setCollapsed,
@@ -218,5 +240,11 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
       openDetails,
     ],
   );
-  return <ActivityContext.Provider value={value}>{children}</ActivityContext.Provider>;
+  return (
+    <ActivityActionsContext.Provider value={actions}>
+      <NotificationCountContext.Provider value={notificationCount}>
+        <ActivityContext.Provider value={value}>{children}</ActivityContext.Provider>
+      </NotificationCountContext.Provider>
+    </ActivityActionsContext.Provider>
+  );
 }

@@ -53,7 +53,7 @@ function frame(token: string | readonly string[], status = 'ok', fetching = fals
 const renderTable = (initialProps: UseTableMetricObservationOptions = base) => renderHook(
   (options: UseTableMetricObservationOptions) => useTableMetricObservation(options), { initialProps });
 /** Mounts one cell, lets its demand publish and answers the request it opened. */
-function publishAnswered(result: { current: TableMetricObservation }, body: object, token: string) {
+function publishAnswered(result: { current: TableMetricObservation }, body: object, token: string | readonly string[]) {
   let release!: () => void;
   act(() => { release = result.current.register(body); vi.advanceTimersByTime(120); });
   const lease = transport.leases[transport.leases.length - 1];
@@ -72,7 +72,7 @@ function Cell({ row, metricID }: { row: Row; metricID: string }) {
   useEffect(() => register(row.body), [register, row.body]);
   const token = observation.tokenFor(row.body);
   const sample = token ? observation.metrics.get(token)?.get(metricID) : undefined;
-  return <output data-cell={`${row.id}:${metricID}`}>
+  return <output data-cell={`${row.id}:${metricID}`} data-error={observation.error instanceof Error ? observation.error.message : ''}>
     {sample ? sample.status : observation.isLoadingFor(row.body, metricID) ? 'loading' : 'unavailable'}
   </output>;
 }
@@ -83,6 +83,21 @@ function Table({ options, rows }: { options: UseTableMetricObservationOptions; r
   </Observation.Provider>;
 }
 const read = (view: RenderResult, row: string, metric = 'cpu') => view.container.querySelector(`[data-cell="${row}:${metric}"]`)?.textContent;
+
+function PairedTable({ options, rows }: { options: UseTableMetricObservationOptions; rows: readonly Row[] }) {
+  const observation = useTableMetricObservation(options);
+  return <Observation.Provider value={observation}>
+    <output data-table={observation.isLoading ? 'loading' : 'idle'} />
+    {rows.flatMap(row => ['cpu', 'memory'].map(metricID => <Cell key={`${row.id}:${metricID}`} row={row} metricID={metricID} />))}
+  </Observation.Provider>;
+}
+/** What the consumer displays for one registered cell. */
+function shown(view: RenderResult, row: string, metric = 'cpu') {
+  const cell = view.container.querySelector(`[data-cell="${row}:${metric}"]`);
+  return cell?.textContent;
+}
+const failureOf = (view: RenderResult, row: string, metric = 'cpu') => view.container.querySelector(`[data-cell="${row}:${metric}"]`)?.getAttribute('data-error');
+const tableOf = (view: RenderResult) => view.container.querySelector('[data-table]')?.getAttribute('data-table');
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -399,6 +414,138 @@ it('stops loading a row whose request answered without a sample for it', () => {
   expect(read(view, 'second', 'memory')).toBe('unavailable');
 });
 
+it('keeps a cell that was answered without a sample settled while the table grows, and loads only the row it admits', () => {
+  const view = render(<PairedTable options={base} rows={[firstRow]} />);
+  expect(shown(view, 'first')).toBe('loading');
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(tableOf(view)).toBe('loading');
+  act(() => transport.leases[0].receive(frame([])));
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'first', 'memory')).toBe('unavailable');
+  expect(tableOf(view)).toBe('idle');
+  view.rerender(<PairedTable options={base} rows={[firstRow, secondRow]} />);
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('loading');
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases).toHaveLength(2);
+  expect(transport.leases[1].spec.targets.map(target => target.token)).toEqual([firstRecord.key, secondRecord.key]);
+  // The request that carries the new row is still collecting. The answered cell is not asked about again.
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'first', 'memory')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('loading');
+  expect(shown(view, 'second', 'memory')).toBe('loading');
+  expect(tableOf(view)).toBe('idle');
+  act(() => transport.leases[1].receive({ ...frame([]), data: null, fetching: true }));
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('loading');
+  act(() => transport.leases[1].receive(frame(secondRecord.key)));
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('ok');
+  expect(shown(view, 'second', 'memory')).toBe('ok');
+});
+
+it('keeps cells settled through an unreachable provider while the table grows, and loads only the new row until its failure arrives', () => {
+  const unreachable = { ...frame([]), data: null, error: 'Metrics endpoint unavailable' };
+  const view = render(<PairedTable options={base} rows={[firstRow]} />);
+  act(() => { vi.advanceTimersByTime(120); });
+  act(() => transport.leases[0].receive(unreachable));
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(failureOf(view, 'first')).toBe('Metrics endpoint unavailable');
+  view.rerender(<PairedTable options={base} rows={[firstRow, secondRow]} />);
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases).toHaveLength(2);
+  // Nothing has been reported for the request that carries the new row, and the answered cell is not asked about again.
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('loading');
+  expect(failureOf(view, 'second')).toBe('');
+  expect(tableOf(view)).toBe('idle');
+  act(() => transport.leases[1].receive({ ...unreachable, error: '', fetching: true }));
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('loading');
+  act(() => transport.leases[1].receive(unreachable));
+  expect(shown(view, 'first')).toBe('unavailable');
+  expect(shown(view, 'second')).toBe('unavailable');
+  expect(failureOf(view, 'second')).toBe('Metrics endpoint unavailable');
+});
+
+it('forgets a row once it has left the table, so it loads again when it returns', () => {
+  const view = render(<PairedTable options={base} rows={[firstRow]} />);
+  act(() => { vi.advanceTimersByTime(120); });
+  act(() => transport.leases[0].receive(frame([])));
+  expect(shown(view, 'first')).toBe('unavailable');
+  // The table scrolls on: nothing the first request answered is still asked for.
+  view.rerender(<PairedTable options={base} rows={[secondRow]} />);
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases[1].spec.targets.map(target => target.token)).toEqual([secondRecord.key]);
+  expect(shown(view, 'second')).toBe('loading');
+  expect(tableOf(view)).toBe('loading');
+  act(() => transport.leases[1].receive(frame([])));
+  expect(shown(view, 'second')).toBe('unavailable');
+  expect(tableOf(view)).toBe('idle');
+  // Only the request that completed last is remembered, so the row that returns is new again.
+  view.rerender(<PairedTable options={base} rows={[firstRow, secondRow]} />);
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases[2].spec.targets.map(target => target.token)).toEqual([firstRecord.key, secondRecord.key]);
+  expect(shown(view, 'first')).toBe('loading');
+  expect(shown(view, 'second')).toBe('unavailable');
+  act(() => transport.leases[2].receive(frame([])));
+  expect(shown(view, 'first')).toBe('unavailable');
+});
+
+it.each<[string, Partial<UseTableMetricObservationOptions>]>([
+  ['plugin', { ownerPluginID: 'other-plugin' }],
+  ['connection', { ownerConnectionID: 'other-tenant' }],
+  ['resource type', { resourceKey: 'other-machines' }],
+  ['binding', { bindingID: 'other-binding' }],
+  ['source', { source: { ...catalog.source, datasource_uid: 'other-source' } }],
+])('never carries an answer across a change of %s', (_change, change) => {
+  const { result, rerender } = renderTable();
+  publishAnswered(result, first, []);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoading).toBe(false);
+  rerender({ ...base, ...change });
+  expect(transport.leases).toHaveLength(2);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
+  expect(result.current.isLoadingFor(first, 'memory')).toBe(true);
+  expect(result.current.isLoading).toBe(true);
+  act(() => transport.leases[1].receive(frame([])));
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoading).toBe(false);
+});
+
+it('never carries an answer to a recreated resource that keeps its host token', () => {
+  const recreated = Object.freeze({ name: 'recreated-body' });
+  const { result, rerender } = renderTable();
+  const { release } = publishAnswered(result, first, []);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  rerender({ ...base, recordsByBody: new WeakMap([[recreated, member(firstRecord.key, 'incarnation-2')]]) });
+  act(() => { release(); result.current.register(recreated); });
+  expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(true);
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases[1].spec.targets[0].reference.incarnation).toBe('incarnation-2');
+  expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(true);
+  expect(result.current.isLoading).toBe(true);
+  act(() => transport.leases[1].receive(frame([])));
+  expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(false);
+});
+
+it('loads a newly selected metric while the other metrics stay answered, and asks again about one a completed request left out', () => {
+  const { result, rerender } = renderTable({ ...base, metricIDs: ['cpu'] });
+  publishAnswered(result, first, []);
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  rerender({ ...base, metricIDs: ['cpu', 'memory'] });
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoadingFor(first, 'memory')).toBe(true);
+  expect(result.current.isLoading).toBe(false);
+  act(() => transport.leases[1].receive(frame([])));
+  expect(result.current.isLoadingFor(first, 'memory')).toBe(false);
+  rerender({ ...base, metricIDs: ['cpu'] });
+  act(() => transport.leases[2].receive(frame([])));
+  rerender({ ...base, metricIDs: ['cpu', 'memory'] });
+  expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
+  expect(result.current.isLoadingFor(first, 'memory')).toBe(true);
+});
+
 it('cancels pending demand when the owning hook unmounts and arms nothing for late cell cleanup', () => {
   const { result, unmount } = renderTable();
   let release!: () => void;
@@ -431,3 +578,4 @@ it('leaves no timer behind when a parent unmounts before its cells, including af
   expect(transport.leases).toHaveLength(1);
   expect(lease.close).toHaveBeenCalledTimes(1);
 });
+

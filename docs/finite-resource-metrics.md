@@ -140,18 +140,38 @@ body share one target until the last registration is cleaned up. Replace the map
 whenever records or membership change; never mutate it in place.
 
 Ask `isLoadingFor(body, metricID)` for each cell. It is `true` while an admitted
-cell for a selected metric has no sample and an answer is still expected: its
-registration awaits publication, the document is hidden, or its request has not
-answered. It is `false` once the cell holds any sample (unavailable and failed
-samples are answers), once the request settled without one, after an error, and
-when the cell can never be collected: disabled collection, an unselected metric,
-or a body the table did not admit. `loading` keeps such cells pending while
-source/catalog discovery runs. A new row therefore shows loading beside samples
-that are already displayed, never an unavailable value, and a settled empty cell
-does not spin again during background refresh. The returned function changes
-whenever any cell's answer can change, so memoized cells re-render. `isLoading`
-is only the table-level aggregate: upstream discovery, or a published request
-that has answered nothing yet.
+cell for a selected metric has no sample and no answer to it has arrived: its
+registration awaits publication, the document is hidden, or no request that
+included the cell has answered. It is `false` once the cell holds any sample
+(unavailable and failed samples are answers), once a request that included it
+settled without one, after an error, and when the cell can never be collected:
+disabled collection, an unselected metric, or a body the table did not admit.
+`loading` keeps such cells pending while source/catalog discovery runs. A new row
+therefore shows loading beside samples that are already displayed, never an
+unavailable value.
+
+A cell that settled without a sample, including one whose provider failed, stays
+settled. It does not spin again during background refresh, nor when other rows
+join or leave the table and the host is asked about a different set of targets.
+Only the request that completed last is remembered, as the targets it asked for
+under each metric, so a row or metric that request did not include loads until a
+request that includes it answers, and a row that left the table loads again when
+it returns. An answer never crosses a change of plugin, connection, resource
+type, binding or source, and a recreated resource, which keeps its host token
+with a new incarnation, is a new row. The returned function changes whenever any
+cell's answer can change, so memoized cells re-render. `isLoading` is only the
+table-level aggregate: upstream discovery, or a published request for which no
+cell holds a sample or an answer yet.
+
+#### Deliver metric updates once
+
+Share the observation through context. Cells register their body in an effect,
+then read `tokenFor`, `metrics` and `isLoadingFor` while rendering, as above.
+Keep sample delivery in that React update. An experimental per-cell store that
+published from a layout effect forced a second synchronous commit after each
+answer; controlled scrolling runs showed more commits for the same rows.
+That unreleased API was removed rather than adding another update phase.
+
 
 The runtime publishes target membership after 120 milliseconds without changes,
 and no later than 250 milliseconds after the first unpublished change, so
@@ -161,8 +181,9 @@ keep their samples and the host keeps the same observation until the replacement
 bodies publish. Retained targets never cross a change of plugin, connection, or
 resource type, and a source change still clears samples at once. A recreated
 resource keeps its host token with a new incarnation: `tokenFor` returns
-`undefined` while only the previous incarnation's samples are held for that
-token, so a cell never shows the previous resource's value. The timers stop
+`undefined`, and its cell's `sample` stays `undefined`, while only the previous
+incarnation's samples are held for that token, so a cell never shows the previous
+resource's value. The timers stop
 when the owning table unmounts, whichever order React cleans up the table and
 its cells, and a StrictMode replay re-arms the demand that was still
 unpublished.
@@ -313,7 +334,7 @@ An empty target or metric list disables collection. Each source catalog declares
 | `catalog` | Discover the selected source's metrics and capabilities |
 | `isLoading` | Show initial loading, including an incomplete empty frame while collection continues |
 | `isFetching` | Show a refresh without clearing existing data |
-| `error` | Report a collection failure |
+| `error` | Report a collection failure. A failure the host repeats keeps the same `Error` object until it changes or clears |
 | `refresh()` | Request an immediate refresh |
 | `domain` | Read the displayed history range, when available |
 | `stepMs` | Use the resolution of displayed history, not a pending replacement request |

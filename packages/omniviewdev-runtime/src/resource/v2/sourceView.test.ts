@@ -104,6 +104,100 @@ describe('source views', () => {
     view.close();
   });
 
+  describe('record identity', () => {
+    // The record's content is its target id; `record` above carries a key only.
+    const versioned = (key: string, version: number) => ({ key, targetId: `version-${version}` }) as HostRecord;
+    const versionOf = (value: HostRecord | undefined) => value?.targetId;
+
+    it('keeps every unchanged record and never modifies a map a reader holds', async () => {
+      const view = await openSourceView('plugin', request);
+      const [a, b, c] = [versioned('a', 1), versioned('b', 1), versioned('c', 1)];
+      event('one', '1', 'snapshot', { records: [a, b, c] });
+      event('one', '2', 'snapshotEnd', { status });
+      const first = view.getSnapshot();
+      // A delete in the middle must not disturb the records that follow it.
+      event('one', '3', 'changes', { removes: [{ key: 'b', addressKey: 'b' }] });
+      const second = view.getSnapshot();
+      expect([...first.records.keys()]).toEqual(['a', 'b', 'c']);
+      expect([...second.records.keys()]).toEqual(['a', 'c']);
+      expect(second.records.get('a')).toBe(a);
+      expect(second.records.get('c')).toBe(c);
+      // The same content in a new object, and the removal of nothing, change no record. The event still counts.
+      event('one', '4', 'changes', { upserts: [versioned('a', 1)], removes: [{ key: 'missing', addressKey: 'missing' }] });
+      const third = view.getSnapshot();
+      expect(third.records).toBe(second.records);
+      expect(third.records.get('a')).toBe(a);
+      expect(third.event).toEqual({ kind: 'changes', revision: second.event!.revision + 1 });
+      // A real change replaces only the record that changed.
+      event('one', '5', 'changes', { upserts: [versioned('a', 2)] });
+      const fourth = view.getSnapshot();
+      expect(fourth.records).not.toBe(third.records);
+      expect(versionOf(fourth.records.get('a'))).toBe('version-2');
+      expect(fourth.records.get('c')).toBe(c);
+      expect(third.records.get('a')).toBe(a);
+      view.close();
+    });
+
+    it('applies the patches of one frame once and keeps the maps readers already received', async () => {
+      const view = await openSourceView('plugin', request);
+      const listener = vi.fn();
+      view.subscribe(listener);
+      event('one', '1', 'snapshotEnd', { status });
+      const before = view.getSnapshot();
+      event('one', '2', 'changes', { upserts: [versioned('a', 1)] });
+      event('one', '3', 'changes', { upserts: [versioned('b', 1)], removes: [{ key: 'a', addressKey: 'a' }] });
+      event('one', '4', 'changes', { upserts: [versioned('a', 2)] });
+      frame?.(0);
+      expect(listener).toHaveBeenCalledTimes(1);
+      const after = view.getSnapshot();
+      expect(before.records.size).toBe(0);
+      // A record deleted and recreated within one frame is a new entry at the end, as it is across frames.
+      expect([...after.records].map(([key, value]) => [key, versionOf(value)])).toEqual([['b', 'version-1'], ['a', 'version-2']]);
+      expect(after.event?.revision).toBe(4);
+      const read = after.records;
+      event('one', '5', 'changes', { upserts: [versioned('c', 1)] });
+      expect(read.size).toBe(2);
+      expect(view.getSnapshot().records.size).toBe(3);
+      view.close();
+    });
+
+    it('keeps the objects of records a new generation repeats unchanged, by key rather than by position', async () => {
+      const view = await openSourceView('plugin', request);
+      const [a, b, c] = [versioned('a', 1), versioned('b', 1), versioned('c', 1)];
+      event('one', '1', 'snapshot', { records: [a, b, c] });
+      event('one', '2', 'snapshotEnd', { status });
+      event('one', '3', 'reset', { reset: { reason: 'resync', message: 'resync' } });
+      event('two', '1', 'snapshot', { records: [versioned('c', 1), versioned('a', 1), versioned('b', 2)] });
+      event('two', '2', 'snapshotEnd', { status });
+      const { records, viewGeneration } = view.getSnapshot();
+      expect(viewGeneration).toBe('two');
+      expect([...records.keys()]).toEqual(['c', 'a', 'b']);
+      expect(records.get('a')).toBe(a);
+      expect(records.get('c')).toBe(c);
+      expect(records.get('b')).not.toBe(b);
+      expect(versionOf(records.get('b'))).toBe('version-2');
+      view.close();
+    });
+
+    it('publishes a status event only when it changes the status', async () => {
+      const view = await openSourceView('plugin', request);
+      const listener = vi.fn();
+      view.subscribe(listener);
+      event('one', '1', 'snapshotEnd', { status });
+      frame?.(0);
+      expect(listener).toHaveBeenCalledTimes(1);
+      const held = view.getSnapshot().status;
+      frame = undefined;
+      event('one', '2', 'status', { status: { ...status, count: { ...status.count } } });
+      expect(frame).toBeUndefined();
+      expect(view.getSnapshot().status).toBe(held);
+      event('one', '3', 'status', { status: { ...status, state: 'finished' } });
+      expect(frame).toBeDefined();
+      expect(view.getSnapshot().status?.state).toBe('finished');
+      view.close();
+    });
+  });
+
   it('refreshes and closes once, cancelling delivery and detaching events', async () => {
     const view = await openSourceView('plugin', request);
     const listener = vi.fn();
