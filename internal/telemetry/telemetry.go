@@ -201,6 +201,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	StopPluginDiagnostics()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.cfg.Enabled = false
 
 	// Swap globals to noop before shutting down the concrete providers.
 	if s.tracerProvider != nil {

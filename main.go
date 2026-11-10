@@ -554,6 +554,11 @@ func main() {
 			"error",
 			pluginLogErr,
 		)
+	} else if provider := telemetrySvc.LoggerProvider(); provider != nil {
+		pluginLogManager.OnRemote(pluginlog.RemoteSink(provider.Logger("omniview.plugin.process"), func() (bool, string) {
+			cfg := telemetrySvc.Config()
+			return cfg.Enabled && cfg.LogsShip, cfg.LogsShipLevel
+		}))
 	}
 
 	pluginRegistryClient := registry.NewClient("")

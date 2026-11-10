@@ -2,26 +2,51 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
+const maxConcurrentFrontendExports = 16
+
 // TelemetryBinding exposes telemetry operations to the Wails frontend.
 type TelemetryBinding struct {
-	svc *Service
+	svc             *Service
+	frontendExports chan struct{}
+	frontendHTTP    *http.Client
 }
 
 // NewTelemetryBinding creates a binding backed by the given telemetry Service.
 func NewTelemetryBinding(svc *Service) *TelemetryBinding {
-	return &TelemetryBinding{svc: svc}
+	return &TelemetryBinding{
+		svc:             svc,
+		frontendExports: make(chan struct{}, maxConcurrentFrontendExports),
+		frontendHTTP: &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}},
+	}
 }
 
 // IngestFrontendSignals accepts a JSON payload from the frontend containing
 // logs, errors, and measurements, and converts them into backend telemetry
 // signals (Zap logs, OTel trace span events).
 func (b *TelemetryBinding) IngestFrontendSignals(payload string) error {
+	if len(payload) > maxFrontendPayload {
+		return errors.New("frontend telemetry payload too large")
+	}
+	var envelope struct {
+		Spans json.RawMessage `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
+		return err
+	}
+	if envelope.Spans != nil {
+		return b.ingestFrontendSpans(envelope.Spans)
+	}
 	signals, err := parseFrontendSignals(payload)
 	if err != nil {
 		return err

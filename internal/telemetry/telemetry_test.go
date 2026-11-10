@@ -21,6 +21,10 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
+	collectormetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/omniviewdev/omniview/internal/diagnostics"
 )
 
 // resetGlobalOTel restores OTel globals to noop implementations so tests don't
@@ -267,6 +271,38 @@ func TestLokiShippingStartsWithoutOTLPEndpointAndUpdatesLive(t *testing.T) {
 	assert.True(t, strings.Contains(second.body, "second host event"))
 }
 
+func TestTraceShippingUsesSignalPathAtStartupAndAfterConfigChange(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	requests := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	cfg := Config{Enabled: true, Traces: true, OTLPEndpoint: server.URL + "/otlp"}
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
+	require.NoError(t, svc.Init(ctx))
+	defer func() { _ = svc.Shutdown(ctx) }()
+	ship := func(expected string) {
+		t.Helper()
+		_, span := svc.TracerProvider().Tracer("test").Start(ctx, "host operation")
+		span.End()
+		require.NoError(t, svc.TracerProvider().ForceFlush(ctx))
+		select {
+		case path := <-requests:
+			assert.Equal(t, expected, path)
+		case <-time.After(5 * time.Second):
+			t.Fatal("expected a trace export request")
+		}
+	}
+	ship("/otlp/v1/traces")
+	cfg.OTLPEndpoint = server.URL
+	require.NoError(t, svc.ApplyConfig(ctx, cfg))
+	ship("/v1/traces")
+}
+
 func TestLogShippingModesAndCredentialIsolation(t *testing.T) {
 	t.Cleanup(resetGlobalOTel)
 	type request struct {
@@ -390,4 +426,58 @@ func TestSelectedLogModeErrorsAtStartupAndOnUpdate(t *testing.T) {
 	cfg.AuthHeader, cfg.AuthValue = "X-Scope-OrgID", "trace-credential"
 	require.ErrorContains(t, svc.ApplyConfig(ctx, cfg), "conflicts")
 	assert.False(t, svc.Config().Enabled)
+}
+
+func TestMetricsShipToOTLPCollector(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	type metricRequest struct {
+		path string
+		body *collectormetrics.ExportMetricsServiceRequest
+	}
+	requests := make(chan metricRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read failed", http.StatusBadRequest)
+			return
+		}
+		var request collectormetrics.ExportMetricsServiceRequest
+		if unmarshalErr := proto.Unmarshal(body, &request); unmarshalErr != nil {
+			http.Error(w, "invalid protobuf", http.StatusBadRequest)
+			return
+		}
+		select {
+		case requests <- metricRequest{path: r.URL.Path, body: &request}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	svc := New(Config{Enabled: true, Metrics: true, OTLPEndpoint: server.URL + "/otlp"},
+		"test", "commit", "date", false, t.TempDir())
+	diagnosticsService, err := diagnostics.New(diagnostics.Options{Directory: t.TempDir()})
+	require.NoError(t, err)
+	svc.SetDiagnostics(diagnosticsService)
+	require.NoError(t, svc.Init(ctx))
+	defer func() { _ = svc.Shutdown(ctx) }()
+	counter, err := svc.meterProvider.Meter("test").Int64Counter("test.shipped.counter")
+	require.NoError(t, err)
+	counter.Add(ctx, 7)
+	require.NoError(t, svc.meterProvider.ForceFlush(ctx))
+	request := <-requests
+	require.Equal(t, "/otlp/v1/metrics", request.path)
+	found := false
+	for _, resource := range request.body.GetResourceMetrics() {
+		for _, scope := range resource.GetScopeMetrics() {
+			for _, metric := range scope.GetMetrics() {
+				if metric.GetName() == "test.shipped.counter" {
+					require.EqualValues(t, 7, metric.GetSum().GetDataPoints()[0].GetAsInt())
+					found = true
+				}
+			}
+		}
+	}
+	require.True(t, found, "counter was not exported")
 }

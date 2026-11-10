@@ -24,7 +24,8 @@
 package pluginlog
 
 import (
-	"bufio"
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +36,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	otellog "go.opentelemetry.io/otel/log"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -99,6 +102,7 @@ type Manager struct {
 
 	emitMu sync.RWMutex
 	emit   EmitFunc
+	remote EmitFunc
 
 	subMu         sync.RWMutex
 	subscriptions map[string]int // pluginID → subscriber ref count
@@ -118,6 +122,7 @@ func NewManager(dir string, opts RotationOptions) (*Manager, error) {
 		streams:       make(map[string]*Stream),
 		emitMu:        sync.RWMutex{},
 		emit:          nil,
+		remote:        nil,
 		subMu:         sync.RWMutex{},
 		subscriptions: make(map[string]int),
 	}, nil
@@ -134,6 +139,60 @@ func (m *Manager) OnEmit(fn EmitFunc) {
 	m.emitMu.Lock()
 	m.emit = fn
 	m.emitMu.Unlock()
+}
+
+// OnRemote registers an independent sink for every parsed plugin log entry.
+// Unlike OnEmit, this callback does not depend on UI subscriptions.
+func (m *Manager) OnRemote(fn EmitFunc) {
+	m.emitMu.Lock()
+	m.remote = fn
+	m.emitMu.Unlock()
+}
+
+// RemoteSink sends plugin records directly to the host's bounded OTel log
+// pipeline. The configuration callback is consulted on each entry so changes
+// to the master switch, shipping switch, and level take effect at runtime.
+func RemoteSink(logger otellog.Logger, config func() (enabled bool, level string)) EmitFunc {
+	return func(entry LogEntry) {
+		enabled, level := config()
+		if !enabled || logger == nil {
+			return
+		}
+		severity := logSeverity(entry.Level)
+		filterSeverity := severity
+		if filterSeverity == otellog.SeverityTrace {
+			filterSeverity = otellog.SeverityDebug
+		}
+		if filterSeverity < logSeverity(level) {
+			return
+		}
+		var record otellog.Record
+		if timestamp, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil {
+			record.SetTimestamp(timestamp)
+		}
+		record.SetSeverity(severity)
+		record.SetSeverityText(strings.ToUpper(entry.Level))
+		record.SetBody(attribute.StringValue(entry.Message))
+		record.AddAttributes(attribute.String("plugin.id", entry.PluginID), attribute.String("log.source", "plugin"))
+		logger.Emit(context.Background(), record)
+	}
+}
+
+func logSeverity(level string) otellog.Severity {
+	switch strings.ToLower(level) {
+	case "trace":
+		return otellog.SeverityTrace
+	case "debug":
+		return otellog.SeverityDebug
+	case "warn", "warning":
+		return otellog.SeverityWarn
+	case "error":
+		return otellog.SeverityError
+	case "fatal":
+		return otellog.SeverityFatal
+	default:
+		return otellog.SeverityInfo
+	}
 }
 
 // Subscribe registers interest in real-time log emission for a plugin.
@@ -319,19 +378,27 @@ func (s *Stream) Write(p []byte) (int, error) {
 	// Always persist the raw bytes to file.
 	n, err := s.file.Write(p)
 
-	// Parse each line into a LogEntry for buffering and emission.
-	scanner := bufio.NewScanner(strings.NewReader(string(p)))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+	// Skip oversized lines without losing later lines in the same write.
+	for len(p) > 0 {
+		line, rest, _ := bytes.Cut(p, []byte{'\n'})
+		p = rest
+		line = bytes.TrimSuffix(line, []byte{'\r'})
+		if len(line) == 0 || len(line) >= 64*1024 {
 			continue
 		}
 
-		entry := parseLine(s.pluginID, line)
+		entry := parseLine(s.pluginID, string(line))
 
 		s.mu.Lock()
 		s.buffer.Push(entry)
 		s.mu.Unlock()
+
+		s.mgr.emitMu.RLock()
+		remote := s.mgr.remote
+		s.mgr.emitMu.RUnlock()
+		if remote != nil {
+			remote(entry)
+		}
 
 		// Only emit to the frontend if this plugin has active subscribers.
 		if s.mgr.isSubscribed(s.pluginID) {

@@ -10,8 +10,19 @@ import 'systemjs/dist/extras/named-register.js';
 
 import { initTelemetry } from './features/telemetry';
 import { bridgeSink } from './features/telemetry/bridgeSink';
+import { initTracing } from './features/telemetry/tracing';
+import { SpanStatusCode } from '@opentelemetry/api';
+
+const startupSpan = initTracing('unknown').getTracer('omniview.frontend').startSpan('frontend.startup');
 
 initTelemetry(bridgeSink);
+// Measure interaction-to-next-frame without recording event targets or content.
+document.addEventListener('click', () => {
+  const span = initTracing('unknown').getTracer('omniview.frontend').startSpan('frontend.interaction');
+  requestAnimationFrame(() => {
+    span.end(); 
+  });
+}, { capture: true, passive: true });
 
 import App from './App';
 import { createRoot } from 'react-dom/client';
@@ -31,8 +42,11 @@ resolveCurrentWindow()
     }
 
     root.render(<App />);
+    startupSpan.end();
   })
   .catch((error: unknown) => {
+    startupSpan.setStatus({ code: SpanStatusCode.ERROR });
+    startupSpan.end();
     console.error('[windows] failed to identify this window', error);
     root.render(<p role='alert'>Could not identify this application window. Reload to try again.</p>);
   });
