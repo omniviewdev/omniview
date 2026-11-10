@@ -31,6 +31,13 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/**
+ * Open a host source view, attach its event listener, and request initial synchronization.
+ * Resolves with a client before the initial snapshot necessarily completes; callers subscribe
+ * to subsequent snapshots and must close the client when finished. Notifications are coalesced.
+ * Open and initial synchronization errors reject the promise; an initial synchronization failure
+ * also closes the client. Later resynchronization failures become failed snapshot status.
+ */
 export async function openSourceView(pluginID: string, request: HostSourceViewRequest): Promise<SourceViewClient> {
   const opened = await OpenSourceView(pluginID, request);
   let snapshot: SourceViewSnapshot = { records: new Map(), complete: false };
@@ -176,6 +183,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
   const client: SourceViewClient = {
     mode: opened.mode,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    /** Return the current snapshot, preserving its records map against subsequent patches. */
     getSnapshot() {
       writable = undefined;
       return snapshot;

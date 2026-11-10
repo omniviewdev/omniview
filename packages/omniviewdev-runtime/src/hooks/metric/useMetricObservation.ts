@@ -88,6 +88,7 @@ interface AdmittedTarget {
   readonly route: PreparedMetricResult['resourceRoute'];
 }
 const admissions = new WeakMap<ResourceMetricTarget, AdmittedTarget>();
+/** Cache a frozen copy of the target's reference and route; callers must keep target objects immutable. */
 function admittedTarget(target: ResourceMetricTarget): AdmittedTarget {
   let admitted = admissions.get(target);
   if (!admitted) {

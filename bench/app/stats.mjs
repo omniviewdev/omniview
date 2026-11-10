@@ -10,6 +10,7 @@
 /** Frame-interval thresholds counted by `summarizeFrames`, in milliseconds. */
 export const FRAME_THRESHOLDS_MS = Object.freeze([20, 33.4, 50, 100]);
 
+/** Round to `digits` decimal places, returning null for nonnumeric or nonfinite input. */
 const round = (value, digits = 3) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const scale = 10 ** digits;
@@ -41,6 +42,7 @@ export function quantileSorted(sorted, p) {
   return sorted[Math.min(n - 1, Math.max(0, Math.ceil(p * n) - 1))];
 }
 
+/** Arithmetic mean of finite numeric samples, or null when none remain. */
 export function mean(values) {
   const sorted = finiteSorted(values);
   if (!sorted.length) return null;
@@ -49,6 +51,7 @@ export function mean(values) {
   return sum / sorted.length;
 }
 
+/** Median of finite numeric samples, averaging the middle pair; null when none remain. */
 export function median(values) {
   const sorted = finiteSorted(values);
   if (!sorted.length) return null;
@@ -56,6 +59,7 @@ export function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+/** Sum finite numeric samples, returning zero when none remain. */
 export function sum(values) {
   let total = 0;
   for (const value of finiteSorted(values)) total += value;

@@ -53,6 +53,10 @@ function useActivityContext() {
   if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
   return value;
 }
+/**
+ * Read the provider's activity commands without subscribing to its records.
+ * @throws {Error} When called outside ActivityProvider.
+ */
 function useActivityActionsContext() {
   const value = useContext(ActivityActionsContext);
   if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
@@ -86,12 +90,22 @@ export function useActivities() {
     error,
   };
 }
+/**
+ * Return notification commands and the unread count, subscribing to count changes rather than records.
+ * Publishing failures resolve to undefined and are recorded in the activity context's error state.
+ * @throws {Error} When called outside ActivityProvider.
+ */
 export function useNotifications() {
   const { notify, openNotifications } = useActivityActionsContext();
   const notificationCount = useContext(NotificationCountContext);
   if (notificationCount === undefined) throw new Error('Activity hooks must be used within ActivityProvider');
   return { notify, openNotifications, notificationCount };
 }
+/**
+ * Return task-start and cancellation commands without subscribing to activity record changes.
+ * Both commands update the activity store on success and propagate host rejections to their callers.
+ * @throws {Error} When called outside ActivityProvider.
+ */
 export function useActivityActions() {
   const { startResourceAction, requestCancellation } = useActivityActionsContext();
   return { startResourceAction, requestCancellation };
