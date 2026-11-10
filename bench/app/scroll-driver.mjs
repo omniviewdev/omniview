@@ -11,6 +11,11 @@
  * This driver is a settling driver: it assigns `scrollTop`, reads it back and waits. It
  * says nothing about continuous input; the paced wheel driver (wheel-driver.mjs) does.
  *
+ * Returns a promise with elapsed milliseconds, forward and total step counts, milliseconds
+ * per step (including reset), and the furthest scroll offset in pixels.
+ * Throws if no scroll area exists; rejects if `pages` is not a positive safe integer,
+ * the area has no positive viewport or scroll range, or a step or reset misses its target.
+ *
  * @param {{ pages: number, kind: 'pods' | 'logs' }} options
  */
 export function scrollPages({ pages, kind }) {

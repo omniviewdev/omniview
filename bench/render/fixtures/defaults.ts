@@ -10,6 +10,10 @@ export interface DefaultFixtures {
   host: HostFixture;
 }
 
+/**
+ * Register the common backend handlers with fresh activity and host state, plus default settings
+ * and connection responses. Return the activity and host inspection helpers.
+ */
 export function installDefaultFixtures(): DefaultFixtures {
   // Whole protocols, not stubs: see fixtures/activity.ts and fixtures/host.ts.
   const activity = installActivityFixture();

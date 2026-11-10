@@ -120,7 +120,12 @@ function firstSnapshot(client: SourceViewClient, signal: AbortSignal): Promise<R
   return promise;
 }
 
-/** Acquire an explicit source page, or opt into a complete collection acquisition. */
+/**
+ * Acquire an explicit source page, or opt into a complete collection acquisition.
+ * Collection updates preserve unchanged record objects and reuse the records array when its
+ * members and order are unchanged. Collection refetch first refreshes the shared source view;
+ * a failure to open or refresh that view rejects the refetch promise.
+ */
 export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true, collection = false }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();

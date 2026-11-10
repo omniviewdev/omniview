@@ -10,6 +10,7 @@
 /** Frame-interval thresholds counted by `summarizeFrames`, in milliseconds. */
 export const FRAME_THRESHOLDS_MS = Object.freeze([20, 33.4, 50, 100]);
 
+/** Round to `digits` decimal places (three by default); return null for a non-finite or nonnumeric value. */
 const round = (value, digits = 3) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const scale = 10 ** digits;
@@ -41,6 +42,7 @@ export function quantileSorted(sorted, p) {
   return sorted[Math.min(n - 1, Math.max(0, Math.ceil(p * n) - 1))];
 }
 
+/** Arithmetic mean of finite numeric samples; null when none remain. */
 export function mean(values) {
   const sorted = finiteSorted(values);
   if (!sorted.length) return null;
@@ -49,6 +51,7 @@ export function mean(values) {
   return sum / sorted.length;
 }
 
+/** Median of finite numeric samples, averaging the middle pair for an even count; null when none remain. */
 export function median(values) {
   const sorted = finiteSorted(values);
   if (!sorted.length) return null;
@@ -56,13 +59,17 @@ export function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+/** Sum of finite numeric samples; zero when none remain. */
 export function sum(values) {
   let total = 0;
   for (const value of finiteSorted(values)) total += value;
   return total;
 }
 
-/** count/min/mean/quantiles/max of a plain series. */
+/**
+ * Count and rounded statistics of finite numeric samples, using nearest-rank quantiles.
+ * `digits` sets decimal places (three by default). With no samples, count is zero and all statistics are null.
+ */
 export function summarizeSeries(values, digits = 3) {
   const sorted = finiteSorted(values);
   const n = sorted.length;
@@ -98,7 +105,7 @@ export function medianSpacing(timestamps) {
  * callbacks, never a compositor drop count.
  *
  * `gaps` lists the largest intervals above `gapThresholdMs`, newest data last by time,
- * with `atMs` measured from `originMs` (the window start by default).
+ * with `atMs` measured from `originMs` (the first included frame by default).
  */
 export function summarizeFrames(timestamps, options = {}) {
   const {

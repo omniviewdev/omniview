@@ -53,6 +53,10 @@ function useActivityContext() {
   if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
   return value;
 }
+/**
+ * Read the provider's action callbacks without subscribing to activity records.
+ * @throws {Error} If no ActivityProvider is mounted above the caller.
+ */
 function useActivityActionsContext() {
   const value = useContext(ActivityActionsContext);
   if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
@@ -86,12 +90,23 @@ export function useActivities() {
     error,
   };
 }
+/**
+ * Return notification controls and the unread record count. Activity updates that leave the
+ * count unchanged do not trigger a context update for this hook. `notify` resolves to undefined
+ * on publication failure; the provider exposes the failure through its activity error state.
+ * @throws {Error} If no ActivityProvider is mounted above the caller.
+ */
 export function useNotifications() {
   const { notify, openNotifications } = useActivityActionsContext();
   const notificationCount = useContext(NotificationCountContext);
   if (notificationCount === undefined) throw new Error('Activity hooks must be used within ActivityProvider');
   return { notify, openNotifications, notificationCount };
 }
+/**
+ * Return resource-action and cancellation controls without subscribing to activity records.
+ * Both controls resolve to the updated record and propagate host request failures as rejections.
+ * @throws {Error} If no ActivityProvider is mounted above the caller.
+ */
 export function useActivityActions() {
   const { startResourceAction, requestCancellation } = useActivityActionsContext();
   return { startResourceAction, requestCancellation };

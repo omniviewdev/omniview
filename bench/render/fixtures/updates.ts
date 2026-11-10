@@ -111,6 +111,11 @@ export function recreatedPod(pod: Pod, version: number, rand: () => number): Pod
   };
 }
 
+/**
+ * Validate the update schedule without starting it.
+ * @throws {Error} For a non-finite or non-positive event rate, a non-positive or non-integer batch size
+ * or event limit, a negative or non-integer recreation interval, or a non-integer seed.
+ */
 export function validateSparseUpdateSpec(spec: SparseUpdateSpec): void {
   const positive = (value: number) => Number.isFinite(value) && value > 0;
   if (!positive(spec.eventsPerSecond)) throw new Error('eventsPerSecond must be a positive number');
@@ -120,7 +125,11 @@ export function validateSparseUpdateSpec(spec: SparseUpdateSpec): void {
   if (spec.maxEvents !== undefined && (!Number.isInteger(spec.maxEvents) || spec.maxEvents < 1)) throw new Error('maxEvents must be a positive integer');
 }
 
-/** Start emitting. The first event fires one period after the call, on an absolute schedule. */
+/**
+ * Start emitting. The first event fires one period after the call, on an absolute schedule.
+ * Return ledger and idempotent stop controls; emission stops automatically at `maxEvents` when set.
+ * @throws {Error} If the update spec is invalid or its batch size exceeds the fixture's Pod count.
+ */
 export function startSparseUpdates(fixture: PodsFixture, spec: SparseUpdateSpec): SparseUpdates {
   validateSparseUpdateSpec(spec);
   const population = fixture.pods().length;

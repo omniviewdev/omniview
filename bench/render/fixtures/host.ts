@@ -44,6 +44,10 @@ function revisionOf(text: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0');
 }
 
+/**
+ * Register in-memory plugin data, window and profiling handlers with fresh state.
+ * `windowName` identifies the sole known window. Return helpers for inspecting state and call counts.
+ */
 export function installHostFixtures(windowName = 'main'): HostFixture {
   const data = new Map<string, Map<string, string>>();
   const windows = new Map<string, Record<string, string>>([[windowName, {}]]);
