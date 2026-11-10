@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,6 +20,8 @@ import (
 	otellog "go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
+	collectorlogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 type lokiRecordCapture struct{ records []sdklog.Record }
@@ -75,6 +78,66 @@ func TestLokiExporterPush(t *testing.T) {
 	assert.Equal(t, "test-scope", line["scope_name"])
 	assert.Equal(t, map[string]any{"request.id": "unique", "count": float64(3), "nested": map[string]any{"ok": true}}, line["attributes"])
 	assert.Equal(t, map[string]any{"service.name": "app", "service.instance.id": "instance-1"}, line["resource"])
+}
+
+func TestLokiExporterGroupsClientIDs(t *testing.T) {
+	var payload lokiPush
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload)) {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	exp, err := NewLokiLogExporter(server.URL, "", "", "")
+	require.NoError(t, err)
+	var records []sdklog.Record
+	for _, id := range []string{"site-a", "", "site-b", "site-a"} {
+		capture := &lokiRecordCapture{}
+		provider := sdklog.NewLoggerProvider(
+			sdklog.WithResource(resourceWithClientID(resource.Empty(), id)),
+			sdklog.WithProcessor(capture),
+		)
+		provider.Logger("test").Emit(context.Background(), otellog.Record{})
+		records = append(records, capture.records...)
+	}
+	require.NoError(t, exp.Export(context.Background(), records))
+	require.Len(t, payload.Streams, 3)
+	assert.Equal(t, map[string]string{"job": "omniview", "omniview_client_id": "site-a"},
+		payload.Streams[0].Stream)
+	assert.Len(t, payload.Streams[0].Values, 2)
+	assert.Equal(t, map[string]string{"job": "omniview"}, payload.Streams[1].Stream)
+	assert.Equal(t, map[string]string{"job": "omniview", "omniview_client_id": "site-b"},
+		payload.Streams[2].Stream)
+}
+
+func TestClientIDOTLPLogs(t *testing.T) {
+	var received collectorlogs.ExportLogsServiceRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if !assert.NoError(t, err) || !assert.NoError(t, proto.Unmarshal(body, &received)) {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	exp, err := NewLogExporter(context.Background(), server.URL, "", "", "")
+	require.NoError(t, err)
+	defer func() { _ = exp.Shutdown(context.Background()) }()
+	capture := &lokiRecordCapture{}
+	provider := sdklog.NewLoggerProvider(
+		sdklog.WithResource(resourceWithClientID(resource.Empty(), "site-1")),
+		sdklog.WithProcessor(capture),
+	)
+	provider.Logger("test").Emit(context.Background(), otellog.Record{})
+	require.NoError(t, exp.Export(context.Background(), capture.records))
+	require.Len(t, received.GetResourceLogs(), 1)
+	attrs := received.GetResourceLogs()[0].GetResource().GetAttributes()
+	require.Len(t, attrs, 1)
+	assert.Equal(t, "omniview.client.id", attrs[0].GetKey())
+	assert.Equal(t, "site-1", attrs[0].GetValue().GetStringValue())
 }
 
 func TestLokiExporterErrorsAndLifecycle(t *testing.T) {

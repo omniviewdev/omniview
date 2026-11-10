@@ -204,15 +204,30 @@ instead of falling back to OTLP. Loki tenant and authentication settings are
 independent of OTLP settings.
 Loki endpoint and header fields validate before save without exposing their values.
 
+Set **Telemetry > Client ID** to distinguish installations that share a
+collector. The value is optional and must not contain secrets. Use at most 64
+ASCII letters, digits, underscores, hyphens, or periods. Restart Omniview after
+changing it. An empty value does not add a client label.
+
+OTLP traces and logs carry the `omniview.client.id` resource attribute. OTLP
+metric points, native Loki streams, and host Pyroscope profiles carry the
+`omniview_client_id` label. OTLP collectors must promote the resource attribute
+if an indexed Loki stream label is required. External plugin Pyroscope profiles
+require a plugin rebuilt with SDK support for the client ID.
+
 OTLP traces and metrics use their own endpoint and authentication settings.
 For OTLP HTTP, use a base URL such as `https://collector.example/otlp`.
 The host adds `/v1/traces`, `/v1/metrics`, or `/v1/logs` to that base.
 Use HTTPS for remote collectors. A URL without a scheme uses HTTP.
 The host also accepts a complete signal URL or a custom collector path.
-External plugins use their own SDK exporter and may need a complete trace URL.
-The host does not pass its OTLP authentication credentials to external plugins.
-Plugin telemetry settings take effect when the plugin process starts.
-Restart the plugin after a telemetry configuration change.
+External SDK plugins send traces to a per-process, capability-protected loopback
+receiver. The host forwards them using the current trace endpoint and
+authentication without passing collector credentials to plugin processes.
+Trace endpoint and authentication changes apply to running plugins. Disabling
+trace shipping or clearing its endpoint permanently invalidates existing plugin
+receivers. This prevents buffered spans from being exported after re-enabling.
+Restart plugins after enabling trace shipping, restoring an endpoint, or changing
+plugin profiling settings.
 Frontend startup and interaction spans use the host trace endpoint and
 authentication. These spans contain no event targets, text, or span attributes.
 The frontend bridge uses bounded, best-effort delivery without retries.

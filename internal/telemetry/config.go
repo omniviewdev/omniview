@@ -35,6 +35,7 @@ var (
 // AuthHeader/AuthValue are set at runtime via the settings UI, never at build time.
 type Config struct {
 	Enabled           bool
+	ClientID          string
 	Traces            bool
 	Metrics           bool
 	LogsShip          bool
@@ -99,6 +100,9 @@ func DefaultConfig(isDev bool) Config {
 // WithSettings returns a copy of c with the values of the "telemetry" settings
 // category overlaid. Keys that are missing or have the wrong type are ignored.
 func (c Config) WithSettings(vals map[string]any) Config {
+	if v, ok := vals["client_id"].(string); ok {
+		c.ClientID = v
+	}
 	if v, ok := vals["enabled"].(bool); ok {
 		c.Enabled = v
 	}

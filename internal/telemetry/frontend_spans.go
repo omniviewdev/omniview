@@ -114,6 +114,7 @@ func (b *TelemetryBinding) exportFrontendSpans(cfg Config, spans []*tracepb.Span
 		{Key: "service.name", Value: str("omniview-frontend")},
 		{Key: "service.version", Value: str(b.svc.version)},
 	}
+	setTraceClientID(res, clientIDFromResource(b.svc.resource))
 	scope := new(commonpb.InstrumentationScope)
 	scope.Name = "omniview.frontend"
 	request := &collectortrace.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{
@@ -145,4 +146,21 @@ func (b *TelemetryBinding) exportFrontendSpans(cfg Config, spans []*tracepb.Span
 		return errors.New("frontend trace collector rejected request")
 	}
 	return nil
+}
+
+// setTraceClientID replaces untrusted client identity with the host identity.
+func setTraceClientID(res *resourcepb.Resource, clientID string) {
+	attributes := res.GetAttributes()[:0]
+	for _, attr := range res.GetAttributes() {
+		if attr.GetKey() != "omniview.client.id" {
+			attributes = append(attributes, attr)
+		}
+	}
+	if clientID != "" {
+		attr := new(commonpb.KeyValue)
+		attr.Key = "omniview.client.id"
+		attr.Value = &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: clientID}}
+		attributes = append(attributes, attr)
+	}
+	res.Attributes = attributes
 }

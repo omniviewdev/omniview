@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,9 +31,10 @@ import (
 
 // Rotation limits for the omniview.log file.
 const (
-	logMaxSizeMB  = 50
-	logMaxBackups = 3
-	logMaxAgeDays = 14
+	logMaxSizeMB           = 50
+	logMaxBackups          = 3
+	logMaxAgeDays          = 14
+	metricCardinalityLimit = 128
 
 	// runtimeMetricsInterval is the minimum interval between runtime MemStats reads.
 	// It matches local diagnostics sampling so cumulative allocation counters
@@ -62,8 +64,9 @@ type Service struct {
 	switchableMetricExp *SwitchableMetricExporter
 	switchableLogExp    *SwitchableLogExporter
 
-	diagnostics *diagnostics.Service
-	mu          sync.RWMutex
+	pluginTraceGeneration uint64 // invalidates receivers when trace shipping is disabled
+	diagnostics           *diagnostics.Service
+	mu                    sync.RWMutex
 }
 
 // New creates a telemetry Service. Call Init to start it.
@@ -95,6 +98,9 @@ func New(cfg Config, version, commit, date string, isDev bool, logDir string) *S
 func (s *Service) Init(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !IsValidClientID(s.cfg.ClientID) {
+		return errors.New("invalid telemetry client ID")
+	}
 
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
@@ -102,7 +108,7 @@ func (s *Service) Init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.resource = res
+	s.resource = resourceWithClientID(res, s.cfg.ClientID)
 
 	// Always initialize switchable exporters and providers so ApplyConfig can
 	// hot-swap exporters even when telemetry starts disabled.
@@ -127,11 +133,19 @@ func (s *Service) Init(ctx context.Context) error {
 	}
 
 	if s.diagnostics != nil {
-		s.diagnostics.SetRemote(s.switchableMetricExp)
+		s.diagnostics.SetRemote(withClientIDMetrics(s.switchableMetricExp, clientIDFromResource(s.resource)))
 		s.updateDiagnosticsIdentity(s.cfg)
-		s.meterProvider = sdkmetric.NewMeterProvider(sdkmetric.WithResource(s.resource), sdkmetric.WithCardinalityLimit(128), sdkmetric.WithReader(sdkmetric.NewPeriodicReader(s.diagnostics, sdkmetric.WithInterval(2*time.Second), pluginDiagnosticsReaderOption())))
+		s.meterProvider = sdkmetric.NewMeterProvider(
+			sdkmetric.WithResource(s.resource),
+			sdkmetric.WithCardinalityLimit(metricCardinalityLimit),
+			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(
+				s.diagnostics, sdkmetric.WithInterval(runtimeMetricsInterval), pluginDiagnosticsReaderOption(),
+			)),
+		)
 	} else {
-		s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
+		s.meterProvider = NewMeterProvider(
+			s.resource, withClientIDMetrics(s.switchableMetricExp, clientIDFromResource(s.resource)),
+		)
 	}
 	otel.SetMeterProvider(s.meterProvider)
 	if err = otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(runtimeMetricsInterval)); err != nil {
@@ -155,7 +169,9 @@ func (s *Service) Init(ctx context.Context) error {
 
 	// Start profiling if enabled at boot.
 	if s.cfg.Enabled && s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
-		profiler, profErr := startProfiling(s.version, s.cfg.PyroscopeEndpoint)
+		profiler, profErr := startProfiling(
+			s.version, s.cfg.PyroscopeEndpoint, clientIDFromResource(s.resource),
+		)
 		if profErr != nil {
 			return profErr
 		}
@@ -201,6 +217,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	StopPluginDiagnostics()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pluginTraceGeneration++
 	s.cfg.Enabled = false
 
 	// Swap globals to noop before shutting down the concrete providers.
@@ -250,6 +267,16 @@ func (s *Service) LoggerProvider() *sdklog.LoggerProvider { return s.loggerProvi
 // Resource returns the OTel resource describing this Omniview instance.
 func (s *Service) Resource() *resource.Resource { return s.resource }
 
+// ClientID returns the installation identity fixed at telemetry initialization.
+func (s *Service) ClientID() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return clientIDFromResource(s.resource)
+}
+
 // SetDiagnostics installs the single local collection path before Init.
 func (s *Service) SetDiagnostics(service *diagnostics.Service) { s.diagnostics = service }
 
@@ -291,9 +318,13 @@ func (s *Service) SetLogShipLevel(level string) {
 func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !IsValidClientID(cfg.ClientID) {
+		return errors.New("invalid telemetry client ID")
+	}
 
 	// Master switch OFF — swap all to noop.
 	if !cfg.Enabled {
+		s.pluginTraceGeneration++
 		s.disableAll()
 		s.cfg = cfg
 		s.updateDiagnosticsIdentity(cfg)
@@ -358,13 +389,18 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	needProfilerEndpointChange := cfg.Profiling && s.profiler != nil &&
 		cfg.PyroscopeEndpoint != s.cfg.PyroscopeEndpoint && cfg.PyroscopeEndpoint != ""
 	if needProfilerStart || needProfilerEndpointChange {
-		newProfiler, err = startProfiling(s.version, cfg.PyroscopeEndpoint)
+		newProfiler, err = startProfiling(
+			s.version, cfg.PyroscopeEndpoint, clientIDFromResource(s.resource),
+		)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Stage 2: All allocations succeeded — apply atomically.
+	if !cfg.Traces || cfg.OTLPEndpoint == "" {
+		s.pluginTraceGeneration++
+	}
 	if needTraceSwap {
 		s.swapTraceExporter(newTraceExp)
 	}

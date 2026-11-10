@@ -58,6 +58,25 @@ func buildTelemetrySettings(isDev bool) map[string]settings.Setting {
 			Type:        settings.Toggle,
 			Default:     defaults.Enabled,
 		},
+		"client_id": {
+			ID:    "client_id",
+			Label: "Client ID",
+			Description: "Optional installation identifier included in exported telemetry. " +
+				"Use only non-sensitive values. Changes require restart.",
+			Type:            settings.Text,
+			Default:         defaults.ClientID,
+			RequiresRestart: true,
+			Validator: func(value any) settings.ValidationResult {
+				id, ok := value.(string)
+				if !ok || !telemetry.IsValidClientID(id) {
+					return settings.ValidationResult{
+						Valid: false, Code: "client_id_invalid",
+						Message: "Use up to 64 ASCII letters, digits, underscores, hyphens, or periods.",
+					}
+				}
+				return settings.ValidationResult{Valid: true, Code: "client_id_valid", Message: "Client ID is valid."}
+			},
+		},
 		"traces": {
 			ID:          "traces",
 			Label:       "Traces",

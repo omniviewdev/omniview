@@ -8,15 +8,19 @@ import (
 )
 
 // profilingConfig builds a Pyroscope configuration for the given version and endpoint.
-func profilingConfig(version, endpoint string) pyroscope.Config {
+func profilingConfig(version, endpoint, clientID string) pyroscope.Config {
 	addr := endpoint
 	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
 		addr = "http://" + addr
 	}
+	tags := map[string]string{"version": version}
+	if clientID != "" {
+		tags["omniview_client_id"] = clientID
+	}
 	return pyroscope.Config{
 		ApplicationName: "omniview",
 		ServerAddress:   addr,
-		Tags:            map[string]string{"version": version},
+		Tags:            tags,
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,
 			pyroscope.ProfileAllocSpace,
@@ -26,8 +30,8 @@ func profilingConfig(version, endpoint string) pyroscope.Config {
 }
 
 // startProfiling starts the Pyroscope profiler with the given version and endpoint.
-func startProfiling(version, endpoint string) (*pyroscope.Profiler, error) {
-	cfg := profilingConfig(version, endpoint)
+func startProfiling(version, endpoint, clientID string) (*pyroscope.Profiler, error) {
+	cfg := profilingConfig(version, endpoint, clientID)
 	return pyroscope.Start(cfg)
 }
 

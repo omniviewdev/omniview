@@ -86,9 +86,21 @@ func (e *lokiLogExporter) Export(ctx context.Context, records []sdklog.Record) e
 	if len(records) == 0 {
 		return nil
 	}
-	stream := lokiStream{Stream: map[string]string{"job": "omniview"}, Values: make([][2]string, 0, len(records))}
+	streams := make([]lokiStream, 0, 1)
+	streamIndex := make(map[string]int)
 	for i := range records {
 		r := &records[i]
+		clientID := clientIDFromResource(r.Resource())
+		index, ok := streamIndex[clientID]
+		if !ok {
+			index = len(streams)
+			streamIndex[clientID] = index
+			labels := map[string]string{"job": "omniview"}
+			if clientID != "" {
+				labels["omniview_client_id"] = clientID
+			}
+			streams = append(streams, lokiStream{Stream: labels, Values: nil})
+		}
 		timestamp := r.Timestamp()
 		if timestamp.IsZero() {
 			timestamp = r.ObservedTimestamp()
@@ -115,9 +127,10 @@ func (e *lokiLogExporter) Export(ctx context.Context, records []sdklog.Record) e
 		if err != nil {
 			return fmt.Errorf("encode Loki log line: %w", err)
 		}
-		stream.Values = append(stream.Values, [2]string{strconv.FormatInt(timestamp.UnixNano(), 10), string(encoded)})
+		streams[index].Values = append(streams[index].Values,
+			[2]string{strconv.FormatInt(timestamp.UnixNano(), 10), string(encoded)})
 	}
-	payload, err := json.Marshal(lokiPush{Streams: []lokiStream{stream}})
+	payload, err := json.Marshal(lokiPush{Streams: streams})
 	if err != nil {
 		return fmt.Errorf("encode Loki push: %w", err)
 	}
