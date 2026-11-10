@@ -767,7 +767,7 @@ The page also ignores options passed as `undefined`, so a runner that has no val
 
 ## Local renderer sprint (#459)
 
-This pass uses CLI-managed candidate and frozen-baseline workspaces, the same
+Early recordings used CLI-managed candidate and frozen-baseline workspaces, the
 `58011ba2993e` harness, normal production React, 5,000 fixture Pods and independent
 60 Hz wheel input. Baseline commits: host `605ee4ea171570ac39d7882a4baa636e92bd3ecf`,
 UI `05ea0050b6dd3ede23cbfa638a624df8fe20b8e2`, Kubernetes
@@ -804,7 +804,7 @@ pixels are never blank. Native WKWebView, real backend behavior and final
 frame-time acceptance remain separate gates. Raw profiles stay local; this pass
 does not upload cluster data or add Grafana diagnostics.
 
-The final linked functional build mounted 56 resting rows and at most 92 rows
+An earlier linked functional build mounted 56 resting rows and at most 92 rows
 across distant positions in the 5,000-Pod collection. At each settled stop,
 unavailable metrics had zero busy cells and zero pulsing skeletons, with no
 resource-error notices. Keyboard focus exposed the full healthy metric value
@@ -830,3 +830,43 @@ percentage speedup. The no-update comparison did not improve frame timing,
 and the generic smoke's bounded DOM is not evidence of faster frames. Keep
 all these comparisons, including regressions and failed input delivery, visible
 in PR review.
+
+### Follow-up: remove the second metric update phase
+
+Scrolling with no resource changes still receives metric replies. The new
+per-cell bridge published those replies from a layout effect after the table
+had committed, forcing a second synchronous React commit. A controlled fixed
+view received ten replies with no row additions or removals: the per-cell
+variant committed 31 times; the existing context and memoized-view variants
+each committed 21 times. The extra ten commits were avoidable. This identifies
+extra work, not a unique explanation for every earlier timing fluctuation.
+
+The runtime now delivers samples through its existing API, without that bridge.
+Kubernetes keeps a cheap context reader and memoizes the expensive metric view.
+No new runtime export or Vite shim is required.
+
+Fresh clean builds used the same `b4ffc44e77ee` harness, 30 seconds of warmup,
+three 20-second trials, and the same 24,000-pixel scroll path. Unthrottled
+no-resource-update results are medians; lower is better:
+
+| Browser work | Frozen baseline | Fixed candidate | Change |
+|---|---:|---:|---:|
+| Frame interval p95 | 50.0 ms | 33.4 ms | 33% lower |
+| JavaScript | 2,404 ms | 1,007 ms | 58% less |
+| Layout | 361 ms | 164 ms | 55% less |
+| Styling | 2,626 ms | 803 ms | 69% less |
+
+Every trial delivered the full path. Driver lateness p95 stayed below 2 ms.
+These clean results supersede the earlier no-update regression, but still
+miss the 20 ms frame goal. Throttled baseline input stalled, so its much larger
+frame intervals are not accepted percentage-speedup evidence.
+
+Live resource updates remain a separate failure. The candidate's unthrottled
+frame p95 was 66.7 ms. With 4× CPU slowdown, input stalled and median frame p95
+reached 966.6 ms. The live-update baselines also failed input delivery and ran
+longer, receiving more updates; comparing their total CPU time would be unfair.
+Do not merge or claim smooth scrolling from these runs.
+
+[Follow-up recorded evidence](renderer-sprint-causal-evidence-2026-11-09.json)
+contains clean-build trial summaries and controlled diagnostic fingerprints.
+The earlier evidence remains available above. Raw CPU profiles stay local.
