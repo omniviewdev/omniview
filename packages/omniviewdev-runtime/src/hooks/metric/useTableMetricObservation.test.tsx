@@ -1,10 +1,10 @@
-import { StrictMode, createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { StrictMode, createContext, useContext, useEffect } from 'react';
 import { act, cleanup, render, renderHook, type RenderResult } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { HostRecord } from '../../resource/v2/host';
 import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import type { ResourceMetricsCatalog } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
-import { useTableMetricCell, useTableMetricObservation, type TableMetricCells, type TableMetricObservation, type UseTableMetricObservationOptions } from './useTableMetricObservation';
+import { useTableMetricObservation, type TableMetricObservation, type UseTableMetricObservationOptions } from './useTableMetricObservation';
 
 const transport = vi.hoisted(() => ({ leases: [] as Array<{
   spec: MetricsObservationSpec;
@@ -72,7 +72,7 @@ function Cell({ row, metricID }: { row: Row; metricID: string }) {
   useEffect(() => register(row.body), [register, row.body]);
   const token = observation.tokenFor(row.body);
   const sample = token ? observation.metrics.get(token)?.get(metricID) : undefined;
-  return <output data-cell={`${row.id}:${metricID}`}>
+  return <output data-cell={`${row.id}:${metricID}`} data-error={observation.error instanceof Error ? observation.error.message : ''}>
     {sample ? sample.status : observation.isLoadingFor(row.body, metricID) ? 'loading' : 'unavailable'}
   </output>;
 }
@@ -84,30 +84,16 @@ function Table({ options, rows }: { options: UseTableMetricObservationOptions; r
 }
 const read = (view: RenderResult, row: string, metric = 'cpu') => view.container.querySelector(`[data-cell="${row}:${metric}"]`)?.textContent;
 
-/** One cell read both ways: through the table-wide accessors and through its own subscription. */
-function PairedCell({ row, metricID }: { row: Row; metricID: string }) {
-  const observation = useContext(Observation)!;
-  const { register } = observation;
-  useEffect(() => register(row.body), [register, row.body]);
-  const token = observation.tokenFor(row.body);
-  const sample = token ? observation.metrics.get(token)?.get(metricID) : undefined;
-  const own = useTableMetricCell(observation.cells, row.body, metricID);
-  return <output data-cell={`${row.id}:${metricID}`} data-own={own.sample ? own.sample.status : own.isLoading ? 'loading' : 'unavailable'}
-    data-error={own.error instanceof Error ? own.error.message : ''}>
-    {sample ? sample.status : observation.isLoadingFor(row.body, metricID) ? 'loading' : 'unavailable'}
-  </output>;
-}
 function PairedTable({ options, rows }: { options: UseTableMetricObservationOptions; rows: readonly Row[] }) {
   const observation = useTableMetricObservation(options);
   return <Observation.Provider value={observation}>
     <output data-table={observation.isLoading ? 'loading' : 'idle'} />
-    {rows.flatMap(row => ['cpu', 'memory'].map(metricID => <PairedCell key={`${row.id}:${metricID}`} row={row} metricID={metricID} />))}
+    {rows.flatMap(row => ['cpu', 'memory'].map(metricID => <Cell key={`${row.id}:${metricID}`} row={row} metricID={metricID} />))}
   </Observation.Provider>;
 }
-/** What a paired cell shows. Fails unless the table-wide accessors and the cell's own subscription agree. */
+/** What the consumer displays for one registered cell. */
 function shown(view: RenderResult, row: string, metric = 'cpu') {
   const cell = view.container.querySelector(`[data-cell="${row}:${metric}"]`);
-  expect(cell?.getAttribute('data-own')).toBe(cell?.textContent);
   return cell?.textContent;
 }
 const failureOf = (view: RenderResult, row: string, metric = 'cpu') => view.container.querySelector(`[data-cell="${row}:${metric}"]`)?.getAttribute('data-error');
@@ -516,17 +502,14 @@ it.each<[string, Partial<UseTableMetricObservationOptions>]>([
   const { result, rerender } = renderTable();
   publishAnswered(result, first, []);
   expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
-  expect(result.current.cells.read(first, 'cpu').isLoading).toBe(false);
   expect(result.current.isLoading).toBe(false);
   rerender({ ...base, ...change });
   expect(transport.leases).toHaveLength(2);
   expect(result.current.isLoadingFor(first, 'cpu')).toBe(true);
   expect(result.current.isLoadingFor(first, 'memory')).toBe(true);
-  expect(result.current.cells.read(first, 'cpu').isLoading).toBe(true);
   expect(result.current.isLoading).toBe(true);
   act(() => transport.leases[1].receive(frame([])));
   expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
-  expect(result.current.cells.read(first, 'cpu').isLoading).toBe(false);
   expect(result.current.isLoading).toBe(false);
 });
 
@@ -541,11 +524,9 @@ it('never carries an answer to a recreated resource that keeps its host token', 
   act(() => { vi.advanceTimersByTime(120); });
   expect(transport.leases[1].spec.targets[0].reference.incarnation).toBe('incarnation-2');
   expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(true);
-  expect(result.current.cells.read(recreated, 'cpu').isLoading).toBe(true);
   expect(result.current.isLoading).toBe(true);
   act(() => transport.leases[1].receive(frame([])));
   expect(result.current.isLoadingFor(recreated, 'cpu')).toBe(false);
-  expect(result.current.cells.read(recreated, 'cpu').isLoading).toBe(false);
 });
 
 it('loads a newly selected metric while the other metrics stay answered, and asks again about one a completed request left out', () => {
@@ -555,8 +536,6 @@ it('loads a newly selected metric while the other metrics stay answered, and ask
   rerender({ ...base, metricIDs: ['cpu', 'memory'] });
   expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   expect(result.current.isLoadingFor(first, 'memory')).toBe(true);
-  expect(result.current.cells.read(first, 'cpu').isLoading).toBe(false);
-  expect(result.current.cells.read(first, 'memory').isLoading).toBe(true);
   expect(result.current.isLoading).toBe(false);
   act(() => transport.leases[1].receive(frame([])));
   expect(result.current.isLoadingFor(first, 'memory')).toBe(false);
@@ -565,7 +544,6 @@ it('loads a newly selected metric while the other metrics stay answered, and ask
   rerender({ ...base, metricIDs: ['cpu', 'memory'] });
   expect(result.current.isLoadingFor(first, 'cpu')).toBe(false);
   expect(result.current.isLoadingFor(first, 'memory')).toBe(true);
-  expect(result.current.cells.read(first, 'memory').isLoading).toBe(true);
 });
 
 it('cancels pending demand when the owning hook unmounts and arms nothing for late cell cleanup', () => {
@@ -601,189 +579,3 @@ it('leaves no timer behind when a parent unmounts before its cells, including af
   expect(lease.close).toHaveBeenCalledTimes(1);
 });
 
-// Cell by cell: the additive subscription API reads the same observation and the same registry
-// as the table-wide accessors above, so the two can never disagree.
-const Cells = createContext<TableMetricCells | null>(null);
-const renderCounts = new Map<string, number>();
-let latestCells: TableMetricCells | undefined;
-function CellView({ row, metricID }: { row: Row; metricID: string }) {
-  const cells = useContext(Cells)!;
-  const { sample, isLoading } = useTableMetricCell(cells, row.body, metricID);
-  const id = `${row.id}:${metricID}`;
-  renderCounts.set(id, (renderCounts.get(id) ?? 0) + 1);
-  return <output data-cell={id}>{sample ? sample.status : isLoading ? 'loading' : 'unavailable'}</output>;
-}
-const cellViewsOf = (rows: readonly Row[]) => rows.flatMap(row => ['cpu', 'memory'].map(metricID => <CellView key={`${row.id}:${metricID}`} row={row} metricID={metricID} />));
-/** Like a real table, the cells arrive as children: the table can render without re-rendering them. */
-function CellOwner({ options, children }: { options: UseTableMetricObservationOptions; children: ReactNode }) {
-  const observation = useTableMetricObservation(options);
-  latestCells = observation.cells;
-  return <Cells.Provider value={observation.cells}>{children}</Cells.Provider>;
-}
-beforeEach(() => {
-  renderCounts.clear();
-  latestCells = undefined;
-});
-
-it('answers a cell exactly as the table-wide accessors do, through loading, an answer, a recreated resource and an error', () => {
-  const recreated = Object.freeze({ name: 'recreated-body' });
-  const recreatedMap = new WeakMap([[recreated, member(firstRecord.key, 'incarnation-2')]]);
-  const { result, rerender } = renderTable();
-  const agree = (body: object) => {
-    for (const metricID of ['cpu', 'memory', 'disk']) {
-      const answer = result.current.cells.read(body, metricID);
-      const token = result.current.tokenFor(body);
-      expect(answer.sample).toBe(token ? result.current.metrics.get(token)?.get(metricID) : undefined);
-      expect(answer.isLoading).toBe(result.current.isLoadingFor(body, metricID));
-      expect(answer.error).toBe(result.current.error);
-    }
-  };
-  const everyone = [first, second, recreated, { name: 'not-admitted' }];
-  // Mounted, and awaiting publication.
-  act(() => { result.current.register(first); });
-  everyone.forEach(agree);
-  expect(result.current.cells.read(first, 'cpu').isLoading).toBe(true);
-  // Published, then answered.
-  act(() => { vi.advanceTimersByTime(120); });
-  everyone.forEach(agree);
-  act(() => transport.leases[0].receive(frame(firstRecord.key)));
-  everyone.forEach(agree);
-  expect(result.current.cells.read(first, 'cpu').sample?.value).toBe(0);
-  expect(result.current.cells.read(first, 'cpu').isLoading).toBe(false);
-  // The resource is recreated under the same host token while its old demand is retained: neither reader
-  // shows the previous incarnation's sample, and both keep the cell pending until the new request answers.
-  rerender({ ...base, recordsByBody: recreatedMap });
-  act(() => { result.current.register(recreated); });
-  everyone.forEach(agree);
-  expect(result.current.tokenFor(recreated)).toBeUndefined();
-  expect(result.current.cells.read(recreated, 'cpu').sample).toBeUndefined();
-  expect(result.current.cells.read(recreated, 'cpu').isLoading).toBe(true);
-  act(() => { vi.advanceTimersByTime(120); });
-  everyone.forEach(agree);
-  act(() => transport.leases[1].receive(frame(firstRecord.key)));
-  everyone.forEach(agree);
-  expect(result.current.cells.read(recreated, 'cpu').sample?.value).toBe(0);
-  // An upstream error blocks collection and loading for both.
-  const failure = new Error('Source discovery failed');
-  rerender({ ...base, recordsByBody: recreatedMap, loading: true, error: failure });
-  everyone.forEach(agree);
-  expect(result.current.cells.read(recreated, 'cpu').isLoading).toBe(false);
-  expect(result.current.cells.read(recreated, 'cpu').error).toBe(failure);
-});
-
-it('keeps one cells object and one answer object while nothing a cell can see changes', () => {
-  const { result, rerender } = renderTable();
-  const { cells } = result.current;
-  const { lease } = publishAnswered(result, first, firstRecord.key);
-  const answer = cells.read(first, 'cpu');
-  expect(answer.sample?.value).toBe(0);
-  // A table-level change, a repeated frame and a swapped map: the observation moves, no answer does.
-  act(() => lease.receive({ ...frame(firstRecord.key), fetching: true }));
-  expect(result.current.isFetching).toBe(true);
-  rerender({ ...base, recordsByBody: new WeakMap<object, HostRecord>([[first, member(firstRecord.key)], [second, secondRecord]]) });
-  expect(result.current.cells).toBe(cells);
-  expect(cells.read(first, 'cpu')).toBe(answer);
-});
-
-it('serves a table-wide reader and a cell of the same body from one registry and one observation', () => {
-  function Mixed({ legacy }: { legacy: boolean }) {
-    const observation = useTableMetricObservation(base);
-    return <Observation.Provider value={observation}>
-      <Cells.Provider value={observation.cells}>
-        {legacy && <Cell row={firstRow} metricID="cpu" />}
-        <CellView row={firstRow} metricID="memory" />
-      </Cells.Provider>
-    </Observation.Provider>;
-  }
-  const view = render(<Mixed legacy />);
-  act(() => { vi.advanceTimersByTime(120); });
-  expect(transport.leases).toHaveLength(1);
-  const lease = transport.leases[0];
-  expect(read(view, 'first', 'cpu')).toBe('loading');
-  expect(read(view, 'first', 'memory')).toBe('loading');
-  act(() => lease.receive(frame(firstRecord.key)));
-  expect(read(view, 'first', 'cpu')).toBe('ok');
-  expect(read(view, 'first', 'memory')).toBe('ok');
-  // The body stays requested until the last of its registrations, from either kind of reader, is cleaned up.
-  view.rerender(<Mixed legacy={false} />);
-  act(() => { vi.advanceTimersByTime(500); });
-  expect(lease.close).not.toHaveBeenCalled();
-  expect(transport.leases).toHaveLength(1);
-  expect(read(view, 'first', 'memory')).toBe('ok');
-  view.unmount();
-  expect(lease.close).toHaveBeenCalledTimes(1);
-  expect(vi.getTimerCount()).toBe(0);
-});
-
-it('re-renders only the cells whose own answer changed, however often the table renders', () => {
-  const children = cellViewsOf([firstRow, secondRow]);
-  const view = render(<CellOwner options={base}>{children}</CellOwner>);
-  act(() => { vi.advanceTimersByTime(120); });
-  expect(transport.leases).toHaveLength(1);
-  act(() => transport.leases[0].receive(frame([firstRecord.key, secondRecord.key])));
-  expect(read(view, 'first')).toBe('ok');
-  expect(read(view, 'second')).toBe('ok');
-  renderCounts.clear();
-  // The table swaps in a map for the same admitted records and the host repeats its answer: no answer moved.
-  view.rerender(<CellOwner options={{ ...base, recordsByBody: new WeakMap<object, HostRecord>([[first, member(firstRecord.key)], [second, secondRecord]]) }}>{children}</CellOwner>);
-  act(() => transport.leases[0].receive(frame([firstRecord.key, secondRecord.key])));
-  expect(renderCounts.size).toBe(0);
-  // One sample moves: its cell renders again and no other does.
-  const moved = frame([firstRecord.key, secondRecord.key]);
-  moved.data!.results.find(result => result.resource_token === secondRecord.key && result.metric_id === 'cpu')!.value = 0.5;
-  act(() => transport.leases[0].receive(moved));
-  expect([...renderCounts]).toEqual([['second:cpu', 1]]);
-  expect(latestCells!.read(second, 'cpu').sample?.value).toBe(0.5);
-  expect(latestCells!.read(second, 'memory').sample?.value).toBe(2048);
-  expect(latestCells!.read(first, 'cpu').sample?.value).toBe(0);
-});
-
-it('keeps every cell as it was when the host repeats a failure, and shows a failure that changes or clears', () => {
-  const failed = (error: string) => ({ ...frame([]), data: null, error });
-  const children = cellViewsOf([firstRow, secondRow]);
-  const view = render(<CellOwner options={base}>{children}</CellOwner>);
-  act(() => { vi.advanceTimersByTime(120); });
-  const lease = transport.leases[0];
-  act(() => lease.receive(failed('Metrics endpoint unavailable')));
-  const reported = latestCells!.read(first, 'cpu');
-  expect(reported.error).toMatchObject({ message: 'Metrics endpoint unavailable' });
-  expect(reported.isLoading).toBe(false);
-  expect(read(view, 'first')).toBe('unavailable');
-  renderCounts.clear();
-  // The same failure again moves nothing a cell can see.
-  act(() => lease.receive(failed('Metrics endpoint unavailable')));
-  expect(renderCounts.size).toBe(0);
-  expect(latestCells!.read(first, 'cpu')).toBe(reported);
-  // A different failure reaches every cell once, and so does its clearing.
-  act(() => lease.receive(failed('Metrics endpoint timed out')));
-  expect([...renderCounts.values()]).toEqual([1, 1, 1, 1]);
-  expect(latestCells!.read(first, 'cpu').error).toMatchObject({ message: 'Metrics endpoint timed out' });
-  renderCounts.clear();
-  act(() => lease.receive({ ...frame([]), data: null, fetching: true }));
-  expect([...renderCounts.values()]).toEqual([1, 1, 1, 1]);
-  expect(latestCells!.read(first, 'cpu').error).toBeNull();
-});
-
-it('leaves no cell subscription or timer behind when rows or the table unmount', () => {
-  let active = 0;
-  function Counted({ rows }: { rows: readonly Row[] }) {
-    const { cells } = useTableMetricObservation(base);
-    const counted = useMemo<TableMetricCells>(() => ({
-      register: cells.register,
-      read: cells.read,
-      subscribe: (listener) => {
-        active++;
-        const stop = cells.subscribe(listener);
-        return () => { active--; stop(); };
-      },
-    }), [cells]);
-    return <Cells.Provider value={counted}>{cellViewsOf(rows)}</Cells.Provider>;
-  }
-  const view = render(<Counted rows={[firstRow, secondRow]} />);
-  expect(active).toBe(4);
-  view.rerender(<Counted rows={[firstRow]} />);
-  expect(active).toBe(2);
-  view.unmount();
-  expect(active).toBe(0);
-  expect(vi.getTimerCount()).toBe(0);
-});

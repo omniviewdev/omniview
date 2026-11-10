@@ -163,39 +163,15 @@ cell's answer can change, so memoized cells re-render. `isLoading` is only the
 table-level aggregate: upstream discovery, or a published request for which no
 cell holds a sample or an answer yet.
 
-#### Cells that re-render alone
+#### Deliver metric updates once
 
-`batch` and its accessors change whenever any answer can, so every cell that reads
-them through context re-renders for another row's sample, or for a collection
-update that left its own answer as it was. A table with many mounted cells can
-share `batch.cells` instead. It is an additive view of the same observation and
-registry, answers by the same rules as `tokenFor`, `metrics` and `isLoadingFor`,
-and leaves those accessors as they are for consumers that read the whole table.
+Share the observation through context. Cells register their body in an effect,
+then read `tokenFor`, `metrics` and `isLoadingFor` while rendering, as above.
+Keep sample delivery in that React update. An experimental per-cell store that
+published from a layout effect forced a second synchronous commit after each
+answer; controlled scrolling runs showed more commits for the same rows.
+That unreleased API was removed rather than adding another update phase.
 
-```tsx
-import { createContext, useContext } from 'react';
-import { useTableMetricCell, type TableMetricCells } from '@omniviewdev/runtime';
-
-const Cells = createContext<TableMetricCells | null>(null);
-// <Cells.Provider value={batch.cells}>{table}</Cells.Provider>
-
-function CurrentCell({ body, metricID }: { body: object; metricID: string }) {
-  const { sample, isLoading } = useTableMetricCell(useContext(Cells)!, body, metricID);
-  if (sample?.status === 'ok' && sample.unit) return <MetricValue value={sample.value} unit={sample.unit} />;
-  return isLoading ? <span role="status">Loading…</span> : <span>—</span>;
-}
-```
-
-`cells` keeps one identity for the life of the owning hook, so sharing it through
-context re-renders nothing by itself, and `useTableMetricCell` registers its body
-for as long as the cell is mounted. A cell re-renders only when its own answer
-changes: its `sample`, its `isLoading` or the table's `error`. A sample that a
-newer frame repeats unchanged keeps its object, and so does a failure that the
-host repeats, so one moved sample, one repeated frame, one offscreen record
-update or a replaced `recordsByBody` that changes no answer does not re-render
-the cells it did not touch. A different failure, or one that clears, reaches every
-cell. Keep the observation itself out of the cells' context: it changes when its
-table-level state does.
 
 The runtime publishes target membership after 120 milliseconds without changes,
 and no later than 250 milliseconds after the first unpublished change, so

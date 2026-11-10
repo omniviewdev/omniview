@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { HostRecord } from '../../resource/v2/host';
 import { useMetricObservation, type PreparedMetricResult, type ResourceMetricTarget, type UseMetricObservationOptions } from './useMetricObservation';
 import { targetIdentity } from './targetIdentity';
@@ -22,49 +22,6 @@ export interface UseTableMetricObservationOptions extends Pick<UseMetricObservat
   error?: unknown;
 }
 
-/** What one table cell shows. It is the same answer `tokenFor`, `metrics` and `isLoadingFor` give for that cell, and an answer that has not changed keeps its identity. */
-export interface TableMetricCellState {
-  /**
-   * The sample held for this body and metric. Unavailable and failed samples are answers too. Absent
-   * while the request has not answered, and while the only samples held under the body's host token
-   * belong to the previous incarnation of a recreated resource, so a cell never shows the value of a
-   * resource that was deleted.
-   */
-  readonly sample: PreparedMetricResult | undefined;
-  /**
-   * Whether this cell still awaits its first answer. True for an admitted, selected cell that has
-   * no sample while demand is awaiting publication, collection is paused by a hidden document or
-   * no request that included the cell has answered yet. False once the cell holds any sample
-   * (unavailable and failed samples are answers), once a request that included it has answered
-   * without one, after an error, and when the cell can never be collected: disabled collection,
-   * an unselected metric or a body the table did not admit. Upstream `loading` keeps every such
-   * cell pending. An answer outlives its request while the table asks for other targets or
-   * metrics, so a settled cell does not load again because its neighbours changed. It does not
-   * outlive a change of plugin, connection, resource type, binding or source, or the recreation
-   * of its resource, and a target or metric that no completed request included still loads.
-   */
-  readonly isLoading: boolean;
-  /**
-   * Upstream discovery or observation failure; every cell of the table sees the same one. A failure
-   * the host repeats is the same object, so it does not wake a cell; a changed or cleared one does.
-   */
-  readonly error: unknown;
-}
-
-/**
- * The table's cells. Its identity is stable for the life of the owning hook, so sharing it through
- * context never re-renders a cell. Cells read it through `useTableMetricCell`; the members serve
- * callers that do not render with React. Reading it is the same derivation as the observation's
- * own `tokenFor`, `metrics` and `isLoadingFor`.
- */
-export interface TableMetricCells {
-  /** Register in a cell effect. Multiple cells for one body share one target. Cleanup is idempotent. */
-  register: (body: object) => () => void;
-  /** Called after a commit in which the table's state changed. Read again to learn whether an answer did. */
-  subscribe: (listener: () => void) => () => void;
-  /** The current answer for one body and metric; the same object while that answer is unchanged. */
-  read: (body: object, metricID: string) => TableMetricCellState;
-}
 
 export interface TableMetricObservation {
   metrics: ReadonlyMap<string, ReadonlyMap<string, PreparedMetricResult>>;
@@ -101,13 +58,6 @@ export interface TableMetricObservation {
   isFetching: boolean;
   error: unknown;
   refresh: () => Promise<void>;
-  /**
-   * The same answers cell by cell. Its identity is stable for the life of the owning hook, and a
-   * cell that renders with `useTableMetricCell` re-renders only when its own answer changes. Share
-   * it, rather than this whole observation, with cells that must not re-render for another cell's
-   * sample or for a collection update that leaves their answer as it was.
-   */
-  readonly cells: TableMetricCells;
 }
 
 const visibilityListeners = new Set<() => void>();
@@ -354,63 +304,6 @@ function isAwaiting(inputs: CellInputs, record: HostRecord, hasSample: boolean, 
   return inputs.requested.get(record.key) !== identity || !isAnswered;
 }
 
-/**
- * The table's cells over its latest state. The owner pushes each new state after its commit and a
- * cell is woken only if its own answer changed, so one sample, one offscreen record or one swapped
- * map never re-renders the cells it did not touch. An answer keeps its identity while it is equal,
- * as an external-store snapshot must. It reads through the same functions as the observation's
- * `tokenFor` and `isLoadingFor`, so a cell and a table-wide reader can never disagree.
- */
-class CellStore implements TableMetricCells {
-  private inputs: CellInputs;
-  private readonly answers = new WeakMap<object, Map<string, TableMetricCellState>>();
-  private readonly listeners = new Set<() => void>();
-  readonly register: (body: object) => () => void;
-
-  constructor(inputs: CellInputs, register: (body: object) => () => void) {
-    this.inputs = inputs;
-    this.register = register;
-  }
-
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
-  };
-
-  update(inputs: CellInputs) {
-    if (inputs === this.inputs) return;
-    this.inputs = inputs;
-    for (const listener of [...this.listeners]) listener();
-  }
-
-  read = (body: object, metricID: string): TableMetricCellState => {
-    const { inputs } = this;
-    const record = inputs.recordsByBody.get(body);
-    const sample = record ? sampleOf(inputs, record, metricID) : undefined;
-    const isLoading = record ? isAwaiting(inputs, record, sample !== undefined, metricID) : false;
-    let byMetric = this.answers.get(body);
-    const previous = byMetric?.get(metricID);
-    if (previous !== undefined && previous.sample === sample && previous.isLoading === isLoading && previous.error === inputs.error) return previous;
-    const answer = Object.freeze({ sample, isLoading, error: inputs.error });
-    if (!byMetric) {
-      byMetric = new Map();
-      this.answers.set(body, byMetric);
-    }
-    byMetric.set(metricID, answer);
-    return answer;
-  };
-}
-
-/**
- * One cell's view of its table's metrics. The body's demand stays registered while the cell is
- * mounted, and the cell re-renders only when its own sample, loading state or error changes.
- */
-export function useTableMetricCell(cells: TableMetricCells, body: object, metricID: string): TableMetricCellState {
-  const { register, subscribe, read } = cells;
-  useEffect(() => register(body), [register, body]);
-  const answer = useCallback(() => read(body, metricID), [read, body, metricID]);
-  return useSyncExternalStore(subscribe, answer, answer);
-}
 
 /**
  * Headless current-metric observation for any resource table. Cells register presentation
@@ -428,13 +321,11 @@ export function useTableMetricCell(cells: TableMetricCells, body: object, metric
  * left the table is forgotten. The timers batch view demand only: the host still owns polling and
  * result reuse.
  *
- * Read the table's answers either at once, through `metrics`, `tokenFor` and `isLoadingFor`, or one
- * cell at a time: share `cells` and render each cell with `useTableMetricCell`. Both read the same
- * observation and the same registry. The at-once accessors are replaced whenever an answer can
- * change, so a consumer that holds them in context re-renders with every change; a cell of `cells`
- * re-renders only when its own answer does. A target set that is equal to the published one, a
- * swapped `recordsByBody` that changes no answer and a sample that a newer frame repeats unchanged
- * neither reopen the observation nor wake a cell.
+ * Cells register their body in an effect and read their sample and loading state from this
+ * observation. Answers are delivered in the same React update as the owning table; a second
+ * external-store publication from a layout effect would force another synchronous commit.
+ * A target set equal to the published one keeps its identity, and repeated samples reuse
+ * prepared results.
  */
 export function useTableMetricObservation(options: UseTableMetricObservationOptions): TableMetricObservation {
   const { ownerPluginID, ownerConnectionID, resourceKey, bindingID, source, recordsByBody, metricIDs, loading } = options;
@@ -484,12 +375,7 @@ export function useTableMetricObservation(options: UseTableMetricObservationOpti
   const covering = answered?.scope === scope ? answered : null;
   const inputs = useMemo<CellInputs>(() => ({ recordsByBody, requested, metrics, selected, allowed, loading: !!loading, answered: covering, error }),
     [recordsByBody, requested, metrics, selected, allowed, loading, covering, error]);
-  // The cells start from this render's inputs. Later inputs reach them after the commit that carries them:
-  // a cell rendered in that same pass read the previous ones and is corrected before the browser paints.
-  const [cells] = useState(() => new CellStore(inputs, demand.register));
-  useLayoutEffect(() => { cells.update(inputs); }, [cells, inputs]);
-  // The table-wide accessors read the same inputs the cells do. Each is replaced whenever an answer it
-  // gives can change, so a consumer that memoizes on one re-renders; a consumer of `cells` does not.
+  // Replace accessors only when an answer they expose can change.
   const tokenFor = useCallback((body: object) => {
     const record = recordsByBody.get(body);
     return record ? tokenOf(record, requested, metrics) : undefined;
@@ -500,6 +386,6 @@ export function useTableMetricObservation(options: UseTableMetricObservationOpti
   }, [inputs]);
   const isLoading = !error && (!!loading || (allowed && admittedTargets.length > 0 && metrics.size === 0 && !answersAny(covering, requested, selected)));
   return useMemo(() => ({ metrics, register: demand.register, tokenFor, error, isLoading, isLoadingFor, isFetching,
-    refresh: observation.refresh, cells }),
-  [metrics, demand, tokenFor, error, isLoading, isLoadingFor, isFetching, observation.refresh, cells]);
+    refresh: observation.refresh }),
+  [metrics, demand, tokenFor, error, isLoading, isLoadingFor, isFetching, observation.refresh]);
 }
