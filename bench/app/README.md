@@ -815,3 +815,18 @@ A later serial baseline/candidate reference rerun still failed the frame budget
 and input-delivery gate: driver lateness p95 exceeded one second in every
 candidate trial. Keep those raw receipts as failed diagnostics, not accepted
 performance evidence. Do not merge on the strength of comparison counts alone.
+
+[Portable recorded evidence](renderer-sprint-evidence-2026-11-09.json) preserves
+24 trial summaries from eight original recordings, their SHA-256 digests,
+workload definitions, environment, build/plugin/UI hashes, and functional
+receipts. It excludes raw series, profiles, filesystem paths and resource
+payloads. Every published trial scalar was checked against its original JSON.
+Recordings predate the host rebase; dirty-build fingerprints identify the
+measured bytes, not the final rebased PR commits.
+
+The early sparse baseline also suffered input backpressure. Its lower
+candidate frame intervals are observations, not an isolated or accepted
+percentage speedup. The no-update comparison did not improve frame timing,
+and the generic smoke's bounded DOM is not evidence of faster frames. Keep
+all these comparisons, including regressions and failed input delivery, visible
+in PR review.

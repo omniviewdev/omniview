@@ -147,16 +147,17 @@ const ResourceTableContainer: React.FC<Props> = ({
   });
 
   // Rows are measured only while a visible column renders content the table cannot size.
-  const hasContentColumn = table.getVisibleLeafColumns().some(
-    (column) => (column.columnDef.meta as ResourceColumnMeta | undefined)?.rowHeight === 'content',
-  );
+  const hasContentColumn = table.getVisibleLeafColumns().some((column) => {
+    const meta: ResourceColumnMeta | undefined = column.columnDef.meta;
+    return meta?.rowHeight === 'content';
+  });
 
   /** Open the clicked row's resource, unless the click landed in a column that acts on its own. */
   const openDetail = (row: DataTableRow<ResourceTableRow>, event: React.MouseEvent<HTMLTableRowElement>) => {
     // A row's cells follow its visible columns, so the clicked cell's position names its column.
     const cell = event.target instanceof Element ? event.target.closest('td') : null;
     const index = cell ? Array.prototype.indexOf.call(event.currentTarget.children, cell) : -1;
-    const meta = row.getVisibleCells()[index]?.column.columnDef.meta as ResourceColumnMeta | undefined;
+    const meta: ResourceColumnMeta | undefined = row.getVisibleCells()[index]?.column.columnDef.meta;
     if (meta?.opensDetail === false) {
       return;
     }

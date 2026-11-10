@@ -1,0 +1,4793 @@
+{
+  "schema": "ov-renderer-sprint-evidence/v1",
+  "scope": "Synthetic in-page Wails backend; renderer only. No native IPC, real cluster, compositor-pixel or M1 certification.",
+  "projection": "Allowlisted recorded metadata and per-trial scalar summaries. Original raw series remain private; SHA-256 identifies each original JSON. No paths, resource payloads, stack profiles or credentials are published.",
+  "sourceCaveat": "Runs used dirty source-baked builds before host rebase onto 137779fbc83552f40fa90d8cb00617cd8f31e291. Bundle/dist/harness hashes identify measured bytes; these are not recordings of the final rebased PR commits.",
+  "acceptance": "FAILED / NOT ESTABLISHED. Both early and final sparse baselines show input backpressure. Later unchanged-control regressions and shared-host contention prevent isolated final frame-time acceptance. Do not turn these observations into a frame-speedup percentage.",
+  "runs": {
+    "baseline-paced-reference": {
+      "originalFile": "baseline-paced-reference.json",
+      "originalSHA256": "78b93d3a4fbb03d5894801be9b9f7dc079dc1eb60db0ddc511bfe7a0398f48b0",
+      "meta": {
+        "date": "2026-11-09T23:32:59.219Z",
+        "label": "baseline-paced-reference",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": false,
+          "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59434674,
+            "treeSHA256": "057dbb8a55859ebe4f4726956d5b0e1201ef3906bc0cedd2a79cfe6bdae64a52"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "2d75ffc3c40526fe1a0d09f04a49b2ca65581b9db5efddd370d7a0e85d7219d2"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": false,
+            "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13568337,
+            "entrySHA256": "20b32bab89f9aebcceb529c8303b38eacd5a96378d9be1c02395f01f93f210ad",
+            "treeSHA256": "bbc804d358d968bd48a3bb3eb452ab44479b444ac810792ddfde4cb9371c039a"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13675137,
+              "treeSHA256": "4c3334941ff28862b025f5ddde87c36bb60df91f1f267a1ec95a36be4e41c7be"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 284,
+              "bytes": 1232990,
+              "treeSHA256": "a08aadce68c35b12c2ac5594c3c1410c157912005fce4ef7d0b7fd116325a597"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": []
+        },
+        "scenarios": {
+          "pods-paced[metrics=healthy,updates=none,cpu=4x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "plugin",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 30,
+                  "trials": 3,
+                  "metrics": "healthy",
+                  "surface": "plugin",
+                  "updates": "none",
+                  "metricDelayMs": 25,
+                  "trialSeconds": 20,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "healthy",
+              "updates": "none",
+              "cpuThrottle": 4
+            },
+            "table": {
+              "columns": {
+                "count": 14,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Containers",
+                  "CPU",
+                  "Memory",
+                  "Controlled By",
+                  "Node",
+                  "Pod IP",
+                  "QoS",
+                  "Restarts",
+                  "Status",
+                  "Age",
+                  ""
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 48,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 14
+              },
+              "scroller": {
+                "clientHeight": 712,
+                "clientWidth": 1126,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149318,
+                "rect": {
+                  "left": 307,
+                  "top": 119,
+                  "width": 1126,
+                  "height": 712
+                }
+              },
+              "domElements": 4855,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.666,
+              "minMs": 16.6,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 8,
+              "deltaModes": {
+                "0": 8
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 30,
+              "measuredWallSeconds": 30.5
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 20000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 24000,
+              "events": 1200
+            },
+            "protocolDeviations": []
+          }
+        }
+      },
+      "results": {
+        "pods-paced[metrics=healthy,updates=none,cpu=4x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20475,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 802,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23900,
+              "residualPxAtInputEnd": 100,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 30.8,
+              "driverHz": 60,
+              "pageWheelHz": 39.82,
+              "driverLateP95Ms": 0.62,
+              "driverLateMaxMs": 0.995,
+              "ackP95Ms": 160.313,
+              "wheelDelayP95Ms": 177.9,
+              "wheelDelayMaxMs": 279.6,
+              "frames": 296,
+              "frameMeanMs": 67.737,
+              "frameP50Ms": 66.7,
+              "frameP95Ms": 116.7,
+              "frameP99Ms": 166.6,
+              "frameMaxMs": 183.3,
+              "fpsMean": 14.76,
+              "framesOver20Ms": 267,
+              "framesOver33Ms": 239,
+              "framesOver50Ms": 193,
+              "framesOver100Ms": 28,
+              "droppedFramesEstimate": 904,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 140,
+              "lagP95Px": 240,
+              "lagMaxPx": 340,
+              "lagP95Ms": 200,
+              "lagMaxMs": 283.3,
+              "taskMs": 15978.07,
+              "scriptMs": 4255.54,
+              "layoutMs": 644.31,
+              "styleMs": 3919.21,
+              "threadMs": 19386.82,
+              "layoutCount": 234,
+              "styleRecalcCount": 3919,
+              "cdpNodesDelta": -32051,
+              "cdpNodesEnd": 14075,
+              "layoutObjectsEnd": 13748,
+              "jsListenersEnd": 4836,
+              "heapMB": 103.48,
+              "longTasks": 143,
+              "longTaskMaxMs": 101,
+              "blockingMs": 2785,
+              "loafCount": 139,
+              "loafMaxMs": 199.3,
+              "loafBlockingMs": 580,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4855,
+              "domElementsEnd": 7107,
+              "domElementsMax": 7434,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 216,
+              "metricOpens": 70,
+              "metricAttaches": 70,
+              "metricRefreshes": 0,
+              "metricCloses": 70,
+              "metricTargetsRequested": 5268,
+              "metricDataFrames": 70,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 2,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20469.4,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 818,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23900,
+              "residualPxAtInputEnd": 100,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 76,
+              "driverHz": 60,
+              "pageWheelHz": 40.61,
+              "driverLateP95Ms": 0.609,
+              "driverLateMaxMs": 1.014,
+              "ackP95Ms": 162.917,
+              "wheelDelayP95Ms": 168.6,
+              "wheelDelayMaxMs": 253.9,
+              "frames": 313,
+              "frameMeanMs": 63.993,
+              "frameP50Ms": 66.6,
+              "frameP95Ms": 100.1,
+              "frameP99Ms": 116.8,
+              "frameMaxMs": 150,
+              "fpsMean": 15.63,
+              "framesOver20Ms": 283,
+              "framesOver33Ms": 253,
+              "framesOver50Ms": 192,
+              "framesOver100Ms": 20,
+              "droppedFramesEstimate": 886,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 140,
+              "lagP95Px": 220,
+              "lagMaxPx": 280,
+              "lagP95Ms": 183.3,
+              "lagMaxMs": 233.3,
+              "taskMs": 15915.87,
+              "scriptMs": 4294.35,
+              "layoutMs": 623.54,
+              "styleMs": 3933.21,
+              "threadMs": 19373.88,
+              "layoutCount": 242,
+              "styleRecalcCount": 3965,
+              "cdpNodesDelta": 34106,
+              "cdpNodesEnd": 53515,
+              "layoutObjectsEnd": 52096,
+              "jsListenersEnd": 19235,
+              "heapMB": 170.72,
+              "longTasks": 141,
+              "longTaskMaxMs": 104,
+              "blockingMs": 2427,
+              "loafCount": 132,
+              "loafMaxMs": 166.5,
+              "loafBlockingMs": 534.5,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4855,
+              "domElementsEnd": 7107,
+              "domElementsMax": 7437,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 216,
+              "metricOpens": 70,
+              "metricAttaches": 70,
+              "metricRefreshes": 0,
+              "metricCloses": 70,
+              "metricTargetsRequested": 5248,
+              "metricDataFrames": 70,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 3,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20537.3,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 801,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23520,
+              "residualPxAtInputEnd": 480,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 75.8,
+              "driverHz": 60,
+              "pageWheelHz": 39.71,
+              "driverLateP95Ms": 0.603,
+              "driverLateMaxMs": 1.044,
+              "ackP95Ms": 174.638,
+              "wheelDelayP95Ms": 183.5,
+              "wheelDelayMaxMs": 336.5,
+              "frames": 295,
+              "frameMeanMs": 67.741,
+              "frameP50Ms": 66.7,
+              "frameP95Ms": 116.6,
+              "frameP99Ms": 150,
+              "frameMaxMs": 233.3,
+              "fpsMean": 14.76,
+              "framesOver20Ms": 268,
+              "framesOver33Ms": 239,
+              "framesOver50Ms": 200,
+              "framesOver100Ms": 17,
+              "droppedFramesEstimate": 902,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 140,
+              "lagP95Px": 240,
+              "lagMaxPx": 380,
+              "lagP95Ms": 200,
+              "lagMaxMs": 316.7,
+              "taskMs": 15922.48,
+              "scriptMs": 4352.86,
+              "layoutMs": 619.17,
+              "styleMs": 3816.74,
+              "threadMs": 19419.07,
+              "layoutCount": 233,
+              "styleRecalcCount": 3910,
+              "cdpNodesDelta": -47904,
+              "cdpNodesEnd": 10945,
+              "layoutObjectsEnd": 10694,
+              "jsListenersEnd": 3725,
+              "heapMB": 105.2,
+              "longTasks": 135,
+              "longTaskMaxMs": 112,
+              "blockingMs": 2688,
+              "loafCount": 126,
+              "loafMaxMs": 289.6,
+              "loafBlockingMs": 754,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4855,
+              "domElementsEnd": 7107,
+              "domElementsMax": 7432,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 228,
+              "metricOpens": 74,
+              "metricAttaches": 74,
+              "metricRefreshes": 0,
+              "metricCloses": 74,
+              "metricTargetsRequested": 5552,
+              "metricDataFrames": 74,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 0,
+            "capture": "frames",
+            "scroll": {
+              "windowMs": 20369.8,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": null,
+              "pageWheelPx": null,
+              "deliveredPxAtInputEnd": null,
+              "residualPxAtInputEnd": null,
+              "deliveredPxSettled": null,
+              "deliveredPathPx": null,
+              "settleMs": 12.5,
+              "driverHz": 60,
+              "pageWheelHz": null,
+              "driverLateP95Ms": 0.594,
+              "driverLateMaxMs": 1.072,
+              "ackP95Ms": 176.952,
+              "wheelDelayP95Ms": null,
+              "wheelDelayMaxMs": null,
+              "frames": 291,
+              "frameMeanMs": 68.848,
+              "frameP50Ms": 66.7,
+              "frameP95Ms": 116.6,
+              "frameP99Ms": 150,
+              "frameMaxMs": 183.3,
+              "fpsMean": 14.52,
+              "framesOver20Ms": 266,
+              "framesOver33Ms": 244,
+              "framesOver50Ms": 192,
+              "framesOver100Ms": 23,
+              "droppedFramesEstimate": 908,
+              "coverageMin": null,
+              "coverageP05": null,
+              "coverageMean": null,
+              "coverageHoles": null,
+              "coverageHoleFraction": null,
+              "coverageLongestHoleMs": null,
+              "minAbovePx": null,
+              "minBelowPx": null,
+              "mountedRowsMin": null,
+              "mountedRowsMedian": null,
+              "mountedRowsMax": null,
+              "lagP50Px": null,
+              "lagP95Px": null,
+              "lagMaxPx": null,
+              "lagP95Ms": null,
+              "lagMaxMs": null,
+              "taskMs": 15253,
+              "scriptMs": 4188.67,
+              "layoutMs": 624.88,
+              "styleMs": 3797,
+              "threadMs": 19132.93,
+              "layoutCount": 222,
+              "styleRecalcCount": 3902,
+              "cdpNodesDelta": 89533,
+              "cdpNodesEnd": 105812,
+              "layoutObjectsEnd": 103109,
+              "jsListenersEnd": 38378,
+              "heapMB": 249.64,
+              "longTasks": 128,
+              "longTaskMaxMs": 127,
+              "blockingMs": 2902,
+              "loafCount": null,
+              "loafMaxMs": null,
+              "loafBlockingMs": null,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4855,
+              "domElementsEnd": 7107,
+              "domElementsMax": 7107,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 222,
+              "metricOpens": 72,
+              "metricAttaches": 72,
+              "metricRefreshes": 0,
+              "metricCloses": 72,
+              "metricTargetsRequested": 5424,
+              "metricDataFrames": 72,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 0,
+            "capture": "off",
+            "scroll": {
+              "windowMs": 21097.1,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": null,
+              "pageWheelPx": null,
+              "deliveredPxAtInputEnd": null,
+              "residualPxAtInputEnd": null,
+              "deliveredPxSettled": null,
+              "deliveredPathPx": null,
+              "settleMs": null,
+              "driverHz": 60,
+              "pageWheelHz": null,
+              "driverLateP95Ms": 0.606,
+              "driverLateMaxMs": 1.13,
+              "ackP95Ms": 210.386,
+              "wheelDelayP95Ms": null,
+              "wheelDelayMaxMs": null,
+              "frames": null,
+              "frameMeanMs": null,
+              "frameP50Ms": null,
+              "frameP95Ms": null,
+              "frameP99Ms": null,
+              "frameMaxMs": null,
+              "fpsMean": null,
+              "framesOver20Ms": null,
+              "framesOver33Ms": null,
+              "framesOver50Ms": null,
+              "framesOver100Ms": null,
+              "droppedFramesEstimate": null,
+              "coverageMin": null,
+              "coverageP05": null,
+              "coverageMean": null,
+              "coverageHoles": null,
+              "coverageHoleFraction": null,
+              "coverageLongestHoleMs": null,
+              "minAbovePx": null,
+              "minBelowPx": null,
+              "mountedRowsMin": null,
+              "mountedRowsMedian": null,
+              "mountedRowsMax": null,
+              "lagP50Px": null,
+              "lagP95Px": null,
+              "lagMaxPx": null,
+              "lagP95Ms": null,
+              "lagMaxMs": null,
+              "taskMs": 15306.26,
+              "scriptMs": 4306.72,
+              "layoutMs": 586.65,
+              "styleMs": 3557.41,
+              "threadMs": 19713.53,
+              "layoutCount": 216,
+              "styleRecalcCount": 4252,
+              "cdpNodesDelta": -16203,
+              "cdpNodesEnd": 94943,
+              "layoutObjectsEnd": 92632,
+              "jsListenersEnd": 34399,
+              "heapMB": 235.81,
+              "longTasks": null,
+              "longTaskMaxMs": null,
+              "blockingMs": null,
+              "loafCount": null,
+              "loafMaxMs": null,
+              "loafBlockingMs": null,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": null,
+              "domElementsEnd": null,
+              "domElementsMax": null,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 252,
+              "metricOpens": 82,
+              "metricAttaches": 82,
+              "metricRefreshes": 0,
+              "metricCloses": 82,
+              "metricTargetsRequested": 6180,
+              "metricDataFrames": 82,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          }
+        ]
+      }
+    },
+    "candidate-paced-reference": {
+      "originalFile": "candidate-paced-reference.json",
+      "originalSHA256": "d460c583630fc4f2e5d636bd3ed93caa17bfedde86f1b23a3bcf9898f3753b11",
+      "meta": {
+        "date": "2026-11-09T23:36:22.344Z",
+        "label": "candidate-paced-reference",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": true,
+          "trackedDiffSHA256": "f28a9685f1dcdd4a4cdbb820c439b92e71b78fad75f740fac9c23c0ce8894663"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59450853,
+            "treeSHA256": "e72afffa506a8e0140c6ddab372b333ac381f7316ce5ba8ed14a45e9674132cd"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "2d75ffc3c40526fe1a0d09f04a49b2ca65581b9db5efddd370d7a0e85d7219d2"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": true,
+            "trackedDiffSHA256": "00f9cc5875bfabba0614ab088cbff0d622950e0cfedba8ce4c4c8a7560184302"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13584745,
+            "entrySHA256": "67c59e6039248ae3935789d6a4e3ede3d29da8cdde7dc48900fb4d0161ec3bf0",
+            "treeSHA256": "b97e2635355a13b426efdfd0b330c7dc351dd38c7d642a58840e9bbac3a38067"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13680031,
+              "treeSHA256": "0110a32e040f6a1dbaf5ec9f22c98bb7632bb8eb890afaa7d57addf432a02238"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "422a90c4ea59060fe5c384f1fe149f02608100be2fadf8226767ef7e5059fede"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "422a90c4ea59060fe5c384f1fe149f02608100be2fadf8226767ef7e5059fede"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "422a90c4ea59060fe5c384f1fe149f02608100be2fadf8226767ef7e5059fede"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 285,
+              "bytes": 1250898,
+              "treeSHA256": "7f7d33151d7549f30013c8e9a79e1e8a03d673bee4f4ef3a21d68610cd297047"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": []
+        },
+        "scenarios": {
+          "pods-paced[metrics=healthy,updates=none,cpu=4x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "plugin",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 30,
+                  "trials": 3,
+                  "metrics": "healthy",
+                  "surface": "plugin",
+                  "updates": "none",
+                  "metricDelayMs": 25,
+                  "trialSeconds": 20,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "healthy",
+              "updates": "none",
+              "cpuThrottle": 4
+            },
+            "table": {
+              "columns": {
+                "count": 14,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Containers",
+                  "CPU",
+                  "Memory",
+                  "Controlled By",
+                  "Node",
+                  "Pod IP",
+                  "QoS",
+                  "Restarts",
+                  "Status",
+                  "Age",
+                  ""
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 48,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 14
+              },
+              "scroller": {
+                "clientHeight": 712,
+                "clientWidth": 1126,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149318,
+                "rect": {
+                  "left": 307,
+                  "top": 119,
+                  "width": 1126,
+                  "height": 712
+                }
+              },
+              "domElements": 4231,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.663,
+              "minMs": 16.6,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 8,
+              "deltaModes": {
+                "0": 8
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 30,
+              "measuredWallSeconds": 30.5
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 20000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 24000,
+              "events": 1200
+            },
+            "protocolDeviations": []
+          }
+        }
+      },
+      "results": {
+        "pods-paced[metrics=healthy,updates=none,cpu=4x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20515.4,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 772,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23660,
+              "residualPxAtInputEnd": 340,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 68.6,
+              "driverHz": 60,
+              "pageWheelHz": 38.42,
+              "driverLateP95Ms": 3.612,
+              "driverLateMaxMs": 411.458,
+              "ackP95Ms": 729.183,
+              "wheelDelayP95Ms": 594.9,
+              "wheelDelayMaxMs": 1484.4,
+              "frames": 256,
+              "frameMeanMs": 77.971,
+              "frameP50Ms": 50.1,
+              "frameP95Ms": 216.7,
+              "frameP99Ms": 416.6,
+              "frameMaxMs": 749.9,
+              "fpsMean": 12.83,
+              "framesOver20Ms": 225,
+              "framesOver33Ms": 189,
+              "framesOver50Ms": 133,
+              "framesOver100Ms": 41,
+              "droppedFramesEstimate": 938,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 120,
+              "lagP95Px": 880,
+              "lagMaxPx": 1820,
+              "lagP95Ms": 733.3,
+              "lagMaxMs": 1516.7,
+              "taskMs": 16718.62,
+              "scriptMs": 5021.7,
+              "layoutMs": 857.77,
+              "styleMs": 3619.57,
+              "threadMs": 18583.31,
+              "layoutCount": 211,
+              "styleRecalcCount": 3827,
+              "cdpNodesDelta": 8953,
+              "cdpNodesEnd": 38762,
+              "layoutObjectsEnd": 37837,
+              "jsListenersEnd": 14955,
+              "heapMB": 125.78,
+              "longTasks": 81,
+              "longTaskMaxMs": 732,
+              "blockingMs": 5047,
+              "loafCount": 106,
+              "loafMaxMs": 1175.4,
+              "loafBlockingMs": 3469.6,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6171,
+              "domElementsMax": 6458,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 198,
+              "metricOpens": 64,
+              "metricAttaches": 64,
+              "metricRefreshes": 0,
+              "metricCloses": 64,
+              "metricTargetsRequested": 4788,
+              "metricDataFrames": 64,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 2,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20396.9,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 828,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23880,
+              "residualPxAtInputEnd": 120,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 45.1,
+              "driverHz": 60,
+              "pageWheelHz": 41.28,
+              "driverLateP95Ms": 0.043,
+              "driverLateMaxMs": 18.962,
+              "ackP95Ms": 161.022,
+              "wheelDelayP95Ms": 167.4,
+              "wheelDelayMaxMs": 271.2,
+              "frames": 336,
+              "frameMeanMs": 59.599,
+              "frameP50Ms": 66.6,
+              "frameP95Ms": 100,
+              "frameP99Ms": 133.3,
+              "frameMaxMs": 183.3,
+              "fpsMean": 16.78,
+              "framesOver20Ms": 297,
+              "framesOver33Ms": 265,
+              "framesOver50Ms": 187,
+              "framesOver100Ms": 16,
+              "droppedFramesEstimate": 863,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 120,
+              "lagP95Px": 220,
+              "lagMaxPx": 320,
+              "lagP95Ms": 183.3,
+              "lagMaxMs": 266.7,
+              "taskMs": 15992.12,
+              "scriptMs": 4137.17,
+              "layoutMs": 756.24,
+              "styleMs": 2999.36,
+              "threadMs": 19250.46,
+              "layoutCount": 254,
+              "styleRecalcCount": 4012,
+              "cdpNodesDelta": -29427,
+              "cdpNodesEnd": 14045,
+              "layoutObjectsEnd": 13672,
+              "jsListenersEnd": 5260,
+              "heapMB": 113.98,
+              "longTasks": 147,
+              "longTaskMaxMs": 117,
+              "blockingMs": 1931,
+              "loafCount": 132,
+              "loafMaxMs": 207.1,
+              "loafBlockingMs": 409.3,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6171,
+              "domElementsMax": 6453,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 210,
+              "metricOpens": 68,
+              "metricAttaches": 68,
+              "metricRefreshes": 0,
+              "metricCloses": 68,
+              "metricTargetsRequested": 5100,
+              "metricDataFrames": 68,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 3,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20453.2,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 765,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23780,
+              "residualPxAtInputEnd": 220,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 43,
+              "driverHz": 60,
+              "pageWheelHz": 37.98,
+              "driverLateP95Ms": 0.111,
+              "driverLateMaxMs": 8.902,
+              "ackP95Ms": 229.815,
+              "wheelDelayP95Ms": 245.4,
+              "wheelDelayMaxMs": 379,
+              "frames": 243,
+              "frameMeanMs": 82.504,
+              "frameP50Ms": 83.3,
+              "frameP95Ms": 150.1,
+              "frameP99Ms": 216.7,
+              "frameMaxMs": 233.3,
+              "fpsMean": 12.12,
+              "framesOver20Ms": 226,
+              "framesOver33Ms": 209,
+              "framesOver50Ms": 174,
+              "framesOver100Ms": 58,
+              "droppedFramesEstimate": 957,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 160,
+              "lagP95Px": 320,
+              "lagMaxPx": 460,
+              "lagP95Ms": 266.7,
+              "lagMaxMs": 383.3,
+              "taskMs": 17090.21,
+              "scriptMs": 5213.34,
+              "layoutMs": 844.63,
+              "styleMs": 3477.76,
+              "threadMs": 19005.01,
+              "layoutCount": 211,
+              "styleRecalcCount": 3803,
+              "cdpNodesDelta": 19394,
+              "cdpNodesEnd": 38149,
+              "layoutObjectsEnd": 37088,
+              "jsListenersEnd": 14610,
+              "heapMB": 139.54,
+              "longTasks": 124,
+              "longTaskMaxMs": 182,
+              "blockingMs": 4626,
+              "loafCount": 129,
+              "loafMaxMs": 237.6,
+              "loafBlockingMs": 2380.2,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6171,
+              "domElementsMax": 6498,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 219,
+              "metricOpens": 71,
+              "metricAttaches": 71,
+              "metricRefreshes": 0,
+              "metricCloses": 71,
+              "metricTargetsRequested": 5320,
+              "metricDataFrames": 71,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 0,
+            "capture": "frames",
+            "scroll": {
+              "windowMs": 20403.9,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": null,
+              "pageWheelPx": null,
+              "deliveredPxAtInputEnd": null,
+              "residualPxAtInputEnd": null,
+              "deliveredPxSettled": null,
+              "deliveredPathPx": null,
+              "settleMs": 52.4,
+              "driverHz": 60,
+              "pageWheelHz": null,
+              "driverLateP95Ms": 0.064,
+              "driverLateMaxMs": 5.277,
+              "ackP95Ms": 211.886,
+              "wheelDelayP95Ms": null,
+              "wheelDelayMaxMs": null,
+              "frames": 252,
+              "frameMeanMs": 79.545,
+              "frameP50Ms": 83.3,
+              "frameP95Ms": 150,
+              "frameP99Ms": 183.3,
+              "frameMaxMs": 183.3,
+              "fpsMean": 12.57,
+              "framesOver20Ms": 234,
+              "framesOver33Ms": 216,
+              "framesOver50Ms": 178,
+              "framesOver100Ms": 56,
+              "droppedFramesEstimate": 948,
+              "coverageMin": null,
+              "coverageP05": null,
+              "coverageMean": null,
+              "coverageHoles": null,
+              "coverageHoleFraction": null,
+              "coverageLongestHoleMs": null,
+              "minAbovePx": null,
+              "minBelowPx": null,
+              "mountedRowsMin": null,
+              "mountedRowsMedian": null,
+              "mountedRowsMax": null,
+              "lagP50Px": null,
+              "lagP95Px": null,
+              "lagMaxPx": null,
+              "lagP95Ms": null,
+              "lagMaxMs": null,
+              "taskMs": 17008.12,
+              "scriptMs": 4922.96,
+              "layoutMs": 833.93,
+              "styleMs": 3459.38,
+              "threadMs": 19264.38,
+              "layoutCount": 217,
+              "styleRecalcCount": 3828,
+              "cdpNodesDelta": 37920,
+              "cdpNodesEnd": 80779,
+              "layoutObjectsEnd": 78542,
+              "jsListenersEnd": 31440,
+              "heapMB": 192.65,
+              "longTasks": 131,
+              "longTaskMaxMs": 150,
+              "blockingMs": 4484,
+              "loafCount": null,
+              "loafMaxMs": null,
+              "loafBlockingMs": null,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6171,
+              "domElementsMax": 6171,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 240,
+              "metricOpens": 78,
+              "metricAttaches": 78,
+              "metricRefreshes": 0,
+              "metricCloses": 78,
+              "metricTargetsRequested": 5852,
+              "metricDataFrames": 78,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          },
+          {
+            "index": 0,
+            "capture": "off",
+            "scroll": {
+              "windowMs": 21266.1,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": null,
+              "pageWheelPx": null,
+              "deliveredPxAtInputEnd": null,
+              "residualPxAtInputEnd": null,
+              "deliveredPxSettled": null,
+              "deliveredPathPx": null,
+              "settleMs": null,
+              "driverHz": 60,
+              "pageWheelHz": null,
+              "driverLateP95Ms": 0.066,
+              "driverLateMaxMs": 8.364,
+              "ackP95Ms": 283.893,
+              "wheelDelayP95Ms": null,
+              "wheelDelayMaxMs": null,
+              "frames": null,
+              "frameMeanMs": null,
+              "frameP50Ms": null,
+              "frameP95Ms": null,
+              "frameP99Ms": null,
+              "frameMaxMs": null,
+              "fpsMean": null,
+              "framesOver20Ms": null,
+              "framesOver33Ms": null,
+              "framesOver50Ms": null,
+              "framesOver100Ms": null,
+              "droppedFramesEstimate": null,
+              "coverageMin": null,
+              "coverageP05": null,
+              "coverageMean": null,
+              "coverageHoles": null,
+              "coverageHoleFraction": null,
+              "coverageLongestHoleMs": null,
+              "minAbovePx": null,
+              "minBelowPx": null,
+              "mountedRowsMin": null,
+              "mountedRowsMedian": null,
+              "mountedRowsMax": null,
+              "lagP50Px": null,
+              "lagP95Px": null,
+              "lagMaxPx": null,
+              "lagP95Ms": null,
+              "lagMaxMs": null,
+              "taskMs": 14952.66,
+              "scriptMs": 4412.13,
+              "layoutMs": 804.1,
+              "styleMs": 3120.51,
+              "threadMs": 19490.64,
+              "layoutCount": 177,
+              "styleRecalcCount": 4155,
+              "cdpNodesDelta": -1564,
+              "cdpNodesEnd": 83925,
+              "layoutObjectsEnd": 81603,
+              "jsListenersEnd": 32730,
+              "heapMB": 192.66,
+              "longTasks": null,
+              "longTaskMaxMs": null,
+              "blockingMs": null,
+              "loafCount": null,
+              "loafMaxMs": null,
+              "loafBlockingMs": null,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": null,
+              "domElementsEnd": null,
+              "domElementsMax": null,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 240,
+              "metricOpens": 78,
+              "metricAttaches": 78,
+              "metricRefreshes": 0,
+              "metricCloses": 78,
+              "metricTargetsRequested": 5840,
+              "metricDataFrames": 78,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          }
+        ]
+      }
+    },
+    "baseline-sparse-reference": {
+      "originalFile": "baseline-sparse-reference.json",
+      "originalSHA256": "925b2851b63a98149e2ca97756fa4e09405ca690c6c47ae610b2f7e46fccd005",
+      "meta": {
+        "date": "2026-11-10T00:16:32.160Z",
+        "label": "baseline-sparse-reference",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": false,
+          "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59434674,
+            "treeSHA256": "057dbb8a55859ebe4f4726956d5b0e1201ef3906bc0cedd2a79cfe6bdae64a52"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "72e6edab873b829075acb4e81bc5a6ddb0b8930f821f2e15c196cf29527ac66c"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": false,
+            "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13568337,
+            "entrySHA256": "20b32bab89f9aebcceb529c8303b38eacd5a96378d9be1c02395f01f93f210ad",
+            "treeSHA256": "bbc804d358d968bd48a3bb3eb452ab44479b444ac810792ddfde4cb9371c039a"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13675137,
+              "treeSHA256": "4c3334941ff28862b025f5ddde87c36bb60df91f1f267a1ec95a36be4e41c7be"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 284,
+              "bytes": 1232990,
+              "treeSHA256": "a08aadce68c35b12c2ac5594c3c1410c157912005fce4ef7d0b7fd116325a597"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": []
+        },
+        "scenarios": {
+          "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "plugin",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 30,
+                  "trials": 3,
+                  "metrics": "healthy",
+                  "surface": "plugin",
+                  "updates": {
+                    "eventsPerSecond": 5,
+                    "recordsPerEvent": 2,
+                    "recreateEvery": 10,
+                    "seed": 20261109,
+                    "metricRefreshMs": 5000,
+                    "metricChangedFraction": 0.2
+                  },
+                  "metricDelayMs": 25,
+                  "trialSeconds": 20,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "healthy",
+              "updates": "sparse",
+              "cpuThrottle": 4
+            },
+            "table": {
+              "columns": {
+                "count": 14,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Containers",
+                  "CPU",
+                  "Memory",
+                  "Controlled By",
+                  "Node",
+                  "Pod IP",
+                  "QoS",
+                  "Restarts",
+                  "Status",
+                  "Age",
+                  ""
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 48,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 14
+              },
+              "scroller": {
+                "clientHeight": 712,
+                "clientWidth": 1126,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149318,
+                "rect": {
+                  "left": 307,
+                  "top": 119,
+                  "width": 1126,
+                  "height": 712
+                }
+              },
+              "domElements": 4855,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.666,
+              "minMs": 16.5,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 8,
+              "deltaModes": {
+                "0": 8
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 30,
+              "measuredWallSeconds": 39.2
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 20000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 24000,
+              "events": 1200
+            },
+            "protocolDeviations": []
+          }
+        }
+      },
+      "results": {
+        "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 29401,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 623,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 14400,
+              "residualPxAtInputEnd": 9600,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 7230.5,
+              "driverHz": 59.01,
+              "pageWheelHz": 30.25,
+              "driverLateP95Ms": 1524.061,
+              "driverLateMaxMs": 1838.808,
+              "ackP95Ms": 1555.147,
+              "wheelDelayP95Ms": 1856.3,
+              "wheelDelayMaxMs": 2809,
+              "frames": 35,
+              "frameMeanMs": 587.724,
+              "frameP50Ms": 516.6,
+              "frameP95Ms": 1199.9,
+              "frameP99Ms": 1283.3,
+              "frameMaxMs": 1283.3,
+              "fpsMean": 1.7,
+              "framesOver20Ms": 34,
+              "framesOver33Ms": 34,
+              "framesOver50Ms": 34,
+              "framesOver100Ms": 34,
+              "droppedFramesEstimate": 1165,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 4400,
+              "lagP95Px": 9140,
+              "lagMaxPx": 9600,
+              "lagP95Ms": 7616.7,
+              "lagMaxMs": 8000,
+              "taskMs": 28522.99,
+              "scriptMs": 21725.49,
+              "layoutMs": 606.76,
+              "styleMs": 3113.62,
+              "threadMs": 28517.76,
+              "layoutCount": 77,
+              "styleRecalcCount": 2683,
+              "cdpNodesDelta": 19817,
+              "cdpNodesEnd": 49539,
+              "layoutObjectsEnd": 48297,
+              "jsListenersEnd": 23283,
+              "heapMB": 423.33,
+              "longTasks": 81,
+              "longTaskMaxMs": 1286,
+              "blockingMs": 21636,
+              "loafCount": 52,
+              "loafMaxMs": 1915.9,
+              "loafBlockingMs": 21074.7,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4855,
+              "domElementsEnd": 6867,
+              "domElementsMax": 7339,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 96,
+              "metricOpens": 29,
+              "metricAttaches": 29,
+              "metricRefreshes": 0,
+              "metricCloses": 29,
+              "metricTargetsRequested": 2124,
+              "metricDataFrames": 28,
+              "updateEvents": 160,
+              "updateUpserts": 320,
+              "updateRemoves": 32,
+              "updateRecreates": 32
+            }
+          },
+          {
+            "index": 2,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 28791,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 635,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 16960,
+              "residualPxAtInputEnd": 7040,
+              "deliveredPxSettled": 22880,
+              "deliveredPathPx": 22880,
+              "settleMs": 8245.1,
+              "driverHz": 60,
+              "pageWheelHz": 31.77,
+              "driverLateP95Ms": 193.852,
+              "driverLateMaxMs": 675.453,
+              "ackP95Ms": 1160.051,
+              "wheelDelayP95Ms": 1402.3,
+              "wheelDelayMaxMs": 1904.8,
+              "frames": 46,
+              "frameMeanMs": 437.389,
+              "frameP50Ms": 416.7,
+              "frameP95Ms": 733.3,
+              "frameP99Ms": 1083.3,
+              "frameMaxMs": 1083.3,
+              "fpsMean": 2.29,
+              "framesOver20Ms": 45,
+              "framesOver33Ms": 45,
+              "framesOver50Ms": 45,
+              "framesOver100Ms": 45,
+              "droppedFramesEstimate": 1136,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 60,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 2980,
+              "lagP95Px": 6080,
+              "lagMaxPx": 6660,
+              "lagP95Ms": 5066.7,
+              "lagMaxMs": 5550,
+              "taskMs": 27815.54,
+              "scriptMs": 20822.02,
+              "layoutMs": 676.29,
+              "styleMs": 3089.36,
+              "threadMs": 28097.4,
+              "layoutCount": 81,
+              "styleRecalcCount": 3069,
+              "cdpNodesDelta": 19551,
+              "cdpNodesEnd": 74424,
+              "layoutObjectsEnd": 72687,
+              "jsListenersEnd": 33974,
+              "heapMB": 527.8,
+              "longTasks": 79,
+              "longTaskMaxMs": 1052,
+              "blockingMs": 20471,
+              "loafCount": 61,
+              "loafMaxMs": 1301,
+              "loafBlockingMs": 19234.1,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4855,
+              "domElementsEnd": 6628,
+              "domElementsMax": 7335,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 104,
+              "metricOpens": 32,
+              "metricAttaches": 32,
+              "metricRefreshes": 0,
+              "metricCloses": 32,
+              "metricTargetsRequested": 2392,
+              "metricDataFrames": 31,
+              "updateEvents": 148,
+              "updateUpserts": 296,
+              "updateRemoves": 29,
+              "updateRecreates": 29
+            }
+          },
+          {
+            "index": 3,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 30662.7,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 621,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 9900,
+              "residualPxAtInputEnd": 14100,
+              "deliveredPxSettled": 13700,
+              "deliveredPathPx": 13900,
+              "settleMs": 8117.2,
+              "driverHz": 58.34,
+              "pageWheelHz": 29.88,
+              "driverLateP95Ms": 1084.76,
+              "driverLateMaxMs": 1325.535,
+              "ackP95Ms": 1612.772,
+              "wheelDelayP95Ms": 1967.8,
+              "wheelDelayMaxMs": 2547.1,
+              "frames": 33,
+              "frameMeanMs": 624.453,
+              "frameP50Ms": 633.3,
+              "frameP95Ms": 1333.3,
+              "frameP99Ms": 1366.5,
+              "frameMaxMs": 1366.5,
+              "fpsMean": 1.6,
+              "framesOver20Ms": 32,
+              "framesOver33Ms": 32,
+              "framesOver50Ms": 32,
+              "framesOver100Ms": 32,
+              "droppedFramesEstimate": 1167,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 720,
+              "minBelowPx": 758,
+              "mountedRowsMin": 72,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 7080,
+              "lagP95Px": 13860,
+              "lagMaxPx": 14100,
+              "lagP95Ms": 11550,
+              "lagMaxMs": 11750,
+              "taskMs": 30302.33,
+              "scriptMs": 23797.94,
+              "layoutMs": 530.91,
+              "styleMs": 2844.04,
+              "threadMs": 29674.29,
+              "layoutCount": 63,
+              "styleRecalcCount": 1980,
+              "cdpNodesDelta": -61081,
+              "cdpNodesEnd": 22596,
+              "layoutObjectsEnd": 21775,
+              "jsListenersEnd": 9741,
+              "heapMB": 251.47,
+              "longTasks": 75,
+              "longTaskMaxMs": 1118,
+              "blockingMs": 23172,
+              "loafCount": 45,
+              "loafMaxMs": 1480.7,
+              "loafBlockingMs": 21527.6,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 7482,
+              "domElementsEnd": 7192,
+              "domElementsMax": 7482,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 77,
+              "metricOpens": 24,
+              "metricAttaches": 24,
+              "metricRefreshes": 0,
+              "metricCloses": 24,
+              "metricTargetsRequested": 1820,
+              "metricDataFrames": 23,
+              "updateEvents": 152,
+              "updateUpserts": 304,
+              "updateRemoves": 30,
+              "updateRecreates": 30
+            }
+          }
+        ]
+      }
+    },
+    "candidate-sparse-reference": {
+      "originalFile": "candidate-sparse-reference.json",
+      "originalSHA256": "5ffbb94b54d6567754150b86d61f06e7e6052f9ddae9fa17700ec6d4134dac37",
+      "meta": {
+        "date": "2026-11-10T00:28:38.038Z",
+        "label": "candidate-sparse-reference",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": true,
+          "trackedDiffSHA256": "72e6edab873b829075acb4e81bc5a6ddb0b8930f821f2e15c196cf29527ac66c"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59451989,
+            "treeSHA256": "f65dc5bda7ace7de9f97227f6ba3a1c3681852bb1877c48778aa42b5a9e18010"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "72e6edab873b829075acb4e81bc5a6ddb0b8930f821f2e15c196cf29527ac66c"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": true,
+            "trackedDiffSHA256": "00f9cc5875bfabba0614ab088cbff0d622950e0cfedba8ce4c4c8a7560184302"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13584745,
+            "entrySHA256": "67c59e6039248ae3935789d6a4e3ede3d29da8cdde7dc48900fb4d0161ec3bf0",
+            "treeSHA256": "b97e2635355a13b426efdfd0b330c7dc351dd38c7d642a58840e9bbac3a38067"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13680031,
+              "treeSHA256": "0110a32e040f6a1dbaf5ec9f22c98bb7632bb8eb890afaa7d57addf432a02238"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "99dc9fd8a13fe1cf0887eb17ade0b4953b85206a005e75eba4ef3230d72f3aa6"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "99dc9fd8a13fe1cf0887eb17ade0b4953b85206a005e75eba4ef3230d72f3aa6"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "99dc9fd8a13fe1cf0887eb17ade0b4953b85206a005e75eba4ef3230d72f3aa6"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 285,
+              "bytes": 1250898,
+              "treeSHA256": "7f7d33151d7549f30013c8e9a79e1e8a03d673bee4f4ef3a21d68610cd297047"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": []
+        },
+        "scenarios": {
+          "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "plugin",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 30,
+                  "trials": 3,
+                  "metrics": "healthy",
+                  "surface": "plugin",
+                  "updates": {
+                    "eventsPerSecond": 5,
+                    "recordsPerEvent": 2,
+                    "recreateEvery": 10,
+                    "seed": 20261109,
+                    "metricRefreshMs": 5000,
+                    "metricChangedFraction": 0.2
+                  },
+                  "metricDelayMs": 25,
+                  "trialSeconds": 20,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "healthy",
+              "updates": "sparse",
+              "cpuThrottle": 4
+            },
+            "table": {
+              "columns": {
+                "count": 14,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Containers",
+                  "CPU",
+                  "Memory",
+                  "Controlled By",
+                  "Node",
+                  "Pod IP",
+                  "QoS",
+                  "Restarts",
+                  "Status",
+                  "Age",
+                  ""
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 48,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 14
+              },
+              "scroller": {
+                "clientHeight": 712,
+                "clientWidth": 1126,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149318,
+                "rect": {
+                  "left": 307,
+                  "top": 119,
+                  "width": 1126,
+                  "height": 712
+                }
+              },
+              "domElements": 4231,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.666,
+              "minMs": 16.6,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 8,
+              "deltaModes": {
+                "0": 8
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 30,
+              "measuredWallSeconds": 30.7
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 20000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 24000,
+              "events": 1200
+            },
+            "protocolDeviations": []
+          }
+        }
+      },
+      "results": {
+        "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20629.8,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 707,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23640,
+              "residualPxAtInputEnd": 360,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 94.6,
+              "driverHz": 60,
+              "pageWheelHz": 34.87,
+              "driverLateP95Ms": 0.034,
+              "driverLateMaxMs": 1.392,
+              "ackP95Ms": 323.43,
+              "wheelDelayP95Ms": 401.6,
+              "wheelDelayMaxMs": 514.3,
+              "frames": 149,
+              "frameMeanMs": 134.567,
+              "frameP50Ms": 116.7,
+              "frameP95Ms": 250,
+              "frameP99Ms": 266.6,
+              "frameMaxMs": 283.3,
+              "fpsMean": 7.43,
+              "framesOver20Ms": 142,
+              "framesOver33Ms": 139,
+              "framesOver50Ms": 136,
+              "framesOver100Ms": 98,
+              "droppedFramesEstimate": 1048,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 280,
+              "lagP95Px": 520,
+              "lagMaxPx": 620,
+              "lagP95Ms": 433.3,
+              "lagMaxMs": 516.7,
+              "taskMs": 19244.08,
+              "scriptMs": 11855.19,
+              "layoutMs": 574.23,
+              "styleMs": 2246.3,
+              "threadMs": 20195.04,
+              "layoutCount": 142,
+              "styleRecalcCount": 3569,
+              "cdpNodesDelta": 20602,
+              "cdpNodesEnd": 38634,
+              "layoutObjectsEnd": 37661,
+              "jsListenersEnd": 18251,
+              "heapMB": 210.02,
+              "longTasks": 185,
+              "longTaskMaxMs": 172,
+              "blockingMs": 6101,
+              "loafCount": 126,
+              "loafMaxMs": 309.6,
+              "loafBlockingMs": 6905.4,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6027,
+              "domElementsMax": 6403,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 159,
+              "metricOpens": 51,
+              "metricAttaches": 51,
+              "metricRefreshes": 0,
+              "metricCloses": 51,
+              "metricTargetsRequested": 3800,
+              "metricDataFrames": 50,
+              "updateEvents": 103,
+              "updateUpserts": 206,
+              "updateRemoves": 20,
+              "updateRecreates": 20
+            }
+          },
+          {
+            "index": 2,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20691.1,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 706,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23420,
+              "residualPxAtInputEnd": 580,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 101.5,
+              "driverHz": 60,
+              "pageWheelHz": 34.84,
+              "driverLateP95Ms": 0.037,
+              "driverLateMaxMs": 2.022,
+              "ackP95Ms": 328.474,
+              "wheelDelayP95Ms": 420.4,
+              "wheelDelayMaxMs": 624.5,
+              "frames": 139,
+              "frameMeanMs": 144.076,
+              "frameP50Ms": 133.3,
+              "frameP95Ms": 266.7,
+              "frameP99Ms": 316.7,
+              "frameMaxMs": 350,
+              "fpsMean": 6.94,
+              "framesOver20Ms": 134,
+              "framesOver33Ms": 134,
+              "framesOver50Ms": 132,
+              "framesOver100Ms": 98,
+              "droppedFramesEstimate": 1055,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 300,
+              "lagP95Px": 560,
+              "lagMaxPx": 760,
+              "lagP95Ms": 466.7,
+              "lagMaxMs": 633.3,
+              "taskMs": 19172.04,
+              "scriptMs": 11868.88,
+              "layoutMs": 552.5,
+              "styleMs": 2272.2,
+              "threadMs": 20118.62,
+              "layoutCount": 130,
+              "styleRecalcCount": 3560,
+              "cdpNodesDelta": -26144,
+              "cdpNodesEnd": 17200,
+              "layoutObjectsEnd": 16770,
+              "jsListenersEnd": 7711,
+              "heapMB": 158.81,
+              "longTasks": 173,
+              "longTaskMaxMs": 200,
+              "blockingMs": 6712,
+              "loafCount": 124,
+              "loafMaxMs": 470.7,
+              "loafBlockingMs": 6975.2,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6171,
+              "domElementsMax": 6415,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 150,
+              "metricOpens": 48,
+              "metricAttaches": 48,
+              "metricRefreshes": 0,
+              "metricCloses": 48,
+              "metricTargetsRequested": 3584,
+              "metricDataFrames": 48,
+              "updateEvents": 104,
+              "updateUpserts": 208,
+              "updateRemoves": 21,
+              "updateRecreates": 21
+            }
+          },
+          {
+            "index": 3,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 20673.7,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 705,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 23580,
+              "residualPxAtInputEnd": 420,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 91.1,
+              "driverHz": 60,
+              "pageWheelHz": 34.71,
+              "driverLateP95Ms": 0.038,
+              "driverLateMaxMs": 6.429,
+              "ackP95Ms": 327.84,
+              "wheelDelayP95Ms": 409.8,
+              "wheelDelayMaxMs": 529.1,
+              "frames": 144,
+              "frameMeanMs": 139.737,
+              "frameP50Ms": 116.7,
+              "frameP95Ms": 250,
+              "frameP99Ms": 316.8,
+              "frameMaxMs": 349.9,
+              "fpsMean": 7.16,
+              "framesOver20Ms": 141,
+              "framesOver33Ms": 139,
+              "framesOver50Ms": 136,
+              "framesOver100Ms": 97,
+              "droppedFramesEstimate": 1056,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 758,
+              "mountedRowsMin": 52,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 280,
+              "lagP95Px": 500,
+              "lagMaxPx": 620,
+              "lagP95Ms": 416.7,
+              "lagMaxMs": 516.7,
+              "taskMs": 19166.59,
+              "scriptMs": 11785.66,
+              "layoutMs": 575.27,
+              "styleMs": 2282.88,
+              "threadMs": 20149.11,
+              "layoutCount": 139,
+              "styleRecalcCount": 3574,
+              "cdpNodesDelta": 27399,
+              "cdpNodesEnd": 49331,
+              "layoutObjectsEnd": 48118,
+              "jsListenersEnd": 23623,
+              "heapMB": 352.35,
+              "longTasks": 180,
+              "longTaskMaxMs": 179,
+              "blockingMs": 6508,
+              "loafCount": 129,
+              "loafMaxMs": 287.1,
+              "loafBlockingMs": 7030.8,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4231,
+              "domElementsEnd": 6075,
+              "domElementsMax": 6411,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 153,
+              "metricOpens": 49,
+              "metricAttaches": 49,
+              "metricRefreshes": 0,
+              "metricCloses": 49,
+              "metricTargetsRequested": 3656,
+              "metricDataFrames": 49,
+              "updateEvents": 103,
+              "updateUpserts": 206,
+              "updateRemoves": 21,
+              "updateRecreates": 21
+            }
+          }
+        ]
+      }
+    },
+    "baseline-final-sparse": {
+      "originalFile": "baseline-final-sparse.json",
+      "originalSHA256": "0bdb5646b012b3a5fb6f96a5562903c55a98b63108d353d8ddc81ef6dec4d176",
+      "meta": {
+        "date": "2026-11-10T01:45:39.399Z",
+        "label": "baseline",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": false,
+          "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59434674,
+            "treeSHA256": "057dbb8a55859ebe4f4726956d5b0e1201ef3906bc0cedd2a79cfe6bdae64a52"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "c1069db9cef3c7faa0d2460dfeca9a8d2c5b863d90a33c4d3a0fb7c8b9cf35eb"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": false,
+            "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13568337,
+            "entrySHA256": "20b32bab89f9aebcceb529c8303b38eacd5a96378d9be1c02395f01f93f210ad",
+            "treeSHA256": "bbc804d358d968bd48a3bb3eb452ab44479b444ac810792ddfde4cb9371c039a"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13675137,
+              "treeSHA256": "4c3334941ff28862b025f5ddde87c36bb60df91f1f267a1ec95a36be4e41c7be"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 284,
+              "bytes": 1232990,
+              "treeSHA256": "a08aadce68c35b12c2ac5594c3c1410c157912005fce4ef7d0b7fd116325a597"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": []
+        },
+        "scenarios": {
+          "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "plugin",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 30,
+                  "trials": 3,
+                  "metrics": "healthy",
+                  "surface": "plugin",
+                  "updates": {
+                    "eventsPerSecond": 5,
+                    "recordsPerEvent": 2,
+                    "recreateEvery": 10,
+                    "seed": 20261109,
+                    "metricRefreshMs": 5000,
+                    "metricChangedFraction": 0.2
+                  },
+                  "metricDelayMs": 25,
+                  "trialSeconds": 20,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "healthy",
+              "updates": "sparse",
+              "cpuThrottle": 4
+            },
+            "table": {
+              "columns": {
+                "count": 14,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Containers",
+                  "CPU",
+                  "Memory",
+                  "Controlled By",
+                  "Node",
+                  "Pod IP",
+                  "QoS",
+                  "Restarts",
+                  "Status",
+                  "Age",
+                  ""
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 48,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 14
+              },
+              "scroller": {
+                "clientHeight": 712,
+                "clientWidth": 1126,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149318,
+                "rect": {
+                  "left": 307,
+                  "top": 119,
+                  "width": 1126,
+                  "height": 712
+                }
+              },
+              "domElements": 4855,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.666,
+              "minMs": 16.6,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 7,
+              "deltaModes": {
+                "0": 7
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 30,
+              "measuredWallSeconds": 60.2
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 20000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 24000,
+              "events": 1200
+            },
+            "protocolDeviations": []
+          }
+        }
+      },
+      "results": {
+        "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 52051.8,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 621,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 9260,
+              "residualPxAtInputEnd": 14740,
+              "deliveredPxSettled": 12420,
+              "deliveredPathPx": 12180,
+              "settleMs": 9757.9,
+              "driverHz": 31.05,
+              "pageWheelHz": 16.21,
+              "driverLateP95Ms": 17623.725,
+              "driverLateMaxMs": 18811.752,
+              "ackP95Ms": 4645.495,
+              "wheelDelayP95Ms": 4763.3,
+              "wheelDelayMaxMs": 4766.5,
+              "frames": 28,
+              "frameMeanMs": 1372.167,
+              "frameP50Ms": 1233.3,
+              "frameP95Ms": 2633.2,
+              "frameP99Ms": 2816.5,
+              "frameMaxMs": 2816.5,
+              "fpsMean": 0.73,
+              "framesOver20Ms": 27,
+              "framesOver33Ms": 27,
+              "framesOver50Ms": 27,
+              "framesOver100Ms": 27,
+              "droppedFramesEstimate": 2196,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 740,
+              "minBelowPx": 778,
+              "mountedRowsMin": 76,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 14860,
+              "lagP95Px": 17940,
+              "lagMaxPx": 18180,
+              "lagP95Ms": 14950,
+              "lagMaxMs": 15150,
+              "taskMs": 51312.39,
+              "scriptMs": 39368.67,
+              "layoutMs": 1023.2,
+              "styleMs": 5275.67,
+              "threadMs": 51466.79,
+              "layoutCount": 60,
+              "styleRecalcCount": 1814,
+              "cdpNodesDelta": -344,
+              "cdpNodesEnd": 49792,
+              "layoutObjectsEnd": 47775,
+              "jsListenersEnd": 26837,
+              "heapMB": 525.79,
+              "longTasks": 73,
+              "longTaskMaxMs": 1837,
+              "blockingMs": 41735,
+              "loafCount": 36,
+              "loafMaxMs": 2771.1,
+              "loafBlockingMs": 38744.6,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 7388,
+              "domElementsEnd": 7334,
+              "domElementsMax": 7388,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 83,
+              "metricOpens": 22,
+              "metricAttaches": 22,
+              "metricRefreshes": 0,
+              "metricCloses": 22,
+              "metricTargetsRequested": 1672,
+              "metricDataFrames": 23,
+              "updateEvents": 274,
+              "updateUpserts": 548,
+              "updateRemoves": 55,
+              "updateRecreates": 55
+            }
+          },
+          {
+            "index": 2,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 49913.1,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 620,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 8220,
+              "residualPxAtInputEnd": 15780,
+              "deliveredPxSettled": 10780,
+              "deliveredPathPx": 10620,
+              "settleMs": 9585.4,
+              "driverHz": 35.54,
+              "pageWheelHz": 18.07,
+              "driverLateP95Ms": 13530.929,
+              "driverLateMaxMs": 14528.77,
+              "ackP95Ms": 3165.269,
+              "wheelDelayP95Ms": 3936.6,
+              "wheelDelayMaxMs": 3949.9,
+              "frames": 26,
+              "frameMeanMs": 1349.28,
+              "frameP50Ms": 1216.5,
+              "frameP95Ms": 2199.9,
+              "frameP99Ms": 2799.9,
+              "frameMaxMs": 2799.9,
+              "fpsMean": 0.74,
+              "framesOver20Ms": 25,
+              "framesOver33Ms": 25,
+              "framesOver50Ms": 25,
+              "framesOver100Ms": 25,
+              "droppedFramesEstimate": 1999,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 720,
+              "minBelowPx": 758,
+              "mountedRowsMin": 72,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 15780,
+              "lagP95Px": 17980,
+              "lagMaxPx": 18540,
+              "lagP95Ms": 14983.3,
+              "lagMaxMs": 15450,
+              "taskMs": 49484.91,
+              "scriptMs": 38692.58,
+              "layoutMs": 771.82,
+              "styleMs": 4588.9,
+              "threadMs": 49113.47,
+              "layoutCount": 58,
+              "styleRecalcCount": 1615,
+              "cdpNodesDelta": -8365,
+              "cdpNodesEnd": 52249,
+              "layoutObjectsEnd": 51083,
+              "jsListenersEnd": 27878,
+              "heapMB": 212.69,
+              "longTasks": 75,
+              "longTaskMaxMs": 1486,
+              "blockingMs": 40332,
+              "loafCount": 37,
+              "loafMaxMs": 2736.9,
+              "loafBlockingMs": 37704.8,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 6914,
+              "domElementsEnd": 7284,
+              "domElementsMax": 7388,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 73,
+              "metricOpens": 20,
+              "metricAttaches": 20,
+              "metricRefreshes": 0,
+              "metricCloses": 20,
+              "metricTargetsRequested": 1504,
+              "metricDataFrames": 20,
+              "updateEvents": 188,
+              "updateUpserts": 376,
+              "updateRemoves": 37,
+              "updateRecreates": 37
+            }
+          },
+          {
+            "index": 3,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 40752,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 619,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 7680,
+              "residualPxAtInputEnd": 16320,
+              "deliveredPxSettled": 10200,
+              "deliveredPathPx": 9880,
+              "settleMs": 9076.2,
+              "driverHz": 44.39,
+              "pageWheelHz": 22.46,
+              "driverLateP95Ms": 7692.871,
+              "driverLateMaxMs": 8404.048,
+              "ackP95Ms": 2976.442,
+              "wheelDelayP95Ms": 3715.1,
+              "wheelDelayMaxMs": 3720.4,
+              "frames": 24,
+              "frameMeanMs": 1149.222,
+              "frameP50Ms": 1133.4,
+              "frameP95Ms": 2066.7,
+              "frameP99Ms": 2249.9,
+              "frameMaxMs": 2249.9,
+              "fpsMean": 0.87,
+              "framesOver20Ms": 23,
+              "framesOver33Ms": 23,
+              "framesOver50Ms": 23,
+              "framesOver100Ms": 23,
+              "droppedFramesEstimate": 1563,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 720,
+              "minBelowPx": 758,
+              "mountedRowsMin": 72,
+              "mountedRowsMedian": 76,
+              "mountedRowsMax": 76,
+              "lagP50Px": 12360,
+              "lagP95Px": 17440,
+              "lagMaxPx": 17520,
+              "lagP95Ms": 14533.3,
+              "lagMaxMs": 14600,
+              "taskMs": 40311.34,
+              "scriptMs": 31298.71,
+              "layoutMs": 738.46,
+              "styleMs": 3622.34,
+              "threadMs": 40139.79,
+              "layoutCount": 53,
+              "styleRecalcCount": 1482,
+              "cdpNodesDelta": 36003,
+              "cdpNodesEnd": 67931,
+              "layoutObjectsEnd": 66320,
+              "jsListenersEnd": 32657,
+              "heapMB": 160.13,
+              "longTasks": 60,
+              "longTaskMaxMs": 2265,
+              "blockingMs": 33411,
+              "loafCount": 35,
+              "loafMaxMs": 2769.1,
+              "loafBlockingMs": 30924.3,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 7336,
+              "domElementsEnd": 7285,
+              "domElementsMax": 7344,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 68,
+              "metricOpens": 19,
+              "metricAttaches": 19,
+              "metricRefreshes": 0,
+              "metricCloses": 19,
+              "metricTargetsRequested": 1420,
+              "metricDataFrames": 19,
+              "updateEvents": 145,
+              "updateUpserts": 290,
+              "updateRemoves": 29,
+              "updateRecreates": 29
+            }
+          }
+        ]
+      }
+    },
+    "candidate-final-sparse": {
+      "originalFile": "candidate-final-sparse.json",
+      "originalSHA256": "e4f087a6a9da5f6d50d11aec11161a5279d3de664446204707a7b59a26b5e8e1",
+      "meta": {
+        "date": "2026-11-10T01:48:33.827Z",
+        "label": "candidate",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": true,
+          "trackedDiffSHA256": "66cfd3017e2b4a6981884468a9c11da2fbf988e02ea1c0a2e63992bf5bd35059"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59453669,
+            "treeSHA256": "7c6a1e5a2f270cd3deaa5e7a92ee14ee252f61121f86b67af98b775f68b030cd"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "c1069db9cef3c7faa0d2460dfeca9a8d2c5b863d90a33c4d3a0fb7c8b9cf35eb"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": true,
+            "trackedDiffSHA256": "0e151eb1d3ffb0f3056177c97fd66e5a4a2205926430bda9a8512fb80b1f0e24"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13584745,
+            "entrySHA256": "67c59e6039248ae3935789d6a4e3ede3d29da8cdde7dc48900fb4d0161ec3bf0",
+            "treeSHA256": "7237cec77f1ff8932393c28240f674663150732fafe99ea7f08c6823632e729a"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13688837,
+              "treeSHA256": "492080109ae1fc01f8cbed70f9c0b40d467706b920d2a16804a6d3d6cf5ee645"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "e10b670f8c7e6bb2e90e9679305fbffc03204942a44405cd19d2591fdcd494c7"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "e10b670f8c7e6bb2e90e9679305fbffc03204942a44405cd19d2591fdcd494c7"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "e10b670f8c7e6bb2e90e9679305fbffc03204942a44405cd19d2591fdcd494c7"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 285,
+              "bytes": 1253888,
+              "treeSHA256": "638b95906fe8bc0cc9602a3f4bd9fbec8cd3d774b59d9f037684f9ad885924b2"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": []
+        },
+        "scenarios": {
+          "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "plugin",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 30,
+                  "trials": 3,
+                  "metrics": "healthy",
+                  "surface": "plugin",
+                  "updates": {
+                    "eventsPerSecond": 5,
+                    "recordsPerEvent": 2,
+                    "recreateEvery": 10,
+                    "seed": 20261109,
+                    "metricRefreshMs": 5000,
+                    "metricChangedFraction": 0.2
+                  },
+                  "metricDelayMs": 25,
+                  "trialSeconds": 20,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "healthy",
+              "updates": "sparse",
+              "cpuThrottle": 4
+            },
+            "table": {
+              "columns": {
+                "count": 14,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Containers",
+                  "CPU",
+                  "Memory",
+                  "Controlled By",
+                  "Node",
+                  "Pod IP",
+                  "QoS",
+                  "Restarts",
+                  "Status",
+                  "Age",
+                  ""
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 56,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 14
+              },
+              "scroller": {
+                "clientHeight": 712,
+                "clientWidth": 1126,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149318,
+                "rect": {
+                  "left": 307,
+                  "top": 119,
+                  "width": 1126,
+                  "height": 712
+                }
+              },
+              "domElements": 4878,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.669,
+              "minMs": 16.5,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 6,
+              "deltaModes": {
+                "0": 6
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 30,
+              "measuredWallSeconds": 39
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 20000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 24000,
+              "events": 1200
+            },
+            "protocolDeviations": []
+          }
+        }
+      },
+      "results": {
+        "pods-paced[metrics=healthy,updates=sparse,cpu=4x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 27304.3,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 637,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 17400,
+              "residualPxAtInputEnd": 6600,
+              "deliveredPxSettled": 24000,
+              "deliveredPathPx": 24000,
+              "settleMs": 5290,
+              "driverHz": 60,
+              "pageWheelHz": 31.06,
+              "driverLateP95Ms": 1055.823,
+              "driverLateMaxMs": 1917.435,
+              "ackP95Ms": 1992.833,
+              "wheelDelayP95Ms": 2298.7,
+              "wheelDelayMaxMs": 3074.4,
+              "frames": 51,
+              "frameMeanMs": 394.984,
+              "frameP50Ms": 349.9,
+              "frameP95Ms": 683.2,
+              "frameP99Ms": 2149.9,
+              "frameMaxMs": 2149.9,
+              "fpsMean": 2.53,
+              "framesOver20Ms": 50,
+              "framesOver33Ms": 50,
+              "framesOver50Ms": 50,
+              "framesOver100Ms": 49,
+              "droppedFramesEstimate": 1135,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 960,
+              "minBelowPx": 998,
+              "mountedRowsMin": 88,
+              "mountedRowsMedian": 92,
+              "mountedRowsMax": 92,
+              "lagP50Px": 4940,
+              "lagP95Px": 9700,
+              "lagMaxPx": 10400,
+              "lagP95Ms": 8083.3,
+              "lagMaxMs": 8666.7,
+              "taskMs": 25022.56,
+              "scriptMs": 11484.04,
+              "layoutMs": 1037.1,
+              "styleMs": 4482.25,
+              "threadMs": 26377.88,
+              "layoutCount": 131,
+              "styleRecalcCount": 1157,
+              "cdpNodesDelta": 12773,
+              "cdpNodesEnd": 54182,
+              "layoutObjectsEnd": 52719,
+              "jsListenersEnd": 24293,
+              "heapMB": 91.38,
+              "longTasks": 110,
+              "longTaskMaxMs": 1714,
+              "blockingMs": 14467,
+              "loafCount": 63,
+              "loafMaxMs": 5025.2,
+              "loafBlockingMs": 12267.3,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 6410,
+              "domElementsEnd": 6413,
+              "domElementsMax": 7754,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 85,
+              "metricOpens": 25,
+              "metricAttaches": 25,
+              "metricRefreshes": 0,
+              "metricCloses": 25,
+              "metricTargetsRequested": 2268,
+              "metricDataFrames": 25,
+              "updateEvents": 136,
+              "updateUpserts": 272,
+              "updateRemoves": 27,
+              "updateRecreates": 27
+            }
+          },
+          {
+            "index": 2,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 29195.6,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 636,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 14060,
+              "residualPxAtInputEnd": 9940,
+              "deliveredPxSettled": 17700,
+              "deliveredPathPx": 17980,
+              "settleMs": 8263.3,
+              "driverHz": 60,
+              "pageWheelHz": 31.53,
+              "driverLateP95Ms": 1550.398,
+              "driverLateMaxMs": 2238.029,
+              "ackP95Ms": 2308.49,
+              "wheelDelayP95Ms": 2457.4,
+              "wheelDelayMaxMs": 3482.6,
+              "frames": 50,
+              "frameMeanMs": 395.222,
+              "frameP50Ms": 316.6,
+              "frameP95Ms": 950.1,
+              "frameP99Ms": 1866.6,
+              "frameMaxMs": 1866.6,
+              "fpsMean": 2.53,
+              "framesOver20Ms": 48,
+              "framesOver33Ms": 48,
+              "framesOver50Ms": 48,
+              "framesOver100Ms": 48,
+              "droppedFramesEstimate": 1114,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 998,
+              "mountedRowsMin": 60,
+              "mountedRowsMedian": 92,
+              "mountedRowsMax": 92,
+              "lagP50Px": 4540,
+              "lagP95Px": 8820,
+              "lagMaxPx": 9300,
+              "lagP95Ms": 7350,
+              "lagMaxMs": 7750,
+              "taskMs": 27498.74,
+              "scriptMs": 12898.18,
+              "layoutMs": 1176.16,
+              "styleMs": 4824.95,
+              "threadMs": 28357.1,
+              "layoutCount": 141,
+              "styleRecalcCount": 1151,
+              "cdpNodesDelta": 23315,
+              "cdpNodesEnd": 60030,
+              "layoutObjectsEnd": 57393,
+              "jsListenersEnd": 27585,
+              "heapMB": 227,
+              "longTasks": 123,
+              "longTaskMaxMs": 1446,
+              "blockingMs": 15854,
+              "loafCount": 69,
+              "loafMaxMs": 3065.6,
+              "loafBlockingMs": 12840.2,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 4878,
+              "domElementsEnd": 7542,
+              "domElementsMax": 7689,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 89,
+              "metricOpens": 27,
+              "metricAttaches": 27,
+              "metricRefreshes": 0,
+              "metricCloses": 27,
+              "metricTargetsRequested": 2436,
+              "metricDataFrames": 26,
+              "updateEvents": 142,
+              "updateUpserts": 284,
+              "updateRemoves": 29,
+              "updateRecreates": 29
+            }
+          },
+          {
+            "index": 3,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 31993.7,
+              "inputMs": 20000,
+              "inputEvents": 1200,
+              "requestedPx": 24000,
+              "requestedPathPx": 24000,
+              "pageWheelEvents": 632,
+              "pageWheelPx": 24000,
+              "deliveredPxAtInputEnd": 17460,
+              "residualPxAtInputEnd": 6540,
+              "deliveredPxSettled": 21260,
+              "deliveredPathPx": 21260,
+              "settleMs": 8393.4,
+              "driverHz": 53.78,
+              "pageWheelHz": 27.88,
+              "driverLateP95Ms": 3804.377,
+              "driverLateMaxMs": 4249.819,
+              "ackP95Ms": 4325.554,
+              "wheelDelayP95Ms": 3631.1,
+              "wheelDelayMaxMs": 4983.6,
+              "frames": 41,
+              "frameMeanMs": 546.645,
+              "frameP50Ms": 383.3,
+              "frameP95Ms": 1400,
+              "frameP99Ms": 3583.2,
+              "frameMaxMs": 3583.2,
+              "fpsMean": 1.83,
+              "framesOver20Ms": 38,
+              "framesOver33Ms": 38,
+              "framesOver50Ms": 38,
+              "framesOver100Ms": 38,
+              "droppedFramesEstimate": 1273,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 960,
+              "minBelowPx": 998,
+              "mountedRowsMin": 88,
+              "mountedRowsMedian": 92,
+              "mountedRowsMax": 92,
+              "lagP50Px": 4280,
+              "lagP95Px": 7220,
+              "lagMaxPx": 7760,
+              "lagP95Ms": 6016.7,
+              "lagMaxMs": 6466.7,
+              "taskMs": 28599.63,
+              "scriptMs": 14199.66,
+              "layoutMs": 1094.2,
+              "styleMs": 4735.31,
+              "threadMs": 30974.33,
+              "layoutCount": 141,
+              "styleRecalcCount": 1211,
+              "cdpNodesDelta": -35975,
+              "cdpNodesEnd": 47763,
+              "layoutObjectsEnd": 43665,
+              "jsListenersEnd": 14292,
+              "heapMB": 174.18,
+              "longTasks": 125,
+              "longTaskMaxMs": 1724,
+              "blockingMs": 16275,
+              "loafCount": 66,
+              "loafMaxMs": 4947.7,
+              "loafBlockingMs": 14306,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 7794,
+              "domElementsEnd": 7590,
+              "domElementsMax": 7794,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 90,
+              "metricOpens": 27,
+              "metricAttaches": 27,
+              "metricRefreshes": 0,
+              "metricCloses": 27,
+              "metricTargetsRequested": 2452,
+              "metricDataFrames": 27,
+              "updateEvents": 137,
+              "updateUpserts": 274,
+              "updateRemoves": 27,
+              "updateRecreates": 27
+            }
+          }
+        ]
+      }
+    },
+    "baseline-generic-smoke": {
+      "originalFile": "baseline-generic-smoke.json",
+      "originalSHA256": "62340723b0fe1766aeb77fa608dd2e9fbc9c63dba92faa068fbe4299d2367da5",
+      "meta": {
+        "date": "2026-11-09T23:26:51.724Z",
+        "label": "baseline-generic-smoke",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": false,
+          "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59434674,
+            "treeSHA256": "057dbb8a55859ebe4f4726956d5b0e1201ef3906bc0cedd2a79cfe6bdae64a52"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "f28a9685f1dcdd4a4cdbb820c439b92e71b78fad75f740fac9c23c0ce8894663"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": false,
+            "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13568337,
+            "entrySHA256": "20b32bab89f9aebcceb529c8303b38eacd5a96378d9be1c02395f01f93f210ad",
+            "treeSHA256": "bbc804d358d968bd48a3bb3eb452ab44479b444ac810792ddfde4cb9371c039a"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13675137,
+              "treeSHA256": "4c3334941ff28862b025f5ddde87c36bb60df91f1f267a1ec95a36be4e41c7be"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": false,
+              "trackedDiffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 284,
+              "bytes": 1232990,
+              "treeSHA256": "a08aadce68c35b12c2ac5594c3c1410c157912005fce4ef7d0b7fd116325a597"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": [
+            "2 s warmup, the reference is 30 s",
+            "3 s trials, the reference is 20 s",
+            "1 trials, the reference is 3"
+          ]
+        },
+        "scenarios": {
+          "generic:pods-paced[metrics=none,updates=none,cpu=1x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "generic",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 2,
+                  "trials": 1,
+                  "metrics": "none",
+                  "surface": "generic",
+                  "updates": "none",
+                  "metricDelayMs": 25,
+                  "trialSeconds": 3,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "none",
+              "updates": "none",
+              "cpuThrottle": 1
+            },
+            "table": {
+              "columns": {
+                "count": 7,
+                "headers": [
+                  "",
+                  "Name",
+                  "Namespace",
+                  "Status",
+                  "Node",
+                  "Pod IP",
+                  "Created"
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 5000,
+                "rowHeightPx": 18,
+                "cellsInFirstRow": 7
+              },
+              "scroller": {
+                "clientHeight": 763,
+                "clientWidth": 1124,
+                "scrollHeight": 90096,
+                "scrollTop": 0,
+                "maxScroll": 89333,
+                "rect": {
+                  "left": 316,
+                  "top": 75,
+                  "width": 1124,
+                  "height": 763
+                }
+              },
+              "domElements": 120217,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.666,
+              "minMs": 16.6,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 10,
+              "deltaModes": {
+                "0": 10
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 2,
+              "measuredWallSeconds": 2.3
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 3000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 3600,
+              "events": 180
+            },
+            "protocolDeviations": [
+              "2 s warmup, the reference is 30 s",
+              "3 s trials, the reference is 20 s",
+              "1 trials, the reference is 3"
+            ]
+          }
+        }
+      },
+      "results": {
+        "generic:pods-paced[metrics=none,updates=none,cpu=1x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 3323.7,
+              "inputMs": 3000,
+              "inputEvents": 180,
+              "requestedPx": 3600,
+              "requestedPathPx": 3600,
+              "pageWheelEvents": 180,
+              "pageWheelPx": 3600,
+              "deliveredPxAtInputEnd": 3520,
+              "residualPxAtInputEnd": 80,
+              "deliveredPxSettled": 3600,
+              "deliveredPathPx": 3600,
+              "settleMs": 17.8,
+              "driverHz": 60,
+              "pageWheelHz": 59.83,
+              "driverLateP95Ms": 0.662,
+              "driverLateMaxMs": 1.256,
+              "ackP95Ms": 27.855,
+              "wheelDelayP95Ms": 42.2,
+              "wheelDelayMaxMs": 45.6,
+              "frames": 179,
+              "frameMeanMs": 16.76,
+              "frameP50Ms": 16.7,
+              "frameP95Ms": 16.8,
+              "frameP99Ms": 16.8,
+              "frameMaxMs": 33.4,
+              "fpsMean": 59.67,
+              "framesOver20Ms": 1,
+              "framesOver33Ms": 0,
+              "framesOver50Ms": 0,
+              "framesOver100Ms": 0,
+              "droppedFramesEstimate": 1,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 85806,
+              "mountedRowsMin": 5000,
+              "mountedRowsMedian": 5000,
+              "mountedRowsMax": 5000,
+              "lagP50Px": 20,
+              "lagP95Px": 40,
+              "lagMaxPx": 60,
+              "lagP95Ms": 33.3,
+              "lagMaxMs": 50,
+              "taskMs": 1716.86,
+              "scriptMs": 124.67,
+              "layoutMs": 0,
+              "styleMs": 0,
+              "threadMs": 1719.61,
+              "layoutCount": 0,
+              "styleRecalcCount": 0,
+              "cdpNodesDelta": 0,
+              "cdpNodesEnd": 150332,
+              "layoutObjectsEnd": 150214,
+              "jsListenersEnd": 50573,
+              "heapMB": 237.15,
+              "longTasks": 0,
+              "longTaskMaxMs": 0,
+              "blockingMs": 0,
+              "loafCount": 0,
+              "loafMaxMs": 0,
+              "loafBlockingMs": 0,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 120217,
+              "domElementsEnd": 120217,
+              "domElementsMax": 120217,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 0,
+              "metricOpens": null,
+              "metricAttaches": null,
+              "metricRefreshes": null,
+              "metricCloses": null,
+              "metricTargetsRequested": null,
+              "metricDataFrames": null,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          }
+        ]
+      }
+    },
+    "candidate-generic-smoke": {
+      "originalFile": "candidate-generic-smoke.json",
+      "originalSHA256": "444f5c8d73c8450ad1c6cce6dd5d127c60bbd0fa8d361b0f298ed24ce03fcb94",
+      "meta": {
+        "date": "2026-11-09T23:24:25.520Z",
+        "label": "candidate-generic-smoke",
+        "environment": {
+          "node": "v26.12.0",
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "27.0.0",
+          "cpuModel": "Apple M5 Max",
+          "cpuCount": 18,
+          "memoryGB": 128
+        },
+        "chromium": "156.0.8078.4",
+        "hostSource": {
+          "state": "identified",
+          "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+          "dirty": true,
+          "trackedDiffSHA256": "f28a9685f1dcdd4a4cdbb820c439b92e71b78fad75f740fac9c23c0ce8894663"
+        },
+        "frontend": {
+          "reactBuild": "normal",
+          "reactDom": "react-dom/client",
+          "minify": {
+            "setting": "app",
+            "effective": false
+          },
+          "configSHA256": "8473733c1cbc6cc23d8cc657a30eab1ebf5161a5bdc17508bda10c73375ec185",
+          "manifest": {
+            "state": "verified",
+            "reason": null
+          },
+          "bundle": {
+            "files": 137,
+            "bytes": 59450853,
+            "treeSHA256": "e72afffa506a8e0140c6ddab372b333ac381f7316ce5ba8ed14a45e9674132cd"
+          }
+        },
+        "harness": {
+          "files": 38,
+          "treeSHA256": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "builtWith": "58011ba2993e22dbaeaa1a5c88848f477533123943e4c64606f2ea011a23cc8e",
+          "git": {
+            "state": "identified",
+            "head": "605ee4ea171570ac39d7882a4baa636e92bd3ecf",
+            "dirty": true,
+            "trackedDiffSHA256": "f28a9685f1dcdd4a4cdbb820c439b92e71b78fad75f740fac9c23c0ce8894663"
+          }
+        },
+        "plugin": {
+          "checkout": {
+            "state": "identified",
+            "head": "c082860e746a413f04294c4d4772d8deffe38b9d",
+            "dirty": true,
+            "trackedDiffSHA256": "00f9cc5875bfabba0614ab088cbff0d622950e0cfedba8ce4c4c8a7560184302"
+          },
+          "metadataSHA256": "f76277a29daaa05f90e376c139513561da7cb7e8f8c656846b624e861e05ab80",
+          "bundle": {
+            "files": 236,
+            "bytes": 13584745,
+            "entrySHA256": "67c59e6039248ae3935789d6a4e3ede3d29da8cdde7dc48900fb4d0161ec3bf0",
+            "treeSHA256": "b97e2635355a13b426efdfd0b330c7dc351dd38c7d642a58840e9bbac3a38067"
+          }
+        },
+        "ui": {
+          "@omniviewdev/base-ui": {
+            "state": "resolved",
+            "declared": "~0.17.1",
+            "version": "0.17.1",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 11,
+              "bytes": 13680031,
+              "treeSHA256": "0110a32e040f6a1dbaf5ec9f22c98bb7632bb8eb890afaa7d57addf432a02238"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "422a90c4ea59060fe5c384f1fe149f02608100be2fadf8226767ef7e5059fede"
+            }
+          },
+          "@omniviewdev/ai-ui": {
+            "state": "resolved",
+            "declared": "~6.1.12",
+            "version": "6.1.12",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 4,
+              "bytes": 2880282,
+              "treeSHA256": "3fac46995142a460b47469aafeb06dca82350575ca8b1335f300ddf460032fc4"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "422a90c4ea59060fe5c384f1fe149f02608100be2fadf8226767ef7e5059fede"
+            }
+          },
+          "@omniviewdev/editors": {
+            "state": "resolved",
+            "declared": "~6.2.3",
+            "version": "6.2.3",
+            "source": "linked-checkout",
+            "dist": {
+              "files": 16,
+              "bytes": 42992855,
+              "treeSHA256": "ce62c025a3c00fe9c4134fabac61ff9669fd2cc0626ed21f87d553cbae802320"
+            },
+            "git": {
+              "state": "identified",
+              "head": "05ea0050b6dd3ede23cbfa638a624df8fe20b8e2",
+              "dirty": true,
+              "trackedDiffSHA256": "422a90c4ea59060fe5c384f1fe149f02608100be2fadf8226767ef7e5059fede"
+            }
+          },
+          "@omniviewdev/providers": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 4,
+              "bytes": 228745,
+              "treeSHA256": "22f818ec71cdad35ffece163243e6f52be0ac4458b7c102dda0824203e38975b"
+            }
+          },
+          "@omniviewdev/runtime": {
+            "state": "resolved",
+            "declared": "workspace:*",
+            "version": "0.7.4",
+            "source": "host-workspace",
+            "dist": {
+              "files": 285,
+              "bytes": 1250898,
+              "treeSHA256": "7f7d33151d7549f30013c8e9a79e1e8a03d673bee4f4ef3a21d68610cd297047"
+            }
+          }
+        },
+        "protocol": {
+          "reference": {
+            "react": "normal",
+            "pods": 5000,
+            "viewport": {
+              "width": 1440,
+              "height": 900
+            },
+            "warmupSeconds": 30,
+            "trialSeconds": 20,
+            "trials": 3,
+            "cpuThrottles": [
+              1,
+              4
+            ],
+            "capture": "full",
+            "refreshHz": 60
+          },
+          "deviations": [
+            "2 s warmup, the reference is 30 s",
+            "3 s trials, the reference is 20 s",
+            "1 trials, the reference is 3"
+          ]
+        },
+        "scenarios": {
+          "generic:pods-paced[metrics=none,updates=none,cpu=1x]": {
+            "definition": {
+              "scenario": "pods-paced",
+              "surface": "generic",
+              "workload": {
+                "id": "pods-paced/v1",
+                "kind": "paced",
+                "driver": "cdp-wheel",
+                "params": {
+                  "viewport": {
+                    "width": 1440,
+                    "height": 900
+                  },
+                  "pods": 5000,
+                  "warmupSeconds": 2,
+                  "trials": 1,
+                  "metrics": "none",
+                  "surface": "generic",
+                  "updates": "none",
+                  "metricDelayMs": 25,
+                  "trialSeconds": 3,
+                  "speedPxPerSecond": 1200,
+                  "inputHz": 60
+                }
+              },
+              "metrics": "none",
+              "updates": "none",
+              "cpuThrottle": 1
+            },
+            "table": {
+              "columns": {
+                "count": 7,
+                "headers": [
+                  "",
+                  "Name↑",
+                  "Namespace",
+                  "Status",
+                  "Node",
+                  "Pod IP",
+                  "Created"
+                ]
+              },
+              "rows": {
+                "served": 5000,
+                "impliedByGeometry": 5000,
+                "mounted": 36,
+                "rowHeightPx": 30,
+                "cellsInFirstRow": 7
+              },
+              "scroller": {
+                "clientHeight": 686,
+                "clientWidth": 1110,
+                "scrollHeight": 150030,
+                "scrollTop": 0,
+                "maxScroll": 149344,
+                "rect": {
+                  "left": 323,
+                  "top": 145,
+                  "width": 1110,
+                  "height": 686
+                }
+              },
+              "domElements": 1333,
+              "viewport": {
+                "width": 1440,
+                "height": 900,
+                "devicePixelRatio": 1
+              }
+            },
+            "display": {
+              "samples": 36,
+              "medianMs": 16.7,
+              "meanMs": 16.666,
+              "minMs": 16.6,
+              "maxMs": 16.8,
+              "estimatedHz": 59.9
+            },
+            "wheelCalibration": {
+              "requestedPx": 200,
+              "pageSawDeltaYSum": 200,
+              "pageSawEvents": 10,
+              "deltaModes": {
+                "0": 10
+              },
+              "observedScrollPx": 200,
+              "ratio": 1,
+              "scale": 1
+            },
+            "warmup": {
+              "seconds": 2,
+              "measuredWallSeconds": 2.3
+            },
+            "plan": {
+              "startPx": 0,
+              "marginPx": 60,
+              "segments": [
+                {
+                  "durationMs": 3000,
+                  "pxPerSec": 1200
+                }
+              ],
+              "wheelScale": 1,
+              "requestedPx": 3600,
+              "events": 180
+            },
+            "protocolDeviations": [
+              "2 s warmup, the reference is 30 s",
+              "3 s trials, the reference is 20 s",
+              "1 trials, the reference is 3"
+            ]
+          }
+        }
+      },
+      "results": {
+        "generic:pods-paced[metrics=none,updates=none,cpu=1x]": [
+          {
+            "index": 1,
+            "capture": "full",
+            "scroll": {
+              "windowMs": 3325.5,
+              "inputMs": 3000,
+              "inputEvents": 180,
+              "requestedPx": 3600,
+              "requestedPathPx": 3600,
+              "pageWheelEvents": 165,
+              "pageWheelPx": 3600,
+              "deliveredPxAtInputEnd": 3540,
+              "residualPxAtInputEnd": 60,
+              "deliveredPxSettled": 3600,
+              "deliveredPathPx": 3600,
+              "settleMs": 16.1,
+              "driverHz": 60,
+              "pageWheelHz": 54.69,
+              "driverLateP95Ms": 0.608,
+              "driverLateMaxMs": 0.74,
+              "ackP95Ms": 48.291,
+              "wheelDelayP95Ms": 48.2,
+              "wheelDelayMaxMs": 50.1,
+              "frames": 165,
+              "frameMeanMs": 18.19,
+              "frameP50Ms": 16.7,
+              "frameP95Ms": 33.3,
+              "frameP99Ms": 33.4,
+              "frameMaxMs": 33.4,
+              "fpsMean": 54.97,
+              "framesOver20Ms": 15,
+              "framesOver33Ms": 0,
+              "framesOver50Ms": 0,
+              "framesOver100Ms": 0,
+              "droppedFramesEstimate": 15,
+              "coverageMin": 1,
+              "coverageP05": 1,
+              "coverageMean": 1,
+              "coverageHoles": 0,
+              "coverageHoleFraction": 0,
+              "coverageLongestHoleMs": 0,
+              "minAbovePx": 20,
+              "minBelowPx": 344,
+              "mountedRowsMin": 36,
+              "mountedRowsMedian": 48,
+              "mountedRowsMax": 48,
+              "lagP50Px": 40,
+              "lagP95Px": 60,
+              "lagMaxPx": 60,
+              "lagP95Ms": 50,
+              "lagMaxMs": 50,
+              "taskMs": 229.64,
+              "scriptMs": 53.17,
+              "layoutMs": 12.25,
+              "styleMs": 30.06,
+              "threadMs": 230.17,
+              "layoutCount": 57,
+              "styleRecalcCount": 138,
+              "cdpNodesDelta": 5004,
+              "cdpNodesEnd": 15032,
+              "layoutObjectsEnd": 13564,
+              "jsListenersEnd": 2037,
+              "heapMB": 82.09,
+              "longTasks": 0,
+              "longTaskMaxMs": 0,
+              "blockingMs": 0,
+              "loafCount": 0,
+              "loafMaxMs": 0,
+              "loafBlockingMs": 0,
+              "commits": null,
+              "mountCommits": null,
+              "updateCommits": null,
+              "renderMs": null,
+              "mountMs": null,
+              "updateMs": null,
+              "baseMs": null,
+              "maxCommitMs": null,
+              "slowCommits": null,
+              "domElementsStart": 1333,
+              "domElementsEnd": 1705,
+              "domElementsMax": 1705,
+              "mutationRowsAdded": null,
+              "mutationRowsRemoved": null,
+              "mutationNodesAdded": null,
+              "mutationNodesRemoved": null,
+              "mutationAttributes": null,
+              "backendCalls": 0,
+              "metricOpens": null,
+              "metricAttaches": null,
+              "metricRefreshes": null,
+              "metricCloses": null,
+              "metricTargetsRequested": null,
+              "metricDataFrames": null,
+              "updateEvents": null,
+              "updateUpserts": null,
+              "updateRemoves": null,
+              "updateRecreates": null
+            }
+          }
+        ]
+      }
+    }
+  },
+  "adaptiveSortProbe": {
+    "records": 5000,
+    "updates": 50,
+    "noOpExtraComparisons": 0,
+    "baselineComparisons": 2747070,
+    "adaptiveComparisons": 250068
+  },
+  "finalUnavailableFunctional": {
+    "points": [
+      {
+        "px": 1200,
+        "rows": 88,
+        "busy": 0,
+        "pulses": 0,
+        "scroll": {
+          "scrollTop": 1200,
+          "maxScroll": 149318,
+          "clientHeight": 712
+        }
+      },
+      {
+        "px": 30000,
+        "rows": 88,
+        "busy": 0,
+        "pulses": 0,
+        "scroll": {
+          "scrollTop": 30000,
+          "maxScroll": 149318,
+          "clientHeight": 712
+        }
+      },
+      {
+        "px": 90000,
+        "rows": 88,
+        "busy": 0,
+        "pulses": 0,
+        "scroll": {
+          "scrollTop": 90000,
+          "maxScroll": 149318,
+          "clientHeight": 712
+        }
+      },
+      {
+        "px": 148000,
+        "rows": 92,
+        "busy": 0,
+        "pulses": 0,
+        "scroll": {
+          "scrollTop": 148000,
+          "maxScroll": 149318,
+          "clientHeight": 712
+        }
+      },
+      {
+        "px": 0,
+        "rows": 56,
+        "busy": 0,
+        "pulses": 0,
+        "scroll": {
+          "scrollTop": 0,
+          "maxScroll": 149318,
+          "clientHeight": 712
+        }
+      }
+    ],
+    "metrics": {
+      "mode": "unavailable",
+      "selectionReads": 1,
+      "catalogReads": 1,
+      "opens": 6,
+      "attaches": 6,
+      "refreshes": 0,
+      "closes": 5,
+      "active": 1,
+      "targetsRequested": 468,
+      "maxTargetsPerOpen": 92,
+      "distinctTargets": 364,
+      "progressFrames": 7,
+      "dataFrames": 7,
+      "resultsEmitted": 1048,
+      "failedResults": 1048
+    },
+    "notices": []
+  },
+  "finalMetricFocusAndTeardown": {
+    "focus": {
+      "focusedLabel": "228.71 m; Request: 200 m (Current resource configuration); Limit: 1 cores (Current resource configuration)",
+      "popupText": [
+        "228.71 mRequest: 200 m (Current resource configuration)Limit: 1 cores (Current resource configuration)"
+      ],
+      "busy": 0
+    },
+    "teardown": {
+      "rows": 0,
+      "views": [],
+      "metrics": {
+        "mode": "healthy",
+        "selectionReads": 1,
+        "catalogReads": 1,
+        "opens": 1,
+        "attaches": 1,
+        "refreshes": 0,
+        "closes": 1,
+        "active": 0,
+        "targetsRequested": 56,
+        "maxTargetsPerOpen": 56,
+        "distinctTargets": 56,
+        "progressFrames": 5,
+        "dataFrames": 5,
+        "resultsEmitted": 560,
+        "failedResults": 0
+      }
+    }
+  }
+}
