@@ -590,14 +590,8 @@ func main() {
 		managers,
 		settingsProvider,
 		pluginRegistryClient,
-		func() plugin.TelemetryEnvConfig {
-			cfg := telemetrySvc.Config()
-			return plugin.TelemetryEnvConfig{
-				Enabled:           cfg.Enabled,
-				OTLPEndpoint:      cfg.OTLPEndpoint,
-				Profiling:         cfg.Profiling,
-				PyroscopeEndpoint: cfg.PyroscopeEndpoint,
-			}
+		func(id string) (plugin.TelemetryEnvConfig, error) {
+			return pluginTelemetryConfig(telemetrySvc, id)
 		},
 		builtinCatalog,
 	)
@@ -871,4 +865,25 @@ func main() {
 	if runErr := app.Run(); runErr != nil {
 		log.Fatalw(context.Background(), "wails app exited with error", "error", runErr)
 	}
+}
+
+func pluginTelemetryConfig(svc *telemetry.Service, id string) (plugin.TelemetryEnvConfig, error) {
+	cfg := svc.Config()
+	if !cfg.Enabled || (!cfg.Traces && !cfg.Profiling) {
+		var disabled plugin.TelemetryEnvConfig
+		return disabled, nil
+	}
+	endpoint, token, cleanup, err := svc.StartPluginTraceReceiver(id)
+	if err != nil {
+		var disabled plugin.TelemetryEnvConfig
+		return disabled, err
+	}
+	return plugin.TelemetryEnvConfig{
+		Enabled:           true,
+		OTLPEndpoint:      endpoint,
+		AuthToken:         token,
+		Profiling:         cfg.Profiling,
+		PyroscopeEndpoint: cfg.PyroscopeEndpoint,
+		Cleanup:           cleanup,
+	}, nil
 }

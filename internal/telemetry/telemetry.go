@@ -62,8 +62,9 @@ type Service struct {
 	switchableMetricExp *SwitchableMetricExporter
 	switchableLogExp    *SwitchableLogExporter
 
-	diagnostics *diagnostics.Service
-	mu          sync.RWMutex
+	pluginTraceGeneration uint64 // invalidates receivers when trace shipping is disabled
+	diagnostics           *diagnostics.Service
+	mu                    sync.RWMutex
 }
 
 // New creates a telemetry Service. Call Init to start it.
@@ -201,6 +202,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	StopPluginDiagnostics()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pluginTraceGeneration++
 	s.cfg.Enabled = false
 
 	// Swap globals to noop before shutting down the concrete providers.
@@ -294,6 +296,7 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 
 	// Master switch OFF — swap all to noop.
 	if !cfg.Enabled {
+		s.pluginTraceGeneration++
 		s.disableAll()
 		s.cfg = cfg
 		s.updateDiagnosticsIdentity(cfg)
@@ -365,6 +368,9 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	}
 
 	// Stage 2: All allocations succeeded — apply atomically.
+	if !cfg.Traces || cfg.OTLPEndpoint == "" {
+		s.pluginTraceGeneration++
+	}
 	if needTraceSwap {
 		s.swapTraceExporter(newTraceExp)
 	}

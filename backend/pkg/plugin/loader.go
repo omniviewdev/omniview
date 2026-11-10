@@ -480,12 +480,35 @@ func (pm *pluginManager) createBackend(
 	}
 	cmd.Env = pm.pluginProfilingEnvironment(childEnv)
 
-	// Ownership/root injection is unconditional, including without telemetry.
+	// Do not inherit OTLP credentials or exporter configuration into plugins.
+	filtered := cmd.Env[:0]
+	for _, entry := range cmd.Env {
+		key, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(key, "OMNIVIEW_TELEMETRY_") || strings.HasPrefix(key, "OTEL_EXPORTER_OTLP_") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	cmd.Env = filtered
 	if pm.telemetryConfigFn != nil {
-		cfg := pm.telemetryConfigFn()
+		cfg, configErr := pm.telemetryConfigFn(id)
+		if configErr != nil {
+			return nil, configErr
+		}
+		previousCleanup := snapshotCleanup
+		snapshotCleanup = func() {
+			if cfg.Cleanup != nil {
+				cfg.Cleanup()
+			}
+			if previousCleanup != nil {
+				previousCleanup()
+			}
+		}
 		cmd.Env = append(cmd.Env,
 			"OMNIVIEW_TELEMETRY_ENABLED="+strconv.FormatBool(cfg.Enabled),
 			"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT="+cfg.OTLPEndpoint,
+			"OMNIVIEW_TELEMETRY_AUTH_HEADER=Authorization",
+			"OMNIVIEW_TELEMETRY_AUTH_VALUE="+cfg.AuthToken,
 			"OMNIVIEW_TELEMETRY_PROFILING="+strconv.FormatBool(cfg.Profiling),
 			"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT="+cfg.PyroscopeEndpoint,
 		)

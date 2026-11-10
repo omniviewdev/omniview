@@ -36,13 +36,14 @@ const (
 	MaxPluginSize = 1024 * 1024 * 1024 // 1GB
 )
 
-// TelemetryEnvConfig holds the subset of telemetry configuration injected into plugin processes.
-// Auth credentials are NOT included — they are managed host-side only.
+// TelemetryEnvConfig contains only plugin-facing settings and receiver capability.
 type TelemetryEnvConfig struct {
 	Enabled           bool
 	OTLPEndpoint      string
+	AuthToken         string
 	Profiling         bool
 	PyroscopeEndpoint string
+	Cleanup           func()
 }
 
 // sensitivePattern matches tokens, long hex/base64 strings, and other
@@ -119,7 +120,7 @@ func NewManager(
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.Client,
-	telemetryConfigFn func() TelemetryEnvConfig,
+	telemetryConfigFn func(string) (TelemetryEnvConfig, error),
 	catalog *Catalog,
 ) Manager {
 	pluginPprofEnabled := false
@@ -198,8 +199,8 @@ type pluginManager struct {
 	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
 	emitter             resource.EventEmitter
-	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
-	pluginPprofEnabled  bool                      // immutable startup snapshot; changes require a host restart
+	telemetryConfigFn   func(string) (TelemetryEnvConfig, error)
+	pluginPprofEnabled  bool // immutable startup snapshot; changes require a host restart
 	sharing             *sharingState
 	activities          *activityBinding
 
