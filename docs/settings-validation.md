@@ -194,15 +194,27 @@ safe diagnostics without preventing valid siblings from loading.
 Telemetry and profiling read this prepared provider. Bootstrap supplies live
 effects and scoped change notifications; it does not reload or persist settings.
 Telemetry endpoint and authentication settings are visible regardless of plugin
-development state. The authentication value remains a sensitive setting.
-When **Ship Logs** is enabled, a configured **Loki Log Endpoint** sends host
-logs directly to Loki's JSON push API. **Loki Tenant ID** supplies the optional
-`X-Scope-OrgID` header. Loki authentication has separate settings so OTLP
-credentials are not sent to a different endpoint. An empty Loki endpoint keeps
-the existing OTLP log exporter. Local log files remain enabled in either mode.
-Logs can contain sensitive data; use a trusted endpoint and review its access.
-This ships the host telemetry log stream; external plugin process log files and
-cluster workload log sessions are not included.
+development state. Authentication values are sensitive settings.
+The telemetry master switch and **Ship Logs** control external host log shipping;
+the default **Log Export Format** is **OpenTelemetry (OTLP)**. Select **Loki**
+to use its native JSON push API instead. The selected format, not the presence
+of a Loki endpoint, determines the exporter. Loki mode requires a full **Loki
+Log Endpoint** when shipping is enabled; a missing endpoint reports an error
+instead of falling back to OTLP. Loki tenant and authentication settings are
+independent of OTLP settings.
+
+OTLP traces and metrics use their own endpoint and authentication settings.
+By default the separate **OTLP Log Endpoint** is empty, so OTLP logs reuse that
+endpoint and its authentication. Set an OTLP log endpoint to use a different
+destination, with its own optional authentication header and tenant ID. Trace
+and metrics credentials are never sent to that separate destination. The OTLP
+log tenant ID sends `X-Scope-OrgID` to the selected OTLP log endpoint; Loki's
+tenant ID sends the same header to Loki. Empty separate endpoint and authentication
+settings are the defaults.
+
+Local log files remain enabled in either mode. Logs can contain sensitive data;
+use trusted endpoints and review their access. Shipping covers the host telemetry
+log stream, not external plugin process log files or cluster workload log sessions.
 The plugin controller owns capability connections, schema provenance, and
 hydration, not another public settings write API.
 

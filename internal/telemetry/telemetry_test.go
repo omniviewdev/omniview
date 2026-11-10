@@ -198,7 +198,7 @@ func TestApplyConfig_FailureReleasesAllocatedExporters(t *testing.T) {
 	newMetricExporter = func(context.Context, string, string, string) (sdkmetric.Exporter, error) {
 		return metricExp, nil
 	}
-	newLogExporter = func(context.Context, string, string, string) (sdklog.Exporter, error) {
+	newLogExporter = func(context.Context, string, string, string, string) (sdklog.Exporter, error) {
 		return nil, errors.New("log exporter unavailable")
 	}
 
@@ -238,7 +238,7 @@ func TestLokiShippingStartsWithoutOTLPEndpointAndUpdatesLive(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := Config{Enabled: true, LogsShip: true, LogsShipLevel: "info", LokiEndpoint: server.URL, LokiTenantID: "first"}
+	cfg := Config{Enabled: true, LogsShip: true, LogsShipLevel: "info", LogFormat: "loki", LokiEndpoint: server.URL, LokiTenantID: "first"}
 	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
 	require.NoError(t, svc.Init(context.Background()))
 	defer func() { _ = svc.Shutdown(context.Background()) }()
@@ -265,4 +265,129 @@ func TestLokiShippingStartsWithoutOTLPEndpointAndUpdatesLive(t *testing.T) {
 	}
 	assert.Equal(t, "second", second.tenant)
 	assert.True(t, strings.Contains(second.body, "second host event"))
+}
+
+func TestLogShippingModesAndCredentialIsolation(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	type request struct {
+		method string
+		path   string
+		auth   string
+		tenant string
+	}
+	requests := make(chan request, 20)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- request{r.Method, r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("X-Scope-OrgID")}
+		w.WriteHeader(http.StatusOK)
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	logServer := httptest.NewServer(handler)
+	defer logServer.Close()
+
+	ctx := context.Background()
+	cfg := Config{
+		Enabled: true, Traces: true, LogsShip: true, LogsShipLevel: "info", LogFormat: "otlp",
+		OTLPEndpoint: server.URL + "/traces", AuthHeader: "Authorization", AuthValue: "trace-secret",
+		OTLPLogEndpoint: logServer.URL + "/logs", OTLPLogAuthHeader: "Authorization",
+		OTLPLogAuthValue: "log-secret", OTLPLogTenantID: "log-tenant",
+		LokiEndpoint: server.URL + "/loki/api/v1/push", LokiAuthHeader: "Authorization",
+		LokiAuthValue: "loki-secret", LokiTenantID: "loki-tenant",
+	}
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
+	require.NoError(t, svc.Init(ctx))
+	defer func() { _ = svc.Shutdown(ctx) }()
+
+	next := func() request {
+		t.Helper()
+		select {
+		case got := <-requests:
+			return got
+		case <-time.After(5 * time.Second):
+			t.Fatal("expected an export request")
+			return request{}
+		}
+	}
+	ship := func() request {
+		t.Helper()
+		svc.ZapLogger().Info("host event")
+		require.NoError(t, svc.LoggerProvider().ForceFlush(ctx))
+		return next()
+	}
+	assert.Equal(t, request{"POST", "/logs", "log-secret", "log-tenant"}, ship())
+
+	_, span := svc.TracerProvider().Tracer("test").Start(ctx, "trace")
+	span.End()
+	require.NoError(t, svc.TracerProvider().ForceFlush(ctx))
+	assert.Equal(t, request{"POST", "/traces", "trace-secret", ""}, next())
+
+	cfg.OTLPLogEndpoint = logServer.URL + "/logs-updated"
+	cfg.OTLPLogAuthValue = "updated-secret"
+	cfg.OTLPLogTenantID = "updated-tenant"
+	require.NoError(t, svc.ApplyConfig(ctx, cfg))
+	assert.Equal(t, request{"POST", "/logs-updated", "updated-secret", "updated-tenant"}, ship())
+
+	cfg.OTLPLogAuthHeader, cfg.OTLPLogAuthValue = "", ""
+	require.NoError(t, svc.ApplyConfig(ctx, cfg))
+	assert.Equal(t, request{"POST", "/logs-updated", "", "updated-tenant"}, ship())
+
+	cfg.LogFormat = "loki"
+	require.NoError(t, svc.ApplyConfig(ctx, cfg))
+	assert.Equal(t, request{"POST", "/loki/api/v1/push", "loki-secret", "loki-tenant"}, ship())
+
+	cfg.LogFormat = "otlp"
+	cfg.OTLPLogEndpoint = ""
+	require.NoError(t, svc.ApplyConfig(ctx, cfg))
+	assert.Equal(t, request{"POST", "/traces", "trace-secret", "updated-tenant"}, ship())
+}
+
+func TestOTLPLogShippingWithoutTraceEndpoint(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	requests := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	ctx := context.Background()
+	cfg := Config{Enabled: true, LogsShip: true, LogsShipLevel: "info", OTLPLogEndpoint: server.URL + "/logs"}
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
+	require.NoError(t, svc.Init(ctx))
+	defer func() { _ = svc.Shutdown(ctx) }()
+	svc.ZapLogger().Info("host event")
+	require.NoError(t, svc.LoggerProvider().ForceFlush(ctx))
+	select {
+	case path := <-requests:
+		assert.Equal(t, "/logs", path)
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected an OTLP log request")
+	}
+}
+
+func TestSelectedLogModeErrorsAtStartupAndOnUpdate(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	ctx := context.Background()
+	cfg := Config{Enabled: true, LogsShip: true, LogFormat: "loki", OTLPEndpoint: "http://localhost:4318"}
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
+	require.ErrorContains(t, svc.Init(ctx), "Loki log endpoint is required")
+
+	cfg.Enabled = false
+	svc = New(cfg, "test", "commit", "date", false, t.TempDir())
+	require.NoError(t, svc.Init(ctx))
+	defer func() { _ = svc.Shutdown(ctx) }()
+	cfg.Enabled = true
+	require.ErrorContains(t, svc.ApplyConfig(ctx, cfg), "Loki log endpoint is required")
+	assert.False(t, svc.Config().Enabled)
+
+	cfg.LogFormat = "otlp"
+	cfg.OTLPLogEndpoint = "http://localhost:4318/logs"
+	cfg.OTLPLogAuthHeader = "x-scope-orgid"
+	cfg.OTLPLogAuthValue = "credential"
+	cfg.OTLPLogTenantID = "tenant"
+	require.ErrorContains(t, svc.ApplyConfig(ctx, cfg), "conflicts")
+	assert.False(t, svc.Config().Enabled)
+	cfg.OTLPLogEndpoint = ""
+	cfg.AuthHeader, cfg.AuthValue = "X-Scope-OrgID", "trace-credential"
+	require.ErrorContains(t, svc.ApplyConfig(ctx, cfg), "conflicts")
+	assert.False(t, svc.Config().Enabled)
 }

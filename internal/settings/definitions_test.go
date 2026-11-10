@@ -28,6 +28,11 @@ func TestDefinitionsUseModeSpecificTelemetryDefaults(t *testing.T) {
 			"logs_ship_level": defaults.LogsShipLevel, "profiling": defaults.Profiling,
 			"endpoint_otlp": defaults.OTLPEndpoint, "endpoint_pyroscope": defaults.PyroscopeEndpoint,
 			"auth_header": defaults.AuthHeader, "auth_value": defaults.AuthValue,
+			"logs_format": defaults.LogFormat, "endpoint_otlp_logs": defaults.OTLPLogEndpoint,
+			"otlp_logs_auth_header": defaults.OTLPLogAuthHeader, "otlp_logs_auth_value": defaults.OTLPLogAuthValue,
+			"otlp_logs_tenant_id": defaults.OTLPLogTenantID, "endpoint_loki": defaults.LokiEndpoint,
+			"loki_auth_header": defaults.LokiAuthHeader, "loki_auth_value": defaults.LokiAuthValue,
+			"loki_tenant_id": defaults.LokiTenantID,
 		} {
 			assert.Equal(t, expected, definition.Settings[id].Default, "mode=%v, setting=%s", isDev, id)
 		}
@@ -42,13 +47,37 @@ func TestTelemetryConnectionSettingsRemainVisible(t *testing.T) {
 			if category.ID != "telemetry" {
 				continue
 			}
-			for _, id := range []string{"endpoint_otlp", "endpoint_pyroscope", "auth_header", "auth_value"} {
+			for _, id := range []string{
+				"logs_format", "endpoint_otlp", "endpoint_otlp_logs", "endpoint_loki", "endpoint_pyroscope",
+				"auth_header", "auth_value", "otlp_logs_auth_header", "otlp_logs_auth_value", "otlp_logs_tenant_id",
+				"loki_auth_header", "loki_auth_value", "loki_tenant_id",
+			} {
 				setting, ok := category.Settings[id]
 				require.True(t, ok, "missing %s", id)
 				assert.False(t, setting.DevOnly, "mode=%v setting=%s", isDev, id)
 			}
 			assert.True(t, category.Settings["auth_value"].Sensitive)
+			assert.True(t, category.Settings["otlp_logs_auth_value"].Sensitive)
+			assert.Equal(t, settings.Password, category.Settings["otlp_logs_auth_value"].Type)
+			assert.True(t, category.Settings["loki_auth_value"].Sensitive)
 		}
+	}
+}
+
+func TestTelemetryLogFormatValidation(t *testing.T) {
+	setting := Telemetry.Settings["logs_format"]
+	assert.Equal(t, settings.Text, setting.Type)
+	assert.Equal(t, "otlp", setting.Default)
+	require.Len(t, setting.Options, 2)
+	assert.Equal(t, "otlp", setting.Options[0].Value)
+	assert.Equal(t, "loki", setting.Options[1].Value)
+	assert.Equal(t, "OpenTelemetry (OTLP)", setting.Options[0].Label)
+	assert.Equal(t, "Loki", setting.Options[1].Label)
+	for _, value := range []any{"otlp", "loki"} {
+		assert.True(t, setting.Validation(value).Valid, "expected valid: %v", value)
+	}
+	for _, value := range []any{"", "OTLP", "other", true, nil} {
+		assert.False(t, setting.Validation(value).Valid, "expected invalid: %v", value)
 	}
 }
 

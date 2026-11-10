@@ -110,8 +110,8 @@ func (s *Service) Init(ctx context.Context) error {
 	s.switchableMetricExp = &SwitchableMetricExporter{inner: atomic.Value{}}
 	s.switchableLogExp = &SwitchableLogExporter{inner: atomic.Value{}}
 
-	// Initialize each enabled signal only when its destination is configured.
-	if s.cfg.Enabled && (s.cfg.OTLPEndpoint != "" || s.cfg.LokiEndpoint != "") {
+	// Initialize enabled signals, including validation of the selected log format.
+	if s.cfg.Enabled {
 		if err = s.swapInInitialExporters(ctx); err != nil {
 			return err
 		}
@@ -182,7 +182,7 @@ func (s *Service) swapInInitialExporters(ctx context.Context) error {
 		}
 		s.switchableMetricExp.Swap(exp)
 	}
-	if s.cfg.LogsShip && (s.cfg.OTLPEndpoint != "" || s.cfg.LokiEndpoint != "") {
+	if s.cfg.LogsShip {
 		exp, err := logExporterFor(ctx, s.cfg, true)
 		if err != nil {
 			return err
@@ -341,10 +341,13 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	}
 
 	needLogSwap := cfg.LogsShip != s.cfg.LogsShip || configChanged ||
+		cfg.LogFormat != s.cfg.LogFormat || cfg.OTLPLogEndpoint != s.cfg.OTLPLogEndpoint ||
+		cfg.OTLPLogAuthHeader != s.cfg.OTLPLogAuthHeader || cfg.OTLPLogAuthValue != s.cfg.OTLPLogAuthValue ||
+		cfg.OTLPLogTenantID != s.cfg.OTLPLogTenantID ||
 		cfg.LokiEndpoint != s.cfg.LokiEndpoint || cfg.LokiTenantID != s.cfg.LokiTenantID ||
 		cfg.LokiAuthHeader != s.cfg.LokiAuthHeader || cfg.LokiAuthValue != s.cfg.LokiAuthValue
 	if needLogSwap {
-		newLogExp, err = logExporterFor(ctx, cfg, cfg.LogsShip && (hasEndpoint || cfg.LokiEndpoint != ""))
+		newLogExp, err = logExporterFor(ctx, cfg, cfg.LogsShip)
 		if err != nil {
 			return err
 		}
@@ -474,19 +477,29 @@ func metricExporterFor(ctx context.Context, cfg Config, enabled bool) (sdkmetric
 	return exp, nil
 }
 
-// logExporterFor selects Loki when configured, otherwise the OTLP log exporter.
+// logExporterFor selects the configured log format independently of trace export.
 func logExporterFor(ctx context.Context, cfg Config, enabled bool) (sdklog.Exporter, error) {
 	if !enabled {
 		return noopLogExporter{}, nil
 	}
-	if cfg.LokiEndpoint != "" {
+	switch cfg.LogFormat {
+	case "loki":
+		if cfg.LokiEndpoint == "" {
+			return nil, fmt.Errorf("Loki log endpoint is required when Loki log shipping is enabled")
+		}
 		return NewLokiLogExporter(cfg.LokiEndpoint, cfg.LokiTenantID, cfg.LokiAuthHeader, cfg.LokiAuthValue)
+	case "", "otlp":
+		endpoint, header, value := cfg.OTLPLogEndpoint, cfg.OTLPLogAuthHeader, cfg.OTLPLogAuthValue
+		if endpoint == "" {
+			endpoint, header, value = cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue
+		}
+		if endpoint == "" {
+			return noopLogExporter{}, nil
+		}
+		return newLogExporter(ctx, endpoint, header, value, cfg.OTLPLogTenantID)
+	default:
+		return nil, fmt.Errorf("unsupported log format %q", cfg.LogFormat)
 	}
-	exp, err := newLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
-	if err != nil {
-		return nil, err
-	}
-	return exp, nil
 }
 
 // Config returns the current telemetry configuration.

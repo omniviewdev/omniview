@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -35,12 +37,22 @@ func NewMetricExporter(ctx context.Context, endpoint, authHeader, authValue stri
 }
 
 // NewLogExporter creates an OTLP HTTP log exporter.
-func NewLogExporter(ctx context.Context, endpoint, authHeader, authValue string) (sdklog.Exporter, error) {
+func NewLogExporter(ctx context.Context, endpoint, authHeader, authValue, tenantID string) (sdklog.Exporter, error) {
 	opts := []otlploghttp.Option{
 		otlploghttp.WithEndpointURL(endpoint),
 	}
+	headers := make(map[string]string)
 	if authHeader != "" && authValue != "" {
-		opts = append(opts, otlploghttp.WithHeaders(map[string]string{authHeader: authValue}))
+		if tenantID != "" && strings.EqualFold(authHeader, "X-Scope-OrgID") {
+			return nil, fmt.Errorf("OTLP log auth header conflicts with X-Scope-OrgID tenant header")
+		}
+		headers[authHeader] = authValue
+	}
+	if tenantID != "" {
+		headers["X-Scope-OrgID"] = tenantID
+	}
+	if len(headers) > 0 {
+		opts = append(opts, otlploghttp.WithHeaders(headers))
 	}
 	return otlploghttp.New(ctx, opts...)
 }

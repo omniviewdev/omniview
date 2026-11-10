@@ -30,10 +30,15 @@ func TestNewMetricExporter(t *testing.T) {
 }
 
 func TestNewLogExporter(t *testing.T) {
-	exp, err := NewLogExporter(context.Background(), "localhost:14318", "", "")
+	exp, err := NewLogExporter(context.Background(), "localhost:14318", "", "", "")
 	require.NoError(t, err)
 	assert.NotNil(t, exp)
 	assert.NoError(t, exp.Shutdown(context.Background()))
+}
+
+func TestNewLogExporterRejectsTenantAuthConflict(t *testing.T) {
+	_, err := NewLogExporter(context.Background(), "http://localhost:14318", "x-scope-orgid", "credential", "tenant")
+	require.ErrorContains(t, err, "conflicts")
 }
 
 func TestNoopTraceExporter(t *testing.T) {
