@@ -195,6 +195,14 @@ Telemetry and profiling read this prepared provider. Bootstrap supplies live
 effects and scoped change notifications; it does not reload or persist settings.
 Telemetry endpoint and authentication settings are visible regardless of plugin
 development state. The authentication value remains a sensitive setting.
+When **Ship Logs** is enabled, a configured **Loki Log Endpoint** sends host
+logs directly to Loki's JSON push API. **Loki Tenant ID** supplies the optional
+`X-Scope-OrgID` header. Loki authentication has separate settings so OTLP
+credentials are not sent to a different endpoint. An empty Loki endpoint keeps
+the existing OTLP log exporter. Local log files remain enabled in either mode.
+Logs can contain sensitive data; use a trusted endpoint and review its access.
+This ships the host telemetry log stream; external plugin process log files and
+cluster workload log sessions are not included.
 The plugin controller owns capability connections, schema provenance, and
 hydration, not another public settings write API.
 

@@ -3,8 +3,13 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -213,4 +218,51 @@ func TestApplyConfig_FailureReleasesAllocatedExporters(t *testing.T) {
 	assert.Equal(t, int32(1), traceExp.shutdowns.Load(), "unused trace exporter must be shut down")
 	assert.Equal(t, int32(1), metricExp.shutdowns.Load(), "unused metric exporter must be shut down")
 	assert.False(t, svc.Config().Enabled, "a failed ApplyConfig must not change the config")
+}
+
+func TestLokiShippingStartsWithoutOTLPEndpointAndUpdatesLive(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+	type received struct {
+		tenant string
+		body   string
+	}
+	requests := make(chan received, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		requests <- received{tenant: r.Header.Get("X-Scope-OrgID"), body: string(body)}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	cfg := Config{Enabled: true, LogsShip: true, LogsShipLevel: "info", LokiEndpoint: server.URL, LokiTenantID: "first"}
+	svc := New(cfg, "test", "commit", "date", false, t.TempDir())
+	require.NoError(t, svc.Init(context.Background()))
+	defer func() { _ = svc.Shutdown(context.Background()) }()
+	svc.ZapLogger().Info("first host event")
+	require.NoError(t, svc.loggerProvider.ForceFlush(context.Background()))
+	var first received
+	select {
+	case first = <-requests:
+	case <-time.After(5 * time.Second):
+		t.Fatal("host log was not delivered to Loki")
+	}
+	assert.Equal(t, "first", first.tenant)
+	assert.True(t, strings.Contains(first.body, "first host event"))
+
+	cfg.LokiTenantID = "second"
+	require.NoError(t, svc.ApplyConfig(context.Background(), cfg))
+	svc.ZapLogger().Info("second host event")
+	require.NoError(t, svc.loggerProvider.ForceFlush(context.Background()))
+	var second received
+	select {
+	case second = <-requests:
+	case <-time.After(5 * time.Second):
+		t.Fatal("host log was not delivered after the Loki tenant changed")
+	}
+	assert.Equal(t, "second", second.tenant)
+	assert.True(t, strings.Contains(second.body, "second host event"))
 }

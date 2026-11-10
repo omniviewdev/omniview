@@ -110,8 +110,8 @@ func (s *Service) Init(ctx context.Context) error {
 	s.switchableMetricExp = &SwitchableMetricExporter{inner: atomic.Value{}}
 	s.switchableLogExp = &SwitchableLogExporter{inner: atomic.Value{}}
 
-	// When enabled with a valid endpoint, swap in real exporters before creating providers.
-	if s.cfg.Enabled && s.cfg.OTLPEndpoint != "" {
+	// Initialize each enabled signal only when its destination is configured.
+	if s.cfg.Enabled && (s.cfg.OTLPEndpoint != "" || s.cfg.LokiEndpoint != "") {
 		if err = s.swapInInitialExporters(ctx); err != nil {
 			return err
 		}
@@ -168,22 +168,22 @@ func (s *Service) Init(ctx context.Context) error {
 // swapInInitialExporters creates the real exporters enabled in s.cfg and swaps
 // them into the switchable exporters. Callers must hold s.mu.
 func (s *Service) swapInInitialExporters(ctx context.Context) error {
-	if s.cfg.Traces {
+	if s.cfg.Traces && s.cfg.OTLPEndpoint != "" {
 		exp, err := NewTraceExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
 		if err != nil {
 			return err
 		}
 		s.switchableTraceExp.Swap(exp)
 	}
-	if s.cfg.Metrics {
+	if s.cfg.Metrics && s.cfg.OTLPEndpoint != "" {
 		exp, err := NewMetricExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
 		if err != nil {
 			return err
 		}
 		s.switchableMetricExp.Swap(exp)
 	}
-	if s.cfg.LogsShip {
-		exp, err := NewLogExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+	if s.cfg.LogsShip && (s.cfg.OTLPEndpoint != "" || s.cfg.LokiEndpoint != "") {
+		exp, err := logExporterFor(ctx, s.cfg, true)
 		if err != nil {
 			return err
 		}
@@ -340,9 +340,11 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 		}
 	}
 
-	needLogSwap := cfg.LogsShip != s.cfg.LogsShip || configChanged
+	needLogSwap := cfg.LogsShip != s.cfg.LogsShip || configChanged ||
+		cfg.LokiEndpoint != s.cfg.LokiEndpoint || cfg.LokiTenantID != s.cfg.LokiTenantID ||
+		cfg.LokiAuthHeader != s.cfg.LokiAuthHeader || cfg.LokiAuthValue != s.cfg.LokiAuthValue
 	if needLogSwap {
-		newLogExp, err = logExporterFor(ctx, cfg, cfg.LogsShip && hasEndpoint)
+		newLogExp, err = logExporterFor(ctx, cfg, cfg.LogsShip && (hasEndpoint || cfg.LokiEndpoint != ""))
 		if err != nil {
 			return err
 		}
@@ -472,10 +474,13 @@ func metricExporterFor(ctx context.Context, cfg Config, enabled bool) (sdkmetric
 	return exp, nil
 }
 
-// logExporterFor returns a real OTLP log exporter when enabled, otherwise a noop one.
+// logExporterFor selects Loki when configured, otherwise the OTLP log exporter.
 func logExporterFor(ctx context.Context, cfg Config, enabled bool) (sdklog.Exporter, error) {
 	if !enabled {
 		return noopLogExporter{}, nil
+	}
+	if cfg.LokiEndpoint != "" {
+		return NewLokiLogExporter(cfg.LokiEndpoint, cfg.LokiTenantID, cfg.LokiAuthHeader, cfg.LokiAuthValue)
 	}
 	exp, err := newLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 	if err != nil {

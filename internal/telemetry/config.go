@@ -41,6 +41,10 @@ type Config struct {
 	LogsShipLevel     string
 	Profiling         bool
 	OTLPEndpoint      string
+	LokiEndpoint      string
+	LokiTenantID      string
+	LokiAuthHeader    string
+	LokiAuthValue     string
 	PyroscopeEndpoint string
 	AuthHeader        string
 	AuthValue         string
@@ -108,6 +112,18 @@ func (c Config) WithSettings(vals map[string]any) Config {
 	}
 	if v, ok := vals["endpoint_otlp"].(string); ok {
 		c.OTLPEndpoint = v
+	}
+	if v, ok := vals["endpoint_loki"].(string); ok {
+		c.LokiEndpoint = v
+	}
+	if v, ok := vals["loki_tenant_id"].(string); ok {
+		c.LokiTenantID = v
+	}
+	if v, ok := vals["loki_auth_header"].(string); ok {
+		c.LokiAuthHeader = v
+	}
+	if v, ok := vals["loki_auth_value"].(string); ok {
+		c.LokiAuthValue = v
 	}
 	if v, ok := vals["endpoint_pyroscope"].(string); ok {
 		c.PyroscopeEndpoint = v
