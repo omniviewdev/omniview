@@ -115,6 +115,7 @@ test.describe('Schema catalog', () => {
         browserSchemaCalls.push(method);
       }
     };
+
     page.on('request', observeBrowserSchemaCall);
 
     try {
