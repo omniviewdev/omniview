@@ -187,6 +187,9 @@ func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
 	require.True(t, strings.HasPrefix(local, "go1."), local)
 
 	t.Run("a toolchain line naming the local toolchain", func(t *testing.T) {
+		if local == "go1.27.0" {
+			t.Skip("Go removes a toolchain directive identical to the go directive in readonly mode")
+		}
 		f := newFixture(t)
 		expected, err := verifier()(context.Background(), f.request())
 		require.NoError(t, err)
