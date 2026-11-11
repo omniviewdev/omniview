@@ -1,6 +1,7 @@
 import { EXTENSION_REGISTRY } from '@/features/extensions/store';
 import { ensureBuiltinExtensionPointsRegistered } from '@/features/extensions/registerBuiltinExtensionPoints';
 import { Events } from '@omniviewdev/runtime/runtime';
+import { observeFrontendOperation } from '@omniviewdev/runtime';
 import { DevServerManager, PluginManager } from '@omniviewdev/runtime/api';
 import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import { validatePluginExports } from '../core/validation';
@@ -65,7 +66,7 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
     },
     importPlugin: createPluginModuleResolver({
       getDescriptor: getPluginDescriptor,
-      activateBackend: async (id) => PluginManager.LoadPlugin(id, null),
+      activateBackend: async (id) => observeFrontendOperation('frontend.plugin.activate', { plugin_id: id }, PluginManager.LoadPlugin(id, null)),
       importExternal: importPlugin,
     }),
     clearPlugin: async (opts) => builtinIds.has(opts.pluginId) ? Promise.resolve() : clearPlugin(opts),

@@ -17,7 +17,10 @@ import { setFrontendSpanRecorder } from '@omniviewdev/runtime';
 const startupSpan = initTracing('unknown').getTracer('omniview.frontend').startSpan('frontend.startup');
 setFrontendSpanRecorder((name, attributes, startMs, endMs, failed) => {
   const span = trace.getTracer('omniview-frontend').startSpan(name, { startTime: startMs, attributes });
-  if (failed) span.setStatus({ code: SpanStatusCode.ERROR });
+  if (failed) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+  }
+
   span.end(endMs);
 });
 
@@ -44,6 +47,7 @@ resolveCurrentWindow()
     try {
       await loadInitialWindowState();
     } catch (error: unknown) {
+      startupSpan.setStatus({ code: SpanStatusCode.ERROR });
       console.error('[windows] failed to restore window state', error);
     }
 

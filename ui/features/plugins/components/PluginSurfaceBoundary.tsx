@@ -3,6 +3,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import type { FallbackProps } from 'react-error-boundary';
 import { useRouteError } from 'react-router';
 import { Text } from '@omniviewdev/base-ui';
+import { recordErrorBoundary } from '@/features/telemetry/boundaryTelemetry';
 import { PluginServiceContext } from '../react/context';
 import styles from './PluginSurfaceBoundary.module.css';
 
@@ -210,6 +211,7 @@ function usePluginBoundaryError(pluginId: string, boundary: BoundaryKind, resour
   return React.useCallback(
     (caught: unknown, info: React.ErrorInfo) => {
       const error = caught instanceof Error ? caught : new Error(String(caught));
+      recordErrorBoundary('plugin_surface', pluginId);
       logPluginBoundaryError({
         pluginId,
         boundary,
