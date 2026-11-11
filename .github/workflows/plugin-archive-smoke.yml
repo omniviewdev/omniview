@@ -81,8 +81,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/kubernetes-archive"
-          curl --fail --location --retry 3 https://github.com/omniviewdev/omniview-plugin-kubernetes/releases/download/v0.19.1/kubernetes-linux_amd64.tar.gz --output "$RUNNER_TEMP/kubernetes.tar.gz"
-          echo "77e42775f7f18b36b143c81a2d6ef812c9cb4454981677e5012b942594e1a178  $RUNNER_TEMP/kubernetes.tar.gz" | sha256sum --check
+          curl --fail --location --retry 3 https://github.com/omniviewdev/omniview-plugin-kubernetes/releases/download/v0.21.0/kubernetes-linux_amd64.tar.gz --output "$RUNNER_TEMP/kubernetes.tar.gz"
+          echo "01d5f6622edb8457da7ad09101c63a03b891ab861880b2c8cbddaa7008008c1f  $RUNNER_TEMP/kubernetes.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/kubernetes.tar.gz" -C "$RUNNER_TEMP/kubernetes-archive" plugin.yaml assets
       - name: Download candidate archive
         if: ${{ inputs.archive-artifact }}
