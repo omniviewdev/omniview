@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/models';
 import { GetHandler, GetNativeTerminalSupport, OpenNativeSession } from '../../exec';
+import { observeFrontendOperation } from '../../telemetry/frontendSpans';
 import { showAppError } from '../../errors/parseAppError';
 import { useNotifications } from '../../activity/context';
 import { useResolvedPluginId } from '../useResolvedPluginId';
@@ -54,10 +55,10 @@ export function useNativeExec({
     mutationKey,
     mutationFn: async ({ connectionID, opts }: NativeExecInput): Promise<boolean> => {
       try {
-        await OpenNativeSession(
-          pluginID,
-          connectionID,
-          SessionOptions.createFrom({ tty: true, ...opts }),
+        await observeFrontendOperation(
+          'frontend.exec.open',
+          { plugin_id: pluginID, mode: 'native' },
+          OpenNativeSession(pluginID, connectionID, SessionOptions.createFrom({ tty: true, ...opts })),
         );
         return true;
       } catch (error) {

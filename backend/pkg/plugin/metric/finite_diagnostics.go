@@ -1,8 +1,6 @@
 package metric
 
 import (
-	"context"
-
 	"github.com/omniviewdev/omniview/internal/telemetry"
 )
 
@@ -39,7 +37,7 @@ func (j *finiteJob) retireLocked() {
 		return
 	}
 	j.retired = true
-	telemetry.RecordPipelineEvent(context.Background(), "cancel_provider", 1)
+	telemetry.RecordPipelineEvent(j.ctx, "cancel_provider", 1)
 	j.cancel()
 }
 

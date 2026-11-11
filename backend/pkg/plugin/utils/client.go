@@ -3,17 +3,28 @@ package utils
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 
 	"github.com/go-enry/go-enry/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"gopkg.in/yaml.v3"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
-type Client struct{}
+type Client struct {
+	log logging.Logger
+}
 
-func NewClient() *Client {
-	return &Client{}
+func NewClient(logger logging.Logger) *Client {
+	return &Client{log: logger}
+}
+
+func (c *Client) logger() logging.Logger {
+	if c == nil || c.log == nil {
+		return logging.Default().Named("utils")
+	}
+	return c.log
 }
 
 func (c *Client) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
@@ -122,20 +133,20 @@ func (c *Client) DetectLanguage(params GetLanguageInput) string {
 	switch {
 	case params.Filename != "" && params.Contents != "":
 		lang = enry.GetLanguage(params.Filename, []byte(params.Contents))
-		log.Println("lang detected from both: ", lang)
+		c.logger().Debugw(context.Background(), "language detected from filename and contents", "language", lang)
 	case params.Filename != "":
 		lang, _ = enry.GetLanguageByExtension(params.Filename)
-		log.Println("lang detected from only extension: ", lang)
+		c.logger().Debugw(context.Background(), "language detected from extension", "language", lang)
 	default:
 		lang = langPlainText
 	}
 
 	// try some others
-	if lang == "" && attemptYamlDetection([]byte(params.Contents)) {
+	if lang == "" && c.attemptYamlDetection([]byte(params.Contents)) {
 		lang = "YAML"
 	}
 
-	if lang == "" && attemptJSONDetection([]byte(params.Contents)) {
+	if lang == "" && c.attemptJSONDetection([]byte(params.Contents)) {
 		lang = "JSON"
 	}
 
@@ -159,21 +170,23 @@ func (c *Client) DetectLanguage(params GetLanguageInput) string {
 	return langPlainText
 }
 
-func attemptYamlDetection(contents []byte) bool {
+func (c *Client) attemptYamlDetection(contents []byte) bool {
 	m := make(map[interface{}]interface{})
 
 	if err := yaml.Unmarshal(contents, &m); err != nil {
-		log.Println("yaml err: ", err)
+		// Parser errors can quote file content, so only the type is logged.
+		c.logger().Debugw(context.Background(), "yaml detection rejected content", "errorType", fmt.Sprintf("%T", err))
 		return false
 	}
 	return true
 }
 
-func attemptJSONDetection(contents []byte) bool {
+func (c *Client) attemptJSONDetection(contents []byte) bool {
 	m := make(map[string]interface{})
 
 	if err := json.Unmarshal(contents, &m); err != nil {
-		log.Println("json err: ", err)
+		// Parser errors can quote file content, so only the type is logged.
+		c.logger().Debugw(context.Background(), "json detection rejected content", "errorType", fmt.Sprintf("%T", err))
 		return false
 	}
 	return true

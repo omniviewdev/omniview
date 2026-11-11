@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
@@ -20,12 +21,38 @@ func (sc *sourceCoordinator) reconcileBindingInventory(ctx context.Context, plug
 			}
 			authority, err := sc.ctrl.resolveAuthority(ctx, pluginID, route, catalog, admission, descriptor.Type)
 			if err != nil {
+				if sc.ctrl.logger != nil {
+					sc.ctrl.logger.Warnw(
+						ctx,
+						"source inventory authority resolution failed",
+						"pluginID",
+						pluginID,
+						"connectionID",
+						route.Connection,
+						"resourceType",
+						descriptor.Type,
+						"errorClass",
+						telemetryutil.ErrorClass(err),
+					)
+				}
 				return
 			}
 			targets = append(targets, resourcev2.ReadTarget{Route: route, Provider: catalog.Provider, Authority: authority.Authority, Type: descriptor.Type, Scope: capability.Scope, Representation: descriptor.DefaultRepresentation})
 		}
 	}
 	if err := sc.ctrl.startConnectionUpdates(ctx, pluginID, route); err != nil {
+		if sc.ctrl.logger != nil {
+			sc.ctrl.logger.Warnw(
+				ctx,
+				"source inventory update start failed",
+				"pluginID",
+				pluginID,
+				"connectionID",
+				route.Connection,
+				"errorClass",
+				telemetryutil.ErrorClass(err),
+			)
+		}
 		return
 	}
 

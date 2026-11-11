@@ -32,6 +32,7 @@ import {
   type PageTab,
 } from './pagesState';
 import { PageTabRouters } from './tabRouters';
+import { recordNavigation } from './navigationTelemetry';
 
 /**
  * Whether a tab may leave this window, for the given tabs. Components pass the
@@ -428,7 +429,10 @@ export class WorkspaceController {
   }
 
   private activateSettings(target: string): void {
-    void openSettings(target).catch((error: unknown) => {
+    void openSettings(target).then(() => {
+      recordNavigation('settings', false);
+    }, (error: unknown) => {
+      recordNavigation('settings', true);
       console.error('[settings] opening the settings window failed', error);
     });
   }

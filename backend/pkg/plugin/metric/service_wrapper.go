@@ -8,6 +8,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 
 	metricsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
@@ -60,6 +61,9 @@ func (s *ServiceWrapper) Query(
 ) (*metricsdk.QueryResponse, error) {
 	var req metricsdk.QueryRequest
 	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil {
+		_, end := startOp(ctx, "metric.Query",
+			attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
+		end(&err)
 		return nil, err
 	}
 	return s.Ctrl.Query(s.realmContext(ctx), pluginID, connectionID, req)
@@ -67,6 +71,8 @@ func (s *ServiceWrapper) Query(
 func (s *ServiceWrapper) QueryAll(ctx context.Context, connectionID, encoded string) (map[string]*metricsdk.QueryResponse, error) {
 	var req metricsdk.QueryRequest
 	if err := transportjson.Decode(encoded, &req, connectionID); err != nil {
+		_, end := startOp(ctx, "metric.QueryAll", attribute.String("connection_id", connectionID))
+		end(&err)
 		return nil, err
 	}
 	return s.Ctrl.QueryAll(s.realmContext(ctx), connectionID, req)
@@ -74,6 +80,9 @@ func (s *ServiceWrapper) QueryAll(ctx context.Context, connectionID, encoded str
 func (s *ServiceWrapper) Subscribe(ctx context.Context, pluginID, connectionID, encoded string) (string, error) {
 	var req SubscribeRequest
 	if err := transportjson.Decode(encoded, &req, pluginID, connectionID); err != nil {
+		_, end := startOp(ctx, "metric.Subscribe",
+			attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
+		end(&err)
 		return "", err
 	}
 	return s.Ctrl.Subscribe(s.realmContext(ctx), pluginID, connectionID, req)

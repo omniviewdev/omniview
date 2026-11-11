@@ -11,7 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/internal/nativeapps"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -65,15 +70,18 @@ func (m macNativeTerminal) Launch(ctx context.Context, application string, comma
 	}
 	executable, err := lookup(command.Executable)
 	if err != nil {
+		nativeLaunchFailed(ctx, "lookup_executable", err)
 		return resourcev2.NewError("UNAVAILABLE", "The required local CLI is unavailable. Install the plugin's CLI and ensure it is on your login PATH, then restart Omniview.")
 	}
 	executable, err = filepath.Abs(executable)
 	if err != nil {
+		nativeLaunchFailed(ctx, "resolve_executable_path", err)
 		return resourcev2.NewError("UNAVAILABLE", "Cannot resolve the local CLI path. Check your login PATH and retry.")
 	}
 	if command.Cwd != "" {
 		info, statErr := os.Stat(command.Cwd)
 		if !filepath.IsAbs(command.Cwd) || statErr != nil || !info.IsDir() {
+			nativeLaunchFailed(ctx, "working_directory", statErr)
 			return resourcev2.NewError("UNAVAILABLE", "The plugin's local working directory is unavailable. Check its configuration and retry.")
 		}
 	}
@@ -93,23 +101,28 @@ func (m macNativeTerminal) Launch(ctx context.Context, application string, comma
 	}
 	directory, err := os.MkdirTemp(m.tempRoot, "omniview-native-")
 	if err != nil {
+		nativeLaunchFailed(ctx, "create_temp_dir", err)
 		return resourcev2.NewError("UNAVAILABLE", "Cannot create a private native launch file. Check your temporary directory permissions.")
 	}
 	path := filepath.Join(directory, "launch.sh")
 	launched := false
 	defer func() {
 		if !launched {
-			_ = os.RemoveAll(directory)
+			if rmErr := os.RemoveAll(directory); rmErr != nil {
+				nativeLaunchFailed(ctx, "cleanup_temp_dir", rmErr)
+			}
 		}
 	}()
 	// Directory mode is 0700, file mode is 0600. /bin/sh reads it directly.
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
+		nativeLaunchFailed(ctx, "create_launch_file", err)
 		return resourcev2.NewError("UNAVAILABLE", "Cannot create a private native launch file. Check your temporary directory permissions.")
 	}
 	_, writeErr := file.WriteString(nativeLaunchScript(directory, executable, command))
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
+		nativeLaunchFailed(ctx, "write_launch_file", errors.Join(writeErr, closeErr))
 		return resourcev2.NewError("UNAVAILABLE", "Cannot write the native launch file. Check available disk space and retry.")
 	}
 	if _, err := run(ctx, nativeAppleScript(application, applicationPath, path)); err != nil {
@@ -117,6 +130,18 @@ func (m macNativeTerminal) Launch(ctx context.Context, application string, comma
 	}
 	launched = true
 	return nil
+}
+
+// nativeLaunchFailed records a bounded launch-stage failure. Error text from the
+// OS is never exported: only the stage and error class are.
+func nativeLaunchFailed(ctx context.Context, stage string, err error) {
+	class := telemetryutil.ErrorClass(err)
+	trace.SpanFromContext(ctx).AddEvent("native.launch.failed", trace.WithAttributes(
+		attribute.String("stage", stage),
+		attribute.String("error_class", class),
+	))
+	logging.Default().Named("ExecNativeTerminal").Debugw(ctx, "native terminal launch stage failed",
+		"stage", stage, "errorClass", class)
 }
 
 func posixQuote(value string) string {
@@ -234,6 +259,7 @@ type nativeScriptOutput struct {
 func (o *nativeScriptOutput) Write(data []byte) (int, error) {
 	const maximum = 16 << 10
 	if remaining := maximum - o.text.Len(); remaining > 0 {
+		// bytes.Buffer.Write always returns a nil error.
 		_, _ = o.text.Write(data[:min(len(data), remaining)])
 	}
 	return len(data), nil

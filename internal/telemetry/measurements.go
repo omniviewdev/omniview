@@ -142,6 +142,55 @@ func RecordPluginQuarantine(ctx context.Context) {
 	}
 }
 
+func RecordPluginHealthProbe(ctx context.Context, pluginID, outcome string, d time.Duration) {
+	if outcome != "success" && outcome != "failure" && outcome != "canceled" {
+		outcome = "other"
+	}
+	ctx = WithPlugin(ctx, pluginID)
+	if m := activeMetrics.Load(); m != nil {
+		attrs := append([]attribute.KeyValue{attribute.String("outcome", outcome)}, pluginAttributes(ctx)...)
+		m.PluginHealthProbes.Add(ctx, 1, metric.WithAttributes(attrs...))
+		m.PluginHealthProbeDuration.Record(ctx, d.Seconds(), metric.WithAttributes(attrs...))
+	}
+}
+
+func RecordPluginInstall(ctx context.Context, pluginID, source, outcome string, d time.Duration) {
+	if source != "registry" && source != "path" && source != "dev" {
+		source = "other"
+	}
+	if outcome != "success" && outcome != "failure" && outcome != "canceled" {
+		outcome = "other"
+	}
+	ctx = WithPlugin(ctx, pluginID)
+	if m := activeMetrics.Load(); m != nil {
+		attrs := append([]attribute.KeyValue{
+			attribute.String("source", source), attribute.String("outcome", outcome),
+		}, pluginAttributes(ctx)...)
+		m.PluginInstalls.Add(ctx, 1, metric.WithAttributes(attrs...))
+		m.PluginInstallDuration.Record(ctx, d.Seconds(), metric.WithAttributes(attrs...))
+	}
+}
+
+func RecordPluginStreamEvent(ctx context.Context, pluginID, stream, event string) {
+	switch stream {
+	case "source", "watch", "logs", "exec", "metric", "portforward":
+	default:
+		stream = "other"
+	}
+	switch event {
+	case "reconnect", "reset", "overflow", "dropped", "closed_error":
+	default:
+		event = "other"
+	}
+	ctx = WithPlugin(ctx, pluginID)
+	if m := activeMetrics.Load(); m != nil {
+		attrs := append([]attribute.KeyValue{
+			attribute.String("stream", stream), attribute.String("event", event),
+		}, pluginAttributes(ctx)...)
+		m.PluginStreamEvents.Add(ctx, 1, metric.WithAttributes(attrs...))
+	}
+}
+
 // PipelineState is sampled under the coordinator's own lock. Inflight includes
 // retired providers until they return, not merely until cancellation is requested.
 type PipelineState struct {
@@ -208,6 +257,23 @@ func RecordPipelineResponse(ctx context.Context, bytes, results int) {
 
 func registerMeasurements(meter metric.Meter, m *Metrics) error {
 	var err error
+	if m.PluginHealthProbes, err = meter.Int64Counter("omniview.plugin.health.probes"); err != nil {
+		return err
+	}
+	if m.PluginHealthProbeDuration, err = meter.Float64Histogram(
+		"omniview.plugin.health.probe.duration", metric.WithUnit("s")); err != nil {
+		return err
+	}
+	if m.PluginInstalls, err = meter.Int64Counter("omniview.plugin.installs"); err != nil {
+		return err
+	}
+	if m.PluginInstallDuration, err = meter.Float64Histogram(
+		"omniview.plugin.install.duration", metric.WithUnit("s")); err != nil {
+		return err
+	}
+	if m.PluginStreamEvents, err = meter.Int64Counter("omniview.plugin.stream.events"); err != nil {
+		return err
+	}
 	if m.OperationCalls, err = meter.Int64Counter("omniview.operation.calls", metric.WithDescription("Completed host operations, including failed admission")); err != nil {
 		return err
 	}

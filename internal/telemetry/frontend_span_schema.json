@@ -1,0 +1,745 @@
+{
+  "frontend.startup": {},
+  "frontend.interaction": {},
+  "frontend.resource.call": {
+    "operation": {
+      "kind": "enum",
+      "values": [
+        "get",
+        "enumerate",
+        "native_query",
+        "mutate",
+        "action",
+        "stream_action",
+        "other"
+      ]
+    },
+    "plugin_id": {
+      "kind": "id"
+    },
+    "resource_type": {
+      "kind": "resource_type"
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.source_view.sync": {
+    "mode": {
+      "kind": "enum",
+      "values": [
+        "snapshot",
+        "resync",
+        "reset"
+      ]
+    },
+    "reason": {
+      "kind": "enum",
+      "values": [
+        "initial",
+        "sequence_gap",
+        "reset_required",
+        "binding_changed",
+        "reconnect",
+        "exhausted",
+        "other"
+      ]
+    },
+    "records": {
+      "kind": "int",
+      "max": 10000000
+    },
+    "attempt": {
+      "kind": "int",
+      "max": 1000
+    },
+    "plugin_id": {
+      "kind": "id"
+    },
+    "resource_type": {
+      "kind": "resource_type"
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.plugin.load": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "source": {
+      "kind": "enum",
+      "values": [
+        "builtin",
+        "dev",
+        "external"
+      ]
+    },
+    "phase": {
+      "kind": "enum",
+      "values": [
+        "activate",
+        "import",
+        "validate",
+        "register"
+      ]
+    },
+    "timed_out": {
+      "kind": "bool"
+    },
+    "retry": {
+      "kind": "int",
+      "max": 100
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.plugin.import": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "source": {
+      "kind": "enum",
+      "values": [
+        "builtin",
+        "dev",
+        "external"
+      ]
+    },
+    "timed_out": {
+      "kind": "bool"
+    },
+    "late_settle": {
+      "kind": "bool"
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.plugin.activate": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.query.failure": {
+    "kind": {
+      "kind": "enum",
+      "values": [
+        "query",
+        "mutation"
+      ]
+    },
+    "category": {
+      "kind": "enum",
+      "values": [
+        "resource",
+        "plugin",
+        "settings",
+        "connection",
+        "metric",
+        "logs",
+        "exec",
+        "networker",
+        "other"
+      ]
+    },
+    "failure_count": {
+      "kind": "int",
+      "max": 1000
+    },
+    "canceled": {
+      "kind": "bool"
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.exec.open": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "mode": {
+      "kind": "enum",
+      "values": [
+        "session",
+        "native"
+      ]
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.logs.session": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "operation": {
+      "kind": "enum",
+      "values": [
+        "create",
+        "subscribe",
+        "close"
+      ]
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.port_forward.operation": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "operation": {
+      "kind": "enum",
+      "values": [
+        "lookup",
+        "start",
+        "close"
+      ]
+    },
+    "protocol": {
+      "kind": "enum",
+      "values": [
+        "tcp",
+        "udp",
+        "other"
+      ]
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.connection.readiness": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "transition": {
+      "kind": "enum",
+      "values": [
+        "check",
+        "start",
+        "retry",
+        "invalidate"
+      ]
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.navigation": {
+    "route_category": {
+      "kind": "enum",
+      "values": [
+        "home",
+        "plugin",
+        "resource",
+        "settings",
+        "extensions",
+        "other"
+      ]
+    },
+    "window_kind": {
+      "kind": "enum",
+      "values": [
+        "main",
+        "detached",
+        "other"
+      ]
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.window.resolve": {
+    "window_kind": {
+      "kind": "enum",
+      "values": [
+        "main",
+        "detached",
+        "other"
+      ]
+    },
+    "fallback": {
+      "kind": "bool"
+    },
+    "window_count": {
+      "kind": "int",
+      "max": 64
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.window.restore": {
+    "window_kind": {
+      "kind": "enum",
+      "values": [
+        "main",
+        "detached",
+        "other"
+      ]
+    },
+    "fallback": {
+      "kind": "bool"
+    },
+    "window_count": {
+      "kind": "int",
+      "max": 64
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.error.boundary": {
+    "boundary": {
+      "kind": "enum",
+      "values": [
+        "root",
+        "app",
+        "panel",
+        "plugin_surface",
+        "global_error",
+        "unhandled_rejection"
+      ]
+    },
+    "plugin_id": {
+      "kind": "id"
+    }
+  },
+  "frontend.metric_stream": {
+    "plugin_id": {
+      "kind": "id"
+    },
+    "operation": {
+      "kind": "enum",
+      "values": [
+        "subscribe",
+        "unsubscribe",
+        "parse"
+      ]
+    },
+    "parse_failures": {
+      "kind": "int",
+      "max": 100000
+    },
+    "outcome": {
+      "kind": "enum",
+      "values": [
+        "success",
+        "failure",
+        "canceled"
+      ]
+    },
+    "error_class": {
+      "kind": "enum",
+      "values": [
+        "none",
+        "canceled",
+        "timeout",
+        "FORBIDDEN",
+        "UNAUTHORIZED",
+        "NOT_FOUND",
+        "UNSUPPORTED",
+        "INVALID_REQUEST",
+        "CONFLICT",
+        "ALREADY_EXISTS",
+        "RESOURCE_LIMIT",
+        "RESET_REQUIRED",
+        "PROVIDER_ERROR",
+        "CANCELLED",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "other"
+      ]
+    }
+  },
+  "frontend.event.anomaly": {
+    "family": {
+      "kind": "enum",
+      "values": [
+        "source",
+        "logs",
+        "metric",
+        "exec",
+        "plugin"
+      ]
+    },
+    "kind": {
+      "kind": "enum",
+      "values": [
+        "subscription_failure",
+        "unmatched_receiver",
+        "after_close"
+      ]
+    }
+  }
+}

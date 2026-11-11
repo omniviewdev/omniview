@@ -20,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
@@ -30,6 +31,8 @@ import (
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	regclient "github.com/omniviewdev/registry"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -45,6 +48,9 @@ type TelemetryEnvConfig struct {
 	Profiling         bool
 	PyroscopeEndpoint string
 	Cleanup           func()
+	// LogLevel is the minimum plugin log level (debug|info|warn|error); empty
+	// leaves the plugin default. A plugin restart is required to apply a change.
+	LogLevel string
 }
 
 // sensitivePattern matches tokens, long hex/base64 strings, and other
@@ -168,6 +174,9 @@ func NewManager(
 	}); ok {
 		source.SetFatalTransportCallback(pm.markFatalSourceTransport)
 	}
+	if logger != nil {
+		lifecycle.SetLogger(logger.Named("lifecycle"))
+	}
 	pm.configureConnectionSharing(resourceController, toolsController)
 	return pm
 }
@@ -211,6 +220,10 @@ type pluginManager struct {
 	pluginOpsMu     sync.Mutex
 	pluginOpsLocks  map[string]*sync.Mutex
 	installOpsLocks map[string]*sync.Mutex
+
+	// lifecycleCtxs maps a plugin ID to the span context of the lifecycle
+	// operation currently running for it, so nested steps become child spans.
+	lifecycleCtxs sync.Map
 }
 
 // managedDevServers is the process boundary used by initialization and install
@@ -259,6 +272,9 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 }
 
 func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCrash, unlock func()) {
+	crashSpan, endCrash := pm.lifecycleScope("plugin.Crash", pluginID)
+	var crashErr error
+	defer func() { endCrash(crashErr) }()
 	pm.retireConnectionSharing(pluginID)
 	pm.retireActivities(pluginID)
 	// Capture the last few log entries before the crash for diagnostics.
@@ -285,8 +301,17 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 	pm.recordsMu.RLock()
 	record := pm.records[pluginID]
 	source := ""
+	exitClass := "unknown"
 	if record != nil {
 		source = record.DevPath
+		if record.Backend != nil {
+			if record.Backend.Exited() {
+				exitClass = "exited"
+			} else if expected != nil {
+				// Probe failure on a live process: it is killed on reload.
+				exitClass = "killed"
+			}
+		}
 	}
 	pm.recordsMu.RUnlock()
 	pm.observeManagedLifecycle(pluginID, source, pm.managedRuntimeGeneration(pluginID, source), false, false, fmt.Errorf("%s", crashError))
@@ -307,6 +332,7 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 	// suppress repeated notifications — the health checker will emit a single
 	// "crash_recovery_failed" when it gives up.
 	inCrashCycle := pm.healthChecker != nil && pm.healthChecker.IsInCrashCycle(pluginID)
+	crashSpan.SetAttributes(attribute.Bool("in_crash_cycle", inCrashCycle), attribute.String("exit_class", exitClass))
 	if !inCrashCycle {
 		pm.emitter.Emit(EventCrash, PluginErrorPayload{
 			PluginID: pluginID,
@@ -320,7 +346,12 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 	if record, ok := pm.records[pluginID]; ok {
 		record.Phase = lifecycle.PhaseRecovering
 		if record.StateMachine != nil {
-			_ = record.StateMachine.TransitionTo(lifecycle.PhaseRecovering, "crash detected")
+			if transitionErr := record.StateMachine.TransitionTo(
+				lifecycle.PhaseRecovering, "crash detected",
+			); transitionErr != nil {
+				pm.logger.Warnw(pm.ctx, "plugin crash state transition failed", "pluginID", pluginID,
+					"errorClass", telemetryutil.ErrorClass(transitionErr))
+			}
 		}
 	}
 	pm.recordsMu.Unlock()
@@ -357,6 +388,7 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 		}
 	}
 	if err != nil {
+		crashErr = err
 		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
 		pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
 			PluginID: pluginID,
@@ -371,9 +403,9 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 // registerStateObserver records successful activation and follows subsequent
 // lifecycle transitions for diagnostics and frontend events. Call once per runtime.
 func (pm *pluginManager) registerStateObserver(pluginID string, sm *lifecycle.PluginStateMachine) {
-	recordPluginActivation(pluginID)
+	pm.recordPluginActivation(pluginID)
 	sm.AddObserver(func(pluginID string, t lifecycle.Transition) {
-		recordPluginTransition(pluginID, t)
+		pm.recordPluginTransition(pluginID, t)
 		emitStateChange(pm.emitter, pluginID, t)
 	})
 }
@@ -387,6 +419,9 @@ func (pm *pluginManager) Shutdown() {
 	}
 	pm.recordsMu.RUnlock()
 
+	shutdownCtx, shutdownSpan := tracer.Start(context.Background(), "plugin.ShutdownAll",
+		trace.WithAttributes(attribute.Int("plugin_count", len(snapshot))))
+	shutdownFailures := 0
 	for id := range snapshot {
 		lock := pm.pluginOpsLock(id)
 		lock.Lock()
@@ -394,12 +429,23 @@ func (pm *pluginManager) Shutdown() {
 		record := pm.records[id]
 		pm.recordsMu.RUnlock()
 		if record != nil {
-			if err := pm.shutdownPlugin(id, record); err != nil {
+			unbind := pm.lifecycleBind(shutdownCtx, id)
+			err := pm.shutdownPlugin(id, record)
+			unbind()
+			if err != nil {
+				shutdownFailures++
 				pm.logger.Warnw(pm.ctx, "failed to shut down plugin", "pluginID", id, "error", err)
 			}
 		}
 		lock.Unlock()
 	}
+	shutdownSpan.SetAttributes(attribute.Int("failed_count", shutdownFailures))
+	if shutdownFailures > 0 {
+		shutdownSpan.SetAttributes(attribute.String("outcome", "failure"))
+	} else {
+		shutdownSpan.SetAttributes(attribute.String("outcome", "success"))
+	}
+	shutdownSpan.End()
 
 	if err := pm.pidTracker.Save(); err != nil {
 		pm.logger.Warnw(pm.ctx, "failed to save plugin PID file", "error", err)

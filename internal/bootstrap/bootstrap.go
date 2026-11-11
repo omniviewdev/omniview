@@ -3,12 +3,15 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/telemetry"
@@ -34,6 +37,7 @@ type Service struct {
 }
 
 func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
+	startedAt := time.Now()
 	// Startup consumers already have hydrated values. The settings service owns
 	// committed notifications; bootstrap supplies only service-specific effects.
 	b.attachSettingsEffects(ctx)
@@ -55,9 +59,11 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 
 	// Initialize the plugin system
 	if err := b.PluginManager.Initialize(ctx); err != nil {
-		b.Log.Errorw(ctx, "error while initializing plugin system", "error", err)
+		b.Log.Errorw(ctx, "error while initializing plugin system",
+			"errorClass", telemetryutil.ErrorClass(err), "errorType", fmt.Sprintf("%T", err))
 	}
 	b.PluginManager.Run(ctx)
+	b.Log.Infow(ctx, "host services started", "durationMs", time.Since(startedAt).Milliseconds())
 
 	return nil
 }
@@ -69,7 +75,9 @@ func (b *Service) attachSettingsEffects(ctx context.Context) {
 		}
 		cfg := b.TelemetrySvc.Config().WithSettings(values)
 		if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
-			b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
+			// Exporter constructor errors can echo endpoint details; log only the class.
+			b.Log.Errorw(ctx, "failed to apply telemetry config change",
+				"errorClass", telemetryutil.ErrorClass(err), "errorType", fmt.Sprintf("%T", err))
 			return errors.New("telemetry could not apply the saved settings")
 		}
 		b.Log.Infow(ctx, "telemetry config updated from settings")
@@ -85,9 +93,11 @@ func (b *Service) attachSettingsEffects(ctx context.Context) {
 func (b *Service) ServiceShutdown() error {
 	// DevServerManager and controllers have their own ServiceShutdown
 	// called by Wails v3 automatically.
+	b.Log.Infow(context.Background(), "host services shutting down")
 	b.PluginManager.Shutdown()
 	if err := b.TelemetrySvc.Shutdown(context.Background()); err != nil {
-		b.Log.Errorw(context.Background(), "failed to shut down telemetry", "error", err)
+		b.Log.Errorw(context.Background(), "failed to shut down telemetry",
+			"errorClass", telemetryutil.ErrorClass(err), "errorType", fmt.Sprintf("%T", err))
 	}
 	return nil
 }

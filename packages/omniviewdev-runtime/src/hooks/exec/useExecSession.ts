@@ -3,6 +3,7 @@ import { useNotifications } from '../../activity/context';
 import { parseAppError, showAppError } from '../../errors/parseAppError';
 import { SessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/models';
 import { CreateSession } from '../../exec';
+import { observeFrontendOperation } from '../../telemetry/frontendSpans';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -61,8 +62,12 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
       });
 
       try {
-        const session = await CreateSession(pluginID, connectionID, sessionOpts);
-        if (!session) throw new Error('Failed to create session: null response');
+        const attempt = (async () => {
+          const created = await CreateSession(pluginID, connectionID, sessionOpts);
+          if (!created) throw new Error('Failed to create session: null response');
+          return created;
+        })();
+        const session = await observeFrontendOperation('frontend.exec.open', { plugin_id: pluginID, mode: 'session' }, attempt);
         // Replace temp ID with real session ID and mark connected
         updateTab(
           { id: tempId },

@@ -1,5 +1,6 @@
 import { WindowClient } from '@omniviewdev/runtime/api';
-import { currentWindow } from './identity';
+import { classifyFrontendError, recordFrontendSpan } from '@omniviewdev/runtime';
+import { currentWindow, telemetryWindowKind } from './identity';
 
 export type WindowStateSlot = 'pages' | 'drawer';
 
@@ -13,7 +14,25 @@ const pendingSaves = new Map<WindowStateSlot, { json: string; timer: ReturnType<
  * first render already shows the restored tabs instead of a default layout.
  */
 export async function loadInitialWindowState(): Promise<void> {
-  initialSlots = Object.freeze({ ...(await WindowClient.GetState(currentWindow.name)) });
+  const start = Date.now();
+  try {
+    initialSlots = Object.freeze({ ...(await WindowClient.GetState(currentWindow.name)) });
+    recordFrontendSpan('frontend.window.restore', {
+      window_kind: telemetryWindowKind(),
+      fallback: false,
+      window_count: Math.min(Object.keys(initialSlots).length, 64),
+      outcome: 'success',
+    }, start, Date.now(), false);
+  } catch (error) {
+    // The caller falls back to empty window state.
+    recordFrontendSpan('frontend.window.restore', {
+      window_kind: telemetryWindowKind(),
+      fallback: true,
+      outcome: 'failure',
+      error_class: classifyFrontendError(error),
+    }, start, Date.now(), true);
+    throw error;
+  }
 }
 
 /**

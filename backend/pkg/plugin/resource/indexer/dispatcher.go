@@ -1,10 +1,13 @@
 package indexer
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const defaultBufferSize = 10_000
@@ -15,6 +18,7 @@ type Dispatcher struct {
 	done     chan struct{}
 	stopping chan struct{}
 	stopped  atomic.Bool
+	logger   logging.Logger
 }
 
 func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
@@ -24,7 +28,16 @@ func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
 		done:     make(chan struct{}),
 		stopping: make(chan struct{}),
 		stopped:  atomic.Bool{},
+		logger:   logging.Default().Named("IndexerDispatcher"),
 	}
+}
+
+// WithLogger sets the dispatcher logger. A nil logger is ignored. Call before Start.
+func (d *Dispatcher) WithLogger(logger logging.Logger) *Dispatcher {
+	if logger != nil {
+		d.logger = logger
+	}
+	return d
 }
 
 func (d *Dispatcher) Start() {
@@ -89,7 +102,13 @@ func (d *Dispatcher) loop() {
 func (d *Dispatcher) dispatch(idx ResourceIndexer, event Event) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("indexer %q panicked on %v event: %v", idx.Name(), event.Type, r)
+			// Log the panic value's type only: it can embed resource data.
+			d.logger.Errorw(context.Background(), "indexer panicked",
+				"indexer", idx.Name(),
+				"method", dispatchMethod(event.Type),
+				"panicType", fmt.Sprintf("%T", r),
+				"stack", string(debug.Stack()),
+			)
 		}
 	}()
 
@@ -108,6 +127,21 @@ func (d *Dispatcher) dispatch(idx ResourceIndexer, event Event) {
 		// Flush barriers are consumed by loop and never dispatched.
 		fallthrough
 	default:
-		log.Printf("indexer dispatcher: unknown event type %d", event.Type)
+		d.logger.Warnw(context.Background(), "indexer dispatcher: unknown event type", "eventType", int(event.Type))
+	}
+}
+
+func dispatchMethod(t EventType) string {
+	switch t {
+	case EventAdd:
+		return "OnAdd"
+	case EventUpdate:
+		return "OnUpdate"
+	case EventDelete:
+		return "OnDelete"
+	case eventFlush:
+		return "unknown"
+	default:
+		return "unknown"
 	}
 }

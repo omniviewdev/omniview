@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
@@ -30,6 +32,16 @@ type ResolvedReference struct {
 // ResolveReference admits an exact native identity. It never splits IDs, derives
 // an incarnation, or uses any/multiple query values to invent an exact reference.
 func (c *controller) ResolveReference(ctx context.Context, pluginID string, input ResolveReferenceRequest) (_result ResolvedReference, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.ResolveReference",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", input.Route.Connection),
+		attribute.String("resource_type", input.Type),
+		attribute.String("resource_id", input.ID),
+	)
+	defer end(&retErr)
+	// Scope entries contain only strings, so JSON marshaling cannot fail.
 	encodedScope, _ := json.Marshal(input.Scope)
 	ctx, err := c.admit(ctx, "resource.ResolveReference", invocation.Target{Provider: pluginID, Connection: input.Route.Connection, ResourceType: input.Type, Object: input.ID, Scope: map[string]string{"resource-scope": string(encodedScope)}})
 	if err != nil {
@@ -108,6 +120,8 @@ func (c *controller) ValidateReference(ctx context.Context, pluginID string, rou
 }
 
 func (c *controller) Features(ctx context.Context, pluginID string) (_result resourcev2.FeatureSet, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.Features", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.Features", invocation.Target{Provider: pluginID})
 	if err != nil {
 		return _result, err

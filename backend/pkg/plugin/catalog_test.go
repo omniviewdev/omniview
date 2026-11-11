@@ -295,7 +295,9 @@ func TestBuiltinArchiveReplacementRejectsBeforeStaging(t *testing.T) {
 	pm := catalogManager(t, []CatalogEntry{{Metadata: config.PluginMeta{ID: "owned", Version: "1.0.0"}}})
 	before, err := pm.pluginsRoot.ReadDir(".")
 	require.NoError(t, err)
-	published, err := pm.installArchiveCandidate("does-not-exist.tar.gz", &config.PluginMeta{ID: "owned"}, "1.0.0")
+	published, err := pm.installArchiveCandidate(
+		context.Background(), "does-not-exist.tar.gz", &config.PluginMeta{ID: "owned"}, "1.0.0",
+	)
 	require.ErrorContains(t, err, "built into")
 	require.False(t, published)
 	after, err := pm.pluginsRoot.ReadDir(".")

@@ -28,7 +28,7 @@ func createProfileCredentialFile(root *appstate.ScopedRoot, name string) (*os.Fi
 	if err != nil {
 		return nil, fmt.Errorf("open credential parent: %w", err)
 	}
-	defer directory.Close()
+	defer h3Close(directory, "credential_parent_close")
 	if err := validateProfileCredentialACL(directory, true); err != nil {
 		return nil, fmt.Errorf("validate credential parent: %w", err)
 	}
@@ -73,7 +73,7 @@ func validateProfileCredentialDirectory(root *appstate.ScopedRoot) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer h3Close(directory, "credential_directory_close")
 	info, err := directory.Stat()
 	if err != nil {
 		return err

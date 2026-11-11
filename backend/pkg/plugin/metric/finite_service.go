@@ -3,10 +3,12 @@ package metric
 import (
 	"context"
 
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 type metricSessionLifetimeKey struct{}
@@ -64,7 +66,13 @@ func (s *ServiceWrapper) metricSession(ctx context.Context) (context.Context, *m
 // The caller installs metric/observation routing before Open, processes the
 // returned snapshot, then calls Attach. Events are sent only to this Wails
 // window; no application-global metrics payload is broadcast.
-func (s *ServiceWrapper) OpenMetricsObservation(ctx context.Context, request OpenMetricsObservationRequest) (MetricsObservationSnapshot, error) {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) OpenMetricsObservation(
+	ctx context.Context, request OpenMetricsObservationRequest,
+) (_ MetricsObservationSnapshot, retErr error) {
+	ctx, end := startOp(ctx, "metric.OpenMetricsObservation")
+	defer end(&retErr)
 	ctx, session, err := s.metricSession(ctx)
 	if err != nil {
 		return MetricsObservationSnapshot{}, err
@@ -81,7 +89,11 @@ func (s *ServiceWrapper) OpenMetricsObservation(ctx context.Context, request Ope
 }
 
 // AttachMetricsObservation activates an acknowledged window-owned reservation.
-func (s *ServiceWrapper) AttachMetricsObservation(ctx context.Context, token string) error {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) AttachMetricsObservation(ctx context.Context, token string) (retErr error) {
+	ctx, end := startOp(ctx, "metric.AttachMetricsObservation")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return err
@@ -90,7 +102,11 @@ func (s *ServiceWrapper) AttachMetricsObservation(ctx context.Context, token str
 }
 
 // CloseMetricsObservation is idempotent and covers close-before-registration.
-func (s *ServiceWrapper) CloseMetricsObservation(ctx context.Context, token string) error {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) CloseMetricsObservation(ctx context.Context, token string) (retErr error) {
+	ctx, end := startOp(ctx, "metric.CloseMetricsObservation")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return err
@@ -99,7 +115,11 @@ func (s *ServiceWrapper) CloseMetricsObservation(ctx context.Context, token stri
 }
 
 // RefreshMetricsObservation bypasses completed cache, not compatible in-flight work.
-func (s *ServiceWrapper) RefreshMetricsObservation(ctx context.Context, token string) error {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) RefreshMetricsObservation(ctx context.Context, token string) (retErr error) {
+	ctx, end := startOp(ctx, "metric.RefreshMetricsObservation")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return err
@@ -108,7 +128,13 @@ func (s *ServiceWrapper) RefreshMetricsObservation(ctx context.Context, token st
 }
 
 // GetResourceMetricsCatalog resolves the selected source for an authenticated owner.
-func (s *ServiceWrapper) GetResourceMetricsCatalog(ctx context.Context, request ResourceMetricsCatalogRequest) (*sdk.ResourceMetricsCatalog, error) {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetResourceMetricsCatalog(
+	ctx context.Context, request ResourceMetricsCatalogRequest,
+) (_ *sdk.ResourceMetricsCatalog, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetResourceMetricsCatalog")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return nil, err
@@ -118,7 +144,14 @@ func (s *ServiceWrapper) GetResourceMetricsCatalog(ctx context.Context, request 
 
 // GetMetricViewPreferences reads profile-durable presentation state. Revision is
 // required when saving; durable store failures are returned, never hidden.
-func (s *ServiceWrapper) GetMetricViewPreferences(ctx context.Context, plugin, resourceKey string) (MetricViewPreferences, error) {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetMetricViewPreferences(
+	ctx context.Context, plugin, resourceKey string,
+) (_ MetricViewPreferences, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetMetricViewPreferences",
+		attribute.String("plugin_id", plugin), attribute.String("resource_type", resourceKey))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return MetricViewPreferences{}, err
 	}
@@ -127,114 +160,223 @@ func (s *ServiceWrapper) GetMetricViewPreferences(ctx context.Context, plugin, r
 
 // SaveMetricViewPreferences requires the loaded Revision. A stale edit returns
 // CONFLICT without overwriting other windows. Reload after a successful save.
-func (s *ServiceWrapper) SaveMetricViewPreferences(ctx context.Context, plugin, resourceKey string, preferences MetricViewPreferences) error {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) SaveMetricViewPreferences(
+	ctx context.Context, plugin, resourceKey string, preferences MetricViewPreferences,
+) (retErr error) {
+	ctx, end := startOp(ctx, "metric.SaveMetricViewPreferences",
+		attribute.String("plugin_id", plugin), attribute.String("resource_type", resourceKey))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return err
 	}
 	return s.Ctrl.SaveMetricViewPreferences(plugin, resourceKey, preferences)
 }
 
-func (s *ServiceWrapper) GetProviderConnections(ctx context.Context, plugin string) ([]sdk.ProviderConnection, error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetProviderConnections(
+	ctx context.Context, plugin string,
+) (_ []sdk.ProviderConnection, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetProviderConnections", attribute.String("plugin_id", plugin))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.GetProviderConnections(plugin)
 }
-func (s *ServiceWrapper) SaveProviderConnection(ctx context.Context, plugin string, input sdk.ProviderConnectionInput) (*sdk.ProviderConnection, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) SaveProviderConnection(
+	ctx context.Context, plugin string, input sdk.ProviderConnectionInput,
+) (_ *sdk.ProviderConnection, retErr error) {
+	ctx, end := startOp(ctx, "metric.SaveProviderConnection", attribute.String("plugin_id", plugin))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.SaveProviderConnection(plugin, input)
 }
-func (s *ServiceWrapper) DeleteProviderConnection(ctx context.Context, plugin, connection string) error {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) DeleteProviderConnection(ctx context.Context, plugin, connection string) (retErr error) {
+	ctx, end := startOp(ctx, "metric.DeleteProviderConnection",
+		attribute.String("plugin_id", plugin), attribute.String("connection_id", connection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return err
 	}
 	return s.Ctrl.DeleteProviderConnection(plugin, connection)
 }
-func (s *ServiceWrapper) GetDataSources(ctx context.Context, plugin, connection string) ([]sdk.MetricDataSource, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetDataSources(
+	ctx context.Context, plugin, connection string,
+) (_ []sdk.MetricDataSource, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetDataSources",
+		attribute.String("plugin_id", plugin), attribute.String("connection_id", connection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.GetDataSources(plugin, connection)
 }
-func (s *ServiceWrapper) TestProviderConnection(ctx context.Context, plugin, connection string) (*sdk.MetricValidationResult, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) TestProviderConnection(
+	ctx context.Context, plugin, connection string,
+) (_ *sdk.MetricValidationResult, retErr error) {
+	ctx, end := startOp(ctx, "metric.TestProviderConnection",
+		attribute.String("plugin_id", plugin), attribute.String("connection_id", connection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.TestProviderConnection(plugin, connection)
 }
-func (s *ServiceWrapper) ValidateMetricDefinition(ctx context.Context, plugin, connection, datasourceUID string, definition sdk.MetricDefinition) (*sdk.MetricValidationResult, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) ValidateMetricDefinition(
+	ctx context.Context, plugin, connection, datasourceUID string, definition sdk.MetricDefinition,
+) (_ *sdk.MetricValidationResult, retErr error) {
+	ctx, end := startOp(ctx, "metric.ValidateMetricDefinition",
+		attribute.String("plugin_id", plugin), attribute.String("connection_id", connection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.ValidateMetricDefinition(plugin, connection, datasourceUID, definition)
 }
-func (s *ServiceWrapper) DiscoverMetricLabels(ctx context.Context, plugin, connection, datasourceUID string, request sdk.MetricDiscoveryRequest) (*sdk.MetricDiscoveryResult, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) DiscoverMetricLabels(
+	ctx context.Context, plugin, connection, datasourceUID string, request sdk.MetricDiscoveryRequest,
+) (_ *sdk.MetricDiscoveryResult, retErr error) {
+	ctx, end := startOp(ctx, "metric.DiscoverMetricLabels",
+		attribute.String("plugin_id", plugin), attribute.String("connection_id", connection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.DiscoverMetricLabels(plugin, connection, datasourceUID, request)
 }
-func (s *ServiceWrapper) GetMetricDefinitions(ctx context.Context) ([]sdk.MetricDefinition, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetMetricDefinitions(ctx context.Context) (_ []sdk.MetricDefinition, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetMetricDefinitions")
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.GetMetricDefinitions()
 }
-func (s *ServiceWrapper) GetMetricOwnerCatalog(ctx context.Context, ownerPlugin, ownerConnection string) (*sdk.MetricOwnerCatalog, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetMetricOwnerCatalog(
+	ctx context.Context, ownerPlugin, ownerConnection string,
+) (_ *sdk.MetricOwnerCatalog, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetMetricOwnerCatalog",
+		attribute.String("plugin_id", ownerPlugin), attribute.String("connection_id", ownerConnection))
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return s.Ctrl.GetMetricOwnerCatalog(ctx, ownerPlugin, ownerConnection)
 }
-func (s *ServiceWrapper) SaveMetricDefinition(ctx context.Context, ownerPlugin, ownerConnection string, definition sdk.MetricDefinition) (*sdk.MetricDefinition, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) SaveMetricDefinition(
+	ctx context.Context, ownerPlugin, ownerConnection string, definition sdk.MetricDefinition,
+) (_ *sdk.MetricDefinition, retErr error) {
+	ctx, end := startOp(ctx, "metric.SaveMetricDefinition",
+		attribute.String("plugin_id", ownerPlugin), attribute.String("connection_id", ownerConnection))
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return s.Ctrl.SaveMetricDefinition(ctx, ownerPlugin, ownerConnection, definition)
 }
-func (s *ServiceWrapper) DeleteMetricDefinition(ctx context.Context, id string) error {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) DeleteMetricDefinition(ctx context.Context, id string) (retErr error) {
+	ctx, end := startOp(ctx, "metric.DeleteMetricDefinition")
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return err
 	}
 	return s.Ctrl.DeleteMetricDefinition(id)
 }
-func (s *ServiceWrapper) GetMetricBindings(ctx context.Context, ownerPlugin, ownerConnection string) ([]sdk.MetricBinding, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetMetricBindings(
+	ctx context.Context, ownerPlugin, ownerConnection string,
+) (_ []sdk.MetricBinding, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetMetricBindings",
+		attribute.String("plugin_id", ownerPlugin), attribute.String("connection_id", ownerConnection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return nil, err
 	}
 	return s.Ctrl.GetMetricBindings(ownerPlugin, ownerConnection)
 }
-func (s *ServiceWrapper) SaveMetricBinding(ctx context.Context, binding sdk.MetricBinding) (*sdk.MetricBinding, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) SaveMetricBinding(
+	ctx context.Context, binding sdk.MetricBinding,
+) (_ *sdk.MetricBinding, retErr error) {
+	ctx, end := startOp(ctx, "metric.SaveMetricBinding")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return s.Ctrl.SaveMetricBinding(ctx, binding)
 }
-func (s *ServiceWrapper) DeleteMetricBinding(ctx context.Context, ownerPlugin, ownerConnection, id string) error {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) DeleteMetricBinding(
+	ctx context.Context, ownerPlugin, ownerConnection, id string,
+) (retErr error) {
+	ctx, end := startOp(ctx, "metric.DeleteMetricBinding",
+		attribute.String("plugin_id", ownerPlugin), attribute.String("connection_id", ownerConnection))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return err
 	}
 	return s.Ctrl.DeleteMetricBinding(ownerPlugin, ownerConnection, id)
 }
-func (s *ServiceWrapper) GetMetricSourceDefaults(ctx context.Context) (sdk.MetricSourceDefaults, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetMetricSourceDefaults(ctx context.Context) (_ sdk.MetricSourceDefaults, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetMetricSourceDefaults")
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return sdk.MetricSourceDefaults{}, err
 	}
 	return s.Ctrl.GetMetricSourceDefaults()
 }
-func (s *ServiceWrapper) SaveMetricSourceDefaults(ctx context.Context, defaults sdk.MetricSourceDefaults) (sdk.MetricSourceDefaults, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) SaveMetricSourceDefaults(
+	ctx context.Context, defaults sdk.MetricSourceDefaults,
+) (_ sdk.MetricSourceDefaults, retErr error) {
+	ctx, end := startOp(ctx, "metric.SaveMetricSourceDefaults")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return sdk.MetricSourceDefaults{}, err
 	}
 	return s.Ctrl.SaveMetricSourceDefaults(ctx, defaults)
 }
-func (s *ServiceWrapper) PreviewMetricDefinition(ctx context.Context, spec MetricsObservationSpec, definition sdk.MetricDefinition) (*sdk.ResourceMetricsResponse, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) PreviewMetricDefinition(
+	ctx context.Context, spec MetricsObservationSpec, definition sdk.MetricDefinition,
+) (_ *sdk.ResourceMetricsResponse, retErr error) {
+	ctx, end := startOp(ctx, "metric.PreviewMetricDefinition")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return nil, err
@@ -242,13 +384,26 @@ func (s *ServiceWrapper) PreviewMetricDefinition(ctx context.Context, spec Metri
 	return s.Ctrl.PreviewMetricDefinition(ctx, spec, definition)
 }
 
-func (s *ServiceWrapper) GetMetricViewSourceSelection(ctx context.Context, ownerPlugin, ownerConnection, resourceKey string) (sdk.MetricViewSourceSelection, error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetMetricViewSourceSelection(
+	ctx context.Context, ownerPlugin, ownerConnection, resourceKey string,
+) (_ sdk.MetricViewSourceSelection, retErr error) {
+	ctx, end := startOp(ctx, "metric.GetMetricViewSourceSelection",
+		attribute.String("plugin_id", ownerPlugin), attribute.String("connection_id", ownerConnection),
+		attribute.String("resource_type", resourceKey))
+	defer end(&retErr)
 	if _, _, err := s.metricSession(ctx); err != nil {
 		return sdk.MetricViewSourceSelection{}, err
 	}
 	return s.Ctrl.GetMetricViewSourceSelection(ownerPlugin, ownerConnection, resourceKey)
 }
-func (s *ServiceWrapper) SaveMetricViewSourceSelection(ctx context.Context, selection sdk.MetricViewSourceSelection) (sdk.MetricViewSourceSelection, error) {
+
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) SaveMetricViewSourceSelection(
+	ctx context.Context, selection sdk.MetricViewSourceSelection,
+) (_ sdk.MetricViewSourceSelection, retErr error) {
+	ctx, end := startOp(ctx, "metric.SaveMetricViewSourceSelection")
+	defer end(&retErr)
 	ctx, _, err := s.metricSession(ctx)
 	if err != nil {
 		return sdk.MetricViewSourceSelection{}, err

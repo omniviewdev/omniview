@@ -235,9 +235,14 @@ trace shipping or clearing its endpoint permanently invalidates existing plugin
 receivers. This prevents buffered spans from being exported after re-enabling.
 Restart plugins after enabling trace shipping, restoring an endpoint, or changing
 plugin profiling settings.
-Frontend startup and interaction spans use the host trace endpoint and
-authentication. These spans contain no event targets, text, or span attributes.
-The frontend bridge uses bounded, best-effort delivery without retries.
+Frontend operation spans use the host trace endpoint and authentication. The host
+accepts only span names and attributes in its frontend schema. The bridge rejects
+unknown or invalid attributes and does not send event targets, input text, URLs,
+error messages, or payloads. Delivery is bounded and best-effort without retries.
+
+When log shipping is enabled, the configured ship level is passed to newly started
+plugin processes as `OMNIVIEW_PLUGIN_LOG_LEVEL`. Restart a plugin after a level
+change. Plugins require an SDK release with this support and a rebuild.
 By default the separate **OTLP Log Endpoint** is empty, so OTLP logs reuse that
 endpoint and its authentication. Set an OTLP log endpoint to use a different
 destination, with its own optional authentication header and tenant ID. Trace

@@ -1,4 +1,10 @@
 import { Events } from '@wailsio/runtime';
+import { recordFrontendSpan } from './telemetry/frontendSpans';
+
+function recordLogAnomaly(kind: 'subscription_failure' | 'unmatched_receiver') {
+  const now = Date.now();
+  recordFrontendSpan('frontend.event.anomaly', { family: 'logs', kind }, now, now, false);
+}
 
 type LogEventHandlers = { onLines: (data: unknown) => void; onEvent: (data: unknown) => void };
 const pending = new Map<string, { connect: (handlers: LogEventHandlers) => () => void }>();
@@ -20,6 +26,7 @@ function subscribe(sessionId: string, handlers: LogEventHandlers) {
     return () => { lines(); events(); };
   } catch (error) {
     lines();
+    recordLogAnomaly('subscription_failure');
     throw error;
   }
 }
@@ -67,7 +74,8 @@ export function PrepareSessionEvents(sessionId: string) {
     },
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const release = () => {
+  const release = (expired = false) => {
+    if (expired && (lines.length || events.length || lifecycle.size)) recordLogAnomaly('unmatched_receiver');
     clearTimeout(timer);
     disconnect();
     if (pending.get(sessionId) === handoff) pending.delete(sessionId);
@@ -77,7 +85,7 @@ export function PrepareSessionEvents(sessionId: string) {
     lifecycle.clear();
   };
   const settled = () => {
-    if (pending.get(sessionId) === handoff) timer ??= setTimeout(release, 60000);
+    if (pending.get(sessionId) === handoff) timer ??= setTimeout(() => { release(true); }, 60000);
   };
   const handoff = {
     connect(handlers: LogEventHandlers) {

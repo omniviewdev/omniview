@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	lifecyclepb "github.com/omniviewdev/plugin-sdk/proto/v1/lifecycle"
@@ -14,8 +15,17 @@ import (
 
 // State observers are installed only after successful activation. Failed startup
 // records therefore never contribute an active plugin or a matching decrement.
-func recordPluginActivation(pluginID string) {
-	telemetry.RecordPluginActive(telemetry.WithPlugin(context.Background(), pluginID), 1)
+func (pm *pluginManager) recordPluginActivation(pluginID string) {
+	telemetry.RecordPluginActive(telemetry.WithPlugin(pm.metricContext(), pluginID), 1)
+}
+
+// metricContext is the manager context for metric records, which no lifecycle
+// observer receives a caller context for.
+func (pm *pluginManager) metricContext() context.Context {
+	if pm.ctx != nil {
+		return pm.ctx
+	}
+	return context.Background()
 }
 
 func pluginTransitionMeasurements(t lifecycle.Transition) (activeDelta int64, crashed bool) {
@@ -31,9 +41,9 @@ func pluginTransitionMeasurements(t lifecycle.Transition) (activeDelta int64, cr
 	return activeDelta, t.From == lifecycle.PhaseRunning && t.To == lifecycle.PhaseRecovering
 }
 
-func recordPluginTransition(pluginID string, t lifecycle.Transition) {
+func (pm *pluginManager) recordPluginTransition(pluginID string, t lifecycle.Transition) {
 	delta, crashed := pluginTransitionMeasurements(t)
-	ctx := telemetry.WithPlugin(context.Background(), pluginID)
+	ctx := telemetry.WithPlugin(pm.metricContext(), pluginID)
 	if delta != 0 {
 		telemetry.RecordPluginActive(ctx, delta)
 	}
@@ -65,6 +75,10 @@ func (pm *pluginManager) DiagnosticsTargets() []telemetry.PluginDiagnosticsTarge
 				if err != nil {
 					// Builtin in-process backends serve no lifecycle RPC; a stopped
 					// external backend ends its generation. Neither is retried.
+					if pm.logger != nil {
+						pm.logger.Debugw(ctx, "plugin lifecycle capability unavailable for diagnostics",
+							"pluginID", id, "errorClass", telemetryutil.ErrorClass(err))
+					}
 					return nil, status.Error(codes.Unimplemented, "plugin serves no lifecycle capability")
 				}
 				client, ok := raw.(*lc.Client)

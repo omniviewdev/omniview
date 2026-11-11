@@ -29,6 +29,19 @@ describe('frontend trace bridge', () => {
     expect(JSON.stringify(payload)).not.toContain('private');
   });
 
+  it('forwards only valid schema attributes', async () => {
+    const provider = initTracing('test');
+    const span = provider.getTracer('test').startSpan('frontend.resource.call');
+    span.setAttribute('operation', 'get');
+    span.setAttribute('plugin_id', 'Invalid/Plugin');
+    span.setAttribute('secret', 'token=abc123');
+    span.end();
+    await provider.forceFlush();
+    const payload = JSON.parse(ingest.mock.calls[0][0]);
+    expect(payload.spans[0].attributes).toEqual({ operation: 'get' });
+    expect(JSON.stringify(payload)).not.toContain('abc123');
+  });
+
   it('does not forward arbitrary span names', async () => {
     const provider = initTracing('test');
     provider.getTracer('test').startSpan('secret-name').end();

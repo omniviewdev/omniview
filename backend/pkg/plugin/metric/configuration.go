@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
@@ -115,13 +117,21 @@ func (s *metricState) save(data persistedMetrics) error {
 	if err != nil {
 		return err
 	}
-	defer s.root.Remove(temp)
+	defer func() {
+		if removeErr := s.root.Remove(temp); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			metricConfigurationError("remove_temporary_file", removeErr)
+		}
+	}()
 	if _, err = f.Write(raw); err != nil {
-		f.Close()
+		if closeErr := f.Close(); closeErr != nil {
+			metricConfigurationError("close_after_write", closeErr)
+		}
 		return err
 	}
 	if err = f.Sync(); err != nil {
-		f.Close()
+		if closeErr := f.Close(); closeErr != nil {
+			metricConfigurationError("close_after_sync", closeErr)
+		}
 		return err
 	}
 	if err = f.Close(); err != nil {
@@ -133,14 +143,28 @@ func (s *metricState) save(data persistedMetrics) error {
 	s.data = data
 	return nil
 }
+func metricConfigurationError(operation string, err error) {
+	logging.Default().Debugw(context.Background(), "metric configuration operation failed",
+		"operation", operation, "errorClass", telemetryutil.ErrorClass(err))
+}
+
 func copyJSON[T any](v T) T {
-	raw, _ := json.Marshal(v)
 	var out T
-	_ = json.Unmarshal(raw, &out)
+	raw, err := json.Marshal(v)
+	if err != nil {
+		metricConfigurationError("copy_marshal", err)
+		return out
+	}
+	if unmarshalErr := json.Unmarshal(raw, &out); unmarshalErr != nil {
+		metricConfigurationError("copy_unmarshal", unmarshalErr)
+	}
 	return out
 }
 func metricDigest(v any) string {
-	raw, _ := json.Marshal(v)
+	raw, err := json.Marshal(v)
+	if err != nil {
+		metricConfigurationError("digest_marshal", err)
+	}
 	return fmt.Sprintf("%x", sha256.Sum256(raw))
 }
 func validateOwnerScope(scope map[string]string, catalog *sdk.MetricOwnerCatalog) error {

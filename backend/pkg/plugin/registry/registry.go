@@ -5,15 +5,22 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/mod/semver"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/version"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	regclient "github.com/omniviewdev/registry"
-	"golang.org/x/mod/semver"
 )
 
 // AvailablePlugin represents a plugin from the marketplace, enriched with
@@ -83,14 +90,14 @@ type Client struct {
 	mu      sync.RWMutex
 	inner   *regclient.Client
 	baseURL string // tracks the current API URL so we can detect changes
+	logger  logging.Logger
 }
 
 // NewClient creates a new registry client.
 func NewClient(baseURL string) *Client {
-	return &Client{
-		inner:   newRegistryClient(baseURL),
-		baseURL: baseURL,
-	}
+	c := &Client{mu: sync.RWMutex{}, inner: nil, baseURL: baseURL, logger: nil}
+	c.inner = newRegistryClient(baseURL, c)
+	return c
 }
 
 // SetBaseURL replaces the underlying client with one pointing at a new API URL.
@@ -102,7 +109,7 @@ func (c *Client) SetBaseURL(baseURL string) {
 		return
 	}
 	c.baseURL = baseURL
-	c.inner = newRegistryClient(baseURL)
+	c.inner = newRegistryClient(baseURL, c)
 }
 
 // BaseURL returns the current marketplace API URL.
@@ -118,7 +125,7 @@ func (c *Client) snapshot() *regclient.Client {
 	return c.inner
 }
 
-func newRegistryClient(baseURL string) *regclient.Client {
+func newRegistryClient(baseURL string, owner *Client) *regclient.Client {
 	if baseURL == "" {
 		baseURL = coresettings.DefaultMarketplaceURL
 	}
@@ -132,7 +139,7 @@ func newRegistryClient(baseURL string) *regclient.Client {
 	}
 	regclient.WithHTTPClient(&http.Client{
 		Timeout:   30 * time.Second, // Preserve registry v0.2.3's default.
-		Transport: &compatibilityTransport{base: base, next: http.DefaultTransport},
+		Transport: &compatibilityTransport{base: base, next: http.DefaultTransport, owner: owner},
 	})(client)
 	return client
 }
@@ -140,8 +147,9 @@ func newRegistryClient(baseURL string) *regclient.Client {
 // compatibilityTransport only decorates direct registry API requests. Redirects
 // and artifact/CDN paths must retain their original (potentially signed) URLs.
 type compatibilityTransport struct {
-	base *url.URL
-	next http.RoundTripper
+	base  *url.URL
+	next  http.RoundTripper
+	owner *Client // optional; supplies the logger
 }
 
 type artifactRequestKey struct{}
@@ -157,7 +165,46 @@ type artifactRequest struct {
 	url string
 }
 
+// RoundTrip traces every registry request. Only the URL path is recorded (never the
+// query, headers or body); artifact/CDN URLs may carry signed material so their
+// path is replaced by a fixed token.
 func (t *compatibilityTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	artifact, _ := req.Context().Value(artifactRequestKey{}).(*artifactRequest)
+	isArtifact := artifact != nil && artifact.url == req.URL.String()
+	path := req.URL.Path
+	if isArtifact {
+		path = "{artifact}"
+	}
+	ctx, span := startSpan(req.Context(), "registry.http",
+		attribute.String("http.request.method", req.Method),
+		attribute.String("url.path", path),
+		attribute.Bool("artifact", isArtifact))
+	started := time.Now()
+	resp, err := t.roundTrip(req.WithContext(ctx))
+	elapsed := time.Since(started).Milliseconds()
+	switch {
+	case err != nil:
+		t.owner.warn(ctx, "registry request failed", "method", req.Method, "path", path,
+			"durationMs", elapsed, "errorClass", telemetryutil.ErrorClass(err))
+		endSpan(span, err)
+		return resp, err
+	case resp.StatusCode >= http.StatusBadRequest:
+		t.owner.warn(ctx, "registry request returned non-success status", "method", req.Method, "path", path,
+			"status", resp.StatusCode, "durationMs", elapsed)
+		span.SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode),
+			attribute.String("outcome", "failure"))
+		span.SetStatus(otelcodes.Error, "http_status")
+		span.End()
+	default:
+		t.owner.debug(ctx, "registry request", "method", req.Method, "path", path,
+			"status", resp.StatusCode, "durationMs", elapsed)
+		span.SetAttributes(attribute.Int("http.response.status_code", resp.StatusCode))
+		endSpan(span, nil)
+	}
+	return resp, nil
+}
+
+func (t *compatibilityTransport) roundTrip(req *http.Request) (*http.Response, error) {
 	artifact, _ := req.Context().Value(artifactRequestKey{}).(*artifactRequest)
 	if (artifact != nil && artifact.url == req.URL.String()) ||
 		t.base == nil || req.Response != nil ||
@@ -220,7 +267,14 @@ func toAvailablePlugin(p regclient.Plugin) AvailablePlugin {
 
 // ListPlugins fetches all available plugins from the marketplace, paginating
 // through results automatically.
-func (c *Client) ListPlugins(ctx context.Context) ([]AvailablePlugin, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the result count and error.
+func (c *Client) ListPlugins(ctx context.Context) (plugins []AvailablePlugin, err error) {
+	ctx, span := startSpan(ctx, "registry.ListPlugins")
+	defer func() {
+		span.SetAttributes(attribute.Int("count", len(plugins)))
+		endSpan(span, err)
+	}()
 	return c.fetchAllPlugins(ctx, &regclient.ListOptions{
 		Page:           0,
 		PerPage:        pluginsPageSize,
@@ -243,8 +297,12 @@ func (c *Client) fetchAllPlugins(ctx context.Context, opts *regclient.ListOption
 	for {
 		result, err := inner.ListPlugins(ctx, opts)
 		if err != nil {
+			c.warn(ctx, "registry list page failed", "page", opts.Page, "errorClass", telemetryutil.ErrorClass(err))
 			return nil, fmt.Errorf("listing plugins (page %d): %w", opts.Page, err)
 		}
+		trace.SpanFromContext(ctx).AddEvent("page",
+			trace.WithAttributes(attribute.Int("page", opts.Page), attribute.Int("items", len(result.Items))))
+		c.debug(ctx, "registry list page", "page", opts.Page, "items", len(result.Items))
 
 		for _, p := range result.Items {
 			all = append(all, toAvailablePlugin(p))
@@ -259,7 +317,19 @@ func (c *Client) fetchAllPlugins(ctx context.Context, opts *regclient.ListOption
 }
 
 // SearchPlugins searches plugins with filters, paginating through all results.
-func (c *Client) SearchPlugins(ctx context.Context, query, category, sort string) ([]AvailablePlugin, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the result count and error.
+func (c *Client) SearchPlugins(
+	ctx context.Context, query, category, sort string,
+) (plugins []AvailablePlugin, err error) {
+	// The query text is user input and is never exported; only its presence is.
+	ctx, span := startSpan(ctx, "registry.SearchPlugins",
+		attribute.Bool("has_query", query != ""), attribute.Bool("has_category", category != ""),
+		attribute.Bool("has_sort", sort != ""))
+	defer func() {
+		span.SetAttributes(attribute.Int("count", len(plugins)))
+		endSpan(span, err)
+	}()
 	opts := &regclient.ListOptions{
 		Page:           0,
 		PerPage:        pluginsPageSize,
@@ -277,7 +347,14 @@ func (c *Client) SearchPlugins(ctx context.Context, query, category, sort string
 }
 
 // GetPluginReadme fetches the readme for a plugin.
-func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (string, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the result size and error.
+func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (readme string, err error) {
+	ctx, span := startSpan(ctx, "registry.GetPluginReadme", attribute.String("plugin_id", pluginID))
+	defer func() {
+		span.SetAttributes(attribute.Int("bytes", len(readme)))
+		endSpan(span, err)
+	}()
 	p, err := c.snapshot().GetPlugin(ctx, pluginID)
 	if err != nil {
 		return "", fmt.Errorf("getting plugin readme: %w", err)
@@ -286,17 +363,28 @@ func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (string, 
 }
 
 // GetPluginVersions fetches version history for a plugin.
-func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) ([]VersionInfo, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the result count and error.
+func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) (versions []VersionInfo, err error) {
+	ctx, span := startSpan(ctx, "registry.GetPluginVersions", attribute.String("plugin_id", pluginID))
+	defer func() {
+		span.SetAttributes(attribute.Int("count", len(versions)))
+		endSpan(span, err)
+	}()
 	discovery := &versionDiscovery{}
 	ctx = context.WithValue(ctx, versionDiscoveryKey{}, discovery)
 	inner := c.snapshot()
 	opts := &regclient.ListOptions{Page: 1, PerPage: pluginsPageSize}
-	versions := make([]VersionInfo, 0)
+	versions = make([]VersionInfo, 0)
 	for {
 		result, err := inner.ListVersions(ctx, pluginID, opts)
 		if err != nil {
+			c.warn(ctx, "registry versions page failed", "pluginID", pluginID, "page", opts.Page,
+				"errorClass", telemetryutil.ErrorClass(err))
 			return nil, fmt.Errorf("listing plugin versions (page %d): %w", opts.Page, err)
 		}
+		trace.SpanFromContext(ctx).AddEvent("page",
+			trace.WithAttributes(attribute.Int("page", opts.Page), attribute.Int("items", len(result.Items))))
 		for _, v := range result.Items {
 			reason := compatibilityReason(v.MinIDEVersion, v.MaxIDEVersion)
 			versions = append(versions, VersionInfo{
@@ -345,7 +433,15 @@ func validCompatibilityBound(bound string) bool {
 }
 
 // GetPluginReviews fetches reviews for a plugin.
-func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int) ([]Review, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the result count and error.
+func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int) (reviews []Review, err error) {
+	ctx, span := startSpan(ctx, "registry.GetPluginReviews",
+		attribute.String("plugin_id", pluginID), attribute.Int("page", page))
+	defer func() {
+		span.SetAttributes(attribute.Int("count", len(reviews)))
+		endSpan(span, err)
+	}()
 	result, err := c.snapshot().ListReviews(ctx, pluginID, &regclient.ListOptions{
 		Page:           page,
 		PerPage:        reviewsPageSize,
@@ -359,7 +455,7 @@ func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int
 		return nil, fmt.Errorf("listing plugin reviews: %w", err)
 	}
 
-	reviews := make([]Review, len(result.Items))
+	reviews = make([]Review, len(result.Items))
 	for i, r := range result.Items {
 		reviews[i] = Review{
 			ID:        r.ID,
@@ -374,13 +470,18 @@ func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int
 }
 
 // GetPluginDownloadStats fetches download statistics.
-func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*DownloadStats, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned error.
+func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (stats *DownloadStats, err error) {
+	ctx, span := startSpan(ctx, "registry.GetPluginDownloadStats",
+		attribute.String("plugin_id", pluginID), attribute.Int("days", downloadStatsDays))
+	defer func() { endSpan(span, err) }()
 	daily, err := c.snapshot().GetDailyDownloads(ctx, pluginID, downloadStatsDays)
 	if err != nil {
 		return nil, fmt.Errorf("getting download stats: %w", err)
 	}
 
-	stats := &DownloadStats{
+	stats = &DownloadStats{
 		Total:      0,
 		LastMonth:  0,
 		LastWeek:   0,
@@ -398,7 +499,20 @@ func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*
 
 // DownloadPlugin downloads and verifies a plugin artifact.
 // Returns the path to the downloaded temp file.
-func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (string, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned error.
+func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (path string, err error) {
+	ctx, span := startSpan(ctx, "registry.DownloadPlugin",
+		attribute.String("plugin_id", pluginID), attribute.String("version", version))
+	defer func() { endSpan(span, err) }()
 	ctx = context.WithValue(ctx, artifactRequestKey{}, &artifactRequest{})
-	return c.snapshot().DownloadPlugin(ctx, pluginID, version)
+	path, err = c.snapshot().DownloadPlugin(ctx, pluginID, version)
+	if err != nil {
+		return path, err
+	}
+	if info, statErr := os.Stat(path); statErr == nil {
+		span.SetAttributes(attribute.Int64("bytes", info.Size()))
+		c.debug(ctx, "registry artifact downloaded", "pluginID", pluginID, "version", version, "bytes", info.Size())
+	}
+	return path, nil
 }

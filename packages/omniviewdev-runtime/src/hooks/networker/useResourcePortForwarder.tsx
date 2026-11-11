@@ -12,6 +12,12 @@ import { useNotifications } from '../../activity/context';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { observeFrontendOperation } from '../../telemetry/frontendSpans';
+
+function portForwardProtocol(protocol: string | undefined): 'tcp' | 'udp' | 'other' {
+  const value = (protocol || 'TCP').toLowerCase();
+  return value === 'tcp' || value === 'udp' ? value : 'other';
+}
 
 /**
  * Programatically forward a port from a resource object to the host.
@@ -34,13 +40,17 @@ export function useResourcePortForwarder({
   const sessions = useQuery({
     queryKey,
     queryFn: async () =>
-      FindPortForwardSessions(
-        pluginID,
-        connectionID,
-        FindPortForwardSessionRequest.createFrom({
-          resource_id: resourceID,
-          connection_id: connectionID,
-        }),
+      observeFrontendOperation(
+        'frontend.port_forward.operation',
+        { plugin_id: pluginID, operation: 'lookup' },
+        FindPortForwardSessions(
+          pluginID,
+          connectionID,
+          FindPortForwardSessionRequest.createFrom({
+            resource_id: resourceID,
+            connection_id: connectionID,
+          }),
+        ),
       ).catch((e: unknown) => {
         const appErr = parseAppError(e);
         // "not found" means the plugin doesn't have the networker capability — not an error.
@@ -77,8 +87,16 @@ export function useResourcePortForwarder({
         params: opts.parameters ?? {},
       };
 
-      const result = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
-      if (!result) throw new Error('Failed to start port forwarding: null response');
+      const attempt = (async () => {
+        const started = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
+        if (!started) throw new Error('Failed to start port forwarding: null response');
+        return started;
+      })();
+      const result = await observeFrontendOperation(
+        'frontend.port_forward.operation',
+        { plugin_id: pluginID, operation: 'start', protocol: portForwardProtocol(opts.protocol) },
+        attempt,
+      );
       if (opts.openInBrowser) {
         Browser.OpenURL(`http://localhost:${result.local_port}`);
       }
@@ -95,7 +113,11 @@ export function useResourcePortForwarder({
 
   const closeMutation = useMutation({
     mutationFn: async ({ opts }: { opts: { sessionID: string } }) =>
-      ClosePortForwardSession(opts.sessionID),
+      observeFrontendOperation(
+        'frontend.port_forward.operation',
+        { plugin_id: pluginID, operation: 'close' },
+        ClosePortForwardSession(opts.sessionID),
+      ),
     onError: createErrorHandler(notify, 'Failed to close port forwarding session'),
     onSuccess: async () => {
       await Promise.all([

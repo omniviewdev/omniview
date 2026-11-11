@@ -20,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -145,7 +146,10 @@ func (c *controller) ServiceShutdown() error {
 	}
 	c.mu.RUnlock()
 	for _, pluginID := range plugins {
-		_ = c.OnPluginStop(pluginID, config.PluginMeta{})
+		if stopErr := c.OnPluginStop(pluginID, config.PluginMeta{}); stopErr != nil {
+			c.logger.Warnw(context.Background(), "log provider stop failed during shutdown",
+				"pluginID", pluginID, "errorClass", telemetryutil.ErrorClass(stopErr))
+		}
 	}
 	return nil
 }
@@ -171,6 +175,9 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 		return
 	}
 	if !indexed {
+		// Output for a closed or retired session is expected after close; keep the trail at Debug.
+		c.logger.Debugw(context.Background(), "dropped log output for unknown session",
+			"sessionID", output.SessionID, "errorClass", "NOT_FOUND")
 		return
 	}
 	if output.Line != nil {
@@ -183,13 +190,14 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 		_, active := c.sessionIndex[output.SessionID]
 		c.mu.RUnlock()
 		if !active {
+			c.logger.Debugw(context.Background(), "dropped log event for retired session", "sessionID", output.SessionID)
 			return
 		}
 		// Events are sent immediately, not batched
 		eventKey := "core/logs/event/" + output.SessionID
 		data, err := json.Marshal(output.Event)
 		if err != nil {
-			c.logger.Errorw(context.Background(), "failed to marshal log event", "error", err)
+			c.logger.Errorw(context.Background(), "failed to marshal log event", "errorClass", telemetryutil.ErrorClass(err))
 			return
 		}
 		c.app.Event.Emit(eventKey, string(data))
@@ -203,6 +211,7 @@ func (c *controller) bufferLine(sessionID string, line logs.LogLine) {
 	_, active := c.sessionIndex[sessionID]
 	c.mu.RUnlock()
 	if !active {
+		c.logger.Debugw(context.Background(), "dropped log line for retired session", "sessionID", sessionID)
 		return
 	}
 
@@ -253,7 +262,7 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 	eventKey := "core/logs/lines/" + sessionID
 	data, err := json.Marshal(batch.lines)
 	if err != nil {
-		c.logger.Errorw(context.Background(), "failed to marshal log batch", "error", err)
+		c.logger.Errorw(context.Background(), "failed to marshal log batch", "errorClass", telemetryutil.ErrorClass(err))
 	} else {
 		c.app.Event.Emit(eventKey, string(data))
 	}
@@ -264,8 +273,11 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 // ================================ Controller Lifecycle ================================ //
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
+	ctx, end := startOp(context.Background(), "logs.OnPluginInit", attribute.String("plugin_id", pluginID))
+	var err error
+	defer end(&err)
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginInit")
+	logger.Debugw(ctx, "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
@@ -314,14 +326,17 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
-		logger.Errorw(ctx, "error", "error", err)
+		logger.Errorw(ctx, "error", "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 
 	// Get the handlers before acquiring the lock (this makes an RPC call).
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(ctx))
 	// Retire the previous generation before publishing its replacement.
-	_ = c.OnPluginStop(pluginID, config.PluginMeta{})
+	if stopErr := c.OnPluginStop(pluginID, config.PluginMeta{}); stopErr != nil {
+		logger.Warnw(ctx, "failed to stop previous log provider before restart",
+			"errorClass", telemetryutil.ErrorClass(stopErr))
+	}
 
 	base := c.ctx
 	if base == nil {
@@ -362,19 +377,44 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	// OnPluginStart trace, while still respecting the controller's lifecycle.
 	go func() {
 		defer close(done)
-		stream, streamErr := provider.Stream(streamCtx, inchan)
+		openCtx, end := startOp(streamCtx, "logs.StreamOpen", attribute.String("plugin_id", pluginID))
+		stream, streamErr := provider.Stream(openCtx, inchan)
+		end(&streamErr)
 		if streamErr != nil {
-			logger.Errorw(streamCtx, "error starting log stream", "error", streamErr)
+			logger.Errorw(openCtx, "error starting log stream", "errorClass", telemetryutil.ErrorClass(streamErr))
+			telemetry.RecordPluginStreamEvent(streamCtx, pluginID, "logs", "closed_error")
 			return
 		}
-
+		first := true
 		for {
 			select {
 			case <-streamCtx.Done():
+				logger.Debugw(streamCtx, "log provider stream closed", "closeReason", "canceled")
 				return
 			case output, ok := <-stream:
 				if !ok {
+					// A stream that ends while the plugin is still installed means the provider exited.
+					if streamCtx.Err() == nil {
+						logger.Warnw(streamCtx, "log provider stream closed unexpectedly")
+						telemetry.RecordPluginStreamEvent(streamCtx, pluginID, "logs", "closed_error")
+					}
 					return // stream closed, plugin exited
+				}
+				if first {
+					logger.Debugw(streamCtx, "log provider stream first event", "sessionID", output.SessionID)
+					first = false
+				}
+				if output.Event != nil {
+					switch output.Event.Type {
+					case logs.StreamEventStreamError:
+						logger.Warnw(streamCtx, "log session stream failed", "sessionID", output.SessionID, "closeReason", "error")
+						telemetry.RecordPluginStreamEvent(streamCtx, pluginID, "logs", "closed_error")
+					case logs.StreamEventStreamEnded:
+						logger.Debugw(streamCtx, "log session stream ended", "sessionID", output.SessionID, "closeReason", "normal")
+					case logs.StreamEventSourceAdded, logs.StreamEventSourceRemoved,
+						logs.StreamEventReconnecting, logs.StreamEventReconnected, logs.StreamEventSessionReady:
+						// These event types need no additional diagnostics.
+					}
 				}
 				select {
 				case c.outputMux <- output:
@@ -389,7 +429,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
+	ctx, end := startOp(context.Background(), "logs.OnPluginStop", attribute.String("plugin_id", pluginID))
+	var err error
+	defer end(&err)
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(ctx, "OnPluginStop")
 	// Batch publication and retirement share this outer lock. Never acquire
 	// batchMux while holding mu.
 	c.batchMux.Lock()
@@ -418,6 +461,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	}
 	for _, read := range c.headless {
 		if read.pluginID == pluginID {
+			c.logger.Debugw(ctx, "finishing headless log read for stopped provider", "pluginID", pluginID)
 			read.mu.Lock()
 			read.finish(resourcev2.NewError("CONNECTION_ERROR", "Log provider stopped."))
 			read.mu.Unlock()
@@ -450,11 +494,17 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
+	ctx, end := startOp(context.Background(), "logs.OnPluginDestroy", attribute.String("plugin_id", pluginID))
+	var err error
+	defer end(&err)
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(ctx, "OnPluginDestroy")
 	return nil
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
+	var err error
+	_, end := startOp(context.Background(), "logs.ListPlugins")
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
@@ -465,6 +515,9 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	var err error
+	_, end := startOp(context.Background(), "logs.HasPlugin", attribute.String("plugin_id", pluginID))
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	_, ok := c.clients[pluginID]
@@ -480,7 +533,7 @@ func (c *controller) getConnectedCtx(
 ) (*sdktypes.PluginContext, error) {
 	connection, err := c.resourceClient.GetConnection(ctx, pluginID, connectionID)
 	if err != nil {
-		c.logger.Errorw(ctx, "error getting connection", "error", err)
+		c.logger.Errorw(ctx, "error getting connection", "errorClass", telemetryutil.ErrorClass(err))
 		return nil, err
 	}
 
@@ -506,6 +559,9 @@ func (c *controller) getUnconnectedCtx(ctx context.Context) *sdktypes.PluginCont
 // ================================ Session Management ================================ //
 
 func (c *controller) GetSupportedResources(pluginID string) []logs.Handler {
+	var err error
+	_, end := startOp(context.Background(), "logs.GetSupportedResources", attribute.String("plugin_id", pluginID))
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if handlers, ok := c.handlerMap[pluginID]; ok {
@@ -529,18 +585,19 @@ func (c *controller) CreateSession(
 	return c.createSessionWithContext(ctx, pluginID, connectionID, opts)
 }
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) createSessionWithContext(
 	ctx context.Context,
 	pluginID string,
 	connectionID string,
 	opts logs.CreateSessionOptions,
-) (*logs.LogSession, error) {
-	ctx, span := tracer.Start(ctx, "logs.CreateSession")
-	defer span.End()
-	span.SetAttributes(
+) (_ *logs.LogSession, err error) {
+	ctx, end := startOp(ctx, "logs.CreateSession",
 		attribute.String("plugin_id", pluginID),
 		attribute.String("connection_id", connectionID),
 	)
+	defer end(&err)
+	started := time.Now()
 	if opts.Reference != nil {
 		if c.uiReferenceAdmitter == nil {
 			return nil, resourcev2.NewError("UNSUPPORTED", "Resource reference admission is unavailable.")
@@ -548,9 +605,11 @@ func (c *controller) createSessionWithContext(
 		if opts.Route == nil || opts.Route.Connection != connectionID {
 			return nil, resourcev2.NewError("INVALID_REQUEST", "Resource route does not match the selected connection.")
 		}
-		admitted, err := c.uiReferenceAdmitter(ctx, "logs.CreateSession", pluginID, *opts.Route, *opts.Reference)
-		if err != nil {
-			return nil, err
+		admitted, admitErr := c.uiReferenceAdmitter(ctx, "logs.CreateSession", pluginID, *opts.Route, *opts.Reference)
+		if admitErr != nil {
+			c.logger.Warnw(ctx, "log session reference admission rejected", "pluginID", pluginID,
+				"connectionID", connectionID, "errorClass", telemetryutil.ErrorClass(admitErr))
+			return nil, admitErr
 		}
 		ctx = admitted
 	}
@@ -559,17 +618,16 @@ func (c *controller) createSessionWithContext(
 	client, ok := c.clients[pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(pluginID)
-		telemetryutil.RecordError(span, err)
-		return nil, err
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 	// The UI may reserve a correlation ID before the RPC to subscribe before
 	// the provider emits output. The ID is correlation, not authority.
 	if opts.SessionID == "" {
 		opts.SessionID = uuid.NewString()
-	} else if _, err := uuid.Parse(opts.SessionID); err != nil {
+	} else if _, parseErr := uuid.Parse(opts.SessionID); parseErr != nil {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Log session ID must be a UUID.")
 	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", opts.SessionID))
 	c.mu.Lock()
 	if _, exists := c.sessionIndex[opts.SessionID]; exists {
 		c.mu.Unlock()
@@ -599,7 +657,8 @@ func (c *controller) createSessionWithContext(
 		defer stop()
 		closeErr := client.CloseSession(resourceLogPluginContext(closeCtx, connectionID), opts.SessionID)
 		if closeErr != nil && resourcev2.ErrorCode(closeErr) != "NOT_FOUND" {
-			c.logger.Errorw(closeCtx, "resource log session cleanup failed", "session_id", opts.SessionID, "error", closeErr)
+			c.logger.Errorw(closeCtx, "resource log session cleanup failed",
+				"session_id", opts.SessionID, "errorClass", telemetryutil.ErrorClass(closeErr))
 		}
 		c.mu.Lock()
 		delete(c.sessionIndex, opts.SessionID)
@@ -612,36 +671,39 @@ func (c *controller) createSessionWithContext(
 			delete(c.batches, opts.SessionID)
 		}
 		c.batchMux.Unlock()
-		telemetryutil.RecordError(span, err)
+		c.logger.Errorw(ctx, "log session create failed", "pluginID", pluginID, "connectionID", connectionID,
+			"sessionID", opts.SessionID, "errorClass", telemetryutil.ErrorClass(err))
 		return nil, err
 	}
 
 	session.PluginID = pluginID
 	session.ConnectionID = connectionID
+	c.logger.Infow(ctx, "log session created", "pluginID", pluginID, "connectionID", connectionID,
+		"sessionID", session.ID, "durationMs", time.Since(started).Milliseconds())
 
 	return session, nil
 }
 
-func (c *controller) GetSession(sessionID string) (*logs.LogSession, error) {
-	ctx, span := tracer.Start(context.Background(), "logs.GetSession")
-	defer span.End()
-	span.SetAttributes(attribute.String("session_id", sessionID))
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) GetSession(sessionID string) (_ *logs.LogSession, err error) {
+	ctx, end := startOp(context.Background(), "logs.GetSession", attribute.String("session_id", sessionID))
+	defer end(&err)
 
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		err := apperror.SessionNotFound(sessionID)
-		telemetryutil.RecordError(span, err)
-		return nil, err
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(index.pluginID)
-		telemetryutil.RecordError(span, err)
-		return nil, err
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID),
+	)
 
 	pctx, err := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
 	if err != nil {
@@ -653,9 +715,10 @@ func (c *controller) GetSession(sessionID string) (*logs.LogSession, error) {
 	)
 }
 
-func (c *controller) ListSessions() ([]*logs.LogSession, error) {
-	bgCtx, span := tracer.Start(context.Background(), "logs.ListSessions")
-	defer span.End()
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ListSessions() (_ []*logs.LogSession, err error) {
+	bgCtx, end := startOp(context.Background(), "logs.ListSessions")
+	defer end(&err)
 
 	ctx := c.getUnconnectedCtx(bgCtx)
 
@@ -668,37 +731,37 @@ func (c *controller) ListSessions() ([]*logs.LogSession, error) {
 
 	sessions := make([]*logs.LogSession, 0)
 	for _, client := range clients {
-		clientSessions, err := client.ListSessions(ctx)
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-			return nil, err
+		clientSessions, listErr := client.ListSessions(ctx)
+		if listErr != nil {
+			return nil, listErr
 		}
 		sessions = append(sessions, clientSessions...)
 	}
+	trace.SpanFromContext(bgCtx).SetAttributes(attribute.Int("sessions", len(sessions)))
 
 	return sessions, nil
 }
 
-func (c *controller) CloseSession(sessionID string) error {
-	ctx, span := tracer.Start(context.Background(), "logs.CloseSession")
-	defer span.End()
-	span.SetAttributes(attribute.String("session_id", sessionID))
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) CloseSession(sessionID string) (err error) {
+	ctx, end := startOp(context.Background(), "logs.CloseSession", attribute.String("session_id", sessionID))
+	defer end(&err)
 
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		err := apperror.SessionNotFound(sessionID)
-		telemetryutil.RecordError(span, err)
-		return err
+		return apperror.SessionNotFound(sessionID)
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(index.pluginID)
-		telemetryutil.RecordError(span, err)
-		return err
+		return apperror.PluginNotFound(index.pluginID)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID),
+	)
 
 	pctx, err := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
 	if err != nil {
@@ -709,7 +772,8 @@ func (c *controller) CloseSession(sessionID string) error {
 		sessionID,
 	)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
+		c.logger.Warnw(ctx, "log session close failed", "pluginID", index.pluginID,
+			"sessionID", sessionID, "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 
@@ -725,64 +789,64 @@ func (c *controller) CloseSession(sessionID string) error {
 	delete(c.sessionIndex, sessionID)
 	c.mu.Unlock()
 	c.batchMux.Unlock()
+	c.logger.Infow(ctx, "log session closed", "pluginID", index.pluginID,
+		"sessionID", sessionID, "closeReason", "requested")
 
 	return nil
 }
 
-func (c *controller) SendCommand(sessionID string, cmd logs.LogStreamCommand) error {
-	_, span := tracer.Start(context.Background(), "logs.SendCommand")
-	defer span.End()
-	span.SetAttributes(
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) SendCommand(sessionID string, cmd logs.LogStreamCommand) (err error) {
+	ctx, end := startOp(context.Background(), "logs.SendCommand",
 		attribute.String("session_id", sessionID),
 		attribute.Int("command", int(cmd)),
 	)
+	defer end(&err)
 
 	c.mu.Lock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.Unlock()
-		err := apperror.SessionNotFound(sessionID)
-		telemetryutil.RecordError(span, err)
-		return err
+		return apperror.SessionNotFound(sessionID)
 	}
 	inchan, ok := c.inChans[index.pluginID]
 	if !ok {
 		c.mu.Unlock()
-		err := apperror.PluginNotFound(index.pluginID)
-		telemetryutil.RecordError(span, err)
-		return err
+		return apperror.PluginNotFound(index.pluginID)
 	}
 	inchan <- logs.StreamInput{
 		SessionID: sessionID,
 		Command:   cmd,
 	}
 	c.mu.Unlock()
+	c.logger.Debugw(ctx, "log stream command sent", "pluginID", index.pluginID,
+		"sessionID", sessionID, "command", int(cmd))
 	return nil
 }
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) UpdateSessionOptions(
 	sessionID string,
 	opts logs.LogSessionOptions,
-) (*logs.LogSession, error) {
-	ctx, span := tracer.Start(context.Background(), "logs.UpdateSessionOptions")
-	defer span.End()
-	span.SetAttributes(attribute.String("session_id", sessionID))
+) (_ *logs.LogSession, err error) {
+	ctx, end := startOp(context.Background(), "logs.UpdateSessionOptions", attribute.String("session_id", sessionID))
+	defer end(&err)
 
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		err := apperror.SessionNotFound(sessionID)
-		telemetryutil.RecordError(span, err)
-		return nil, err
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(index.pluginID)
-		telemetryutil.RecordError(span, err)
-		return nil, err
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID),
+	)
 
 	pctx, err := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
 	if err != nil {

@@ -2,13 +2,14 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"maps"
 	"os"
 	"path/filepath"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -37,7 +38,8 @@ func MigrateFromGOB(stateRoot string, s *Store) error {
 	// Migrate core settings.
 	corePath := filepath.Join(stateRoot, "settings")
 	if err := migrateCore(corePath, s, &skipped); err != nil {
-		log.Printf("[settings/migrate] warning: core migration failed: %v", err)
+		s.logger().Warnw(context.Background(), "settings migration: core migration failed",
+			"errorClass", telemetryutil.ErrorClass(err), "errorType", fmt.Sprintf("%T", err))
 	}
 
 	// Migrate plugin settings.
@@ -46,13 +48,14 @@ func MigrateFromGOB(stateRoot string, s *Store) error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			if len(skipped) > 0 {
-				log.Printf("[settings/migrate] skipped corrupt files: %v", skipped)
+				s.logger().Warnw(context.Background(), "settings migration: skipped corrupt files", "count", len(skipped))
 			}
 			return nil
 		}
-		log.Printf("[settings/migrate] warning: cannot read plugins dir: %v", err)
+		s.logger().Warnw(context.Background(), "settings migration: cannot read plugins dir",
+			"errorClass", telemetryutil.ErrorClass(err), "errorType", fmt.Sprintf("%T", err))
 		if len(skipped) > 0 {
-			log.Printf("[settings/migrate] skipped corrupt files: %v", skipped)
+			s.logger().Warnw(context.Background(), "settings migration: skipped corrupt files", "count", len(skipped))
 		}
 		return nil
 	}
@@ -64,12 +67,14 @@ func MigrateFromGOB(stateRoot string, s *Store) error {
 		pluginID := entry.Name()
 		pluginSettingsPath := filepath.Join(pluginsDir, pluginID, "settings")
 		if migrateErr := migratePlugin(pluginSettingsPath, pluginID, s, &skipped); migrateErr != nil {
-			log.Printf("[settings/migrate] warning: plugin %q migration failed: %v", pluginID, migrateErr)
+			s.logger().Warnw(context.Background(), "settings migration: plugin migration failed",
+				"pluginID", pluginID, "errorClass", telemetryutil.ErrorClass(migrateErr),
+				"errorType", fmt.Sprintf("%T", migrateErr))
 		}
 	}
 
 	if len(skipped) > 0 {
-		log.Printf("[settings/migrate] skipped %d corrupt file(s): %v", len(skipped), skipped)
+		s.logger().Warnw(context.Background(), "settings migration: skipped corrupt files", "count", len(skipped))
 	}
 
 	return nil

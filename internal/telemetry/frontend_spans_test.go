@@ -40,8 +40,7 @@ func TestFrontendSpansPreserveIdentityAndSettings(t *testing.T) {
 	now := time.Now().Unix()
 	payload := fmt.Sprintf(`{"spans":[{"name":"frontend.interaction",`+
 		`"traceId":"0123456789abcdef0123456789abcdef","spanId":"0123456789abcdef",`+
-		`"parentSpanId":"abcdef0123456789","start":[%d,123],"end":[%d,456],`+
-		`"attributes":{"secret":"never export"}}]}`, now, now)
+		`"parentSpanId":"abcdef0123456789","start":[%d,123],"end":[%d,456]}]}`, now, now)
 	require.NoError(t, binding.IngestFrontendSignals(payload))
 	require.Len(t, bodies, 1)
 	var request collectortrace.ExportTraceServiceRequest
@@ -75,6 +74,11 @@ func TestFrontendSpansRejectUntrustedInput(t *testing.T) {
 	require.Error(t, binding.IngestFrontendSignals(strings.Repeat("x", maxFrontendPayload+1)))
 	require.Error(t, binding.IngestFrontendSignals(`{"spans":[]}`))
 	require.Error(t, binding.IngestFrontendSignals(`{"spans":[{"name":"secret"}]}`))
+	now := time.Now().Unix()
+	payload := fmt.Sprintf(`{"spans":[{"name":"frontend.interaction",`+
+		`"traceId":"0123456789abcdef0123456789abcdef","spanId":"0123456789abcdef",`+
+		`"start":[%d,0],"end":[%d,0],"attributes":{"secret":"never export"}}]}`, now, now)
+	require.Error(t, binding.IngestFrontendSignals(payload))
 	require.Error(t, binding.IngestFrontendSignals(`{"spans":[{"name":"frontend.startup","traceId":"invalid"}]}`))
 }
 

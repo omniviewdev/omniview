@@ -3,6 +3,7 @@ import type { FallbackProps } from 'react-error-boundary';
 import { Button, Card, Chip, Separator, Stack, Text } from '@omniviewdev/base-ui';
 import { LuCircleAlert, LuCopy, LuRefreshCw, LuRotateCcw, LuChevronDown, LuChevronRight } from 'react-icons/lu';
 import log from '@/features/logger';
+import { recordErrorBoundary, type ErrorBoundaryKind } from '@/features/telemetry/boundaryTelemetry';
 import { isDev } from '@/utils/env';
 import { generateErrorId } from '@/utils/errorId';
 import HintTooltip from '@/components/base/HintTooltip';
@@ -48,7 +49,8 @@ function useErrorReport(caught: unknown, boundary?: string) {
 
 // ─── Shared onError handler ─────────────────────────────────────────────────
 
-export function onBoundaryError(error: unknown, info: { componentStack?: string | null }, meta?: ErrorMeta) {
+export function onBoundaryError(error: unknown, info: { componentStack?: string | null }, meta?: ErrorMeta, boundary: ErrorBoundaryKind = 'panel') {
+  recordErrorBoundary(boundary);
   log.error(error instanceof Error ? error : String(error), {
     componentStack: info.componentStack ?? 'unavailable',
     ...(meta ? { errorId: meta.errorId, boundary: meta.boundary } : {}),

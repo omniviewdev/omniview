@@ -11,14 +11,17 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdkstate "github.com/omniviewdev/plugin-sdk/pkg/state"
@@ -50,6 +53,11 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 	l := pm.logger.Named("InstallDevPluginFromPath")
 	var pluginID string
 	buildAttempted := false
+	_, install := pm.beginInstall("dev", "", "")
+	defer func() {
+		install.setPlugin(pluginID, "")
+		install.finish(err)
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			l.Errorw(pm.ctx, "panic in dev install", "panic", r, "stack", string(debug.Stack()))
@@ -247,6 +255,8 @@ func (pm *pluginManager) unloadForReinstall(pluginID string) error {
 
 func (pm *pluginManager) persistPluginOperation(pluginID string) error {
 	if err := pm.writePluginStateJSON(); err != nil {
+		pm.installLogger().Warnw(pm.installBaseContext(), "plugin state persist failed", "pluginID", pluginID,
+			"errorClass", telemetryutil.ErrorClass(err))
 		pm.emitter.Emit(EventStateWriteError, StateWriteErrorPayload{PluginID: pluginID, Detail: err.Error()})
 		return apperror.Internal(err, "Failed to persist plugin state").WithInstance(pluginID)
 	}
@@ -323,10 +333,14 @@ func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
 }
 
 // InstallPluginVersion installs a plugin from the registry.
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned error.
 func (pm *pluginManager) InstallPluginVersion(
 	pluginID string,
 	version string,
-) (*config.PluginMeta, error) {
+) (meta *config.PluginMeta, err error) {
+	ctx, install := pm.beginInstall("registry", pluginID, version)
+	defer func() { install.finish(err) }()
 	if err := pm.guardProductOwned(pluginID); err != nil {
 		return nil, err
 	}
@@ -342,16 +356,25 @@ func (pm *pluginManager) InstallPluginVersion(
 	pm.emitter.Emit(EventUpdateStarted, UpdatePayload{PluginID: pluginID, Version: version})
 
 	pm.syncRegistryURL()
-	tmpPath, err := pm.registryClient.DownloadPlugin(context.Background(), pluginID, version)
+	downloadCtx, downloadSpan := installSpanChild(ctx, "plugin.Download", pluginID, attribute.String("version", version))
+	tmpPath, err := pm.registryClient.DownloadPlugin(downloadCtx, pluginID, version)
 	if err != nil {
-		pm.logger.Errorw(pm.ctx, "failed to download and prepare", "error", err)
+		installSpanEnd(downloadSpan, err)
+		pm.installLogger().Errorw(ctx, "plugin download failed", "pluginID", pluginID, "version", version,
+			"errorClass", telemetryutil.ErrorClass(err))
 		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return nil, err
 	}
+	if info, statErr := os.Stat(tmpPath); statErr == nil {
+		downloadSpan.SetAttributes(attribute.Int64("bytes", info.Size()))
+		pm.installLogger().Debugw(ctx, "plugin archive downloaded", "pluginID", pluginID, "version", version,
+			"bytes", info.Size())
+	}
+	installSpanEnd(downloadSpan, nil)
 	defer os.Remove(tmpPath) // DownloadPlugin transfers ownership of this temporary archive.
 
-	pm.logger.Debugw(pm.ctx, "installing plugin from downloaded tmp path", "path", tmpPath)
-	meta, err := pm.installPluginArchive(tmpPath, pluginID, version)
+	pm.installLogger().Debugw(ctx, "installing plugin from downloaded archive", "pluginID", pluginID, "version", version)
+	meta, err = pm.installPluginArchive(ctx, tmpPath, pluginID, version)
 	if err != nil {
 		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return meta, err
@@ -363,20 +386,35 @@ func (pm *pluginManager) InstallPluginVersion(
 
 // InstallPluginFromPath installs a caller-owned tarball without deleting it.
 // Download callers, not this transaction, own temporary archive cleanup.
-func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
-	return pm.installPluginArchive(path, "", "")
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned metadata and error.
+func (pm *pluginManager) InstallPluginFromPath(path string) (meta *config.PluginMeta, err error) {
+	ctx, install := pm.beginInstall("path", "", "")
+	defer func() {
+		if meta != nil {
+			install.setPlugin(meta.ID, meta.Version)
+		}
+		install.finish(err)
+	}()
+	return pm.installPluginArchive(ctx, path, "", "")
 }
 
 // installPluginArchive requires the requested marketplace identity lock, held
 // since before download. Local archives acquire their manifest identity lock.
-func (pm *pluginManager) installPluginArchive(path, requestedID, version string) (*config.PluginMeta, error) {
+func (pm *pluginManager) installPluginArchive(
+	ctx context.Context, path, requestedID, version string,
+) (*config.PluginMeta, error) {
+	log := pm.installLogger()
 	if !isGzippedTarball(path) {
+		log.Warnw(ctx, "plugin package rejected", "reason", "not_gzip_tarball", "pluginID", requestedID)
 		return nil, apperror.New(apperror.TypeValidation, http.StatusUnprocessableEntity, "Invalid plugin package",
 			fmt.Sprintf("The file at '%s' is not a valid tar.gz archive.", path)).
 			WithSuggestions("Ensure the file is a .tar.gz plugin package")
 	}
 
 	if err := checkTarball(path); err != nil {
+		log.Warnw(ctx, "plugin package rejected", "reason", "corrupt_tarball", "pluginID", requestedID,
+			"errorClass", telemetryutil.ErrorClass(err))
 		return nil, apperror.Wrap(err, apperror.TypeValidation, http.StatusUnprocessableEntity, "Corrupt plugin package").
 			WithSuggestions("Re-download the plugin package and try again")
 	}
@@ -387,7 +425,9 @@ func (pm *pluginManager) installPluginArchive(path, requestedID, version string)
 			err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to parse plugin metadata",
 		)
 	}
+	installSpanSetPlugin(ctx, metadata.ID, "")
 	if requestedID != "" && metadata.ID != requestedID {
+		log.Warnw(ctx, "plugin package rejected", "reason", "identity_mismatch", "pluginID", requestedID)
 		return nil, apperror.New(apperror.TypeValidation, http.StatusUnprocessableEntity,
 			"Plugin package identity mismatch",
 			fmt.Sprintf("Requested plugin %q, but the package contains %q.", requestedID, metadata.ID)).
@@ -408,7 +448,7 @@ func (pm *pluginManager) installPluginArchive(path, requestedID, version string)
 		return nil, err
 	}
 
-	statePublished, err := pm.installArchiveCandidate(path, metadata, version)
+	statePublished, err := pm.installArchiveCandidate(ctx, path, metadata, version)
 	if err != nil {
 		var problem *apperror.AppError
 		if !errors.As(err, &problem) || problem.Type != apperror.TypePluginCommittedCleanupPending {
@@ -424,17 +464,25 @@ func (pm *pluginManager) installPluginArchive(path, requestedID, version string)
 }
 
 // UninstallPlugin uninstalls a plugin from the manager and removes it from the filesystem.
-func (pm *pluginManager) UninstallPlugin(id string) (plugintypes.PluginInfo, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned error.
+func (pm *pluginManager) UninstallPlugin(id string) (info plugintypes.PluginInfo, err error) {
+	ctx, span := installSpanChild(pm.installBaseContext(), "plugin.Uninstall", id)
+	defer func() { installSpanEnd(span, err) }()
 	installMu := pm.installOpsLock(id)
 	installMu.Lock()
 	defer installMu.Unlock()
-	return pm.uninstallPlugin(id)
+	return pm.uninstallPlugin(ctx, id)
 }
 
 // UnlinkDevPlugin stops and removes the installed dev binding and copied build
 // artifacts using the normal uninstall transaction. The source tree is never
 // removed. Installed (non-dev) plugins must use UninstallPlugin explicitly.
-func (pm *pluginManager) UnlinkDevPlugin(id string) (plugintypes.PluginInfo, error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned error.
+func (pm *pluginManager) UnlinkDevPlugin(id string) (info plugintypes.PluginInfo, err error) {
+	ctx, span := installSpanChild(pm.installBaseContext(), "plugin.UnlinkDev", id)
+	defer func() { installSpanEnd(span, err) }()
 	if err := pm.guardProductOwned(id); err != nil {
 		return plugintypes.PluginInfo{}, err
 	}
@@ -452,10 +500,13 @@ func (pm *pluginManager) UnlinkDevPlugin(id string) (plugintypes.PluginInfo, err
 		return record.ToInfo(), apperror.New(apperror.TypeValidation, http.StatusConflict,
 			"Plugin is not linked in dev mode", "Use uninstall for installed plugins.").WithInstance(id)
 	}
-	return pm.uninstallPlugin(id)
+	return pm.uninstallPlugin(ctx, id)
 }
 
-func (pm *pluginManager) uninstallPlugin(id string) (plugintypes.PluginInfo, error) {
+//nolint:gocognit,funlen // Uninstall preserves recovery state across each failure path.
+func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugintypes.PluginInfo, error) {
+	started := time.Now()
+	log := pm.installLogger()
 	if err := pm.guardProductOwned(id); err != nil {
 		return plugintypes.PluginInfo{}, err
 	}
@@ -485,6 +536,7 @@ func (pm *pluginManager) uninstallPlugin(id string) (plugintypes.PluginInfo, err
 		// The pre-unload ownership marker remains available for a safe retry.
 		return info, err
 	}
+	installSpanPhase(ctx, "unloaded")
 	restore := func(cause error, incomplete bool) (plugintypes.PluginInfo, error) {
 		if recovery != nil && staged && recovery.cleanupStarted {
 			incomplete = true
@@ -513,6 +565,8 @@ func (pm *pluginManager) uninstallPlugin(id string) (plugintypes.PluginInfo, err
 		if recovery != nil {
 			cause = fmt.Errorf("pending uninstall recovery at %s: %w", pm.pluginsRoot.ResolvePath(recovery.Stage), cause)
 		}
+		log.Warnw(ctx, "plugin uninstall did not complete", "pluginID", id, "incomplete", incomplete,
+			"staged", staged, "errorClass", telemetryutil.ErrorClass(cause))
 		record.Phase = lifecycle.PhaseStopped
 		if incomplete {
 			record.Phase = lifecycle.PhaseFailed
@@ -532,6 +586,7 @@ func (pm *pluginManager) uninstallPlugin(id string) (plugintypes.PluginInfo, err
 			return restore(err, false)
 		}
 		staged = true
+		installSpanPhase(ctx, "staged")
 		if _, _, err = pm.locateUninstallRecovery(recovery); err != nil {
 			return restore(err, true)
 		}
@@ -539,10 +594,13 @@ func (pm *pluginManager) uninstallPlugin(id string) (plugintypes.PluginInfo, err
 	if err = pm.persistPluginOperation(id); err != nil {
 		return restore(err, false)
 	}
+	installSpanPhase(ctx, "persisted")
 	if err = pm.removeUninstallRecovery(recovery); err != nil {
 		return restore(err, true)
 	}
+	installSpanPhase(ctx, "recovery_removed")
 	pm.emitter.Emit(EventInventoryChanged)
+	log.Infow(ctx, "plugin uninstalled", "pluginID", id, "durationMs", time.Since(started).Milliseconds())
 	return info, nil
 }
 

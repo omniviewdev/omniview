@@ -7,6 +7,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 
 	logssdk "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
@@ -47,6 +48,9 @@ func (s *ServiceWrapper) CreateSession(
 ) (*logssdk.LogSession, error) {
 	var opts logssdk.CreateSessionOptions
 	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
+		_, end := startOp(ctx, "logs.CreateSession",
+			attribute.String("plugin_id", plugin), attribute.String("connection_id", connectionID))
+		end(&err)
 		return nil, err
 	}
 	if s.Realm != nil {

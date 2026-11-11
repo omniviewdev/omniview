@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/resourceauthoring"
 	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
@@ -54,6 +56,14 @@ func isDenialCode(code string) bool {
 // time, and it honors cancellation before every expensive step and before it
 // returns.
 func (c *controller) CompletePredicate(ctx context.Context, pluginID string, request resourceauthoring.CompletionRequest) (out resourceauthoring.CompletionResponse, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.CompletePredicate",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Target.Route.Connection),
+		attribute.String("resource_type", request.Target.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.CompletePredicate", ancillaryTarget(pluginID, request.Target.Route, request.Target.Type, resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err

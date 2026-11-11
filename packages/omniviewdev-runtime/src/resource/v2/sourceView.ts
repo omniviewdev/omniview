@@ -1,5 +1,6 @@
 import { replaceEqualDeep } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
+import { classifyFrontendError, recordFrontendSpan } from '../../telemetry/frontendSpans';
 import { CloseSourceView, OpenSourceView, RefreshSourceView, SyncSourceView } from './client';
 import type { HostRecord, HostRecordRemoval, HostSourceStatus, HostSourceViewEvent, HostSourceViewOpened, HostSourceViewRequest } from './host';
 
@@ -24,6 +25,8 @@ export interface SourceViewClient {
   close(): void;
 }
 
+type SyncReason = 'initial' | 'sequence_gap' | 'reset_required' | 'binding_changed' | 'reconnect' | 'exhausted' | 'other';
+
 const openViews = new Set<SourceViewClient>();
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
@@ -32,7 +35,37 @@ if (typeof window !== 'undefined') {
 }
 
 export async function openSourceView(pluginID: string, request: HostSourceViewRequest): Promise<SourceViewClient> {
-  const opened = await OpenSourceView(pluginID, request);
+  const resourceType = request.target.type;
+  const openStart = Date.now();
+  let opened: HostSourceViewOpened;
+  try {
+    opened = await OpenSourceView(pluginID, request);
+  } catch (error) {
+    recordSync('snapshot', 'initial', openStart, error);
+    throw error;
+  }
+  /** The synchronization in flight: a snapshot, resync or reset ends at the next snapshotEnd. */
+  let pending: { mode: 'snapshot' | 'resync' | 'reset'; reason: SyncReason; start: number; attempt?: number } | undefined =
+    { mode: 'snapshot', reason: 'initial', start: openStart };
+  function recordSync(mode: 'snapshot' | 'resync' | 'reset', reason: SyncReason, start: number, error?: unknown, extra: { records?: number; attempt?: number } = {}) {
+    const failedWith = error === undefined ? undefined : classifyFrontendError(error);
+    const outcome = failedWith === undefined ? 'success' : failedWith === 'canceled' ? 'canceled' : 'failure';
+    recordFrontendSpan('frontend.source_view.sync', {
+      mode, reason, plugin_id: pluginID, resource_type: resourceType, outcome,
+      ...(failedWith === undefined ? {} : { error_class: failedWith }),
+      ...(extra.records === undefined ? {} : { records: extra.records }),
+      ...(extra.attempt === undefined ? {} : { attempt: extra.attempt }),
+    }, start, Date.now(), outcome === 'failure');
+  }
+  function beginSync(mode: 'resync' | 'reset', reason: SyncReason, attempt?: number) {
+    pending = { mode, reason, start: Date.now(), attempt };
+  }
+  function endSync(error?: unknown, records?: number) {
+    if (!pending) return;
+    const { mode, reason, start, attempt } = pending;
+    pending = undefined;
+    recordSync(mode, reason, start, error, { records, attempt });
+  }
   let snapshot: SourceViewSnapshot = { records: new Map(), complete: false };
   /** The current records while no reader has received them yet: the only map a patch may edit in place. */
   let writable: Map<string, HostRecord> | undefined;
@@ -65,9 +98,10 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     notify();
   }
 
-  function fail(message: string) {
+  function fail(message: string, cause: unknown = new Error('source view sync failed')) {
     if (closed || failed) return;
     failed = true;
+    endSync(cause);
     update({ status: {
       ...snapshot.status,
       state: 'failed',
@@ -77,18 +111,23 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     } });
   }
 
-  function resync() {
+  function resync(reason: SyncReason = 'sequence_gap') {
     if (closed || failed) return;
     staging = undefined;
     awaitingGeneration = true;
     const now = Date.now();
     attempts = attempts.filter(time => now - time < 10_000);
     if (attempts.length >= 3) {
+      recordFrontendSpan('frontend.source_view.sync', {
+        mode: 'resync', reason: 'exhausted', plugin_id: pluginID, resource_type: resourceType,
+        outcome: 'failure', error_class: 'other', attempt: attempts.length,
+      }, now, now, true);
       fail('Source view could not maintain a contiguous event sequence.');
       return;
     }
     attempts.push(now);
-    void SyncSourceView(pluginID, opened.viewId).catch(error => fail(String(error)));
+    beginSync('resync', reason, attempts.length);
+    void SyncSourceView(pluginID, opened.viewId).catch(error => fail(String(error), error));
   }
 
   /**
@@ -116,6 +155,9 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     if (event.kind === 'reset') {
       staging = undefined;
       awaitingGeneration = true;
+      if (event.reset?.reason !== 'closed' && !pending) {
+        beginSync('reset', event.reset?.reason === 'overflow' || event.reset?.reason === 'sourceReset' ? 'reset_required' : 'other');
+      }
       update({}, 'reset');
       if (event.reset?.reason === 'closed') {
         update({ status: { ...snapshot.status, state: 'closed', mode: snapshot.status?.mode ?? opened.mode,
@@ -136,7 +178,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     const next = BigInt(event.sequence);
     if (event.viewGeneration !== generation || next !== sequence + BigInt(1)) {
       rejectedGeneration = event.viewGeneration;
-      resync();
+      resync(event.viewGeneration !== generation ? 'binding_changed' : 'sequence_gap');
       return;
     }
     sequence = next;
@@ -153,8 +195,10 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
           if (held !== undefined) staging.set(key, replaceEqualDeep(held, record));
         }
         writable = staging;
+        const recordCount = staging.size;
         update({ records: staging, viewGeneration: generation, status: replaceEqualDeep(snapshot.status, event.status), complete: true }, 'snapshotEnd');
         staging = undefined;
+        endSync(undefined, recordCount);
         break;
       }
       case 'changes':
@@ -194,6 +238,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
     close() {
       if (closed) return;
       closed = true;
+      pending = undefined;
       openViews.delete(client);
       unsubscribe();
       if (frame !== undefined && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
@@ -206,6 +251,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
   try {
     await SyncSourceView(pluginID, opened.viewId);
   } catch (error) {
+    endSync(error);
     client.close();
     throw error;
   }

@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 var (
@@ -64,7 +67,8 @@ type Option func(*config)
 
 // Store wraps bbolt for settings persistence.
 type Store struct {
-	db *bolt.DB
+	db  *bolt.DB
+	log logging.Logger
 }
 
 // Open opens (or creates) a bbolt database at path.
@@ -129,6 +133,15 @@ func (s *Store) SaveCategory(categoryID string, values map[string]any) error {
 // SaveCategories persists all supplied core categories in one transaction.
 // Encoding and transaction failures leave every category unchanged.
 func (s *Store) SaveCategories(categories map[string]map[string]any) error {
+	ids := make([]string, 0, len(categories))
+	for id := range categories {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return s.persistSave(categoryLabel(ids), "", func() error { return s.saveCategories(categories) })
+}
+
+func (s *Store) saveCategories(categories map[string]map[string]any) error {
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}
@@ -154,6 +167,17 @@ func (s *Store) SaveCategories(categories map[string]map[string]any) error {
 // PatchSettings merges scoped host setting IDs into persisted categories atomically.
 // Only the first dot separates the category from the local setting ID.
 func (s *Store) PatchSettings(values map[string]any) error {
+	ids := make([]string, 0, len(values))
+	for id := range values {
+		if category, _, ok := strings.Cut(id, "."); ok && category != "" {
+			ids = append(ids, category)
+		}
+	}
+	slices.Sort(ids)
+	return s.persistSave(categoryLabel(slices.Compact(ids)), "", func() error { return s.patchSettings(values) })
+}
+
+func (s *Store) patchSettings(values map[string]any) error {
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}
@@ -181,6 +205,10 @@ func (s *Store) PatchSettings(values map[string]any) error {
 
 // PatchPluginSettings merges raw setting IDs into one plugin's persisted values.
 func (s *Store) PatchPluginSettings(pluginID string, values map[string]any) error {
+	return s.persistSave("", pluginID, func() error { return s.patchPluginSettings(pluginID, values) })
+}
+
+func (s *Store) patchPluginSettings(pluginID string, values map[string]any) error {
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}
@@ -236,6 +264,10 @@ func (s *Store) LoadCategory(categoryID string) (map[string]any, error) {
 // SaveMCPRelayConfig persists the MCP relay configuration document under the
 // "mcp" bucket.
 func (s *Store) SaveMCPRelayConfig(cfg any) error {
+	return s.persistSave("mcp", "", func() error { return s.saveMCPRelayConfig(cfg) })
+}
+
+func (s *Store) saveMCPRelayConfig(cfg any) error {
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal mcp relay config: %w", err)
@@ -265,6 +297,10 @@ func (s *Store) LoadMCPRelayConfig(out any) (bool, error) {
 
 // SavePluginSettings persists a plugin's settings under the "plugins" bucket.
 func (s *Store) SavePluginSettings(pluginID string, values map[string]any) error {
+	return s.persistSave("", pluginID, func() error { return s.savePluginSettings(pluginID, values) })
+}
+
+func (s *Store) savePluginSettings(pluginID string, values map[string]any) error {
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}

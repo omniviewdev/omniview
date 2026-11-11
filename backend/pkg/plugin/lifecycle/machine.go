@@ -1,10 +1,46 @@
 package lifecycle
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
+
+// transitionLogger receives Debug transition records and Warn rejections.
+// Unset, state machines log nothing.
+//
+//nolint:gochecknoglobals // Transition logging is configured process-wide and read concurrently.
+var transitionLogger atomic.Pointer[logging.Logger]
+
+// SetLogger installs the process-wide logger for state machine transitions.
+// A nil logger disables transition logging.
+func SetLogger(l logging.Logger) {
+	if l == nil {
+		transitionLogger.Store(nil)
+		return
+	}
+	transitionLogger.Store(&l)
+}
+
+func logTransition(pluginID string, t Transition, forced bool) {
+	p := transitionLogger.Load()
+	if p == nil {
+		return
+	}
+	// The reason of a failure transition carries the error text of the failure,
+	// which may include remote content; only the phases are logged for it.
+	if t.To == PhaseFailed {
+		(*p).Debugw(context.Background(), "plugin lifecycle transition",
+			"pluginID", pluginID, "from", string(t.From), "to", string(t.To), "forced", forced)
+		return
+	}
+	(*p).Debugw(context.Background(), "plugin lifecycle transition",
+		"pluginID", pluginID, "from", string(t.From), "to", string(t.To), "reason", t.Reason, "forced", forced)
+}
 
 const (
 	maxHistory     = 50
@@ -86,6 +122,10 @@ func (sm *PluginStateMachine) TransitionTo(next PluginPhase, reason string) erro
 	defer sm.mu.Unlock()
 
 	if !IsValidTransition(sm.phase, next) {
+		if p := transitionLogger.Load(); p != nil {
+			(*p).Warnw(context.Background(), "plugin lifecycle transition rejected",
+				"pluginID", sm.pluginID, "from", string(sm.phase), "to", string(next))
+		}
 		return fmt.Errorf("invalid transition %s → %s for plugin %s", sm.phase, next, sm.pluginID)
 	}
 
@@ -103,6 +143,7 @@ func (sm *PluginStateMachine) TransitionTo(next PluginPhase, reason string) erro
 		sm.history = sm.history[1:]
 	}
 	sm.history = append(sm.history, t)
+	logTransition(sm.pluginID, t, false)
 
 	// Notify observers (holding lock — observers should be fast).
 	for _, obs := range sm.observers {
@@ -130,6 +171,7 @@ func (sm *PluginStateMachine) ForcePhase(phase PluginPhase, reason string) {
 		sm.history = sm.history[1:]
 	}
 	sm.history = append(sm.history, t)
+	logTransition(sm.pluginID, t, true)
 
 	for _, obs := range sm.observers {
 		obs(sm.pluginID, t)

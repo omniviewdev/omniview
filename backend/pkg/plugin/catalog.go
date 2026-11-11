@@ -8,13 +8,15 @@ import (
 	"slices"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/mod/semver"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdkstate "github.com/omniviewdev/plugin-sdk/pkg/state"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	"golang.org/x/mod/semver"
 )
 
 // CatalogEntry is trusted application composition, never installed metadata.
@@ -234,10 +236,11 @@ func (pm *pluginManager) loadBuiltinLocked(id string, entry CatalogEntry, opts *
 
 // SetPluginEnabled persists user preference independently from activation.
 // Failed writes are reconciled against the persisted preference before cleanup.
-func (pm *pluginManager) SetPluginEnabled(id string, enabled bool) (plugintypes.PluginInfo, error) {
-	lock := pm.pluginOpsLock(id)
-	lock.Lock()
-	defer lock.Unlock()
+//
+//nolint:gocognit,funlen // Preference reconciliation and cleanup preserve the existing lifecycle transaction.
+func (pm *pluginManager) SetPluginEnabled(id string, enabled bool) (_ plugintypes.PluginInfo, resultErr error) {
+	end := pm.lifecycleOp("plugin.SetEnabled", id, attribute.Bool("enabled", enabled))
+	defer func() { end(resultErr) }()
 	if err := pm.guardUninstallRecovery(id); err != nil {
 		return plugintypes.PluginInfo{}, err
 	}

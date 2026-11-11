@@ -143,8 +143,14 @@ func New(o Options) *Relay {
 	})
 	r.server = mcp.NewServer(
 		&mcp.Implementation{Name: "omniview", Version: o.Version},
-		&mcp.ServerOptions{Instructions: instructions, KeepAlive: keepAliveInterval},
+		//nolint:exhaustruct // Unset SDK options intentionally use their defaults.
+		&mcp.ServerOptions{
+			Instructions:       instructions,
+			KeepAlive:          keepAliveInterval,
+			InitializedHandler: r.onInitialized,
+		},
 	)
+	r.server.AddReceivingMiddleware(r.observeMiddleware())
 	if source, ok := o.Connections.(interface{ OnInventoryChange(func()) func() }); ok {
 		r.unsubscribeInventory = source.OnInventoryChange(r.inventoryChanged)
 	}
@@ -264,7 +270,7 @@ func (r *Relay) startListenerLocked() {
 	listener, err := net.Listen("tcp4", addr)
 	if err != nil {
 		r.listenErr = err.Error()
-		r.log.Errorw(context.Background(), "mcp relay listen failed", "error", err, "port", r.cfg.Port)
+		r.log.Errorw(context.Background(), "mcp relay listen failed", errorLogFields(err, "port", r.cfg.Port)...)
 		return
 	}
 	mux := http.NewServeMux()
@@ -281,7 +287,7 @@ func (r *Relay) startListenerLocked() {
 	r.listenErr = ""
 	go func() {
 		if serveErr := server.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			r.log.Errorw(context.Background(), "mcp relay server stopped", "error", serveErr)
+			r.log.Errorw(context.Background(), "mcp relay server stopped", errorLogFields(serveErr)...)
 			r.mu.Lock()
 			if r.httpServer != server {
 				r.mu.Unlock()
@@ -335,7 +341,7 @@ func (r *Relay) stopListenerOwned() {
 		}
 		sessions.Wait()
 	}); err != nil {
-		r.log.Warnw(ctx, "mcp relay shutdown", "error", err)
+		r.log.Warnw(ctx, "mcp relay shutdown", errorLogFields(err)...)
 	}
 	r.emit(EventStatus, status)
 }
@@ -377,6 +383,11 @@ func (r *Relay) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		peer, _, err := net.SplitHostPort(req.RemoteAddr)
 		if err != nil || peer != listenHost || len(req.Header.Values("Origin")) != 0 {
+			reason := "origin"
+			if err != nil || peer != listenHost {
+				reason = "peer"
+			}
+			r.logAuthRejected(req.Context(), reason)
 			unauthorized(w)
 			return
 		}
@@ -386,6 +397,7 @@ func (r *Relay) auth(next http.Handler) http.Handler {
 		if len(req.Header.Values("Authorization")) != 1 ||
 			subtle.ConstantTimeCompare([]byte(authorization), []byte(expected)) != 1 {
 			r.mu.Unlock()
+			r.logAuthRejected(req.Context(), "bearer")
 			unauthorized(w)
 			return
 		}
@@ -403,6 +415,7 @@ func (r *Relay) auth(next http.Handler) http.Handler {
 				for session := range r.server.Sessions() {
 					if session.ID() == selected {
 						if err := r.authority.CloseSession(req.Context(), session); err != nil {
+							r.logAuthRejected(req.Context(), "session_close")
 							unauthorized(w)
 							return
 						}
@@ -451,7 +464,7 @@ func (r *Relay) allowedConnections(parent context.Context, cfg *Config) map[stri
 	defer cancel()
 	all, err := r.connections.GetAllConnectionStates(ctx)
 	if err != nil {
-		r.log.Warnw(context.Background(), "mcp relay: list connections", "error", err)
+		r.log.Warnw(context.Background(), "mcp relay: list connections", errorLogFields(err)...)
 		return nil
 	}
 	out := make(map[string][]string, len(all))
@@ -571,7 +584,7 @@ func (r *Relay) discover(revision uint64) {
 			generated, discoveryErr := BuildResourceCatalogWithReaders(discoveryCtx, r.connections, routes, readers)
 			catalog = append(catalog, generated...)
 			if discoveryErr != nil {
-				r.log.Warnw(discoveryCtx, "resource tool discovery incomplete", "error", discoveryErr)
+				r.log.Warnw(discoveryCtx, "resource tool discovery incomplete", errorLogFields(discoveryErr)...)
 			}
 		}
 		builtins := map[string]bool{}

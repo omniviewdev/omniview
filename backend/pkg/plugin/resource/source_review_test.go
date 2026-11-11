@@ -369,14 +369,15 @@ func TestSourceOpenReportsFailedBindingRecovery(t *testing.T) {
 	require.Eventually(t, func() bool {
 		session.mu.Lock()
 		defer session.mu.Unlock()
-		return session.status.State == "failed" && session.status.Error != nil && session.status.Error.Message == "Recovery denied."
+		return session.status.State == "failed" && session.status.Error != nil &&
+			session.status.Error.Message == "Source session failed."
 	}, 5*time.Second, time.Millisecond)
 	for _, updates := range []string{"ifSupported", "none"} {
 		request.Updates = updates
 		opened, err := ctrl.OpenSourceView(testInvocationContext(), "p1", request)
 		require.Empty(t, opened.ViewID)
 		require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
-		require.Contains(t, err.Error(), "Recovery denied.")
+		require.Contains(t, err.Error(), "Source session failed.")
 	}
 	select {
 	case <-provider.opens:

@@ -13,6 +13,7 @@ import (
 // Admission retains the declared sequence until domain validation rejects
 // duplicate dimensions. Invocation targets are route inputs, never grants.
 func referenceTarget(pluginID string, route sdkresource.AccessRoute, reference sdkresource.ResourceReference) invocation.Target {
+	// Address scope contains only strings, so JSON encoding cannot fail.
 	encoded, _ := json.Marshal(reference.Address.Scope)
 	return invocation.Target{Provider: pluginID, Connection: route.Connection,
 		ResourceType: reference.Address.Type, Object: reference.Address.ID,
@@ -21,12 +22,14 @@ func referenceTarget(pluginID string, route sdkresource.AccessRoute, reference s
 
 func referenceQueryTarget(pluginID string, target sdkresource.ReadTarget, reference sdkresource.ResourceReference) invocation.Target {
 	out := referenceTarget(pluginID, target.Route, reference)
+	// Query scope contains only strings and string slices, so encoding cannot fail.
 	encoded, _ := json.Marshal(target.Scope)
 	out.Scope["query-scope"] = string(encoded)
 	return out
 }
 
 func readTarget(pluginID string, target sdkresource.ReadTarget) invocation.Target {
+	// Query scope contains only strings and string slices, so encoding cannot fail.
 	encoded, _ := json.Marshal(target.Scope)
 	return invocation.Target{Provider: pluginID, Connection: target.Route.Connection,
 		ResourceType: target.Type, Scope: map[string]string{"query-scope": string(encoded), "authority": target.Authority}}

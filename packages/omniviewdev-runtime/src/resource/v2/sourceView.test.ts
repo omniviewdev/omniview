@@ -4,12 +4,13 @@ import type { HostRecord, HostSourceViewEvent, HostSourceViewRequest } from './h
 const mocks = vi.hoisted(() => ({
   on: vi.fn(), off: vi.fn(), open: vi.fn(), sync: vi.fn(), refresh: vi.fn(), close: vi.fn(),
 }));
-vi.mock('@wailsio/runtime', () => ({ Events: { On: mocks.on } }));
+vi.mock('@wailsio/runtime', async importOriginal => ({ ...(await importOriginal<object>()), Events: { On: mocks.on } }));
 vi.mock('./client', () => ({
   OpenSourceView: mocks.open, SyncSourceView: mocks.sync,
   RefreshSourceView: mocks.refresh, CloseSourceView: mocks.close,
 }));
 import { openSourceView } from './sourceView';
+import { setFrontendSpanRecorder, type FrontendSpanRecorder } from '../../telemetry/frontendSpans';
 
 const request = { targetId: 'target', target: {}, updates: 'ifSupported' } as HostSourceViewRequest;
 const status = { state: 'following', mode: 'snapshotAndUpdates', count: { kind: 'exact', value: '1' } } as const;
@@ -32,6 +33,31 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+describe('source view spans', () => {
+  afterEach(() => setFrontendSpanRecorder(null));
+  it('records the initial snapshot and a sequence-gap resync with record counts', async () => {
+    const records: Parameters<FrontendSpanRecorder>[] = [];
+    setFrontendSpanRecorder((...args) => records.push(args));
+    await openSourceView('plugin', { ...request, target: { type: 'core::v1::Pod' } } as HostSourceViewRequest);
+    event('one', '1', 'snapshot', { records: [record('a')] });
+    event('one', '2', 'snapshotEnd', { status });
+    expect(records[0][1]).toMatchObject({ mode: 'snapshot', reason: 'initial', records: 1, plugin_id: 'plugin', resource_type: 'core::v1::Pod', outcome: 'success' });
+    event('one', '9', 'changes', { upserts: [record('b')] });
+    event('two', '1', 'snapshot', { records: [record('a')] });
+    event('two', '2', 'snapshotEnd', { status });
+    expect(records[1][1]).toMatchObject({ mode: 'resync', reason: 'sequence_gap', attempt: 1, records: 1, outcome: 'success' });
+  });
+
+  it('records a failed open without the error text', async () => {
+    const records: Parameters<FrontendSpanRecorder>[] = [];
+    setFrontendSpanRecorder((...args) => records.push(args));
+    mocks.open.mockRejectedValue({ code: 'UNAVAILABLE', title: 't', message: 'token=abc123' });
+    await expect(openSourceView('plugin', request)).rejects.toBeDefined();
+    expect(records[0][1]).toMatchObject({ mode: 'snapshot', reason: 'initial', outcome: 'failure', error_class: 'UNAVAILABLE' });
+    expect(JSON.stringify(records)).not.toContain('abc123');
+  });
+});
 
 describe('source views', () => {
   it('attaches before sync and atomically swaps staged snapshots', async () => {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -275,7 +276,22 @@ func (c *controller) refreshWatchedConnections(ctx context.Context, pluginID str
 	}
 	connections, err := provider.ListConnections(ctx)
 	if err != nil {
-		_ = c.publishProfileConnections(ctx, pluginID, generation, c.profileNative[pluginID], nil)
+		if publishErr := c.publishProfileConnections(
+			ctx,
+			pluginID,
+			generation,
+			c.profileNative[pluginID],
+			nil,
+		); publishErr != nil && c.logger != nil {
+			c.logger.Warnw(
+				ctx,
+				"connection snapshot fallback publication failed",
+				"pluginID",
+				pluginID,
+				"errorClass",
+				telemetryutil.ErrorClass(publishErr),
+			)
+		}
 		return nil, err
 	}
 	if err := c.publishProfileConnections(ctx, pluginID, generation, c.profileNative[pluginID], connections); err != nil {

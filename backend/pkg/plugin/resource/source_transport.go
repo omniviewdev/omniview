@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 )
 
@@ -44,7 +45,14 @@ func (c *controller) retireFatalSourceTransport(pluginID string, expected *plugi
 	c.cleanupPluginGraphState(pluginID, conns)
 	c.lifecycleMu.Unlock()
 
-	c.logger.Errorw(context.Background(), "fatal source transport retired; provider unavailable", "pluginID", pluginID, "error", cause)
+	c.logger.Errorw(
+		context.Background(),
+		"fatal source transport retired; provider unavailable",
+		"pluginID",
+		pluginID,
+		"errorClass",
+		telemetryutil.ErrorClass(cause),
+	)
 	if callback != nil && backend != nil {
 		callback(pluginID, backend, func(commit func()) bool {
 			c.lifecycleMu.Lock()
@@ -60,7 +68,14 @@ func (c *controller) retireFatalSourceTransport(pluginID string, expected *plugi
 		})
 	}
 	if err := expected.closeSource(provider); err != nil {
-		c.logger.Warnw(context.Background(), "fatal resource source teardown failed", "pluginID", pluginID, "error", err)
+		c.logger.Warnw(
+			context.Background(),
+			"fatal resource source teardown failed",
+			"pluginID",
+			pluginID,
+			"errorClass",
+			telemetryutil.ErrorClass(err),
+		)
 	}
 	c.notifyInventory()
 	return true

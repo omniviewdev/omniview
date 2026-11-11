@@ -466,6 +466,7 @@ func main() {
 		Fields:  nil,
 		Now:     nil,
 	})
+	settingsStore.SetLogger(log.Named("settings"))
 
 	audit := auditStartupCheck{
 		strict: profile.Descriptor.Kind == "development",
@@ -508,7 +509,7 @@ func main() {
 		"ui": uiManager,
 	}
 
-	utilsClient := utils.NewClient()
+	utilsClient := utils.NewClient(log.Named("utils"))
 
 	// Setup the plugin systems
 	mcpAuthority := mcprelay.NewAuthority()
@@ -561,7 +562,7 @@ func main() {
 		}))
 	}
 
-	pluginRegistryClient := registry.NewClient("")
+	pluginRegistryClient := registry.NewClient("").WithLogger(log.Named("registry"))
 	// Product-owned providers are selected at compile time, never by installed metadata.
 	builtinCatalog, err := plugin.NewCatalog([]plugin.CatalogEntry{
 		grafana.CatalogEntry(func() (*os.Root, error) {
@@ -869,8 +870,13 @@ func main() {
 
 func pluginTelemetryConfig(svc *telemetry.Service, id string) (plugin.TelemetryEnvConfig, error) {
 	cfg := svc.Config()
+	logLevel := ""
+	if cfg.Enabled && cfg.LogsShip {
+		logLevel = cfg.LogsShipLevel
+	}
 	if !cfg.Enabled || (!cfg.Traces && !cfg.Profiling) {
 		var disabled plugin.TelemetryEnvConfig
+		disabled.LogLevel = logLevel
 		return disabled, nil
 	}
 	endpoint, token, cleanup, err := svc.StartPluginTraceReceiver(id)
@@ -886,5 +892,6 @@ func pluginTelemetryConfig(svc *telemetry.Service, id string) (plugin.TelemetryE
 		Profiling:         cfg.Profiling,
 		PyroscopeEndpoint: cfg.PyroscopeEndpoint,
 		Cleanup:           cleanup,
+		LogLevel:          logLevel,
 	}, nil
 }

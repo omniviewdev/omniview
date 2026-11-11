@@ -69,6 +69,7 @@ type finiteJob struct {
 	query               sdk.ResourceMetricsQuery
 	pairs               map[finitePair]bool
 	waiters             map[*finiteWaiter]bool
+	ctx                 context.Context
 	cancel              context.CancelFunc
 	epoch               uint64
 	key                 metricStreamKey
@@ -1157,13 +1158,14 @@ func (f *finiteCoordinator) dispatchAtLocked(now time.Time) {
 	key := metricStreamKey{base.spec.OwnerPluginID, base.spec.OwnerConnectionID}
 	workCtx, cancel := context.WithTimeout(context.WithoutCancel(base.ctx), resourceMetricsTimeout)
 	sourceKey := metricStreamKey{q.Source.PluginID, q.Source.ConnectionID}
-	job := &finiteJob{partition: base.partition, query: q, pairs: finitePairs(q), waiters: map[*finiteWaiter]bool{}, cancel: cancel, key: key, epoch: base.epoch, sourceKey: sourceKey, sourceEpoch: base.sourceEpoch, configuration: base.configuration}
-	job.configurationKeys = base.configurationKeys
-	job.configurationSerial = base.configurationSerial
-	job.configurationGuard = base.configurationGuard
-	job.maxSampleAge = base.maxSampleAge
-	job.rangeReuse = base.rangeReuse
-	job.rangeToCurrentKey = base.rangeToCurrentKey
+	job := &finiteJob{
+		partition: base.partition, query: q, pairs: finitePairs(q), waiters: map[*finiteWaiter]bool{},
+		ctx: workCtx, cancel: cancel, key: key, epoch: base.epoch, sourceKey: sourceKey,
+		sourceEpoch: base.sourceEpoch, configuration: base.configuration, retired: false,
+		configurationKeys: base.configurationKeys, configurationSerial: base.configurationSerial,
+		configurationGuard: base.configurationGuard, maxSampleAge: base.maxSampleAge,
+		rangeReuse: base.rangeReuse, rangeToCurrentKey: base.rangeToCurrentKey,
+	}
 	for w := range f.pending {
 		if w.partition == base.partition && w.ctx.Err() == nil {
 			for pair := range job.pairs {

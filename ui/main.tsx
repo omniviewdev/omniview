@@ -11,9 +11,18 @@ import 'systemjs/dist/extras/named-register.js';
 import { initTelemetry } from './features/telemetry';
 import { bridgeSink } from './features/telemetry/bridgeSink';
 import { initTracing } from './features/telemetry/tracing';
-import { SpanStatusCode } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
+import { setFrontendSpanRecorder } from '@omniviewdev/runtime';
 
 const startupSpan = initTracing('unknown').getTracer('omniview.frontend').startSpan('frontend.startup');
+setFrontendSpanRecorder((name, attributes, startMs, endMs, failed) => {
+  const span = trace.getTracer('omniview-frontend').startSpan(name, { startTime: startMs, attributes });
+  if (failed) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+  }
+
+  span.end(endMs);
+});
 
 initTelemetry(bridgeSink);
 // Measure interaction-to-next-frame without recording event targets or content.
@@ -38,6 +47,7 @@ resolveCurrentWindow()
     try {
       await loadInitialWindowState();
     } catch (error: unknown) {
+      startupSpan.setStatus({ code: SpanStatusCode.ERROR });
       console.error('[windows] failed to restore window state', error);
     }
 

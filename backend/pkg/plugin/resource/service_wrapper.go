@@ -9,6 +9,7 @@ import (
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ServiceWrapper binds only admitted resource operations. Native lifecycle and
@@ -23,6 +24,12 @@ func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {
 		return ctx
 	}
 	return s.Realm.Context(ctx)
+}
+
+// h3DecodeFailure records a rejected transport without recording the input.
+func (s *ServiceWrapper) h3DecodeFailure(ctx context.Context, name, pluginID string, err error) {
+	_, end := h3StartOperation(s.realmContext(ctx), name, attribute.String("plugin_id", pluginID))
+	end(&err)
 }
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	if service, ok := s.Ctrl.(interface {
@@ -65,6 +72,7 @@ func (s *ServiceWrapper) Enumerate(ctx context.Context, pluginID string, request
 func (s *ServiceWrapper) NativeQuery(ctx context.Context, pluginID string, encoded string) (HostSourcePage, error) {
 	var request HostNativeQueryRequest
 	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		s.h3DecodeFailure(ctx, "resource.NativeQuery", pluginID, err)
 		return HostSourcePage{}, err
 	}
 	return s.Ctrl.NativeQuery(s.realmContext(ctx), pluginID, request)
@@ -72,6 +80,7 @@ func (s *ServiceWrapper) NativeQuery(ctx context.Context, pluginID string, encod
 func (s *ServiceWrapper) Mutate(ctx context.Context, pluginID string, encoded string) (resourcev2.Record, error) {
 	var request resourcev2.MutationRequest
 	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		s.h3DecodeFailure(ctx, "resource.Mutate", pluginID, err)
 		return resourcev2.Record{}, err
 	}
 	return s.Ctrl.Mutate(s.realmContext(ctx), pluginID, request)
@@ -79,6 +88,7 @@ func (s *ServiceWrapper) Mutate(ctx context.Context, pluginID string, encoded st
 func (s *ServiceWrapper) Action(ctx context.Context, pluginID string, encoded string) (resourcev2.Value, error) {
 	var request resourcev2.ActionRequest
 	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		s.h3DecodeFailure(ctx, "resource.Action", pluginID, err)
 		return resourcev2.Value{}, err
 	}
 	return s.Ctrl.Action(s.realmContext(ctx), pluginID, request)
@@ -119,6 +129,7 @@ func (s *ServiceWrapper) ScopeValues(ctx context.Context, pluginID string, route
 func (s *ServiceWrapper) SaveConnectionProfile(ctx context.Context, pluginID string, encoded string, credentials *ConnectionProfileCredentials) (ConnectionProfileResult, error) {
 	var connection types.Connection
 	if err := transportjson.Decode(encoded, &connection, pluginID); err != nil {
+		s.h3DecodeFailure(ctx, "resource.SaveConnectionProfile", pluginID, err)
 		return ConnectionProfileResult{}, err
 	}
 	return s.Ctrl.SaveConnectionProfile(s.realmContext(ctx), pluginID, connection, credentials)
@@ -189,6 +200,7 @@ func (s *ServiceWrapper) GetHealth(ctx context.Context, pluginID string, encoded
 		Body    resourcev2.Value      `json:"body"`
 	}
 	if err := transportjson.Decode(encoded, &args, pluginID); err != nil {
+		s.h3DecodeFailure(ctx, "resource.GetHealth", pluginID, err)
 		return nil, err
 	}
 	return s.Ctrl.GetHealth(s.realmContext(ctx), pluginID, args.Request, args.Body)
@@ -202,6 +214,7 @@ func (s *ServiceWrapper) GetActions(ctx context.Context, pluginID string, route 
 func (s *ServiceWrapper) StreamAction(ctx context.Context, pluginID string, encoded string) (string, error) {
 	var request resourcev2.ActionRequest
 	if err := transportjson.Decode(encoded, &request, pluginID); err != nil {
+		s.h3DecodeFailure(ctx, "resource.StreamAction.Open", pluginID, err)
 		return "", err
 	}
 	return s.Ctrl.StreamAction(s.realmContext(ctx), pluginID, request)

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -16,6 +18,11 @@ import (
 // The producer owns its lifetime before it starts; request cancellation is bridged
 // through the commit, never reparented after a request-bound producer has started.
 func (c *controller) StreamAction(ctx context.Context, pluginID string, input resource.ActionRequest) (id string, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.StreamAction.Open",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", input.Route.Connection),
+	)
+	defer end(&retErr)
 	return c.streamAction(ctx, pluginID, input, nil)
 }
 
@@ -145,6 +152,7 @@ func (c *controller) streamAction(ctx context.Context, pluginID string, input re
 			result = nil
 		case event, ok := <-events:
 			if !ok {
+				// The event channel normally closes before the result arrives.
 				events = nil
 				continue
 			}
@@ -261,6 +269,7 @@ func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, 
 			result = nil
 		case event, ok := <-events:
 			if !ok {
+				// The event channel normally closes before the result arrives.
 				events = nil
 				continue
 			}
@@ -302,6 +311,8 @@ func (c *controller) actionInvocation(ctx context.Context, id, operation string)
 	return c.admit(ctx, operation, handle.request.Target())
 }
 func (c *controller) AttachStreamAction(ctx context.Context, id string) (snapshot ActionSnapshot, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.AttachStreamAction")
+	defer end(&retErr)
 	ctx, err := c.actionInvocation(ctx, id, "resource.AttachStreamAction")
 	if err != nil {
 		return ActionSnapshot{}, err
@@ -310,6 +321,8 @@ func (c *controller) AttachStreamAction(ctx context.Context, id string) (snapsho
 	return c.actions.attach(ctx, id)
 }
 func (c *controller) CancelStreamAction(ctx context.Context, id string) (retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.CancelStreamAction")
+	defer end(&retErr)
 	ctx, err := c.actionInvocation(ctx, id, "resource.CancelStreamAction")
 	if err != nil {
 		return err

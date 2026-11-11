@@ -3,6 +3,8 @@ package resource
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
@@ -23,6 +25,15 @@ func NewGraphService(g *graph.RelationshipGraph, realm invocation.ContextScope, 
 }
 
 func (s *GraphService) GetRelated(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, direction string, relType *string) (_result []graph.GraphEdge, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"graph.GetRelated",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", reference.Address.Type),
+		attribute.String("resource_id", reference.Address.ID),
+	)
+	defer end(&retErr)
 	ctx, err := s.admit(ctx, "graph.GetRelated", pluginID, reference, route)
 	if err != nil {
 		return nil, err
@@ -56,6 +67,15 @@ func (s *GraphService) GetRelated(ctx context.Context, pluginID string, referenc
 }
 
 func (s *GraphService) GetRelationshipChain(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, relType string, maxDepth int) (_result [][]graph.GraphEdge, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"graph.GetRelationshipChain",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", reference.Address.Type),
+		attribute.String("resource_id", reference.Address.ID),
+	)
+	defer end(&retErr)
 	ctx, err := s.admit(ctx, "graph.GetRelationshipChain", pluginID, reference, route)
 	if err != nil {
 		return nil, err
@@ -75,6 +95,15 @@ func (s *GraphService) GetRelationshipChain(ctx context.Context, pluginID string
 }
 
 func (s *GraphService) GetDependencyTree(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, maxDepth int) (_result *graph.DependencyTree, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"graph.GetDependencyTree",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", reference.Address.Type),
+		attribute.String("resource_id", reference.Address.ID),
+	)
+	defer end(&retErr)
 	ctx, err := s.admit(ctx, "graph.GetDependencyTree", pluginID, reference, route)
 	if err != nil {
 		return nil, err
@@ -95,6 +124,15 @@ func (s *GraphService) GetDependencyTree(ctx context.Context, pluginID string, r
 }
 
 func (s *GraphService) GetSubgraph(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, upDepth, downDepth int) (_result *graph.Subgraph, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"graph.GetSubgraph",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", reference.Address.Type),
+		attribute.String("resource_id", reference.Address.ID),
+	)
+	defer end(&retErr)
 	ctx, err := s.admit(ctx, "graph.GetSubgraph", pluginID, reference, route)
 	if err != nil {
 		return nil, err

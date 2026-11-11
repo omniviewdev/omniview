@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"strconv"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
@@ -174,7 +177,20 @@ func (v *sourceView) appendReservedLocked(event HostSourceViewEvent, transient i
 		return false
 	}
 	b, err := json.Marshal(event)
-	if err != nil || len(b) > sourceViewQueueBytes-v.bytes {
+	if err != nil {
+		if v.ctrl != nil && v.ctrl.logger != nil {
+			v.ctrl.logger.Warnw(
+				context.Background(),
+				"source view event encoding failed",
+				"pluginID",
+				v.session.pluginID,
+				"errorClass",
+				telemetryutil.ErrorClass(err),
+			)
+		}
+		return false
+	}
+	if len(b) > sourceViewQueueBytes-v.bytes {
 		return false
 	}
 	v.queue = append(v.queue, queuedSourceViewEvent{event: event, bytes: len(b), transient: transient})
@@ -258,6 +274,16 @@ func (v *sourceView) resetLocked(reason, message string) {
 	if v.closed {
 		return
 	}
+	if reason == "overflow" {
+		ctx := v.session.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		telemetry.RecordPluginStreamEvent(ctx, v.session.pluginID, "source", "overflow")
+		if v.ctrl != nil && v.ctrl.logger != nil {
+			v.ctrl.logger.Warnw(ctx, "source view queue overflow", "pluginID", v.session.pluginID)
+		}
+	}
 	v.cancelRetryLocked()
 	if v.generation == "" {
 		v.generation = uuid.NewString()
@@ -278,6 +304,16 @@ func (v *sourceView) resetLocked(reason, message string) {
 // failSnapshotLocked emits a terminal, empty snapshot rather than repeatedly
 // resynchronizing an envelope that can never fit.
 func (v *sourceView) failSnapshotLocked(message string) {
+	if v.ctrl != nil && v.ctrl.logger != nil {
+		v.ctrl.logger.Warnw(
+			context.Background(),
+			"source view snapshot failed",
+			"pluginID",
+			v.session.pluginID,
+			"errorClass",
+			"other",
+		)
+	}
 	v.cancelRetryLocked()
 	v.releaseSnapshotLocked()
 	v.snapshotBinding = resourcev2.Representation{}
@@ -301,6 +337,21 @@ func (v *sourceView) snapshotMemberTransient(member sourceMember) (int, bool) {
 	return member.transient + v.snapshotBindingTransient, true
 }
 
+func (v *sourceView) logError(stage string, err error) {
+	if v.ctrl != nil && v.ctrl.logger != nil {
+		v.ctrl.logger.Debugw(
+			context.Background(),
+			"source view processing failed",
+			"pluginID",
+			v.session.pluginID,
+			"stage",
+			stage,
+			"errorClass",
+			telemetryutil.ErrorClass(err),
+		)
+	}
+}
+
 func (v *sourceView) snapshotRecordSize(member sourceMember, limit int) (int, string) {
 	cost, ok := v.snapshotMemberTransient(member)
 	if !ok {
@@ -312,10 +363,12 @@ func (v *sourceView) snapshotRecordSize(member sourceMember, limit int) (int, st
 	defer v.transientLedger.release(cost)
 	observation, err := decodeSourceMember(member)
 	if err != nil {
+		v.logError("snapshot_decode", err)
 		return 0, "Source view record could not be decoded."
 	}
 	record, err := envelopeRecord(v.snapshotGeneration, v.owner, v.targetID, v.snapshotTarget, resourcev2.Record{Reference: observation.Record.Reference, Body: observation.Record.Body, Representation: v.snapshotBinding, Coverage: observation.Record.Coverage, SourceRevision: observation.Record.SourceRevision})
 	if err != nil {
+		v.logError("snapshot_envelope", err)
 		return 0, "Source view record could not be enveloped."
 	}
 	size, ok := sourceViewSize(record, limit)
@@ -450,6 +503,16 @@ func (v *sourceView) statusLocked() {
 	v.mu.Unlock()
 }
 func (v *sourceView) failChangesLocked(event HostSourceViewEvent, message string) {
+	if v.ctrl != nil && v.ctrl.logger != nil {
+		v.ctrl.logger.Warnw(
+			context.Background(),
+			"source view change publication failed",
+			"pluginID",
+			v.session.pluginID,
+			"errorClass",
+			"other",
+		)
+	}
 	event.Kind = "reset"
 	event.Upserts = nil
 	event.Removes = nil
@@ -556,6 +619,7 @@ func (v *sourceView) changesLocked(records []resourcev2.Record, refs []resourcev
 		for _, record := range records {
 			r, err := envelopeRecord(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, record)
 			if err != nil {
+				v.logError("change_envelope", err)
 				v.failChangesLocked(event, "Source view record could not be enveloped.")
 				return false
 			}
@@ -564,6 +628,7 @@ func (v *sourceView) changesLocked(records []resourcev2.Record, refs []resourcev
 		for _, ref := range refs {
 			key, address, err := rowIdentity(v.session.pluginGeneration.generationID, v.owner, v.targetID, v.session.target, ref)
 			if err != nil {
+				v.logError("removal_identity", err)
 				v.failChangesLocked(event, "Source view removal could not be enveloped.")
 				return false
 			}
@@ -665,12 +730,14 @@ func (v *sourceView) emitLoop() {
 							member := v.snapshot[i]
 							observation, err := decodeSourceMember(member)
 							if err != nil {
+								v.logError("snapshot_decode", err)
 								failureMessage = "Source view snapshot could not be decoded."
 								failed = true
 								break
 							}
 							record, err := envelopeRecord(v.snapshotGeneration, v.owner, v.targetID, v.snapshotTarget, resourcev2.Record{Reference: observation.Record.Reference, Body: observation.Record.Body, Representation: v.snapshotBinding, Coverage: observation.Record.Coverage, SourceRevision: observation.Record.SourceRevision})
 							if err != nil {
+								v.logError("snapshot_envelope", err)
 								failureMessage = "Source view snapshot could not be enveloped."
 								failed = true
 								break

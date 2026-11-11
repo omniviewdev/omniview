@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { MetricsObservationSnapshot, MetricsObservationSpec } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 const transport = vi.hoisted(() => ({ open: vi.fn(), attach: vi.fn(), close: vi.fn(), refresh: vi.fn(), listen: vi.fn() }));
-vi.mock('@wailsio/runtime', () => ({ Events: { On: transport.listen } }));
+vi.mock('@wailsio/runtime', async importOriginal => ({ ...(await importOriginal<object>()), Events: { On: transport.listen } }));
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper', () => ({
   OpenMetricsObservation: transport.open, AttachMetricsObservation: transport.attach,
   CloseMetricsObservation: transport.close, RefreshMetricsObservation: transport.refresh,

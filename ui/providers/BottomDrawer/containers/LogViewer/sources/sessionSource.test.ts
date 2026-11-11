@@ -3,7 +3,7 @@ import { createSessionSource } from './sessionSource';
 import { PrepareSessionEvents as prepareSessionSource, SubscribeSessionEvents } from '../../../../../../packages/omniviewdev-runtime/src/logSessionEvents';
 
 const bus = vi.hoisted(() => ({ listeners: new Map<string, Set<(event: { data: unknown }) => void>>() }));
-vi.mock('@wailsio/runtime', () => ({ Events: {
+vi.mock('@wailsio/runtime', async importOriginal => ({ ...(await importOriginal<Record<string, unknown>>()), Events: {
   On(key: string, listener: (event: { data: unknown }) => void) {
     const listeners = bus.listeners.get(key) ?? new Set();
     listeners.add(listener);

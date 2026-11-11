@@ -7,6 +7,7 @@ import {
   type To,
 } from 'react-router';
 import { openSettings, settingsWindowTarget } from '@omniviewdev/runtime';
+import { recordNavigation, routeCategory } from './navigationTelemetry';
 
 export function routerPathOf(location: Pick<Location, 'pathname' | 'search' | 'hash'>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -20,6 +21,8 @@ export function routerPathOf(location: Pick<Location, 'pathname' | 'search' | 'h
 export class PageTabRouters {
   private readonly routers = new Map<string, DataRouter>();
   private readonly unsubscribers = new Map<string, () => void>();
+  /** Last location reported to telemetry per tab, so router state churn at one location is one navigation. */
+  private readonly reportedPaths = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -45,6 +48,7 @@ export class PageTabRouters {
     }
 
     this.install(tabId, path);
+    recordNavigation(routeCategory(path), false);
     this.notify();
   }
 
@@ -86,6 +90,7 @@ export class PageTabRouters {
 
     this.unsubscribers.get(tabId)?.();
     this.unsubscribers.delete(tabId);
+    this.reportedPaths.delete(tabId);
     this.routers.delete(tabId);
     router.dispose();
     this.notify();
@@ -109,7 +114,14 @@ export class PageTabRouters {
         ? `${to.pathname}${to.search ?? ''}${to.hash ?? ''}` : '';
       const settingsTarget = settingsWindowTarget(path);
       if (settingsTarget !== null) {
-        await openSettings(settingsTarget);
+        try {
+          await openSettings(settingsTarget);
+          recordNavigation('settings', false);
+        } catch (error) {
+          recordNavigation('settings', true);
+          throw error;
+        }
+
         return;
       }
 
@@ -121,8 +133,18 @@ export class PageTabRouters {
     const createMemoryHref = router.createHref;
     router.createHref = (location) => `#${createMemoryHref(location)}`;
     this.routers.set(tabId, router);
+    if (!this.reportedPaths.has(tabId)) {
+      this.reportedPaths.set(tabId, path);
+    }
+
     this.unsubscribers.set(tabId, router.subscribe((state) => {
-      this.onPathChange(tabId, routerPathOf(state.location));
+      const nextPath = routerPathOf(state.location);
+      if (state.initialized && state.navigation.state === 'idle' && this.reportedPaths.get(tabId) !== nextPath) {
+        this.reportedPaths.set(tabId, nextPath);
+        recordNavigation(routeCategory(nextPath), state.errors != null);
+      }
+
+      this.onPathChange(tabId, nextPath);
     }));
   }
 

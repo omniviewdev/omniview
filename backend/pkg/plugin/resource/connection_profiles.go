@@ -12,9 +12,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -123,7 +127,16 @@ func readDesiredConnections(root *appstate.ScopedRoot) (desiredConnectionState, 
 	if err != nil {
 		return desiredConnectionState{}, err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			logging.Default().Debugw(
+				context.Background(),
+				"connection profile read close failed",
+				"errorClass",
+				telemetryutil.ErrorClass(closeErr),
+			)
+		}
+	}()
 	if err := validatePublicConnectionProfileFile(file); err != nil {
 		return desiredConnectionState{}, errors.New("connection profiles: public profile permissions are unsafe")
 	}
@@ -179,13 +192,36 @@ func writeDesiredConnections(root *appstate.ScopedRoot, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer root.Remove(temp)
+	defer func() {
+		if removeErr := root.Remove(temp); removeErr != nil && !os.IsNotExist(removeErr) {
+			logging.Default().Warnw(
+				context.Background(),
+				"connection profile temporary cleanup failed",
+				"errorClass",
+				telemetryutil.ErrorClass(removeErr),
+			)
+		}
+	}()
 	if _, err := file.Write(data); err != nil {
-		file.Close()
+		if closeErr := file.Close(); closeErr != nil {
+			logging.Default().Debugw(
+				context.Background(),
+				"connection profile file close failed",
+				"errorClass",
+				telemetryutil.ErrorClass(closeErr),
+			)
+		}
 		return err
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
+		if closeErr := file.Close(); closeErr != nil {
+			logging.Default().Debugw(
+				context.Background(),
+				"connection profile file close failed",
+				"errorClass",
+				telemetryutil.ErrorClass(closeErr),
+			)
+		}
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -211,7 +247,16 @@ func syncConnectionProfileDirectory(root *appstate.ScopedRoot) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() {
+		if closeErr := directory.Close(); closeErr != nil {
+			logging.Default().Debugw(
+				context.Background(),
+				"connection profile directory close failed",
+				"errorClass",
+				telemetryutil.ErrorClass(closeErr),
+			)
+		}
+	}()
 	return directory.Sync()
 }
 
@@ -367,6 +412,8 @@ func listConnectionProfiles(state desiredConnectionState, native, effective, can
 }
 
 func (c *controller) ListConnectionProfiles(ctx context.Context, pluginID string) (_result []ConnectionProfile, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.ListConnectionProfiles", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.ListConnectionProfiles", invocation.Target{Provider: pluginID})
 	if err != nil {
 		return nil, err
@@ -386,7 +433,27 @@ func (c *controller) ListConnectionProfiles(ctx context.Context, pluginID string
 	}
 	var native []types.Connection
 	if source, sourceErr := c.connectionProfileSource(ctx, pluginID); sourceErr == nil {
-		native, _ = source.NativeConnections(ctx)
+		var nativeErr error
+		native, nativeErr = source.NativeConnections(ctx)
+		if nativeErr != nil && c.logger != nil {
+			c.logger.Debugw(
+				ctx,
+				"native connection profiles unavailable",
+				"pluginID",
+				pluginID,
+				"errorClass",
+				telemetryutil.ErrorClass(nativeErr),
+			)
+		}
+	} else if c.logger != nil {
+		c.logger.Debugw(
+			ctx,
+			"connection profile source unavailable",
+			"pluginID",
+			pluginID,
+			"errorClass",
+			telemetryutil.ErrorClass(sourceErr),
+		)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -598,7 +665,22 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 		if effective != nil && resourcev2.ErrorCode(err) == "RESET_REQUIRED" {
 			// Host durability is uncertain, but the listed source state is known.
 			// Preserve the original reset error even if publication also fails.
-			_ = c.publishProfileConnections(context.WithoutCancel(ctx), pluginID, generation, native, effective)
+			if publishErr := c.publishProfileConnections(
+				context.WithoutCancel(ctx),
+				pluginID,
+				generation,
+				native,
+				effective,
+			); publishErr != nil && c.logger != nil {
+				c.logger.Warnw(
+					ctx,
+					"connection profile publication failed after reset",
+					"pluginID",
+					pluginID,
+					"errorClass",
+					telemetryutil.ErrorClass(publishErr),
+				)
+			}
 		}
 		return ConnectionProfileResult{}, err
 	}
@@ -620,6 +702,13 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 }
 
 func (c *controller) SaveConnectionProfile(ctx context.Context, pluginID string, connection types.Connection, credentials *ConnectionProfileCredentials) (_result ConnectionProfileResult, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.SaveConnectionProfile",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connection.ID),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.SaveConnectionProfile", invocation.Target{Provider: pluginID, Connection: connection.ID})
 	if err != nil {
 		return _result, err
@@ -628,6 +717,13 @@ func (c *controller) SaveConnectionProfile(ctx context.Context, pluginID string,
 	return c.changeConnectionProfile(ctx, pluginID, connection.ID, "save", &connection, credentials)
 }
 func (c *controller) ImportConnectionProfile(ctx context.Context, pluginID, connectionID string) (_result ConnectionProfileResult, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.ImportConnectionProfile",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.ImportConnectionProfile", invocation.Target{Provider: pluginID, Connection: connectionID})
 	if err != nil {
 		return _result, err
@@ -636,6 +732,13 @@ func (c *controller) ImportConnectionProfile(ctx context.Context, pluginID, conn
 	return c.changeConnectionProfile(ctx, pluginID, connectionID, "import", nil, nil)
 }
 func (c *controller) ResetConnectionProfile(ctx context.Context, pluginID, connectionID string) (_result ConnectionProfileResult, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.ResetConnectionProfile",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.ResetConnectionProfile", invocation.Target{Provider: pluginID, Connection: connectionID})
 	if err != nil {
 		return _result, err
@@ -644,6 +747,13 @@ func (c *controller) ResetConnectionProfile(ctx context.Context, pluginID, conne
 	return c.changeConnectionProfile(ctx, pluginID, connectionID, "reset", nil, nil)
 }
 func (c *controller) RemoveConnection(ctx context.Context, pluginID, connectionID string) (retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.RemoveConnection",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.RemoveConnection", invocation.Target{Provider: pluginID, Connection: connectionID})
 	if err != nil {
 		return err

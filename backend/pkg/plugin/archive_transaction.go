@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,11 +9,13 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"go.opentelemetry.io/otel/attribute"
 	"gopkg.in/yaml.v3"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -128,17 +131,31 @@ func (pm *pluginManager) restoreArchivePersistence(id string) error {
 // A successful state write followed by a marker failure is not reversible:
 // the committed byte may already be visible despite a failed Sync. The caller
 // must retain both installations and report explicit committed recovery state.
-func (pm *pluginManager) commitArchiveInventory(recovery *archiveRecovery) (stateWritten bool, err error) {
+//
+//nolint:nonamedreturns // Deferred telemetry records the publication state and error.
+func (pm *pluginManager) commitArchiveInventory(
+	ctx context.Context, recovery *archiveRecovery,
+) (stateWritten bool, err error) {
+	ctx, span := installSpanChild(ctx, "plugin.archive.commit", recovery.ID)
+	defer func() {
+		span.SetAttributes(attribute.Bool("state_written", stateWritten))
+		installSpanEnd(span, err)
+	}()
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	if err = pm.validateArchiveRecovery(recovery); err != nil {
 		return false, err
 	}
+	installSpanPhase(ctx, "validated")
 	if err = pm.writePluginStateRecords(pm.pluginStateSnapshot(recovery.ID)); err != nil {
 		return false, err
 	}
 	stateWritten = true
+	installSpanPhase(ctx, "state_written")
 	err = pm.markArchiveCommitted(recovery)
+	if err == nil {
+		installSpanPhase(ctx, "marker_committed")
+	}
 	pm.recordsMu.Lock()
 	delete(pm.pendingArchiveState, recovery.ID)
 	pm.recordsMu.Unlock()
@@ -236,11 +253,18 @@ func (pm *pluginManager) retireInactiveArchiveRuntime(recovery *archiveRecovery)
 	return nil
 }
 
-func (pm *pluginManager) restoreArchiveRuntime(recovery *archiveRecovery, original *plugintypes.PluginRecord, wasManaged, unloaded bool) error {
+//nolint:gocognit,funlen // Recovery handles distinct runtime and ownership states.
+func (pm *pluginManager) restoreArchiveRuntime(
+	ctx context.Context, recovery *archiveRecovery, original *plugintypes.PluginRecord, wasManaged, unloaded bool,
+) (err error) {
 	previous := recovery.Previous
 	if previous == nil {
 		return nil
 	}
+	ctx, span := installSpanChild(ctx, "plugin.archive.recover", recovery.ID,
+		attribute.Bool("was_managed", wasManaged),
+		attribute.Bool("previous_running", previous.Phase == lifecycle.PhaseRunning))
+	defer func() { installSpanEnd(span, err) }()
 	installedAt := previous.InstalledAt
 	if original != nil {
 		installedAt = original.InstalledAt
@@ -248,6 +272,7 @@ func (pm *pluginManager) restoreArchiveRuntime(recovery *archiveRecovery, origin
 	if err := pm.retireInactiveArchiveRuntime(recovery); err != nil {
 		return err
 	}
+	installSpanPhase(ctx, "inactive_runtime_retired")
 	if wasManaged && previous.DevMode {
 		state, err := pm.devServerMgr.StartDevServerForPath(recovery.ID, previous.DevPath)
 		if err != nil {
@@ -260,6 +285,7 @@ func (pm *pluginManager) restoreArchiveRuntime(recovery *archiveRecovery, origin
 	}
 	if previous.Phase == lifecycle.PhaseRunning {
 		if !unloaded && archiveRuntimeUsable(original) {
+			installSpanPhase(ctx, "resume_original_backend")
 			// An unload refusal may have stopped some controllers without killing
 			// the old backend. Resume them using that same original runtime.
 			resumed := plugintypes.NewPluginRecord(recovery.ID, previous.Metadata, previous.Phase)
@@ -279,6 +305,7 @@ func (pm *pluginManager) restoreArchiveRuntime(recovery *archiveRecovery, origin
 			pm.recordsMu.Unlock()
 			return nil
 		}
+		installSpanPhase(ctx, "reload_original")
 		_, err := pm.LoadPlugin(recovery.ID, &LoadPluginOptions{
 			ExistingState: previous, archive: recovery, archiveRestore: true,
 		})
@@ -347,6 +374,8 @@ func (pm *pluginManager) disposeArchiveStage(recovery *archiveRecovery) error {
 }
 
 func (pm *pluginManager) archiveRecoveryFailure(recovery *archiveRecovery, cause error) error {
+	pm.installLogger().Errorw(pm.installBaseContext(), "plugin archive rollback requires recovery",
+		"pluginID", recovery.ID, "errorClass", telemetryutil.ErrorClass(cause))
 	pm.endArchivePersistence(recovery.ID)
 	pm.recordsMu.Lock()
 	record := pm.records[recovery.ID]
@@ -371,6 +400,8 @@ func (pm *pluginManager) archiveRecoveryFailure(recovery *archiveRecovery, cause
 }
 
 func (pm *pluginManager) archivePublicationFailure(recovery *archiveRecovery, cause error) error {
+	pm.installLogger().Errorw(pm.installBaseContext(), "plugin archive publication requires recovery",
+		"pluginID", recovery.ID, "committed", recovery.committed, "errorClass", telemetryutil.ErrorClass(cause))
 	pm.endArchivePersistence(recovery.ID)
 	errorType := apperror.TypePluginCommitUncertain
 	title := "Plugin publication requires recovery"
@@ -394,7 +425,7 @@ func (pm *pluginManager) archivePublicationFailure(recovery *archiveRecovery, ca
 // moveArchiveState transfers directory capabilities, not copies of their bytes.
 // Cached appstate roots and controller-held handles must keep naming the same
 // inodes after either publication or rollback.
-func (pm *pluginManager) moveArchiveState(recovery *archiveRecovery, from, to string) error {
+func (pm *pluginManager) moveArchiveState(ctx context.Context, recovery *archiveRecovery, from, to string) error {
 	if err := pm.validateArchiveRecovery(recovery); err != nil {
 		return err
 	}
@@ -408,60 +439,89 @@ func (pm *pluginManager) moveArchiveState(recovery *archiveRecovery, from, to st
 		if err := pm.pluginsRoot.RenameDirectoryNoReplace(source, filepath.Join(to, name)); err != nil {
 			return err
 		}
+		installSpanPhase(ctx, "moved_"+name)
 	}
 	return errors.Join(syncUninstallDirectory(pm.pluginsRoot, from), syncUninstallDirectory(pm.pluginsRoot, to))
 }
 
-func (pm *pluginManager) rollbackArchive(recovery *archiveRecovery, original *plugintypes.PluginRecord, wasManaged, oldUnloaded, candidatePublished bool, cause error) error {
+//nolint:gocognit // Rollback preserves ownership checks across each transaction phase.
+func (pm *pluginManager) rollbackArchive(
+	ctx context.Context, recovery *archiveRecovery, original *plugintypes.PluginRecord,
+	wasManaged, oldUnloaded, candidatePublished bool, cause error,
+) (result error) {
+	ctx, span := installSpanChild(ctx, "plugin.archive.rollback", recovery.ID,
+		attribute.Bool("candidate_published", candidatePublished), attribute.Bool("old_unloaded", oldUnloaded))
+	// The rollback span reports the rollback's own outcome, not the install cause it answers.
+	defer func() { installSpanEnd(span, result) }()
+	log := pm.installLogger()
+	log.Warnw(ctx, "plugin archive rollback started", "pluginID", recovery.ID, "candidatePublished", candidatePublished,
+		"errorClass", telemetryutil.ErrorClass(cause))
+	fail := func(step string, err error) error {
+		log.Warnw(ctx, "plugin archive rollback step failed", "pluginID", recovery.ID, "step", step,
+			"errorClass", telemetryutil.ErrorClass(err))
+		span.SetAttributes(attribute.String("failed_step", step))
+		return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+	}
 	if candidatePublished {
+		installSpanPhase(ctx, "unload_candidate")
 		if err := pm.unloadArchivePlugin(recovery); err != nil {
-			return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+			return fail("unload_candidate", err)
 		}
 	}
 	if err := pm.validateArchiveRecovery(recovery); err != nil {
-		return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+		return fail("validate", err)
 	}
 	canonical, err := pm.pluginsRoot.DirectoryIdentity(recovery.ID)
 	if err == nil && canonical == recovery.CandidateIdentity {
 		if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
-			if err = pm.moveArchiveState(recovery, recovery.ID, filepath.Join(recovery.Stage, "previous")); err != nil {
-				return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+			installSpanPhase(ctx, "move_state_to_previous")
+			if err = pm.moveArchiveState(ctx, recovery, recovery.ID, filepath.Join(recovery.Stage, "previous")); err != nil {
+				return fail("move_state_to_previous", err)
 			}
 		}
+		installSpanPhase(ctx, "stage_candidate")
 		if err = pm.pluginsRoot.RenameDirectoryNoReplace(recovery.ID, filepath.Join(recovery.Stage, "candidate")); err != nil {
-			return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+			return fail("stage_candidate", err)
 		}
 	} else if err != nil && !os.IsNotExist(err) {
-		return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+		return fail("identify_canonical", err)
 	}
 	if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
 		previous := filepath.Join(recovery.Stage, "previous")
 		if _, err = pm.pluginsRoot.DirectoryIdentity(previous); err == nil {
+			installSpanPhase(ctx, "restore_previous")
 			if err = pm.pluginsRoot.RenameDirectoryNoReplace(previous, recovery.ID); err != nil {
-				return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+				return fail("restore_previous", err)
 			}
 		} else if !os.IsNotExist(err) {
-			return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+			return fail("identify_previous", err)
 		}
 		actual, identityErr := pm.pluginsRoot.DirectoryIdentity(recovery.ID)
 		if identityErr != nil || actual != recovery.PreviousIdentity {
-			return pm.archiveRecoveryFailure(recovery, errors.Join(cause, identityErr, errors.New("original archive installation could not be restored")))
+			return fail("verify_previous",
+				errors.Join(identityErr, errors.New("original archive installation could not be restored")))
 		}
 	}
-	if err := pm.restoreArchiveRuntime(recovery, original, wasManaged, oldUnloaded); err != nil {
-		return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+	installSpanPhase(ctx, "restore_runtime")
+	if err = pm.restoreArchiveRuntime(ctx, recovery, original, wasManaged, oldUnloaded); err != nil {
+		return fail("restore_runtime", err)
 	}
+	installSpanPhase(ctx, "restore_persistence")
 	if err := pm.restoreArchivePersistence(recovery.ID); err != nil {
-		return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+		return fail("restore_persistence", err)
 	}
+	installSpanPhase(ctx, "dispose_stage")
 	if err := pm.disposeArchiveStage(recovery); err != nil {
-		return pm.archiveRecoveryFailure(recovery, errors.Join(cause, err))
+		return fail("dispose_stage", err)
 	}
 	pm.endArchivePersistence(recovery.ID)
 	return cause
 }
 
-func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.PluginMeta, version string) (statePublished bool, err error) {
+//nolint:gocognit,gocyclo,cyclop,funlen,nonamedreturns // Transaction and deferred telemetry require this structure.
+func (pm *pluginManager) installArchiveCandidate(
+	ctx context.Context, path string, metadata *config.PluginMeta, version string,
+) (statePublished bool, err error) {
 	if err := pm.guardProductOwned(metadata.ID); err != nil {
 		return false, err
 	}
@@ -489,7 +549,12 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 	if err = pm.pluginsRoot.MkdirAll(candidate, 0700); err != nil {
 		return false, err
 	}
-	if err = unpackPluginArchive(path, pm.pluginsRoot.ResolvePath(candidate)); err != nil {
+	extractCtx, extractSpan := installSpanChild(ctx, "plugin.Extract", metadata.ID)
+	err = unpackPluginArchive(path, pm.pluginsRoot.ResolvePath(candidate))
+	installSpanEnd(extractSpan, err)
+	if err != nil {
+		pm.installLogger().Warnw(extractCtx, "plugin archive extraction failed", "pluginID", metadata.ID,
+			"errorClass", telemetryutil.ErrorClass(err))
 		return false, apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to unpack plugin package")
 	}
 	// Runtime state belongs to the installed plugin, never to package contents.
@@ -548,12 +613,20 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 		pm.endArchivePersistence(metadata.ID)
 		marker, _, markerErr := pm.stateRoot.OpenPrivateFile(archiveRecoveryName(metadata.ID), os.O_RDONLY)
 		if markerErr == nil {
-			_ = marker.Close()
+			if closeErr := marker.Close(); closeErr != nil {
+				pm.installLogger().Debugw(ctx, "archive recovery marker close failed", "pluginID", metadata.ID,
+					"errorClass", telemetryutil.ErrorClass(closeErr))
+			}
 		}
 		preserveStage = !os.IsNotExist(markerErr)
 		return false, apperror.Wrap(prepareErr, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to prepare owned archive recovery")
 	}
 	preserveStage = true // All subsequent cleanup requires this captured proof.
+	ctx, commitSpan := installSpanChild(ctx, "plugin.Commit", metadata.ID)
+	defer func() {
+		commitSpan.SetAttributes(attribute.Bool("state_published", statePublished))
+		installSpanEnd(commitSpan, err)
+	}()
 	if previous != nil && previous.Phase == lifecycle.PhaseRunning && recovery.PreviousIdentity == (appstate.FilesystemIdentity{}) {
 		cause := apperror.New(apperror.TypePluginInstallFailed, http.StatusConflict,
 			"Original installation is unavailable", "Refusing to stop a running plugin without a complete installation to preserve.").WithInstance(metadata.ID)
@@ -564,32 +637,36 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 		return false, cause
 	}
 	if err = pm.unloadArchivePlugin(recovery); err != nil {
-		return false, pm.rollbackArchive(recovery, original, wasManaged, false, false, err)
+		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, false, false, err)
 	}
+	installSpanPhase(ctx, "previous_unloaded")
 	if err = pm.validateArchiveRecovery(recovery); err != nil {
-		return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, false, err)
 	}
 	if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
 		if err = pm.pluginsRoot.RenameDirectoryNoReplace(metadata.ID, filepath.Join(stage, "previous")); err != nil {
-			return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+			return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, false, err)
 		}
+		installSpanPhase(ctx, "previous_staged")
 	}
 	if err = pm.validateArchiveRecovery(recovery); err != nil {
-		return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, false, err)
 	}
 	if err = pm.pluginsRoot.RenameDirectoryNoReplace(candidate, metadata.ID); err != nil {
-		return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, false, err)
 	}
+	installSpanPhase(ctx, "candidate_published")
 	if recovery.PreviousIdentity != (appstate.FilesystemIdentity{}) {
-		if err = pm.moveArchiveState(recovery, filepath.Join(stage, "previous"), metadata.ID); err != nil {
-			return false, pm.rollbackArchive(recovery, original, wasManaged, true, false, err)
+		if err = pm.moveArchiveState(ctx, recovery, filepath.Join(stage, "previous"), metadata.ID); err != nil {
+			return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, false, err)
 		}
 	}
 	if _, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{archive: recovery}); err != nil {
 		cause := apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to load plugin after install")
-		return false, pm.rollbackArchive(recovery, original, wasManaged, true, true, cause)
+		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, true, cause)
 	}
-	stateWritten, commitErr := pm.commitArchiveInventory(recovery)
+	installSpanPhase(ctx, "candidate_loaded")
+	stateWritten, commitErr := pm.commitArchiveInventory(ctx, recovery)
 	if recovery.committed {
 		pm.emitter.Emit(EventInventoryChanged)
 		pm.emitter.Emit(EventInstallFinished, metadata)
@@ -599,7 +676,7 @@ func (pm *pluginManager) installArchiveCandidate(path string, metadata *config.P
 			return true, pm.archivePublicationFailure(recovery, commitErr)
 		}
 		pm.emitter.Emit(EventStateWriteError, StateWriteErrorPayload{PluginID: metadata.ID, Detail: commitErr.Error()})
-		return false, pm.rollbackArchive(recovery, original, wasManaged, true, true,
+		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, true,
 			apperror.Internal(commitErr, "Failed to persist plugin state").WithInstance(metadata.ID))
 	}
 	if err = pm.disposeArchiveStage(recovery); err != nil {

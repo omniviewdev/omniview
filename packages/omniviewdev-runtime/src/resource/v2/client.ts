@@ -49,12 +49,28 @@ import type {
 } from './host';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { encodeRequestJSON } from './requestJSON';
+import { observeFrontendOperation } from '../../telemetry/frontendSpans';
+import type { FrontendSpanAttributes } from '../../telemetry/frontendSpanSchema';
 import type { ConnectionMetadataEnvelope } from '../../connection/metadata';
 import type { ActivityPresentation } from '../../activity/types';
 
 const service = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
 function invoke<T>(method: string, ...args: unknown[]): CancellablePromise<T> {
   return Call.ByName(`${service}.${method}`, ...args);
+}
+
+function observeResourceCall<T>(
+  operation: 'get' | 'enumerate' | 'native_query' | 'mutate' | 'action' | 'stream_action',
+  pluginID: string,
+  call: CancellablePromise<T>,
+  resourceType?: string,
+): CancellablePromise<T> {
+  const attrs: FrontendSpanAttributes = { operation, plugin_id: pluginID };
+  if (resourceType) attrs.resource_type = resourceType;
+  return observeFrontendOperation('frontend.resource.call', attrs, call);
+}
+function actionResourceType(request: ActionRequest): string | undefined {
+  return request.reference?.address.type ?? request.typeTarget?.type;
 }
 
 export const Features = (pluginID: string) => invoke<FeatureSet>('Features', pluginID);
@@ -65,15 +81,40 @@ export const RefreshConnectionMetadata = (pluginID: string, connectionID: string
 export const Catalog = (pluginID: string, request: CatalogRequest) =>
   invoke<CatalogResult>('Catalog', pluginID, request);
 export const Get = (pluginID: string, request: HostGetRequest) =>
-  invoke<HostRecord>('Get', pluginID, request);
+  observeResourceCall(
+    'get',
+    pluginID,
+    invoke<HostRecord>('Get', pluginID, request),
+    request.request.reference.address.type,
+  );
 export const Enumerate = (pluginID: string, request: HostEnumerateRequest) =>
-  invoke<HostSourcePage>('Enumerate', pluginID, request);
+  observeResourceCall(
+    'enumerate',
+    pluginID,
+    invoke<HostSourcePage>('Enumerate', pluginID, request),
+    request.request.target.type,
+  );
 export const NativeQuery = (pluginID: string, request: HostNativeQueryRequest) =>
-  invoke<HostSourcePage>('NativeQuery', pluginID, encodeRequestJSON(request, [pluginID]));
+  observeResourceCall(
+    'native_query',
+    pluginID,
+    invoke<HostSourcePage>('NativeQuery', pluginID, encodeRequestJSON(request, [pluginID])),
+    request.request.target.type,
+  );
 export const Mutate = (pluginID: string, request: MutationRequest) =>
-  invoke<Record>('Mutate', pluginID, encodeRequestJSON(request, [pluginID]));
+  observeResourceCall(
+    'mutate',
+    pluginID,
+    invoke<Record>('Mutate', pluginID, encodeRequestJSON(request, [pluginID])),
+    request.reference.address.type,
+  );
 export const Action = (pluginID: string, request: ActionRequest) =>
-  invoke<Value>('Action', pluginID, encodeRequestJSON(request, [pluginID]));
+  observeResourceCall(
+    'action',
+    pluginID,
+    invoke<Value>('Action', pluginID, encodeRequestJSON(request, [pluginID])),
+    actionResourceType(request),
+  );
 export const ResolveTarget = (pluginID: string, request: ResolveTargetRequest) =>
   invoke<ResolvedResourceTarget>('ResolveTarget', pluginID, request);
 export const ResolveReference = (pluginID: string, request: ResolveReferenceRequest) =>
@@ -131,7 +172,12 @@ export const GetResourceEvents = (pluginID: string, request: GetRequest, limit: 
 export const GetActions = (pluginID: string, route: AccessRoute, type: string) =>
   invoke<ActionDescriptor[]>('GetActions', pluginID, route, type);
 export const StreamAction = (pluginID: string, request: ActionRequest) =>
-  invoke<string>('StreamAction', pluginID, encodeRequestJSON(request, [pluginID]));
+  observeResourceCall(
+    'stream_action',
+    pluginID,
+    invoke<string>('StreamAction', pluginID, encodeRequestJSON(request, [pluginID])),
+    actionResourceType(request),
+  );
 export interface ActionEventDTO {
   type: string;
   data?: Value;

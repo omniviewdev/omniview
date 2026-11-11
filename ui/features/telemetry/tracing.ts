@@ -3,15 +3,16 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { trace, propagation, SpanStatusCode } from '@opentelemetry/api';
 import { ExportResultCode, W3CTraceContextPropagator, type ExportResult } from '@opentelemetry/core';
 import { TelemetryClient } from '@omniviewdev/runtime/api';
+import { frontendSpanSchema, sanitizeFrontendAttributes, type FrontendSpanName } from '@omniviewdev/runtime';
 
 let provider: TracerProvider | null = null;
 
-// Never forward span attributes, exception text, baggage, or arbitrary names.
+// Forward only attributes defined in the frontend span schema.
 export class WailsSpanExporter implements SpanExporter {
   private readonly pending = new Set<Promise<void>>();
 
   export(spans: ReadableSpan[], done: (result: ExportResult) => void): void {
-    const safe = spans.filter((span) => span.name === 'frontend.startup' || span.name === 'frontend.interaction').slice(0, 32).map((span) => ({
+    const safe = spans.filter((span) => Object.hasOwn(frontendSpanSchema, span.name)).slice(0, 32).map((span) => ({
       name: span.name,
       traceId: span.spanContext().traceId,
       spanId: span.spanContext().spanId,
@@ -19,6 +20,7 @@ export class WailsSpanExporter implements SpanExporter {
       start: span.startTime,
       end: span.endTime,
       error: span.status.code === SpanStatusCode.ERROR,
+      attributes: sanitizeFrontendAttributes(span.name as FrontendSpanName, span.attributes),
     }));
     if (!safe.length) {
       done({ code: ExportResultCode.SUCCESS });

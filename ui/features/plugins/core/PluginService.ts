@@ -1,5 +1,6 @@
 import { RESOURCE_CELL_EXTENSION_POINT_ID, RESOURCE_EDITOR_EXTENSION_POINT } from '@omniviewdev/runtime';
 import type { RouteObject } from 'react-router';
+import { PluginLoadTelemetry, pluginLoadSource, recordPluginImport, type PluginLoadSource } from './loadTelemetry';
 import { assertValidTransition } from './transitions';
 import { normalizeContributions, extractDeclaredDependencies } from './normalization';
 import { DependencyAnalyzer } from './DependencyAnalyzer';
@@ -88,6 +89,7 @@ export class PluginService {
   private readonly state = new Map<string, PluginState>();
   private readonly registrations = new Map<string, PluginRegistrations>();
   private readonly inflightLoads = new Map<string, Promise<void>>();
+  private readonly batchLoadSpans = new Map<string, PluginLoadTelemetry>();
   private readonly builtinInventory = new Map<string, PluginDescriptor>();
   private readonly pendingBuiltinDisables = new Set<string>();
   private readonly listeners = new Set<() => void>();
@@ -500,6 +502,7 @@ export class PluginService {
     const retryCount = current.retryCount + 1;
 
     this.transition(pluginId, 'loading', { retryCount });
+    const loadSpan = new PluginLoadTelemetry(pluginId, pluginLoadSource({ dev: opts?.dev ?? current.isDev }), retryCount);
 
     try {
       const resolved = opts === undefined
@@ -529,9 +532,11 @@ export class PluginService {
         return;
       }
 
+      loadSpan.setSource(pluginLoadSource(resolved));
+      loadSpan.enter('import');
       this.recordAttemptedSource(pluginId, resolved);
 
-      const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
+      const rawModule = await this.withImportTimeout(pluginId, pluginLoadSource(resolved), this.deps.importPlugin({
         pluginId,
         dev: resolved.dev,
         devPort: resolved.devPort,
@@ -543,6 +548,7 @@ export class PluginService {
         return;
       }
 
+      loadSpan.enter('validate');
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
       const declaredDependencies = extractDeclaredDependencies(rawDeps);
@@ -551,6 +557,7 @@ export class PluginService {
       const registrationsObj = this.buildRegistrations(validated);
 
       // Register extension points
+      loadSpan.enter('register');
       this.registerExtensionPoints(pluginId, extensionPoints);
 
       // Apply contributions
@@ -606,12 +613,17 @@ export class PluginService {
       this.emitLegacyDeprecationWarnings(pluginId, validated);
 
       this.bumpRouteVersion();
+      loadSpan.success();
     } catch (err) {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
 
+      loadSpan.fail(err);
+
       this.handleLoadError(pluginId, err, retryCount);
+    } finally {
+      loadSpan.cancel();
     }
   }
 
@@ -908,6 +920,18 @@ export class PluginService {
   }
 
   private async loadBatch(toLoad: PluginDescriptor[], owner: Promise<void>): Promise<void> {
+    try {
+      await this.runLoadBatch(toLoad, owner);
+    } finally {
+      // Candidates that never reached a ready/error decision were superseded.
+      for (const plugin of toLoad) {
+        this.batchLoadSpans.get(plugin.id)?.cancel();
+        this.batchLoadSpans.delete(plugin.id);
+      }
+    }
+  }
+
+  private async runLoadBatch(toLoad: PluginDescriptor[], owner: Promise<void>): Promise<void> {
     // Pass 1: Import + validate + normalize in bounded parallel chunks
     const prepared: PreparedPluginLoad[] = [];
     const chunks: PluginDescriptor[][] = [];
@@ -980,11 +1004,15 @@ export class PluginService {
         });
 
         readyCount++;
+        this.batchLoadSpans.get(p.pluginId)?.success();
+        this.batchLoadSpans.delete(p.pluginId);
 
         // Emit deprecation warnings for legacy exports
         this.emitLegacyDeprecationWarnings(p.pluginId, p.validated);
       } catch (err) {
         failedCount++;
+        this.batchLoadSpans.get(p.pluginId)?.fail(err);
+        this.batchLoadSpans.delete(p.pluginId);
         this.handleLoadError(p.pluginId, err, 0);
       }
     }
@@ -1083,6 +1111,7 @@ export class PluginService {
     this.transition(pluginId, 'loading');
 
     const generation = this.bumpLoadGeneration(pluginId);
+    const loadSpan = new PluginLoadTelemetry(pluginId, pluginLoadSource(opts ?? {}));
 
     try {
       const resolved = opts ?? await this.deps.getPluginDescriptor(pluginId);
@@ -1100,9 +1129,11 @@ export class PluginService {
         return;
       }
 
+      loadSpan.setSource(pluginLoadSource(resolved));
+      loadSpan.enter('import');
       this.recordAttemptedSource(pluginId, resolved);
 
-      const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
+      const rawModule = await this.withImportTimeout(pluginId, pluginLoadSource(resolved), this.deps.importPlugin({
         pluginId,
         dev: resolved.dev,
         devPort: resolved.devPort,
@@ -1116,6 +1147,7 @@ export class PluginService {
         return;
       }
 
+      loadSpan.enter('validate');
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
       const declaredDependencies = extractDeclaredDependencies(rawDeps);
@@ -1124,6 +1156,7 @@ export class PluginService {
       const registrationsObj = this.buildRegistrations(validated);
 
       // Register own extension points first
+      loadSpan.enter('register');
       this.registerExtensionPoints(pluginId, extensionPoints);
 
       // Apply contributions
@@ -1180,12 +1213,17 @@ export class PluginService {
       this.emitLegacyDeprecationWarnings(pluginId, validated);
 
       this.bumpRouteVersion();
+      loadSpan.success();
     } catch (err) {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
 
+      loadSpan.fail(err);
+
       this.handleLoadError(pluginId, err, 0);
+    } finally {
+      loadSpan.cancel();
     }
   }
 
@@ -1200,6 +1238,7 @@ export class PluginService {
     });
 
     const generation = this.bumpLoadGeneration(pluginId);
+    const loadSpan = new PluginLoadTelemetry(pluginId, pluginLoadSource(opts ?? { dev: current.isDev }));
 
     try {
       this.deps.ensureBuiltinExtensionPoints();
@@ -1230,9 +1269,11 @@ export class PluginService {
         return;
       }
 
+      loadSpan.setSource(pluginLoadSource(resolved));
+      loadSpan.enter('import');
       this.recordAttemptedSource(pluginId, resolved);
 
-      const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
+      const rawModule = await this.withImportTimeout(pluginId, pluginLoadSource(resolved), this.deps.importPlugin({
         pluginId,
         dev: isDev,
         devPort: resolved.devPort,
@@ -1244,6 +1285,7 @@ export class PluginService {
         return;
       }
 
+      loadSpan.enter('validate');
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
       const declaredDependencies = extractDeclaredDependencies(rawDeps);
@@ -1261,6 +1303,7 @@ export class PluginService {
       this.removePluginPendingContributions(pluginId);
 
       // Register new extension points
+      loadSpan.enter('register');
       this.registerExtensionPoints(pluginId, extensionPoints);
 
       // Apply new contributions
@@ -1317,10 +1360,13 @@ export class PluginService {
       this.emitLegacyDeprecationWarnings(pluginId, validated);
 
       this.bumpRouteVersion();
+      loadSpan.success();
     } catch (err) {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
+      loadSpan.fail(err);
 
       const message = err instanceof Error ? err.message : String(err);
       const validationErrors = err instanceof PluginValidationError ? err.errors : [];
@@ -1332,6 +1378,8 @@ export class PluginService {
         pluginWindow: current.pluginWindow,
       });
       this.notify();
+    } finally {
+      loadSpan.cancel();
     }
   }
 
@@ -1369,6 +1417,7 @@ export class PluginService {
     }
 
     this.transition(pluginId, 'loading');
+    const loadSpan = new PluginLoadTelemetry(pluginId, pluginLoadSource(opts), undefined);
 
     try {
       if (isDev) {
@@ -1376,12 +1425,15 @@ export class PluginService {
       }
 
       if (this.inflightLoads.get(pluginId) !== owner) {
+        loadSpan.cancel();
         return;
       }
 
+      loadSpan.setSource(pluginLoadSource(opts));
+      loadSpan.enter('import');
       this.recordAttemptedSource(pluginId, opts);
 
-      const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
+      const rawModule = await this.withImportTimeout(pluginId, pluginLoadSource(opts), this.deps.importPlugin({
         pluginId,
         dev: isDev,
         devPort: devPort ?? undefined,
@@ -1389,6 +1441,7 @@ export class PluginService {
         isCurrent: () => this.inflightLoads.get(pluginId) === owner,
       }));
 
+      loadSpan.enter('validate');
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
       const declaredDependencies = extractDeclaredDependencies(rawDeps);
@@ -1396,6 +1449,8 @@ export class PluginService {
       const extensionPoints = this.extractExtensionPoints(validated);
       const registrationsObj = this.buildRegistrations(validated);
 
+      loadSpan.enter('register');
+      this.batchLoadSpans.set(pluginId, loadSpan);
       return {
         pluginId,
         validated,
@@ -1410,7 +1465,10 @@ export class PluginService {
       };
     } catch (err) {
       if (this.inflightLoads.get(pluginId) === owner) {
+        loadSpan.fail(err);
         this.handleLoadError(pluginId, err, 0);
+      } else {
+        loadSpan.cancel();
       }
 
       throw err; // re-throw so Promise.allSettled captures it
@@ -1637,17 +1695,23 @@ export class PluginService {
 
   private async withImportTimeout<T>(
     pluginId: string,
+    source: PluginLoadSource,
     promise: Promise<T>,
   ): Promise<T> {
+    const start = Date.now();
     return new Promise<T>((resolve, reject) => {
       let settled = false;
+      let timedOut = false;
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
-          reject(new PluginTimeoutError(
+          timedOut = true;
+          const timeout = new PluginTimeoutError(
             `Plugin "${pluginId}" import timed out after ${this.config.importTimeoutMs}ms`,
             { pluginId, timeoutMs: this.config.importTimeoutMs },
-          ));
+          );
+          recordPluginImport(pluginId, source, start, { ok: false, error: timeout }, { timedOut: true, lateSettle: false });
+          reject(timeout);
         }
       }, this.config.importTimeoutMs);
 
@@ -1656,16 +1720,22 @@ export class PluginService {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
+            recordPluginImport(pluginId, source, start, { ok: true }, { timedOut: false, lateSettle: false });
             resolve(value);
+          } else if (timedOut) {
+            recordPluginImport(pluginId, source, start, { ok: true }, { timedOut: true, lateSettle: true });
           }
         },
         (err) => {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
+            recordPluginImport(pluginId, source, start, { ok: false, error: err }, { timedOut: false, lateSettle: false });
             // Pass the original rejection through unchanged.
             // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
             reject(err);
+          } else if (timedOut) {
+            recordPluginImport(pluginId, source, start, { ok: false, error: err }, { timedOut: true, lateSettle: true });
           }
         },
       );
