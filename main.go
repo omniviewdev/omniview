@@ -523,11 +523,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: cannot open activity history: %v\n", err)
 		os.Exit(1)
 	}
-	graphService := resource.NewGraphService(resourceController.Graph(), resourceUIRealm, resourceBoundary, resourceController.ValidateReference)
+	graphService := resource.NewGraphService(resourceController, resourceUIRealm, resourceBoundary)
 	// A nil realm keeps the agent principal from ctx at the boundary.
-	relayGraph := resource.NewGraphService(
-		resourceController.Graph(), nil, resourceBoundary, resourceController.ValidateReference,
-	)
+	relayGraph := resource.NewGraphService(resourceController, nil, resourceBoundary)
 
 	settingsController := settings.NewController(log, settingsStore)
 	coreSettings.AttachPlugins(settingsController)

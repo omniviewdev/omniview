@@ -51,20 +51,22 @@ func kubernetesCoreV1(b *testing.B) []byte {
 	return document
 }
 
-func podCatalog(document []byte) resourcev2.Catalog {
-	revision := "schema/1"
+func podCatalog() resourcev2.Catalog {
 	return resourcev2.Catalog{Provider: "kubernetes", Revision: "c1", Types: []resourcev2.ResourceType{{
 		Type: "core::v1::Pod", DisplayName: "Pod", DefaultRepresentation: "r",
-		Representations: []resourcev2.Representation{{ID: "r", Revision: "rep/1", Schema: resourcev2.SchemaBinding{
-			State: "available", Revision: &revision, Dialect: resourcev2.DialectOpenAPI30, Root: benchmarkPodRoot,
-			Document: json.RawMessage(document)}}},
+		Representations: []resourcev2.Representation{{ID: "r", Revision: "rep/1"}},
 	}}}
 }
 
 func resolvePod(b *testing.B, catalog *resourcecatalog.Catalog, document []byte) (*resourcecatalog.Snapshot, *resourcecatalog.Entry, *resourcecatalog.Schema) {
 	b.Helper()
-	snapshot := catalog.Observe(retentionKey("bench"), podCatalog(document))
-	entry, schema := resolveType(b, snapshot, "core::v1::Pod")
+	support := podCatalog()
+	snapshot := catalog.Observe(retentionKey("bench"), support)
+	revision := "schema/1"
+	resolve := p07Source("bench", support.Types[0], resourcev2.SchemaBinding{
+		State: "available", Revision: &revision, Dialect: resourcev2.DialectOpenAPI30, Root: benchmarkPodRoot,
+		Document: json.RawMessage(document)})
+	entry, schema := resolveType(b, snapshot, "core::v1::Pod", resolve)
 	return snapshot, entry, schema
 }
 

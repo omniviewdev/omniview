@@ -11,6 +11,14 @@ on:
         description: Candidate plugin-archives artifact from this workflow run; empty tests the pinned published plugin
         type: string
         default: ''
+      candidate-commit:
+        description: Exact Kubernetes commit for npm bootstrap; requires a completed same-run canonical archive proof
+        type: string
+        default: ''
+      candidate-version:
+        description: npm version stamped by the canonical bootstrap archive producer
+        type: string
+        default: ''
   workflow_dispatch:
   pull_request:
     paths:
@@ -32,11 +40,26 @@ permissions:
 
 jobs:
   smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
+      - name: Require complete candidate selection
+        shell: bash
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidate-commit }}
+          CANDIDATE_VERSION: ${{ inputs.candidate-version }}
+          ARCHIVE_ARTIFACT: ${{ inputs.archive-artifact }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$CANDIDATE_COMMIT" ]]; then
+            [[ "$CANDIDATE_COMMIT" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]
+            test -n "$CANDIDATE_VERSION"
+            test -n "$ARCHIVE_ARTIFACT"
+          else
+            test -z "$CANDIDATE_VERSION"
+          fi
       - uses: actions/checkout@v4
         with:
           repository: omniviewdev/omniview
@@ -50,6 +73,20 @@ jobs:
           node-version-file: 'false'
           install: false
       - run: pnpm install --frozen-lockfile
+      - name: Stamp candidate host packages as npm publication does
+        if: ${{ inputs.candidate-commit }}
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.candidate-version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION#v}"
+          for pkg in \
+            packages/omniviewdev-providers/package.json \
+            packages/omniviewdev-runtime/package.json \
+            packages/omniviewdev-vite-plugin/package.json; do
+            jq --arg v "$version" '.version = $v' "$pkg" > tmp.$$.json && mv tmp.$$.json "$pkg"
+          done
       - name: Build shared packages in publication order
         run: |
           pnpm --filter @omniviewdev/providers build
@@ -72,6 +109,16 @@ jobs:
         with:
           name: ${{ inputs.archive-artifact }}
           path: ${{ runner.temp }}/candidate-archives
+      - name: Verify exact npm bootstrap archive provenance
+        if: ${{ inputs.candidate-commit }}
+        shell: bash
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidate-commit }}
+          CANDIDATE_VERSION: ${{ inputs.candidate-version }}
+        run: |
+          set -euo pipefail
+          node bench/app/build-plugin/verify-candidate.mjs --directory "$RUNNER_TEMP/candidate-archives" \
+            --host-ref "$(git rev-parse HEAD)" --kubernetes-ref "$CANDIDATE_COMMIT" --version "$CANDIDATE_VERSION"
       - name: Extract candidate frontend
         if: ${{ inputs.archive-artifact }}
         run: |

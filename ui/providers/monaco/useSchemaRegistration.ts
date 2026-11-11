@@ -1,70 +1,40 @@
-import { useEditorSchemas } from '@omniviewdev/runtime';
-import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
-import { useEffect } from 'react';
+import { useEditorSchema } from '@omniviewdev/runtime';
+import type { SchemaRequest } from '@omniviewdev/runtime';
+import { useEffect, useId } from 'react';
 import { schemaRegistry } from './schemaRegistry';
 
 type UseSchemaRegistrationOptions = {
   pluginID: string;
-  connectionID: string;
+  request: SchemaRequest | undefined;
+  modelURI: string;
+  language?: 'yaml' | 'json';
   enabled?: boolean;
 };
 
-type Registration = {
-  associations: readonly EditorSchemaAssociation[];
-  documents: readonly EditorSchemaDocument[];
-};
-
-const registrations = new Map<string, Registration[]>();
-
 /**
- * useSchemaRegistration fetches editor schemas for a plugin + connection
- * and automatically registers/unregisters them with the Monaco schema registry.
- *
- * Mount this hook in any component that renders a Monaco editor for a connection.
- * Schemas are automatically cleaned up when the component unmounts or the
- * connection changes.
+ * Registers one demanded result against the editor's already-stable model URI.
+ * Each mounted consumer owns only its registration, including unavailable and
+ * retired results; releasing it never removes another editor owner's schema.
  */
 export const useSchemaRegistration = ({
   pluginID,
-  connectionID,
+  request,
+  modelURI,
+  language = 'yaml',
   enabled = true,
 }: UseSchemaRegistrationOptions) => {
-  const route = { connection: connectionID };
-  const { associations, documents, isLoading, error } = useEditorSchemas({
-    pluginID,
-    route,
-    enabled,
-  });
+  const ownerID = useId();
+  const schema = useEditorSchema({ pluginID, request, enabled });
+  const registrationEnabled = enabled && !!pluginID && !!request && !!modelURI;
 
   useEffect(() => {
-    if (!associations.length || !pluginID || !connectionID) {
+    if (!registrationEnabled || !schema.result) {
       return;
     }
 
-    const key = JSON.stringify([pluginID, connectionID]);
-    const owners = registrations.get(key) ?? [];
-    const registration = { associations, documents };
-    schemaRegistry.register(pluginID, connectionID, associations, documents);
-    owners.push(registration);
-    registrations.set(key, owners);
+    schemaRegistry.register(pluginID, ownerID, modelURI, language, schema.result);
+    return () => schemaRegistry.unregister(pluginID, ownerID);
+  }, [registrationEnabled, pluginID, ownerID, modelURI, language, schema.result]);
 
-    return () => {
-      const index = owners.indexOf(registration);
-      if (index < 0) {
-        return;
-      }
-
-      const wasCurrent = index === owners.length - 1;
-      owners.splice(index, 1);
-      if (!owners.length) {
-        registrations.delete(key);
-        schemaRegistry.unregister(pluginID, connectionID);
-      } else if (wasCurrent) {
-        const current = owners[owners.length - 1];
-        schemaRegistry.register(pluginID, connectionID, current.associations, current.documents);
-      }
-    };
-  }, [associations, pluginID, connectionID, documents]);
-
-  return { isLoading, error };
+  return schema;
 };

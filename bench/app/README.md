@@ -97,6 +97,61 @@ Plugin release workflows can call this reusable workflow with `host-ref` and
 publication, rather than testing an already published version or rebuilding from
 linked source. Merge the host workflow before merging a plugin caller.
 
+### npm bootstrap candidate archive
+
+The Release workflow's npm-only dispatch accepts an optional `kubernetes-commit`.
+Use an exact full commit, not a branch, tag, or archive URL. The host must already
+select a published SDK module: the builder resolves that module's checksums and
+VCS origin and refuses an SDK checkout at any other commit or a local replacement.
+An empty input keeps the normal pinned published-archive-and-checksum gate.
+Stable desktop tags always keep that published path; update its pin only after
+the intended plugin release and checksum exist and final acceptance succeeds.
+
+For the bootstrap path, CI executes the actual pnpm 12.14.0 protocol probe, then
+uses the source-cohort builder below. In private managed worktrees, before Link,
+it applies the npm publication transform (`package.json .version = npmVersion`)
+to providers, runtime, and Vite plugin. Runtime still builds before Vite plugin.
+The caller's checkout stays unchanged. The selected UI/backend closure uses
+canonical graph producers and `BuildGraph.PublishPluginArchive`; no separate
+packager, host launch, or frontend-only substitute supplies the backend.
+
+On a Linux/amd64 build environment, after preparing the source variables,
+effective host modfile, and real protocol report shown below:
+
+```bash
+OUTPUT_PARENT="$(mktemp -d)"
+chmod 0700 "$OUTPUT_PARENT"
+GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
+  --host "$PWD" --host-ref "$(git rev-parse HEAD)" \
+  --sdk "$SDK_SOURCE" --sdk-ref "$SDK_COMMIT" \
+  --kubernetes "$KUBERNETES_SOURCE" --kubernetes-ref "$KUBERNETES_COMMIT" \
+  --link-evidence /absolute/path/link-protocol.json \
+  --archive-output "$OUTPUT_PARENT/archives" --package-version 0.36.0
+node bench/app/build-plugin/verify-candidate.mjs --directory "$OUTPUT_PARENT/archives" \
+  --host-ref "$(git rev-parse HEAD)" --kubernetes-ref "$KUBERNETES_COMMIT" --version 0.36.0
+```
+
+The output directory must not exist and must stay outside every caller checkout.
+It appears only after successful owned workspace cleanup. It contains
+`kubernetes-linux_amd64.tar.gz`, `candidate.json`, `link-protocol.json`, and
+`checksums_sha256.txt`. The receipt records exact host/SDK/Kubernetes commits,
+published SDK module checksums, package-version transforms and before/after file
+hashes, the protocol-report hash, and archive/backend SHA-256. The producer checks
+the actual Go target and archived ELF architecture. Archive size is bounded at
+1 GiB; JSON inputs are bounded at 1 MiB. Failed or uncertain cleanup retains the
+private workspace for recovery and does not publish a candidate output.
+
+CI uploads these files as a same-run artifact. The reusable smoke verifies the
+expected cohort, version, report, and archive hash before the unchanged production
+frontend/export and chunk-retirement checks. Candidate host packages use the
+same npm version transform. Missing output or evidence fails closed; it never
+falls back to the published archive. Existing plugin callers may still supply
+only `host-ref` and `archive-artifact`. Bootstrap callers additionally pass
+`candidate-commit` and `candidate-version`.
+
+This proves canonical archive production and frontend compatibility, not native
+wire negotiation. Real native integration remains a separate release gate.
+
 ### Upgrade-state regression
 
 Plugin bundles use stable chunk names such as `entry2.js`. Clearing only the
@@ -130,12 +185,13 @@ The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnp
 and output-ownership producers in a disposable collection with its own private
 home. Its manager uses the same session-aware `RequireStopped` guard as the real
 workspace CLI; a private home is not a substitute for proving the workspace is
-stopped before linking or retirement. It builds the Kubernetes UI dependency
-closure and uses the host's committed Wails bindings as compiler inputs, just as
-for `task packages`; no native host, plugin backend, SDK attestation or app
-service is substituted or launched. Source manifests retain their declared
-versions. Registry edges retain their lock evidence. Install scripts remain
-disabled and strict peers are audited recursively.
+stopped before linking or retirement. Default profile mode builds the Kubernetes
+UI dependency closure and uses the host's committed Wails bindings as compiler
+inputs, just as for `task packages`; it does not build a native host or plugin
+backend, attest an SDK, or launch an app service. Profile-mode manifests retain their
+declared versions; candidate archive mode uses the explicit private version
+transform above. Registry edges retain their lock evidence. Install scripts
+remain disabled and strict peers are audited recursively.
 
 Source install policies must agree explicitly. The host and Kubernetes sources
 must both declare `allowBuilds.esbuild: true`, with Kubernetes retaining

@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
@@ -21,17 +20,18 @@ func (c *controller) invalidateProfileRoutesLocked(pluginID string, connections 
 }
 
 // Native binding changes retire source work, not configured connection metadata.
-// Profile changes also remove inventory until their effective snapshot is published.
+// Profile changes also remove configured connection metadata until the effective
+// snapshot is published. Optional enrichment changes never enter this path.
 // Caller holds pluginsMu across retirement and its configuration fence.
-func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections []string, removeInventory bool) error {
-	return c.invalidateSourceRoutesWithRecoveryLocked(pluginID, connections, removeInventory, !removeInventory)
+func (c *controller) invalidateSourceRoutesLocked(pluginID string, connections []string, removeConnections bool) error {
+	return c.invalidateSourceRoutesWithRecoveryLocked(pluginID, connections, removeConnections, !removeConnections)
 }
 
 func (c *controller) invalidateStoppedSourceRoutesLocked(pluginID, connection string) error {
 	return c.invalidateSourceRoutesWithRecoveryLocked(pluginID, []string{connection}, false, false)
 }
 
-func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, connections []string, removeInventory, recoverBinding bool) error {
+func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, connections []string, removeConnections, recoverBinding bool) error {
 	generation := c.plugins[pluginID]
 	if generation == nil || generation.provider == nil {
 		return resourcev2.NewError("UNAVAILABLE", "Provider generation retired during profile apply.")
@@ -58,13 +58,13 @@ func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, c
 	if generation.sourceEpoch == nil {
 		generation.sourceEpoch = make(map[string]uint64)
 	}
-	if removeInventory && generation.connectionLifecycleEpoch == nil {
+	if removeConnections && generation.connectionLifecycleEpoch == nil {
 		generation.connectionLifecycleEpoch = make(map[string]uint64)
 	}
 	for connection := range seen {
 		generation.sourceEpoch[connection]++
 		c.schemas.DropConnection(pluginID, connection)
-		if removeInventory {
+		if removeConnections {
 			generation.connectionLifecycleEpoch[connection]++
 		}
 	}
@@ -80,17 +80,12 @@ func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, c
 	}
 	c.finite.mu.Unlock()
 	for connection := range seen {
-		for _, entry := range c.registryStore.DeleteByConnection(pluginID, connection) {
-			c.dispatcher.Enqueue(indexer.Event{Type: indexer.EventDelete, Entry: entry})
-		}
-		c.graph.RemoveEdgesForConnection(pluginID, connection)
-		c.graph.ClearDeclarationsForConnection(pluginID, resourcev2.AccessRoute{Connection: connection})
 		if recoverBinding {
 			go c.sources.recoverBinding(pluginID, connection, generation, generation.sourceEpoch[connection])
 		} else {
 			go c.sources.invalidate(pluginID, connection)
 		}
-		if !removeInventory {
+		if !removeConnections {
 			continue
 		}
 		c.connsMu.Lock()

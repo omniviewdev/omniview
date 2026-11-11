@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { Count, SourceSessionState } from '@omniviewdev/runtime';
 import ConnectionStateDialog from '../ConnectionStateDialog';
 
@@ -10,7 +10,9 @@ vi.mock('@omniviewdev/base-ui', () => {
   return {
     Dialog,
     Spinner: () => <span data-testid="spinner" />,
-    Progress: ({ value }: any) => <div data-testid="progress-bar" data-value={value} />,
+    Progress: ({ value, color }: { value: number; color: string }) => (
+      <div data-testid="progress-bar" data-value={value} data-color={color} />
+    ),
     IconButton: ({ children, onClick }: any) => <button data-testid="close-btn" onClick={onClick}>{children}</button>,
     Button: ({ children, onClick }: any) => (
       <button onClick={onClick} data-testid={`btn-${children}`}>{children}</button>
@@ -63,9 +65,10 @@ describe('ConnectionStateDialog', () => {
       />,
     );
     expect(screen.getByText(/Syncing "my-cluster"/)).toBeTruthy();
+    expect(screen.getAllByTestId('progress-bar').every(bar => bar.dataset.color === 'brand')).toBe(true);
   });
 
-  it('renders "Synced" header when all resources are terminal', () => {
+  it('renders "Synced" only when all resources are healthy following or finished sources', () => {
     render(
       <ConnectionStateDialog
         {...defaultProps}
@@ -76,6 +79,10 @@ describe('ConnectionStateDialog', () => {
       />,
     );
     expect(screen.getByText(/Synced "my-cluster"/)).toBeTruthy();
+    expect(within(screen.getByRole('heading')).getByTestId('icon-check')).toBeTruthy();
+    expect(screen.getByText(/100%/)).toBeTruthy();
+    expect(screen.getAllByText(/2\/2/).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('progress-bar').every(bar => bar.dataset.color === 'success')).toBe(true);
   });
 
   it('keeps resource types opaque rather than parsing provider-specific keys', () => {
@@ -117,16 +124,49 @@ describe('ConnectionStateDialog', () => {
     expect(screen.getByText('9007199254740993 (exact)')).toBeTruthy();
   });
 
-  it('counts closed resources as terminal', () => {
+  it.each([
+    { state: 'failed', label: 'Failed', icon: 'icon-alert', color: 'danger' },
+    { state: 'closed', label: 'Closed', icon: 'icon-slash', color: 'neutral' },
+  ] as const)('does not count $state sources as healthy or show Synced', ({ state, label, icon, color }) => {
     render(
       <ConnectionStateDialog
         {...defaultProps}
-        resources={{ 'core::v1::Pod': 'following', 'core::v1::Secret': 'closed' }}
+        resources={{ 'core::v1::Pod': 'following', 'native/resource/type': state }}
       />,
     );
-    expect(screen.getByText(/100%/)).toBeTruthy();
-    expect(screen.getAllByText(/2\/2/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Synced "my-cluster"/)).toBeNull();
+    const heading = screen.getByRole('heading');
+    expect(within(heading).getByTestId(icon)).toBeTruthy();
+    expect(screen.getByText(/50%/)).toBeTruthy();
+    expect(screen.getAllByText(/1\/2/).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('progress-bar').every(bar => (
+      bar.dataset.value === '50' && bar.dataset.color === color
+    ))).toBe(true);
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+  });
+
+  it('keeps failed, closed, and pending sources separate from healthy progress', () => {
+    render(
+      <ConnectionStateDialog
+        {...defaultProps}
+        resources={{
+          following: 'following',
+          finished: 'finished',
+          failed: 'failed',
+          closed: 'closed',
+          opening: 'opening',
+          snapshotting: 'snapshotting',
+          reset: 'resetRequired',
+        }}
+      />,
+    );
+    expect(within(screen.getByRole('heading')).getByTestId('icon-alert')).toBeTruthy();
+    expect(screen.getByText(/29%/)).toBeTruthy();
+    expect(screen.getAllByText(/2\/7/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Failed')).toBeTruthy();
     expect(screen.getByText('Closed')).toBeTruthy();
+    expect(screen.getAllByTestId('progress-bar').every(bar => bar.dataset.color === 'danger')).toBe(true);
   });
 
   it('calculates correct progress percentage', () => {

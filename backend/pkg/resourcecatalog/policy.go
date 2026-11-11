@@ -2,10 +2,10 @@
 //
 // It normalizes raw provider schema documents (JSON Schema 2020-12, JSON Schema
 // draft-07 and the OpenAPI 3.0 Schema Object) into a bounded structural model,
-// shares immutable normalized documents by content digest, and scopes every
-// binding to one (plugin, generation, connection, epoch, catalog revision)
-// snapshot. It is the only schema normalizer and validation authority in the
-// host; see docs/superpowers/specs/2026-11-01-resource-schema-catalog.md.
+// shares immutable normalized documents by content digest, and scopes demanded
+// target observations to one authenticated plugin/generation/connection/epoch.
+// Support revisions reconcile unchanged targets instead of retiring schema
+// ownership. This is the host's sole schema normalizer and validation authority.
 package resourcecatalog
 
 import resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"

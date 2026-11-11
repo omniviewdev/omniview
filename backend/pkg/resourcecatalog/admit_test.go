@@ -23,8 +23,8 @@ var (
 func admitSchema(t *testing.T, dialect, document, root string) *Schema {
 	t.Helper()
 	c := NewCatalog(DefaultPolicy())
-	s := c.Observe(key("admit"), catalogOf("c1", typeOf("t", inlineBinding(dialect, document, root))))
-	return resolve(t, entry(t, s, "t", "r0"), nil)
+	s := c.Observe(key("admit"), catalogOf("c1", typeOf("t", "r0")))
+	return resolve(t, entry(t, s, "t", "r0"), bindingFor("t", inlineBinding(dialect, document, root)), nil)
 }
 
 // body decodes JSON into a tagged value: integral numbers become int64,
@@ -438,8 +438,8 @@ func TestAdmitRecursiveSchema(t *testing.T) {
 
 func TestAdmitDoesNotBuildBranchViews(t *testing.T) {
 	c := NewCatalog(DefaultPolicy())
-	s := c.Observe(key("a"), catalogOf("c1", typeOf("t", inlineBinding(d2020, `{"anyOf":[{"type":"object"},{"type":"string"}]}`, ""))))
-	schema := resolve(t, entry(t, s, "t", "r0"), nil)
+	s := c.Observe(key("a"), catalogOf("c1", typeOf("t", "r0")))
+	schema := resolve(t, entry(t, s, "t", "r0"), bindingFor("t", inlineBinding(d2020, `{"anyOf":[{"type":"object"},{"type":"string"}]}`, "")), nil)
 	before := c.Stats()
 	mustAdmit(t, schema, body(t, `{"a":1}`), completeCoverage)
 	if after := c.Stats(); after != before || after.BranchViews != 0 {

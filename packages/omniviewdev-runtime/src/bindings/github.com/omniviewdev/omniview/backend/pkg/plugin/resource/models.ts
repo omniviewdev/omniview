@@ -335,67 +335,6 @@ export class ConnectionStatusPayload {
     }
 }
 
-/**
- * EditorSchemaAssociation binds a host-derived Monaco model directory to a
- * rendered catalog document.
- */
-export class EditorSchemaAssociation {
-    "type": string;
-    "representation"?: string;
-    "key"?: string;
-    "language": string;
-
-    /**
-     * "file:///omniview-schema/<hex16>"
-     */
-    "modelDirectory": string;
-
-    /**
-     * "** /omniview-schema/<hex16>/*"
-     */
-    "fileMatch": string;
-    "documentId"?: string;
-    "root"?: string;
-
-    /**
-     * "available"|"absent"|"unavailable"|"unsupported"|"invalid"|"limit"
-     */
-    "status": string;
-    "code"?: string;
-
-    /** Creates a new EditorSchemaAssociation instance. */
-    constructor($$source: Partial<EditorSchemaAssociation> = {}) {
-        if (!("type" in $$source)) {
-            this["type"] = "";
-        }
-        if (!("language" in $$source)) {
-            this["language"] = "";
-        }
-        if (!("modelDirectory" in $$source)) {
-            this["modelDirectory"] = "";
-        }
-        if (!("fileMatch" in $$source)) {
-            this["fileMatch"] = "";
-        }
-        if (!("status" in $$source)) {
-            this["status"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new EditorSchemaAssociation instance from a string or object.
-     */
-    static createFrom($$source: any = {}): EditorSchemaAssociation {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new EditorSchemaAssociation($$parsedSource as Partial<EditorSchemaAssociation>);
-    }
-}
-
-/**
- * EditorSchemaDocument is a host-rendered draft-07 editor document.
- */
 export class EditorSchemaDocument {
     "documentId": string;
     "schema": json$0.RawMessage;
@@ -418,6 +357,52 @@ export class EditorSchemaDocument {
     static createFrom($$source: any = {}): EditorSchemaDocument {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new EditorSchemaDocument($$parsedSource as Partial<EditorSchemaDocument>);
+    }
+}
+
+/**
+ * EditorSchemaResult is one coherent target observation and rendered document.
+ * The frontend owns its stable model URI before requesting this enrichment.
+ */
+export class EditorSchemaResult {
+    "type": string;
+    "target": resourcev2$0.SchemaTarget;
+    "observation": string;
+    "status": string;
+    "code"?: string;
+    "schemaRevision"?: string;
+    "dialect"?: string;
+    "root"?: string;
+    "document"?: EditorSchemaDocument | null;
+
+    /** Creates a new EditorSchemaResult instance. */
+    constructor($$source: Partial<EditorSchemaResult> = {}) {
+        if (!("type" in $$source)) {
+            this["type"] = "";
+        }
+        if (!("target" in $$source)) {
+            this["target"] = null;
+        }
+        if (!("observation" in $$source)) {
+            this["observation"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new EditorSchemaResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): EditorSchemaResult {
+        const $$createField8_0 = $$createType13;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("document" in $$parsedSource) {
+            $$parsedSource["document"] = $$createField8_0($$parsedSource["document"]);
+        }
+        return new EditorSchemaResult($$parsedSource as Partial<EditorSchemaResult>);
     }
 }
 
@@ -457,7 +442,7 @@ export class HostConnectionMetadata {
      * Creates a new HostConnectionMetadata instance from a string or object.
      */
     static createFrom($$source: any = {}): HostConnectionMetadata {
-        const $$createField6_0 = $$createType13;
+        const $$createField6_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("snapshot" in $$parsedSource) {
             $$parsedSource["snapshot"] = $$createField6_0($$parsedSource["snapshot"]);
@@ -486,7 +471,7 @@ export class HostEnumerateRequest {
      * Creates a new HostEnumerateRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): HostEnumerateRequest {
-        const $$createField1_0 = $$createType14;
+        const $$createField1_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("request" in $$parsedSource) {
             $$parsedSource["request"] = $$createField1_0($$parsedSource["request"]);
@@ -515,12 +500,87 @@ export class HostGetRequest {
      * Creates a new HostGetRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): HostGetRequest {
-        const $$createField1_0 = $$createType15;
+        const $$createField1_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("request" in $$parsedSource) {
             $$parsedSource["request"] = $$createField1_0($$parsedSource["request"]);
         }
         return new HostGetRequest($$parsedSource as Partial<HostGetRequest>);
+    }
+}
+
+export class HostGraphObservationOpened {
+    "observationId": string;
+    "topic": string;
+
+    /** Creates a new HostGraphObservationOpened instance. */
+    constructor($$source: Partial<HostGraphObservationOpened> = {}) {
+        if (!("observationId" in $$source)) {
+            this["observationId"] = "";
+        }
+        if (!("topic" in $$source)) {
+            this["topic"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new HostGraphObservationOpened instance from a string or object.
+     */
+    static createFrom($$source: any = {}): HostGraphObservationOpened {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new HostGraphObservationOpened($$parsedSource as Partial<HostGraphObservationOpened>);
+    }
+}
+
+export class HostGraphObservationRequest {
+    "clientToken": string;
+    "pluginID": string;
+    "reference": resourcev2$0.ResourceReference;
+    "route": resourcev2$0.AccessRoute;
+    "kind": string;
+    "direction"?: string;
+    "relationshipType"?: string | null;
+    "maxDepth"?: number;
+    "upDepth"?: number;
+    "downDepth"?: number;
+
+    /** Creates a new HostGraphObservationRequest instance. */
+    constructor($$source: Partial<HostGraphObservationRequest> = {}) {
+        if (!("clientToken" in $$source)) {
+            this["clientToken"] = "";
+        }
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("reference" in $$source)) {
+            this["reference"] = (new resourcev2$0.ResourceReference());
+        }
+        if (!("route" in $$source)) {
+            this["route"] = (new resourcev2$0.AccessRoute());
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new HostGraphObservationRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): HostGraphObservationRequest {
+        const $$createField2_0 = $$createType18;
+        const $$createField3_0 = $$createType19;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("reference" in $$parsedSource) {
+            $$parsedSource["reference"] = $$createField2_0($$parsedSource["reference"]);
+        }
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField3_0($$parsedSource["route"]);
+        }
+        return new HostGraphObservationRequest($$parsedSource as Partial<HostGraphObservationRequest>);
     }
 }
 
@@ -560,8 +620,8 @@ export class HostRecord {
      * Creates a new HostRecord instance from a string or object.
      */
     static createFrom($$source: any = {}): HostRecord {
-        const $$createField3_0 = $$createType16;
-        const $$createField4_0 = $$createType17;
+        const $$createField3_0 = $$createType20;
+        const $$createField4_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("record" in $$parsedSource) {
             $$parsedSource["record"] = $$createField3_0($$parsedSource["record"]);
@@ -593,8 +653,8 @@ export class HostSourcePage {
      * Creates a new HostSourcePage instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourcePage {
-        const $$createField0_0 = $$createType19;
-        const $$createField1_0 = $$createType20;
+        const $$createField0_0 = $$createType22;
+        const $$createField1_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("records" in $$parsedSource) {
             $$parsedSource["records"] = $$createField0_0($$parsedSource["records"]);
@@ -634,8 +694,8 @@ export class HostSourceStateEvent {
      * Creates a new HostSourceStateEvent instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceStateEvent {
-        const $$createField1_0 = $$createType17;
-        const $$createField3_0 = $$createType21;
+        const $$createField1_0 = $$createType19;
+        const $$createField3_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField1_0($$parsedSource["route"]);
@@ -667,8 +727,8 @@ export class HostSourceStates {
      * Creates a new HostSourceStates instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceStates {
-        const $$createField0_0 = $$createType17;
-        const $$createField1_0 = $$createType22;
+        const $$createField0_0 = $$createType19;
+        const $$createField1_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -707,9 +767,9 @@ export class HostSourceStatus {
      * Creates a new HostSourceStatus instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceStatus {
-        const $$createField3_0 = $$createType24;
+        const $$createField3_0 = $$createType27;
         const $$createField4_0 = $$createType10;
-        const $$createField5_0 = $$createType26;
+        const $$createField5_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("coverage" in $$parsedSource) {
             $$parsedSource["coverage"] = $$createField3_0($$parsedSource["coverage"]);
@@ -777,7 +837,7 @@ export class HostSourceViewRequest {
      * Creates a new HostSourceViewRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): HostSourceViewRequest {
-        const $$createField1_0 = $$createType27;
+        const $$createField1_0 = $$createType30;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField1_0($$parsedSource["target"]);
@@ -816,8 +876,8 @@ export class ResolveReferenceRequest {
      * Creates a new ResolveReferenceRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolveReferenceRequest {
-        const $$createField0_0 = $$createType17;
-        const $$createField2_0 = $$createType29;
+        const $$createField0_0 = $$createType19;
+        const $$createField2_0 = $$createType32;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -854,7 +914,7 @@ export class ResolveTargetRequest {
      * Creates a new ResolveTargetRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolveTargetRequest {
-        const $$createField0_0 = $$createType17;
+        const $$createField0_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("route" in $$parsedSource) {
             $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
@@ -903,9 +963,9 @@ export class ResolvedReference {
      * Creates a new ResolvedReference instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolvedReference {
-        const $$createField0_0 = $$createType30;
-        const $$createField1_0 = $$createType17;
-        const $$createField6_0 = $$createType31;
+        const $$createField0_0 = $$createType18;
+        const $$createField1_0 = $$createType19;
+        const $$createField6_0 = $$createType33;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("reference" in $$parsedSource) {
             $$parsedSource["reference"] = $$createField0_0($$parsedSource["reference"]);
@@ -948,8 +1008,8 @@ export class ResolvedTarget {
      * Creates a new ResolvedTarget instance from a string or object.
      */
     static createFrom($$source: any = {}): ResolvedTarget {
-        const $$createField1_0 = $$createType27;
-        const $$createField2_0 = $$createType31;
+        const $$createField1_0 = $$createType30;
+        const $$createField2_0 = $$createType33;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("target" in $$parsedSource) {
             $$parsedSource["target"] = $$createField1_0($$parsedSource["target"]);
@@ -962,21 +1022,16 @@ export class ResolvedTarget {
 }
 
 /**
- * SchemaFieldsRequest selects one navigation position in a representation schema.
+ * SchemaFieldsRequest selects one navigation position in one admitted target.
  */
 export class SchemaFieldsRequest {
-    "route": resourcev2$0.AccessRoute;
-    "type": string;
-    "representation"?: string;
+    "request": resourcev2$0.SchemaRequest;
     "path": resourcecatalog$0.PathSegment[];
 
     /** Creates a new SchemaFieldsRequest instance. */
     constructor($$source: Partial<SchemaFieldsRequest> = {}) {
-        if (!("route" in $$source)) {
-            this["route"] = (new resourcev2$0.AccessRoute());
-        }
-        if (!("type" in $$source)) {
-            this["type"] = "";
+        if (!("request" in $$source)) {
+            this["request"] = null;
         }
         if (!("path" in $$source)) {
             this["path"] = [];
@@ -989,30 +1044,19 @@ export class SchemaFieldsRequest {
      * Creates a new SchemaFieldsRequest instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaFieldsRequest {
-        const $$createField0_0 = $$createType17;
-        const $$createField3_0 = $$createType33;
+        const $$createField1_0 = $$createType35;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("route" in $$parsedSource) {
-            $$parsedSource["route"] = $$createField0_0($$parsedSource["route"]);
-        }
         if ("path" in $$parsedSource) {
-            $$parsedSource["path"] = $$createField3_0($$parsedSource["path"]);
+            $$parsedSource["path"] = $$createField1_0($$parsedSource["path"]);
         }
         return new SchemaFieldsRequest($$parsedSource as Partial<SchemaFieldsRequest>);
     }
 }
 
-/**
- * SchemaFieldsResult is catalog-derived field discovery for one representation.
- */
 export class SchemaFieldsResult {
-    "catalogRevision": string;
     "type": string;
-    "representation": string;
-
-    /**
-     * provider state: absent|available|unavailable
-     */
+    "target": resourcev2$0.SchemaTarget;
+    "observation": string;
     "schemaState": string;
     "schemaRevision"?: string;
     "dialect"?: string;
@@ -1023,14 +1067,14 @@ export class SchemaFieldsResult {
 
     /** Creates a new SchemaFieldsResult instance. */
     constructor($$source: Partial<SchemaFieldsResult> = {}) {
-        if (!("catalogRevision" in $$source)) {
-            this["catalogRevision"] = "";
-        }
         if (!("type" in $$source)) {
             this["type"] = "";
         }
-        if (!("representation" in $$source)) {
-            this["representation"] = "";
+        if (!("target" in $$source)) {
+            this["target"] = null;
+        }
+        if (!("observation" in $$source)) {
+            this["observation"] = "";
         }
         if (!("schemaState" in $$source)) {
             this["schemaState"] = "";
@@ -1052,8 +1096,8 @@ export class SchemaFieldsResult {
      * Creates a new SchemaFieldsResult instance from a string or object.
      */
     static createFrom($$source: any = {}): SchemaFieldsResult {
-        const $$createField6_0 = $$createType34;
-        const $$createField7_0 = $$createType36;
+        const $$createField6_0 = $$createType36;
+        const $$createField7_0 = $$createType38;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("overlay" in $$parsedSource) {
             $$parsedSource["overlay"] = $$createField6_0($$parsedSource["overlay"]);
@@ -1113,28 +1157,30 @@ const $$createType8 = ConnectionProfile.createFrom;
 const $$createType9 = $Create.Map($Create.Any, $Create.Any);
 const $$createType10 = resourcev2$0.Count.createFrom;
 const $$createType11 = $Create.Map($Create.Any, $$createType10);
-const $$createType12 = resourcev2$0.ConnectionMetadataSnapshot.createFrom;
+const $$createType12 = EditorSchemaDocument.createFrom;
 const $$createType13 = $Create.Nullable($$createType12);
-const $$createType14 = resourcev2$0.EnumerateRequest.createFrom;
-const $$createType15 = resourcev2$0.GetRequest.createFrom;
-const $$createType16 = resourcev2$0.Record.createFrom;
-const $$createType17 = resourcev2$0.AccessRoute.createFrom;
-const $$createType18 = HostRecord.createFrom;
-const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = SourcePageMetadata.createFrom;
-const $$createType21 = HostSourceStatus.createFrom;
-const $$createType22 = $Create.Map($Create.Any, $$createType21);
-const $$createType23 = resourcev2$0.SourceCoverage.createFrom;
-const $$createType24 = $Create.Nullable($$createType23);
-const $$createType25 = resourcev2$0.ResourceOperationError.createFrom;
-const $$createType26 = $Create.Nullable($$createType25);
-const $$createType27 = resourcev2$0.ReadTarget.createFrom;
-const $$createType28 = resourcev2$0.ScopeEntry.createFrom;
-const $$createType29 = $Create.Array($$createType28);
-const $$createType30 = resourcev2$0.ResourceReference.createFrom;
-const $$createType31 = AuthorityEvidence.createFrom;
-const $$createType32 = resourcecatalog$0.PathSegment.createFrom;
-const $$createType33 = $Create.Array($$createType32);
-const $$createType34 = resourcecatalog$0.TypeOverlay.createFrom;
-const $$createType35 = resourcecatalog$0.FieldInfo.createFrom;
-const $$createType36 = $Create.Array($$createType35);
+const $$createType14 = resourcev2$0.ConnectionMetadataSnapshot.createFrom;
+const $$createType15 = $Create.Nullable($$createType14);
+const $$createType16 = resourcev2$0.EnumerateRequest.createFrom;
+const $$createType17 = resourcev2$0.GetRequest.createFrom;
+const $$createType18 = resourcev2$0.ResourceReference.createFrom;
+const $$createType19 = resourcev2$0.AccessRoute.createFrom;
+const $$createType20 = resourcev2$0.Record.createFrom;
+const $$createType21 = HostRecord.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = SourcePageMetadata.createFrom;
+const $$createType24 = HostSourceStatus.createFrom;
+const $$createType25 = $Create.Map($Create.Any, $$createType24);
+const $$createType26 = resourcev2$0.SourceCoverage.createFrom;
+const $$createType27 = $Create.Nullable($$createType26);
+const $$createType28 = resourcev2$0.ResourceOperationError.createFrom;
+const $$createType29 = $Create.Nullable($$createType28);
+const $$createType30 = resourcev2$0.ReadTarget.createFrom;
+const $$createType31 = resourcev2$0.ScopeEntry.createFrom;
+const $$createType32 = $Create.Array($$createType31);
+const $$createType33 = AuthorityEvidence.createFrom;
+const $$createType34 = resourcecatalog$0.PathSegment.createFrom;
+const $$createType35 = $Create.Array($$createType34);
+const $$createType36 = resourcecatalog$0.TypeOverlay.createFrom;
+const $$createType37 = resourcecatalog$0.FieldInfo.createFrom;
+const $$createType38 = $Create.Array($$createType37);

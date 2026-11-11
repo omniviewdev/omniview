@@ -9,7 +9,7 @@ import (
 )
 
 func TestOverlayNativeQueryLanguagesRequireTheCapability(t *testing.T) {
-	descriptor := typeOf("t", resourcev2.SchemaBinding{State: "absent"})
+	descriptor := typeOf("t", "r0")
 	descriptor.NativeQueries = []resourcev2.NativeQueryDescriptor{{Language: "sql"}, {Language: "promql"}, {Language: "sql"}}
 	descriptor.Capabilities = []resourcev2.Capability{{Operation: resourcev2.OperationGet}, {Operation: resourcev2.OperationEnumerate}, {Operation: resourcev2.OperationGet}}
 
@@ -34,14 +34,18 @@ func TestOverlayStatesForEachResolveOutcome(t *testing.T) {
 	c := NewCatalog(DefaultPolicy())
 	forbidden := "FORBIDDEN"
 	server := newDocumentServer(d2020, map[string]string{})
+	bindings := bindingMap{
+		"full":        {"r0": inlineBinding(d2020, podSchema, "")},
+		"reduced":     {"r0": inlineBinding(d2020, `{"type":"object","not":{}}`, "")},
+		"absent":      {"r0": {State: "absent"}},
+		"unavailable": {"r0": {State: "unavailable", UnavailableReason: &forbidden}},
+		"unsupported": {"r0": inlineBinding("https://json-schema.org/draft/2019-09/schema", podSchema, "")},
+		"invalid":     {"r0": inlineBinding(d2020, podSchema, "#/nowhere")},
+		"missing":     {"r0": refBinding(d2020, "gone", "")},
+	}
 	s := c.Observe(key("a"), catalogOf("c1",
-		typeOf("full", inlineBinding(d2020, podSchema, "")),
-		typeOf("reduced", inlineBinding(d2020, `{"type":"object","not":{}}`, "")),
-		typeOf("absent", resourcev2.SchemaBinding{State: "absent"}),
-		typeOf("unavailable", resourcev2.SchemaBinding{State: "unavailable", UnavailableReason: &forbidden}),
-		typeOf("unsupported", inlineBinding("https://json-schema.org/draft/2019-09/schema", podSchema, "")),
-		typeOf("invalid", inlineBinding(d2020, podSchema, "#/nowhere")),
-		typeOf("missing", refBinding(d2020, "gone", "")),
+		typeOf("full", "r0"), typeOf("reduced", "r0"), typeOf("absent", "r0"),
+		typeOf("unavailable", "r0"), typeOf("unsupported", "r0"), typeOf("invalid", "r0"), typeOf("missing", "r0"),
 	))
 	cases := []struct {
 		typ, evaluation, code, validation string
@@ -56,8 +60,8 @@ func TestOverlayStatesForEachResolveOutcome(t *testing.T) {
 	}
 	for _, tc := range cases {
 		e := entry(t, s, tc.typ, "r0")
-		schema, err := e.Resolve(context.Background(), server.fetch)
-		o := OverlayFor(e, schema, err)
+		result, err := e.Resolve(context.Background(), bindings.resolve, server.fetch)
+		o := OverlayFor(e, result.Schema, err)
 		if o.HostEvaluation != tc.evaluation || o.HostEvaluationCode != tc.code || o.Validation != tc.validation {
 			t.Errorf("%s: overlay = %+v (err %v)", tc.typ, o, err)
 		}
@@ -71,15 +75,14 @@ func TestOverlayUnavailableBindingPreservesReasonClassification(t *testing.T) {
 	for _, code := range []string{codeUnsupported, codeInvalidRequest, codeResourceLimit} {
 		t.Run(code, func(t *testing.T) {
 			c := NewCatalog(DefaultPolicy())
-			s := c.Observe(key("a"), catalogOf("c1",
-				typeOf("unavailable", resourcev2.SchemaBinding{
-					State:             "unavailable",
-					UnavailableReason: &code,
-				}),
-			))
+			s := c.Observe(key("a"), catalogOf("c1", typeOf("unavailable", "r0")))
+			source := bindingFor("unavailable", resourcev2.SchemaBinding{
+				State:             "unavailable",
+				UnavailableReason: &code,
+			})
 			e := entry(t, s, "unavailable", "r0")
-			schema, err := e.Resolve(context.Background(), nil)
-			o := OverlayFor(e, schema, err)
+			result, err := e.Resolve(context.Background(), source, nil)
+			o := OverlayFor(e, result.Schema, err)
 			if o.HostEvaluation != HostEvaluationUnavailable || o.HostEvaluationCode != code || o.Validation != ValidationNone {
 				t.Fatalf("overlay = %+v (err %v)", o, err)
 			}

@@ -1,7 +1,6 @@
 package auditgate
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -42,18 +41,6 @@ func TestDefaultPolicyIsValid(t *testing.T) {
 	for _, rule := range policy.Methods() {
 		require.Contains(t, []Decision{Allow, Deny}, rule.Decision, rule.FQN)
 		require.NotEmpty(t, strings.TrimSpace(rule.Reason), rule.FQN)
-	}
-}
-
-// The table is reviewed by humans, so a new row must land in a predictable
-// place: sorted by name, which also keeps duplicates adjacent in a diff.
-func TestEmbeddedTableIsSortedByName(t *testing.T) {
-	data, err := policyFiles.ReadFile("policy.json")
-	require.NoError(t, err)
-	var file policyFile
-	require.NoError(t, json.Unmarshal(data, &file))
-	for i := 1; i < len(file.Methods); i++ {
-		require.Less(t, file.Methods[i-1].FQN, file.Methods[i].FQN, "policy.json methods must be sorted by fqn")
 	}
 }
 

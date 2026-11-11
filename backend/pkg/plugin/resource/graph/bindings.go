@@ -61,7 +61,6 @@ func (g *RelationshipGraph) SetBoundDeclarations(plugin string, route resource.A
 		g.boundDeclarations = make(map[declMapKey]*boundSet)
 	}
 	delete(g.declarationProblems, declMapKey{pluginID: plugin, connectionID: route.Connection, resourceKey: sourceType})
-	g.markChanged(plugin, route.Connection)
 	g.boundDeclarations[declMapKey{pluginID: plugin, connectionID: route.Connection, resourceKey: sourceType}] = &snapshot
 	return nil
 }
@@ -173,7 +172,7 @@ func (g *RelationshipGraph) ClearDeclarationsForConnection(plugin string, route 
 	for key, entries := range g.selectorCache {
 		for _, entry := range entries {
 			if entry.node.PluginID == plugin && entry.node.Route == route {
-				delete(g.selectorCache, key)
+				g.deleteSelectorsLocked(key)
 			}
 			break
 		}
@@ -207,13 +206,15 @@ func (g *RelationshipGraph) unresolvedNode(node GraphNode, reason string, snapsh
 		g.unresolved = make(map[string]unresolvedEntry)
 	}
 	g.unresolved[node.Key()] = unresolvedEntry{node, reason}
-	g.markChanged(node.PluginID, node.Route.Connection)
 }
 
 // CheckComplete rejects whole-result reads when this route has unresolved extraction.
 func (g *RelationshipGraph) CheckComplete(plugin string, route resource.AccessRoute) error {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
+	if g.limitErr != nil {
+		return g.limitErr
+	}
 	var first error
 	for key, err := range g.declarationProblems {
 		if key.pluginID != plugin || key.connectionID != route.Connection {
@@ -320,12 +321,11 @@ func (g *RelationshipGraph) RecordDeclarationError(plugin string, route resource
 	for key, entries := range g.selectorCache {
 		for _, entry := range entries {
 			if entry.node.PluginID == plugin && entry.node.Route == route && entry.node.Reference.Address.Type == sourceType {
-				delete(g.selectorCache, key)
+				g.deleteSelectorsLocked(key)
 			}
 			break
 		}
 	}
-	g.markChanged(plugin, route.Connection)
 }
 
 // retireDeclarationsLocked withdraws derived observations before rules change.
@@ -352,7 +352,7 @@ func (g *RelationshipGraph) retireDeclarationsLocked(plugin string, route resour
 	for key, entries := range g.selectorCache {
 		for _, entry := range entries {
 			if matches(entry.node) {
-				delete(g.selectorCache, key)
+				g.deleteSelectorsLocked(key)
 			}
 			break
 		}
@@ -380,5 +380,4 @@ func (g *RelationshipGraph) SetNoDeclarations(plugin string, route resource.Acce
 	}
 	g.boundDeclarations[key] = &boundSet{noRules: true}
 	delete(g.declarationProblems, key)
-	g.markChanged(plugin, route.Connection)
 }

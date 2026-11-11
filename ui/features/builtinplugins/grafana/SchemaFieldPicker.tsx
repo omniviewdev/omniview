@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Input, Text, Stack } from '@omniviewdev/base-ui';
-import { useSchemaFields } from '@omniviewdev/runtime';
+import { useResourceTypes, useSchemaFields, type SchemaRequest } from '@omniviewdev/runtime';
 
 type Segment = Parameters<typeof useSchemaFields>[0]['path'][number];
 export type MappingSchemaContext = { pluginID: string; connectionID: string; resourceType: string };
@@ -16,7 +16,13 @@ export default function SchemaFieldPicker({ context, value, onSelect }: {
   const [names, setNames] = useState<string[]>([]);
   const [mapKey, setMapKey] = useState('');
   const [open, setOpen] = useState(false);
-  const schema = useSchemaFields({ pluginID: context.pluginID, route: { connection: context.connectionID }, type: context.resourceType, path, enabled: open });
+  const { resourceTypes } = useResourceTypes({ pluginID: context.pluginID, route: { connection: context.connectionID }, enabled: open });
+  const descriptor = resourceTypes.data?.find((entry) => entry.type === context.resourceType);
+  const format = descriptor?.representations.find((entry) => entry.id === descriptor.defaultRepresentation);
+  const request = useMemo<SchemaRequest | undefined>(() => format ? {
+    route: { connection: context.connectionID }, type: context.resourceType, target: { representation: format },
+  } : undefined, [context.connectionID, context.resourceType, format]);
+  const schema = useSchemaFields({ pluginID: context.pluginID, request, path, enabled: open });
   return <Stack direction="column" spacing={1} style={{ minWidth: 0 }}>
     <Stack direction="row" align="center" justify="between" spacing={1}>
       <Text size="xs" truncate title={`${context.resourceType}: ${value || 'Canonical identity'}`} style={{ fontFamily: 'var(--ov-font-mono)' }}>{value || 'Canonical identity'}</Text>
@@ -32,11 +38,15 @@ export default function SchemaFieldPicker({ context, value, onSelect }: {
         }}>Parent field</Button>}
       </Stack>
       {schema.error && <p role="alert">Schema unavailable: {String(schema.error)}</p>}
+      {resourceTypes.error && <p role="alert">Resource format unavailable: {String(resourceTypes.error)}</p>}
+      {(resourceTypes.isPending || schema.isPending) && <Text size="xs" role="status">Loading authoritative schema fields…</Text>}
       {schema.result && schema.result.schemaState !== 'available' && <Text size="xs" role="status">Authoritative schema unavailable.</Text>}
-      {schema.fields.map((field, index) => {
+      {(schema.fields ?? []).map((field, index) => {
         const concrete = field.Segment.Kind === 'field' ? field.Segment.Name ?? '' : mapKey;
         const scalar = Boolean(field.Types?.length && field.Types.every(type => ['string', 'boolean', 'integer', 'number'].includes(type)));
         const name = field.Segment.Name ?? '';
+        const admitted = schema.result?.schemaState === 'available' && !schema.result.truncated
+          && field.Applicability === 'unconditional' && !field.Conditions?.length;
         const types = field.Types?.join(' | ') ?? '';
         if (field.Segment.Kind === 'item') {
           return null;
@@ -46,13 +56,13 @@ export default function SchemaFieldPicker({ context, value, onSelect }: {
           {field.Segment.Kind === 'mapValue' && <label>Exact map key<Input.Root className="grafana-input" size="md"><Input.Control value={mapKey} onChange={event => {
             setMapKey(event.target.value); 
           }} placeholder="e.g. topology.kubernetes.io/zone" /></Input.Root></label>}
-          <Button size="sm" variant="ghost" title={field.Description || undefined} disabled={!concrete || (!scalar && !field.HasChildren)} onClick={() => {
+          <Button size="sm" variant="ghost" title={field.Description || undefined} disabled={!concrete || (!scalar && !field.HasChildren) || scalar && !admitted} onClick={() => {
             if (scalar) {
               onSelect(schemaPointer([...names, concrete])); setOpen(false); 
             } else {
               setNames([...names, concrete]); setPath([...path, field.Segment]); setMapKey(''); 
             }
-          }}>{name.length > 0 ? name : 'Map entry'} · {types.length > 0 ? types : 'unknown'} · {field.Presence}{field.HasChildren && !scalar ? ' →' : ''}</Button>
+          }}>{name.length > 0 ? name : 'Map entry'} · {types.length > 0 ? types : 'unknown'} · {field.Presence}{field.Applicability === 'conditional' || field.Conditions?.length ? ' · conditional' : ''}{field.HasChildren && !scalar ? ' →' : ''}</Button>
         </div>;
       })}
       {schema.result?.truncated && <Text size="xs">Schema results truncated. Navigate a narrower object.</Text>}

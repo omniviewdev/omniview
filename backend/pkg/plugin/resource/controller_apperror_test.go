@@ -133,9 +133,9 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 		fn   func() error
 	}{
 		{
-			name: "GetEditorSchemas",
+			name: "ResolveEditorSchema",
 			fn: func() error {
-				_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", resource.AccessRoute{Connection: "conn"})
+				_, err := ctrl.ResolveEditorSchema(testInvocationContext(), "nonexistent", targetedSchemaRequest("conn", "pods"))
 				return err
 			},
 		},

@@ -13,16 +13,15 @@ import (
 
 const observedProjectionSchema = `{"type":"object","properties":{"name":{"type":"string"},"profile":{"type":"object","properties":{"zone":{"type":"string"}}},"opaque":{"type":"string","writeOnly":true},"hidden":{"type":"string","x-sensitive":true},"masked":{"type":"string","format":"password"},"private":{"type":"object","writeOnly":true,"properties":{"zone":{"type":"string"}}},"items":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"}}}},"nullable":{"type":["string","null"]},"secret":{"type":"string"}},"additionalProperties":true}`
 
-// Populate the production immutable wire cache through real snapshot admission,
-// publication and replacement, rather than fabricating observation/revision fields.
+// Populate immutable source storage through real snapshot admission and
+// replacement, rather than fabricating observation/revision fields.
 func observedProjectionFixture(t *testing.T) (*controller, *scriptedSourceProvider, *sourceSession, resourcev2.Record, *int, *int) {
 	t.Helper()
 	docCalls, getCalls := new(int), new(int)
 	documentRef := resourcev2.SchemaDocumentReference{ID: "observed-schema", Revision: "schema-1"}
-	// Bind the schema before the first target/catalog admission. Changing a
-	// schema under an already cached catalog revision correctly retires sources.
+	// Optional schema belongs to the demanded target, never the source catalog.
 	ctrl, _, provider, target := sourceTestFixture(t, func(provider *scriptedSourceProvider) {
-		provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, documentRef)
+		provider.ResolveSchemaFunc = referencedSchema(documentRef)
 		provider.GetSchemaDocumentFunc = func(_ context.Context, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error) {
 			require.Equal(t, resourcev2.AccessRoute{Connection: "conn-1"}, route)
 			require.Equal(t, documentRef, reference)
@@ -157,12 +156,20 @@ func TestObservedProjectionMissingAndRetiredSourcesNeverFetchResource(t *testing
 	original := provider.CatalogFunc
 	provider.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
 		catalog, err := original(ctx, request)
-		catalog.Revision += "-new-schema"
-		revision := "schema-2"
-		catalog.Types[0].Representations[0].Schema.Revision = &revision
+		catalog.Revision += "-enrichment"
+		catalog.Types[0].DisplayName = "Enriched presentation"
 		return catalog, err
 	}
-	require.Error(t, guard(testInvocationContext()), "catalog/schema changes retire old source projections")
+	require.NoError(t, guard(testInvocationContext()), "unrelated catalog enrichment must not retire source projections")
+	identity, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", session.target.Route, record.Reference)
+	require.NoError(t, err)
+	ctrl.schemas.DropConnection("p1", session.target.Route.Connection)
+	require.Error(t, guard(testInvocationContext()), "a retired schema observation must not authorize an old projection")
+	require.NoError(t, identity(testInvocationContext()), "schema retirement does not retire native source identity")
+	session.mu.Lock()
+	session.generation = "retired-source-generation"
+	session.mu.Unlock()
+	require.Error(t, identity(testInvocationContext()), "source generation retirement must still fence native identity")
 	require.Zero(t, *gets)
 }
 
@@ -207,7 +214,7 @@ func TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations(t *t
 		t.Run(dialect, func(t *testing.T) {
 			catalog := canonicalTestCatalog("p1", "native::Pod")
 			revision := "schema-ref-1"
-			catalog.Types[0].Representations[0].Schema = resourcev2.SchemaBinding{
+			binding := resourcev2.SchemaBinding{
 				State: "available", Revision: &revision, Dialect: dialect,
 				Document: []byte(`{"type":"object","properties":{"public":{"$ref":"#/definitions/plain"},"alias":{"$ref":"#/definitions/private"},"sibling":{"$ref":"#/definitions/plain","writeOnly":true}},"definitions":{"plain":{"type":"string"},"private":{"allOf":[{"type":"string"},{"x-sensitive":true}]}}}`),
 			}
@@ -215,22 +222,22 @@ func TestObservedProjectionFollowsSchemaRefsWithoutLosingPrivacyAnnotations(t *t
 			snapshot := cache.Observe(resourcecatalog.ConnectionKey{PluginID: "p1", Generation: "generation", Connection: "conn"}, catalog)
 			entry, err := snapshot.Entry("native::Pod", "native")
 			require.NoError(t, err)
-			schema, err := entry.Resolve(context.Background(), nil)
+			resolution, err := entry.Resolve(context.Background(), func(context.Context, resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) { return binding, nil }, nil)
 			require.NoError(t, err)
 			body := resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{
 				"public":  {Kind: "string", String: "allowed"},
 				"alias":   {Kind: "string", String: "denied"},
 				"sibling": {Kind: "string", String: "denied"},
 			}}
-			projected, err := projectObservedScalars(context.Background(), schema, body, []string{"/public"})
+			projected, err := projectObservedScalars(context.Background(), resolution.Schema, body, []string{"/public"})
 			require.NoError(t, err)
 			require.Equal(t, "allowed", projected.Map["public"].String)
 			for _, path := range []string{"/alias", "/sibling"} {
-				_, err := projectObservedScalars(context.Background(), schema, body, []string{path})
+				_, err := projectObservedScalars(context.Background(), resolution.Schema, body, []string{path})
 				require.Error(t, err, path)
 			}
 			cache.DropConnection("p1", "conn")
-			_, err = entry.Resolve(context.Background(), nil)
+			_, err = entry.Resolve(context.Background(), nil, nil)
 			require.Error(t, err, "retired schema snapshots must not authorize new projection")
 		})
 	}

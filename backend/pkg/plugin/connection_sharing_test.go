@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	hostresource "github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	v2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -69,4 +71,52 @@ func TestDependencyOwnerPreservesStateAndNormalLoadPromotes(t *testing.T) {
 	_, err := pm.LoadPlugin(owner, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, ctrl.promotions)
+}
+
+type sharingBrokerController struct{ hostresource.Controller }
+
+func (sharingBrokerController) ObserveCatalog(ctx context.Context, pluginID string, route v2.AccessRoute) (v2.Catalog, hostresource.Observation, error) {
+	return (activityBrokerResources{}).ObserveCatalog(ctx, pluginID, route)
+}
+
+func (sharingBrokerController) Catalog(ctx context.Context, pluginID string, request v2.CatalogRequest) (v2.Catalog, error) {
+	return (activityBrokerResources{}).Catalog(ctx, pluginID, request)
+}
+
+func TestConnectionSharingNegotiatesCurrentBrokerAndRejectsWireOne(t *testing.T) {
+	for _, mode := range []string{"supported", "host-wire1"} {
+		t.Run(mode, func(t *testing.T) {
+			manager := newTestManager(t)
+			boundary := invocation.NewBoundary(activityBrokerRegistrar{})
+			manager.sharing = &sharingState{resources: sharingBrokerController{}, boundary: boundary, processes: make(map[string]*sharingProcess)}
+			child := startActivityBrokerChild(t, mode)
+			consumer := config.PluginMeta{ID: "untrusted-child-metadata", Requires: &config.RequiresSpec{Connections: []config.ConnectionRequirement{{
+				Plugin: "owner", Operations: []string{"catalog"}, ResourceTypes: []string{"objects/*"},
+			}}}}
+			err := manager.bindConnectionSharing(consumer, child.backend)
+			if mode == "host-wire1" {
+				require.Equal(t, "OWNER_UNAVAILABLE", v2.ErrorCode(err))
+				require.Empty(t, manager.sharing.processes)
+				return
+			}
+			require.NoError(t, err)
+			t.Cleanup(func() { manager.retireConnectionSharing(consumer.ID) })
+			owner := config.PluginMeta{ID: "owner", Exports: &config.ExportsSpec{Connections: &config.ConnectionExport{
+				Operations: []string{"catalog"}, ResourceTypes: []string{"objects/*"},
+			}}}
+			grant, err := config.GrantConnections(consumer, owner)
+			require.NoError(t, err)
+			ctx, err := boundary.Admit(invocation.HostContext(context.Background()), "tools.call", invocation.Target{Provider: consumer.ID, Connection: "cluster"})
+			require.NoError(t, err)
+			process := manager.sharing.processes[consumer.ID]
+			require.NotNil(t, process)
+			token, stop, err := process.service.Begin(ctx, "owner", v2.AccessRoute{Connection: "cluster"}, grant, true, func() error { return nil })
+			require.NoError(t, err)
+			t.Cleanup(stop)
+			request := activityBrokerHostRequest{Token: token, Owner: "owner", Connection: "cluster"}
+			child.call(t, "host-catalog", request, false)
+			stop()
+			child.call(t, "host-catalog", request, true)
+		})
+	}
 }

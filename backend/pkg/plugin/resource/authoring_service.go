@@ -95,7 +95,7 @@ func (c *controller) CompletePredicate(ctx context.Context, pluginID string, req
 		return out, resourceauthoring.SupersededError(sessionCtx, err)
 	}
 	epoch, _ := sessionCtx.Value(sourceEpochKey{}).(sourceEpochSnapshot)
-	out, err = c.completeAgainstSnapshot(sessionCtx, pluginID, provider, generation.generationID, epoch, principal, snapshot, request, policy)
+	out, err = c.completeAgainstSnapshot(sessionCtx, pluginID, provider, generation, epoch, principal, snapshot, request, policy)
 	if err != nil {
 		return resourceauthoring.CompletionResponse{}, resourceauthoring.SupersededError(sessionCtx, err)
 	}
@@ -105,18 +105,13 @@ func (c *controller) CompletePredicate(ctx context.Context, pluginID string, req
 
 // completeAgainstSnapshot admits the target against the observed catalog
 // snapshot, resolves its schema and runs the completion engine.
-func (c *controller) completeAgainstSnapshot(ctx context.Context, pluginID string, provider ResourceProvider, generationID string, epoch sourceEpochSnapshot, principal invocation.Principal, snapshot *resourcecatalog.Snapshot, request resourceauthoring.CompletionRequest, policy resourceauthoring.Policy) (resourceauthoring.CompletionResponse, error) {
+func (c *controller) completeAgainstSnapshot(ctx context.Context, pluginID string, provider ResourceProvider, generation *pluginState, epoch sourceEpochSnapshot, principal invocation.Principal, snapshot *resourcecatalog.Snapshot, request resourceauthoring.CompletionRequest, policy resourceauthoring.Policy) (resourceauthoring.CompletionResponse, error) {
+	catalogRevision := snapshot.Revision()
 	target := request.Target
 	representation := target.Representation
-	var descriptor *resourcev2.ResourceType
-	for _, entry := range snapshot.Entries() {
-		if entry.Type == target.Type {
-			descriptor = &entry.Descriptor
-			break
-		}
-	}
-	if descriptor == nil {
-		return resourceauthoring.CompletionResponse{}, resourcev2.NewError("NOT_FOUND", "Resource type is not in the route catalog.")
+	descriptor, err := snapshot.Descriptor(target.Type)
+	if err != nil {
+		return resourceauthoring.CompletionResponse{}, err
 	}
 	if representation == "" {
 		representation = descriptor.DefaultRepresentation
@@ -124,7 +119,7 @@ func (c *controller) completeAgainstSnapshot(ctx context.Context, pluginID strin
 			return resourceauthoring.CompletionResponse{}, resourcev2.NewError("INVALID_REQUEST", "representation is required for types without a default")
 		}
 	}
-	scope, err := normalizeQueryScope(*descriptor, target.Scope)
+	scope, err := normalizeQueryScope(descriptor, target.Scope)
 	if err != nil {
 		return resourceauthoring.CompletionResponse{}, err
 	}
@@ -135,17 +130,23 @@ func (c *controller) completeAgainstSnapshot(ctx context.Context, pluginID strin
 	if err := ctx.Err(); err != nil {
 		return resourceauthoring.CompletionResponse{}, err
 	}
-	schema, resolveErr := entry.Resolve(ctx, schemaDocumentSource(provider, target.Route))
+	schemaRequest := resourcev2.SchemaRequest{Route: target.Route, Type: target.Type, Target: entry.Target}
+	ctx, entry, err = c.admitSchemaTarget(ctx, pluginID, provider, generation, schemaRequest)
+	if err != nil {
+		return resourceauthoring.CompletionResponse{}, err
+	}
+	resolution, resolveErr := entry.Resolve(ctx, schemaBindingSource(provider), schemaDocumentSource(provider, target.Route))
+	schema := resolution.Schema
 	if resolveErr != nil {
 		code := resourcev2.ErrorCode(resolveErr)
-		deterministic := isDeterministicSchemaCode(code) || entry.Binding.State == "unavailable"
+		deterministic := isDeterministicSchemaCode(code) || resolution.Binding.State == "unavailable"
 		if isDenialCode(code) || isSchemaLifecycleCode(code) || !deterministic {
 			return resourceauthoring.CompletionResponse{}, resolveErr
 		}
 		schema = nil
 	}
 	overlay := resourcecatalog.OverlayFor(entry, schema, resolveErr)
-	environment, err := celtypes.NewEnvironment(snapshot.Revision(), entry, schema)
+	environment, err := celtypes.NewEnvironment(catalogRevision+"\x00"+resolution.Observation, entry, schema)
 	if err != nil {
 		return resourceauthoring.CompletionResponse{}, err
 	}
@@ -156,28 +157,38 @@ func (c *controller) completeAgainstSnapshot(ctx context.Context, pluginID strin
 		Type:                   target.Type,
 		Representation:         representation,
 		ScopeKey:               resourceauthoring.ScopeKey(scope),
-		CatalogRevision:        snapshot.Revision(),
+		CatalogRevision:        catalogRevision,
 		RepresentationRevision: entry.RepresentationRevision,
 		EnvironmentRevision:    resourceauthoring.EnvironmentRevision(environment.Revision, request.Declarations),
 		AccessGeneration: resourceauthoring.AccessGeneration(
-			generationID, target.Route.Connection, strconv.FormatUint(epoch.Epoch, 10),
+			generation.generationID, target.Route.Connection, strconv.FormatUint(epoch.Epoch, 10),
 			string(principal.Origin()), principal.Owner(), principal.Generation()),
 	}
-	if entry.Binding.Revision != nil {
-		identity.SchemaRevision = *entry.Binding.Revision
+	if resolution.Binding.Revision != nil {
+		identity.SchemaRevision = *resolution.Binding.Revision
 	}
 	if stale := resourceauthoring.StaleMembers(request, identity); len(stale) > 0 {
 		return resourceauthoring.CompletionResponse{}, resourcev2.NewError("RESET_REQUIRED", "Authoring identity is stale: "+strings.Join(stale, ", ")+".")
 	}
-	return resourceauthoring.Complete(ctx, resourceauthoring.Input{
+	out, err := resourceauthoring.Complete(ctx, resourceauthoring.Input{
 		Request:  request,
 		Identity: identity,
 		Schema:   schema,
 		Summary: resourceauthoring.SchemaSummary{
-			State: entry.Binding.State, Dialect: entry.Binding.Dialect, Validation: overlay.Validation,
+			State: resolution.Binding.State, Dialect: resolution.Binding.Dialect, Validation: overlay.Validation,
 			HostEvaluation: overlay.HostEvaluation, HostEvaluationCode: overlay.HostEvaluationCode,
 		},
 		Navigation: resourcecatalog.DefaultPolicy(),
 		Policy:     policy,
 	})
+	if err != nil {
+		return resourceauthoring.CompletionResponse{}, err
+	}
+	if err := c.finishSchemaTarget(ctx, "resource.CompletePredicate", pluginID, provider, generation, schemaRequest, entry, resolution.Observation); err != nil {
+		return resourceauthoring.CompletionResponse{}, err
+	}
+	if snapshot.Revision() != catalogRevision {
+		return resourceauthoring.CompletionResponse{}, resourcev2.NewError("RESET_REQUIRED", "Authoring catalog changed during completion.")
+	}
+	return out, nil
 }

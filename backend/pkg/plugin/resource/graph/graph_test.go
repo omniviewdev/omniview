@@ -159,46 +159,6 @@ func TestGraph_RemoveDerivedEdges_ReleasesStrings(t *testing.T) {
 	}
 }
 
-// TestGraph_ChangeTracking — omn-gvuy: edge changes record the connections
-// at both ends and signal Changed; duplicate adds do not.
-func TestGraph_ChangeTracking(t *testing.T) {
-	g := NewRelationshipGraph()
-	pod := node("k8s", "c1", "core::v1::Pod", "default", "p1")
-	edge := GraphEdge{Source: pod, Target: node("k8s", "c2", "core::v1::Node", "", "n1"), Type: RelRunsOn}
-
-	g.AddDeclaredEdge(edge, pod.Key(), false)
-	select {
-	case <-g.Changed():
-	default:
-		t.Fatal("want a change signal after adding an edge")
-	}
-	got := g.TakeChanged()
-	if len(got) != 2 {
-		t.Fatalf("want both connections reported, got %v", got)
-	}
-	if len(g.TakeChanged()) != 0 {
-		t.Fatal("TakeChanged did not reset")
-	}
-
-	g.AddDeclaredEdge(edge, pod.Key(), false)
-	select {
-	case <-g.Changed():
-		t.Fatal("duplicate edge must not signal a change")
-	default:
-	}
-
-	g.RemoveDerivedEdges(pod.Key())
-	if got := g.TakeChanged(); len(got) != 2 {
-		t.Fatalf("want both connections reported after removal, got %v", got)
-	}
-
-	// Removing nothing is not a change.
-	g.RemoveDerivedEdges(pod.Key())
-	if got := g.TakeChanged(); len(got) != 0 {
-		t.Fatalf("want no change when nothing was removed, got %v", got)
-	}
-}
-
 func TestGraph_CanonicalAddressKeyIgnoresScopeOrderAndRoute(t *testing.T) {
 	first := node("provider", "route/one", "opaque/type", "", "opaque/id")
 	first.Reference.Address.Scope = []resource.ScopeEntry{{Dimension: "zone", Value: "a/b"}, {Dimension: "account", Value: "雪"}}

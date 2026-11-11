@@ -38,11 +38,14 @@ func (g *RelationshipGraph) GetSubgraph(ref GraphNode, upDepth, downDepth int) *
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
+	budget := resultBudget{}
+	if g.limitErr != nil || budget.node(ref) != nil || budget.node(ref) != nil {
+		return &Subgraph{Truncated: true}
+	}
 	sg := &Subgraph{
-		Root:      ref,
-		Nodes:     []SubgraphNode{{Node: ref, Depth: 0}},
-		Edges:     []GraphEdge{},
-		Truncated: false,
+		Root:  cloneNode(ref),
+		Nodes: []SubgraphNode{{Node: cloneNode(ref), Depth: 0}},
+		Edges: []GraphEdge{},
 	}
 	seen := map[string]bool{ref.Key(): true}
 	seenEdges := map[[4]string]bool{}
@@ -50,6 +53,10 @@ func (g *RelationshipGraph) GetSubgraph(ref GraphNode, upDepth, downDepth int) *
 	addEdge := func(e GraphEdge) {
 		ek := edgeKey(e)
 		if !seenEdges[ek] {
+			if budget.edge(e) != nil {
+				sg.Truncated = true
+				return
+			}
 			seenEdges[ek] = true
 			sg.Edges = append(sg.Edges, cloneEdge(e))
 		}
@@ -81,6 +88,10 @@ func (g *RelationshipGraph) GetSubgraph(ref GraphNode, upDepth, downDepth int) *
 						d := step
 						if !downstream {
 							d = -step
+						}
+						if budget.node(other) != nil {
+							sg.Truncated = true
+							return
 						}
 						sg.Nodes = append(sg.Nodes, SubgraphNode{Node: cloneNode(other), Depth: d})
 						next = append(next, otherKey)

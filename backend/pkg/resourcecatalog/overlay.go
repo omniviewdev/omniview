@@ -1,6 +1,7 @@
 package resourcecatalog
 
 import (
+	"errors"
 	"slices"
 
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -34,23 +35,25 @@ func OverlayFor(entry *Entry, schema *Schema, resolveErr error) TypeOverlay {
 		NativeQueryLanguages: []string{},
 		Validation:           ValidationNone,
 	}
-	for _, capability := range entry.Descriptor.Capabilities {
+	descriptor := entry.descriptor()
+	for _, capability := range descriptor.Capabilities {
 		overlay.Operations = append(overlay.Operations, capability.Operation)
 	}
 	slices.Sort(overlay.Operations)
 	overlay.Operations = slices.Compact(overlay.Operations)
 	if slices.Contains(overlay.Operations, resourcev2.OperationNativeQuery) {
-		for _, query := range entry.Descriptor.NativeQueries {
+		for _, query := range descriptor.NativeQueries {
 			overlay.NativeQueryLanguages = append(overlay.NativeQueryLanguages, query.Language)
 		}
 		slices.Sort(overlay.NativeQueryLanguages)
 		overlay.NativeQueryLanguages = slices.Compact(overlay.NativeQueryLanguages)
 	}
 
+	var unavailable *bindingUnavailableError
 	switch {
-	case entry.Binding.State == schemaStateUnavailable:
+	case errors.As(resolveErr, &unavailable):
 		overlay.HostEvaluation = HostEvaluationUnavailable
-		overlay.HostEvaluationCode = resourcev2.ErrorCode(unavailableBinding(entry.Binding))
+		overlay.HostEvaluationCode = resourcev2.ErrorCode(resolveErr)
 	case resolveErr != nil:
 		overlay.HostEvaluationCode = resourcev2.ErrorCode(resolveErr)
 		overlay.HostEvaluation = HostEvaluationUnavailable

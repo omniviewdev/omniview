@@ -328,8 +328,8 @@ func TestLegacySourcePagePreflightBeforeValidation(t *testing.T) {
 		name string
 		edit func(*resourcev2.SourcePage)
 	}{
-		{"schema", func(p *resourcev2.SourcePage) {
-			p.Records[0].Representation.Schema.Document = []byte(strings.Repeat("x", maxSourceTransientBytes/512+1))
+		{"format", func(p *resourcev2.SourcePage) {
+			p.Records[0].Representation.Revision = strings.Repeat("x", maxSourceTransientBytes/12+1)
 		}},
 		{"cursor", func(p *resourcev2.SourcePage) {
 			cursor := strings.Repeat("x", maxSourceTransientBytes/32+1)
@@ -471,19 +471,45 @@ func TestLegacySourceFrameReservationHandoff(t *testing.T) {
 }
 
 func TestLegacyProducerAndReceiverHaveIndependentBoundedBudgets(t *testing.T) {
-	session := &sourceSession{staging: make(map[string]sourceMember)}
+	ctrl, _, provider, target := sourceTestFixture(t)
+	admitted, err := ctrl.admit(testInvocationContext(), "resource.OpenSourceView", readTarget("p1", target.Target))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, generation, ctx, cancel, mode, owner, err := ctrl.sources.prepare(admitted, "p1", target.Target, "none")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(cancel)
+	binding := ctx.Value(sourceBindingKey{}).(sourceBinding)
+	request := legacyTestRequest()
+	request.Target = target.Target
+	request.Binding = resourcev2.RepresentationBinding{Representation: binding.Representation}
+	request.Mode = mode
+	session := &sourceSession{
+		coordinator: ctrl.sources, pluginID: "p1", owner: owner, target: target.Target,
+		pluginGeneration: generation, ctx: ctx, cancel: cancel, mode: mode,
+		generation: request.Generation, staging: make(map[string]sourceMember),
+	}
 	page := legacyTestPage()
-	provider := legacyTestProvider{enumerate: func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
+	page.Records = []resourcev2.Record{sourceTestRecord(target.Target, "one", "")}
+	page.Records[0].Representation = binding.Representation
+	provider.EnumerateFunc = func(context.Context, resourcev2.EnumerateRequest) (resourcev2.SourcePage, error) {
 		return page, nil
-	}}
-	ctx := context.WithValue(context.Background(), legacySourceTransientKey{}, &session.legacyTransientLedger)
-	stream, err := newLegacySourceOpener(provider, canonicalTestCatalog("p", "t").Types[0]).OpenSourceStream(ctx, legacyTestRequest())
+	}
+	ctx = resourcev2.WithCatalogRevision(ctx, binding.CatalogRevision)
+	ctx = context.WithValue(ctx, legacySourceTransientKey{}, &session.legacyTransientLedger)
+	stream, err := newLegacySourceOpener(provider, binding.Descriptor).OpenSourceStream(ctx, request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := stream.(*legacySourceStream)
 	defer s.Close()
-	legacyTestRecv(t, s)
+	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, binding.Descriptor)
+	defer tracker.Close()
+	if err := tracker.Admit(legacyTestRecv(t, s)); err != nil {
+		t.Fatal(err)
+	}
 	s.ackFrame()
 	frame := legacyTestRecv(t, s)
 	if frame.Snapshot == nil {
@@ -500,10 +526,18 @@ func TestLegacyProducerAndReceiverHaveIndependentBoundedBudgets(t *testing.T) {
 		t.Fatalf("producer pressure exhausted receiver budget: %v", err)
 	}
 	s.ackFrame()
-	_, err = session.applyLocked(frame, sourceFrameContext{frameReserved: frameBytes})
+	frameContext := sourceFrameContext{ctx: ctx, target: request.Target, descriptor: &binding.Descriptor, frameReserved: frameBytes}
+	if err = tracker.Admit(frame); err == nil {
+		_, err = session.applyLocked(frame, frameContext)
+	}
 	session.transientLedger.release(frameBytes)
 	session.legacyTransientLedger.release(maxSourceTransientBytes - held)
 	if err != nil || len(session.staging) != 1 {
 		t.Fatalf("receiver could not stage concurrently: %v", err)
+	}
+	for key, member := range session.staging {
+		if err := session.prevalidateFrameMember(frameContext, key, member); err != nil {
+			t.Fatalf("receiver staged without current admission: %v", err)
+		}
 	}
 }

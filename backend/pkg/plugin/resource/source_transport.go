@@ -38,11 +38,7 @@ func (c *controller) retireFatalSourceTransport(pluginID string, expected *plugi
 	c.retireMetadata(pluginID, expected)
 	c.actions.stopPlugin(pluginID)
 	c.sources.invalidate(pluginID, "")
-	c.connsMu.RLock()
-	conns := append(c.connections[pluginID][:0:0], c.connections[pluginID]...)
-	c.connsMu.RUnlock()
 	c.clearAutoConnectAttempts(pluginID)
-	c.cleanupPluginGraphState(pluginID, conns)
 	c.lifecycleMu.Unlock()
 
 	c.logger.Errorw(

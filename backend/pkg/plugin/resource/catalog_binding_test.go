@@ -153,12 +153,13 @@ func TestCatalogBindingAppliedBeforeGetRejectsOldAuthority(t *testing.T) {
 	require.NoError(t, err)
 	// Native B is already active, but the host has not observed B yet.
 	catalog = bindingTestCatalog(t, bindingTestEpoch(t), "native", "hintA")
-	_, err = ctrl.Get(testInvocationContext(), "p1", HostGetRequest{TargetID: old.TargetID, Request: resourcev2.GetRequest{
+	rejected, err := ctrl.Get(testInvocationContext(), "p1", HostGetRequest{TargetID: old.TargetID, Request: resourcev2.GetRequest{
 		Route: request.Route, Representation: "native", Reference: canonicalTestRecord(old.Target.Provider, old.Target.Authority, request.Type, "id").Reference,
 	}})
 	require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
 	require.Zero(t, gets.Load())
-	require.Empty(t, ctrl.registryStore.ScanByResourceKey("p1", request.Route.Connection, request.Type))
+	require.Empty(t, rejected.Key)
+	require.Empty(t, rejected.Record.Body.Kind, "retired native data must not reach the caller")
 	fresh, err := ctrl.ResolveTarget(testInvocationContext(), "p1", request)
 	require.NoError(t, err)
 	require.NotEqual(t, old.Target.Authority, fresh.Target.Authority)
@@ -362,12 +363,13 @@ func TestCatalogBindingRestartRetiresUnprovenPersistedAuthorities(t *testing.T) 
 				return resourcev2.Record{}, nil
 			}
 			registerMockPlugin(after, "p1", provider)
-			_, err = after.Get(testInvocationContext(), "p1", HostGetRequest{TargetID: old.TargetID, Request: resourcev2.GetRequest{
+			rejected, err := after.Get(testInvocationContext(), "p1", HostGetRequest{TargetID: old.TargetID, Request: resourcev2.GetRequest{
 				Route: request.Route, Representation: "native", Reference: canonicalTestRecord(old.Target.Provider, old.Target.Authority, request.Type, "id").Reference,
 			}})
 			require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
 			require.Zero(t, gets.Load())
-			require.Empty(t, after.registryStore.ScanByResourceKey("p1", request.Route.Connection, request.Type))
+			require.Empty(t, rejected.Key)
+			require.Empty(t, rejected.Record.Body.Kind, "restart must not return data under an unproven authority")
 			resolver := after.finite.authorities["p1"]
 			require.NotNil(t, resolver)
 			require.False(t, resolver.Matches("p1", request.Route.Connection, old.Target.Provider, absent.Type, missing.Target.Authority), "restart must retire even types absent from the new catalog")

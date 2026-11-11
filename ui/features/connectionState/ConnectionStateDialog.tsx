@@ -28,9 +28,8 @@ export type ConnectionStateDialogProps = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Whether a state is terminal (done — won't change further) */
-const isTerminal = (s: SourceSessionState) =>
-  s === 'following' || s === 'finished' || s === 'failed' || s === 'closed';
+/** Sources with a completed snapshot and no local failure or closure. */
+const isHealthy = (s: SourceSessionState) => s === 'following' || s === 'finished';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -57,21 +56,22 @@ function StateIcon({ state }: { state: SourceSessionState }) {
 /** Per-group progress summary */
 function GroupProgress({ items }: { items: ResourceStateItem[] }) {
   const total = items.length;
-  const done = items.filter(i => isTerminal(i.state)).length;
-  const allDone = total > 0 && done === total;
+  const healthy = items.filter(i => isHealthy(i.state)).length;
+  const allHealthy = total > 0 && healthy === total;
   const hasError = items.some(i => i.state === 'failed');
-  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+  const hasClosed = items.some(i => i.state === 'closed');
+  const percent = total > 0 ? Math.round((healthy / total) * 100) : 0;
 
   return (
     <div className={styles.GroupProgress}>
       <Progress
         value={percent}
         size="sm"
-        color={hasError ? 'danger' : allDone ? 'success' : 'brand'}
+        color={hasError ? 'danger' : hasClosed ? 'neutral' : allHealthy ? 'success' : 'brand'}
         className={styles.GroupProgressBar}
       />
       <Text size="xs" tone="subtle" mono className={styles.GroupProgressLabel}>
-        {`${done}/${total}`}
+        {`${healthy}/${total}`}
       </Text>
     </div>
   );
@@ -89,9 +89,14 @@ export default function ConnectionStateDialog({
   resourceCounts,
   onRetryResource,
 }: ConnectionStateDialogProps) {
-  const { trackedTotal, trackedDone } = React.useMemo(() => {
+  const { trackedTotal, trackedHealthy, hasError, hasClosed } = React.useMemo(() => {
     const states = Object.values(resources);
-    return { trackedTotal: states.length, trackedDone: states.filter(isTerminal).length };
+    return {
+      trackedTotal: states.length,
+      trackedHealthy: states.filter(isHealthy).length,
+      hasError: states.some(state => state === 'failed'),
+      hasClosed: states.some(state => state === 'closed'),
+    };
   }, [resources]);
 
   const grouped = React.useMemo<Array<[string, ResourceStateItem[]]>>(() => [
@@ -103,17 +108,20 @@ export default function ConnectionStateDialog({
     }))],
   ], [resources, resourceCounts]);
 
-  const trackedAllDone = trackedTotal > 0 && trackedDone === trackedTotal;
-  const percent = trackedTotal > 0 ? Math.round((trackedDone / trackedTotal) * 100) : 0;
+  const trackedAllHealthy = trackedTotal > 0 && trackedHealthy === trackedTotal;
+  const percent = trackedTotal > 0 ? Math.round((trackedHealthy / trackedTotal) * 100) : 0;
+  const status = hasError ? 'Sync failed' : hasClosed ? 'Sync incomplete' : trackedAllHealthy ? 'Synced' : 'Syncing';
 
   return (
     <Dialog open={open} onClose={onClose} size="md" className={styles.Surface}>
       {/* Header */}
       <div className={styles.Header}>
         <Dialog.Title className={styles.HeaderTitle}>
-          {!trackedAllDone && <Spinner size="sm" color="brand" />}
-          {trackedAllDone && <LuCircleCheck size={16} className={styles.IconSuccess} />}
-          {trackedAllDone ? `Synced "${connectionName}"` : `Syncing "${connectionName}"`}
+          {hasError ? <LuCircleAlert size={16} className={styles.IconDanger} />
+            : hasClosed ? <LuCircleSlash size={16} className={styles.IconMuted} />
+              : trackedAllHealthy ? <LuCircleCheck size={16} className={styles.IconSuccess} />
+                : <Spinner size="sm" color="brand" />}
+          {`${status} "${connectionName}"`}
         </Dialog.Title>
         <IconButton size="sm" variant="ghost" color="neutral" aria-label="Close" onClick={onClose}>
           <LuX size={16} />
@@ -126,11 +134,11 @@ export default function ConnectionStateDialog({
           <Progress
             value={percent}
             size="lg"
-            color={trackedAllDone ? 'success' : 'brand'}
+            color={hasError ? 'danger' : hasClosed ? 'neutral' : trackedAllHealthy ? 'success' : 'brand'}
             className={styles.ProgressBar}
           />
           <Text size="xs" tone="muted" className={styles.ProgressLabel}>
-            {percent}%&ensp;{trackedDone}/{trackedTotal}
+            {percent}%&ensp;{trackedHealthy}/{trackedTotal}
           </Text>
         </div>
       </div>
@@ -159,9 +167,14 @@ export default function ConnectionStateDialog({
                     Closed
                   </Text>
                 )}
-                {(state === 'following' || state === 'finished') && count && (
+                {isHealthy(state) && count && (
                   <Text size="xs" tone="subtle" mono>
                     {count.value === undefined ? count.kind : `${count.value} (${count.kind})`}
+                  </Text>
+                )}
+                {state === 'failed' && (
+                  <Text size="xs" tone="danger" className={styles.Note}>
+                    Failed
                   </Text>
                 )}
                 {state === 'failed' && (

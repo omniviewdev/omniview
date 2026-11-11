@@ -1,5 +1,5 @@
-// Build the real Kubernetes UI in a disposable canonical source composition,
-// profile the caller's installed host frontend against it, then retire it.
+// Build real Kubernetes outputs in a disposable canonical source composition.
+// Profile its UI, or export a verified candidate archive without launching a host.
 package main
 
 import (
@@ -33,18 +33,34 @@ func main() {
 }
 
 func run(ctx context.Context) (resultErr error) {
-	host := flag.String("host", "", "installed host checkout to profile")
+	host := flag.String("host", "", "exact host source checkout (also the installed frontend to profile)")
 	hostRef := flag.String("host-ref", "", "exact host commit")
 	sdk := flag.String("sdk", "", "resolved SDK source checkout")
 	sdkRef := flag.String("sdk-ref", "", "exact resolved SDK commit")
 	kube := flag.String("kubernetes", "", "Kubernetes source checkout")
 	kubeRef := flag.String("kubernetes-ref", "", "exact Kubernetes source commit")
 	evidenceFile := flag.String("link-evidence", "", "actual native pnpm protocol probe report")
+	archiveOutput := flag.String("archive-output", "", "new absolute candidate archive directory under a private parent; skips profiling")
+	packageVersion := flag.String("package-version", "", "npm publication version to stamp only in private candidate worktrees")
 	flag.Parse()
 	for _, source := range []struct{ path, ref string }{{*host, *hostRef}, {*sdk, *sdkRef}, {*kube, *kubeRef}} {
 		if !filepath.IsAbs(source.path) || !fullCommit.MatchString(source.ref) {
 			return fmt.Errorf("each source requires an absolute checkout path and an explicit full commit")
 		}
+	}
+	var candidate *candidateOutput
+	if *archiveOutput != "" {
+		if len(flag.Args()) != 0 {
+			return fmt.Errorf("candidate archive mode does not accept benchmark arguments")
+		}
+		var err error
+		candidate, err = newCandidateOutput(*archiveOutput, *packageVersion, *host, *sdk, *kube)
+		if err != nil {
+			return err
+		}
+		defer candidate.finish(&resultErr)
+	} else if *packageVersion != "" {
+		return fmt.Errorf("--package-version requires --archive-output")
 	}
 	raw, err := os.ReadFile(*evidenceFile)
 	if err != nil {
@@ -98,14 +114,32 @@ func run(ctx context.Context) (resultErr error) {
 			resultErr = errors.Join(resultErr, fmt.Errorf("preserving private source collection %s: %w", collection, err))
 			return
 		}
+		if candidate != nil {
+			if err := candidate.restore(); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("preserving private source collection %s: %w", collection, err))
+				return
+			}
+		}
 		if _, err := manager.Remove(cleanup, workspace.Manifest.WorkspaceID, devworkspace.RemoveOptions{PurgeState: true, DeleteBranches: true, ValidateGenerated: devworkspace.ValidateGenerated}); err != nil {
 			resultErr = errors.Join(resultErr, fmt.Errorf("preserving private source collection %s: %w", collection, err))
 			return
 		}
 		resultErr = errors.Join(resultErr, os.RemoveAll(collection))
 	}()
+	if candidate != nil {
+		if err = candidate.prepare(ctx, workspace, candidateCommits{Host: *hostRef, SDK: *sdkRef, Kubernetes: *kubeRef}); err != nil {
+			return err
+		}
+	}
 	if _, err = manager.Link(ctx, workspace.Manifest.WorkspaceID, devworkspace.LinkOptions{Evidence: evidence}); err != nil {
 		return err
+	}
+	if candidate != nil {
+		archive, receipt, err := manager.BuildPluginArchive(ctx, workspace.Manifest.WorkspaceID, "kubernetes", os.Stderr)
+		if err != nil {
+			return err
+		}
+		return candidate.record(archive, receipt, raw)
 	}
 	assets, err := manager.BuildPluginUI(ctx, workspace.Manifest.WorkspaceID, "kubernetes", os.Stderr)
 	if err != nil {

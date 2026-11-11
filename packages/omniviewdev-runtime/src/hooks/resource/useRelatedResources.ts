@@ -1,11 +1,7 @@
-import { skipToken, useQuery } from '@tanstack/react-query';
-import { GetRelated } from '../../resource/v2/graph-client';
 import { sameGraphNode, type GraphEdge, type GraphNode } from '../../resource/v2/graph';
 import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
-import { useConnectionReadiness } from '../connection/useConnectionReadiness';
-import { useConnectionQueryGuard } from './useConnectionQueryGuard';
-import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
+import { useGraphObservation } from './useGraphObservation';
 
 /** Which side of the relationship the viewed resource is on. */
 export type RelationshipDirection = 'outgoing' | 'incoming';
@@ -46,14 +42,8 @@ type UseRelatedResourcesOptions = {
   /** Only return edges of this relationship type */
   relationshipType?: string;
 
-  /** Whether to enable the query */
+  /** Whether to hold mounted graph demand. */
   enabled?: boolean;
-
-  /**
-   * Also refetch on this interval, in milliseconds. Not needed normally: the
-   * query refetches when the host reports a graph change for the connection.
-   */
-  refetchInterval?: number | false;
 };
 
 const relationshipLabels: Record<string, Record<RelationshipDirection, string>> = {
@@ -105,8 +95,8 @@ export function toRelatedResources(self: Omit<GraphNode, 'key'>, edges: GraphEdg
  * relationship graph the host builds from the plugin's relationship
  * declarations (owner references, node assignment, volumes, selectors, ...).
  *
- * Only resources the host is watching are indexed. Targets referenced by
- * name (a Secret a Pod mounts) are returned even if they do not exist.
+ * The host holds only populations needed by this mounted request. Targets
+ * referenced by name may be returned without claiming they exist.
  */
 export const useRelatedResources = ({
   pluginID: explicitPluginID,
@@ -115,40 +105,29 @@ export const useRelatedResources = ({
   direction = 'both',
   relationshipType,
   enabled = true,
-  refetchInterval = false,
 }: UseRelatedResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
 
-  const queryKey = ['RESOURCE_RELATED', pluginID, reference, route, direction, relationshipType ?? null];
-  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled: enabled && !!reference.address.id });
-  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
-  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id && readiness.phase === 'connected';
-
-  useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
-
-  const query = useQuery({
-    queryKey,
-    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetRelated(pluginID, reference, route, direction, relationshipType ?? null)) : skipToken,
-    enabled: queryEnabled,
-    refetchInterval,
-  });
+  const observation = useGraphObservation({
+    pluginID, reference, route, kind: 'related', direction, relationshipType,
+  }, enabled);
 
   const self: Omit<GraphNode, 'key'> = {
     pluginId: pluginID,
     reference,
     route,
   };
-  const edges = query.data ?? [];
+  const edges = observation.snapshot?.edges ?? [];
 
   return {
     /** One entry per edge, from the viewed resource's side. */
     related: toRelatedResources(self, edges),
     /** The raw graph edges. */
     edges,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error,
-    refetch: query.refetch,
+    isLoading: observation.isLoading,
+    isFetching: observation.isFetching,
+    error: observation.error,
+    refetch: observation.refetch,
   };
 };
 

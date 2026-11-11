@@ -97,7 +97,7 @@ const row: HostRecord = {
     },
     coverage: { kind: 'complete', paths: [] },
     body: { kind: 'uint64', value: '18446744073709551615' },
-    representation: { id: 'raw', revision: 'r', schema: { state: 'absent' } },
+    representation: { id: 'raw', revision: 'r' },
   },
 };
 const page: ResourceView = {

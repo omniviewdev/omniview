@@ -13,8 +13,8 @@ import (
 // resolvedSchema resolves one inline document through a real catalog.
 func resolvedSchema(t *testing.T, c *Catalog, connection, dialect, document, root string) *Schema {
 	t.Helper()
-	s := c.Observe(key(connection), catalogOf("c1", typeOf("t", inlineBinding(dialect, document, root))))
-	return resolve(t, entry(t, s, "t", "r0"), nil)
+	s := c.Observe(key(connection), catalogOf("c1", typeOf("t", "r0")))
+	return resolve(t, entry(t, s, "t", "r0"), bindingFor("t", inlineBinding(dialect, document, root)), nil)
 }
 
 func navigate(t *testing.T, schema *Schema, policy Policy, path ...PathSegment) Navigation {
@@ -53,17 +53,17 @@ func fieldNamed(t *testing.T, nav Navigation, name string) FieldInfo {
 
 func TestNavigateAbsentSchemaIsEmpty(t *testing.T) {
 	c := NewCatalog(DefaultPolicy())
-	s := c.Observe(key("a"), catalogOf("c1", typeOf("t", resourcev2.SchemaBinding{State: "absent"})))
+	s := c.Observe(key("a"), catalogOf("c1", typeOf("t", "r0")))
 	e := entry(t, s, "t", "r0")
-	schema, err := e.Resolve(context.Background(), nil)
-	if schema != nil || err != nil {
-		t.Fatalf("absent resolve = %v, %v", schema, err)
+	result, err := e.Resolve(context.Background(), bindingFor("t", resourcev2.SchemaBinding{State: "absent"}), nil)
+	if result.Schema != nil || result.Binding.State != "absent" || err != nil {
+		t.Fatalf("absent resolve = %+v, %v", result, err)
 	}
-	nav := navigate(t, schema, DefaultPolicy(), field("anything"))
+	nav := navigate(t, result.Schema, DefaultPolicy(), field("anything"))
 	if nav.Fields != nil || nav.Truncated {
 		t.Fatalf("absent navigation = %+v", nav)
 	}
-	if o := OverlayFor(e, schema, err); o.HostEvaluation != HostEvaluationDynamic || o.Validation != ValidationNone {
+	if o := OverlayFor(e, result.Schema, err); o.HostEvaluation != HostEvaluationDynamic || o.Validation != ValidationNone {
 		t.Fatalf("absent overlay = %+v", o)
 	}
 }

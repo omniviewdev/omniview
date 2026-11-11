@@ -79,6 +79,35 @@ describe('source views', () => {
     view.close();
   });
 
+  it('publishes complete selected bodies with format-only metadata and the original optimistic revision', async () => {
+    const selected: HostRecord = {
+      key: 'host-key', addressKey: 'host-address', targetId: 'host-target', route: { connection: 'route' },
+      record: {
+        reference: { address: { provider: 'provider', authority: 'authority', type: 'opaque/type', scope: [], id: 'selected' }, incarnation: 'native-instance' },
+        representation: { id: 'native', revision: 'format-1' },
+        body: { kind: 'map', value: {
+          offscreen: { kind: 'string', value: 'full-selected-field' },
+          wide: { kind: 'uint64', value: '18446744073709551615' },
+          zero: { kind: 'double', value: -0 },
+        } },
+        coverage: { kind: 'complete', paths: [] },
+        sourceRevision: 'native-optimistic-7',
+      },
+    };
+    const view = await openSourceView('plugin', request);
+    event('one', '1', 'snapshot', { records: [selected] });
+    expect(view.getSnapshot().complete).toBe(false);
+    expect(view.getSnapshot().records.size).toBe(0);
+    event('one', '2', 'snapshotEnd', { status });
+    const published = view.getSnapshot().records.get(selected.key);
+    expect(published).toBe(selected);
+    expect(published?.record.body).toEqual(selected.record.body);
+    expect(published?.record.sourceRevision).toBe('native-optimistic-7');
+    expect(Object.keys(published!.record.representation)).toEqual(['id', 'revision']);
+    expect(view.getSnapshot().complete).toBe(true);
+    view.close();
+  });
+
   it('issues one resync per gap and caps repeated failed generations', async () => {
     vi.useFakeTimers();
     const view = await openSourceView('plugin', request);

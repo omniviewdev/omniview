@@ -21,12 +21,11 @@ type RelationshipGraph struct {
 	declarationProblems map[declMapKey]error
 	selectorCache       map[string]map[string]selectorEntry
 	strings             *stringInterner
-
-	// dirty holds the connections whose edges changed since the last
-	// TakeChanged; changed is signalled (without blocking) when it becomes
-	// non-empty.
-	dirty   map[ConnectionRef]struct{}
-	changed chan struct{}
+	memory              int
+	reserve             func(int) bool
+	release             func(int)
+	limitErr            error
+	selectorCount       int
 }
 
 // ConnectionRef identifies one connection of one plugin.
@@ -58,6 +57,7 @@ type selectorEntry struct {
 	binding  TargetBinding
 	snapshot *boundSet
 	selector labelSelector
+	memory   int
 }
 
 func NewRelationshipGraph() *RelationshipGraph {
@@ -67,8 +67,6 @@ func NewRelationshipGraph() *RelationshipGraph {
 		reverse:       make(map[string][]storedEdge),
 		selectorCache: make(map[string]map[string]selectorEntry),
 		strings:       newStringInterner(),
-		dirty:         make(map[ConnectionRef]struct{}),
-		changed:       make(chan struct{}, 1),
 	}
 }
 
@@ -108,6 +106,9 @@ func (g *RelationshipGraph) addEdgeLocked(se storedEdge) {
 		}
 	}
 
+	if !g.reserveMemory(edgeMemory(edge)) {
+		return
+	}
 	edge = cloneEdge(edge)
 	edge.Source.addressKey = srcKey
 	edge.Target.addressKey = tgtKey
@@ -121,41 +122,6 @@ func (g *RelationshipGraph) addEdgeLocked(se storedEdge) {
 	se.GraphEdge = edge
 	g.forward[srcKey] = append(g.forward[srcKey], se)
 	g.reverse[tgtKey] = append(g.reverse[tgtKey], se)
-	g.markEdgeChanged(edge)
-}
-
-// Changed is signalled when edges change. Call TakeChanged to find out which
-// connections changed. Signals coalesce: one receive may cover many changes.
-func (g *RelationshipGraph) Changed() <-chan struct{} {
-	return g.changed
-}
-
-// TakeChanged returns the connections whose edges changed since the last call
-// and resets the set.
-func (g *RelationshipGraph) TakeChanged() []ConnectionRef {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	out := make([]ConnectionRef, 0, len(g.dirty))
-	for ref := range g.dirty {
-		out = append(out, ref)
-	}
-	clear(g.dirty)
-	return out
-}
-
-// markChanged records a change for a connection. Callers hold g.mu.
-func (g *RelationshipGraph) markChanged(pluginID, connectionID string) {
-	g.dirty[ConnectionRef{PluginID: pluginID, ConnectionID: connectionID}] = struct{}{}
-	select {
-	case g.changed <- struct{}{}:
-	default:
-	}
-}
-
-// markEdgeChanged records a change for both ends of an edge. Callers hold g.mu.
-func (g *RelationshipGraph) markEdgeChanged(e GraphEdge) {
-	g.markChanged(e.Source.PluginID, e.Source.Route.Connection)
-	g.markChanged(e.Target.PluginID, e.Target.Route.Connection)
 }
 
 func (g *RelationshipGraph) EdgesFrom(nodeKey string) []GraphEdge {
@@ -175,7 +141,6 @@ func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
 	defer g.mu.Unlock()
 
 	for _, edge := range g.forward[nodeKey] {
-		g.markEdgeChanged(edge.GraphEdge)
 		g.releaseEdgeStrings(edge.GraphEdge)
 		tgtKey := edge.Target.Key()
 		g.reverse[tgtKey] = removeEdgeFrom(g.reverse[tgtKey], nodeKey, true)
@@ -186,7 +151,6 @@ func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
 	delete(g.forward, nodeKey)
 
 	for _, edge := range g.reverse[nodeKey] {
-		g.markEdgeChanged(edge.GraphEdge)
 		g.releaseEdgeStrings(edge.GraphEdge)
 		srcKey := edge.Source.Key()
 		g.forward[srcKey] = removeEdgeFrom(g.forward[srcKey], nodeKey, false)
@@ -196,7 +160,7 @@ func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
 	}
 	delete(g.reverse, nodeKey)
 
-	delete(g.selectorCache, nodeKey)
+	g.deleteSelectorsLocked(nodeKey)
 }
 
 // RemoveDerivedEdges withdraws the edges derived from the given node's data:
@@ -209,12 +173,12 @@ func (g *RelationshipGraph) RemoveDerivedEdges(nodeKey string) {
 	defer g.mu.Unlock()
 
 	derived := func(e storedEdge) bool {
-		return e.declarer == nodeKey || (e.selector && e.Target.Key() == nodeKey)
+		return e.declarer == nodeKey || (e.selector && (e.Source.Key() == nodeKey || e.Target.Key() == nodeKey))
 	}
 	g.removeMatching(g.forward, g.reverse, nodeKey, derived, true)
 	g.removeMatching(g.reverse, g.forward, nodeKey, derived, false)
 
-	delete(g.selectorCache, nodeKey)
+	g.deleteSelectorsLocked(nodeKey)
 	delete(g.unresolved, nodeKey)
 }
 
@@ -242,7 +206,6 @@ func (g *RelationshipGraph) removeMatching(
 			otherKey = e.Target.Key()
 		}
 		dropEdgeByKey(opposite, otherKey, edgeKey(e.GraphEdge))
-		g.markEdgeChanged(e.GraphEdge)
 		g.releaseEdgeStrings(e.GraphEdge)
 	}
 	if len(kept) == 0 {
@@ -289,9 +252,6 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 		}
 	}
 
-	if len(sourceKeys) > 0 {
-		g.markChanged(pluginID, connectionID)
-	}
 	for _, nodeKey := range sourceKeys {
 		for _, edge := range g.forward[nodeKey] {
 			g.releaseEdgeStrings(edge.GraphEdge)
@@ -307,7 +267,7 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 	for key, entries := range g.selectorCache {
 		for _, entry := range entries {
 			if inConn(entry.node) {
-				delete(g.selectorCache, key)
+				g.deleteSelectorsLocked(key)
 			}
 			break
 		}
@@ -363,7 +323,7 @@ func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 	for key, entries := range g.selectorCache {
 		for _, entry := range entries {
 			if entry.node.PluginID == pluginID {
-				delete(g.selectorCache, key)
+				g.deleteSelectorsLocked(key)
 			}
 			break
 		}
@@ -379,12 +339,23 @@ func (g *RelationshipGraph) setSelector(node GraphNode, decl resource.Relationsh
 		return
 	}
 	key := node.Key()
+	id := declID(decl)
+	cost := selectorMemory(key, id, sel)
+	if old, exists := g.selectorCache[key][id]; exists {
+		g.releaseMemory(old.memory)
+		g.selectorCount--
+		delete(g.selectorCache[key], id)
+	}
+	if !g.reserveMemory(cost) {
+		return
+	}
 	if g.selectorCache[key] == nil {
 		g.selectorCache[key] = make(map[string]selectorEntry)
 	}
 	node = cloneNode(node)
 	node.addressKey = key
-	g.selectorCache[key][declID(decl)] = selectorEntry{node: node, decl: decl, selector: sel, binding: binding, snapshot: snapshot}
+	g.selectorCache[key][id] = selectorEntry{node: node, decl: decl, selector: sel, binding: binding, snapshot: snapshot, memory: cost}
+	g.selectorCount++
 }
 
 // hasSelectors reports whether the node has cached selectors.
@@ -427,6 +398,7 @@ func declID(d resource.RelationshipDescriptor) string {
 }
 
 func (g *RelationshipGraph) releaseEdgeStrings(edge GraphEdge) {
+	g.releaseMemory(edgeMemory(edge))
 	g.strings.Release(edge.Source.PluginID)
 	g.strings.Release(edge.Source.Route.Connection)
 	g.strings.Release(edge.Source.Reference.Address.Type)

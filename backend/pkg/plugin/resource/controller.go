@@ -24,9 +24,6 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
@@ -63,8 +60,8 @@ func init() {
 var tracer = otel.Tracer("omniview.resource")
 
 const (
-	// relationshipBootstrapTimeout bounds fetching relationship declarations on plugin start.
-	relationshipBootstrapTimeout = 30 * time.Second
+	// connectionAdmissionTimeout bounds required support/authority admission.
+	connectionAdmissionTimeout = 30 * time.Second
 	// featureReadyTimeout bounds feature discovery during plugin startup.
 	featureReadyTimeout = 10 * time.Second
 	// streamChannelBuffer is the buffer size of action event and connection streams.
@@ -79,7 +76,6 @@ type Controller interface {
 	SetCrashCallback(cb func(pluginID string))
 	// RetireSourceOwner releases a native window's sources without exposing a browser binding.
 	RetireSourceOwner(owner string)
-	Graph() *graph.RelationshipGraph
 	ValidateReference(context.Context, string, resource.AccessRoute, resource.ResourceReference) error
 	SetConnectionChangeHook(func(pluginID, connectionID string) func())
 	AdmitReference(context.Context, string, string, resource.AccessRoute, resource.ResourceReference) (context.Context, error)
@@ -150,11 +146,11 @@ type controller struct {
 	finite    finiteState
 	inventory inventorySubscriptions
 
-	// Resource registry and relationship graph
-	registryStore registry.Store
-	dispatcher    *indexer.Dispatcher
-	graph         *graph.RelationshipGraph
-	graphNotifier *graphChangeNotifier
+	// Optional graph work has controller-wide bounds, independent of sources.
+	graphRetained sourceMemberLedger
+	graphScratch  sourceTransientLedger
+	graphMetadata sourceMemberLedger
+	graphResults  sourceMemberLedger
 
 	onCrashCallback  func(pluginID string)
 	onFatalTransport func(string, plugintypes.PluginBackend, func(func()) bool)
@@ -180,13 +176,6 @@ func NewController(
 	pluginStoreFn func(string) (*appstate.ScopedRoot, error),
 	boundary *invocation.Boundary,
 ) Controller {
-	store := registry.NewMemoryStore()
-	g := graph.NewRelationshipGraph()
-	graphIndexer := graph.NewGraphIndexer(g, store)
-	dispatcher := indexer.NewDispatcher(
-		[]indexer.ResourceIndexer{graphIndexer},
-	).WithLogger(logger.Named("IndexerDispatcher"))
-
 	c := &controller{
 		app:                 nil,
 		logger:              logger.Named("ResourceController"),
@@ -200,31 +189,18 @@ func NewController(
 		autoConnectAttempts: make(map[string]string),
 		boundary:            boundary,
 		actions:             newActionRegistry(),
-		registryStore:       store,
-		dispatcher:          dispatcher,
-		graph:               g,
-		graphNotifier:       nil,
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
 		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	c.sources = newSourceCoordinator(c)
 	c.actions.emit = func(id string, snapshot ActionSnapshot) { c.emitter.Emit("action/stream/"+id, snapshot) }
-	// Read c.emitter at emit time: it is replaced when the app starts.
-	c.graphNotifier = newGraphChangeNotifier(g, func(eventKey string, data ...any) {
-		c.emitter.Emit(eventKey, data...)
-	}, graphChangeDebounce)
 	return c
 }
 
 // SetCrashCallback sets the function called when a plugin crash is detected.
 func (c *controller) SetCrashCallback(cb func(pluginID string)) {
 	c.onCrashCallback = cb
-}
-
-// Graph returns the underlying RelationshipGraph for use by external services.
-func (c *controller) Graph() *graph.RelationshipGraph {
-	return c.graph
 }
 
 // ============================================================================
@@ -237,28 +213,22 @@ func (c *controller) Run(_ context.Context) {
 	if c.emitter == nil {
 		c.emitter = NoopEmitter{}
 	}
-	c.dispatcher.Start()
-	c.graphNotifier.Start()
 }
 
 // ServiceStartup is called by the Wails v3 runtime when the application starts.
 func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
 	c.emitter = newAppEmitter(c.app)
-	c.dispatcher.Start()
-	c.graphNotifier.Start()
 	return nil
 }
 
 // ServiceShutdown is called by the Wails v3 runtime when the application shuts down.
 func (c *controller) ServiceShutdown() error {
 	c.actions.stopAll()
-	c.graphNotifier.Stop()
-	c.dispatcher.Stop()
 	return nil
 }
 
-// dispenseProvider admits only the canonical resource-v2 boundary. The shared
+// dispenseProvider admits only the canonical resource boundary. The shared
 // go-plugin cohort version is independent of resource wire negotiation.
 func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (ResourceProvider, int, error) {
 	raw, err := backend.Dispense(PluginName)
@@ -268,7 +238,7 @@ func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (Resou
 	provider, ok := raw.(resource.Provider)
 	if !ok {
 		return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
-			"Plugin type mismatch", fmt.Sprintf("Plugin %q does not expose resource wire v2", pluginID))
+			"Plugin type mismatch", fmt.Sprintf("Plugin %q does not expose resource wire v3", pluginID))
 	}
 	return provider, backend.NegotiatedVersion(), nil
 }
@@ -364,26 +334,14 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 			return
 		}
 		c.actions.stopPlugin(pluginID)
-		// Normal failed-plugin stop must still persist its saved configuration.
-		c.connsMu.RLock()
-		conns := append([]types.Connection(nil), c.connections[pluginID]...)
-		c.connsMu.RUnlock()
 		c.clearAutoConnectAttempts(pluginID)
 		c.sources.invalidate(pluginID, "")
-		c.cleanupPluginGraphState(pluginID, conns)
 		c.pluginsMu.Lock()
 		delete(c.plugins, pluginID)
 		c.pluginsMu.Unlock()
 	}()
 	c.clearAutoConnectAttempts(pluginID)
 
-	// Clean up stale registry/graph state from the previous plugin instance.
-	c.connsMu.RLock()
-	prevConns := append([]types.Connection(nil), c.connections[pluginID]...)
-	c.connsMu.RUnlock()
-	if len(prevConns) > 0 {
-		c.cleanupPluginGraphState(pluginID, prevConns)
-	}
 	c.lifecycleMu.Unlock()
 	if existing != nil {
 		if err := existing.closeSource(previousProvider); err != nil {
@@ -427,11 +385,6 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 			}
 		}
 	}
-	if features.Has(resource.FeatureRelationships) {
-		for _, connection := range c.getConnections(pluginID) {
-			c.bootstrapRelationships(invocation.HostContext(watchCtx), pluginID, resource.AccessRoute{Connection: connection.ID})
-		}
-	}
 	if features.Has(resource.FeatureConnectionBrowser) {
 		browser, ok := provider.(resource.ConnectionBrowser)
 		if !ok {
@@ -472,41 +425,15 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.pluginsMu.Unlock()
 	c.sources.invalidate(pluginID, "")
 
-	// Capture connections before deleting them — needed for registry cleanup.
-	c.connsMu.RLock()
-	pluginConns := append([]types.Connection(nil), c.connections[pluginID]...)
-	c.connsMu.RUnlock()
-
 	c.connsMu.Lock()
 	delete(c.connections, pluginID)
 	c.connsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
 
-	c.cleanupPluginGraphState(pluginID, pluginConns)
 	c.pluginsMu.Lock()
 	delete(c.plugins, pluginID)
 	c.pluginsMu.Unlock()
 	return stopped.closeSource(retired)
-}
-
-// cleanupPluginGraphState removes registry entries, graph edges, and
-// declarations for the given plugin and its connections. Called during both
-// plugin stop and plugin restart (to avoid stale state leaking into the
-// replacement).
-func (c *controller) cleanupPluginGraphState(pluginID string, conns []types.Connection) {
-	for _, conn := range conns {
-		removed := c.registryStore.DeleteByConnection(pluginID, conn.ID)
-		for _, entry := range removed {
-			c.dispatcher.Enqueue(indexer.Event{
-				Type:  indexer.EventDelete,
-				Entry: entry,
-				Old:   nil,
-				Raw:   nil,
-			})
-		}
-		c.graph.RemoveEdgesForConnection(pluginID, conn.ID)
-	}
-	c.graph.ClearDeclarationsForPlugin(pluginID)
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
@@ -650,10 +577,8 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	}
 
 	if conn.Status == types.ConnectionStatusConnected {
-		c.bootstrapRelationships(ctx, pluginID, resource.AccessRoute{Connection: connectionID})
-		if err := c.startConnectionUpdates(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
-			c.sources.closeInventory(pluginID, connectionID)
-			return conn, err
+		if _, _, err := c.admitConnectionCatalog(ctx, pluginID, resource.AccessRoute{Connection: connectionID}); err != nil {
+			return types.ConnectionStatus{}, err
 		}
 		if conn.Connection != nil && conn.Connection.ID == connectionID {
 			if err := c.commitBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
@@ -661,8 +586,8 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 			}
 		}
 	}
-	// Bootstrap can retire a persisted authority and advance its source epoch.
-	// Only publish readiness once event-driven readers can use the stable epoch.
+	// Required admission can retire persisted authority and advance its epoch.
+	// Publish readiness before optional explicit connection-policy interests.
 	connName := connectionID
 	if conn.Connection != nil && conn.Connection.Name != "" {
 		connName = conn.Connection.Name
@@ -673,6 +598,9 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		Status:       string(conn.Status),
 		Name:         connName,
 	})
+	if conn.Status == types.ConnectionStatusConnected {
+		c.startConnectionUpdatesAfterReady(pluginID, resource.AccessRoute{Connection: connectionID})
+	}
 
 	return conn, nil
 
@@ -704,7 +632,7 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return types.Connection{}, err
 	}
 	defer releaseObservation()
-	c.sources.closeInventory(pluginID, connectionID)
+	c.sources.closeConnectionInterests(pluginID, connectionID)
 
 	conn, err := provider.StopConnection(ctx, connectionID)
 	if err != nil {

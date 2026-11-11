@@ -20,7 +20,8 @@ type Resources interface {
 	ObserveCatalog(context.Context, string, v2.AccessRoute) (v2.Catalog, resource.Observation, error)
 	Catalog(context.Context, string, v2.CatalogRequest) (v2.Catalog, error)
 	ResolveTarget(context.Context, string, resource.ResolveTargetRequest) (resource.ResolvedTarget, error)
-	GetSchemaDocument(context.Context, string, v2.AccessRoute, v2.SchemaDocumentReference) (v2.SchemaDocument, error)
+	ResolveSchema(context.Context, string, v2.SchemaRequest) (v2.SchemaBinding, error)
+	GetSchemaDocument(context.Context, string, v2.SchemaDocumentRequest) (v2.SchemaDocument, error)
 	Get(context.Context, string, resource.HostGetRequest) (resource.HostRecord, error)
 	Enumerate(context.Context, string, resource.HostEnumerateRequest) (resource.HostSourcePage, error)
 	Mutate(context.Context, string, v2.MutationRequest) (v2.Record, error)
@@ -203,6 +204,11 @@ func (s *Service) Catalog(ctx context.Context, token []byte, owner string, req v
 		return v2.Catalog{}, err
 	}
 	defer done()
+	if req.Refresh {
+		if _, err := s.resources.Catalog(callCtx, owner, req); err != nil {
+			return v2.Catalog{}, err
+		}
+	}
 	if err = s.finish(entry, callCtx); err != nil {
 		return v2.Catalog{}, err
 	}
@@ -237,28 +243,86 @@ func (s *Service) ResolveTarget(ctx context.Context, token []byte, owner string,
 	s.mu.Unlock()
 	return hostconnections.ResolvedTarget{TargetID: out.TargetID, Target: target}, nil
 }
-func (s *Service) GetSchemaDocument(ctx context.Context, token []byte, owner string, route v2.AccessRoute, ref v2.SchemaDocumentReference) (v2.SchemaDocument, error) {
-	entry, callCtx, done, err := s.acquire(ctx, token, owner, route)
+
+// schemaAllowed checks the granted type and exact selected target before any
+// resolver/document call. Shared document identity never widens this admission.
+func schemaAllowed(entry *call, request v2.SchemaRequest) bool {
+	if v2.ValidateSchemaRequest(request) != nil || request.Route != entry.route || !entry.grant.Allows("catalog", request.Type) {
+		return false
+	}
+	for _, typ := range entry.catalog.Types {
+		if typ.Type != request.Type {
+			continue
+		}
+		if representation := request.Target.Representation; representation != nil {
+			for _, declared := range typ.Representations {
+				if declared == *representation {
+					return true
+				}
+			}
+			return false
+		}
+		return v2.ValidateAddress(request.Target.Auxiliary.Reference.Address, typ.IdentityDimensions) == nil &&
+			request.Target.Auxiliary.Reference.Address.Provider == entry.catalog.Provider
+	}
+	return false
+}
+
+func (s *Service) finishSchema(entry *call, ctx context.Context, token []byte, request v2.SchemaRequest) error {
+	if err := s.finish(entry, ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	active := s.calls[hex.EncodeToString(token)] == entry
+	allowed := active && schemaAllowed(entry, request)
+	s.mu.Unlock()
+	if !active {
+		return inactive()
+	}
+	if !allowed {
+		return denied()
+	}
+	return nil
+}
+
+func (s *Service) ResolveSchema(ctx context.Context, token []byte, owner string, request v2.SchemaRequest) (v2.SchemaBinding, error) {
+	entry, callCtx, done, err := s.acquire(ctx, token, owner, request.Route)
+	if err != nil {
+		return v2.SchemaBinding{}, err
+	}
+	defer done()
+	if !schemaAllowed(entry, request) {
+		return v2.SchemaBinding{}, denied()
+	}
+	out, err := s.resources.ResolveSchema(callCtx, owner, request)
+	if err != nil {
+		return v2.SchemaBinding{}, err
+	}
+	if err := s.finishSchema(entry, callCtx, token, request); err != nil {
+		return v2.SchemaBinding{}, err
+	}
+	return out, nil
+}
+
+func (s *Service) GetSchemaDocument(ctx context.Context, token []byte, owner string, request v2.SchemaDocumentRequest) (v2.SchemaDocument, error) {
+	entry, callCtx, done, err := s.acquire(ctx, token, owner, request.Request.Route)
 	if err != nil {
 		return v2.SchemaDocument{}, err
 	}
 	defer done()
-	found := false
-	for _, typ := range entry.catalog.Types {
-		for _, representation := range typ.Representations {
-			if representation.Schema.DocumentRef != nil && *representation.Schema.DocumentRef == ref {
-				found = true
-			}
-		}
-	}
-	if !found {
+	if v2.ValidateSchemaDocumentRequest(request) != nil || !schemaAllowed(entry, request.Request) {
 		return v2.SchemaDocument{}, denied()
 	}
-	out, err := s.resources.GetSchemaDocument(callCtx, owner, route, ref)
+	// The host owns the live target/reference association and independently
+	// revalidates its original generation and principal before returning bytes.
+	out, err := s.resources.GetSchemaDocument(callCtx, owner, request)
 	if err != nil {
 		return v2.SchemaDocument{}, err
 	}
-	if err = s.finish(entry, callCtx); err != nil {
+	if out.Reference != request.Reference {
+		return v2.SchemaDocument{}, v2.NewError("RESET_REQUIRED", "Schema document association changed.")
+	}
+	if err := s.finishSchema(entry, callCtx, token, request.Request); err != nil {
 		return v2.SchemaDocument{}, err
 	}
 	return out, nil

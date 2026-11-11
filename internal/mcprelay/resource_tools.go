@@ -15,6 +15,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -859,19 +860,15 @@ func dispatchRouteLane(
 		if binding.Graph == nil {
 			return nil, errors.New("resource graph unavailable")
 		}
-		edges, err := binding.Graph.GetRelated(
-			ctx, binding.PluginID, *args.Reference, binding.Route, args.Direction, args.RelationshipType,
-		)
+		result, err := binding.Graph.GetRelated(ctx, graph.RelatedRequest{
+			PluginID: binding.PluginID, Reference: *args.Reference, Route: binding.Route,
+			Direction: args.Direction, RelationshipType: args.RelationshipType, Limit: 1000,
+		})
 		if err != nil {
 			return nil, err
 		}
-		const maxRelatedEdges = 1000
-		truncated := len(edges) > maxRelatedEdges
-		if truncated {
-			edges = edges[:maxRelatedEdges]
-		}
 		return ResourceRelatedResult{
-			Route: binding.Route, Reference: *args.Reference, Edges: edges, Truncated: truncated,
+			Route: binding.Route, Reference: *args.Reference, Edges: result.Edges, Truncated: result.Truncated,
 		}, nil
 	}
 	return nil, errors.New("unsupported resource tool lane")

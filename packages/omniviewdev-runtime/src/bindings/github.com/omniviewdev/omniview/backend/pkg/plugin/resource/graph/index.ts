@@ -5,6 +5,8 @@ export {
     DependencyNode,
     DependencyTree,
     GraphEdge,
+    RelatedRequest,
+    RelatedResult,
     Subgraph,
     SubgraphNode
 } from "./models.js";

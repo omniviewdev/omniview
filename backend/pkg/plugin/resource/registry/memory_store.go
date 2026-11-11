@@ -153,19 +153,35 @@ func (s *MemoryStore) ScanByLabel(pluginID, connectionID, resourceType string, s
 	if len(selector) == 0 {
 		return nil
 	}
+	var entries []ResourceEntry
+	s.VisitByResourceKey(pluginID, connectionID, resourceType, selector, func(entry ResourceEntry) bool { entries = append(entries, cloneEntry(entry)); return true })
+	return entries
+}
+
+func (s *MemoryStore) ScanByResourceKey(pluginID, connectionID, resourceType string) []ResourceEntry {
+	var entries []ResourceEntry
+	s.VisitByResourceKey(pluginID, connectionID, resourceType, nil, func(entry ResourceEntry) bool { entries = append(entries, cloneEntry(entry)); return true })
+	return entries
+}
+
+// The callback reads one immutable contribution while the store owns its read
+// lock. Graph extraction never clones every candidate label map into scratch.
+func (s *MemoryStore) VisitByResourceKey(pluginID, connectionID, resourceType string, selector map[string]string, visit func(ResourceEntry) bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var candidates map[projectionKey]struct{}
+	candidates := s.byConn[connectionKey{pluginID, connectionID}]
+	if len(candidates) == 0 {
+		return
+	}
 	for name, value := range selector {
-		set := s.byLabel[labelKey{name, value}]
-		if len(set) == 0 {
-			return nil
+		entries := s.byLabel[labelKey{name, value}]
+		if len(entries) == 0 {
+			return
 		}
-		if candidates == nil || len(set) < len(candidates) {
-			candidates = set
+		if len(entries) < len(candidates) {
+			candidates = entries
 		}
 	}
-	var result []ResourceEntry
 	for key := range candidates {
 		entry := s.entries[key]
 		if key.Plugin != pluginID || key.Connection != connectionID || entry.Reference.Address.Type != resourceType {
@@ -173,27 +189,13 @@ func (s *MemoryStore) ScanByLabel(pluginID, connectionID, resourceType string, s
 		}
 		matches := true
 		for name, value := range selector {
-			if actual, ok := entry.Labels[name]; !ok || actual != value {
+			if actual, exists := entry.Labels[name]; !exists || actual != value {
 				matches = false
 				break
 			}
 		}
-		if matches {
-			result = append(result, cloneEntry(entry))
+		if matches && !visit(entry) {
+			return
 		}
 	}
-	return result
-}
-
-func (s *MemoryStore) ScanByResourceKey(pluginID, connectionID, resourceType string) []ResourceEntry {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var result []ResourceEntry
-	for key := range s.byConn[connectionKey{pluginID, connectionID}] {
-		entry := s.entries[key]
-		if entry.Reference.Address.Type == resourceType {
-			result = append(result, cloneEntry(entry))
-		}
-	}
-	return result
 }

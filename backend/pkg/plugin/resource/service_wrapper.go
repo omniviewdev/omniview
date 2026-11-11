@@ -179,14 +179,14 @@ func (s *ServiceWrapper) GetSchemaFields(ctx context.Context, pluginID string, r
 func (s *ServiceWrapper) CompletePredicate(ctx context.Context, pluginID string, request resourceauthoring.CompletionRequest) (resourceauthoring.CompletionResponse, error) {
 	return s.Ctrl.CompletePredicate(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) ([]EditorSchemaAssociation, error) {
-	return s.Ctrl.GetEditorSchemas(s.realmContext(ctx), pluginID, route)
+func (s *ServiceWrapper) ResolveEditorSchema(ctx context.Context, pluginID string, request resourcev2.SchemaRequest) (EditorSchemaResult, error) {
+	return s.Ctrl.ResolveEditorSchema(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (EditorSchemaDocument, error) {
-	return s.Ctrl.GetEditorSchemaDocument(s.realmContext(ctx), pluginID, route, documentID)
+func (s *ServiceWrapper) ResolveSchema(ctx context.Context, pluginID string, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+	return s.Ctrl.ResolveSchema(s.realmContext(ctx), pluginID, request)
 }
-func (s *ServiceWrapper) GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error) {
-	return s.Ctrl.GetSchemaDocument(s.realmContext(ctx), pluginID, route, reference)
+func (s *ServiceWrapper) GetSchemaDocument(ctx context.Context, pluginID string, request resourcev2.SchemaDocumentRequest) (resourcev2.SchemaDocument, error) {
+	return s.Ctrl.GetSchemaDocument(s.realmContext(ctx), pluginID, request)
 }
 func (s *ServiceWrapper) GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) ([]resourcev2.RelationshipDescriptor, error) {
 	return s.Ctrl.GetRelationships(s.realmContext(ctx), pluginID, route, resourceType)

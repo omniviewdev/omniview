@@ -111,7 +111,7 @@ func p07RefBinding(dialect, revision, id string) resourcev2.SchemaBinding {
 
 // p07Type declares one resource type with a single "native" representation and
 // non-Kubernetes identity and query dimensions.
-func p07Type(name string, dimensions []string, binding resourcev2.SchemaBinding, operations ...resourcev2.Operation) resourcev2.ResourceType {
+func p07Type(name string, dimensions []string, operations ...resourcev2.Operation) resourcev2.ResourceType {
 	declared := make([]resourcev2.Dimension, len(dimensions))
 	for i, dimension := range dimensions {
 		declared[i] = resourcev2.Dimension{Name: dimension}
@@ -123,9 +123,21 @@ func p07Type(name string, dimensions []string, binding resourcev2.SchemaBinding,
 	return resourcev2.ResourceType{
 		Type: name, DisplayName: name,
 		IdentityDimensions: declared, QueryDimensions: declared,
-		Representations:       []resourcev2.Representation{{ID: "native", Revision: "native/1", Schema: binding}},
+		Representations:       []resourcev2.Representation{{ID: "native", Revision: "native/1"}},
 		DefaultRepresentation: "native",
 		Capabilities:          capabilities,
+	}
+}
+
+// p07Source belongs to one fixture route and selected operational format.
+func p07Source(connection string, typ resourcev2.ResourceType, binding resourcev2.SchemaBinding) resourcecatalog.BindingSource {
+	representation := typ.Representations[0]
+	return func(_ context.Context, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+		if request.Route.Connection != connection || request.Type != typ.Type || request.Target.Auxiliary != nil ||
+			request.Target.Representation == nil || *request.Target.Representation != representation {
+			return resourcev2.SchemaBinding{}, resourcev2.NewError("INVALID_REQUEST", "schema request escaped its fixture target")
+		}
+		return binding, nil
 	}
 }
 
@@ -148,19 +160,19 @@ func p07Unknown(paths ...string) resourcev2.Coverage {
 }
 
 // p07Resolve observes a one-type catalog and resolves its only entry.
-func p07Resolve(catalog *resourcecatalog.Catalog, plugin, connection, revision string, typ resourcev2.ResourceType, fetch resourcecatalog.DocumentSource) (*resourcecatalog.Snapshot, *resourcecatalog.Entry, *resourcecatalog.Schema, error) {
+func p07Resolve(catalog *resourcecatalog.Catalog, plugin, connection, revision string, typ resourcev2.ResourceType, binding resourcev2.SchemaBinding, fetch resourcecatalog.DocumentSource) (*resourcecatalog.Snapshot, *resourcecatalog.Entry, *resourcecatalog.Schema, error) {
 	snapshot := catalog.Observe(p07Key(plugin, connection), p07Catalog(revision, typ))
 	entry, err := snapshot.Entry(typ.Type, "native")
 	if err != nil {
 		return snapshot, nil, nil, err
 	}
-	schema, err := entry.Resolve(context.Background(), fetch)
-	return snapshot, entry, schema, err
+	resolution, err := entry.Resolve(context.Background(), p07Source(connection, typ, binding), fetch)
+	return snapshot, entry, resolution.Schema, err
 }
 
-func p07MustResolve(t *testing.T, catalog *resourcecatalog.Catalog, plugin, connection, revision string, typ resourcev2.ResourceType, fetch resourcecatalog.DocumentSource) (*resourcecatalog.Snapshot, *resourcecatalog.Entry, *resourcecatalog.Schema) {
+func p07MustResolve(t *testing.T, catalog *resourcecatalog.Catalog, plugin, connection, revision string, typ resourcev2.ResourceType, binding resourcev2.SchemaBinding, fetch resourcecatalog.DocumentSource) (*resourcecatalog.Snapshot, *resourcecatalog.Entry, *resourcecatalog.Schema) {
 	t.Helper()
-	snapshot, entry, schema, err := p07Resolve(catalog, plugin, connection, revision, typ, fetch)
+	snapshot, entry, schema, err := p07Resolve(catalog, plugin, connection, revision, typ, binding, fetch)
 	if err != nil {
 		t.Fatalf("resolve %s/%s: %v", connection, typ.Type, err)
 	}
@@ -277,11 +289,18 @@ func TestAcceptanceProviderNeutralSchemaStates(t *testing.T) {
 	}
 	forbidden := "FORBIDDEN"
 	operations := []resourcev2.Operation{resourcev2.OperationGet, resourcev2.OperationEnumerate}
-	cloud := p07Type("compute.instance", []string{"account", "region"}, p07Binding(p07Draft2020, "cloud/1", p07CloudInstanceSchema), operations...)
-	container := p07Type("container", []string{"host"}, p07RefBinding(p07Draft07, "container/v1", "container/v1"), operations...)
-	hypervisor := p07Type("vm", []string{"node"}, resourcev2.SchemaBinding{State: "absent"}, operations...)
-	denied := p07Type("storage.volume", []string{"pool"}, resourcev2.SchemaBinding{State: "unavailable", UnavailableReason: &forbidden}, operations...)
-	legacy := p07Type("network.policy", []string{"zone"}, p07Binding("https://json-schema.org/draft/2019-09/schema", "legacy/1", `{"type":"object"}`), operations...)
+	cloud := p07Type("compute.instance", []string{"account", "region"}, operations...)
+	container := p07Type("container", []string{"host"}, operations...)
+	hypervisor := p07Type("vm", []string{"node"}, operations...)
+	denied := p07Type("storage.volume", []string{"pool"}, operations...)
+	legacy := p07Type("network.policy", []string{"zone"}, operations...)
+	bindings := map[string]resourcev2.SchemaBinding{
+		cloud.Type:      p07Binding(p07Draft2020, "cloud/1", p07CloudInstanceSchema),
+		container.Type:  p07RefBinding(p07Draft07, "container/v1", "container/v1"),
+		hypervisor.Type: {State: "absent"},
+		denied.Type:     {State: "unavailable", UnavailableReason: &forbidden},
+		legacy.Type:     p07Binding("https://json-schema.org/draft/2019-09/schema", "legacy/1", `{"type":"object"}`),
+	}
 
 	// Every input is free of Kubernetes constructs.
 	for _, typ := range []resourcev2.ResourceType{cloud, container, hypervisor, denied, legacy} {
@@ -290,13 +309,13 @@ func TestAcceptanceProviderNeutralSchemaStates(t *testing.T) {
 				t.Fatalf("%s declares Kubernetes dimension %q", typ.Type, dimension.Name)
 			}
 		}
-		if binding := typ.Representations[0].Schema; binding.Dialect == resourcev2.DialectOpenAPI30 || strings.Contains(string(binding.Document), "x-kubernetes") {
+		if binding := bindings[typ.Type]; binding.Dialect == resourcev2.DialectOpenAPI30 || strings.Contains(string(binding.Document), "x-kubernetes") {
 			t.Fatalf("%s uses OpenAPI or Kubernetes extensions", typ.Type)
 		}
 	}
 
 	t.Run("static", func(t *testing.T) {
-		snapshot, entry, schema := p07MustResolve(t, catalog, "neutral", "cloud", "c1", cloud, nil)
+		snapshot, entry, schema := p07MustResolve(t, catalog, "neutral", "cloud", "c1", cloud, bindings[cloud.Type], nil)
 		if schema == nil || schema.Validation != resourcecatalog.ValidationFull || len(schema.Unvalidated) != 0 || schema.Dialect != p07Draft2020 {
 			t.Fatalf("schema = %+v", schema)
 		}
@@ -342,14 +361,14 @@ func TestAcceptanceProviderNeutralSchemaStates(t *testing.T) {
 
 	t.Run("discovered", func(t *testing.T) {
 		before := fetches.Load()
-		_, entry, schema := p07MustResolve(t, catalog, "neutral", "docker", "c1", container, fetch)
+		_, entry, schema := p07MustResolve(t, catalog, "neutral", "docker", "c1", container, bindings[container.Type], fetch)
 		if got := fetches.Load() - before; got != 1 {
 			t.Fatalf("fetches = %d, want 1 reference fetch", got)
 		}
 		if schema == nil || schema.Validation != resourcecatalog.ValidationFull || schema.Dialect != p07Draft07 {
 			t.Fatalf("schema = %+v", schema)
 		}
-		if again, err := entry.Resolve(context.Background(), fetch); err != nil || again != schema || fetches.Load() != before+1 {
+		if again, err := entry.Resolve(context.Background(), p07Source("docker", container, bindings[container.Type]), fetch); err != nil || again.Schema != schema || fetches.Load() != before+1 {
 			t.Fatalf("second resolve = %v, %v (fetches %d)", again, err, fetches.Load()-before)
 		}
 		p07RequireAdmitted(t, schema, p07ContainerBody, p07Complete)
@@ -363,9 +382,13 @@ func TestAcceptanceProviderNeutralSchemaStates(t *testing.T) {
 	})
 
 	t.Run("absent", func(t *testing.T) {
-		snapshot, entry, schema := p07MustResolve(t, catalog, "neutral", "pve", "c1", hypervisor, fetch)
+		snapshot, entry, schema := p07MustResolve(t, catalog, "neutral", "pve", "c1", hypervisor, bindings[hypervisor.Type], fetch)
 		if schema != nil {
 			t.Fatalf("absent binding resolved to %+v", schema)
+		}
+		resolution, err := entry.Resolve(context.Background(), p07Source("pve", hypervisor, bindings[hypervisor.Type]), fetch)
+		if err != nil || resolution.Binding.State != "absent" || entry.Current(resolution.Observation) != nil {
+			t.Fatalf("absent observation = %+v, %v", resolution, err)
 		}
 		overlay := resourcecatalog.OverlayFor(entry, schema, nil)
 		if overlay.HostEvaluation != resourcecatalog.HostEvaluationDynamic || overlay.Validation != resourcecatalog.ValidationNone {
@@ -383,12 +406,12 @@ func TestAcceptanceProviderNeutralSchemaStates(t *testing.T) {
 			t.Fatalf("absent schema must type resource as dyn: %v", err)
 		}
 		// A structurally invalid value is still rejected without a schema.
-		_, err := p07Admit(schema, resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"vmid": {Kind: "int64", Int: "007"}}}, p07Complete)
+		_, err = p07Admit(schema, resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"vmid": {Kind: "int64", Int: "007"}}}, p07Complete)
 		p07RequireInvalid(t, err, "/vmid", "int64 007")
 	})
 
 	t.Run("unavailable", func(t *testing.T) {
-		_, entry, schema, err := p07Resolve(catalog, "neutral", "storage", "c1", denied, fetch)
+		_, entry, schema, err := p07Resolve(catalog, "neutral", "storage", "c1", denied, bindings[denied.Type], fetch)
 		if schema != nil || resourcev2.ErrorCode(err) != "FORBIDDEN" {
 			t.Fatalf("unavailable resolve = %v, %v", schema, err)
 		}
@@ -399,7 +422,7 @@ func TestAcceptanceProviderNeutralSchemaStates(t *testing.T) {
 	})
 
 	t.Run("unsupported", func(t *testing.T) {
-		_, entry, schema, err := p07Resolve(catalog, "neutral", "network", "c1", legacy, fetch)
+		_, entry, schema, err := p07Resolve(catalog, "neutral", "network", "c1", legacy, bindings[legacy.Type], fetch)
 		if schema != nil || resourcev2.ErrorCode(err) != "UNSUPPORTED" {
 			t.Fatalf("unsupported dialect resolve = %v, %v", schema, err)
 		}
@@ -436,9 +459,9 @@ func TestAcceptanceSchemaGrantsNoOperationOrNativeFiltering(t *testing.T) {
 	for stateName, binding := range states {
 		for descriptorName, operations := range descriptors {
 			connection := stateName + "/" + descriptorName
-			typ := p07Type("thing", []string{"scope"}, binding, operations...)
+			typ := p07Type("thing", []string{"scope"}, operations...)
 			typ.NativeQueries = []resourcev2.NativeQueryDescriptor{{Language: "sql"}, {Language: "jmespath"}}
-			_, entry, schema, err := p07Resolve(catalog, "neutral", connection, "c1", typ, nil)
+			_, entry, schema, err := p07Resolve(catalog, "neutral", connection, "c1", typ, binding, nil)
 			overlay := resourcecatalog.OverlayFor(entry, schema, err)
 			want := append([]resourcev2.Operation{}, operations...)
 			slices.Sort(want)
@@ -473,8 +496,8 @@ func TestAcceptanceSchemaGrantsNoOperationOrNativeFiltering(t *testing.T) {
 	fetch := func(_ context.Context, ref resourcev2.SchemaDocumentReference) (resourcev2.SchemaDocument, error) {
 		return resourcev2.SchemaDocument{Reference: ref, Dialect: p07Draft07, Document: json.RawMessage(p07ContainerSchema)}, nil
 	}
-	_, _, cloud := p07MustResolve(t, catalog, "neutral", "walk-cloud", "c1", p07Type("compute.instance", []string{"scope"}, p07Binding(p07Draft2020, "cloud/1", p07CloudInstanceSchema)), nil)
-	_, _, container := p07MustResolve(t, catalog, "neutral", "walk-container", "c1", p07Type("container", []string{"scope"}, p07RefBinding(p07Draft07, "c/1", "c/1")), fetch)
+	_, _, cloud := p07MustResolve(t, catalog, "neutral", "walk-cloud", "c1", p07Type("compute.instance", []string{"scope"}), p07Binding(p07Draft2020, "cloud/1", p07CloudInstanceSchema), nil)
+	_, _, container := p07MustResolve(t, catalog, "neutral", "walk-container", "c1", p07Type("container", []string{"scope"}), p07RefBinding(p07Draft07, "c/1", "c/1"), fetch)
 	cloudPositions, containerPositions := walk(cloud, nil, 0), walk(container, nil, 0)
 	if cloudPositions < 6 || containerPositions < 5 {
 		t.Fatalf("walk visited %d cloud and %d container positions; the schemas have more", cloudPositions, containerPositions)
@@ -492,18 +515,19 @@ func TestAcceptanceNavigationAgreesWithAdmission(t *testing.T) {
 		return resourcev2.SchemaDocument{Reference: ref, Dialect: p07Draft07, Document: json.RawMessage(p07ContainerSchema)}, nil
 	}
 	cases := []struct {
-		name   string
-		typ    resourcev2.ResourceType
-		fetch  resourcecatalog.DocumentSource
-		valid  string
-		fields int
+		name    string
+		typ     resourcev2.ResourceType
+		binding resourcev2.SchemaBinding
+		fetch   resourcecatalog.DocumentSource
+		valid   string
+		fields  int
 	}{
-		{"cloud", p07Type("compute.instance", []string{"account"}, p07Binding(p07Draft2020, "cloud/1", p07CloudInstanceSchema)), nil, p07CloudInstanceBody, 6},
-		{"container", p07Type("container", []string{"host"}, p07RefBinding(p07Draft07, "c/1", "c/1")), fetch, p07ContainerBody, 6},
+		{"cloud", p07Type("compute.instance", []string{"account"}), p07Binding(p07Draft2020, "cloud/1", p07CloudInstanceSchema), nil, p07CloudInstanceBody, 6},
+		{"container", p07Type("container", []string{"host"}), p07RefBinding(p07Draft07, "c/1", "c/1"), fetch, p07ContainerBody, 6},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, schema := p07MustResolve(t, catalog, "neutral", tc.name, "c1", tc.typ, tc.fetch)
+			_, _, schema := p07MustResolve(t, catalog, "neutral", tc.name, "c1", tc.typ, tc.binding, tc.fetch)
 			p07RequireAdmitted(t, schema, tc.valid, p07Complete)
 			navigation := p07Navigate(t, schema)
 			if len(navigation.Fields) != tc.fields {
@@ -570,7 +594,7 @@ func TestAcceptanceEditorSchemaMatchesAdmission(t *testing.T) {
 	if withUnsupported == p07CloudInstanceSchema {
 		t.Fatal("fixture edit did not apply")
 	}
-	_, _, schema := p07MustResolve(t, catalog, "neutral", "editor", "c1", p07Type("compute.instance", []string{"account"}, p07Binding(p07Draft2020, "cloud/1", withUnsupported)), nil)
+	_, _, schema := p07MustResolve(t, catalog, "neutral", "editor", "c1", p07Type("compute.instance", []string{"account"}), p07Binding(p07Draft2020, "cloud/1", withUnsupported), nil)
 	if schema.Validation != resourcecatalog.ValidationReduced || !slices.Equal(schema.Unvalidated, []resourcecatalog.Constraint{{Pointer: "/properties/probe", Keyword: "not"}}) {
 		t.Fatalf("schema = %s %v", schema.Validation, schema.Unvalidated)
 	}
@@ -650,7 +674,7 @@ func TestAcceptancePartialRepresentationsProviderNeutral(t *testing.T) {
 		}
 	}`
 	catalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
-	_, _, schema := p07MustResolve(t, catalog, "neutral", "partial", "c1", p07Type("thing", []string{"scope"}, p07Binding(p07Draft2020, "t/1", schemaJSON)), nil)
+	_, _, schema := p07MustResolve(t, catalog, "neutral", "partial", "c1", p07Type("thing", []string{"scope"}), p07Binding(p07Draft2020, "t/1", schemaJSON), nil)
 	if schema.Validation != resourcecatalog.ValidationFull {
 		t.Fatalf("validation = %s %v", schema.Validation, schema.Unvalidated)
 	}

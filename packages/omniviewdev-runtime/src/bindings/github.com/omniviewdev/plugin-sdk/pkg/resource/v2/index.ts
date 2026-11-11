@@ -56,5 +56,8 @@ export type {
     ResourceAddress,
     Schema,
     SchemaBinding,
+    SchemaDocumentRequest,
+    SchemaRequest,
+    SchemaTarget,
     Value
 } from "./models.js";

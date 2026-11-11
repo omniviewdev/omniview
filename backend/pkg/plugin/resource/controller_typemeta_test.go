@@ -30,7 +30,7 @@ func TestCatalog_ResourceMetadataAndCapabilities(t *testing.T) {
 	assert.Equal(t, expected.Coverage, catalog.Coverage)
 	assert.Equal(t, resource.OperationGet, catalog.Types[0].Capabilities[0].Operation)
 	assert.Equal(t, "namespace", catalog.Types[0].IdentityDimensions[0].Name)
-	assert.Equal(t, "absent", catalog.Types[0].Representations[0].Schema.State)
+	assert.Equal(t, canonicalTestRepresentation(), catalog.Types[0].Representations[0], "support contains only body-format identity")
 }
 
 func TestResolveTarget_RejectsUnknownTypeAndRepresentation(t *testing.T) {
@@ -86,27 +86,34 @@ func TestPresentation_SchemaDocument(t *testing.T) {
 		assert.Equal(t, reference, ref)
 		return document, nil
 	}
-	provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, reference)
+	provider.ResolveSchemaFunc = referencedSchema(reference)
 	registerMockPlugin(ctrl, "p1", provider)
-	result, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, reference)
+	result, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", resource.SchemaDocumentRequest{Request: targetedSchemaRequest(route.Connection, "pods"), Reference: reference})
 	require.NoError(t, err)
 	assert.Equal(t, document, result)
 }
 
-func TestPresentation_SchemaDocumentRejectsUnreferencedReference(t *testing.T) {
+func TestPresentationSchemaDocumentRequiresExactTargetAssociation(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	route := resource.AccessRoute{Connection: "conn-1"}
+	reference := resource.SchemaDocumentReference{ID: "native/schema", Revision: "schema:r1"}
 	provider := finiteTestProvider("native")
-	fetched := false
-	provider.GetSchemaDocumentFunc = func(context.Context, resource.AccessRoute, resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
-		fetched = true
-		return resource.SchemaDocument{}, nil
+	var fetched []resource.SchemaDocumentReference
+	provider.GetSchemaDocumentFunc = func(_ context.Context, _ resource.AccessRoute, ref resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
+		fetched = append(fetched, ref)
+		return resource.SchemaDocument{Reference: ref, Dialect: resource.DialectJSONSchema202012, Document: json.RawMessage(`{"type":"object"}`)}, nil
 	}
-	provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, resource.SchemaDocumentReference{ID: "native/schema", Revision: "schema:r1"})
+	provider.ResolveSchemaFunc = referencedSchema(reference)
 	registerMockPlugin(ctrl, "p1", provider)
-	_, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, resource.SchemaDocumentReference{ID: "native/schema", Revision: "schema:r2"})
+	_, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", resource.SchemaDocumentRequest{Request: targetedSchemaRequest(route.Connection, "missing"), Reference: reference})
 	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
-	assert.False(t, fetched, "an unreferenced document must never reach the provider")
+	assert.Empty(t, fetched, "same digest never grants an unadmitted target")
+	request := targetedSchemaRequest(route.Connection, "pods")
+	_, err = ctrl.ResolveSchema(testInvocationContext(), "p1", request)
+	require.NoError(t, err)
+	_, err = ctrl.GetSchemaDocument(testInvocationContext(), "p1", resource.SchemaDocumentRequest{Request: request, Reference: resource.SchemaDocumentReference{ID: reference.ID, Revision: "schema:r2"}})
+	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
+	assert.Equal(t, []resource.SchemaDocumentReference{reference}, fetched, "wrong exact references never reach the provider")
 }
 
 func TestPresentation_ProviderErrors(t *testing.T) {
@@ -121,12 +128,12 @@ func TestPresentation_ProviderErrors(t *testing.T) {
 	provider.GetSchemaDocumentFunc = func(context.Context, resource.AccessRoute, resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
 		return resource.SchemaDocument{}, failure
 	}
-	provider.CatalogFunc = withReferencedSchema(provider.CatalogFunc, resource.SchemaDocumentReference{ID: "schema", Revision: "r1"})
+	provider.ResolveSchemaFunc = referencedSchema(resource.SchemaDocumentReference{ID: "schema", Revision: "r1"})
 	registerMockPlugin(ctrl, "p1", provider)
 	_, err := ctrl.GetResourceGroups(testInvocationContext(), "p1", route)
 	assert.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
 	_, err = ctrl.GetResourceDefinition(testInvocationContext(), "p1", route, "pods")
 	assert.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
-	_, err = ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, resource.SchemaDocumentReference{ID: "schema", Revision: "r1"})
+	_, err = ctrl.GetSchemaDocument(testInvocationContext(), "p1", resource.SchemaDocumentRequest{Request: targetedSchemaRequest(route.Connection, "pods"), Reference: resource.SchemaDocumentReference{ID: "schema", Revision: "r1"}})
 	assert.Equal(t, "FORBIDDEN", requireAppError(t, err).Code)
 }

@@ -198,19 +198,13 @@ func TestPublishedPreflightFailsClosedWhenAnExcludeDirectiveRemovesTheDeclaredRe
 	})
 }
 
-// The toolchain directive is the module's own business: the local toolchain's
-// version is accepted, and a toolchain the pinned local environment cannot
-// provide fails closed with a typed refusal instead of a silent downgrade.
+// An explicit default toolchain uses the pinned local environment. A toolchain
+// that environment cannot provide fails closed instead of silently downgrading.
 func TestPublishedPreflightTreatsAToolchainDirectiveFailingClosed(t *testing.T) {
-	version := func() string {
-		output, err := exec.Command("go", "env", "GOVERSION").Output()
-		require.NoError(t, err)
-		return strings.TrimSpace(string(output))
-	}()
-	t.Run("local toolchain", func(t *testing.T) {
+	t.Run("default local toolchain", func(t *testing.T) {
 		env := newPubEnv(t)
 		w := env.workspace()
-		pubSelect(t, filepath.Join(w.Root, "plugin"), "example.com/plugin", "\ntoolchain "+version+"\n", env.sdk, env.uuid)
+		pubSelect(t, filepath.Join(w.Root, "plugin"), "example.com/plugin", "\ntoolchain default\n", env.sdk, env.uuid)
 		env.activate()
 
 		require.NoError(t, env.preflight(w, env.policy))

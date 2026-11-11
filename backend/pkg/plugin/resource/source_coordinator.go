@@ -115,22 +115,29 @@ func sourceStateRank(state string) int {
 }
 
 type sourceCoordinator struct {
-	ctrl     *controller
-	mu       sync.Mutex
-	sessions map[string]*sourceSession
-	views    map[string]*sourceView
-	now      func() time.Time
+	ctrl                *controller
+	mu                  sync.Mutex
+	sessions            map[string]*sourceSession
+	views               map[string]*sourceView
+	interests           map[string]*sourceInterest
+	viewInterests       map[string]*sourceInterest
+	connectionInterests map[string]*sourceInterest
+	changeMu            sync.Mutex
+	changes             map[*sourceSession]*sourceChange
+	now                 func() time.Time
 	// Retired host-issued owners cannot regain interests through an in-flight open.
-	retiredOwners map[string]struct{}
-	after         func(time.Duration) <-chan time.Time
-	stateMu       sync.Mutex
-	states        map[sourceStateKey]*sourceAggregate
+	retiredOwners  map[string]struct{}
+	after          func(time.Duration) <-chan time.Time
+	stateMu        sync.Mutex
+	states         map[sourceStateKey]*sourceAggregate
+	policyFailures map[sourceStateKey]HostSourceStatus
 }
 
 func newSourceCoordinator(c *controller) *sourceCoordinator {
-	return &sourceCoordinator{ctrl: c, sessions: make(map[string]*sourceSession), views: make(map[string]*sourceView), now: time.Now, after: time.After}
+	return &sourceCoordinator{ctrl: c, sessions: make(map[string]*sourceSession), views: make(map[string]*sourceView), interests: make(map[string]*sourceInterest), viewInterests: make(map[string]*sourceInterest), connectionInterests: make(map[string]*sourceInterest), changes: make(map[*sourceSession]*sourceChange), now: time.Now, after: time.After}
 }
 func (sc *sourceCoordinator) emitSourceState(s *sourceSession) {
+	sc.sourceChangedLocked(s)
 	key := sourceStateKey{pluginID: s.pluginID, route: s.target.Route, kind: s.target.Type}
 	sc.stateMu.Lock()
 	defer sc.stateMu.Unlock()
@@ -142,6 +149,7 @@ func (sc *sourceCoordinator) emitSourceState(s *sourceSession) {
 		aggregate = &sourceAggregate{sessions: make(map[*sourceSession]HostSourceStatus)}
 		sc.states[key] = aggregate
 	}
+	delete(sc.policyFailures, key)
 	previous, hadPrevious := aggregate.status, aggregate.selected != nil
 	if s.status.State == "closed" {
 		delete(aggregate.sessions, s)
@@ -223,7 +231,10 @@ type sourceBinding struct {
 }
 
 func boundSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string, binding sourceBinding) string {
-	b, err := json.Marshal([]any{sourceKey(pluginID, owner, target, mode), binding})
+	// Native identity and the selected body format form a stable lookup key.
+	// SDK comparison below admits the exact operation/scope contract; unrelated
+	// capabilities, defaults, presentation and catalog revisions are not keys.
+	b, err := json.Marshal([]any{sourceKey(pluginID, owner, target, mode), binding.Representation, binding.Epoch})
 	if err != nil {
 		logging.Default().Debugw(
 			context.Background(),
@@ -246,7 +257,7 @@ func recoveringSourceKey(pluginID, owner string, target resourcev2.ReadTarget) s
 
 func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, target resourcev2.ReadTarget, updates string) (resourcev2.SourceStreamOpener, *pluginState, context.Context, context.CancelFunc, string, string, error) {
 	c := sc.ctrl
-	if updates != "none" && updates != "ifSupported" {
+	if updates != "none" && updates != "ifSupported" && updates != "required" {
 		return nil, nil, nil, nil, "", "", resourcev2.NewError("INVALID_REQUEST", "Invalid updates mode.")
 	}
 	if err := resourcev2.ValidateEnumerateRequest(resourcev2.EnumerateRequest{Target: target}); err != nil {
@@ -288,10 +299,13 @@ func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, targe
 	}
 	mode := resourcev2.SourceModeSnapshot
 	var descriptor resourcev2.ResourceType
-	if updates == "ifSupported" && nativeSource {
+	if updates != "none" && nativeSource {
 		if descriptor, err = resourcev2.AdmitCatalogOperation(catalog, target); err == nil {
 			mode = resourcev2.SourceModeSnapshotAndUpdates
 		}
+	}
+	if updates == "required" && mode != resourcev2.SourceModeSnapshotAndUpdates {
+		return fail(resourcev2.NewError("UNSUPPORTED", "Source updates are no longer supported for the selected scope."))
 	}
 	if mode == resourcev2.SourceModeSnapshot {
 		if descriptor, err = resourcev2.AdmitCatalogOperation(catalog, resourcev2.EnumerateRequest{Target: target}); err != nil {
@@ -321,32 +335,59 @@ func (sc *sourceCoordinator) prepare(ctx context.Context, pluginID string, targe
 	return opener, generation, opctx, cleanup, mode, req.Principal().Owner(), nil
 }
 
-func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, target resourcev2.ReadTarget, updates string, inventory bool) (*sourceSession, string, error) {
+func (sc *sourceCoordinator) acquire(ctx context.Context, pluginID string, target resourcev2.ReadTarget, updates string) (_ *sourceInterest, retErr error) {
+	request, ok := invocation.FromContext(ctx)
+	if !ok || !request.OwnedBy(ctx) {
+		return nil, resourcev2.NewError("FORBIDDEN", "Source interests require an admitted original principal.")
+	}
+	target.Scope = append(resourcev2.QueryScope(nil), target.Scope...)
+	for i := range target.Scope {
+		if values := target.Scope[i].Values; values != nil {
+			copy := append([]string(nil), (*values)...)
+			target.Scope[i].Values = &copy
+		}
+	}
+	interest := &sourceInterest{id: uuid.NewString(), owner: request.Principal().Owner(), ctx: ctx, operation: request.Operation(), target: target}
+	sc.mu.Lock()
+	if sc.interests == nil {
+		sc.interests = make(map[string]*sourceInterest)
+	}
+	_, retired := sc.retiredOwners[interest.owner]
+	if retired {
+		sc.mu.Unlock()
+		return nil, resourcev2.NewError("NOT_FOUND", "Source owner retired.")
+	}
+	if len(sc.interests) >= maxSourceViews {
+		sc.mu.Unlock()
+		return nil, resourcev2.NewError("RESOURCE_LIMIT", "Source interest limit reached.")
+	}
+	sc.interests[interest.id] = interest
+	sc.mu.Unlock()
+	defer func() {
+		if retErr != nil {
+			sc.releaseInterest(interest)
+		}
+	}()
 	opener, generation, opctx, cancel, mode, owner, err := sc.prepare(ctx, pluginID, target, updates)
 	if err != nil {
-		return nil, "", err
-	}
-	if err = ctx.Err(); err != nil {
-		cancel()
-		return nil, "", err
+		return nil, err
 	}
 	key := boundSourceKey(pluginID, owner, target, mode, opctx.Value(sourceBindingKey{}).(sourceBinding))
 retry:
 	sc.mu.Lock()
-	if _, retired := sc.retiredOwners[owner]; retired {
+	_, retired = sc.retiredOwners[owner]
+	if err := ctx.Err(); err != nil || retired || interest.closed {
 		sc.mu.Unlock()
 		cancel()
-		return nil, "", resourcev2.NewError("NOT_FOUND", "Source owner retired.")
+		if err != nil {
+			return nil, err
+		}
+		return nil, resourcev2.NewError("NOT_FOUND", "Source owner retired.")
 	}
 	if err := sc.ctrl.currentGeneration(opctx, pluginID, generation); err != nil {
 		sc.mu.Unlock()
 		cancel()
-		return nil, "", err
-	}
-	if inventory && mode != resourcev2.SourceModeSnapshotAndUpdates {
-		sc.mu.Unlock()
-		cancel()
-		return nil, "", resourcev2.NewError("UNSUPPORTED", "Source updates are not supported for this scope.")
+		return nil, err
 	}
 	if existing := sc.sessions[key]; existing != nil {
 		sc.mu.Unlock()
@@ -362,17 +403,28 @@ retry:
 			sc.mu.Unlock()
 			existing.mu.Unlock()
 			cancel()
-			return nil, "", err
+			return nil, err
 		}
-		cancel()
-		if inventory {
-			existing.inventory = true
-		} else {
-			existing.reservations++
+		previous := existing.ctx.Value(sourceBindingKey{}).(sourceBinding)
+		current := opctx.Value(sourceBindingKey{}).(sourceBinding)
+		request := resourcev2.SourceOpenRequest{Target: target, Mode: mode, Acquisition: resourcev2.SourceAcquisition{Kind: resourcev2.SourceAcquisitionEnumerate}, Binding: resourcev2.RepresentationBinding{Representation: current.Representation}}
+		if !resourcev2.SourceOperationalContractEqual(previous.Descriptor, current.Descriptor, request) {
+			sc.mu.Unlock()
+			existing.mu.Unlock()
+			cancel()
+			return nil, resourcev2.NewError("RESET_REQUIRED", "Selected source operational contract changed.")
 		}
+		if interest.closed || ctx.Err() != nil {
+			sc.mu.Unlock()
+			existing.mu.Unlock()
+			cancel()
+			return nil, resourcev2.NewError("CANCELLED", "Source interest cancelled.")
+		}
+		interest.session = existing
 		sc.mu.Unlock()
 		existing.mu.Unlock()
-		return existing, owner, nil
+		cancel()
+		return interest, nil
 	}
 	// A retired session still owns its logical source until recovery rekeys it.
 	// Its provider and authority can change during that recovery.
@@ -385,48 +437,107 @@ retry:
 			err := sourceRecoveryError(existing.ctx, binding.Epoch.Epoch)
 			sc.mu.Unlock()
 			cancel()
-			return nil, "", err
+			return nil, err
 		}
 	}
-	s := &sourceSession{coordinator: sc, key: key, pluginID: pluginID, owner: owner, target: target, mode: mode, opener: opener, pluginGeneration: generation, ctx: opctx, cancel: cancel, inventory: inventory, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
-	if !inventory {
-		s.reservations = 1
-	}
+	s := &sourceSession{coordinator: sc, key: key, pluginID: pluginID, owner: owner, target: target, mode: mode, opener: opener, pluginGeneration: generation, ctx: opctx, cancel: cancel, members: make(map[string]sourceMember), views: make(map[string]*sourceView)}
+	interest.session = s
 	s.status = HostSourceStatus{State: "opening", Mode: mode}
 	s.updateCount()
 	sc.sessions[key] = s
 	sc.mu.Unlock()
 	go s.run()
-	return s, owner, nil
+	return interest, nil
 }
-func (sc *sourceCoordinator) openInventory(ctx context.Context, pluginID string, target resourcev2.ReadTarget) error {
-	_, _, err := sc.acquire(ctx, pluginID, target, "ifSupported", true)
-	return err
+
+type sourceInterest struct {
+	id, owner, operation string
+	ctx                  context.Context
+	target               resourcev2.ReadTarget
+	session              *sourceSession
+	closed               bool
+	projection           bool
 }
-func (sc *sourceCoordinator) closeInventory(pluginID, connectionID string) {
+
+// Caller holds sc.mu. A pending open is an interest before provider I/O.
+func (sc *sourceCoordinator) hasInterestsLocked(s *sourceSession) bool {
+	for _, interest := range sc.interests {
+		if !interest.closed && interest.session == s {
+			return true
+		}
+	}
+	return false
+}
+
+func (sc *sourceCoordinator) releaseInterest(interest *sourceInterest) {
+	if interest == nil {
+		return
+	}
+	sc.releaseInterests([]*sourceInterest{interest})
+}
+
+func (sc *sourceCoordinator) releaseInterests(interests []*sourceInterest) {
+	if len(interests) == 0 {
+		return
+	}
+	sc.closeSessions(sc.detachInterests(interests))
+}
+
+// Detach the last owner and its lookup entry under one coordinator fence.
+// Teardown never keeps a failed, unowned session available to an explicit open.
+func (sc *sourceCoordinator) detachInterests(interests []*sourceInterest) []*sourceSession {
+	if len(interests) == 0 {
+		return nil
+	}
 	sc.mu.Lock()
-	var candidates []*sourceSession
-	for _, s := range sc.sessions {
-		if s.pluginID == pluginID && s.target.Route.Connection == connectionID {
-			candidates = append(candidates, s)
+	candidates := make(map[*sourceSession]struct{}, len(interests))
+	var projections []*sourceSession
+	for _, interest := range interests {
+		if interest == nil || interest.closed {
+			continue
+		}
+		interest.closed = true
+		delete(sc.interests, interest.id)
+		if s := interest.session; s != nil {
+			candidates[s] = struct{}{}
+			if interest.projection {
+				projections = append(projections, s)
+			}
+		}
+	}
+	for key, interest := range sc.connectionInterests {
+		if interest.closed {
+			delete(sc.connectionInterests, key)
+		}
+	}
+	for _, interest := range sc.interests {
+		delete(candidates, interest.session)
+	}
+	var closing []*sourceSession
+	for s := range candidates {
+		if sc.sessions[s.key] == s {
+			delete(sc.sessions, s.key)
+			closing = append(closing, s)
 		}
 	}
 	sc.mu.Unlock()
-	var closing []*sourceSession
-	for _, s := range candidates {
-		s.mu.Lock()
-		sc.mu.Lock()
-		if sc.sessions[s.key] == s && s.pluginID == pluginID && s.target.Route.Connection == connectionID {
-			s.inventory = false
-			if len(s.views) == 0 && s.reservations == 0 {
-				delete(sc.sessions, s.key)
-				closing = append(closing, s)
-			}
-		}
-		sc.mu.Unlock()
-		s.mu.Unlock()
+	for _, s := range projections {
+		sc.releaseGraphInterest(s)
 	}
-	sc.closeSessions(closing)
+	return closing
+}
+
+func (sc *sourceCoordinator) closeConnectionInterests(pluginID, connectionID string) {
+	sc.mu.Lock()
+	var closing []*sourceInterest
+	for key, interest := range sc.connectionInterests {
+		if s := interest.session; s != nil && s.pluginID == pluginID && s.target.Route.Connection == connectionID {
+			delete(sc.connectionInterests, key)
+			closing = append(closing, interest)
+		}
+	}
+	sc.mu.Unlock()
+	sc.releaseInterests(closing)
 }
 func (sc *sourceCoordinator) invalidate(pluginID, connectionID string) {
 	sc.mu.Lock()
@@ -443,8 +554,20 @@ func (sc *sourceCoordinator) invalidate(pluginID, connectionID string) {
 		sc.mu.Lock()
 		if sc.sessions[s.key] == s && s.pluginID == pluginID && (connectionID == "" || s.target.Route.Connection == connectionID) && sc.ctrl.currentGeneration(s.ctx, pluginID, s.pluginGeneration) != nil {
 			delete(sc.sessions, s.key)
+			for id, interest := range sc.interests {
+				if interest.session == s {
+					interest.closed = true
+					delete(sc.interests, id)
+				}
+			}
+			for key, interest := range sc.connectionInterests {
+				if interest.session == s {
+					delete(sc.connectionInterests, key)
+				}
+			}
 			for id := range s.views {
 				delete(sc.views, id)
+				delete(sc.viewInterests, id)
 			}
 			closing = append(closing, s)
 		}
@@ -488,16 +611,12 @@ func (sc *sourceCoordinator) release(s *sourceSession, v *sourceView) {
 	sc.mu.Lock()
 	delete(sc.views, v.id)
 	delete(s.views, v.id)
-	empty := !s.inventory && len(s.views) == 0 && s.reservations == 0
-	if empty && sc.sessions[s.key] == s {
-		delete(sc.sessions, s.key)
-	}
+	interest := sc.viewInterests[v.id]
+	delete(sc.viewInterests, v.id)
 	sc.mu.Unlock()
 	s.mu.Unlock()
 	v.close()
-	if empty {
-		s.close()
-	}
+	sc.releaseInterest(interest)
 }
 
 // RetireSourceOwner is native-only. The caller supplies the host-issued window
@@ -512,6 +631,17 @@ func (c *controller) RetireSourceOwner(owner string) {
 		sc.retiredOwners = make(map[string]struct{})
 	}
 	sc.retiredOwners[owner] = struct{}{}
+	for _, interest := range sc.interests {
+		if interest.owner == owner {
+			interest.closed = true
+			delete(sc.interests, interest.id)
+		}
+	}
+	for key, interest := range sc.connectionInterests {
+		if interest.owner == owner {
+			delete(sc.connectionInterests, key)
+		}
+	}
 	var closing []*sourceSession
 	for key, s := range sc.sessions {
 		if s.owner == owner {
@@ -522,6 +652,7 @@ func (c *controller) RetireSourceOwner(owner string) {
 	for id, v := range sc.views {
 		if v.owner == owner {
 			delete(sc.views, id)
+			delete(sc.viewInterests, id)
 		}
 	}
 	sc.mu.Unlock()
@@ -543,28 +674,25 @@ func (c *controller) OpenSourceView(ctx context.Context, pluginID string, reques
 		return HostSourceViewOpened{}, err
 	}
 	defer finishResource(ctx, &retErr)
+	if request.Updates != "none" && request.Updates != "ifSupported" {
+		return HostSourceViewOpened{}, resourcev2.NewError("INVALID_REQUEST", "Invalid updates mode.")
+	}
 	if err = validateTargetLabel(request.TargetID); err != nil {
 		return HostSourceViewOpened{}, err
 	}
-	s, owner, err := c.sources.acquire(ctx, pluginID, request.Target, request.Updates, false)
+	interest, err := c.sources.acquire(ctx, pluginID, request.Target, request.Updates)
 	if err != nil {
 		return HostSourceViewOpened{}, err
 	}
+	s, owner := interest.session, interest.owner
 	sc := c.sources
 	s.mu.Lock()
 	sc.mu.Lock()
-	s.reservations--
 	_, retired := sc.retiredOwners[owner]
-	if err := ctx.Err(); err != nil || retired || len(sc.views) >= maxSourceViews || s.closed {
-		empty := !s.inventory && len(s.views) == 0 && s.reservations == 0
-		if empty && sc.sessions[s.key] == s {
-			delete(sc.sessions, s.key)
-		}
+	if err := ctx.Err(); err != nil || retired || interest.closed || len(sc.views) >= maxSourceViews || s.closed {
 		sc.mu.Unlock()
 		s.mu.Unlock()
-		if empty {
-			s.close()
-		}
+		sc.releaseInterest(interest)
 		if err != nil {
 			return HostSourceViewOpened{}, err
 		}
@@ -573,6 +701,10 @@ func (c *controller) OpenSourceView(ctx context.Context, pluginID string, reques
 	id := uuid.NewString()
 	v := newSourceView(s, id, owner, request.TargetID)
 	sc.views[id] = v
+	if sc.viewInterests == nil {
+		sc.viewInterests = make(map[string]*sourceInterest)
+	}
+	sc.viewInterests[id] = interest
 	mode := s.mode
 	s.views[id] = v
 	sc.mu.Unlock()
@@ -669,6 +801,11 @@ func (c *controller) GetSourceStates(
 	// State events use the same ordering when selecting a session per type.
 	preferred := make(map[string]*sourceSession)
 	c.sources.stateMu.Lock()
+	for key, status := range c.sources.policyFailures {
+		if key.pluginID == pluginID && key.route == route {
+			out.Types[key.kind] = status
+		}
+	}
 	for key, aggregate := range c.sources.states {
 		if key.pluginID == pluginID && key.route == route {
 			preferred[key.kind] = aggregate.selected

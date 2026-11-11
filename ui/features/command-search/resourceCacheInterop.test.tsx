@@ -25,7 +25,7 @@ it('refreshes detail readers after resource cache invalidation', async () => {
     record: {
       reference: { address: { provider: 'kubernetes', authority: 'host-test-authority', type: 'k8s:/pods', id: 'api', scope: [{ dimension: 'namespace', value: 'apps' }] }, incarnation: 'pod' },
       body: { kind: 'map', value: { version: { kind: 'string', value: '1' } } },
-      representation: { id: 'json', revision: '1', schema: { state: 'unavailable' } },
+      representation: { id: 'json', revision: '1' },
       coverage: { kind: 'complete', paths: [] }, sourceRevision: '1',
     },
   };

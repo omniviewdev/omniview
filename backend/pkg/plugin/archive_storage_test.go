@@ -38,7 +38,7 @@ func TestInstallPluginFromPath_RetainsLiveStorageCapabilities(t *testing.T) {
 				Types: []resourcev2.ResourceType{{
 					Type: "objects", DisplayName: "Objects",
 					IdentityDimensions: []resourcev2.Dimension{}, QueryDimensions: []resourcev2.Dimension{},
-					Representations: []resourcev2.Representation{{ID: "native", Revision: "r1", Schema: resourcev2.SchemaBinding{State: "absent"}}},
+					Representations: []resourcev2.Representation{{ID: "native", Revision: "r1"}},
 				}},
 			}
 			_, err = resolver.ObserveCatalog("flux", "before", catalog)

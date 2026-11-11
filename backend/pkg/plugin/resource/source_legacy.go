@@ -119,7 +119,6 @@ func legacyPagePreflight(page resourcev2.SourcePage) (int, error) {
 	for _, path := range page.Coverage.Paths {
 		ok = ok && text(path)
 	}
-	maxBindingSize := 0
 	for _, record := range page.Records {
 		if !ok {
 			break
@@ -130,23 +129,8 @@ func legacyPagePreflight(page resourcev2.SourcePage) (int, error) {
 			ok = false
 			break
 		}
-		schema := record.Representation.Schema
-		if !add(cap(schema.Document), 1) || !text(schema.State) || !text(schema.Dialect) ||
-			!text(schema.Root) || !optional(schema.Revision) || !optional(schema.UnavailableReason) ||
-			(schema.DocumentRef != nil && (!text(schema.DocumentRef.ID) || !text(schema.DocumentRef.Revision))) {
-			ok = false
-			break
-		}
-		bindingSize, err := sourceBindingTransientEstimate(record.Representation)
-		if err != nil {
-			ok = false
-			break
-		}
-		if bindingSize > maxBindingSize {
-			maxBindingSize = bindingSize
-		}
 	}
-	if !ok || !add(maxBindingSize, 1) {
+	if !ok {
 		return 0, resourcev2.NewError("RESOURCE_LIMIT", "Source page exceeds host limits.")
 	}
 	return size, nil

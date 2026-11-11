@@ -21,14 +21,6 @@ func setupIndexer() (*RelationshipGraph, *registry.MemoryStore, *Indexer) {
 	return g, s, idx
 }
 
-// TestGraphIndexer_Name verifies the indexer's name.
-func TestGraphIndexer_Name(t *testing.T) {
-	_, _, idx := setupIndexer()
-	if idx.Name() != "relationship-graph" {
-		t.Fatalf("expected 'relationship-graph', got %q", idx.Name())
-	}
-}
-
 // TestGraphIndexer_FieldPathExtraction — Pod runs_on Node via spec.nodeName.
 func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 	g, _, idx := setupIndexer()

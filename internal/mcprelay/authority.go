@@ -336,10 +336,13 @@ func delegatedAllowed(grant *invocation.Delegation, operation string, target inv
 	}
 	var right string
 	switch operation {
-	case "resource.Catalog", "resource.GetSchemaDocument":
-		// The broker filters catalogs and checks schema references against them.
+	case "resource.Catalog":
+		// Catalog remains filtered by the invocation-scoped broker.
 		return target.ResourceType == "" && target.Action == ""
-	case "resource.ResolveTarget":
+	case "resource.ResolveTarget", "resource.ResolveSchema", "resource.GetSchemaDocument":
+		if target.ResourceType == "" || target.Action != "" {
+			return false
+		}
 		right = "catalog"
 	case "resource.Get":
 		right = "get"

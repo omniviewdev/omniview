@@ -86,6 +86,7 @@ func normalizeDocument(dialect string, raw []byte, policy Policy) (*Document, er
 			Digest:           documentDigest(dialect, raw),
 			Dialect:          dialect,
 			Nodes:            make([]Node, 1),
+			raw:              slices.Clone(raw),
 			pointers:         map[string]NodeID{},
 			maxDocumentBytes: policy.MaxDocumentBytes,
 		},

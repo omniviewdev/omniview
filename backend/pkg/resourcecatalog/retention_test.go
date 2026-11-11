@@ -45,19 +45,36 @@ const retentionPlainSchema = `{"type":"object","properties":{"name":{"type":"str
 var retentionCoverage = resourcev2.Coverage{Kind: "complete"}
 
 func retentionCatalog() resourcev2.Catalog {
-	binding := func(document string) resourcev2.SchemaBinding {
-		revision := "schema/1"
-		return resourcev2.SchemaBinding{State: "available", Revision: &revision,
-			Dialect: resourcev2.DialectJSONSchema202012, Document: json.RawMessage(document)}
-	}
-	resourceType := func(name, document string) resourcev2.ResourceType {
+	resourceType := func(name string) resourcev2.ResourceType {
 		return resourcev2.ResourceType{Type: name, DisplayName: name, DefaultRepresentation: "r",
-			Representations: []resourcev2.Representation{{ID: "r", Revision: "rep/1", Schema: binding(document)}}}
+			Representations: []resourcev2.Representation{{ID: "r", Revision: "rep/1"}}}
 	}
 	return resourcev2.Catalog{Provider: "test", Revision: "c1", Types: []resourcev2.ResourceType{
-		resourceType("union", retentionUnionSchema),
-		resourceType("plain", retentionPlainSchema),
+		resourceType("union"),
+		resourceType("plain"),
 	}}
+}
+
+func retentionSource(connection string) resourcecatalog.BindingSource {
+	representation := resourcev2.Representation{ID: "r", Revision: "rep/1"}
+	revision := "schema/1"
+	return func(_ context.Context, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+		if request.Route.Connection != connection || request.Target.Auxiliary != nil ||
+			request.Target.Representation == nil || *request.Target.Representation != representation {
+			return resourcev2.SchemaBinding{}, resourcev2.NewError("INVALID_REQUEST", "schema request escaped its retention fixture")
+		}
+		var document string
+		switch request.Type {
+		case "union":
+			document = retentionUnionSchema
+		case "plain":
+			document = retentionPlainSchema
+		default:
+			return resourcev2.SchemaBinding{}, resourcev2.NewError("NOT_FOUND", "schema target is not in the retention fixture")
+		}
+		return resourcev2.SchemaBinding{State: "available", Revision: &revision,
+			Dialect: resourcev2.DialectJSONSchema202012, Document: json.RawMessage(document)}, nil
+	}
 }
 
 func retentionKey(connection string) resourcecatalog.ConnectionKey {
@@ -73,17 +90,17 @@ func mustValue(t testing.TB, raw string) resourcev2.Value {
 	return v
 }
 
-func resolveType(t testing.TB, snapshot *resourcecatalog.Snapshot, resourceType string) (*resourcecatalog.Entry, *resourcecatalog.Schema) {
+func resolveType(t testing.TB, snapshot *resourcecatalog.Snapshot, resourceType string, resolve resourcecatalog.BindingSource) (*resourcecatalog.Entry, *resourcecatalog.Schema) {
 	t.Helper()
 	entry, err := snapshot.Entry(resourceType, "r")
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema, err := entry.Resolve(context.Background(), nil)
+	resolution, err := entry.Resolve(context.Background(), resolve, nil)
 	if err != nil {
 		t.Fatalf("resolve %s: %v", resourceType, err)
 	}
-	return entry, schema
+	return entry, resolution.Schema
 }
 
 // admitAndNavigate exercises the read paths that must not grow retention.
@@ -132,7 +149,7 @@ func TestRetentionSequentialAdmitNavigate(t *testing.T) {
 	policy := resourcecatalog.DefaultPolicy()
 	catalog := resourcecatalog.NewCatalog(policy)
 	snapshot := catalog.Observe(retentionKey("a"), retentionCatalog())
-	_, schema := resolveType(t, snapshot, "union")
+	_, schema := resolveType(t, snapshot, "union", retentionSource("a"))
 	value := mustValue(t, retentionBody)
 
 	// Warm the lazily built, document-lifetime caches once.
@@ -174,15 +191,17 @@ func TestRetentionSequentialAdmitNavigate(t *testing.T) {
 // against a stable catalog revision, so every run converges on the same stats.
 func mixedWorkload(catalog *resourcecatalog.Catalog, connection string, value resourcev2.Value, policy resourcecatalog.Policy) error {
 	snapshot := catalog.Observe(retentionKey(connection), retentionCatalog())
+	resolve := retentionSource(connection)
 	for _, resourceType := range []string{"union", "plain"} {
 		entry, err := snapshot.Entry(resourceType, "r")
 		if err != nil {
 			return err
 		}
-		schema, err := entry.Resolve(context.Background(), nil)
+		resolution, err := entry.Resolve(context.Background(), resolve, nil)
 		if err != nil {
 			return fmt.Errorf("resolve %s: %w", resourceType, err)
 		}
+		schema := resolution.Schema
 		if _, err := celtypes.NewEnvironment(snapshot.Revision(), entry, schema); err != nil {
 			return fmt.Errorf("environment %s: %w", resourceType, err)
 		}
@@ -251,7 +270,7 @@ func observeAndUse(t *testing.T, catalog *resourcecatalog.Catalog, connections [
 		if err := mixedWorkload(catalog, connection, value, policy); err != nil {
 			t.Fatal(err)
 		}
-		_, schema := resolveType(t, catalog.Observe(retentionKey(connection), retentionCatalog()), "union")
+		_, schema := resolveType(t, catalog.Observe(retentionKey(connection), retentionCatalog()), "union", retentionSource(connection))
 		if _, err := schema.Document.EditorJSON(); err != nil {
 			t.Fatal(err)
 		}

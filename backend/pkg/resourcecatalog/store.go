@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -53,10 +52,10 @@ func (s *store) acquire(dialect string, raw []byte, policy Policy) (*Document, e
 		return stored.document, nil
 	}
 	if len(s.documents)+1 > policy.MaxRetainedDocuments {
-		return nil, resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema catalog exceeds MaxRetainedDocuments (%d)", policy.MaxRetainedDocuments))
+		return nil, pressure(fmt.Sprintf("schema catalog exceeds MaxRetainedDocuments (%d)", policy.MaxRetainedDocuments))
 	}
 	if normalized.retainedBytes > policy.MaxRetainedBytes-s.retainedBytes {
-		return nil, resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema catalog exceeds MaxRetainedBytes (%d)", policy.MaxRetainedBytes))
+		return nil, pressure(fmt.Sprintf("schema catalog exceeds MaxRetainedBytes (%d)", policy.MaxRetainedBytes))
 	}
 	s.documents[digest] = &storedDocument{document: normalized, references: 1, maxRetainedBytes: policy.MaxRetainedBytes}
 	s.retainedBytes += normalized.retainedBytes
@@ -98,7 +97,7 @@ func (d *Document) addRetainedBytes(n int64) error {
 	defer s.mu.Unlock()
 	if stored, ok := s.documents[d.Digest]; ok && stored.document == d {
 		if n > stored.maxRetainedBytes-s.retainedBytes {
-			return resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema catalog exceeds MaxRetainedBytes (%d)", stored.maxRetainedBytes))
+			return pressure(fmt.Sprintf("schema catalog exceeds MaxRetainedBytes (%d)", stored.maxRetainedBytes))
 		}
 		s.retainedBytes += n
 	}
