@@ -62,7 +62,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/omniview-plugin-kubernetes
-          ref: 44c8090608f6c23899ece5336044cca5069c118f
+          ref: c5baf140739679a563ace2490fddb4bd244e170a
           path: .app-profile-sources/kubernetes
           fetch-depth: 0
           persist-credentials: false
