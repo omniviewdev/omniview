@@ -109,6 +109,12 @@ for export/browser and chunk-retirement contracts before retirement. This path
 does not wait for a plugin or npm release. Cache-only preparation never runs
 application acceptance or these contract assertions.
 
+Kubernetes PRs call the same cached runner with `kubernetes-checks: true`, selecting
+the PR repository and revision while using host trunk. Locally, run
+`SDK_SOURCE=/path/to/sdk KUBERNETES_SOURCE=/path/to/kubernetes node e2e/scripts/run.mjs --full --kubernetes-checks`.
+This also runs the plugin's lint, native TypeScript check, behavior suite and
+New York age-clock tests within the owned source composition.
+
 ### Release publication order
 
 Stable publication starts only from a pushed `v*` tag, which supplies the npm
@@ -122,9 +128,9 @@ There is no npm-only bootstrap dispatch, bootstrap publication branch, or
 published-plugin smoke prerequisite for host publication. Source E2E owns those
 compatibility contracts; release jobs do not repeat its full source build.
 Published package versions, plugin archives, and release tags remain immutable.
-Publish compatible npm packages and the desktop before distributing a plugin
-that requires them; source acceptance is not permission to bypass marketplace
-minimum-host policy.
+Before desktop publication, verify that compatible plugins are approved for the
+new host version and that old hosts cannot acquire incompatible releases.
+Source acceptance does not replace marketplace compatibility enforcement.
 
 ### Upgrade-state regression
 
