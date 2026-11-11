@@ -509,7 +509,7 @@ func main() {
 		"ui": uiManager,
 	}
 
-	utilsClient := utils.NewClient().WithLogger(log.Named("utils"))
+	utilsClient := utils.NewClient(log.Named("utils"))
 
 	// Setup the plugin systems
 	mcpAuthority := mcprelay.NewAuthority()

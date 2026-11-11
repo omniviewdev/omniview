@@ -16,15 +16,8 @@ type Client struct {
 	log logging.Logger
 }
 
-func NewClient() *Client {
-	return &Client{log: nil}
-}
-
-// WithLogger sets the logger used for detection diagnostics; nil keeps the
-// process default.
-func (c *Client) WithLogger(l logging.Logger) *Client {
-	c.log = l
-	return c
+func NewClient(logger logging.Logger) *Client {
+	return &Client{log: logger}
 }
 
 func (c *Client) logger() logging.Logger {
