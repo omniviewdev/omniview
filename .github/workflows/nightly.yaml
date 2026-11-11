@@ -34,6 +34,7 @@ jobs:
   # Skip if no commits in the last 24 hours (unless manual dispatch)
   # ─────────────────────────────────────────────────────────────────────────────
   check-changes:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
@@ -427,7 +428,7 @@ jobs:
   # NPM — publish @omniviewdev/* nightly packages
   # ─────────────────────────────────────────────────────────────────────────────
   publish-npm:
-    needs: check-changes
+    needs: [check-changes, build-macos, build-linux, build-windows, check-homebrew]
     if: needs.check-changes.outputs.should_build == 'true'
     uses: ./.github/workflows/npm-publish.yml
     with:
@@ -439,7 +440,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish-nightly:
     runs-on: ubuntu-latest
-    needs: [check-changes, build-macos, build-linux, build-windows, check-homebrew]
+    needs: [check-changes, build-macos, build-linux, build-windows, check-homebrew, publish-npm]
     steps:
       - name: Verify Homebrew publication credentials
         shell: bash

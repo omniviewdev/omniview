@@ -83,7 +83,8 @@ export function runnerOptions(args, base = process.env.OMNIVIEW_E2E_BASE) {
     else if (arg === '--report') result.report = true;
     else if (arg === '--init-tool-cache') result.initToolCache = true;
     else if (arg === '--cache-only') result.cacheOnly = true;
-    else throw Error(`Unsupported argument: ${arg}. Use --full, --changed --base REF, --grep PATTERN, --select, --list, --ui, --observe, --report, --init-tool-cache, or --cache-only.`);
+    else if (arg === '--kubernetes-checks') result.kubernetesChecks = true;
+    else throw Error(`Unsupported argument: ${arg}. Use --full, --changed --base REF, --grep PATTERN, --select, --list, --ui, --observe, --report, --init-tool-cache, --cache-only, or --kubernetes-checks.`);
   }
   if (result.cacheOnly && (args.length !== 1 || args[0] !== '--cache-only')) throw Error('--cache-only must be used alone; it prepares native payloads, never application acceptance');
   if (args.includes('--full')) result.full = true;

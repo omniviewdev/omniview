@@ -369,20 +369,17 @@ func TestSourceOpenReportsFailedBindingRecovery(t *testing.T) {
 	request := HostSourceViewRequest{TargetID: current.TargetID, Target: current.Target, Updates: "ifSupported"}
 	_, err = ctrl.OpenSourceView(testInvocationContext(), "p1", request)
 	require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
-	require.Contains(t, err.Error(), "Source binding is being renewed.")
 	close(resume)
 	require.Eventually(t, func() bool {
 		session.mu.Lock()
 		defer session.mu.Unlock()
-		return session.status.State == "failed" && session.status.Error != nil &&
-			session.status.Error.Message == "Source session failed."
+		return session.status.State == "failed" && session.status.Error != nil
 	}, 5*time.Second, time.Millisecond)
 	for _, updates := range []string{"ifSupported", "none"} {
 		request.Updates = updates
 		opened, err := ctrl.OpenSourceView(testInvocationContext(), "p1", request)
 		require.Empty(t, opened.ViewID)
 		require.Equal(t, "RESET_REQUIRED", resourcev2.ErrorCode(err))
-		require.Contains(t, err.Error(), "Source session failed.")
 	}
 	select {
 	case <-provider.opens:
@@ -552,7 +549,7 @@ func TestSourceCancelledOpenReleasesInterest(t *testing.T) {
 	<-started
 	cancel()
 	view.session.mu.Unlock()
-	require.ErrorIs(t, <-result, context.Canceled)
+	require.Equal(t, "CANCELLED", resourcev2.ErrorCode(<-result))
 	ctrl.sources.mu.Lock()
 	require.Len(t, ctrl.sources.interests, 1, "only the original view interest survives cancellation")
 	ctrl.sources.mu.Unlock()

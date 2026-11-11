@@ -11,6 +11,22 @@ on:
         description: PR base commit for conservative application selection
         type: string
         default: ''
+      host-ref:
+        description: Host source ref; defaults to the host caller's selected commit
+        type: string
+        default: ''
+      kubernetes-repository:
+        description: Kubernetes source repository, including a pull request fork
+        type: string
+        default: omniviewdev/omniview-plugin-kubernetes
+      kubernetes-ref:
+        description: Kubernetes source ref; empty selects its default branch
+        type: string
+        default: ''
+      kubernetes-checks:
+        description: Include Kubernetes UI checks in the source integration invocation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,12 +54,15 @@ jobs:
       GO_VERSION: "1.27.3"
       NODE_OPTIONS: "--max-old-space-size=4096"
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
+      KUBERNETES_CHECKS: ${{ inputs.kubernetes-checks && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
       SELECTION_BASE: ${{ inputs.base }}
     steps:
       - name: Checkout host implementation
         uses: actions/checkout@v4
         with:
+          repository: omniviewdev/omniview
+          ref: ${{ inputs.host-ref || github.sha }}
           path: host
           fetch-depth: 0
           persist-credentials: false
@@ -76,8 +95,9 @@ jobs:
       - name: Checkout matching Kubernetes source
         uses: actions/checkout@v4
         with:
-          repository: omniviewdev/omniview-plugin-kubernetes
-          ref: 19c2195333b7e31560cf661b0d950377551699d3
+          repository: ${{ inputs.kubernetes-repository }}
+          ref: ${{ inputs.kubernetes-ref }}
+          fetch-depth: 0
           path: omniview-plugin-kubernetes
           persist-credentials: false
 
@@ -102,8 +122,15 @@ jobs:
       - name: Select conservative application impact
         id: selection
         run: |
+          if [[ "$CACHE_ONLY" == true && "$KUBERNETES_CHECKS" == true ]]; then
+            echo "::error::Cache-only preparation cannot satisfy Kubernetes acceptance"
+            exit 1
+          fi
           if [[ "$CACHE_ONLY" == true ]]; then
             echo "kind=cache-only" >> "$GITHUB_OUTPUT"
+            echo "requires_application=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$KUBERNETES_CHECKS" == true ]]; then
+            echo "kind=full" >> "$GITHUB_OUTPUT"
             echo "requires_application=true" >> "$GITHUB_OUTPUT"
           elif ! node e2e/scripts/run.mjs --changed --base "$SELECTION_BASE" --select; then
             echo "::warning::Selection failed; requiring the full application path rather than skipping."
@@ -244,6 +271,8 @@ jobs:
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             node e2e/scripts/run.mjs --cache-only
+          elif [[ "$KUBERNETES_CHECKS" == true ]]; then
+            node e2e/scripts/run.mjs --full --kubernetes-checks
           elif [[ "$SELECTION" == selected ]]; then
             node e2e/scripts/run.mjs --changed --base "$SELECTION_BASE"
           else

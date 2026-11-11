@@ -11,9 +11,9 @@ import ts from 'typescript';
 import { parse } from 'yaml';
 import { requirePluginBundle } from './plugin-bundle.mjs';
 
-// Use extracted, checksum-verified release assets, never a linked plugin build.
+// Use a completed production artifact: extracted release assets or an owned source build.
 const { values } = parseArgs({ options: { directory: { type: 'string' } } });
-assert(values.directory, 'Usage: node bench/app/archive-smoke.mjs --directory EXTRACTED_ARCHIVE');
+assert(values.directory, 'Usage: node bench/app/archive-smoke.mjs --directory PLUGIN_ARTIFACT');
 const directory = path.resolve(values.directory);
 const assets = path.join(directory, 'assets');
 requirePluginBundle(assets);
@@ -85,7 +85,7 @@ try {
     }
     return failures;
   }, imports);
-  assert.deepEqual(missing, [], 'Published plugin imports unavailable host exports');
+  assert.deepEqual(missing, [], 'Production plugin imports unavailable host exports');
   await page.evaluate(() => { window.location.hash = '#/_plugin/kubernetes/'; });
   const search = page.getByRole('combobox', { name: 'Search clusters', exact: true });
   await search.waitFor();

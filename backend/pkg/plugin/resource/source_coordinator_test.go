@@ -60,17 +60,13 @@ func sourceTestFixture(t *testing.T, configure ...func(*scriptedSourceProvider))
 			catalog.Types[0].Capabilities = append(catalog.Types[0].Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
 			return catalog, nil
 		},
-		StartConnectionFunc: func(_ context.Context, id string) (types.ConnectionStatus, error) {
-			return types.ConnectionStatus{Connection: &types.Connection{ID: id}, Status: types.ConnectionStatusConnected}, nil
-		},
 	}
 	provider := &scriptedSourceProvider{mockProvider: base, opens: make(chan scriptedSourceOpen, 16)}
 	for _, setup := range configure {
 		setup(provider)
 	}
 	registerMockPlugin(ctrl, "p1", provider)
-	_, err := ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
-	require.NoError(t, err)
+	// Source tests admit their route directly, without independent connection-policy work.
 	return ctrl, events, provider, admittedReadTarget(t, ctrl, "p1", "conn-1", "native::Pod")
 }
 

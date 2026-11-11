@@ -1,4 +1,4 @@
-name: Published plugin archive smoke
+name: Plugin archive smoke
 
 on:
   workflow_call:
@@ -6,30 +6,11 @@ on:
       host-ref:
         description: Host revision containing the archive harness
         type: string
-        default: ''
+        default: main
       archive-artifact:
-        description: Candidate plugin-archives artifact from this workflow run; empty tests the pinned published plugin
+        description: Same-run artifact containing plugin archives and checksums_sha256.txt
         type: string
-        default: ''
-      package-version:
-        description: Optional npm package version stamped before building host shared packages
-        type: string
-        default: ''
-  workflow_dispatch:
-  pull_request:
-    paths:
-      - 'ui/**'
-      - 'packages/**'
-      - 'bench/app/**'
-      - 'bench/vite/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'vite.config.ts'
-      - 'plugin_asset_handler*'
-      - '.github/workflows/plugin-archive-smoke.yml'
-      - '.github/workflows/release.yaml'
+        required: true
 
 permissions:
   contents: read
@@ -44,7 +25,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: omniviewdev/omniview
-          ref: ${{ inputs.host-ref || github.sha }}
+          ref: ${{ inputs.host-ref }}
+      - name: Record selected host source
+        run: |
+          printf 'Archive smoke host source: `%s`\n' "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: '26.13.0'
@@ -54,20 +38,6 @@ jobs:
           node-version-file: 'false'
           install: false
       - run: pnpm install --frozen-lockfile
-      - name: Stamp host packages as npm publication does
-        if: ${{ inputs.package-version }}
-        shell: bash
-        env:
-          INPUT_VERSION: ${{ inputs.package-version }}
-        run: |
-          set -euo pipefail
-          version="${INPUT_VERSION#v}"
-          for pkg in \
-            packages/omniviewdev-providers/package.json \
-            packages/omniviewdev-runtime/package.json \
-            packages/omniviewdev-vite-plugin/package.json; do
-            jq --arg v "$version" '.version = $v' "$pkg" > tmp.$$.json && mv tmp.$$.json "$pkg"
-          done
       - name: Build shared packages in publication order
         run: |
           pnpm --filter @omniviewdev/providers build
@@ -75,26 +45,19 @@ jobs:
           pnpm --filter @omniviewdev/vite-plugin build
       - name: Install pinned browser
         run: pnpm exec playwright install --with-deps chromium
-      - name: Fetch pinned published Kubernetes archive
-        shell: bash
-        if: ${{ !inputs.archive-artifact }}
-        run: |
-          set -euo pipefail
-          mkdir "$RUNNER_TEMP/kubernetes-archive"
-          curl --fail --location --retry 3 https://github.com/omniviewdev/omniview-plugin-kubernetes/releases/download/v0.21.0/kubernetes-linux_amd64.tar.gz --output "$RUNNER_TEMP/kubernetes.tar.gz"
-          echo "01d5f6622edb8457da7ad09101c63a03b891ab861880b2c8cbddaa7008008c1f  $RUNNER_TEMP/kubernetes.tar.gz" | sha256sum --check
-          tar -xzf "$RUNNER_TEMP/kubernetes.tar.gz" -C "$RUNNER_TEMP/kubernetes-archive" plugin.yaml assets
       - name: Download candidate archive
-        if: ${{ inputs.archive-artifact }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.archive-artifact }}
           path: ${{ runner.temp }}/candidate-archives
-      - name: Extract candidate frontend
-        if: ${{ inputs.archive-artifact }}
+      - name: Verify candidate archive integrity and extract frontend
+        shell: bash
+        working-directory: ${{ runner.temp }}/candidate-archives
         run: |
+          set -euo pipefail
+          sha256sum --check --strict checksums_sha256.txt
           mkdir "$RUNNER_TEMP/kubernetes-archive"
-          tar -xzf "$RUNNER_TEMP/candidate-archives/kubernetes-linux_amd64.tar.gz" -C "$RUNNER_TEMP/kubernetes-archive" plugin.yaml assets
+          tar -xzf kubernetes-linux_amd64.tar.gz -C "$RUNNER_TEMP/kubernetes-archive" plugin.yaml assets
       - name: Verify production archive exports and launch
         run: node bench/app/archive-smoke.mjs --directory "$RUNNER_TEMP/kubernetes-archive"
       - name: Verify installed plugin chunk retirement

@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       dist-tag:
-        description: "npm dist-tag (latest, nightly, etc.)"
+        description: "npm dist-tag (latest or nightly)"
         required: false
         type: string
         default: "latest"
@@ -24,6 +24,43 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require publication from tested trunk source
+        shell: bash
+        env:
+          DIST_TAG: ${{ inputs.dist-tag }}
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor HEAD origin/main
+          case "$DIST_TAG" in
+            latest)
+              if [[ "$EVENT_NAME" != push || "$SOURCE_REF" != refs/tags/v* ]]; then
+                echo "::error::Stable npm publication requires a v* tag push."
+                exit 1
+              fi
+              if [[ "${INPUT_VERSION#v}" != "${SOURCE_REF#refs/tags/v}" ]]; then
+                echo "::error::Stable npm version must match the pushed tag."
+                exit 1
+              fi
+              ;;
+            nightly)
+              if [[ "$SOURCE_REF" != refs/heads/main ]]; then
+                echo "::error::Nightly npm publication requires main."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported npm dist-tag: $DIST_TAG"
+              exit 1
+              ;;
+          esac
+          printf 'npm publication source: `%s`\n' "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node
         uses: actions/setup-node@v4

@@ -95,6 +95,7 @@ test('cache-only preparation is an explicit exclusive mode, never a filtered acc
     ['--cache-only', '--ui'], ['--cache-only', '--observe'],
     ['--cache-only', '--select'], ['--cache-only', '--list'],
     ['--cache-only', '--report'], ['--cache-only', '--init-tool-cache'],
+    ['--cache-only', '--kubernetes-checks'],
   ]) assert.throws(() => runnerOptions(args), /cache-only.*alone/i);
   assert.throws(() => runnerOptions(['--unknown']), /Unsupported argument/);
 });
