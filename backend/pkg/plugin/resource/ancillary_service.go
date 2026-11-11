@@ -3,6 +3,8 @@ package resource
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
@@ -102,6 +104,11 @@ func checkAncillaryReference(catalog resourcev2.Catalog, authority AuthorityReso
 }
 
 func (c *controller) GetResourceGroups(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (out []resourcev2.ResourceGroup, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetResourceGroups",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetResourceGroups", ancillaryTarget(pluginID, route, "", resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err
@@ -125,6 +132,12 @@ func (c *controller) GetResourceGroups(ctx context.Context, pluginID string, rou
 }
 
 func (c *controller) GetResourceDefinition(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (out resourcev2.ResourceDefinition, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetResourceDefinition",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", resourceType),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetResourceDefinition", ancillaryTarget(pluginID, route, resourceType, resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err
@@ -148,6 +161,12 @@ func (c *controller) GetResourceDefinition(ctx context.Context, pluginID string,
 }
 
 func (c *controller) GetRelationships(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (out []resourcev2.RelationshipDescriptor, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetRelationships",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", resourceType),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetRelationships", ancillaryTarget(pluginID, route, resourceType, resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err
@@ -171,6 +190,12 @@ func (c *controller) GetRelationships(ctx context.Context, pluginID string, rout
 }
 
 func (c *controller) ResolveRelationships(ctx context.Context, pluginID string, request resourcev2.GetRequest) (out []resourcev2.ResolvedRelationship, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.ResolveRelationships",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Route.Connection),
+		attribute.String("resource_type", request.Reference.Address.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.ResolveRelationships", ancillaryTarget(pluginID, request.Route, request.Reference.Address.Type, request.Reference, ""))
 	if err != nil {
 		return out, err
@@ -229,6 +254,12 @@ func (c *controller) ResolveRelationships(ctx context.Context, pluginID string, 
 }
 
 func (c *controller) GetHealth(ctx context.Context, pluginID string, request resourcev2.GetRequest, value resourcev2.Value) (out *resourcev2.ResourceHealth, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetHealth",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Route.Connection),
+		attribute.String("resource_type", request.Reference.Address.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetHealth", ancillaryTarget(pluginID, request.Route, request.Reference.Address.Type, request.Reference, ""))
 	if err != nil {
 		return out, err
@@ -258,6 +289,12 @@ func (c *controller) GetHealth(ctx context.Context, pluginID string, request res
 }
 
 func (c *controller) GetResourceEvents(ctx context.Context, pluginID string, request resourcev2.GetRequest, limit uint32) (out []resourcev2.ResourceEvent, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetResourceEvents",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Route.Connection),
+		attribute.String("resource_type", request.Reference.Address.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetResourceEvents", ancillaryTarget(pluginID, request.Route, request.Reference.Address.Type, request.Reference, ""))
 	if err != nil {
 		return out, err
@@ -284,6 +321,12 @@ func (c *controller) GetResourceEvents(ctx context.Context, pluginID string, req
 }
 
 func (c *controller) GetActions(ctx context.Context, pluginID string, route resourcev2.AccessRoute, resourceType string) (out []resourcev2.ActionDescriptor, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetActions",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+		attribute.String("resource_type", resourceType),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetActions", ancillaryTarget(pluginID, route, resourceType, resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err
@@ -317,6 +360,11 @@ func (c *controller) GetActions(ctx context.Context, pluginID string, route reso
 }
 
 func (c *controller) GetSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, reference resourcev2.SchemaDocumentReference) (out resourcev2.SchemaDocument, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetSchemaDocument",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetSchemaDocument", ancillaryTarget(pluginID, route, "", resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err

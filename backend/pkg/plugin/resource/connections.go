@@ -31,7 +31,7 @@ func saveToLocalStore(storeRoot *appstate.ScopedRoot, connections map[string][]t
 	if err != nil {
 		return err
 	}
-	defer store.Close()
+	defer h3Close(store, "connection_store_write_close")
 
 	return gob.NewEncoder(store).Encode(connections)
 }
@@ -44,7 +44,7 @@ func loadFromLocalStore(storeRoot *appstate.ScopedRoot) (map[string][]types.Conn
 	if err != nil {
 		return nil, err
 	}
-	defer store.Close()
+	defer h3Close(store, "connection_store_read_close")
 
 	info, err := store.Stat()
 	if err != nil {

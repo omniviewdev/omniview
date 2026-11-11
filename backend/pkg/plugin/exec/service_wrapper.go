@@ -7,6 +7,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/omniviewdev/omniview/internal/nativeapps"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -48,6 +49,9 @@ func (s *ServiceWrapper) CreateSession(
 ) (*execsdk.Session, error) {
 	var opts execsdk.SessionOptions
 	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
+		_, end := startOp(ctx, "exec.CreateSession",
+			attribute.String("plugin_id", plugin), attribute.String("connection_id", connectionID))
+		end(&err)
 		return nil, err
 	}
 	return s.Ctrl.CreateSession(s.realmContext(ctx), plugin, connectionID, opts)
@@ -58,6 +62,9 @@ func (s *ServiceWrapper) CreateSession(
 func (s *ServiceWrapper) OpenNativeSession(ctx context.Context, plugin, connectionID, encoded string) error {
 	var opts execsdk.SessionOptions
 	if err := transportjson.Decode(encoded, &opts, plugin, connectionID); err != nil {
+		_, end := startOp(ctx, "exec.OpenNativeSession",
+			attribute.String("plugin_id", plugin), attribute.String("connection_id", connectionID))
+		end(&err)
 		return err
 	}
 	return s.Ctrl.OpenNativeSession(s.realmContext(ctx), plugin, connectionID, opts)
@@ -68,8 +75,12 @@ func (s *ServiceWrapper) GetNativeTerminalSupport() bool {
 }
 
 // GetNativeTerminalApplications discovers installed applications with safe native launch adapters.
-func (s *ServiceWrapper) GetNativeTerminalApplications() ([]nativeapps.Application, error) {
-	return nativeapps.Discover(context.Background())
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (s *ServiceWrapper) GetNativeTerminalApplications() (_ []nativeapps.Application, err error) {
+	ctx, end := startOp(context.Background(), "exec.GetNativeTerminalApplications")
+	defer end(&err)
+	return nativeapps.Discover(ctx)
 }
 
 func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {

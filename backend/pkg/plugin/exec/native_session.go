@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -32,12 +34,24 @@ func (c *controller) launcher() nativeTerminalLauncher {
 }
 
 func (c *controller) GetNativeTerminalSupport() bool {
+	var err error
+	_, end := startOp(context.Background(), "exec.GetNativeTerminalSupport")
+	defer end(&err)
 	return c.launcher().Supported()
 }
 
 // OpenNativeSession plans and launches a fresh process for an admitted resource.
 // It never creates, indexes, attaches, closes, or transfers a terminal session.
-func (c *controller) OpenNativeSession(ctx context.Context, plugin, connectionID string, opts execsdk.SessionOptions) error {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) OpenNativeSession(
+	ctx context.Context, plugin, connectionID string, opts execsdk.SessionOptions,
+) (err error) {
+	ctx, end := startOp(ctx, "exec.OpenNativeSession",
+		attribute.String("plugin_id", plugin),
+		attribute.String("connection_id", connectionID),
+	)
+	defer end(&err)
 	if err := execsdk.ValidateNativeCommandOptions(opts); err != nil {
 		return err
 	}
@@ -50,7 +64,7 @@ func (c *controller) OpenNativeSession(ctx context.Context, plugin, connectionID
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	ctx, err := c.admitSessionReference(ctx, plugin, connectionID, opts)
+	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts)
 	if err != nil {
 		return err
 	}

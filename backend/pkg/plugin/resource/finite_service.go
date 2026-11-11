@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -88,6 +90,13 @@ func (c *controller) getLifecycle(ctx context.Context, pluginID string) (resourc
 }
 
 func (c *controller) Catalog(ctx context.Context, pluginID string, request resourcev2.CatalogRequest) (_result resourcev2.Catalog, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.Catalog",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.Catalog", invocation.Target{Provider: pluginID, Connection: request.Route.Connection})
 	if err != nil {
 		return _result, err
@@ -100,6 +109,14 @@ func (c *controller) Catalog(ctx context.Context, pluginID string, request resou
 // ResolveTarget makes missing query dimensions explicit as route-local any.
 // Omitted representation requires an explicit provider-declared default.
 func (c *controller) ResolveTarget(ctx context.Context, pluginID string, request ResolveTargetRequest) (_result ResolvedTarget, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.ResolveTarget",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Route.Connection),
+		attribute.String("resource_type", request.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.ResolveTarget", invocation.Target{Provider: pluginID, Connection: request.Route.Connection, ResourceType: request.Type})
 	if err != nil {
 		return _result, err

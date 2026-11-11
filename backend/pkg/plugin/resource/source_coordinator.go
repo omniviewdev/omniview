@@ -9,7 +9,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
@@ -181,7 +185,17 @@ func sourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string
 	}
 	sort.Slice(scope, func(i, j int) bool { return scope[i].Dimension < scope[j].Dimension })
 	target.Scope = scope
-	b, _ := json.Marshal([]any{pluginID, owner, target, mode, resourcev2.SourceAcquisitionEnumerate})
+	b, err := json.Marshal([]any{pluginID, owner, target, mode, resourcev2.SourceAcquisitionEnumerate})
+	if err != nil {
+		logging.Default().Debugw(
+			context.Background(),
+			"source key encoding failed",
+			"pluginID",
+			pluginID,
+			"errorClass",
+			telemetryutil.ErrorClass(err),
+		)
+	}
 	return string(b)
 }
 
@@ -209,7 +223,17 @@ type sourceBinding struct {
 }
 
 func boundSourceKey(pluginID, owner string, target resourcev2.ReadTarget, mode string, binding sourceBinding) string {
-	b, _ := json.Marshal([]any{sourceKey(pluginID, owner, target, mode), binding})
+	b, err := json.Marshal([]any{sourceKey(pluginID, owner, target, mode), binding})
+	if err != nil {
+		logging.Default().Debugw(
+			context.Background(),
+			"source binding key encoding failed",
+			"pluginID",
+			pluginID,
+			"errorClass",
+			telemetryutil.ErrorClass(err),
+		)
+	}
 	return string(b)
 }
 
@@ -506,6 +530,14 @@ func (c *controller) RetireSourceOwner(owner string) {
 }
 
 func (c *controller) OpenSourceView(ctx context.Context, pluginID string, request HostSourceViewRequest) (_ HostSourceViewOpened, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.OpenSourceView",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Target.Route.Connection),
+		attribute.String("resource_type", request.Target.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.OpenSourceView", readTarget(pluginID, request.Target))
 	if err != nil {
 		return HostSourceViewOpened{}, err
@@ -568,7 +600,11 @@ func (c *controller) sourceView(ctx context.Context, pluginID, id, operation str
 	}
 	return v, nil
 }
-func (c *controller) SyncSourceView(ctx context.Context, pluginID, id string) error {
+
+//nolint:nonamedreturns // Deferred span completion observes the returned error.
+func (c *controller) SyncSourceView(ctx context.Context, pluginID, id string) (retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.SyncSourceView", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	v, err := c.sourceView(ctx, pluginID, id, "resource.SyncSourceView")
 	if err != nil {
 		return err
@@ -581,7 +617,11 @@ func (c *controller) SyncSourceView(ctx context.Context, pluginID, id string) er
 	v.syncLocked("resync")
 	return ctx.Err()
 }
-func (c *controller) RefreshSourceView(ctx context.Context, pluginID, id string) error {
+
+//nolint:nonamedreturns // Deferred span completion observes the returned error.
+func (c *controller) RefreshSourceView(ctx context.Context, pluginID, id string) (retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.RefreshSourceView", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	v, err := c.sourceView(ctx, pluginID, id, "resource.RefreshSourceView")
 	if err != nil {
 		return err
@@ -595,7 +635,11 @@ func (c *controller) RefreshSourceView(ctx context.Context, pluginID, id string)
 	v.session.refresh()
 	return ctx.Err()
 }
-func (c *controller) CloseSourceView(ctx context.Context, pluginID, id string) error {
+
+//nolint:nonamedreturns // Deferred span completion observes the returned error.
+func (c *controller) CloseSourceView(ctx context.Context, pluginID, id string) (retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.CloseSourceView", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	v, err := c.sourceView(ctx, pluginID, id, "resource.CloseSourceView")
 	if err != nil {
 		return err
@@ -605,7 +649,18 @@ func (c *controller) CloseSourceView(ctx context.Context, pluginID, id string) e
 	}
 	return nil
 }
-func (c *controller) GetSourceStates(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (HostSourceStates, error) {
+func (c *controller) GetSourceStates(
+	ctx context.Context,
+	pluginID string,
+	route resourcev2.AccessRoute,
+) (_ HostSourceStates, retErr error) { //nolint:nonamedreturns // Deferred span completion observes the returned error.
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.GetSourceStates",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	out := HostSourceStates{Route: route, Types: map[string]HostSourceStatus{}}
 	ctx, err := c.admit(ctx, "resource.GetSourceStates", invocation.Target{Provider: pluginID, Connection: route.Connection})
 	if err != nil {
@@ -639,7 +694,18 @@ func (c *controller) GetSourceStates(ctx context.Context, pluginID string, route
 	}
 	return out, ctx.Err()
 }
-func (c *controller) RetryConnectionSources(ctx context.Context, pluginID string, route resourcev2.AccessRoute) error {
+func (c *controller) RetryConnectionSources(
+	ctx context.Context,
+	pluginID string,
+	route resourcev2.AccessRoute,
+) (retErr error) { //nolint:nonamedreturns // Deferred span completion observes the returned error.
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.RetryConnectionSources",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.RetryConnectionSources", invocation.Target{Provider: pluginID, Connection: route.Connection})
 	if err != nil {
 		return err

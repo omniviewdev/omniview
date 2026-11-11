@@ -225,6 +225,7 @@ func (q *Queue) Terminate(reason string, failure *apperror.AppError, now time.Ti
 			serializationErr = ErrFrameTooLarge
 		}
 		f.Payload.Error = nil
+		// Without the optional error, the frame contains only JSON-safe strings.
 		b, _ = f.encode()
 	}
 	q.items = nil

@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
@@ -24,6 +25,19 @@ import (
 )
 
 var tracer = otel.Tracer("omniview.networker")
+
+func finishNetworkerOp(span trace.Span, err *error) {
+	if *err == nil {
+		span.SetAttributes(attribute.String("outcome", "success"))
+	} else {
+		outcome := "failure"
+		if telemetryutil.ErrorClass(*err) == "canceled" {
+			outcome = "canceled"
+		}
+		span.SetAttributes(attribute.String("outcome", outcome))
+		telemetryutil.RecordError(span, *err)
+	}
+}
 
 // Wails event keys for port-forward session lifecycle.
 const (
@@ -136,7 +150,10 @@ func (c *controller) ServiceShutdown() error {
 	}
 	c.mu.RUnlock()
 	for _, id := range plugins {
-		_ = c.OnPluginStop(id, config.PluginMeta{})
+		if err := c.OnPluginStop(id, config.PluginMeta{}); err != nil {
+			c.logger.Warnw(context.Background(), "port-forward provider stop failed during shutdown",
+				"pluginID", id, "errorClass", telemetryutil.ErrorClass(err))
+		}
 	}
 	return nil
 }
@@ -144,8 +161,11 @@ func (c *controller) ServiceShutdown() error {
 // ====================================== Controller Implementation ====================================== //
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
+	ctx, span := tracer.Start(context.Background(), "networker.OnPluginInit")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginInit")
+	logger.Debugw(ctx, "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
@@ -197,7 +217,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
-		logger.Errorw(ctx, "error", "error", err)
+		logger.Errorw(ctx, "error", "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 
@@ -230,14 +250,19 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
+	ctx, span := tracer.Start(context.Background(), "networker.OnPluginDestroy")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginDestroy")
+	logger.Debugw(ctx, "OnPluginDestroy")
 
 	// nil action
 	return nil
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
+	_, span := tracer.Start(context.Background(), "networker.ListPlugins")
+	defer span.End()
 	c.logger.Debugw(context.Background(), "ListPlugins")
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -249,6 +274,9 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	_, span := tracer.Start(context.Background(), "networker.HasPlugin")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	_, ok := c.clients[pluginID]
@@ -268,7 +296,7 @@ func (c *controller) getConnectedCtx(
 		c.logger.Errorw(ctx, "getConnectedCtx: failed to get connection",
 			"pluginID", plugin,
 			"connectionID", connectionID,
-			"err", err,
+			"errorClass", telemetryutil.ErrorClass(err),
 		)
 		return nil
 	}
@@ -276,7 +304,6 @@ func (c *controller) getConnectedCtx(
 	c.logger.Debugw(ctx, "getConnectedCtx: resolved connection",
 		"pluginID", plugin,
 		"connectionID", connectionID,
-		"connectionDataKeys", mapKeys(connection.Data),
 	)
 
 	return sdktypes.NewPluginContextWithConnection(
@@ -288,18 +315,11 @@ func (c *controller) getConnectedCtx(
 	)
 }
 
-// mapKeys returns the keys from a map (for diagnostic logging).
-func mapKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) GetSupportedPortForwardTargets(plugin string) (_ []string, resultErr error) {
 	ctx, span := tracer.Start(context.Background(), "networker.GetSupportedPortForwardTargets")
 	defer span.End()
+	defer finishNetworkerOp(span, &resultErr)
 	span.SetAttributes(attribute.String("plugin_id", plugin))
 
 	c.mu.RLock()
@@ -321,11 +341,13 @@ func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, er
 	)
 }
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) GetPortForwardSession(
 	sessionID string,
-) (*networker.PortForwardSession, error) {
+) (_ *networker.PortForwardSession, resultErr error) {
 	ctx, span := tracer.Start(context.Background(), "networker.GetPortForwardSession")
 	defer span.End()
+	defer finishNetworkerOp(span, &resultErr)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.mu.RLock()
@@ -355,11 +377,13 @@ func (c *controller) GetPortForwardSession(
 	)
 }
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) ListPortForwardSessions(
 	pluginID, connectionID string,
-) ([]*networker.PortForwardSession, error) {
+) (_ []*networker.PortForwardSession, resultErr error) {
 	ctx, span := tracer.Start(context.Background(), "networker.ListPortForwardSessions")
 	defer span.End()
+	defer finishNetworkerOp(span, &resultErr)
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
 		attribute.String("connection_id", connectionID),
@@ -379,9 +403,11 @@ func (c *controller) ListPortForwardSessions(
 	)
 }
 
-func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSession, error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ListAllPortForwardSessions() (_ []*networker.PortForwardSession, resultErr error) {
 	ctx, span := tracer.Start(context.Background(), "networker.ListAllPortForwardSessions")
 	defer span.End()
+	defer finishNetworkerOp(span, &resultErr)
 
 	c.mu.RLock()
 	type pair struct{ pluginID, connectionID string }
@@ -398,6 +424,8 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 	for p := range seen {
 		provider, ok := c.clients[p.pluginID]
 		if !ok {
+			c.logger.Debugw(ctx, "port forward provider unavailable", "pluginID", p.pluginID,
+				"connectionID", p.connectionID, "errorClass", "NOT_FOUND")
 			continue
 		}
 		pairs = append(pairs, providerPair{p, provider})
@@ -414,7 +442,7 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 		)
 		if err != nil {
 			c.logger.Warnw(ctx, "ListAllPortForwardSessions: error listing sessions",
-				"pluginID", pp.pluginID, "connectionID", pp.connectionID, "err", err)
+				"pluginID", pp.pluginID, "connectionID", pp.connectionID, "errorClass", telemetryutil.ErrorClass(err))
 			continue
 		}
 		all = append(all, sessions...)
@@ -422,13 +450,15 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 	return all, nil
 }
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) FindPortForwardSessions(
 	pluginID string,
 	connectionID string,
 	request networker.FindPortForwardSessionRequest,
-) ([]*networker.PortForwardSession, error) {
+) (_ []*networker.PortForwardSession, resultErr error) {
 	ctx, span := tracer.Start(context.Background(), "networker.FindPortForwardSessions")
 	defer span.End()
+	defer finishNetworkerOp(span, &resultErr)
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
 		attribute.String("connection_id", connectionID),
@@ -454,9 +484,17 @@ func (c *controller) StartResourcePortForwardingSession(
 	ctx context.Context,
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
-) (*networker.PortForwardSession, error) {
+) (_ *networker.PortForwardSession, resultErr error) {
 	ctx, span := tracer.Start(ctx, "networker.StartResourcePortForwardingSession")
 	defer span.End()
+	defer func() {
+		if resultErr != nil {
+			telemetryutil.RecordError(span, resultErr)
+			span.SetAttributes(attribute.String("outcome", "failure"))
+		} else {
+			span.SetAttributes(attribute.String("outcome", "success"))
+		}
+	}()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
 		attribute.String("connection_id", connectionID),
@@ -536,7 +574,7 @@ func (c *controller) StartResourcePortForwardingSession(
 		c.logger.Errorw(ctx, "StartResourcePortForwardingSession: plugin returned error",
 			"pluginID", pluginID,
 			"connectionID", connectionID,
-			"err", err,
+			"errorClass", telemetryutil.ErrorClass(err),
 		)
 		return nil, err
 	}
@@ -549,6 +587,7 @@ func (c *controller) StartResourcePortForwardingSession(
 		"state", session.State,
 	)
 
+	span.SetAttributes(attribute.String("session_id", session.ID))
 	c.mu.Lock()
 	c.sessionIndex[session.ID] = sessionIndex{
 		pluginID:     pluginID,
@@ -564,11 +603,14 @@ func (c *controller) StartResourcePortForwardingSession(
 }
 
 // ClosePortForwardSession closes a port forward session.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) ClosePortForwardSession(
 	sessionID string,
-) (*networker.PortForwardSession, error) {
+) (_ *networker.PortForwardSession, resultErr error) {
 	ctx, span := tracer.Start(context.Background(), "networker.ClosePortForwardSession")
 	defer span.End()
+	defer finishNetworkerOp(span, &resultErr)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.mu.RLock()
@@ -598,12 +640,16 @@ func (c *controller) ClosePortForwardSession(
 	)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		c.logger.Errorw(ctx, "port forward close failed", "pluginID", index.pluginID,
+			"sessionID", sessionID, "errorClass", telemetryutil.ErrorClass(err))
 		return nil, err
 	}
 
 	c.mu.Lock()
 	delete(c.sessionIndex, sessionID)
 	c.mu.Unlock()
+	c.logger.Infow(ctx, "port forward session closed", "pluginID", index.pluginID,
+		"sessionID", sessionID, "closeReason", "requested")
 
 	if c.app != nil {
 		c.app.Event.Emit(PortForwardSessionClosed, session)

@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
-	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
 func TestActionDiagnosticDoesNotExportInputOrProviderError(t *testing.T) {
@@ -30,6 +31,8 @@ func TestActionDiagnosticDoesNotExportInputOrProviderError(t *testing.T) {
 	require.Len(t, spans, 1)
 	text := fmt.Sprint(spans[0].Attributes(), spans[0].Events(), spans[0].Status())
 	require.Contains(t, text, "FORBIDDEN")
+	require.Contains(t, text, "failure")
+	require.Equal(t, "FORBIDDEN", spans[0].Status().Description)
 	require.Contains(t, text, "drain")
 	require.NotContains(t, text, "secret-input")
 	require.NotContains(t, text, "secret-provider-message")

@@ -31,6 +31,7 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -182,7 +183,9 @@ func NewController(
 	store := registry.NewMemoryStore()
 	g := graph.NewRelationshipGraph()
 	graphIndexer := graph.NewGraphIndexer(g, store)
-	dispatcher := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
+	dispatcher := indexer.NewDispatcher(
+		[]indexer.ResourceIndexer{graphIndexer},
+	).WithLogger(logger.Named("IndexerDispatcher"))
 
 	c := &controller{
 		app:                 nil,
@@ -339,7 +342,12 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 		// Close after lifecycle retirement, preserving the original startup error.
 		defer func() {
 			if closeErr := state.closeSource(provider); closeErr != nil {
-				logger.Warnw(context.Background(), "failed resource source teardown failed", "error", closeErr)
+				logger.Warnw(
+					context.Background(),
+					"failed resource source teardown failed",
+					"errorClass",
+					telemetryutil.ErrorClass(closeErr),
+				)
 			}
 		}()
 		c.lifecycleMu.Lock()
@@ -379,7 +387,7 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 	c.lifecycleMu.Unlock()
 	if existing != nil {
 		if err := existing.closeSource(previousProvider); err != nil {
-			logger.Warnw(watchCtx, "previous resource source teardown failed", "error", err)
+			logger.Warnw(watchCtx, "previous resource source teardown failed", "errorClass", telemetryutil.ErrorClass(err))
 		}
 	}
 	featureCtx, featureCancel := context.WithTimeout(watchCtx, featureReadyTimeout)
@@ -411,7 +419,7 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 	// Connections and their event source are independently optional.
 	if features.Has(resource.FeatureConnections) {
 		if conns, loadErr := c.LoadConnections(invocation.HostContext(watchCtx), pluginID); loadErr != nil {
-			logger.Errorw(watchCtx, "failed to load connections", "error", loadErr)
+			logger.Errorw(watchCtx, "failed to load connections", "errorClass", telemetryutil.ErrorClass(loadErr))
 		} else if len(conns) > 0 {
 			c.emitter.Emit(pluginID+"/connection/sync", c.getConnections(pluginID))
 			if autoConnect {
@@ -509,14 +517,21 @@ func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginDestroy")
 	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
-		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
+		logger.Errorw(
+			context.Background(),
+			"failed to resolve plugin store root",
+			"errorClass",
+			telemetryutil.ErrorClass(err),
+		)
 	} else if err = removeLocalStore(storeRoot); err != nil {
-		logger.Errorw(context.Background(), "failed to remove local store", "error", err)
+		logger.Errorw(context.Background(), "failed to remove local store", "errorClass", telemetryutil.ErrorClass(err))
 	}
 	return nil
 }
 
 func (c *controller) ListPlugins(ctx context.Context) (_result []string, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.ListPlugins")
+	defer end(&retErr)
 	ctx, admissionErr := c.admit(ctx, "resource.ListPlugins", invocation.Target{})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -533,6 +548,8 @@ func (c *controller) ListPlugins(ctx context.Context) (_result []string, retErr 
 }
 
 func (c *controller) HasPlugin(ctx context.Context, pluginID string) (_result bool, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.HasPlugin", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	ctx, admissionErr := c.admit(ctx, "resource.HasPlugin", invocation.Target{Provider: pluginID})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -770,6 +787,8 @@ func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_res
 }
 
 func (c *controller) ListConnections(ctx context.Context, pluginID string) (_result []types.Connection, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.ListConnections", attribute.String("plugin_id", pluginID))
+	defer end(&retErr)
 	ctx, admissionErr := c.admit(ctx, "resource.ListConnections", invocation.Target{Provider: pluginID})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -790,6 +809,8 @@ func (c *controller) ListConnections(ctx context.Context, pluginID string) (_res
 }
 
 func (c *controller) ListAllConnections(ctx context.Context) (_result map[string][]types.Connection, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.ListAllConnections")
+	defer end(&retErr)
 	ctx, admissionErr := c.admit(ctx, "resource.ListAllConnections", invocation.Target{})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -809,6 +830,8 @@ func (c *controller) ListAllConnections(ctx context.Context) (_result map[string
 }
 
 func (c *controller) GetAllConnectionStates(ctx context.Context) (_result map[string][]ConnectionState, retErr error) {
+	ctx, end := h3StartOperation(ctx, "resource.GetAllConnectionStates")
+	defer end(&retErr)
 	ctx, admissionErr := c.admit(ctx, "resource.GetAllConnectionStates", invocation.Target{})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -922,6 +945,13 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 }
 
 func (c *controller) GetConnection(ctx context.Context, pluginID, connectionID string) (_result types.Connection, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.GetConnection",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+	defer end(&retErr)
 	ctx, admissionErr := c.admit(ctx, "resource.GetConnection", invocation.Target{Provider: pluginID, Connection: connectionID})
 	if admissionErr != nil {
 		return _result, admissionErr
@@ -944,6 +974,13 @@ func (c *controller) GetConnection(ctx context.Context, pluginID, connectionID s
 }
 
 func (c *controller) ScopeValues(ctx context.Context, pluginID string, route resource.AccessRoute, dimension string) (_result []string, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.ScopeValues",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.ScopeValues", invocation.Target{Provider: pluginID, Connection: route.Connection, Scope: map[string]string{"dimension": dimension}})
 	if err != nil {
 		return nil, err
@@ -1014,11 +1051,17 @@ func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID str
 			return
 		case err := <-errCh:
 			if err != nil && ctx.Err() == nil {
+				telemetry.RecordPluginStreamEvent(ctx, pluginID, "watch", "closed_error")
+				c.logger.Warnw(ctx, "connection watch failed", "pluginID", pluginID, "errorClass", telemetryutil.ErrorClass(err))
 				c.triggerCrashRecovery(pluginID, err, "connection")
 			}
 			return
 		case _, ok := <-connStream:
 			if !ok {
+				if ctx.Err() == nil {
+					telemetry.RecordPluginStreamEvent(ctx, pluginID, "watch", "closed_error")
+					c.logger.Warnw(ctx, "connection watch closed", "pluginID", pluginID)
+				}
 				return
 			}
 			_, span := tracer.Start(ctx, "resource.ConnectionSync",
@@ -1029,7 +1072,15 @@ func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID str
 			// Fetch current source facts under the same profile transaction fence.
 			conns, err := c.refreshWatchedConnections(ctx, pluginID, provider, generation)
 			if err != nil {
-				c.logger.Errorw(ctx, "connection snapshot refresh failed", "pluginID", pluginID, "error", err)
+				c.logger.Errorw(
+					ctx,
+					"connection snapshot refresh failed",
+					"pluginID",
+					pluginID,
+					"errorClass",
+					telemetryutil.ErrorClass(err),
+				)
+				telemetryutil.RecordError(span, err)
 				span.End()
 				continue
 			}

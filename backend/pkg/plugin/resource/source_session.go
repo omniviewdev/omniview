@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 )
@@ -65,12 +69,25 @@ func (s *sourceSession) statusLocked(state string, err error) {
 	}
 	s.status.Error = nil
 	if err != nil {
-		var e *resourcev2.ResourceOperationError
-		if errors.As(err, &e) {
-			copy := *e
-			s.status.Error = &copy
-		} else {
-			s.status.Error = &resourcev2.ResourceOperationError{Code: resourcev2.ErrorCode(err), Message: "Source session failed."}
+		if s.coordinator != nil && s.coordinator.ctrl != nil && s.coordinator.ctrl.logger != nil {
+			logCtx := s.ctx
+			if logCtx == nil {
+				logCtx = context.Background()
+			}
+			s.coordinator.ctrl.logger.Warnw(
+				logCtx,
+				"source session failed",
+				"pluginID",
+				s.pluginID,
+				"errorClass",
+				telemetryutil.ErrorClass(err),
+			)
+		}
+		// Provider error details can contain credentials or resource payloads.
+		// Export only the bounded host classification and host-generated text.
+		s.status.Error = &resourcev2.ResourceOperationError{
+			Code: telemetryutil.ErrorClass(err), Message: "Source session failed.",
+			Err: nil, Title: "", Suggestions: nil,
 		}
 	}
 	s.emitStateLocked()
@@ -168,7 +185,15 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 	}
 	ctx = resourcev2.WithCatalogRevision(operationCtx, binding.CatalogRevision)
 	ctx = context.WithValue(ctx, legacySourceTransientKey{}, &s.legacyTransientLedger)
-	stream, err := opener.OpenSourceStream(ctx, request)
+	openCtx, endOpen := h3StartOperation(
+		ctx,
+		"resource.SourceOpen",
+		attribute.String("plugin_id", s.pluginID),
+		attribute.String("connection_id", request.Target.Route.Connection),
+		attribute.String("resource_type", request.Target.Type),
+	)
+	stream, err := opener.OpenSourceStream(openCtx, request)
+	endOpen(&err)
 	if err != nil {
 		if resourceplugin.IsFatalSourceTransportError(err) {
 			go s.coordinator.ctrl.retireFatalSourceTransport(s.pluginID, expected, err)
@@ -186,17 +211,59 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 	s.stream = stream
 	s.mu.Unlock()
 	defer stream.Close()
+	closeReason := "normal"
+	defer func() {
+		if s.coordinator.ctrl.logger != nil {
+			s.coordinator.ctrl.logger.Debugw(
+				ctx,
+				"source stream closed",
+				"pluginID",
+				s.pluginID,
+				"connectionID",
+				request.Target.Route.Connection,
+				"resourceType",
+				request.Target.Type,
+				"closeReason",
+				closeReason,
+			)
+		}
+	}()
 	tracker := resourcev2.NewCatalogBoundSourcePhaseTracker(request, descriptor)
 	defer tracker.Close()
+	firstFrame := true
 	for {
 		frame, err := stream.Recv()
 		if err != nil {
+			switch {
+			case ctx.Err() != nil:
+				closeReason = resourceOutcomeCanceled
+			case errors.Is(err, io.EOF):
+				closeReason = "peer"
+			default:
+				closeReason = resourceOutcomeError
+				telemetry.RecordPluginStreamEvent(ctx, s.pluginID, "source", "closed_error")
+			}
 			if resourceplugin.IsFatalSourceTransportError(err) {
 				go s.coordinator.ctrl.retireFatalSourceTransport(s.pluginID, expected, err)
 				return
 			}
 			s.receiveError(request.Generation, err)
 			return
+		}
+		if firstFrame {
+			firstFrame = false
+			if s.coordinator.ctrl.logger != nil {
+				s.coordinator.ctrl.logger.Debugw(
+					ctx,
+					"source stream received first frame",
+					"pluginID",
+					s.pluginID,
+					"connectionID",
+					request.Target.Route.Connection,
+					"resourceType",
+					request.Target.Type,
+				)
+			}
 		}
 		s.mu.Lock()
 		if s.closed || s.generation != request.Generation {
@@ -206,6 +273,19 @@ func (s *sourceSession) receive(ctx context.Context, request resourcev2.SourceOp
 		// Reserve frame and tracker scratch before constructing the wire tree.
 		frameBytes, err := sourceFrameTransientEstimate(frame, maxSourceTransientBytes)
 		if err != nil || !s.transientLedger.reserve(frameBytes) {
+			telemetry.RecordPluginStreamEvent(ctx, s.pluginID, "source", "overflow")
+			if s.coordinator.ctrl.logger != nil {
+				s.coordinator.ctrl.logger.Warnw(
+					ctx,
+					"source frame exceeds transient budget",
+					"pluginID",
+					s.pluginID,
+					"connectionID",
+					request.Target.Route.Connection,
+					"resourceType",
+					request.Target.Type,
+				)
+			}
 			s.statusLocked("failed", resourcev2.NewError("RESOURCE_LIMIT", "Source frame transient exceeds host limits."))
 			s.mu.Unlock()
 			return
@@ -333,6 +413,23 @@ func sourceTransientError(code string) bool {
 	return code == "UNAVAILABLE" || code == "CONNECTION_ERROR" || code == "TIMEOUT"
 }
 func (s *sourceSession) resetLocked(message string) {
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	telemetry.RecordPluginStreamEvent(ctx, s.pluginID, "source", "reset")
+	if s.coordinator != nil && s.coordinator.ctrl != nil && s.coordinator.ctrl.logger != nil {
+		s.coordinator.ctrl.logger.Warnw(
+			ctx,
+			"source continuity reset",
+			"pluginID",
+			s.pluginID,
+			"connectionID",
+			s.target.Route.Connection,
+			"resourceType",
+			s.target.Type,
+		)
+	}
 	s.staging = nil
 	s.stagingBytes = 0
 	s.statusLocked("resetRequired", nil)
@@ -365,6 +462,19 @@ func (s *sourceSession) resetLocked(message string) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if !s.closed && s.generation == generation {
+			telemetry.RecordPluginStreamEvent(sessionCtx, s.pluginID, "source", "reconnect")
+			if s.coordinator.ctrl.logger != nil {
+				s.coordinator.ctrl.logger.Debugw(
+					sessionCtx,
+					"source reconnecting",
+					"pluginID",
+					s.pluginID,
+					"attempt",
+					len(s.attempts),
+					"backoffMs",
+					delay.Milliseconds(),
+				)
+			}
 			s.autoReopening = true
 			s.startLocked()
 		}
@@ -935,13 +1045,13 @@ func (s *sourceSession) applyLocked(frame resourcev2.SourceFrame, frames ...sour
 			v.changesLocked(upserts, removes)
 		}
 	case frame.Reset != nil:
-		s.resetLocked(frame.Reset.Message)
+		s.resetLocked("Source continuity lost.")
 		return true, nil
 	case frame.Failed != nil:
 		if s.autoReopening && sourceTransientError(frame.Failed.Code) {
-			s.resetLocked(frame.Failed.Message)
+			s.resetLocked("Source continuity lost.")
 		} else {
-			s.statusLocked("failed", resourcev2.NewError(frame.Failed.Code, frame.Failed.Message))
+			s.statusLocked("failed", resourcev2.NewError(frame.Failed.Code, "Source session failed."))
 		}
 		return true, nil
 	}

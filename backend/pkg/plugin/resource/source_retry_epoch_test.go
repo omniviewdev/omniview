@@ -201,7 +201,7 @@ func TestSourceBindingInvalidationBudgetSurvivesRebind(t *testing.T) {
 	s.invalidateBinding(generation, pluginGeneration, epoch)
 	s.mu.Lock()
 	require.Equal(t, "failed", s.status.State)
-	require.Equal(t, "Source reconnect limit reached.", s.status.Error.Message)
+	require.Equal(t, "Source session failed.", s.status.Error.Message)
 	require.Len(t, s.attempts, len(sourceReopenBackoff))
 	s.mu.Unlock()
 	ctrl.pluginsMu.RLock()

@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
@@ -108,6 +110,14 @@ func schemaDocumentSource(provider ResourceProvider, route resourcev2.AccessRout
 }
 
 func (c *controller) GetSchemaFields(ctx context.Context, pluginID string, request SchemaFieldsRequest) (out SchemaFieldsResult, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.GetSchemaFields",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", request.Route.Connection),
+		attribute.String("resource_type", request.Type),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetSchemaFields", ancillaryTarget(pluginID, request.Route, request.Type, resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err
@@ -175,6 +185,13 @@ func schemaFields(ctx context.Context, snapshot *resourcecatalog.Snapshot, fetch
 }
 
 func (c *controller) GetEditorSchemas(ctx context.Context, pluginID string, route resourcev2.AccessRoute) (out []EditorSchemaAssociation, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.GetEditorSchemas",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetEditorSchemas", ancillaryTarget(pluginID, route, "", resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err
@@ -194,6 +211,13 @@ func (c *controller) GetEditorSchemas(ctx context.Context, pluginID string, rout
 }
 
 func (c *controller) GetEditorSchemaDocument(ctx context.Context, pluginID string, route resourcev2.AccessRoute, documentID string) (out EditorSchemaDocument, retErr error) {
+	ctx, end := h3StartOperation(
+		ctx,
+		"resource.GetEditorSchemaDocument",
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", route.Connection),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, "resource.GetEditorSchemaDocument", ancillaryTarget(pluginID, route, "", resourcev2.ResourceReference{}, ""))
 	if err != nil {
 		return out, err

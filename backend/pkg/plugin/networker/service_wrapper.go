@@ -6,6 +6,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 
 	networkersdk "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
@@ -67,6 +68,10 @@ func (s *ServiceWrapper) StartResourcePortForwardingSession(
 ) (*networkersdk.PortForwardSession, error) {
 	var opts networkersdk.PortForwardSessionOptions
 	if err := transportjson.Decode(encoded, &opts, pluginID, connectionID); err != nil {
+		_, span := tracer.Start(ctx, "networker.StartResourcePortForwardingSession")
+		span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
+		finishNetworkerOp(span, &err)
+		span.End()
 		return nil, err
 	}
 	return s.Ctrl.StartResourcePortForwardingSession(s.realmContext(ctx), pluginID, connectionID, opts)

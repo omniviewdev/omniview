@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
@@ -16,6 +17,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -169,13 +171,15 @@ func (c *controller) runLocalMux(
 			return
 		case input := <-inMux:
 			if err := c.terminalManager.WriteSession(input.SessionID, input.Data); err != nil {
-				c.logger.Errorw(context.Background(), "error writing to session", "error", err)
+				c.logger.Errorw(c.ctx, "error writing to session", "sessionID", input.SessionID,
+					"errorClass", telemetryutil.ErrorClass(err))
 			}
 		case output := <-outMux:
 			c.dispatchOutput(output)
 		case resize := <-resizeMux:
 			if err := c.terminalManager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
-				c.logger.Errorw(context.Background(), "error resizing session", "error", err)
+				c.logger.Errorw(c.ctx, "error resizing session", "sessionID", resize.SessionID,
+					"errorClass", telemetryutil.ErrorClass(err))
 			}
 		}
 	}
@@ -257,14 +261,26 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 	stream, active := c.streams[output.pluginID]
 	c.mu.RUnlock()
 	if !active || stream.done != output.done || stream.ctx.Err() != nil {
+		// Output from a replaced or stopped provider stream is discarded.
+		c.logger.Debugw(context.Background(), "dropped output from stale exec provider stream",
+			"pluginID", output.pluginID, "sessionID", output.SessionID, "active", active)
+		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
 		return
+	}
+	if output.Signal == exec.StreamSignalError {
+		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "closed_error")
+		c.logger.Warnw(context.Background(), "exec session signaled error",
+			"pluginID", output.pluginID, "sessionID", output.SessionID)
 	}
 	c.dispatchOutput(output.StreamOutput)
 }
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
+	ctx, end := startOp(context.Background(), "exec.OnPluginInit", attribute.String("plugin_id", pluginID))
+	var err error
+	defer end(&err)
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginInit")
+	logger.Debugw(ctx, "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
@@ -313,13 +329,16 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
-		logger.Errorw(ctx, "error dispensing provider", "error", err)
+		logger.Errorw(ctx, "error dispensing provider", "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 
 	// Get the handlers before acquiring the lock (this makes an RPC call).
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(ctx, ""))
-	_ = c.OnPluginStop(pluginID, config.PluginMeta{})
+	if stopErr := c.OnPluginStop(pluginID, config.PluginMeta{}); stopErr != nil {
+		logger.Warnw(ctx, "failed to stop previous exec provider before restart",
+			"errorClass", telemetryutil.ErrorClass(stopErr))
+	}
 	base := c.ctx
 	if base == nil {
 		base = context.Background()
@@ -337,7 +356,7 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 		provider.Close()
 		telemetryutil.RecordError(span, err)
 		close(inchan)
-		logger.Errorw(ctx, "error starting stream", "error", err)
+		logger.Errorw(ctx, "error starting stream", "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 
@@ -357,13 +376,25 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 
 	go func() {
 		defer close(done)
+		first := true
 		for {
 			select {
 			case <-streamCtx.Done():
+				logger.Debugw(streamCtx, "exec provider stream closed", "closeReason", "canceled")
 				return
 			case output, ok := <-stream:
 				if !ok {
-					return // stream closed, plugin exited
+					if streamCtx.Err() == nil {
+						logger.Warnw(streamCtx, "exec provider stream closed unexpectedly", "closeReason", "provider")
+						telemetry.RecordPluginStreamEvent(streamCtx, pluginID, "exec", "closed_error")
+					} else {
+						logger.Debugw(streamCtx, "exec provider stream closed", "closeReason", "canceled")
+					}
+					return
+				}
+				if first {
+					logger.Debugw(streamCtx, "exec provider stream first event")
+					first = false
 				}
 				select {
 				case c.outputMux <- (execProviderOutput{StreamOutput: output, pluginID: pluginID, done: done}):
@@ -428,14 +459,20 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
+	ctx, end := startOp(context.Background(), "exec.OnPluginDestroy", attribute.String("plugin_id", pluginID))
+	var err error
+	defer end(&err)
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginDestroy")
+	logger.Debugw(ctx, "OnPluginDestroy")
 
 	// nil action
 	return nil
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
+	var err error
+	_, end := startOp(context.Background(), "exec.ListPlugins")
+	defer end(&err)
 	c.logger.Debugw(context.Background(), "ListPlugins")
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -447,6 +484,9 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	var err error
+	_, end := startOp(context.Background(), "exec.HasPlugin", attribute.String("plugin_id", pluginID))
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	_, ok := c.clients[pluginID]
@@ -463,7 +503,7 @@ func (c *controller) getConnectedCtx(
 	// get the connection from the right resource
 	connection, err := c.resourceClient.GetConnection(ctx, plugin, connectionID)
 	if err != nil {
-		c.logger.Errorw(ctx, "error getting connection", "error", err)
+		c.logger.Errorw(ctx, "error getting connection", "errorClass", telemetryutil.ErrorClass(err))
 		return nil
 	}
 
@@ -490,6 +530,9 @@ func (c *controller) getUnconnectedCtx(
 }
 
 func (c *controller) GetPluginHandlers(plugin string) map[string]exec.Handler {
+	var err error
+	_, end := startOp(context.Background(), "exec.GetPluginHandlers", attribute.String("plugin_id", plugin))
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	src := c.handlerMap[plugin]
@@ -504,6 +547,9 @@ func (c *controller) GetPluginHandlers(plugin string) map[string]exec.Handler {
 }
 
 func (c *controller) GetHandlers() map[string]map[string]exec.Handler {
+	var err error
+	_, end := startOp(context.Background(), "exec.GetHandlers")
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	cp := make(map[string]map[string]exec.Handler, len(c.handlerMap))
@@ -521,6 +567,10 @@ func (c *controller) GetHandler(
 	plugin string,
 	resource string,
 ) *exec.Handler {
+	var err error
+	_, end := startOp(context.Background(), "exec.GetHandler",
+		attribute.String("plugin_id", plugin), attribute.String("resource_type", resource))
+	defer end(&err)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	p, ok := c.handlerMap[plugin]
@@ -537,7 +587,11 @@ func (c *controller) GetHandler(
 // CreateTerminal creates a local terminal session with TTY enabled.
 // This is a convenience wrapper for CreateSession("local", "local", opts)
 // with TTY forced on.
-func (c *controller) CreateTerminal(opts exec.SessionOptions) (*exec.Session, error) {
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) CreateTerminal(opts exec.SessionOptions) (_ *exec.Session, err error) {
+	_, end := startOp(context.Background(), "exec.CreateTerminal")
+	defer end(&err)
 	opts.TTY = true
 	return c.CreateSession(context.Background(), "local", "local", opts)
 }
@@ -548,14 +602,9 @@ func (c *controller) CreateSession(
 	connectionID string,
 	opts exec.SessionOptions,
 ) (_ *exec.Session, err error) {
-	ctx, span := tracer.Start(ctx, "exec.CreateSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
-	span.SetAttributes(
+	ctx, end := startOp(ctx, "exec.CreateSession")
+	defer end(&err)
+	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.String("plugin_id", plugin),
 		attribute.String("connection_id", connectionID),
 	)
@@ -580,6 +629,8 @@ func (c *controller) CreateSession(
 		c.mu.Lock()
 		c.sessionIndex[session.ID] = sessionIndex{pluginID: "", connectionID: "", local: true}
 		c.mu.Unlock()
+		trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
+		c.logger.Infow(ctx, "exec session created", "sessionID", session.ID, "pluginID", "local")
 		return session, nil
 	}
 
@@ -608,18 +659,15 @@ func (c *controller) CreateSession(
 		connectionID: connectionID,
 	}
 	c.mu.Unlock()
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
+	c.logger.Infow(ctx, "exec session created", "sessionID", session.ID, "pluginID", plugin, "connectionID", connectionID)
 
 	return session, nil
 }
 
 func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ListSessions")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 
 	c.logger.Debugw(ctx, "ListSessions")
 	pctx := c.getUnconnectedCtx(ctx, "")
@@ -665,12 +713,7 @@ func (c *controller) GetSession(
 	sessionID string,
 ) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.GetSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "GetSession")
@@ -678,6 +721,8 @@ func (c *controller) GetSession(
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
+	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID))
 	if index.local {
 		return c.terminalManager.GetSession(sessionID)
 	}
@@ -692,12 +737,7 @@ func (c *controller) GetSession(
 
 func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.AttachSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "AttachSession")
@@ -705,6 +745,8 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	if !ok {
 		return nil, nil, apperror.SessionNotFound(sessionID)
 	}
+	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID))
 	if index.local {
 		return c.terminalManager.AttachSession(sessionID)
 	}
@@ -719,12 +761,7 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 
 func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.DetachSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "DetachSession")
@@ -732,6 +769,8 @@ func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
+	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID))
 	if index.local {
 		return c.terminalManager.DetachSession(sessionID)
 	}
@@ -749,12 +788,7 @@ func (c *controller) WriteSession(
 	data []byte,
 ) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.WriteSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.mu.RLock()
@@ -767,6 +801,8 @@ func (c *controller) WriteSession(
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
+	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID))
 	if index.local {
 		return c.terminalManager.WriteSession(sessionID, data)
 	}
@@ -784,18 +820,15 @@ func (c *controller) CloseSession(
 	sessionID string,
 ) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.CloseSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
+	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID))
 	if index.local {
 		return c.terminalManager.CloseSession(sessionID)
 	}
@@ -813,18 +846,15 @@ func (c *controller) ResizeSession(
 	rows, cols uint16,
 ) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ResizeSession")
-	defer span.End()
-	defer func() {
-		if err != nil {
-			telemetryutil.RecordError(span, err)
-		}
-	}()
+	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
+	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID))
 	if index.local {
 		return c.terminalManager.ResizeSession(sessionID, rows, cols)
 	}

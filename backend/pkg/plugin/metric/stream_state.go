@@ -4,7 +4,11 @@ import (
 	"context"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
@@ -54,7 +58,14 @@ func (c *controller) awaitStream(key metricStreamKey, state *metricStream) (*met
 
 // ensureStream coalesces concurrent first subscriptions. No lane is ready until
 // its actual host profile is resolved and the SDK's bounded handshake completes.
-func (c *controller) ensureStream(requestCtx context.Context, pluginID, connectionID string) (*metricStream, error) {
+//
+//nolint:gocognit,funlen,nonamedreturns // Stream setup coordinates admission, state and handshake.
+func (c *controller) ensureStream(
+	requestCtx context.Context, pluginID, connectionID string,
+) (_ *metricStream, retErr error) {
+	requestCtx, end := startOp(requestCtx, "metric.StreamOpen",
+		attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
+	defer end(&retErr)
 	if !c.HasPlugin(pluginID) {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
@@ -98,6 +109,8 @@ func (c *controller) ensureStream(requestCtx context.Context, pluginID, connecti
 		}
 	}()
 	fail := func(err error) (*metricStream, error) {
+		c.logger.Warnw(requestCtx, "metric stream open failed", "pluginID", pluginID,
+			"connectionID", connectionID, "errorClass", telemetryutil.ErrorClass(err))
 		c.mux.Lock()
 		if c.streams[key] == state {
 			delete(c.streams, key)
@@ -130,6 +143,12 @@ func (c *controller) ensureStream(requestCtx context.Context, pluginID, connecti
 	workerStarted = true
 	go func() {
 		defer close(state.drained)
+		closeReason := "normal"
+		defer func() {
+			c.logger.Debugw(ctx, "metric stream closed", "pluginID", pluginID,
+				"connectionID", connectionID, "close_reason", closeReason)
+		}()
+		first := true
 		defer c.endStream(state, closedStreamError())
 		for {
 			select {
@@ -137,18 +156,39 @@ func (c *controller) ensureStream(requestCtx context.Context, pluginID, connecti
 				return
 			case event, ok := <-output:
 				if !ok {
+					if ctx.Err() == nil {
+						closeReason = "error"
+						telemetry.RecordPluginStreamEvent(ctx, pluginID, "metric", "closed_error")
+						c.logger.Warnw(ctx, "metric stream closed unexpectedly", "pluginID", pluginID, "connectionID", connectionID)
+					}
 					return
 				}
+				if first {
+					first = false
+					c.logger.Debugw(ctx, "metric stream first event", "pluginID", pluginID, "connectionID", connectionID)
+				}
+				if event.OperationError != nil && event.OperationError.Code == "RESET_REQUIRED" {
+					telemetry.RecordPluginStreamEvent(ctx, pluginID, "metric", "reset")
+					c.logger.Warnw(ctx, "metric stream reset required", "pluginID", pluginID,
+						"connectionID", connectionID, "errorClass", "RESET_REQUIRED")
+				}
 				if event.SubscriptionID == "" && (event.OperationError != nil || event.Error != "") {
+					closeReason = "error"
 					failure := event.OperationError
 					if failure == nil {
 						failure = &resourcev2.ResourceOperationError{Code: "PROVIDER_ERROR", Message: "The metric stream failed."}
 					}
+					telemetry.RecordPluginStreamEvent(ctx, pluginID, "metric", "closed_error")
+					c.logger.Warnw(ctx, "metric stream reported failure", "pluginID", pluginID,
+						"connectionID", connectionID, "errorClass", telemetryutil.ErrorClass(failure))
 					c.endStream(state, failure)
 					return
 				}
 				if translated, owned := c.translateStreamOutput(state, event); owned {
 					c.handleStreamOutput(translated)
+				} else {
+					telemetry.RecordPluginStreamEvent(ctx, pluginID, "metric", "dropped")
+					c.logger.Debugw(ctx, "metric stream output dropped", "pluginID", pluginID, "connectionID", connectionID)
 				}
 			}
 		}
@@ -228,6 +268,13 @@ func (c *controller) BeginConnectionChange(pluginID, connectionID string) func()
 		finite.retire(pluginID, connectionID, true)
 	}
 	if state != nil {
+		ctx := c.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		telemetry.RecordPluginStreamEvent(ctx, pluginID, "metric", "reset")
+		c.logger.Warnw(ctx, "metric stream reset required", "pluginID", pluginID,
+			"connectionID", connectionID, "errorClass", "RESET_REQUIRED")
 		c.endStream(state, profileChangingError())
 	}
 	var once sync.Once

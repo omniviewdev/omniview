@@ -72,7 +72,7 @@ func NewAuthorityResolver(root *appstate.ScopedRoot) (*AuthorityResolver, error)
 	if err != nil {
 		return nil, err
 	}
-	defer store.Close()
+	defer h3Close(store, "authority_store_close")
 	data, err := io.ReadAll(io.LimitReader(store, maxAuthorityStoreBytes+1))
 	if err != nil {
 		return nil, err

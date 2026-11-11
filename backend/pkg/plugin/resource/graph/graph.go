@@ -1,9 +1,12 @@
 package graph
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
@@ -414,7 +417,12 @@ func (g *RelationshipGraph) selectorSnapshot(target GraphNode) []selectorEntry {
 
 // declID identifies a declaration among those of one resource type.
 func declID(d resource.RelationshipDescriptor) string {
-	key, _ := json.Marshal(d)
+	key, err := json.Marshal(d)
+	if err != nil {
+		logging.Default().Debugw(
+			context.Background(), "relationship declaration encoding failed", "errorClass", telemetryutil.ErrorClass(err),
+		)
+	}
 	return string(key)
 }
 

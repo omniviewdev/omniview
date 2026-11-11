@@ -103,6 +103,9 @@ func (c *controller) InvocationBoundary() *invocation.Boundary { return c.bounda
 // ====================================== Controller Implementation ====================================== //
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
+	_, span := tracer.Start(context.Background(), "tools.OnPluginInit")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("outcome", "success"))
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginInit")
 }
 
@@ -124,7 +127,10 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Pro
 	return provider, nil
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
+//nolint:gocognit,funlen // Startup coordinates provider registration and deferred error tracing.
+func (c *controller) OnPluginStart(
+	pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend,
+) (resultErr error) {
 	c.forget(pluginID)
 	c.mu.Lock()
 	if c.generations == nil {
@@ -150,6 +156,14 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	}()
 	ctx, span := tracer.Start(ctx, "tools.OnPluginStart")
 	defer span.End()
+	defer func() {
+		if resultErr != nil {
+			telemetryutil.RecordError(span, resultErr)
+			span.SetAttributes(attribute.String("outcome", "failure"))
+		} else {
+			span.SetAttributes(attribute.String("outcome", "success"))
+		}
+	}()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
 
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
@@ -195,7 +209,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	}
 	if err != nil {
 		telemetryutil.RecordError(span, err)
-		logger.Errorw(ctx, "failed to list plugin tools", "error", err)
+		logger.Errorw(ctx, "failed to list plugin tools", "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 	for _, descriptor := range descriptors {
@@ -237,18 +251,27 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
+	_, span := tracer.Start(context.Background(), "tools.OnPluginStop")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("outcome", "success"))
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
 	c.forget(pluginID)
 	return nil
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
+	_, span := tracer.Start(context.Background(), "tools.OnPluginShutdown")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("outcome", "success"))
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
 	c.forget(pluginID)
 	return nil
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
+	_, span := tracer.Start(context.Background(), "tools.OnPluginDestroy")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("outcome", "success"))
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
 	c.forget(pluginID)
 	return nil
@@ -287,6 +310,8 @@ func (c *controller) Refresh() {
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
+	_, span := tracer.Start(context.Background(), "tools.ListPlugins")
+	defer span.End()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
@@ -297,6 +322,9 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	_, span := tracer.Start(context.Background(), "tools.HasPlugin")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	_, ok := c.clients[pluginID]
@@ -306,6 +334,8 @@ func (c *controller) HasPlugin(pluginID string) bool {
 // ====================================== Tools ====================================== //
 
 func (c *controller) ListAll() map[string]PluginTools {
+	_, span := tracer.Start(context.Background(), "tools.ListAll")
+	defer span.End()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	out := make(map[string]PluginTools, len(c.cache))
@@ -321,10 +351,25 @@ func (c *controller) CallTool(
 	connection *sdktypes.Connection,
 	name string,
 	arguments json.RawMessage,
-) (*sdktools.Result, error) {
+) (_ *sdktools.Result, resultErr error) {
 	ctx, span := tracer.Start(ctx, "tools.CallTool")
 	defer span.End()
+	defer func() {
+		if resultErr == nil {
+			span.SetAttributes(attribute.String("outcome", "success"))
+		} else {
+			outcome := "failure"
+			if telemetryutil.ErrorClass(resultErr) == "canceled" {
+				outcome = "canceled"
+			}
+			span.SetAttributes(attribute.String("outcome", outcome))
+			telemetryutil.RecordError(span, resultErr)
+		}
+	}()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("tool", name))
+	if connection != nil {
+		span.SetAttributes(attribute.String("connection_id", connection.ID))
+	}
 
 	c.mu.RLock()
 	provider, ok := c.clients[pluginID]

@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
@@ -76,6 +78,8 @@ func (r *headlessRead) accept(out sdklogs.StreamOutput) {
 // ReadResourceLogs consumes a finite session through the existing logs engine.
 // Authorization receives the original invocation principal, not a UI wrapper.
 func (c *controller) ReadResourceLogs(ctx context.Context, pluginID string, opts sdklogs.CreateSessionOptions) (result *HeadlessResult, resultErr error) {
+	ctx, end := startOp(ctx, "logs.ReadResourceLogs", attribute.String("plugin_id", pluginID))
+	defer end(&resultErr)
 	if opts.Reference == nil || opts.Route == nil {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Resource reference and route are required.")
 	}
@@ -127,7 +131,8 @@ func (c *controller) ReadResourceLogs(ctx context.Context, pluginID string, opts
 		// Rejected acquisition may never have registered the chosen ID.
 		if closeErr := client.CloseSession(resourceLogPluginContext(closeCtx, opts.Route.Connection), opts.SessionID); closeErr != nil && resourcev2.ErrorCode(closeErr) != "NOT_FOUND" {
 			if c.logger != nil {
-				c.logger.Errorw(closeCtx, "resource log session cleanup failed", "session_id", opts.SessionID, "error", closeErr)
+				c.logger.Errorw(closeCtx, "resource log session cleanup failed",
+					"session_id", opts.SessionID, "errorClass", telemetryutil.ErrorClass(closeErr))
 			}
 			result = nil
 			resultErr = errors.Join(resultErr, resourcev2.NewError("INTERNAL", "Log session cleanup failed."))
@@ -150,6 +155,11 @@ func (c *controller) ReadResourceLogs(ctx context.Context, pluginID string, opts
 	case <-read.done:
 		read.mu.Lock()
 		defer read.mu.Unlock()
+		if c.logger != nil {
+			c.logger.Debugw(ctx, "headless resource log read finished", "pluginID", pluginID,
+				"sessionID", opts.SessionID, "lines", len(read.result.Lines), "bytes", read.bytes,
+				"truncated", read.result.Truncated)
+		}
 		return &read.result, read.err
 	}
 }

@@ -184,7 +184,9 @@ func (c *controller) ServiceShutdown() error {
 // ================================ Controller Lifecycle ================================ //
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginInit")
+	ctx, end := startOp(context.Background(), "metric.OnPluginInit", attribute.String("plugin_id", pluginID))
+	defer end(nil)
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(ctx, "OnPluginInit")
 }
 
 // dispenseProvider retains the negotiated SDK provider directly. Optional
@@ -216,18 +218,23 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Pro
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend internaltypes.PluginBackend) error {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) OnPluginStart(
+	pluginID string, _ config.PluginMeta, backend internaltypes.PluginBackend,
+) (err error) {
+	ctx, end := startOp(context.Background(), "metric.OnPluginStart", attribute.String("plugin_id", pluginID))
+	defer end(&err)
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(context.Background(), "OnPluginStart")
+	logger.Debugw(ctx, "OnPluginStart")
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		logger.Errorw(context.Background(), "error", "error", err)
+		logger.Errorw(ctx, "error", "errorClass", telemetryutil.ErrorClass(err))
 		return err
 	}
 
 	// Get supported resources before acquiring the lock (this makes an RPC call).
-	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
+	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(ctx))
 
 	// Query discovery is independent of stream capability. A trusted connection
 	// profile and canonical readiness are resolved lazily at first subscription.
@@ -245,23 +252,31 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
+	ctx, end := startOp(context.Background(), "metric.OnPluginStop", attribute.String("plugin_id", pluginID))
+	defer end(nil)
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(ctx, "OnPluginStop")
 	c.removePlugin(pluginID)
 	return nil
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
+	ctx, end := startOp(context.Background(), "metric.OnPluginShutdown", attribute.String("plugin_id", pluginID))
+	defer end(nil)
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(ctx, "OnPluginShutdown")
 	c.removePlugin(pluginID)
 	return nil
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
-	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
+	ctx, end := startOp(context.Background(), "metric.OnPluginDestroy", attribute.String("plugin_id", pluginID))
+	defer end(nil)
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(ctx, "OnPluginDestroy")
 	return nil
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
+	_, end := startOp(context.Background(), "metric.ListPlugins")
+	defer end(nil)
 	c.mux.RLock()
 	defer c.mux.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
@@ -272,6 +287,8 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	_, end := startOp(context.Background(), "metric.HasPlugin", attribute.String("plugin_id", pluginID))
+	defer end(nil)
 	c.mux.RLock()
 	defer c.mux.RUnlock()
 	_, ok := c.clients[pluginID]
@@ -332,7 +349,8 @@ func (c *controller) removePlugin(pluginID string) {
 func (c *controller) handleStreamOutput(output metric.StreamOutput) {
 	data, err := json.Marshal(output)
 	if err != nil {
-		c.logger.Errorw(context.Background(), "failed to marshal metric stream output", "error", err)
+		c.logger.Errorw(context.Background(), "failed to marshal metric stream output",
+			"errorClass", telemetryutil.ErrorClass(err))
 		return
 	}
 
@@ -352,7 +370,7 @@ func (c *controller) getConnectedCtx(
 ) (*sdktypes.PluginContext, error) {
 	connection, err := c.resourceClient.GetConnection(ctx, pluginID, connectionID)
 	if err != nil {
-		c.logger.Errorw(ctx, "error getting connection", "error", err)
+		c.logger.Errorw(ctx, "error getting connection", "errorClass", telemetryutil.ErrorClass(err))
 		return nil, err
 	}
 
@@ -378,6 +396,8 @@ func (c *controller) getUnconnectedCtx(ctx context.Context) *sdktypes.PluginCont
 // ================================ Discovery ================================ //
 
 func (c *controller) GetProviders() []MetricProviderSummary {
+	_, end := startOp(context.Background(), "metric.GetProviders")
+	defer end(nil)
 	c.mux.RLock()
 	defer c.mux.RUnlock()
 
@@ -398,6 +418,9 @@ func (c *controller) GetProviders() []MetricProviderSummary {
 }
 
 func (c *controller) GetProvidersForResource(resourceKey string) []MetricProviderSummary {
+	_, end := startOp(context.Background(), "metric.GetProvidersForResource",
+		attribute.String("resource_type", resourceKey))
+	defer end(nil)
 	c.mux.RLock()
 	defer c.mux.RUnlock()
 
@@ -410,6 +433,7 @@ func (c *controller) GetProvidersForResource(resourceKey string) []MetricProvide
 	for _, pluginID := range pluginIDs {
 		info := c.providerInfos[pluginID]
 		if info == nil {
+			c.logger.Debugw(context.Background(), "metric provider metadata missing", "pluginID", pluginID)
 			continue
 		}
 		_, supportsConnections := c.clients[pluginID].(metric.ProviderConfiguration)
@@ -428,13 +452,14 @@ func (c *controller) GetProvidersForResource(resourceKey string) []MetricProvide
 
 // ================================ Querying ================================ //
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) Query(
 	ctx context.Context,
 	pluginID, connectionID string,
 	req metric.QueryRequest,
-) (*metric.QueryResponse, error) {
+) (_ *metric.QueryResponse, retErr error) {
 	ctx, span := tracer.Start(ctx, "metric.Query")
-	defer span.End()
+	defer finishOp(span, &retErr)
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
 		attribute.String("connection_id", connectionID),
@@ -477,9 +502,14 @@ func (c *controller) Query(
 
 // ReadResourceMetrics answers one finite reference-bound query. Authorization
 // receives the original invocation principal, not a UI wrapper.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) ReadResourceMetrics(
 	ctx context.Context, pluginID string, req metric.QueryRequest,
-) (*metric.QueryResponse, error) {
+) (_ *metric.QueryResponse, retErr error) {
+	ctx, end := startOp(ctx, "metric.ReadResourceMetrics",
+		attribute.String("plugin_id", pluginID), attribute.String("resource_type", req.ResourceKey))
+	defer end(&retErr)
 	if req.Reference == nil || req.Route == nil {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Resource reference and route are required.")
 	}
@@ -505,12 +535,13 @@ func (c *controller) ReadResourceMetrics(
 	return queryLegacyProvider(client, pc, req)
 }
 
+//nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) QueryAll(
 	ctx context.Context,
 	connectionID string, req metric.QueryRequest,
-) (map[string]*metric.QueryResponse, error) {
+) (_ map[string]*metric.QueryResponse, retErr error) {
 	ctx, span := tracer.Start(ctx, "metric.QueryAll")
-	defer span.End()
+	defer finishOp(span, &retErr)
 	span.SetAttributes(
 		attribute.String("connection_id", connectionID),
 		attribute.String("resource_key", req.ResourceKey),
@@ -544,7 +575,7 @@ func (c *controller) QueryAll(
 					}
 					mu.Unlock()
 				}
-				c.logger.Warnw(ctx, "error querying metric provider", "pluginID", pid, "error", err)
+				c.logger.Warnw(ctx, "error querying metric provider", "pluginID", pid, "errorClass", telemetryutil.ErrorClass(err))
 				return
 			}
 			mu.Lock()
@@ -564,9 +595,12 @@ func (c *controller) QueryAll(
 
 // ================================ Streaming ================================ //
 
-func (c *controller) Subscribe(ctx context.Context, pluginID, connectionID string, req SubscribeRequest) (string, error) {
+//nolint:gocognit,nonamedreturns // Admission and lifecycle share a deferred error span.
+func (c *controller) Subscribe(
+	ctx context.Context, pluginID, connectionID string, req SubscribeRequest,
+) (_ string, retErr error) {
 	ctx, span := tracer.Start(ctx, "metric.Subscribe")
-	defer span.End()
+	defer finishOp(span, &retErr)
 	subscriptionID := uuid.NewString()
 	wireID := uuid.NewString()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID),
@@ -636,7 +670,10 @@ func (c *controller) Subscribe(ctx context.Context, pluginID, connectionID strin
 	}
 }
 
-func (c *controller) Unsubscribe(subscriptionID string) error {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) Unsubscribe(subscriptionID string) (err error) {
+	_, end := startOp(context.Background(), "metric.Unsubscribe", attribute.String("session_id", subscriptionID))
+	defer end(&err)
 	c.mux.Lock()
 	sub, ok := c.subscriptions[subscriptionID]
 	if ok {

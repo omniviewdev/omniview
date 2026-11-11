@@ -3,12 +3,16 @@ package resource
 import (
 	"context"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const EventConnectionMetadata = "resource/connection/metadata"
@@ -85,10 +89,30 @@ func (c *controller) startMetadata(pluginID string, state *pluginState, provider
 			c.pluginsMu.RLock()
 			epoch := state.metadataEpoch
 			c.pluginsMu.RUnlock()
-			_ = metadata.WatchConnectionMetadata(invocation.HostContext(state.ctx), func(event resourcev2.ConnectionMetadataEvent) error {
-				_, err := c.admitMetadata(pluginID, state, event, true, epoch)
-				return err
-			})
+			var first sync.Once
+			err := metadata.WatchConnectionMetadata(invocation.HostContext(state.ctx),
+				func(event resourcev2.ConnectionMetadataEvent) error {
+					first.Do(func() {
+						if c.logger != nil {
+							c.logger.Debugw(state.ctx, "connection metadata watch received first event", "pluginID", pluginID)
+						}
+					})
+					_, err := c.admitMetadata(pluginID, state, event, true, epoch)
+					return err
+				})
+			if state.ctx.Err() == nil {
+				telemetry.RecordPluginStreamEvent(state.ctx, pluginID, "watch", "closed_error")
+				if c.logger != nil {
+					c.logger.Warnw(
+						state.ctx,
+						"connection metadata watch ended",
+						"pluginID",
+						pluginID,
+						"errorClass",
+						telemetryutil.ErrorClass(err),
+					)
+				}
+			}
 			c.retireMetadataAt(pluginID, state, &epoch)
 			timer := time.NewTimer(time.Second)
 			select {
@@ -96,6 +120,10 @@ func (c *controller) startMetadata(pluginID string, state *pluginState, provider
 				timer.Stop()
 				return
 			case <-timer.C:
+				telemetry.RecordPluginStreamEvent(state.ctx, pluginID, "watch", "reconnect")
+				if c.logger != nil {
+					c.logger.Debugw(state.ctx, "reconnecting connection metadata watch", "pluginID", pluginID)
+				}
 			}
 		}
 	}()
@@ -134,6 +162,7 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 		state.metadataAvailable = true
 	}
 	if old, ok := state.metadata[snapshot.ConnectionID]; ok {
+		// Stored revisions were parsed successfully before publication.
 		previous, _ := strconv.ParseUint(old.Revision, 10, 64)
 		if revision <= previous {
 			resynchronized := !old.TransportAvailable
@@ -182,6 +211,13 @@ func (c *controller) connectionMetadata(ctx context.Context, pluginID, connectio
 	if refresh {
 		operation = "resource.RefreshConnectionMetadata"
 	}
+	ctx, end := h3StartOperation(
+		ctx,
+		operation,
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+	defer end(&retErr)
 	ctx, err := c.admit(ctx, operation, invocation.Target{Provider: pluginID, Connection: connectionID})
 	if err != nil {
 		return result, err
