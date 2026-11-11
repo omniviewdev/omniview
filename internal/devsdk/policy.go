@@ -15,7 +15,7 @@ const (
 	// never converted. TestFloorMatchesTheControllerPin fails when the
 	// controller's own pin moves, so raising the floor is always a deliberate edit
 	// of this constant.
-	FloorVersion = "v0.19.2"
+	FloorVersion = "v0.19.3"
 
 	// minimumFloor is the lowest value FloorVersion may ever take: the first
 	// release with reviewed state-root isolation behavior. A drifting pin can
@@ -67,6 +67,11 @@ var reviewedReleases = []Published{
 		Module: Module, Version: "v0.19.2",
 		ModuleSum: "h1:ICMYJwjGttuM+UJ3w+s+bN2PeoBYEpHxM6Za37m0Z9s=",
 		GoModSum:  "h1:7ZjIDHv7L0YEHsy3Ld2CHKGr/HHTNY4wUrzVyfYRR8E=",
+	},
+	{
+		Module: Module, Version: "v0.19.3",
+		ModuleSum: "h1:6Y3ut87FraEeB+bvTL4/AT4VCxsFLKtZJSeAOnHeCfc=",
+		GoModSum:  "h1:4y3rIPpRzF3N1SvC73cjJX1jcp+cnJ4dikaXuKlZs7E=",
 	},
 }
 

@@ -151,6 +151,8 @@ github.com/omniviewdev/plugin-sdk v0.19.0 h1:w5lSd2bxwzlUSoePiIVjocwcC/d8LDPxeHb
 github.com/omniviewdev/plugin-sdk v0.19.0/go.mod h1:7ZjIDHv7L0YEHsy3Ld2CHKGr/HHTNY4wUrzVyfYRR8E=
 github.com/omniviewdev/plugin-sdk v0.19.2 h1:ICMYJwjGttuM+UJ3w+s+bN2PeoBYEpHxM6Za37m0Z9s=
 github.com/omniviewdev/plugin-sdk v0.19.2/go.mod h1:7ZjIDHv7L0YEHsy3Ld2CHKGr/HHTNY4wUrzVyfYRR8E=
+github.com/omniviewdev/plugin-sdk v0.19.3 h1:6Y3ut87FraEeB+bvTL4/AT4VCxsFLKtZJSeAOnHeCfc=
+github.com/omniviewdev/plugin-sdk v0.19.3/go.mod h1:4y3rIPpRzF3N1SvC73cjJX1jcp+cnJ4dikaXuKlZs7E=
 github.com/omniviewdev/registry v0.2.3 h1:s9GYTZMqwMaUgvuHVTIOgHcRHK9C28O68EW3o+lHvIc=
 github.com/omniviewdev/registry v0.2.3/go.mod h1:wlpWX8JO05ctq2r+dC22E7C04wvsZSUAuWCUAnn6pP8=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
