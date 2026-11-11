@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNotifications } from '../../activity/context';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { CreateSession, CloseSession, type LogSessionRequest } from '../../logs';
+import { observeFrontendOperation } from '../../telemetry/frontendSpans';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type { Value, ResourceReference, AccessRoute } from '../../resource/v2/domain';
@@ -64,8 +65,12 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
         },
       };
 
-      const session = await CreateSession(pluginID, connectionID, opts);
-      if (!session) throw new Error('Failed to create log session: null response');
+      const attempt = (async () => {
+        const created = await CreateSession(pluginID, connectionID, opts);
+        if (!created) throw new Error('Failed to create log session: null response');
+        return created;
+      })();
+      const session = await observeFrontendOperation('frontend.logs.session', { plugin_id: pluginID, operation: 'create' }, attempt);
       createTab({
         id: session.id,
         title: label ?? `Logs ${session.id.substring(0, 8)}`,
@@ -79,7 +84,7 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
 
   const closeSessionMutation = useMutation({
     mutationFn: async (sessionID: string) => {
-      await CloseSession(sessionID);
+      await observeFrontendOperation('frontend.logs.session', { plugin_id: pluginID, operation: 'close' }, CloseSession(sessionID));
     },
     onError: createErrorHandler(notify, 'Failed to close log session'),
   });

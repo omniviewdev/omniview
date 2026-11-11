@@ -6,6 +6,14 @@ import {
 } from '../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import type { Connection, ConnectionStatus } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { parseAppError } from '../errors/parseAppError';
+import { observeFrontendOperation, recordFrontendSpan } from '../telemetry/frontendSpans';
+
+type ReadinessTransition = 'check' | 'start' | 'retry' | 'invalidate';
+
+function recordReadinessInvalidation(pluginID: string) {
+  const now = Date.now();
+  recordFrontendSpan('frontend.connection.readiness', { plugin_id: pluginID, transition: 'invalidate', outcome: 'success' }, now, now, false);
+}
 
 export type ConnectionReadinessPhase =
   | 'checking' | 'disconnected' | 'connecting' | 'connected'
@@ -110,6 +118,7 @@ function invalidatePlugin(pluginID: string, message: string) {
   unavailablePlugins.set(pluginID, message);
   for (const entry of entries.values()) {
     if (entry.pluginID === pluginID) {
+      recordReadinessInvalidation(pluginID);
       invalidate(entry, { phase: 'error', message, connection: entry.snapshot.connection });
     }
   }
@@ -188,7 +197,7 @@ function retain(entry: Entry) {
   };
 }
 
-function run(entry: Entry, kind: Operation['kind'], background = false): Promise<ConnectionStatus> {
+function run(entry: Entry, kind: Operation['kind'], background = false, transition: ReadinessTransition = kind): Promise<ConnectionStatus> {
   if (entry.stop) return Promise.reject(new Error('Connection is disconnecting. Wait for it to stop before connecting.'));
   const unavailable = unavailablePlugins.get(entry.pluginID);
   if (unavailable) {
@@ -220,7 +229,7 @@ function run(entry: Entry, kind: Operation['kind'], background = false): Promise
       if (entry.operation?.version === version) entry.operation = undefined;
     });
   entry.operation = { kind, promise, version };
-  return promise;
+  return observeFrontendOperation('frontend.connection.readiness', { plugin_id: entry.pluginID, transition }, promise);
 }
 
 /** Internal hook adapter. Inactive snapshots never reuse an earlier mount's readiness. */
@@ -247,7 +256,7 @@ export function connectionReadinessStore(pluginID: string, connectionID: string)
     retry: async () => {
       const entry = getEntry(pluginID, connectionID);
       const release = retain(entry);
-      try { await run(entry, 'check'); } catch { /* Failure is exposed through the snapshot. */ }
+      try { await run(entry, 'check', false, 'retry'); } catch { /* Failure is exposed through the snapshot. */ }
       finally { release(); }
     },
   };
@@ -331,6 +340,7 @@ export function stopConnectionWithReadiness(pluginID: string, connectionID: stri
 export function invalidateConnectionReadiness(pluginID: string, connectionID: string, removed = false) {
   const entry = entries.get(JSON.stringify([pluginID, connectionID]));
   if (!entry) return;
+  recordReadinessInvalidation(pluginID);
   invalidate(entry, { phase: removed ? 'not-found' : 'checking', connection: removed ? undefined : entry.snapshot.connection });
   if (!removed && entry.users) void run(entry, 'check').catch(() => {});
 }

@@ -1,5 +1,5 @@
 import { isCancelledError, parseAppError } from '../errors/parseAppError';
-import { frontendSpanSchema, type FrontendSpanAttributes, type FrontendSpanName } from './frontendSpanSchema';
+import { frontendSpanSchema, sanitizeFrontendAttributes, type FrontendSpanAttributes, type FrontendSpanName } from './frontendSpanSchema';
 
 export type FrontendSpanRecorder = (name: FrontendSpanName, attrs: FrontendSpanAttributes, startMs: number, endMs: number, failed: boolean) => void;
 export type ErrorClass = (typeof frontendSpanSchema)['frontend.resource.call']['error_class']['values'][number];
@@ -8,7 +8,7 @@ let recorder: FrontendSpanRecorder | null = null;
 export function setFrontendSpanRecorder(value: FrontendSpanRecorder | null): void { recorder = value; }
 
 export function recordFrontendSpan(name: FrontendSpanName, attrs: FrontendSpanAttributes, startMs: number, endMs: number, failed: boolean): void {
-  try { recorder?.(name, attrs, startMs, endMs, failed); } catch { /* Telemetry must not alter the operation. */ }
+  try { recorder?.(name, sanitizeFrontendAttributes(name, attrs), startMs, endMs, failed); } catch { /* Telemetry must not alter the operation. */ }
 }
 
 export function classifyFrontendError(error: unknown): ErrorClass {

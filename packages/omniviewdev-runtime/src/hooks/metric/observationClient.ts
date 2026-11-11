@@ -1,5 +1,6 @@
 import { Events } from '@wailsio/runtime';
 import { OpenMetricsObservation, AttachMetricsObservation, CloseMetricsObservation, RefreshMetricsObservation } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
+import { observeFrontendOperation, recordFrontendSpan } from '../../telemetry/frontendSpans';
 import type { MetricsObservationSpec, MetricsObservationSnapshot } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 
 type Receiver = (snapshot: MetricsObservationSnapshot) => void;
@@ -47,7 +48,12 @@ export function observeMetrics(spec: MetricsObservationSpec, receive: Receiver, 
   try {
     stopRouter ??= Events.On('metric/observation', event => {
       const snapshot = event.data as MetricsObservationSnapshot;
-      receivers.get(snapshot.client_token)?.(snapshot);
+      const receiver = receivers.get(snapshot.client_token);
+      if (receiver) receiver(snapshot);
+      else {
+        const now = Date.now();
+        recordFrontendSpan('frontend.event.anomaly', { family: 'metric', kind: 'unmatched_receiver' }, now, now, false);
+      }
     });
   } catch (error) {
     receivers.delete(token);
@@ -66,7 +72,11 @@ export function observeMetrics(spec: MetricsObservationSpec, receive: Receiver, 
     close();
     fail(error instanceof Error ? error : new Error(String(error)));
   };
-  void OpenMetricsObservation({ client_token: token, spec }).then(async snapshot => {
+  void observeFrontendOperation(
+    'frontend.metric_stream',
+    { plugin_id: spec.owner_plugin_id, operation: 'subscribe' },
+    OpenMetricsObservation({ client_token: token, spec }),
+  ).then(async snapshot => {
     if (closed) {
       await CloseMetricsObservation(token);
       return;

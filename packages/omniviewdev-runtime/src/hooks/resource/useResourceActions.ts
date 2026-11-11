@@ -7,6 +7,7 @@ import { resourceQueryKeys } from '../../resourceQueryKeys';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useConnectionReadiness } from '../connection/useConnectionReadiness';
 import { useConnectionQueryGuard } from './useConnectionQueryGuard';
+import { observeFrontendOperation } from '../../telemetry/frontendSpans';
 import { requireConnectionReady } from '../../connection/connectionReadiness';
 
 export const useResourceActions = ({
@@ -29,7 +30,13 @@ export const useResourceActions = ({
     queryFn:
       enabled && !!type && readiness.phase === 'connected'
         ? ({ signal, queryKey }) =>
-            guardQuery(queryKey, signal, () => GetActions(pluginID, route, type))
+            guardQuery(queryKey, signal, () =>
+              observeFrontendOperation(
+                'frontend.resource.call',
+                { operation: 'other', plugin_id: pluginID, resource_type: type },
+                GetActions(pluginID, route, type),
+              ),
+            )
         : skipToken,
     enabled:
       enabled && !!pluginID && !!route.connection && !!type && readiness.phase === 'connected',

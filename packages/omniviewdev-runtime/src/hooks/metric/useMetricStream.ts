@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Events } from '@wailsio/runtime';
 import { Subscribe, Unsubscribe } from '../../metric';
+import { observeFrontendOperation, recordFrontendSpan } from '../../telemetry/frontendSpans';
 import type { MetricResult } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type { Value, ResourceReference, AccessRoute } from '../../resource/v2/domain';
@@ -73,6 +74,15 @@ export const useMetricStream = (
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const parseFailuresRef = useRef(0);
+  const recordParseFailure = useCallback(() => {
+    const now = Date.now();
+    recordFrontendSpan(
+      'frontend.metric_stream',
+      { plugin_id: pluginID, operation: 'parse', parse_failures: ++parseFailuresRef.current, outcome: 'failure', error_class: 'other' },
+      now, now, true,
+    );
+  }, [pluginID]);
 
   const start = useCallback(async () => {
     if (!enabled || !pluginID || !connectionID || !resourceKey) {
@@ -80,7 +90,7 @@ export const useMetricStream = (
     }
 
     try {
-      const subID = await Subscribe(pluginID, connectionID, {
+      const subID = await observeFrontendOperation('frontend.metric_stream', { plugin_id: pluginID, operation: 'subscribe' }, Subscribe(pluginID, connectionID, {
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_namespace: resourceNamespace,
@@ -90,7 +100,7 @@ export const useMetricStream = (
         params,
         metric_ids: metricIDs,
         interval: interval * 1_000_000, // ms to nanoseconds for Go time.Duration
-      });
+      }));
 
       setSubscriptionID(subID);
       setIsStreaming(true);
@@ -107,6 +117,7 @@ export const useMetricStream = (
             setError(null);
           }
         } catch (e) {
+          recordParseFailure();
           console.error('Failed to parse metric stream data:', e);
         }
       });
@@ -127,6 +138,7 @@ export const useMetricStream = (
           setError(message);
           setIsStreaming(false);
         } catch (e) {
+          recordParseFailure();
           setError('Failed to parse metric stream error');
         }
       });
@@ -138,12 +150,12 @@ export const useMetricStream = (
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [pluginID, connectionID, resourceKey, resourceID, resourceNamespace, resourceData, reference, route, params, metricIDs, interval, enabled]);
+  }, [pluginID, connectionID, resourceKey, resourceID, resourceNamespace, resourceData, reference, route, params, metricIDs, interval, enabled, recordParseFailure]);
 
   const stop = useCallback(async () => {
     if (subscriptionID) {
       try {
-        await Unsubscribe(subscriptionID);
+        await observeFrontendOperation('frontend.metric_stream', { plugin_id: pluginID, operation: 'unsubscribe' }, Unsubscribe(subscriptionID));
       } catch (e) {
         console.error('Failed to unsubscribe:', e);
       }
@@ -154,7 +166,7 @@ export const useMetricStream = (
     }
     setSubscriptionID(null);
     setIsStreaming(false);
-  }, [subscriptionID]);
+  }, [subscriptionID, pluginID]);
 
   // Clean up on unmount
   useEffect(() => {
