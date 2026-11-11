@@ -6,7 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -120,6 +124,42 @@ func (hc *HealthChecker) checkAll() {
 // checkPlugin checks the health of a single running plugin using its Backend.
 // Returns true if healthy, false if recovery should be triggered.
 func (hc *HealthChecker) checkPlugin(id, source string, record *plugintypes.PluginRecord, backend plugintypes.PluginBackend) bool {
+	started := time.Now()
+	healthy, reason, probeErr := hc.probePlugin(id, source, record, backend)
+	elapsed := time.Since(started)
+	ctx := hc.pm.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	outcome := lifecycleSuccess
+	if !healthy {
+		outcome = lifecycleFailure
+	}
+	telemetry.RecordPluginHealthProbe(ctx, id, outcome, elapsed)
+	if healthy {
+		return true
+	}
+	_, span := tracer.Start(ctx, "plugin.HealthCheck",
+		trace.WithTimestamp(started),
+		trace.WithAttributes(
+			attribute.String("plugin_id", id),
+			attribute.String("outcome", outcome),
+			attribute.String("reason", reason),
+		))
+	if probeErr != nil {
+		telemetryutil.RecordError(span, probeErr)
+	}
+	span.End()
+	hc.logger.Debugw(ctx, "plugin health probe failed", "pluginID", id, "reason", reason,
+		"errorClass", telemetryutil.ErrorClass(probeErr), "durationMs", elapsed.Milliseconds())
+	return false
+}
+
+// probePlugin runs the health probe. On failure, reason is one of no_backend,
+// lifecycle_rpc or unhealthy.
+func (hc *HealthChecker) probePlugin(
+	id, source string, record *plugintypes.PluginRecord, backend plugintypes.PluginBackend,
+) (bool, string, error) {
 	if record != nil {
 		generation := hc.pm.managedRuntimeGeneration(id, source)
 		if generation != "" && backend != nil {
@@ -130,17 +170,21 @@ func (hc *HealthChecker) checkPlugin(id, source string, record *plugintypes.Plug
 					hc.pm.observeManagedLifecycle(id, source, generation, false, false, err)
 					unlock()
 				}
+				return false, "lifecycle_rpc", err
 			}
-			return err == nil
+			return true, "", nil
 		}
 	}
 
 	if backend == nil {
 		// No record or no backend — cannot verify health, assume unhealthy.
-		return false
+		return false, "no_backend", nil
 	}
 
-	return backend.Healthy()
+	if !backend.Healthy() {
+		return false, "unhealthy", nil
+	}
+	return true, "", nil
 }
 
 // CrashRecoveryState tracks exponential backoff for a single plugin.
@@ -396,6 +440,18 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 			return
 		}
 
+		hc.mu.Lock()
+		budgetRemaining := maxTotalCrashes
+		if cb := hc.crashBudgets[pluginID]; cb != nil {
+			budgetRemaining = max(0, maxTotalCrashes-cb.count)
+		}
+		hc.mu.Unlock()
+		attemptCtx, attemptSpan := hc.pm.lifecycleStart("plugin.RecoveryAttempt", pluginID,
+			attribute.Int("attempt", attempt),
+			attribute.Int64("backoff_ms", backoff.Milliseconds()),
+			attribute.Int("budget_remaining", budgetRemaining))
+		endAttempt := func(err error) { lifecycleEnd(attemptSpan, err) }
+
 		hc.logger.Infow(hc.pm.ctx, "waiting before crash recovery attempt",
 			"pluginID", pluginID,
 			"attempt", attempt,
@@ -410,19 +466,26 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 		case <-ctx.Done():
 			timer.Stop()
 			hc.logger.Infow(ctx, "crash recovery cancelled during backoff", "pluginID", pluginID)
+			endAttempt(ctx.Err())
 			return
 		}
 
+		unbindAttempt := hc.pm.lifecycleBind(attemptCtx, pluginID)
 		var err error
 		if expected == nil {
 			_, err = hc.pm.ReloadPlugin(pluginID)
 		} else {
 			unlock = hc.lockRecoveryRecord(pluginID, owned)
 			if unlock == nil {
+				attemptSpan.AddEvent("recovery.superseded")
+				unbindAttempt()
+				endAttempt(context.Canceled)
 				return
 			}
 			if ctx.Err() != nil {
 				unlock()
+				unbindAttempt()
+				endAttempt(ctx.Err())
 				return
 			}
 			if owned.record == nil {
@@ -444,9 +507,12 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 			}
 			unlock()
 		}
+		unbindAttempt()
+		endAttempt(err)
 		if err != nil {
 			hc.logger.Errorw(hc.pm.ctx, "crash recovery attempt failed",
-				"pluginID", pluginID, "attempt", attempt, "error", err)
+				"pluginID", pluginID, "attempt", attempt, "error", err,
+				"errorClass", telemetryutil.ErrorClass(err))
 			continue
 		}
 

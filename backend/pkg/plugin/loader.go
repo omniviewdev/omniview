@@ -13,15 +13,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omniviewdev/omniview/internal/devsession"
-
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -54,14 +55,22 @@ type LoadPluginOptions struct {
 
 // LoadPlugin loads a plugin from its installation directory.
 // If the plugin is already loaded and running, this is a no-op.
-func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (plugintypes.PluginInfo, error) {
-	opsMu := pm.pluginOpsLock(id)
-	opsMu.Lock()
-	defer opsMu.Unlock()
+func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (_ plugintypes.PluginInfo, resultErr error) {
+	devMode := opts != nil && (opts.DevMode || (opts.ExistingState != nil && opts.ExistingState.DevMode))
+	end := pm.lifecycleOp("plugin.Load", id, attribute.Bool("dev_mode", devMode))
+	started := time.Now()
+	defer func() {
+		end(resultErr)
+		if resultErr != nil {
+			pm.logger.Errorw(pm.lifecycleCtx(id), "plugin load failed", "pluginID", id,
+				"errorClass", telemetryutil.ErrorClass(resultErr), "durationMs", time.Since(started).Milliseconds())
+		}
+	}()
 	return pm.loadPluginLocked(id, opts)
 }
 
 func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (info plugintypes.PluginInfo, resultErr error) {
+	loadStarted := time.Now()
 	if entry, ok := pm.builtin(id); ok {
 		return pm.loadBuiltinLocked(id, entry, opts)
 	}
@@ -239,6 +248,8 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 		pm.registerStateObserver(id, record.StateMachine)
 	}
 
+	pm.logger.Infow(pm.lifecycleCtx(id), "plugin started", "pluginID", id,
+		"durationMs", time.Since(loadStarted).Milliseconds())
 	return record.ToInfo(), nil
 }
 
@@ -272,13 +283,23 @@ func (pm *pluginManager) startBackend(
 	location string,
 	dependencyOwner bool,
 ) (result plugintypes.PluginBackend, resultErr error) {
+	_, endStart := pm.lifecycleScope("plugin.Start", id, attribute.Bool("dev_mode", record.DevMode))
+	defer func() { endStart(resultErr) }()
 	generation := pm.managedRuntimeGeneration(id, record.DevPath)
 	if err := pm.checkBackendRecovery(id); err != nil {
 		pm.storeFailedRecord(id, record, err)
 		pm.observeManagedLifecycle(id, record.DevPath, generation, false, false, err)
 		return nil, err
 	}
+	handshakeSpan, endHandshake := pm.lifecycleScope("plugin.Handshake", id, attribute.Bool("dev_mode", record.DevMode))
+	if generation != "" {
+		handshakeSpan.SetAttributes(attribute.String("generation", generation))
+	}
 	backend, createErr := pm.createBackend(id, metadata, location)
+	if createErr == nil && backend != nil {
+		handshakeSpan.SetAttributes(attribute.Int("protocol_version", backend.NegotiatedVersion()))
+	}
+	endHandshake(createErr)
 	if createErr != nil {
 		pm.storeFailedRecord(id, record, createErr)
 		pm.observeManagedLifecycle(id, record.DevPath, generation, false, false, createErr)
@@ -504,15 +525,7 @@ func (pm *pluginManager) createBackend(
 				previousCleanup()
 			}
 		}
-		cmd.Env = append(cmd.Env,
-			"OMNIVIEW_TELEMETRY_ENABLED="+strconv.FormatBool(cfg.Enabled),
-			"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT="+cfg.OTLPEndpoint,
-			"OMNIVIEW_TELEMETRY_AUTH_HEADER=Authorization",
-			"OMNIVIEW_TELEMETRY_AUTH_VALUE="+cfg.AuthToken,
-			"OMNIVIEW_TELEMETRY_CLIENT_ID="+cfg.ClientID,
-			"OMNIVIEW_TELEMETRY_PROFILING="+strconv.FormatBool(cfg.Profiling),
-			"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT="+cfg.PyroscopeEndpoint,
-		)
+		cmd.Env = append(cmd.Env, pluginTelemetryEnv(cfg)...)
 	}
 
 	pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
@@ -561,10 +574,19 @@ func (pm *pluginManager) createBackend(
 }
 
 // ReloadPlugin stops and re-loads a plugin.
-func (pm *pluginManager) ReloadPlugin(id string) (plugintypes.PluginInfo, error) {
-	opsMu := pm.pluginOpsLock(id)
-	opsMu.Lock()
-	defer opsMu.Unlock()
+func (pm *pluginManager) ReloadPlugin(id string) (_ plugintypes.PluginInfo, resultErr error) {
+	started := time.Now()
+	end := pm.lifecycleOp("plugin.Reload", id)
+	defer func() {
+		end(resultErr)
+		if resultErr == nil {
+			pm.logger.Infow(pm.lifecycleCtx(id), "plugin reloaded", "pluginID", id,
+				"durationMs", time.Since(started).Milliseconds())
+		} else {
+			pm.logger.Errorw(pm.lifecycleCtx(id), "plugin reload failed", "pluginID", id,
+				"errorClass", telemetryutil.ErrorClass(resultErr), "durationMs", time.Since(started).Milliseconds())
+		}
+	}()
 	return pm.reloadPluginLocked(id)
 }
 
@@ -606,7 +628,9 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 // Use this for user-initiated retries (e.g. the UI "Retry Plugin" button)
 // so the plugin gets fresh recovery attempts. Do NOT use for automated
 // crash recovery — use ReloadPlugin instead.
-func (pm *pluginManager) RetryFailedPlugin(id string) (plugintypes.PluginInfo, error) {
+func (pm *pluginManager) RetryFailedPlugin(id string) (_ plugintypes.PluginInfo, resultErr error) {
+	_, endRetry := pm.lifecycleScope("plugin.Retry", id)
+	defer func() { endRetry(resultErr) }()
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(id)
 	}
@@ -615,10 +639,9 @@ func (pm *pluginManager) RetryFailedPlugin(id string) (plugintypes.PluginInfo, e
 
 // UnloadPlugin unloads a plugin, stopping it if running.
 // If the plugin is already unloaded, this is a no-op.
-func (pm *pluginManager) UnloadPlugin(id string) error {
-	opsMu := pm.pluginOpsLock(id)
-	opsMu.Lock()
-	defer opsMu.Unlock()
+func (pm *pluginManager) UnloadPlugin(id string) (resultErr error) {
+	end := pm.lifecycleOp("plugin.Unload", id)
+	defer func() { end(resultErr) }()
 	if err := pm.guardArchiveRecovery(id); err != nil {
 		return err
 	}
@@ -663,11 +686,12 @@ func (pm *pluginManager) unloadPluginLocked(id string) error {
 }
 
 // initPlugin initializes all plugin controllers.
-func (pm *pluginManager) initPlugin(record *plugintypes.PluginRecord) error {
+func (pm *pluginManager) initPlugin(record *plugintypes.PluginRecord) (resultErr error) {
 	if record == nil {
 		return errors.New("record is nil")
 	}
-
+	_, endInit := pm.lifecycleScope("plugin.Init", record.ID)
+	defer func() { endInit(resultErr) }()
 	ctx := context.Background()
 	pluginID := record.ID
 
@@ -702,6 +726,11 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	if record == nil {
 		return errors.New("record is nil")
 	}
+	startSpan, endStartSpan := pm.lifecycleScope("plugin.StartPlugin", record.ID)
+	defer func() {
+		startSpan.SetAttributes(attribute.String("capabilities", lifecycleCapabilityList(record.Capabilities)))
+		endStartSpan(resultErr)
+	}()
 
 	ctx := context.Background()
 	pluginID := record.ID
@@ -862,6 +891,8 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	pm.retireActivities(pluginID)
 
 	ctx := context.Background()
+	shutdownStarted := time.Now()
+	_, endShutdown := pm.lifecycleScope("plugin.Shutdown", pluginID)
 
 	var errs []error
 	for name, manager := range pm.managers {
@@ -909,6 +940,14 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	if machine != nil {
 		machine.ForcePhase(phase, detail)
 	}
+	endShutdown(result)
+	if result != nil {
+		pm.logger.Warnw(ctx, "plugin shutdown failed", "pluginID", pluginID,
+			"errorClass", telemetryutil.ErrorClass(result), "durationMs", time.Since(shutdownStarted).Milliseconds())
+	} else {
+		pm.logger.Infow(ctx, "plugin stopped", "pluginID", pluginID,
+			"durationMs", time.Since(shutdownStarted).Milliseconds())
+	}
 	return result
 }
 
@@ -920,6 +959,10 @@ func (pm *pluginManager) shutdownBackend(ctx context.Context, pluginID string, r
 	var stopErr error
 	if backend != nil {
 		stopErr = backend.Stop()
+		if stopErr != nil {
+			pm.logger.Debugw(ctx, "plugin backend stop reported an error", "pluginID", pluginID,
+				"errorClass", telemetryutil.ErrorClass(stopErr))
+		}
 		backend.Kill()
 	}
 	if pm.pidTracker != nil {
@@ -936,4 +979,22 @@ func (pm *pluginManager) controllerFor(c sdktypes.Capability) plugintypes.Lifecy
 		return pm.connfullControllers[c]
 	}
 	return pm.connlessControllers[c]
+}
+
+// pluginTelemetryEnv returns the OMNIVIEW_TELEMETRY_* environment entries for a
+// plugin process. OMNIVIEW_PLUGIN_LOG_LEVEL is added only when a level is set.
+func pluginTelemetryEnv(cfg TelemetryEnvConfig) []string {
+	env := []string{
+		"OMNIVIEW_TELEMETRY_ENABLED=" + strconv.FormatBool(cfg.Enabled),
+		"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT=" + cfg.OTLPEndpoint,
+		"OMNIVIEW_TELEMETRY_AUTH_HEADER=Authorization",
+		"OMNIVIEW_TELEMETRY_AUTH_VALUE=" + cfg.AuthToken,
+		"OMNIVIEW_TELEMETRY_CLIENT_ID=" + cfg.ClientID,
+		"OMNIVIEW_TELEMETRY_PROFILING=" + strconv.FormatBool(cfg.Profiling),
+		"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT=" + cfg.PyroscopeEndpoint,
+	}
+	if cfg.LogLevel != "" {
+		env = append(env, "OMNIVIEW_PLUGIN_LOG_LEVEL="+cfg.LogLevel)
+	}
+	return env
 }
