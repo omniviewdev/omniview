@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // ErrorClass returns a bounded classification without provider-controlled text.
@@ -23,7 +24,9 @@ func ErrorClass(err error) string {
 		return "timeout"
 	}
 	switch code := apperror.ForResource(err, "").Code; code {
-	case "FORBIDDEN", "UNAUTHORIZED", "NOT_FOUND", "UNSUPPORTED", "INVALID_REQUEST", "CONFLICT", "ALREADY_EXISTS", "RESOURCE_LIMIT", "RESET_REQUIRED", "PROVIDER_ERROR", "CANCELLED", "TIMEOUT", "UNAVAILABLE", "INTERNAL":
+	case "FORBIDDEN", "UNAUTHORIZED", "NOT_FOUND", "UNSUPPORTED", "INVALID_REQUEST", "CONFLICT",
+		"ALREADY_EXISTS", "RESOURCE_LIMIT", "RESET_REQUIRED", "PROVIDER_ERROR", "CANCELLED",
+		"TIMEOUT", "UNAVAILABLE", "INTERNAL":
 		return code
 	default:
 		return "other"
@@ -37,7 +40,8 @@ func RecordError(span trace.Span, err error) {
 		return
 	}
 	class := ErrorClass(err)
-	span.AddEvent("exception", trace.WithAttributes(attribute.String("exception.type", fmt.Sprintf("%T", err)), attribute.String("error_class", class)))
+	span.AddEvent("exception", trace.WithAttributes(
+		attribute.String("exception.type", fmt.Sprintf("%T", err)), attribute.String("error_class", class)))
 	span.SetAttributes(attribute.String("error_class", class))
 	span.SetStatus(otelcodes.Error, class)
 }

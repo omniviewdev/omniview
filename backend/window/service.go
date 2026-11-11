@@ -13,6 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
@@ -167,16 +170,31 @@ func newService(deps serviceDependencies) *Service {
 		restoreGate:     "",
 	}
 	s.persister = newSessionPersister(deps.sessionPath, deps.saveDelay, s.snapshotSession, func(err error) {
-		s.log.Errorw(context.Background(), "failed to persist window session", "error", err)
+		s.log.Errorw(context.Background(), "failed to persist window session", errorLogFields(err)...)
 	})
 
+	_, restoreSpan := tracer.Start(context.Background(), "window.RestoreSession")
 	session, err := loadSessionFile(deps.sessionPath)
 	if err != nil {
-		s.log.Errorw(context.Background(), "window session not restored", "error", err)
+		s.log.Errorw(context.Background(), "window session not restored", errorLogFields(err)...)
 	}
 
 	s.registry.add(newWindowEntry(MainWindowName, KindWorkspace, deps.mainWindow, nil, session.States[MainWindowName]))
-	s.restoreWindows(session)
+	restored := s.restoreWindows(session)
+	// failed is 1 when the persisted session could not be loaded and was
+	// discarded, otherwise 0; individual native window creation is deferred.
+	failed := 0
+	if err != nil {
+		failed = 1
+	}
+	restoreSpan.SetAttributes(
+		attribute.Int("window_count", len(session.Windows)),
+		attribute.Int("restored", restored),
+		attribute.Int("failed", failed),
+	)
+	endWindowSpan(restoreSpan, err)
+	s.log.Infow(context.Background(), "window session restore queued",
+		"windowCount", len(session.Windows), "restored", restored, "failed", failed)
 	return s
 }
 
@@ -186,7 +204,7 @@ func newService(deps serviceDependencies) *Service {
 // when the previous restored window's frontend has loaded. Booting every
 // webview at once can starve the UI thread on slow (software-rendered)
 // systems, and the main window should be usable first.
-func (s *Service) restoreWindows(session persistedSession) {
+func (s *Service) restoreWindows(session persistedSession) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, saved := range session.Windows {
@@ -214,6 +232,7 @@ func (s *Service) restoreWindows(session persistedSession) {
 	if len(s.pendingRestores) > 0 {
 		s.restoreGate = MainWindowName
 	}
+	return len(s.pendingRestores)
 }
 
 // takeNextRestoreLocked returns the next queued window when name is the
@@ -382,8 +401,17 @@ func (s *Service) GetState(name string) (map[string]string, error) {
 }
 
 // SaveState stores one slot of the named window and schedules persistence.
-func (s *Service) SaveState(name, slot, stateJSON string) error {
-	if err := validateSlotState(slot, stateJSON); err != nil {
+func (s *Service) SaveState(name, slot, stateJSON string) (err error) {
+	_, span := tracer.Start(context.Background(), "window.SaveState")
+	defer func() {
+		if err != nil {
+			// Slot contents are never logged; only the rejection class.
+			s.log.Warnw(context.Background(), "window state save rejected",
+				"window", name, "errorClass", telemetryutil.ErrorClass(err))
+		}
+		endWindowSpan(span, err)
+	}()
+	if err = validateSlotState(slot, stateJSON); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -397,7 +425,9 @@ func (s *Service) SaveState(name, slot, stateJSON string) error {
 		return fmt.Errorf("%w: settings slots are not supported", ErrInvalidState)
 	}
 	entry.states[slot] = stateJSON
+	windowCount := len(s.registry.entries)
 	s.mu.Unlock()
+	span.SetAttributes(attribute.Int("window_count", windowCount))
 	s.persister.schedule()
 	return nil
 }

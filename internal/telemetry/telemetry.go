@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/internal/diagnostics"
 )
 
@@ -328,6 +330,9 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 		s.disableAll()
 		s.cfg = cfg
 		s.updateDiagnosticsIdentity(cfg)
+		s.logExporterConfig("trace", modeOTLP, false, "")
+		s.logExporterConfig("metric", modeOTLP, false, "")
+		s.logExporterConfig("log", modeOTLP, false, "")
 		return nil
 	}
 
@@ -352,7 +357,7 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	applied := false
 	defer func() {
 		if !applied {
-			releaseUnapplied(ctx, newTraceExp, newMetricExp, newLogExp, newProfiler)
+			s.releaseUnapplied(ctx, newTraceExp, newMetricExp, newLogExp, newProfiler)
 		}
 	}()
 
@@ -420,12 +425,13 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	s.cfg = cfg
 	s.updateDiagnosticsIdentity(cfg)
 	applied = true
+	s.logConfigChange(cfg, needTraceSwap, needMetricSwap, needLogSwap)
 	return nil
 }
 
 // releaseUnapplied shuts down exporters and stops a profiler that ApplyConfig
 // allocated but did not install. Nil arguments are skipped.
-func releaseUnapplied(
+func (s *Service) releaseUnapplied(
 	ctx context.Context,
 	traceExp sdktrace.SpanExporter,
 	metricExp sdkmetric.Exporter,
@@ -433,16 +439,100 @@ func releaseUnapplied(
 	profiler *pyroscope.Profiler,
 ) {
 	if traceExp != nil {
-		_ = traceExp.Shutdown(ctx)
+		if err := traceExp.Shutdown(ctx); err != nil {
+			s.warnReleaseUnapplied("trace", err)
+		}
 	}
 	if metricExp != nil {
-		_ = metricExp.Shutdown(ctx)
+		if err := metricExp.Shutdown(ctx); err != nil {
+			s.warnReleaseUnapplied("metric", err)
+		}
 	}
 	if logExp != nil {
-		_ = logExp.Shutdown(ctx)
+		if err := logExp.Shutdown(ctx); err != nil {
+			s.warnReleaseUnapplied("log", err)
+		}
 	}
 	if profiler != nil {
-		_ = profiler.Stop()
+		if err := profiler.Stop(); err != nil {
+			s.warnReleaseUnapplied("profiler", err)
+		}
+	}
+}
+
+// logger returns the service logger, or a no-op logger before Init.
+func (s *Service) logger() *zap.Logger {
+	if s.zapLogger == nil {
+		return zap.NewNop()
+	}
+	return s.zapLogger
+}
+
+// warnExporterShutdown logs a failed shutdown of a replaced exporter. The
+// error text is withheld because exporter errors can echo endpoint details.
+func (s *Service) warnExporterShutdown(signal string, err error) {
+	s.logger().Warn("telemetry exporter shutdown failed",
+		zap.String("signal", signal),
+		zap.String("errorClass", telemetryutil.ErrorClass(err)),
+		zap.String("errorType", fmt.Sprintf("%T", err)))
+}
+
+// warnReleaseUnapplied logs a failed release of a resource allocated by a
+// rejected ApplyConfig.
+func (s *Service) warnReleaseUnapplied(resource string, err error) {
+	s.logger().Warn("telemetry config rollback release failed",
+		zap.String("resource", resource),
+		zap.String("errorClass", telemetryutil.ErrorClass(err)),
+		zap.String("errorType", fmt.Sprintf("%T", err)))
+}
+
+// endpointHost returns only the host[:port] of an exporter endpoint so logs
+// never carry credentials, paths or query strings.
+func endpointHost(endpoint string) string {
+	if endpoint == "" {
+		return ""
+	}
+	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+		return u.Host
+	}
+	if u, err := url.Parse("//" + endpoint); err == nil {
+		return u.Host
+	}
+	return ""
+}
+
+// logExporterConfig records one exporter signal's resulting state. Callers must
+// not pass credentials; only the endpoint host is recorded.
+func (s *Service) logExporterConfig(signal, mode string, enabled bool, endpoint string) {
+	s.logger().Info("telemetry exporter configured",
+		zap.String("signal", signal),
+		zap.String("mode", mode),
+		zap.Bool("enabled", enabled),
+		zap.String("endpointHost", endpointHost(endpoint)))
+}
+
+const (
+	modeOTLP = "otlp"
+	modeLoki = "loki"
+)
+
+// logConfigChange emits one Info line per exporter signal that was swapped.
+func (s *Service) logConfigChange(cfg Config, traces, metrics, logs bool) {
+	if traces {
+		s.logExporterConfig("trace", modeOTLP, cfg.Traces && cfg.OTLPEndpoint != "", cfg.OTLPEndpoint)
+	}
+	if metrics {
+		s.logExporterConfig("metric", modeOTLP, cfg.Metrics && cfg.OTLPEndpoint != "", cfg.OTLPEndpoint)
+	}
+	if logs {
+		mode, endpoint := modeOTLP, cfg.OTLPLogEndpoint
+		if endpoint == "" {
+			endpoint = cfg.OTLPEndpoint
+		}
+		if cfg.LogFormat == modeLoki {
+			mode, endpoint = modeLoki, cfg.LokiEndpoint
+		}
+		s.logExporterConfig("log", mode, cfg.LogsShip && endpoint != "", endpoint)
 	}
 }
 
@@ -453,7 +543,9 @@ func (s *Service) disableAll() {
 	s.swapMetricExporter(noopMetricExporter{})
 	s.swapLogExporter(noopLogExporter{})
 	if s.profiler != nil {
-		_ = s.profiler.Stop()
+		if err := s.profiler.Stop(); err != nil {
+			s.warnReleaseUnapplied("profiler", err)
+		}
 		s.profiler = nil
 	}
 }
@@ -474,11 +566,15 @@ func (s *Service) applyProfiling(cfg Config, newProfiler *pyroscope.Profiler) {
 	// Profiling toggle.
 	if newProfiler != nil {
 		if s.profiler != nil {
-			_ = s.profiler.Stop()
+			if err := s.profiler.Stop(); err != nil {
+				s.warnReleaseUnapplied("profiler", err)
+			}
 		}
 		s.profiler = newProfiler
 	} else if !cfg.Profiling && s.profiler != nil {
-		_ = s.profiler.Stop()
+		if err := s.profiler.Stop(); err != nil {
+			s.warnReleaseUnapplied("profiler", err)
+		}
 		s.profiler = nil
 	}
 }
@@ -520,12 +616,12 @@ func logExporterFor(ctx context.Context, cfg Config, enabled bool) (sdklog.Expor
 		return noopLogExporter{}, nil
 	}
 	switch cfg.LogFormat {
-	case "loki":
+	case modeLoki:
 		if cfg.LokiEndpoint == "" {
 			return nil, fmt.Errorf("Loki log endpoint is required when Loki log shipping is enabled")
 		}
 		return NewLokiLogExporter(cfg.LokiEndpoint, cfg.LokiTenantID, cfg.LokiAuthHeader, cfg.LokiAuthValue)
-	case "", "otlp":
+	case "", modeOTLP:
 		endpoint, header, value := cfg.OTLPLogEndpoint, cfg.OTLPLogAuthHeader, cfg.OTLPLogAuthValue
 		if endpoint == "" {
 			endpoint, header, value = cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue
@@ -551,7 +647,7 @@ func (s *Service) swapTraceExporter(exp sdktrace.SpanExporter) {
 	if s.switchableTraceExp != nil {
 		if old := s.switchableTraceExp.Swap(exp); old != nil {
 			if err := old.Shutdown(context.Background()); err != nil {
-				fmt.Fprintf(os.Stderr, "telemetry: trace exporter shutdown error: %v\n", err)
+				s.warnExporterShutdown("trace", err)
 			}
 		}
 	}
@@ -561,7 +657,7 @@ func (s *Service) swapMetricExporter(exp sdkmetric.Exporter) {
 	if s.switchableMetricExp != nil {
 		if old := s.switchableMetricExp.Swap(exp); old != nil {
 			if err := old.Shutdown(context.Background()); err != nil {
-				fmt.Fprintf(os.Stderr, "telemetry: metric exporter shutdown error: %v\n", err)
+				s.warnExporterShutdown("metric", err)
 			}
 		}
 	}
@@ -571,7 +667,7 @@ func (s *Service) swapLogExporter(exp sdklog.Exporter) {
 	if s.switchableLogExp != nil {
 		if old := s.switchableLogExp.Swap(exp); old != nil {
 			if err := old.Shutdown(context.Background()); err != nil {
-				fmt.Fprintf(os.Stderr, "telemetry: log exporter shutdown error: %v\n", err)
+				s.warnExporterShutdown("log", err)
 			}
 		}
 	}

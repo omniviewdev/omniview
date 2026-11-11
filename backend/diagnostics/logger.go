@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -84,8 +83,6 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 
 	// file rotate
 	logFile := filepath.Join(baseDir, name+".log")
-	log.Println(("set logger to app.log"))
-
 	lj := &lumberjack.Logger{
 		Filename:   logFile,
 		MaxSize:    logMaxSizeMB,
@@ -131,6 +128,7 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 	)
 
 	logger := zap.New(core, zap.AddCaller(), zap.Development())
+	logger.Debug("backend logger file configured", zap.String("name", name), zap.String("level", lvl.String()))
 
 	return &BackendLogger{
 		Sugared:   logger.Sugar(),

@@ -81,7 +81,8 @@ func (s *Service) resolveDragTargetLocked(session *dragSession, clientX, clientY
 	source := session.begin.SourceWindow
 	globalX, globalY, err := s.clientToGlobalLocked(source, clientX, clientY)
 	if err != nil {
-		s.log.Debugw(context.Background(), "drag pointer not mapped", "session", session.begin.SessionID, "error", err)
+		s.log.Debugw(context.Background(), "drag pointer not mapped",
+			errorLogFields(err, "session", session.begin.SessionID)...)
 		return none
 	}
 	name := s.registry.dropTargetAt(source, globalX, globalY)

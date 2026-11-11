@@ -163,7 +163,9 @@ func RecordPluginInstall(ctx context.Context, pluginID, source, outcome string, 
 	}
 	ctx = WithPlugin(ctx, pluginID)
 	if m := activeMetrics.Load(); m != nil {
-		attrs := append([]attribute.KeyValue{attribute.String("source", source), attribute.String("outcome", outcome)}, pluginAttributes(ctx)...)
+		attrs := append([]attribute.KeyValue{
+			attribute.String("source", source), attribute.String("outcome", outcome),
+		}, pluginAttributes(ctx)...)
 		m.PluginInstalls.Add(ctx, 1, metric.WithAttributes(attrs...))
 		m.PluginInstallDuration.Record(ctx, d.Seconds(), metric.WithAttributes(attrs...))
 	}
@@ -182,7 +184,9 @@ func RecordPluginStreamEvent(ctx context.Context, pluginID, stream, event string
 	}
 	ctx = WithPlugin(ctx, pluginID)
 	if m := activeMetrics.Load(); m != nil {
-		attrs := append([]attribute.KeyValue{attribute.String("stream", stream), attribute.String("event", event)}, pluginAttributes(ctx)...)
+		attrs := append([]attribute.KeyValue{
+			attribute.String("stream", stream), attribute.String("event", event),
+		}, pluginAttributes(ctx)...)
 		m.PluginStreamEvents.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 }
@@ -256,13 +260,15 @@ func registerMeasurements(meter metric.Meter, m *Metrics) error {
 	if m.PluginHealthProbes, err = meter.Int64Counter("omniview.plugin.health.probes"); err != nil {
 		return err
 	}
-	if m.PluginHealthProbeDuration, err = meter.Float64Histogram("omniview.plugin.health.probe.duration", metric.WithUnit("s")); err != nil {
+	if m.PluginHealthProbeDuration, err = meter.Float64Histogram(
+		"omniview.plugin.health.probe.duration", metric.WithUnit("s")); err != nil {
 		return err
 	}
 	if m.PluginInstalls, err = meter.Int64Counter("omniview.plugin.installs"); err != nil {
 		return err
 	}
-	if m.PluginInstallDuration, err = meter.Float64Histogram("omniview.plugin.install.duration", metric.WithUnit("s")); err != nil {
+	if m.PluginInstallDuration, err = meter.Float64Histogram(
+		"omniview.plugin.install.duration", metric.WithUnit("s")); err != nil {
 		return err
 	}
 	if m.PluginStreamEvents, err = meter.Int64Counter("omniview.plugin.stream.events"); err != nil {

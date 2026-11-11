@@ -3,7 +3,6 @@ package telemetry
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/proto"
+
+	_ "embed"
 )
 
 const (
@@ -35,6 +36,7 @@ type frontendAttributeRule struct {
 	Max    int64    `json:"max"`
 }
 
+//nolint:gochecknoglobals // Schema is decoded once from the embedded, immutable definition.
 var frontendSchema = func() map[string]map[string]frontendAttributeRule {
 	var schema map[string]map[string]frontendAttributeRule
 	if err := json.Unmarshal(frontendSchemaJSON, &schema); err != nil {
@@ -45,6 +47,7 @@ var frontendSchema = func() map[string]map[string]frontendAttributeRule {
 var frontendIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 var frontendResourceTypePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:/._-]{0,127}$`)
 
+//nolint:gocognit // Validation keeps all schema kinds and their rejection rules together.
 func frontendAttributes(name string, raw map[string]json.RawMessage) ([]*commonpb.KeyValue, error) {
 	rules, ok := frontendSchema[name]
 	if !ok {
@@ -52,8 +55,8 @@ func frontendAttributes(name string, raw map[string]json.RawMessage) ([]*commonp
 	}
 	attrs := make([]*commonpb.KeyValue, 0, len(raw))
 	for key, value := range raw {
-		rule, ok := rules[key]
-		if !ok {
+		rule, exists := rules[key]
+		if !exists {
 			return nil, errors.New("invalid frontend span attribute")
 		}
 		var result commonpb.AnyValue
@@ -99,7 +102,7 @@ func frontendAttributes(name string, raw map[string]json.RawMessage) ([]*commonp
 		default:
 			return nil, errors.New("invalid frontend span attribute")
 		}
-		attrs = append(attrs, &commonpb.KeyValue{Key: key, Value: &result})
+		attrs = append(attrs, &commonpb.KeyValue{Key: key, Value: &result}) //nolint:exhaustruct // KeyStrindex is unused.
 	}
 	return attrs, nil
 }
