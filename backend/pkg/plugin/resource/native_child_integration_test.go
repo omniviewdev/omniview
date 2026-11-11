@@ -294,9 +294,9 @@ func refreshNativeGeneration(t *testing.T, control string, sequence int, endpoin
 		Endpoint string `json:"endpoint"`
 	}{sequence, endpoint})
 	require.NoError(t, err)
-	temporary := filepath.Join(control, "command.tmp")
-	require.NoError(t, os.WriteFile(temporary, body, 0600))
-	require.NoError(t, os.Rename(temporary, filepath.Join(control, "command.json")))
+	// The child ignores incomplete JSON and acknowledges the applied sequence.
+	// Do not rename over a file that its Windows reader may still have open.
+	require.NoError(t, os.WriteFile(filepath.Join(control, "command.json"), body, 0600))
 	var applied []byte
 	require.Eventually(t, func() bool {
 		failure, err := os.ReadFile(filepath.Join(control, "control-error"))
