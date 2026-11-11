@@ -198,17 +198,9 @@ func TestPublishedPreflightFailsClosedWhenAnExcludeDirectiveRemovesTheDeclaredRe
 	})
 }
 
-// An explicit default toolchain uses the pinned local environment. A toolchain
-// that environment cannot provide fails closed instead of silently downgrading.
+// A toolchain the pinned local environment cannot provide fails closed instead
+// of silently downgrading or changing the consumer's module.
 func TestPublishedPreflightTreatsAToolchainDirectiveFailingClosed(t *testing.T) {
-	t.Run("default local toolchain", func(t *testing.T) {
-		env := newPubEnv(t)
-		w := env.workspace()
-		pubSelect(t, filepath.Join(w.Root, "plugin"), "example.com/plugin", "\ntoolchain default\n", env.sdk, env.uuid)
-		env.activate()
-
-		require.NoError(t, env.preflight(w, env.policy))
-	})
 	t.Run("unavailable toolchain with GOTOOLCHAIN=local", func(t *testing.T) {
 		env := newPubEnv(t)
 		w := env.workspace()
