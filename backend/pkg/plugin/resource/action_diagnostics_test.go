@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -32,7 +33,7 @@ func TestActionDiagnosticDoesNotExportInputOrProviderError(t *testing.T) {
 	require.Contains(t, text, "drain")
 	require.NotContains(t, text, "secret-input")
 	require.NotContains(t, text, "secret-provider-message")
-	require.Equal(t, "PROVIDER_ERROR", actionErrorClass(errors.New("secret error")))
+	require.Equal(t, "PROVIDER_ERROR", telemetryutil.ErrorClass(errors.New("secret error")))
 }
 
 func TestStreamActionSpanCoversProducerLifetime(t *testing.T) {

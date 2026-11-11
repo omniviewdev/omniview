@@ -9,10 +9,15 @@ import (
 
 // Metrics holds all registered application metrics.
 type Metrics struct {
-	PluginLoadDuration metric.Float64Histogram
-	PluginActive       metric.Int64UpDownCounter
-	PluginCrashes      metric.Int64Counter
-	PluginQuarantines  metric.Int64Counter
+	PluginLoadDuration        metric.Float64Histogram
+	PluginActive              metric.Int64UpDownCounter
+	PluginCrashes             metric.Int64Counter
+	PluginQuarantines         metric.Int64Counter
+	PluginHealthProbes        metric.Int64Counter
+	PluginHealthProbeDuration metric.Float64Histogram
+	PluginInstalls            metric.Int64Counter
+	PluginInstallDuration     metric.Float64Histogram
+	PluginStreamEvents        metric.Int64Counter
 
 	ResourceOpDuration  metric.Float64Histogram
 	ResourceOpErrors    metric.Int64Counter

@@ -3,9 +3,11 @@ package telemetry
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -24,14 +26,93 @@ const (
 	frontendEarliestUnix  = 946684800 // 2000-01-01 UTC.
 )
 
+//go:embed frontend_span_schema.json
+var frontendSchemaJSON []byte
+
+type frontendAttributeRule struct {
+	Kind   string   `json:"kind"`
+	Values []string `json:"values"`
+	Max    int64    `json:"max"`
+}
+
+var frontendSchema = func() map[string]map[string]frontendAttributeRule {
+	var schema map[string]map[string]frontendAttributeRule
+	if err := json.Unmarshal(frontendSchemaJSON, &schema); err != nil {
+		panic(err)
+	}
+	return schema
+}()
+var frontendIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+var frontendResourceTypePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:/._-]{0,127}$`)
+
+func frontendAttributes(name string, raw map[string]json.RawMessage) ([]*commonpb.KeyValue, error) {
+	rules, ok := frontendSchema[name]
+	if !ok {
+		return nil, errors.New("invalid frontend span attribute")
+	}
+	attrs := make([]*commonpb.KeyValue, 0, len(raw))
+	for key, value := range raw {
+		rule, ok := rules[key]
+		if !ok {
+			return nil, errors.New("invalid frontend span attribute")
+		}
+		var result commonpb.AnyValue
+		switch rule.Kind {
+		case "id", "resource_type", "enum":
+			var text string
+			if json.Unmarshal(value, &text) != nil {
+				return nil, errors.New("invalid frontend span attribute")
+			}
+			valid := false
+			switch rule.Kind {
+			case "id":
+				valid = frontendIDPattern.MatchString(text)
+			case "resource_type":
+				valid = frontendResourceTypePattern.MatchString(text)
+			case "enum":
+				for _, allowed := range rule.Values {
+					if text == allowed {
+						valid = true
+						break
+					}
+				}
+			}
+			if !valid {
+				return nil, errors.New("invalid frontend span attribute")
+			}
+			result.Value = &commonpb.AnyValue_StringValue{StringValue: text}
+		case "bool":
+			var v bool
+			if string(value) != "true" && string(value) != "false" {
+				return nil, errors.New("invalid frontend span attribute")
+			}
+			if json.Unmarshal(value, &v) != nil {
+				return nil, errors.New("invalid frontend span attribute")
+			}
+			result.Value = &commonpb.AnyValue_BoolValue{BoolValue: v}
+		case "int":
+			var v int64
+			if json.Unmarshal(value, &v) != nil || string(value) == "null" || v < 0 || v > rule.Max {
+				return nil, errors.New("invalid frontend span attribute")
+			}
+			result.Value = &commonpb.AnyValue_IntValue{IntValue: v}
+		default:
+			return nil, errors.New("invalid frontend span attribute")
+		}
+		attrs = append(attrs, &commonpb.KeyValue{Key: key, Value: &result})
+	}
+	return attrs, nil
+}
+
 type frontendSpan struct {
-	Name         string   `json:"name"`
-	TraceID      string   `json:"traceId"`
-	SpanID       string   `json:"spanId"`
-	ParentSpanID string   `json:"parentSpanId,omitempty"`
-	Start        [2]int64 `json:"start"`
-	End          [2]int64 `json:"end"`
-	Error        bool     `json:"error"`
+	Name         string                     `json:"name"`
+	TraceID      string                     `json:"traceId"`
+	SpanID       string                     `json:"spanId"`
+	ParentSpanID string                     `json:"parentSpanId,omitempty"`
+	Start        [2]int64                   `json:"start"`
+	End          [2]int64                   `json:"end"`
+	Error        bool                       `json:"error"`
+	Attributes   map[string]json.RawMessage `json:"attributes,omitempty"`
 }
 
 func (b *TelemetryBinding) ingestFrontendSpans(raw json.RawMessage) error {
@@ -66,9 +147,9 @@ func (b *TelemetryBinding) ingestFrontendSpans(raw json.RawMessage) error {
 }
 
 func convertFrontendSpan(s frontendSpan) (*tracepb.Span, error) {
-	// Only fixed application-owned names cross the trust boundary.
-	if s.Name != "frontend.startup" && s.Name != "frontend.interaction" {
-		return nil, errors.New("invalid frontend span name")
+	attrs, err := frontendAttributes(s.Name, s.Attributes)
+	if err != nil {
+		return nil, err
 	}
 	tid, err := trace.TraceIDFromHex(s.TraceID)
 	if err != nil || !tid.IsValid() {
@@ -97,6 +178,7 @@ func convertFrontendSpan(s frontendSpan) (*tracepb.Span, error) {
 	span := new(tracepb.Span)
 	span.Name, span.TraceId, span.SpanId, span.ParentSpanId = s.Name, tid[:], sid[:], parent
 	span.Kind = tracepb.Span_SPAN_KIND_INTERNAL
+	span.Attributes = attrs
 	span.StartTimeUnixNano, span.EndTimeUnixNano = uint64(start.UnixNano()), uint64(end.UnixNano())
 	if s.Error {
 		span.Status = new(tracepb.Status)

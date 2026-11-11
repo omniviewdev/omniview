@@ -20,6 +20,8 @@ export * from './resource/v2/sourceView';
 export { sameGraphNode } from './resource/v2/graph';
 export { useResolvedResourceTarget } from './hooks/resource/useResolvedResourceTarget';
 export * from './activity';
+export * from './telemetry/frontendSpanSchema';
+export * from './telemetry/frontendSpans';
 export {
   MetricSourceRef,
   MetricViewSourceSelection,
