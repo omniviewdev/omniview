@@ -57,6 +57,27 @@ function releaseView(key: string, entry: ViewEntry) {
   void entry.attempt.client.then((client) => client.close(), () => {});
 }
 
+/** Refresh the shared owner, coalescing failed-open retries before notifying every subscriber. */
+async function refreshView(key: string, expected: ViewEntry, pluginID: string, request: HostEnumerateRequest, live: boolean, generation: number) {
+  const entry = views.get(key);
+  const current = () => views.get(key) === expected
+    && isConnectionReadinessCurrent(pluginID, request.request.target.route.connection, generation);
+  if (!entry || entry !== expected || !current()) throw new CancelledError({ revert: true });
+  let attempt = entry.attempt;
+  const refreshOpened = attempt.state === 'opened';
+  if (attempt.state === 'failed') {
+    attempt = openViewAttempt(pluginID, request, live);
+    entry.attempt = attempt;
+    for (const observe of entry.listeners) observe(attempt);
+  }
+  const client = await attempt.client;
+  if (!current()) throw new CancelledError({ revert: true });
+  if (refreshOpened) {
+    await client.refresh();
+    if (!current()) throw new CancelledError({ revert: true });
+  }
+}
+
 const recordLists = new WeakMap<ReadonlyMap<string, HostRecord>, readonly HostRecord[]>();
 
 /** One records array per published map, shared by every page built from that snapshot. */
@@ -224,24 +245,10 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
   const refetchResources = resourcesQuery.refetch;
   const refresh = React.useCallback(async (...args: Parameters<typeof refetchResources>) => {
     if (collection && currentEntry && stableRequest && generation !== undefined) {
-      const current = () => views.get(viewKey) === currentEntry
-        && isConnectionReadinessCurrent(pluginID, connectionID, generation);
-      if (!current()) throw new CancelledError({ revert: true });
-      let attempt = currentEntry.attempt;
-      const refreshOpened = attempt.state === 'opened';
-      if (attempt.state === 'failed') {
-        attempt = currentEntry.attempt = openViewAttempt(pluginID, stableRequest, live);
-        for (const observe of currentEntry.listeners) observe(attempt);
-      }
-      const client = await attempt.client;
-      if (!current()) throw new CancelledError({ revert: true });
-      if (refreshOpened) {
-        await client.refresh();
-        if (!current()) throw new CancelledError({ revert: true });
-      }
+      await refreshView(viewKey, currentEntry, pluginID, stableRequest, live, generation);
     }
     return refetchResources(...args);
-  }, [collection, currentEntry, stableRequest, generation, viewKey, pluginID, connectionID, live, refetchResources]);
+  }, [collection, currentEntry, stableRequest, generation, viewKey, pluginID, live, refetchResources]);
   const resources = collection ? { ...resourcesQuery, refetch: refresh } : resourcesQuery;
   const [successful, setSuccessful] = React.useState<{ identity: string; requestHash: string; request: HostEnumerateRequest }>();
   let acquisition = successful;

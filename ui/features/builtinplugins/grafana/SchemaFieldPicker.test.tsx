@@ -20,7 +20,9 @@ vi.mock('@omniviewdev/base-ui', () => ({
   Input: { Root: ({ children }: React.PropsWithChildren) => <div>{children}</div>, Control: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} /> },
 }));
 
-beforeEach(() => { state.conditional = false; state.truncated = false; });
+beforeEach(() => {
+  state.conditional = false; state.truncated = false; 
+});
 const context = { pluginID: 'provider', connectionID: 'fixture', resourceType: 'native/machines' };
 
 it('selects a proven unconditional scalar', () => {

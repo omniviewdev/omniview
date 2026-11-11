@@ -118,8 +118,9 @@ it.each(['absent', 'unavailable', 'unsupported', 'invalid', 'limit'] as const)(
 it('keeps unrequested and disconnected schema pending rather than reporting absent', async () => {
   native.schema.mockResolvedValue(available());
   const { wrapper } = client();
+  const initialProps: { target: SchemaRequest | undefined } = { target: undefined };
   const hook = renderHook(({ target }: { target: SchemaRequest | undefined }) =>
-    useEditorSchema({ request: target }), { wrapper, initialProps: { target: undefined } });
+    useEditorSchema({ request: target }), { wrapper, initialProps });
   expect(hook.result.current.result).toBeUndefined();
   expect(hook.result.current.isPending).toBe(true);
   expect(native.schema).not.toHaveBeenCalled();
@@ -308,8 +309,9 @@ it('preserves targeted field applicability, observation, and truncation without 
 it('hides fields while unrequested or retired and reacquires the exact target in a new generation', async () => {
   native.fields.mockResolvedValueOnce(fields()).mockResolvedValueOnce(fields('next'));
   const { wrapper } = client();
+  const initialProps: { selected: SchemaRequest | undefined } = { selected: undefined };
   const hook = renderHook(({ selected }: { selected: SchemaRequest | undefined }) =>
-    useSchemaFields({ request: selected, path: [] }), { wrapper, initialProps: { selected: undefined } });
+    useSchemaFields({ request: selected, path: [] }), { wrapper, initialProps });
   expect(hook.result.current.fields).toBeUndefined();
   expect(hook.result.current.isPending).toBe(true);
   expect(native.fields).not.toHaveBeenCalled();

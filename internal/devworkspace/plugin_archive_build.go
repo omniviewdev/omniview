@@ -53,16 +53,7 @@ func (m *Manager) BuildPluginArchive(ctx context.Context, name, pluginID string,
 	if err != nil {
 		return "", receipt, err
 	}
-	frontend, err := pluginUINodes(nodes, pluginID)
-	if err != nil {
-		return "", receipt, err
-	}
-	var backend BuildNode
-	for _, node := range nodes {
-		if node.ID == "plugin-backend:"+pluginID {
-			backend = node
-		}
-	}
+	frontend, backend := nodes[:len(nodes)-1], nodes[len(nodes)-1]
 	generation := uuid.NewString()
 	g := &BuildGraph{workspace: w, plan: j.Plan, Nodes: nodes, manager: m, options: BuildOptions{
 		Generation: generation, VerifySDK: devsdk.NewVerifier(m.options.SDKPolicy),
@@ -124,19 +115,14 @@ func (m *Manager) BuildPluginArchive(ctx context.Context, name, pluginID string,
 	return receipt.Archive, receipt, nil
 }
 
-// pluginArchiveNodes extends the existing UI-only closure by exactly its own
-// backend. Native host nodes and unrelated plugins cannot enter this subgraph.
+// pluginArchiveNodes appends exactly its own backend to the selected UI closure.
+// Native host nodes and unrelated plugins cannot enter this subgraph.
 func pluginArchiveNodes(nodes []BuildNode, pluginID string) ([]BuildNode, error) {
 	frontend, err := pluginUINodes(nodes, pluginID)
 	if err != nil {
 		return nil, err
 	}
-	wanted := make(map[string]bool, len(frontend)+1)
-	for _, node := range frontend {
-		wanted[node.ID] = true
-	}
 	backend := "plugin-backend:" + pluginID
-	found := false
 	for _, node := range nodes {
 		if node.ID != backend {
 			continue
@@ -145,20 +131,18 @@ func pluginArchiveNodes(nodes []BuildNode, pluginID string) ([]BuildNode, error)
 			return nil, fmt.Errorf("plugin archive backend %s has a different producer", backend)
 		}
 		for _, dependency := range node.Dependencies {
-			if !wanted[dependency] {
+			selected := false
+			for _, candidate := range frontend {
+				if candidate.ID == dependency {
+					selected = true
+					break
+				}
+			}
+			if !selected {
 				return nil, fmt.Errorf("plugin archive backend %s has an unselected dependency %s", backend, dependency)
 			}
 		}
-		wanted[backend], found = true, true
+		return append(frontend, node), nil
 	}
-	if !found {
-		return nil, fmt.Errorf("plugin archive requires a selected backend for %s", pluginID)
-	}
-	selected := make([]BuildNode, 0, len(wanted))
-	for _, node := range nodes {
-		if wanted[node.ID] {
-			selected = append(selected, node)
-		}
-	}
-	return selected, nil
+	return nil, fmt.Errorf("plugin archive requires a selected backend for %s", pluginID)
 }

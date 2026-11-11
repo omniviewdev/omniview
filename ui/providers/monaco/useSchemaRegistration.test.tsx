@@ -24,7 +24,10 @@ vi.mock('@wailsio/runtime', async (importOriginal) => {
     Call: {
       ...actual.Call,
       ByName: (method: string, pluginID: string, request: SchemaRequest) => {
-        if (!method.endsWith('.ResolveEditorSchema')) throw new Error(`Unexpected native call: ${method}`);
+        if (!method.endsWith('.ResolveEditorSchema')) {
+          throw new Error(`Unexpected native call: ${method}`);
+        }
+
         return native.schema(pluginID, request);
       },
     },
@@ -94,13 +97,15 @@ async function flushMicrotasks() {
 
 function emit(name: string, data: unknown) {
   act(() => {
-    for (const listener of native.listeners.get(name) ?? []) listener({ data });
+    for (const listener of native.listeners.get(name) ?? []) {
+      listener({ data });
+    }
   });
 }
 
 beforeEach(() => {
-  native.schema.mockReset().mockImplementation((_pluginID: string, target: SchemaRequest) => Promise.resolve(available(target)));
-  native.check.mockReset().mockImplementation((_pluginID: string, connectionID: string) => Promise.resolve({
+  native.schema.mockReset().mockImplementation(async (_pluginID: string, target: SchemaRequest) => Promise.resolve(available(target)));
+  native.check.mockReset().mockImplementation(async (_pluginID: string, connectionID: string) => Promise.resolve({
     status: 'CONNECTED', connection: { id: connectionID, name: connectionID }, error: '', details: '',
   }));
   native.yaml.mockClear();
@@ -109,7 +114,10 @@ beforeEach(() => {
 
 afterEach(async () => {
   cleanup();
-  for (const queryClient of clients.splice(0)) queryClient.clear();
+  for (const queryClient of clients.splice(0)) {
+    queryClient.clear();
+  }
+
   schemaRegistry.unregisterPlugin('provider');
   native.listeners.clear();
   await flushMicrotasks();
@@ -120,13 +128,19 @@ it('registers the pre-existing exact URI only after its coherent result arrives'
   native.schema.mockReturnValue(pending.promise);
   const { wrapper } = client();
   const hook = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI: firstURI }), { wrapper });
-  await waitFor(() => expect(native.schema).toHaveBeenCalledOnce());
+  await waitFor(() => {
+    expect(native.schema).toHaveBeenCalledOnce(); 
+  });
   expect(hook.result.current.result).toBeUndefined();
   expect(hook.result.current.isPending).toBe(true);
   expect(registeredModels()).toEqual([]);
   const result = available();
-  await act(async () => pending.resolve(result));
-  await waitFor(() => expect(registeredModels()).toEqual([firstURI]));
+  await act(async () => {
+    pending.resolve(result); 
+  });
+  await waitFor(() => {
+    expect(registeredModels()).toEqual([firstURI]); 
+  });
   expect(hook.result.current.result).toEqual(result);
   expect(hook.result.current.isPending).toBe(false);
 });
@@ -135,7 +149,9 @@ it('keeps a shared exact model registered until its last consumer unmounts', asy
   const { wrapper } = client();
   const first = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI: firstURI }), { wrapper });
   const second = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI: firstURI }), { wrapper });
-  await waitFor(() => expect(registeredModels()).toEqual([firstURI, firstURI]));
+  await waitFor(() => {
+    expect(registeredModels()).toEqual([firstURI, firstURI]); 
+  });
   expect(schemaRegistry.getRegisteredKeys()).toHaveLength(2);
   expect(native.schema).toHaveBeenCalledOnce();
   second.unmount();
@@ -154,7 +170,9 @@ it('releases a disabled owner without releasing another exact model owner', asyn
     { wrapper, initialProps: { enabled: true } },
   );
   const second = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI: secondURI }), { wrapper });
-  await waitFor(() => expect(registeredModels().toSorted()).toEqual([firstURI, secondURI]));
+  await waitFor(() => {
+    expect(registeredModels().toSorted()).toEqual([firstURI, secondURI]); 
+  });
   const ownerKeys = schemaRegistry.getRegisteredKeys();
   first.rerender({ enabled: false });
   expect(registeredModels()).toEqual([secondURI]);
@@ -163,7 +181,9 @@ it('releases a disabled owner without releasing another exact model owner', asyn
   await flushMicrotasks();
   expect(schemaRegistry.getLastFlushedYamlSchemas().flatMap((entry) => entry.fileMatch)).toEqual([secondURI]);
   first.rerender({ enabled: true });
-  await waitFor(() => expect(registeredModels().sort()).toEqual([firstURI, secondURI]));
+  await waitFor(() => {
+    expect(registeredModels().sort()).toEqual([firstURI, secondURI]); 
+  });
   expect(schemaRegistry.getRegisteredKeys().sort()).toEqual(ownerKeys.sort());
   expect(native.schema).toHaveBeenCalledOnce();
 });
@@ -174,15 +194,21 @@ it.each(['absent', 'unavailable', 'unsupported', 'invalid', 'limit'] as const)(
     const { wrapper } = client();
     const first = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI: firstURI }), { wrapper });
     const second = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request: otherRequest, modelURI: secondURI }), { wrapper });
-    await waitFor(() => expect(registeredModels().toSorted()).toEqual([firstURI, secondURI]));
+    await waitFor(() => {
+      expect(registeredModels().toSorted()).toEqual([firstURI, secondURI]); 
+    });
     const unavailable: EditorSchemaResult = {
       type: request.type, target: request.target, observation: 'observed-2', status,
       ...(status === 'unavailable' ? { code: 'FORBIDDEN' } : {}),
     };
-    native.schema.mockImplementation((_pluginID: string, target: SchemaRequest) =>
+    native.schema.mockImplementation(async (_pluginID: string, target: SchemaRequest) =>
       Promise.resolve(target.type === request.type ? unavailable : available(target)));
-    await act(async () => { await first.result.current.refetch(); });
-    await waitFor(() => expect(registeredModels()).toEqual([secondURI]));
+    await act(async () => {
+      await first.result.current.refetch(); 
+    });
+    await waitFor(() => {
+      expect(registeredModels()).toEqual([secondURI]); 
+    });
     expect(first.result.current.result).toEqual(unavailable);
     expect(first.result.current.error).toBeNull();
     expect(second.result.current.result?.status).toBe('available');
@@ -204,9 +230,13 @@ it('retires only the disconnected connection owner', async () => {
   const { wrapper } = client();
   const first = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI: firstURI }), { wrapper });
   const second = renderHook(() => useSchemaRegistration({ pluginID: 'provider', request: otherRequest, modelURI: secondURI }), { wrapper });
-  await waitFor(() => expect(registeredModels()).toEqual([firstURI, secondURI]));
+  await waitFor(() => {
+    expect(registeredModels()).toEqual([firstURI, secondURI]); 
+  });
   emit('connection/status', { pluginID: 'provider', connectionID: 'cluster', status: 'DISCONNECTED' });
-  await waitFor(() => expect(registeredModels()).toEqual([secondURI]));
+  await waitFor(() => {
+    expect(registeredModels()).toEqual([secondURI]); 
+  });
   expect(first.result.current.result).toBeUndefined();
   expect(first.result.current.isPending).toBe(true);
   expect(second.result.current.result?.status).toBe('available');
@@ -216,7 +246,9 @@ it('uses a JSON-only registration when the editor language is JSON', async () =>
   const modelURI = 'file:///editors/resource.json';
   const { wrapper } = client();
   renderHook(() => useSchemaRegistration({ pluginID: 'provider', request, modelURI, language: 'json' }), { wrapper });
-  await waitFor(() => expect(registeredModels()).toEqual([modelURI]));
+  await waitFor(() => {
+    expect(registeredModels()).toEqual([modelURI]); 
+  });
   const entries = Object.values(schemaRegistry.getSnapshot()).flat();
   expect(entries.every((entry) => entry.language === 'json')).toBe(true);
   await flushMicrotasks();

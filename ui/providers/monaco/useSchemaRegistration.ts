@@ -33,7 +33,9 @@ export const useSchemaRegistration = ({
     }
 
     schemaRegistry.register(pluginID, ownerID, modelURI, language, schema.result);
-    return () => schemaRegistry.unregister(pluginID, ownerID);
+    return () => {
+      schemaRegistry.unregister(pluginID, ownerID); 
+    };
   }, [registrationEnabled, pluginID, ownerID, modelURI, language, schema.result]);
 
   return schema;

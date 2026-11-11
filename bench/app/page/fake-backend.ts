@@ -118,15 +118,6 @@ handleAll({
     types: { [POD_KEY]: { state: 'following', mode: 'snapshotAndUpdates', continuity: 'bestEffort',
       count: { kind: 'exact', value: String(config.pods ?? 0) } } },
   }),
-  'resource/servicewrapper.GetEditorSchemas': () => [],
-  'resource/servicewrapper.GetSchemaFields': (_plugin: string, request: { type: string; representation?: string }) => ({
-    catalogRevision: 'bench', type: request.type, representation: request.representation ?? '', schemaState: 'absent',
-    fields: [], truncated: false,
-    overlay: { Operations: [], NativeQueryLanguages: [], HostEvaluation: 'dynamic', HostEvaluationCode: '', Validation: 'none', Unvalidated: null },
-  }),
-  'resource/servicewrapper.GetEditorSchemaDocument': () => {
-    throw Object.assign(new Error('Editor schema document is not referenced by this connection.'), { code: 'NOT_FOUND' });
-  },
   'resource/servicewrapper.GetAllConnectionStates': () => ({}),
   // Startup calls with nothing to report (empty state dir).
   'diagnostics/diagnosticsclient.Log': () => null,

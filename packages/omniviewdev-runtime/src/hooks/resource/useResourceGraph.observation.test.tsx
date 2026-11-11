@@ -386,6 +386,20 @@ it('finite related preserves explicit truncation without acquiring mounted owner
 });
 
 describe.each(projections)('$kind mounted graph contract', ({ kind, Panel }) => {
+  it('reports pending until its first Open acknowledges', async () => {
+    host.holdNextOpen = true;
+    render(<Panel />);
+    await waitFor(() => { expect(host.pendingOpens.size).toBe(1); });
+    expect(screen.getByLabelText('graph state').textContent).toBe('pending');
+    expect(visibleEdges()).toBe('');
+    expect(host.populationLeases.size).toBe(0);
+    const opening = host.latest(kind);
+    if (!opening) throw new Error('Pending loading requires a native reservation.');
+    await act(async () => { host.completeOpen(opening.clientToken); });
+    await expectEdges(workerA);
+    expect(screen.getByLabelText('graph state').textContent).toBe('ready');
+  });
+
   it('replaces complete payloads, including empty results, while retaining populations until unmount', async () => {
     const view = render(<Panel />);
     await expectEdges(workerA);
@@ -528,6 +542,7 @@ describe.each(projections)('$kind mounted graph contract', ({ kind, Panel }) => 
     host.target = workerB;
     view.rerender(<Panel />);
     await waitFor(() => { expect(host.pendingOpens.size).toBe(1); });
+    expect(screen.getByLabelText('graph state').textContent).toBe('pending');
     expect(visibleEdges()).toBe('');
     const replacement = host.latest(kind);
     if (!replacement) throw new Error('Re-enabling requires a fresh reservation.');
@@ -545,6 +560,7 @@ describe.each(projections)('$kind mounted graph contract', ({ kind, Panel }) => 
     host.target = workerB;
     act(() => { emit('connection/status', { pluginID: 'kubernetes', connectionID: route.connection, status: 'CONNECTED' }); });
     await waitFor(() => { expect(host.pendingOpens.size).toBe(1); });
+    expect(screen.getByLabelText('graph state').textContent).toBe('pending');
     expect(visibleEdges()).toBe('');
     expect(host.retired.has(retired)).toBe(true);
     await deliverNativeEvent(topicFor(retired), host.frame(kind, poison, retired));
@@ -571,6 +587,7 @@ describe.each(projections)('$kind mounted graph contract', ({ kind, Panel }) => 
         : { options: { direction: 'incoming', maxDepth: 1, upDepth: 1, downDepth: 1 } };
     view.rerender(<Panel {...props} />);
     await waitFor(() => { expect(host.pendingOpens.size).toBe(1); });
+    expect(screen.getByLabelText('graph state').textContent).toBe('pending');
     expect(visibleEdges()).toBe('');
     expect(host.retired.has(retired)).toBe(true);
     await deliverNativeEvent(topicFor(retired), host.frame(kind, poison, retired));
@@ -613,6 +630,7 @@ it('clears the old root while its replacement Open is pending', async () => {
   view.rerender(<SubgraphPanel reference={nextPod.reference} />);
   await expectEdges(null);
   await waitFor(() => { expect(host.pendingOpens.size).toBe(1); });
+  expect(screen.getByLabelText('graph state').textContent).toBe('pending');
   expect(host.retired.has(oldToken)).toBe(true);
   await deliverNativeEvent(topicFor(oldToken), host.frame('subgraph', poison, oldToken));
   expect(visibleEdges()).toBe('');

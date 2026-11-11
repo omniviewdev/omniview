@@ -61,7 +61,10 @@ const LinkedResourceEditor: React.FC<{
   onClose: () => void;
 }> = (props) => {
   const { ctx } = props;
-  if (!ctx.data || !ctx.resource) return null;
+  if (!ctx.data || !ctx.resource) {
+    return null;
+  }
+
   const key = JSON.stringify([ctx.resource.pluginID, ctx.resource.route, ctx.resource.reference, ctx.resource.representation]);
   return <LinkedResourceEditorSession key={key} {...props} resource={ctx.resource} />;
 };

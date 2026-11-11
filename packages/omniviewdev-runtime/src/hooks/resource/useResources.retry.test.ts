@@ -172,3 +172,41 @@ it('reattaches every mounted observer to one pending Retry, then refreshes the r
   expect(native.refresh).toHaveBeenCalledTimes(1);
   expect(native.open).toHaveBeenCalledTimes(2);
 });
+
+it('keeps a shared pending Retry alive when its initiating observer unmounts', async () => {
+  const opened: HostSourceViewOpened = { viewId: 'view', topic: 'resource-view', mode: 'snapshotAndUpdates' };
+  const pending = Promise.withResolvers<HostSourceViewOpened>();
+  native.open.mockRejectedValueOnce(new Error('Source open failed')).mockReturnValueOnce(pending.promise);
+  const mounted = render(React.createElement(QueryClientProvider, { client },
+    React.createElement(React.Fragment, null,
+      React.createElement(Collection, { key: 'first', name: 'First' }),
+      React.createElement(Collection, { key: 'second', name: 'Second' }),
+    ),
+  ));
+  const first = within(screen.getByRole('region', { name: 'First' }));
+  const second = within(screen.getByRole('region', { name: 'Second' }));
+  for (const observer of [first, second]) {
+    expect((await observer.findByRole('alert')).textContent).toBe('Source open failed');
+  }
+  fireEvent.click(first.getByRole('button', { name: 'Retry' }));
+  expect(native.open).toHaveBeenCalledTimes(2);
+  mounted.rerender(React.createElement(QueryClientProvider, { client },
+    React.createElement(React.Fragment, null,
+      null,
+      React.createElement(Collection, { key: 'second', name: 'Second' }),
+    ),
+  ));
+  expect(native.close).not.toHaveBeenCalled();
+
+  await act(async () => pending.resolve(opened));
+  expect((await second.findByRole('listitem')).textContent).toBe(bodyText);
+  expect(second.getByRole('status').textContent).toBe('following');
+  expect(second.queryByRole('alert')).toBeNull();
+  expect(native.open).toHaveBeenCalledTimes(2);
+  expect(native.refresh).not.toHaveBeenCalled();
+  expect(native.close).not.toHaveBeenCalled();
+
+  mounted.unmount();
+  await waitFor(() => expect(native.close).toHaveBeenCalledTimes(1));
+  expect(native.close).toHaveBeenCalledWith('provider', 'view');
+});

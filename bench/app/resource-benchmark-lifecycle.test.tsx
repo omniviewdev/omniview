@@ -87,7 +87,7 @@ beforeEach(() => {
       record: {
         reference: { address: { provider: request.target.provider, authority: request.target.authority, type: request.target.type, scope: [], id: "metrics" } },
         body: { kind: "map", value: { activeSourceWatches: { kind: "int64", value: watches.has(request.target.route.connection) ? "1" : "0" } } },
-        representation: { id: "native", revision: "1", schema: { state: "absent" } },
+        representation: { id: "native", revision: "1" },
         coverage: { kind: "complete", paths: [] },
       },
     }] : [],
@@ -129,7 +129,7 @@ describe("P02 root ownership versus table-only retention", () => {
         record: {
           reference: { address: { provider: "workspace-probe", authority: "test-host-authority", type: "compute/instance", scope: [], id: "native-id" } },
           body: { kind: "map", value: { name: { kind: "string", value: "native fixture" }, sizeBytes: { kind: "int64", value: "9007199254740993" } } },
-          representation: { id: "native", revision: "1", schema: { state: "absent" } },
+          representation: { id: "native", revision: "1" },
           coverage: { kind: "complete", paths: [] },
         },
       }],

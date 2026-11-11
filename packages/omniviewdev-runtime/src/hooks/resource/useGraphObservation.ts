@@ -27,17 +27,21 @@ function requestIdentity(request: Request): string {
   ]);
 }
 
-/** One mounted owner, one native reservation. Full snapshots need no finite-query cache or replay. */
+/**
+ * One mounted owner, one native reservation. Full snapshots need no finite-query cache or replay.
+ * Render identity owns loading and clears retired evidence before a replacement can publish.
+ */
 export function useGraphObservation(request: Request, enabled: boolean) {
   const { pluginID, route: { connection } } = request;
   const eligible = enabled && !!pluginID && !!connection && !!request.reference.address.id;
   const readiness = useConnectionReadiness({ pluginID, connectionID: connection, enabled: eligible });
   const generation = useConnectionGeneration(pluginID, connection, eligible);
   const active = eligible && readiness.phase === 'connected' && generation !== undefined;
-  const key = JSON.stringify([requestIdentity(request), generation]);
+  const key = active ? JSON.stringify([requestIdentity(request), generation]) : '';
   const requestRef = useRef(request);
   const ownerRef = useRef<Owner | null>(null);
-  const [state, setState] = useState<ObservationState>({ key: '', isFetching: false, error: null });
+  const [state, setState] = useState<ObservationState>({ key, isFetching: active, error: null });
+  if (state.key !== key) setState({ key, isFetching: active, error: null });
 
   useLayoutEffect(() => { requestRef.current = request; }, [request]);
   useLayoutEffect(() => {
@@ -55,14 +59,13 @@ export function useGraphObservation(request: Request, enabled: boolean) {
       // Retired owners cannot receive errors. Native window retirement also releases demand.
       void CloseGraphObservation(id).catch(() => {});
     };
-    const retire = (clear = false) => {
+    const retire = () => {
       if (retired) return;
       retired = true;
       unsubscribe();
       releaseReadiness();
       if (ownerRef.current === owner) ownerRef.current = null;
       close(token);
-      if (clear) setState(previous => previous.key === key ? { key, isFetching: false, error: null } : previous);
     };
     const pending = () => setState(previous => ({
       key,
@@ -91,7 +94,7 @@ export function useGraphObservation(request: Request, enabled: boolean) {
     const opening = (async () => {
       const opened = await OpenGraphObservation({ ...requestRef.current, clientToken: token });
       if (!current()) {
-        retire(true);
+        retire();
         close(opened.observationId);
         return;
       }
@@ -116,14 +119,13 @@ export function useGraphObservation(request: Request, enabled: boolean) {
     };
     const owner: Owner = { key, refetch: sync };
     ownerRef.current = owner;
-    setState({ key, isFetching: true, error: null });
     releaseReadiness = connectionReadinessStore(pluginID, connection).subscribe(() => {
-      if (!current()) retire(true);
+      if (!current()) retire();
     });
     if (retired) releaseReadiness();
-    else if (!current()) retire(true);
+    else if (!current()) retire();
     else void sync().catch(() => {});
-    return () => retire(true);
+    return retire;
   }, [active, key, pluginID, connection, generation]);
 
   const refetch = useCallback(async () => {

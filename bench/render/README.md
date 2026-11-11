@@ -57,6 +57,11 @@ relative to the host. Production React and JSX are the default. Use
   ordered snapshots in chunks of at most 256 records, followed by snapshot status.
   The 1k/5k labels describe source corpus sizes, not simultaneous mounted row counts.
   Older full-list baselines are not comparable.
+  Representations carry only format IDs and revisions. Schema fixtures use the exact
+  `{ route, type, target }` request shared by `ResolveSchema`, `ResolveEditorSchema`,
+  and the nested `GetSchemaFields` request. The synthetic Pod provider has no schema
+  resolver: fields and editors report `UNSUPPORTED`, not known absence or an invented
+  document. Unknown targets and unreferenced documents fail.
   Historical result files remain unchanged.
   Log creation consumes the current encoded JSON request and preserves its correlation
   ID and session options in the current session DTO. Drawer and whole-app fixtures

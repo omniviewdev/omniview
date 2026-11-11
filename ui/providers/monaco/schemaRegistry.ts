@@ -49,9 +49,11 @@ class SchemaRegistry {
     if (document === undefined) {
       throw new Error('Editor schema document is unavailable.');
     }
+
     if (!document.documentId) {
       throw new Error('Available editor schema result has no document ID.');
     }
+
     if (result.root === undefined) {
       throw new Error('Available editor schema result has no document root.');
     }
@@ -89,6 +91,7 @@ class SchemaRegistry {
         changed = true;
       }
     }
+
     if (changed) {
       this.scheduleFlush();
     }
@@ -100,6 +103,7 @@ class SchemaRegistry {
     for (const [key, { entries }] of this.schemas) {
       snapshot[key] = [...entries];
     }
+
     return snapshot;
   }
 
@@ -112,6 +116,7 @@ class SchemaRegistry {
     for (const { entries } of this.schemas.values()) {
       count += entries.length;
     }
+
     return count;
   }
 
@@ -124,6 +129,7 @@ class SchemaRegistry {
     if (this.flushScheduled) {
       return;
     }
+
     this.flushScheduled = true;
     queueMicrotask(() => {
       this.flushScheduled = false;
