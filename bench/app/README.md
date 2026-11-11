@@ -59,7 +59,7 @@ unexpected end positions, and verify the reset. Reports expose actual forward st
 and total steps (including the reset); wall and busy per-step timings use that
 actual total rather than the requested 30-step budget.
 
-## Published plugin archive acceptance
+## Production plugin archive acceptance
 
 Run the production frontend against an extracted release archive, without
 rebuilding or linking the plugin:
@@ -75,7 +75,7 @@ Playwright Chromium first, as above. The harness removes its temporary build and
 closes its browser and HTTP server on success or failure.
 
 This gate uses the production React renderer, host shared-module registry,
-SystemJS loader, and published Kubernetes frontend bytes. It checks the homepage,
+SystemJS loader, and packaged Kubernetes frontend bytes. It checks the homepage,
 the empty-kubeconfig plugin route, and cluster-search interaction. Every shipped
 System.register module, including lazy routes, has its named external imports
 checked against the actual host namespaces. A missing export, route failure,
@@ -86,16 +86,51 @@ WKWebView behavior, real Kubernetes/backend lifecycle, archive installation, or
 every lazy screen's behavior. Keep the real application E2E suite as a separate
 gate. Add workload-specific tests when changing resource views or connections.
 
-`.github/workflows/plugin-archive-smoke.yml` runs on relevant host PRs and is a
-mandatory dependency of both desktop publication and npm publication. Its default
-input pins a published Kubernetes archive and checksum. Update that pin only
-after the intended compatibility cohort is published and tested.
+`.github/workflows/plugin-archive-smoke.yml` is a reusable workflow only. Plugin
+release callers must supply `archive-artifact`, naming an artifact from the same
+workflow run containing `kubernetes-linux_amd64.tar.gz` and
+`checksums_sha256.txt`. The existing packager builds once and generates the
+checksum manifest beside its archives. The smoke verifies that manifest before
+extraction; marketplace publication verifies it again before uploading the same
+archives. GitHub artifact transport binds both consumers to the producer's
+same-run output. No published-plugin download or maintained archive digest is a
+fallback.
 
-Plugin release workflows can call this reusable workflow with `host-ref` and
-`archive-artifact` (an artifact from the same workflow run containing
-`kubernetes-linux_amd64.tar.gz`). This tests the candidate bytes before marketplace
-publication, rather than testing an already published version or rebuilding from
-linked source. Merge the host workflow before merging a plugin caller.
+The workflow checks out host `main` by default and records its resolved commit.
+It builds providers → runtime → Vite plugin without stamping a separate package
+cohort, then runs the archive export/browser checks and installed-plugin chunk
+retirement test. Merge this reusable workflow into host `main` before merging a
+plugin release caller.
+
+Host PR acceptance instead uses the existing owned source E2E composition. It
+builds the selected host and Kubernetes sources once, runs full application
+acceptance, and reuses the completed plugin artifact and composed host outputs
+for export/browser and chunk-retirement contracts before retirement. This path
+does not wait for a plugin or npm release. Cache-only preparation never runs
+application acceptance or these contract assertions.
+
+Kubernetes PRs call the same cached runner with `kubernetes-checks: true`, selecting
+the PR repository and revision while using host trunk. Locally, run
+`SDK_SOURCE=/path/to/sdk KUBERNETES_SOURCE=/path/to/kubernetes node e2e/scripts/run.mjs --full --kubernetes-checks`.
+This also runs the plugin's lint, native TypeScript check, behavior suite and
+New York age-clock tests within the owned source composition.
+
+### Release publication order
+
+Stable publication starts only from a pushed `v*` tag, which supplies the npm
+version. The selected commit must be an ancestor of `origin/main`. Existing
+platform builds and Homebrew checks complete before npm publication; desktop
+publication waits for npm. Nightly retains its scheduled and manual triggers,
+but runs only from `main`, with the same platform/Homebrew → npm → rolling
+desktop order.
+
+There is no npm-only bootstrap dispatch, bootstrap publication branch, or
+published-plugin smoke prerequisite for host publication. Source E2E owns those
+compatibility contracts; release jobs do not repeat its full source build.
+Published package versions, plugin archives, and release tags remain immutable.
+Before desktop publication, verify that compatible plugins are approved for the
+new host version and that old hosts cannot acquire incompatible releases.
+Source acceptance does not replace marketplace compatibility enforcement.
 
 ### Upgrade-state regression
 
@@ -118,24 +153,28 @@ credentials, or the full profile.
 
 ## Reproducible application sources
 
-CI resolves the SDK commit from the host's declared `go.mod` dependency and
-checks out that commit for the managed workspace. UI packages come from the host
-lockfile; CI checks out the latest published Kubernetes GitHub release tag and
-passes its full checked-out commit to the builder. The host input remains the
-exact checked-out PR commit, or the selected branch commit for manual dispatch.
-Managed workspaces record the SDK checkout's commit and source digest.
+CI resolves the SDK commit from the host's declared `go.mod` dependency through
+`e2e/scripts/sdk-source.mjs` and checks out that commit for the managed workspace.
+UI packages come from the host lockfile. Host source acceptance and profiling
+select Kubernetes `main` and record the checked-out commit, rather than selecting
+a published release or maintaining an application SHA in workflow YAML.
+Kubernetes PR validation selects the PR's exact commit with host `main` and its
+resolved SDK, then invokes the same runner with `--full --kubernetes-checks`.
+Merge that runner API into host `main` before merging the Kubernetes CI caller;
+do not pin an unmerged host branch or commit to bypass the dependency. Managed
+workspaces record source commits and digests.
 
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph
 and output-ownership producers in a disposable collection with its own private
 home. Its manager uses the same session-aware `RequireStopped` guard as the real
 workspace CLI; a private home is not a substitute for proving the workspace is
-stopped before linking or retirement. It builds the Kubernetes UI dependency
-closure and uses the host's committed Wails bindings as compiler inputs, just as
-for `task packages`; no native host, plugin backend, SDK attestation or app
-service is substituted or launched. Source manifests retain their declared
-versions. Registry edges retain their lock evidence. Install scripts remain
-disabled and strict peers are audited recursively.
+stopped before linking or retirement. Default profile mode builds the Kubernetes
+UI dependency closure and uses the host's committed Wails bindings as compiler
+inputs, just as for `task packages`; it does not build a native host or plugin
+backend, attest an SDK, or launch an app service. Profile-mode manifests retain
+their declared versions. Registry edges retain their lock evidence. Install
+scripts remain disabled and strict peers are audited recursively.
 
 Source install policies must agree explicitly. The host and Kubernetes sources
 must both declare `allowBuilds.esbuild: true`, with Kubernetes retaining
@@ -157,16 +196,14 @@ git -C "$SDK_SOURCE" checkout --detach "$SDK_COMMIT"
 PR validation runs for stacked PR bases as well as `main`, with read-only
 permissions. Release and nightly workflows retain published dependencies.
 
-Prepare the effective host module with the selected SDK before running the
-probe or builder; keep the generated modfile outside the source checkout:
+Run the probe and builder against the host's ordinary published dependencies.
+The selected SDK checkout supplies managed workspace source, not a Go replacement:
 
 ```bash
-HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
-  --root "$PWD" --sdk-source "$SDK_SOURCE")"
 A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
-  GOWORK=off GOFLAGS= go test -mod=readonly -modfile="$HOST_MODFILE" -tags server ./internal/devworkspace \
+  GOWORK=off GOFLAGS= go test -mod=readonly -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1
-GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
+GOWORK=off GOFLAGS= go run -mod=readonly -tags server ./bench/app/build-plugin \
   --host "$PWD" --host-ref "$(git rev-parse HEAD)" \
   --sdk "$SDK_SOURCE" --sdk-ref "$SDK_COMMIT" \
   --kubernetes "$KUBERNETES_SOURCE" --kubernetes-ref "$KUBERNETES_COMMIT" \

@@ -110,6 +110,82 @@ export class GraphEdge {
 export type GraphNode = any;
 
 /**
+ * RelatedRequest bounds one finite semantic query. Zero requests the whole
+ * result; positive limits preserve explicit truncation without partial coverage.
+ */
+export class RelatedRequest {
+    "pluginID": string;
+    "reference": resourcev2$0.ResourceReference;
+    "route": resourcev2$0.AccessRoute;
+    "direction": string;
+    "relationshipType"?: string | null;
+    "limit"?: number;
+
+    /** Creates a new RelatedRequest instance. */
+    constructor($$source: Partial<RelatedRequest> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("reference" in $$source)) {
+            this["reference"] = (new resourcev2$0.ResourceReference());
+        }
+        if (!("route" in $$source)) {
+            this["route"] = (new resourcev2$0.AccessRoute());
+        }
+        if (!("direction" in $$source)) {
+            this["direction"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RelatedRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RelatedRequest {
+        const $$createField1_0 = $$createType3;
+        const $$createField2_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("reference" in $$parsedSource) {
+            $$parsedSource["reference"] = $$createField1_0($$parsedSource["reference"]);
+        }
+        if ("route" in $$parsedSource) {
+            $$parsedSource["route"] = $$createField2_0($$parsedSource["route"]);
+        }
+        return new RelatedRequest($$parsedSource as Partial<RelatedRequest>);
+    }
+}
+
+export class RelatedResult {
+    "edges": GraphEdge[];
+    "truncated": boolean;
+
+    /** Creates a new RelatedResult instance. */
+    constructor($$source: Partial<RelatedResult> = {}) {
+        if (!("edges" in $$source)) {
+            this["edges"] = [];
+        }
+        if (!("truncated" in $$source)) {
+            this["truncated"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RelatedResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): RelatedResult {
+        const $$createField0_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("edges" in $$parsedSource) {
+            $$parsedSource["edges"] = $$createField0_0($$parsedSource["edges"]);
+        }
+        return new RelatedResult($$parsedSource as Partial<RelatedResult>);
+    }
+}
+
+/**
  * RelationshipType re-exports from SDK for convenience.
  */
 export type RelationshipType = resourcev2$0.RelationshipType;
@@ -151,7 +227,7 @@ export class Subgraph {
      * Creates a new Subgraph instance from a string or object.
      */
     static createFrom($$source: any = {}): Subgraph {
-        const $$createField1_0 = $$createType4;
+        const $$createField1_0 = $$createType7;
         const $$createField2_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("nodes" in $$parsedSource) {
@@ -199,6 +275,8 @@ export class SubgraphNode {
 const $$createType0 = GraphEdge.createFrom;
 const $$createType1 = DependencyNode.createFrom;
 const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = SubgraphNode.createFrom;
-const $$createType4 = $Create.Array($$createType3);
+const $$createType3 = resourcev2$0.ResourceReference.createFrom;
+const $$createType4 = resourcev2$0.AccessRoute.createFrom;
 const $$createType5 = $Create.Array($$createType0);
+const $$createType6 = SubgraphNode.createFrom;
+const $$createType7 = $Create.Array($$createType6);

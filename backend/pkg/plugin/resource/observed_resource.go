@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -30,8 +29,8 @@ func (c *controller) ReadObservedResource(ctx context.Context, pluginID string, 
 }
 
 // GuardObservedReference authorizes native metrics without resource.Get or a
-// resource body grant. Same-incarnation updates remain valid; source generation,
-// owner authorization, schema binding and authority retirement do not.
+// resource body grant. Same-incarnation updates and schema enrichment remain
+// valid; source generation, owner authorization and authority retirement do not.
 func (c *controller) GuardObservedReference(ctx context.Context, operation, pluginID string, route resourcev2.AccessRoute, reference resourcev2.ResourceReference) (func(context.Context) error, error) {
 	if operation != "metric.Query" && operation != "metric.Subscribe" {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Unsupported observed identity operation.")
@@ -111,7 +110,7 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 		for _, candidate := range candidates {
 			session := candidate.session
 			session.mu.Lock()
-			if !observedSessionCurrent(session, pluginID, owner, route, generation, catalog.Revision) {
+			if !observedSessionCurrent(session, pluginID, owner, route, generation, catalog) {
 				session.mu.Unlock()
 				continue
 			}
@@ -125,15 +124,13 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 				session.mu.Unlock()
 				continue
 			}
-			observation, err := decodeObservedMember(session, member)
-			if err == nil {
-				session.transientLedger.release(member.transient)
+			if member.header == nil {
+				session.mu.Unlock()
+				return nil, nil, resourcev2.NewError("PROVIDER_ERROR", "Observed resource has no admitted identity.")
 			}
+			incarnation := member.header.reference.Incarnation
 			session.mu.Unlock()
-			if err != nil {
-				return nil, nil, err
-			}
-			if !sameIncarnation(observation.Record.Reference.Incarnation, reference.Incarnation) {
+			if !sameIncarnation(incarnation, reference.Incarnation) {
 				return nil, nil, resourcev2.NewError("RESET_REQUIRED", "Retained source observations disagree on the requested incarnation.")
 			}
 		}
@@ -143,18 +140,7 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 			session := candidate.session
 			session.mu.Lock()
 			binding, _ := session.ctx.Value(sourceBindingKey{}).(sourceBinding)
-			if !observedSessionCurrent(session, pluginID, owner, route, generation, catalog.Revision) || binding.Representation.ID != representation {
-				session.mu.Unlock()
-				continue
-			}
-			var currentRepresentation resourcev2.Representation
-			for _, declared := range descriptor.Representations {
-				if declared.ID == representation {
-					currentRepresentation = declared
-					break
-				}
-			}
-			if !reflect.DeepEqual(binding.Representation, currentRepresentation) {
+			if !observedSessionCurrent(session, pluginID, owner, route, generation, catalog) || binding.Representation.ID != representation {
 				session.mu.Unlock()
 				continue
 			}
@@ -163,17 +149,14 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 				session.mu.Unlock()
 				continue
 			}
-			observation, err := decodeObservedMember(session, member)
-			if err != nil {
+			if member.header == nil {
 				session.mu.Unlock()
-				return nil, nil, err
+				return nil, nil, resourcev2.NewError("PROVIDER_ERROR", "Observed resource has no admitted identity.")
 			}
-			if !sameIncarnation(observation.Record.Reference.Incarnation, reference.Incarnation) {
-				session.transientLedger.release(member.transient)
+			if !sameIncarnation(member.header.reference.Incarnation, reference.Incarnation) {
 				session.mu.Unlock()
 				continue
 			}
-			defer session.transientLedger.release(member.transient)
 			c.pluginsMu.RLock()
 			err = c.currentGenerationLocked(ctx, pluginID, generation)
 			if err == nil {
@@ -183,27 +166,64 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 				err = resourcev2.NewError("RESET_REQUIRED", "Observation authority retired.")
 			}
 			c.pluginsMu.RUnlock()
-			sourceGeneration, revision, catalogRevision := session.generation, member.ref, catalog.Revision
+			sourceGeneration, revision := session.generation, member.ref
+			if !identityOnly {
+				member.retain()
+				defer member.release()
+			}
 			session.mu.Unlock()
 			if err != nil {
 				return nil, nil, err
 			}
 			var projected *resourcev2.Value
+			var entry *resourcecatalog.Entry
+			var observation string
 			if !identityOnly {
+				body, err := decodeObservedBody(session, member)
+				if err != nil {
+					return nil, nil, err
+				}
+				defer session.transientLedger.release(member.transient)
 				_, snapshot, err := c.observeSchemaSnapshot(ctx, pluginID, generation, route, catalog)
 				if err != nil {
 					return nil, nil, err
 				}
-				entry, err := snapshot.Entry(reference.Address.Type, representation)
+				entry, err = snapshot.Target(resourcev2.SchemaRequest{Route: route, Type: reference.Address.Type, Target: resourcev2.SchemaTarget{Representation: &binding.Representation}})
 				if err != nil {
 					return nil, nil, err
 				}
-				schema, err := entry.Resolve(ctx, schemaDocumentSource(provider, route))
+				resolution, err := entry.Resolve(ctx, schemaBindingSource(provider), schemaDocumentSource(provider, route))
 				if err != nil {
 					return nil, nil, err
 				}
-				projected, err = projectObservedScalars(ctx, schema, observation.Record.Body, paths)
+				observation = resolution.Observation
+				projected, err = projectObservedScalars(ctx, resolution.Schema, body, paths)
 				if err != nil {
+					return nil, nil, err
+				}
+			}
+			session.mu.Lock()
+			current, exists := session.members[key]
+			valid := observedSessionCurrent(session, pluginID, owner, route, generation, catalog) &&
+				session.generation == sourceGeneration && exists && (identityOnly || current.ref == revision)
+			if identityOnly {
+				valid = valid && current.header != nil && sameIncarnation(current.header.reference.Incarnation, reference.Incarnation)
+			}
+			c.pluginsMu.RLock()
+			err = c.currentGenerationLocked(session.ctx, pluginID, generation)
+			if err == nil && !c.referenceCurrentLocked(pluginID, route, reference) {
+				err = resourcev2.NewError("RESET_REQUIRED", "Observation authority retired.")
+			}
+			c.pluginsMu.RUnlock()
+			session.mu.Unlock()
+			if err != nil {
+				return nil, nil, err
+			}
+			if !valid {
+				return nil, nil, resourcev2.NewError("UNAVAILABLE", "Source observation retired during projection.")
+			}
+			if entry != nil {
+				if err := entry.Current(observation); err != nil {
 					return nil, nil, err
 				}
 			}
@@ -235,16 +255,11 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 				session.mu.Lock()
 				defer session.mu.Unlock()
 				current, exists := session.members[key]
-				if !observedSessionCurrent(session, pluginID, owner, route, generation, catalogRevision) || session.generation != sourceGeneration || !exists || (!identityOnly && current.ref != revision) {
+				if !observedSessionCurrent(session, pluginID, owner, route, generation, catalog) || session.generation != sourceGeneration || !exists || (!identityOnly && current.ref != revision) {
 					return resourcev2.NewError("UNAVAILABLE", "Source observation retired before projection delivery.")
 				}
 				if identityOnly {
-					observation, err := decodeObservedMember(session, current)
-					if err != nil {
-						return err
-					}
-					defer session.transientLedger.release(current.transient)
-					if !sameIncarnation(observation.Record.Reference.Incarnation, reference.Incarnation) {
+					if current.header == nil || !sameIncarnation(current.header.reference.Incarnation, reference.Incarnation) {
 						return resourcev2.NewError("RESET_REQUIRED", "Observed identity changed before delivery.")
 					}
 				}
@@ -256,6 +271,9 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 				if !c.referenceCurrentLocked(pluginID, route, reference) {
 					return resourcev2.NewError("RESET_REQUIRED", "Observation authority retired.")
 				}
+				if entry != nil {
+					return entry.Current(observation)
+				}
 				return nil
 			}
 			return projected, guard, nil
@@ -264,22 +282,32 @@ func (c *controller) readObservedResource(ctx context.Context, operation, plugin
 	return nil, nil, resourcev2.NewError("UNAVAILABLE", "No current authorized source observation is available.")
 }
 
-// Caller holds session.mu. A successful decode retains its scratch reservation;
-// the caller releases it after the last body read, including schema resolution.
-func decodeObservedMember(session *sourceSession, member sourceMember) (resourcev2.SourceObservation, error) {
+// The caller retains the immutable member before dropping session.mu. Decode
+// and schema work run outside source locks; scratch lasts through projection.
+func decodeObservedBody(session *sourceSession, member sourceMember) (resourcev2.Value, error) {
 	if !session.transientLedger.reserve(member.transient) {
-		return resourcev2.SourceObservation{}, resourcev2.NewError("RESOURCE_LIMIT", "Observed resource decode exceeds host limits.")
+		return resourcev2.Value{}, resourcev2.NewError("RESOURCE_LIMIT", "Observed resource decode exceeds host limits.")
 	}
-	observation, err := decodeSourceMember(member)
+	body, err := decodeSourceBody(member)
 	if err != nil {
 		session.transientLedger.release(member.transient)
 	}
-	return observation, err
+	return body, err
 }
 
-func observedSessionCurrent(session *sourceSession, pluginID, owner string, route resourcev2.AccessRoute, generation *pluginState, catalogRevision string) bool {
+func observedSessionCurrent(session *sourceSession, pluginID, owner string, route resourcev2.AccessRoute, generation *pluginState, catalog resourcev2.Catalog) bool {
 	binding, ok := session.ctx.Value(sourceBindingKey{}).(sourceBinding)
-	return ok && binding.CatalogRevision == catalogRevision && session.pluginID == pluginID && session.owner == owner && session.pluginGeneration == generation && session.target.Route == route && !session.closed && session.ctx.Err() == nil && session.hasSnapshot && (session.status.State == "following" || session.status.State == "finished")
+	if !ok || session.pluginID != pluginID || session.owner != owner || session.pluginGeneration != generation ||
+		session.target.Route != route || session.closed || session.ctx.Err() != nil || !session.hasSnapshot ||
+		(session.status.State != "following" && session.status.State != "finished") {
+		return false
+	}
+	request := resourcev2.SourceOpenRequest{
+		Target: session.target, Mode: session.mode,
+		Acquisition: resourcev2.SourceAcquisition{Kind: resourcev2.SourceAcquisitionEnumerate},
+		Binding:     resourcev2.RepresentationBinding{Representation: binding.Representation},
+	}
+	return resourcev2.CheckSourceCatalog(resourcev2.WithCatalogRevision(session.ctx, binding.CatalogRevision), catalog, request, binding.Descriptor) == nil
 }
 
 func observedPublicPointer(path string) ([]string, error) {

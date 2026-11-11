@@ -73,7 +73,12 @@ func TestProfileChangeBlocksNewReadsAndRetiresInFlightGetAndCatalog(t *testing.T
 		return row, nil
 	}
 	oldGet := make(chan error, 1)
-	go func() { _, err := ctrl.Get(testInvocationContext(), "plugin", fenceGet(ref)); oldGet <- err }()
+	oldGetRecord := make(chan HostRecord, 1)
+	go func() {
+		record, err := ctrl.Get(testInvocationContext(), "plugin", fenceGet(ref))
+		oldGetRecord <- record
+		oldGet <- err
+	}()
 	<-getEntered
 	var blockCatalog atomic.Bool
 	blockCatalog.Store(true)
@@ -138,8 +143,9 @@ func TestProfileChangeBlocksNewReadsAndRetiresInFlightGetAndCatalog(t *testing.T
 	getRelease.Do(func() { close(getResume) })
 	require.Equal(t, "RESET_REQUIRED", requireAppError(t, waitProfileFence(t, oldGet)).Code)
 	require.Equal(t, "RESET_REQUIRED", requireAppError(t, waitProfileFence(t, oldCatalog)).Code)
-	_, found := ctrl.registryStore.Get("plugin", ref.Reference, ref.Route)
-	require.False(t, found)
+	retired := <-oldGetRecord
+	require.Empty(t, retired.Key)
+	require.Empty(t, retired.Record.Body.Kind, "retired endpoint A must not reach the caller")
 	require.Equal(t, int32(1), hookBegin.Load())
 	require.Equal(t, int32(0), hookEnd.Load())
 	applyRelease.Do(func() { close(applyResume) })

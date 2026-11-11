@@ -26,15 +26,25 @@ export interface AcquiredResourcePage {
 
 const inactiveGenerationStore = { getSnapshot: () => undefined, subscribe: () => () => {} };
 
-type ViewEntry = { refs: number; client: Promise<SourceViewClient> };
+type ViewAttempt = { client: Promise<SourceViewClient>; state: 'pending' | 'opened' | 'failed' };
+type ViewEntry = { refs: number; attempt: ViewAttempt; listeners: Set<(attempt: ViewAttempt) => void> };
 const views = new Map<string, ViewEntry>();
+
+function openViewAttempt(pluginID: string, request: HostEnumerateRequest, live: boolean): ViewAttempt {
+  const attempt: ViewAttempt = {
+    client: openSourceView(pluginID, {
+      targetId: request.targetId, target: request.request.target, updates: live ? 'ifSupported' : 'none',
+    }),
+    state: 'pending',
+  };
+  void attempt.client.then(() => { attempt.state = 'opened'; }, () => { attempt.state = 'failed'; });
+  return attempt;
+}
 
 function acquireView(key: string, pluginID: string, request: HostEnumerateRequest, live: boolean): ViewEntry {
   let entry = views.get(key);
   if (!entry) {
-    entry = { refs: 0, client: openSourceView(pluginID, {
-      targetId: request.targetId, target: request.request.target, updates: live ? 'ifSupported' : 'none',
-    }) };
+    entry = { refs: 0, attempt: openViewAttempt(pluginID, request, live), listeners: new Set() };
     views.set(key, entry);
   }
   entry.refs++;
@@ -44,7 +54,28 @@ function acquireView(key: string, pluginID: string, request: HostEnumerateReques
 function releaseView(key: string, entry: ViewEntry) {
   if (--entry.refs !== 0) return;
   if (views.get(key) === entry) views.delete(key);
-  void entry.client.then((client) => client.close(), () => {});
+  void entry.attempt.client.then((client) => client.close(), () => {});
+}
+
+/** Refresh the shared owner, coalescing failed-open retries before notifying every subscriber. */
+async function refreshView(key: string, expected: ViewEntry, pluginID: string, request: HostEnumerateRequest, live: boolean, generation: number) {
+  const entry = views.get(key);
+  const current = () => views.get(key) === expected
+    && isConnectionReadinessCurrent(pluginID, request.request.target.route.connection, generation);
+  if (!entry || entry !== expected || !current()) throw new CancelledError({ revert: true });
+  let attempt = entry.attempt;
+  const refreshOpened = attempt.state === 'opened';
+  if (attempt.state === 'failed') {
+    attempt = openViewAttempt(pluginID, request, live);
+    entry.attempt = attempt;
+    for (const observe of entry.listeners) observe(attempt);
+  }
+  const client = await attempt.client;
+  if (!current()) throw new CancelledError({ revert: true });
+  if (refreshOpened) {
+    await client.refresh();
+    if (!current()) throw new CancelledError({ revert: true });
+  }
 }
 
 const recordLists = new WeakMap<ReadonlyMap<string, HostRecord>, readonly HostRecord[]>();
@@ -123,8 +154,8 @@ function firstSnapshot(client: SourceViewClient, signal: AbortSignal): Promise<R
 /**
  * Acquire an explicit source page, or opt into a complete collection acquisition.
  * Collection updates preserve unchanged record objects and reuse the records array when its
- * members and order are unchanged. Collection refetch first refreshes the shared source view;
- * a failure to open or refresh that view rejects the refetch promise.
+ * members and order are unchanged. Collection refetch refreshes an opened shared source view,
+ * or retries its failed open. Either acquisition or refresh failure rejects the refetch promise.
  */
 export const useResources = ({ pluginID: explicitPluginID, request, enabled = true, live = true, collection = false }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
@@ -157,45 +188,54 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     const entry = acquireView(viewKey, pluginID, stableRequest, live);
     let active = true;
     let unsubscribe = () => {};
-    // Publish the view once its open settles; a failed open still enables the
-    // query so the rejection surfaces as a query error.
-    const publish = () => {
-      if (active) setActiveView({ key: viewKey, entry });
-    };
-    void entry.client.then((client) => {
-      if (!active) return;
-      publish();
-      let hasPublishedStatus = false;
-      let publishedStatus: HostSourceStatus | undefined;
-      const update = () => {
-        if (!active || !isConnectionReadinessCurrent(pluginID, connectionID, generation)) return;
-        const snapshot = client.getSnapshot();
-        // Avoid dispatching even an equal state: React may render once before bailing out.
-        if (!hasPublishedStatus || publishedStatus !== snapshot.status) {
-          hasPublishedStatus = true;
-          publishedStatus = snapshot.status;
-          setSourceSnapshot({ key: viewKey, status: snapshot.status });
-        }
-        if (snapshot.complete && snapshot.status?.state !== 'failed' && snapshot.status?.state !== 'closed') {
-          // A cache write notifies every observer, so a page equal to the healthy one held is not written.
-          // An errored or invalidated entry is written even then: a source that recovered clears it.
-          const state = queryClient.getQueryState<ResourceView>(queryKey);
-          const held = state?.status === 'success' && !state.isInvalidated ? state.data : undefined;
-          const page = sharePage(held, pageFromSnapshot(snapshot)) as ResourceView;
-          if (page !== held) queryClient.setQueryData(queryKey, page);
-        }
+    let hasPublishedView = false;
+    const observe = (attempt: ViewAttempt) => {
+      unsubscribe();
+      const current = () => active && entry.attempt === attempt
+        && isConnectionReadinessCurrent(pluginID, connectionID, generation);
+      // A failed open still enables the query, exposing the acquisition error without retrying it.
+      const publish = () => {
+        if (!current() || hasPublishedView) return;
+        hasPublishedView = true;
+        setActiveView({ key: viewKey, entry });
       };
-      unsubscribe = client.subscribe(update);
-      update();
-    }, publish);
-    return () => { active = false; unsubscribe(); releaseView(viewKey, entry); };
+      void attempt.client.then((client) => {
+        if (!current()) return;
+        publish();
+        let hasPublishedStatus = false;
+        let publishedStatus: HostSourceStatus | undefined;
+        const update = () => {
+          if (!current()) return;
+          const snapshot = client.getSnapshot();
+          // Avoid dispatching even an equal state: React may render once before bailing out.
+          if (!hasPublishedStatus || publishedStatus !== snapshot.status) {
+            hasPublishedStatus = true;
+            publishedStatus = snapshot.status;
+            setSourceSnapshot({ key: viewKey, status: snapshot.status });
+          }
+          if (snapshot.complete && snapshot.status?.state !== 'failed' && snapshot.status?.state !== 'closed') {
+            // A cache write notifies every observer, so a page equal to the healthy one held is not written.
+            // An errored or invalidated entry is written even then: a source that recovered clears it.
+            const state = queryClient.getQueryState<ResourceView>(queryKey);
+            const held = state?.status === 'success' && !state.isInvalidated ? state.data : undefined;
+            const page = sharePage(held, pageFromSnapshot(snapshot)) as ResourceView;
+            if (page !== held) queryClient.setQueryData(queryKey, page);
+          }
+        };
+        unsubscribe = client.subscribe(update);
+        update();
+      }, publish);
+    };
+    entry.listeners.add(observe);
+    observe(entry.attempt);
+    return () => { active = false; entry.listeners.delete(observe); unsubscribe(); releaseView(viewKey, entry); };
   }, [collection, queryEnabled, stableRequest, generation, viewKey, pluginID, connectionID, live, queryClient, queryKey]);
 
   const currentEntry = activeView?.key === viewKey && queryEnabled && collection ? activeView.entry : undefined;
   const enumerate = React.useCallback((input: HostEnumerateRequest, signal: AbortSignal, key: QueryKey) =>
     guardQuery(key, signal, () => Enumerate(pluginID, input)), [guardQuery, pluginID]);
   const collectionQuery = React.useCallback((entry: ViewEntry, signal: AbortSignal, key: QueryKey) =>
-    guardQuery(key, signal, async () => firstSnapshot(await entry.client, signal)), [guardQuery]);
+    guardQuery(key, signal, async () => firstSnapshot(await entry.attempt.client, signal)), [guardQuery]);
   const queryFn = queryEnabled && stableRequest && (!collection || currentEntry)
     ? ({ signal, queryKey: key }: { signal: AbortSignal; queryKey: QueryKey }) => collection
       ? collectionQuery(currentEntry!, signal, key) : enumerate(stableRequest, signal, key)
@@ -204,9 +244,11 @@ export const useResources = ({ pluginID: explicitPluginID, request, enabled = tr
     structuralSharing: collection ? sharePage : true });
   const refetchResources = resourcesQuery.refetch;
   const refresh = React.useCallback(async (...args: Parameters<typeof refetchResources>) => {
-    if (collection && currentEntry) await (await currentEntry.client).refresh();
+    if (collection && currentEntry && stableRequest && generation !== undefined) {
+      await refreshView(viewKey, currentEntry, pluginID, stableRequest, live, generation);
+    }
     return refetchResources(...args);
-  }, [collection, currentEntry, refetchResources]);
+  }, [collection, currentEntry, stableRequest, generation, viewKey, pluginID, live, refetchResources]);
   const resources = collection ? { ...resourcesQuery, refetch: refresh } : resourcesQuery;
   const [successful, setSuccessful] = React.useState<{ identity: string; requestHash: string; request: HostEnumerateRequest }>();
   let acquisition = successful;

@@ -78,7 +78,7 @@ func (*nativeLogFileStore) CheckConnection(_ context.Context, connection sdktype
 }
 
 func nativeLogRepresentation() sdkresource.Representation {
-	return sdkresource.Representation{ID: "native", Revision: "native:1", Schema: sdkresource.SchemaBinding{State: "absent"}}
+	return sdkresource.Representation{ID: "native", Revision: "native:1"}
 }
 
 func nativeLogRecord(target sdkresource.ReadTarget, name string, body sdkresource.Value) sdkresource.Record {

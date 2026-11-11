@@ -163,7 +163,7 @@ function observed(pluginID: string, type = 'widgets'): HostRecord {
     record: {
       reference,
       body: jsonToValue({ name: 'w1' }),
-      representation: { id: 'json', revision: '', schema: { state: 'unknown' } },
+      representation: { id: 'json', revision: 'format-1' },
       coverage: { kind: 'complete', paths: [] },
     },
   };

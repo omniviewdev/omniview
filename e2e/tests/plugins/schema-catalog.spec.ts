@@ -1,37 +1,24 @@
-import { createHash } from 'node:crypto';
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Page, Request } from '@playwright/test';
 import { test as base, expect } from '../fixtures/app.fixture';
 import { goTo } from '../fixtures/helpers';
-import { callBinding, Service } from '../fixtures/wails';
-import type { EditorSchemaAssociation, SchemaFieldsResult } from '../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/models';
+import { callBinding, Service, methodId } from '../fixtures/wails';
+import type { Catalog, SchemaRequest } from '../../../packages/omniviewdev-runtime/src/resource/v2/domain';
+import type { EditorSchemaResult, SchemaFieldsResult } from '../../../packages/omniviewdev-runtime/src/resource/v2/schema';
 
 /**
- * Real-application evidence for the host resource schema catalog on provider-neutral connections
- * (issue #85).
+ * Real-application evidence for target-bound schemas on provider-neutral connections.
+ * Browsing must not demand schemas. Native schemas remain absent and dynamically evaluated,
+ * even after the same route's authoring schema is resolved. Schema fields and editor documents
+ * must describe one coherent route/type/representation observation.
  *
- * The workspace probe's Go provider serves four fixed connections: cloud, container, hypervisor and a
- * Kubernetes-shaped fixture. Each advertises one type whose native representation declares
- * `Schema: {State: "absent"}`. A separate authoring representation offers a schema; it must not
- * contaminate the native representation. Nothing between the provider and these assertions is simulated: each
- * connection is started through the browser's own Connect action, and the host's resource service
- * answers over its real runtime endpoint from the catalog it admitted from the plugin process over gRPC.
- *
- * What the catalog must report for every connection:
- * - field discovery: schema state `absent`, no schema revision or dialect, no fields, and an overlay
- *   that evaluates dynamically with no validation and no native query languages;
- * - editor associations: one native association for the type, `absent`, with no document, bound to a model
- *   directory derived from the plugin, connection, type and representation, so no two connections share
- *   one;
- * - documents: an editor document or raw schema document nothing in the connection's catalog
- *   references is `NOT_FOUND`, never served from another connection's catalog.
+ * Every call crosses the real host runtime and the probe plugin's gRPC boundary. Unknown types,
+ * stale or foreign representation revisions, and unreferenced documents must not borrow another
+ * target's schema. Model URI ownership belongs to the frontend, not the schema service.
  */
 
 const pluginID = 'workspace-probe';
 // Connection lifecycle runs through the backend, the module transport and React: allow for it.
 const lifecycle = { timeout: 15_000 };
-// The SDK controller frames the provider's catalog revision under its connection's client slot: an opaque
-// `ovc1.<nonce>.<digest>` token (32 bytes each, base64url) that only a real SDK child process issues.
-const boundCatalogRevision = /^ovc1\.[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/;
 // Each fixed probe connection with the one type its catalog advertises, and the operations that type declares.
 type Probe = { connection: string; type: string; operations: string[] };
 const probes: Probe[] = [
@@ -40,8 +27,6 @@ const probes: Probe[] = [
   { connection: 'hypervisor-bundled-vms', type: 'vm', operations: ['enumerate', 'get'] },
   { connection: 'kubernetes-snapshot', type: 'core::v1::Pod', operations: ['enumerate', 'get'] },
 ];
-// A digest-shaped editor document id and a schema document reference that no probe catalog contains.
-const unreferencedEditorDocument = createHash('sha256').update('p07-e2e/unreferenced-editor-document').digest('hex');
 const unreferencedSchemaDocument = { id: 'p07-e2e/unreferenced', revision: 'schema:p07-e2e/1' };
 
 // The probe connections are started through the browser's own Connect action. Stop them afterwards, so
@@ -104,88 +89,154 @@ async function rejection(call: Promise<unknown>): Promise<{ code: string | undef
 }
 
 test.describe('Schema catalog', () => {
-  test('a provider that declares no schema stays absent, dynamic and isolated on every connection', async ({ appPage: page, request }, testInfo) => {
-    // Four real connection starts, each followed by four host calls over gRPC.
+  test('schemas are demanded per target and remain isolated across representations and routes', async ({ appPage: page, request }, testInfo) => {
     test.slow();
     const facts: Array<Record<string, unknown>> = [];
-    const directories = new Map<string, string>();
-    const fileMatches = new Map<string, string>();
+    const authoringRequests = new Map<string, SchemaRequest>();
+    const schemaMethods = ['ResolveSchema', 'ResolveEditorSchema', 'GetSchemaFields', 'GetSchemaDocument'];
+    const schemaMethodIDs = new Map(schemaMethods.map(method => [methodId(Service.resource, method), method]));
+    const browserSchemaCalls: string[] = [];
+    const observeBrowserSchemaCall = (browserRequest: Request) => {
+      if (!new URL(browserRequest.url()).pathname.endsWith('/wails/runtime') || browserRequest.method() !== 'POST') {
+        return;
+      }
+
+      const call = browserRequest.postDataJSON() as {
+        args?: { methodID?: number; methodName?: string; args?: unknown[] };
+      } | null;
+      if (call?.args?.args?.[0] !== pluginID) {
+        return;
+      }
+
+      const method = call.args.methodID === undefined
+        ? call.args.methodName?.split('.').at(-1)
+        : schemaMethodIDs.get(call.args.methodID);
+      if (method && schemaMethods.includes(method)) {
+        browserSchemaCalls.push(method);
+      }
+    };
+
+    page.on('request', observeBrowserSchemaCall);
 
     try {
       for (const { connection, type, operations } of probes) {
         const route = { connection };
-
-        await test.step(`${connection}: start the connection through the browser`, async () => {
+        await test.step(`${connection}: browsing connects without demanding schemas`, async () => {
           await connectThroughBrowser(page, request, connection);
+          expect(browserSchemaCalls, 'resource navigation does not resolve schemas').toEqual([]);
         });
 
-        await test.step(`${connection}: field discovery reports an absent schema and a dynamic overlay`, async () => {
-          const result = await callBinding<SchemaFieldsResult>(request, Service.resource, 'GetSchemaFields', pluginID, { route, type, path: [] });
-          facts.push({ step: 'schema fields', connection, result });
-          expect(result.catalogRevision, 'the catalog the host observed carries the SDK child\'s client-bound revision').toMatch(boundCatalogRevision);
-          expect(result).toMatchObject({ type, representation: 'native', schemaState: 'absent', truncated: false });
-          expect(result.schemaRevision).toBeUndefined();
-          expect(result.dialect).toBeUndefined();
-          expect(result.truncationReason).toBeUndefined();
-          expect(result.fields).toEqual([]);
-          // The overlay carries its Go field names: the host's TypeOverlay declares no JSON tags.
-          expect(result.overlay).toMatchObject({
+        const catalog = await callBinding<Catalog>(request, Service.resource, 'Catalog', pluginID, { route });
+        const descriptor = catalog.types.find(entry => entry.type === type);
+        expect(descriptor, 'the route advertises its resource type').toBeDefined();
+        const native = descriptor?.representations.find(entry => entry.id === 'native');
+        const authoring = descriptor?.representations.find(entry => entry.id === 'authoring');
+        if (!native || !authoring) {
+          throw new Error(`${connection}: native and authoring representations are required`);
+        }
+
+        const nativeRequest: SchemaRequest = { route, type, target: { representation: native } };
+        const authoringRequest: SchemaRequest = { route, type, target: { representation: authoring } };
+        authoringRequests.set(connection, authoringRequest);
+
+        await test.step(`${connection}: native field discovery stays absent and dynamic`, async () => {
+          const fields = await callBinding<SchemaFieldsResult>(request, Service.resource, 'GetSchemaFields', pluginID, { request: nativeRequest, path: [] });
+          const editor = await callBinding<EditorSchemaResult>(request, Service.resource, 'ResolveEditorSchema', pluginID, nativeRequest);
+          facts.push({ step: 'native schema', connection, fields, editor });
+          expect(fields).toMatchObject({ type, target: nativeRequest.target, schemaState: 'absent', truncated: false });
+          expect(fields.observation).not.toBe('');
+          expect(fields.schemaRevision).toBeUndefined();
+          expect(fields.dialect).toBeUndefined();
+          expect(fields.truncationReason).toBeUndefined();
+          expect(fields.fields).toEqual([]);
+          expect(fields.overlay).toMatchObject({
             Operations: operations,
             NativeQueryLanguages: [],
             HostEvaluation: 'dynamic',
             HostEvaluationCode: '',
             Validation: 'none',
           });
+          expect(editor).toMatchObject({ type, target: nativeRequest.target, status: 'absent', observation: fields.observation });
+          expect(editor.schemaRevision).toBeUndefined();
+          expect(editor.document).toBeUndefined();
+          expect(editor.root).toBeUndefined();
+          expect(editor.code).toBeUndefined();
         });
 
-        await test.step(`${connection}: the editor association is absent and bound to its own model directory`, async () => {
-          const associations = await callBinding<EditorSchemaAssociation[]>(request, Service.resource, 'GetEditorSchemas', pluginID, route);
-          facts.push({ step: 'editor associations', connection, associations });
-          const catalogAssociations = associations.filter((association) => association.type !== '');
-          expect(catalogAssociations).toHaveLength(1);
-          const [association] = catalogAssociations;
-          expect(association).toMatchObject({ type, representation: 'native', language: 'yaml', status: 'absent' });
-          expect(association.documentId).toBeUndefined();
-          expect(association.root).toBeUndefined();
-          expect(association.code).toBeUndefined();
-          expect(association.key).toBeUndefined();
-          expect(association.modelDirectory).toMatch(/^file:\/\/\/omniview-schema\/[0-9a-f]{16}$/);
-          expect(association.fileMatch).toMatch(/^\*\*\/omniview-schema\/[0-9a-f]{16}\/\*$/);
-          // The directory is the first 16 hex digits of sha256 over the plugin, connection, type and representation.
-          const hex16 = createHash('sha256').update(['omniview.editor.v1', pluginID, connection, type, 'native'].join('\0')).digest('hex').slice(0, 16);
-          expect(association.modelDirectory).toBe(`file:///omniview-schema/${hex16}`);
-          expect(association.fileMatch).toBe(`**/omniview-schema/${hex16}/*`);
-          // A provider without auxiliary editor schemas adds at most the host's unavailable placeholder: no type, no directory.
-          const auxiliary = associations.filter((entry) => entry.type === '');
-          expect(auxiliary.length).toBeLessThanOrEqual(1);
-          for (const entry of auxiliary) {
-            expect(entry).toMatchObject({ language: 'yaml', modelDirectory: '', fileMatch: '', status: 'unavailable', code: 'UNSUPPORTED' });
-            expect(entry.key).toBeUndefined();
-            expect(entry.documentId).toBeUndefined();
+        await test.step(`${connection}: authoring fields and editor resolve the same schema`, async () => {
+          const fields = await callBinding<SchemaFieldsResult>(request, Service.resource, 'GetSchemaFields', pluginID, { request: authoringRequest, path: [] });
+          const hardware = await callBinding<SchemaFieldsResult>(request, Service.resource, 'GetSchemaFields', pluginID, {
+            request: authoringRequest, path: [{ Kind: 'field', Name: 'hardware' }],
+          });
+          const editor = await callBinding<EditorSchemaResult>(request, Service.resource, 'ResolveEditorSchema', pluginID, authoringRequest);
+          facts.push({ step: 'authoring schema', connection, fields, hardware, editor });
+          expect(fields).toMatchObject({ type, target: authoringRequest.target, schemaState: 'available', truncated: false });
+          expect(fields.schemaRevision).toBeTruthy();
+          expect(fields.fields.map(field => field.Segment.Name).sort()).toEqual(['hardware', 'name', 'state', 'tags']);
+          expect(fields.fields.find(field => field.Segment.Name === 'state')?.Enum).toEqual([
+            { kind: 'string', value: 'running' }, { kind: 'string', value: 'stopped' },
+          ]);
+          expect(hardware.observation).toBe(fields.observation);
+          expect(hardware.fields).toEqual([
+            expect.objectContaining({ Segment: { Kind: 'field', Name: 'cores' }, Types: ['integer'] }),
+          ]);
+          expect(editor).toMatchObject({
+            type, target: authoringRequest.target, status: 'available',
+            observation: fields.observation, schemaRevision: fields.schemaRevision, dialect: fields.dialect,
+          });
+          expect(editor.document?.schema).toBeDefined();
+          expect(editor.root).toBeTruthy();
+          expect(editor.code).toBeUndefined();
+
+          const nativeAgain = await callBinding<SchemaFieldsResult>(request, Service.resource, 'GetSchemaFields', pluginID, { request: nativeRequest, path: [] });
+          expect(nativeAgain).toMatchObject({ target: nativeRequest.target, schemaState: 'absent', fields: [] });
+          expect(nativeAgain.schemaRevision).toBeUndefined();
+          const nativeEditor = await callBinding<EditorSchemaResult>(request, Service.resource, 'ResolveEditorSchema', pluginID, nativeRequest);
+          expect(nativeEditor.status).toBe('absent');
+          expect(nativeEditor.document).toBeUndefined();
+        });
+
+        await test.step(`${connection}: unknown targets and unreferenced documents stay isolated`, async () => {
+          const otherType = probes.find(probe => probe.type !== type)?.type;
+          const missingType = await rejection(callBinding(request, Service.resource, 'ResolveEditorSchema', pluginID, { ...authoringRequest, type: otherType }));
+          expect(missingType.code).toBe('NOT_FOUND');
+          const stale = await rejection(callBinding(request, Service.resource, 'ResolveEditorSchema', pluginID, {
+            ...authoringRequest, target: { representation: { ...authoring, revision: `${authoring.revision}-stale` } },
+          }));
+          expect(stale.code).toBe('RESET_REQUIRED');
+          const missingRepresentation = await rejection(callBinding(request, Service.resource, 'ResolveEditorSchema', pluginID, {
+            ...authoringRequest, target: { representation: { id: 'p07-e2e/missing', revision: '1' } },
+          }));
+          expect(missingRepresentation.code).toBe('NOT_FOUND');
+          const documents = [];
+          for (const schemaRequest of [nativeRequest, authoringRequest]) {
+            const document = await rejection(callBinding(request, Service.resource, 'GetSchemaDocument', pluginID, {
+              request: schemaRequest, reference: unreferencedSchemaDocument,
+            }));
+            expect(document.code).toBe('NOT_FOUND');
+            documents.push({ target: schemaRequest.target, document });
           }
 
-          directories.set(connection, association.modelDirectory);
-          fileMatches.set(connection, association.fileMatch);
-        });
-
-        await test.step(`${connection}: documents nothing in the catalog references are NOT_FOUND`, async () => {
-          const editor = await rejection(callBinding(request, Service.resource, 'GetEditorSchemaDocument', pluginID, route, unreferencedEditorDocument));
-          const schema = await rejection(callBinding(request, Service.resource, 'GetSchemaDocument', pluginID, route, unreferencedSchemaDocument));
-          facts.push({ step: 'unreferenced documents', connection, editorDocument: editor, schemaDocument: schema });
-          expect(editor.code, 'an editor document no association of this connection references').toBe('NOT_FOUND');
-          expect(schema.code, 'a schema document reference no binding of the fresh catalog uses').toBe('NOT_FOUND');
+          facts.push({ step: 'target rejection', connection, missingType, stale, missingRepresentation, documents });
         });
       }
 
-      await test.step('editor isolation: no two connections share a model directory', async () => {
-        expect([...directories.keys()]).toEqual(probes.map(({ connection }) => connection));
-        expect(new Set(directories.values()).size).toBe(probes.length);
-        expect(new Set(fileMatches.values()).size).toBe(probes.length);
-        facts.push({ step: 'editor isolation', directories: Object.fromEntries(directories) });
+      await test.step('a representation revision from another route cannot select its schema', async () => {
+        const selected = [...authoringRequests.values()];
+        for (const [index, schemaRequest] of selected.entries()) {
+          const foreign = selected[(index + 1) % selected.length];
+          const result = await rejection(callBinding(request, Service.resource, 'ResolveEditorSchema', pluginID, {
+            ...schemaRequest, target: foreign.target,
+          }));
+          expect(result.code).toBe('RESET_REQUIRED');
+          facts.push({ step: 'foreign route revision', connection: schemaRequest.route.connection, result });
+        }
       });
+      expect(browserSchemaCalls, 'browsing never demands schemas, including after explicit API enrichment').toEqual([]);
     } finally {
+      page.off('request', observeBrowserSchemaCall);
       console.log(`[schema-catalog] ${JSON.stringify(facts)}`);
-      await testInfo.attach('schema-catalog-facts.json', { body: JSON.stringify(facts, null, 2), contentType: 'application/json' });
+      await testInfo.attach('schema-catalog-facts.json', { body: JSON.stringify({ facts, browserSchemaCalls }, null, 2), contentType: 'application/json' });
     }
   });
 });

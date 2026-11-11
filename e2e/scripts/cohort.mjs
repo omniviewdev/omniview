@@ -53,6 +53,27 @@ export function buildApplicationPluginUI(cohort, pluginID, execute) {
   return JSON.parse(execute(cohort.tool, ['build-plugin-ui', cohort.config, pluginID], { capture: true, timeout: 240_000, extraEnv: cohort.nativeEnvironment }));
 }
 
+function runApplicationPackageCommand(application, execute, args, { cwd = application.root, extraEnv = {}, ...options } = {}) {
+  const { cohort } = application;
+  return execute(cohort.tool, ['run', cohort.config, cwd, cohort.program, ...cohort.args, ...args], { ...options, cwd, extraEnv: { ...cohort.nativeEnvironment, ...extraEnv } });
+}
+
+export function verifyApplicationKubernetesChecks(application, execute, phase) {
+  const cwd = join(application.cohort.sources.kubernetes, 'ui');
+  const run = (args, extraEnv = {}) => runApplicationPackageCommand(application, execute, args, { cwd, extraEnv, timeout: 240_000 });
+  phase('kubernetes-ui-lint', () => run(['run', 'lint']));
+  phase('kubernetes-ui-native-typecheck', () => run(['exec', 'node', 'node_modules/@typescript/native/bin/tsc', '--noEmit']));
+  phase('kubernetes-ui-behavior-tests', () => run(['test']));
+  phase('kubernetes-ui-new-york-age-clock-tests', () => run(['exec', 'vitest', 'run', 'src/utils/ageClock.test.tsx'], { TZ: 'America/New_York' }));
+}
+
+export function verifyApplicationPluginContracts(application, execute, phase = (_name, run) => run()) {
+  const { artifact } = application.plugins.find(plugin => plugin.id === 'kubernetes');
+  const run = args => runApplicationPackageCommand(application, execute, args, { timeout: 240_000 });
+  phase('kubernetes-artifact-export-and-browser-contracts', () => run(['exec', 'node', 'bench/app/archive-smoke.mjs', '--directory', artifact]));
+  phase('plugin-chunk-retirement-contracts', () => run(['exec', 'vitest', 'run', 'ui/features/plugins/adapters/clearPlugin.test.ts']));
+}
+
 export function retireApplicationCohort(cohort, execute) {
   // This owned fixture may contain compiler caches in generated dependency trees.
   // Opt into canonical delete-only module recovery; never relax output ownership.

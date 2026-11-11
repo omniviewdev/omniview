@@ -68,7 +68,7 @@ function observed(data: unknown): HostRecord {
     record: {
       reference: target.reference,
       body: jsonToValue(data),
-      representation: { id: 'json', revision: '', schema: { state: 'unknown' } },
+      representation: { id: 'json', revision: 'format-1' },
       coverage: { kind: 'complete', paths: [] },
     },
   };

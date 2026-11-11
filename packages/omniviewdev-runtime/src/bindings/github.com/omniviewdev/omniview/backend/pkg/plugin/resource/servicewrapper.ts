@@ -105,63 +105,51 @@ export function GetConnectionMetadata(pluginID: string, connectionID: string): $
     });
 }
 
-export function GetEditorSchemaDocument(pluginID: string, route: resourcev2$0.AccessRoute, documentID: string): $CancellablePromise<$models.EditorSchemaDocument> {
-    return $Call.ByID(3389518964, pluginID, route, documentID).then(($result: any) => {
-        return $$createType13($result);
-    });
-}
-
-export function GetEditorSchemas(pluginID: string, route: resourcev2$0.AccessRoute): $CancellablePromise<$models.EditorSchemaAssociation[]> {
-    return $Call.ByID(1394342402, pluginID, route).then(($result: any) => {
-        return $$createType15($result);
-    });
-}
-
 export function GetHealth(pluginID: string, encoded: string): $CancellablePromise<resourcev2$0.ResourceHealth | null> {
     return $Call.ByID(1644192689, pluginID, encoded).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType14($result);
     });
 }
 
 export function GetRelationships(pluginID: string, route: resourcev2$0.AccessRoute, resourceType: string): $CancellablePromise<resourcev2$0.RelationshipDescriptor[]> {
     return $Call.ByID(2699561690, pluginID, route, resourceType).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType16($result);
     });
 }
 
 export function GetResourceDefinition(pluginID: string, route: resourcev2$0.AccessRoute, resourceType: string): $CancellablePromise<resourcev2$0.ResourceDefinition> {
     return $Call.ByID(4077050094, pluginID, route, resourceType).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType17($result);
     });
 }
 
 export function GetResourceEvents(pluginID: string, request: resourcev2$0.GetRequest, limit: number): $CancellablePromise<resourcev2$0.ResourceEvent[]> {
     return $Call.ByID(3171791798, pluginID, request, limit).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType19($result);
     });
 }
 
 export function GetResourceGroups(pluginID: string, route: resourcev2$0.AccessRoute): $CancellablePromise<resourcev2$0.ResourceGroup[]> {
     return $Call.ByID(4290498491, pluginID, route).then(($result: any) => {
-        return $$createType24($result);
+        return $$createType21($result);
     });
 }
 
-export function GetSchemaDocument(pluginID: string, route: resourcev2$0.AccessRoute, reference: resourcev2$0.SchemaDocumentReference): $CancellablePromise<resourcev2$0.SchemaDocument> {
-    return $Call.ByID(2572261601, pluginID, route, reference).then(($result: any) => {
-        return $$createType25($result);
+export function GetSchemaDocument(pluginID: string, request: resourcev2$0.SchemaDocumentRequest): $CancellablePromise<resourcev2$0.SchemaDocument> {
+    return $Call.ByID(2572261601, pluginID, request).then(($result: any) => {
+        return $$createType22($result);
     });
 }
 
 export function GetSchemaFields(pluginID: string, request: $models.SchemaFieldsRequest): $CancellablePromise<$models.SchemaFieldsResult> {
     return $Call.ByID(3080945141, pluginID, request).then(($result: any) => {
-        return $$createType26($result);
+        return $$createType23($result);
     });
 }
 
 export function GetSourceStates(pluginID: string, route: resourcev2$0.AccessRoute): $CancellablePromise<$models.HostSourceStates> {
     return $Call.ByID(30155788, pluginID, route).then(($result: any) => {
-        return $$createType27($result);
+        return $$createType24($result);
     });
 }
 
@@ -171,43 +159,43 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
 
 export function ImportConnectionProfile(pluginID: string, connectionID: string): $CancellablePromise<$models.ConnectionProfileResult> {
     return $Call.ByID(1455115425, pluginID, connectionID).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType25($result);
     });
 }
 
 export function ListAllConnections(): $CancellablePromise<{ [_ in string]?: types$0.Connection[] }> {
     return $Call.ByID(1598984489).then(($result: any) => {
-        return $$createType30($result);
+        return $$createType27($result);
     });
 }
 
 export function ListConnectionProfiles(pluginID: string): $CancellablePromise<$models.ConnectionProfile[]> {
     return $Call.ByID(1504295231, pluginID).then(($result: any) => {
-        return $$createType32($result);
+        return $$createType29($result);
     });
 }
 
 export function ListConnections(pluginID: string): $CancellablePromise<types$0.Connection[]> {
     return $Call.ByID(1775572154, pluginID).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType26($result);
     });
 }
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3217612415).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType30($result);
     });
 }
 
 export function LoadConnections(pluginID: string): $CancellablePromise<types$0.Connection[]> {
     return $Call.ByID(2037329938, pluginID).then(($result: any) => {
-        return $$createType29($result);
+        return $$createType26($result);
     });
 }
 
 export function Mutate(pluginID: string, encoded: string): $CancellablePromise<resourcev2$0.Record> {
     return $Call.ByID(2070747891, pluginID, encoded).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType31($result);
     });
 }
 
@@ -219,7 +207,7 @@ export function NativeQuery(pluginID: string, encoded: string): $CancellableProm
 
 export function OpenSourceView(pluginID: string, request: $models.HostSourceViewRequest): $CancellablePromise<$models.HostSourceViewOpened> {
     return $Call.ByID(1143238621, pluginID, request).then(($result: any) => {
-        return $$createType35($result);
+        return $$createType32($result);
     });
 }
 
@@ -239,25 +227,35 @@ export function RemoveConnection(pluginID: string, connectionID: string): $Cance
 
 export function ResetConnectionProfile(pluginID: string, connectionID: string): $CancellablePromise<$models.ConnectionProfileResult> {
     return $Call.ByID(3464792653, pluginID, connectionID).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType25($result);
+    });
+}
+
+export function ResolveEditorSchema(pluginID: string, request: resourcev2$0.SchemaRequest): $CancellablePromise<$models.EditorSchemaResult> {
+    return $Call.ByID(1610235441, pluginID, request).then(($result: any) => {
+        return $$createType33($result);
     });
 }
 
 export function ResolveReference(pluginID: string, request: $models.ResolveReferenceRequest): $CancellablePromise<$models.ResolvedReference> {
     return $Call.ByID(189149880, pluginID, request).then(($result: any) => {
-        return $$createType36($result);
+        return $$createType34($result);
     });
 }
 
 export function ResolveRelationships(pluginID: string, request: resourcev2$0.GetRequest): $CancellablePromise<resourcev2$0.ResolvedRelationship[]> {
     return $Call.ByID(3987850310, pluginID, request).then(($result: any) => {
-        return $$createType38($result);
+        return $$createType36($result);
     });
+}
+
+export function ResolveSchema(pluginID: string, request: resourcev2$0.SchemaRequest): $CancellablePromise<resourcev2$0.SchemaBinding> {
+    return $Call.ByID(1737425188, pluginID, request);
 }
 
 export function ResolveTarget(pluginID: string, request: $models.ResolveTargetRequest): $CancellablePromise<$models.ResolvedTarget> {
     return $Call.ByID(2601101110, pluginID, request).then(($result: any) => {
-        return $$createType39($result);
+        return $$createType37($result);
     });
 }
 
@@ -267,13 +265,13 @@ export function RetryConnectionSources(pluginID: string, route: resourcev2$0.Acc
 
 export function SaveConnectionProfile(pluginID: string, encoded: string, credentials: $models.ConnectionProfileCredentials | null): $CancellablePromise<$models.ConnectionProfileResult> {
     return $Call.ByID(2048532053, pluginID, encoded, credentials).then(($result: any) => {
-        return $$createType28($result);
+        return $$createType25($result);
     });
 }
 
 export function ScopeValues(pluginID: string, route: resourcev2$0.AccessRoute, dimension: string): $CancellablePromise<string[]> {
     return $Call.ByID(3693374641, pluginID, route, dimension).then(($result: any) => {
-        return $$createType33($result);
+        return $$createType30($result);
     });
 }
 
@@ -311,30 +309,28 @@ const $$createType9 = $Create.Array($$createType8);
 const $$createType10 = $Create.Map($Create.Any, $$createType9);
 const $$createType11 = types$0.Connection.createFrom;
 const $$createType12 = $models.HostConnectionMetadata.createFrom;
-const $$createType13 = $models.EditorSchemaDocument.createFrom;
-const $$createType14 = $models.EditorSchemaAssociation.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = resourcev2$0.ResourceHealth.createFrom;
-const $$createType17 = $Create.Nullable($$createType16);
-const $$createType18 = resourcev2$0.RelationshipDescriptor.createFrom;
+const $$createType13 = resourcev2$0.ResourceHealth.createFrom;
+const $$createType14 = $Create.Nullable($$createType13);
+const $$createType15 = resourcev2$0.RelationshipDescriptor.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = resourcev2$0.ResourceDefinition.createFrom;
+const $$createType18 = resourcev2$0.ResourceEvent.createFrom;
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = resourcev2$0.ResourceDefinition.createFrom;
-const $$createType21 = resourcev2$0.ResourceEvent.createFrom;
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = resourcev2$0.ResourceGroup.createFrom;
-const $$createType24 = $Create.Array($$createType23);
-const $$createType25 = resourcev2$0.SchemaDocument.createFrom;
-const $$createType26 = $models.SchemaFieldsResult.createFrom;
-const $$createType27 = $models.HostSourceStates.createFrom;
-const $$createType28 = $models.ConnectionProfileResult.createFrom;
-const $$createType29 = $Create.Array($$createType11);
-const $$createType30 = $Create.Map($Create.Any, $$createType29);
-const $$createType31 = $models.ConnectionProfile.createFrom;
-const $$createType32 = $Create.Array($$createType31);
-const $$createType33 = $Create.Array($Create.Any);
-const $$createType34 = resourcev2$0.Record.createFrom;
-const $$createType35 = $models.HostSourceViewOpened.createFrom;
-const $$createType36 = $models.ResolvedReference.createFrom;
-const $$createType37 = resourcev2$0.ResolvedRelationship.createFrom;
-const $$createType38 = $Create.Array($$createType37);
-const $$createType39 = $models.ResolvedTarget.createFrom;
+const $$createType20 = resourcev2$0.ResourceGroup.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = resourcev2$0.SchemaDocument.createFrom;
+const $$createType23 = $models.SchemaFieldsResult.createFrom;
+const $$createType24 = $models.HostSourceStates.createFrom;
+const $$createType25 = $models.ConnectionProfileResult.createFrom;
+const $$createType26 = $Create.Array($$createType11);
+const $$createType27 = $Create.Map($Create.Any, $$createType26);
+const $$createType28 = $models.ConnectionProfile.createFrom;
+const $$createType29 = $Create.Array($$createType28);
+const $$createType30 = $Create.Array($Create.Any);
+const $$createType31 = resourcev2$0.Record.createFrom;
+const $$createType32 = $models.HostSourceViewOpened.createFrom;
+const $$createType33 = $models.EditorSchemaResult.createFrom;
+const $$createType34 = $models.ResolvedReference.createFrom;
+const $$createType35 = resourcev2$0.ResolvedRelationship.createFrom;
+const $$createType36 = $Create.Array($$createType35);
+const $$createType37 = $models.ResolvedTarget.createFrom;

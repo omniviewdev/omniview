@@ -12,15 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func boundedSourceViewFixture(t *testing.T, schemaBytes, count int) *sourceView {
+func boundedSourceViewFixture(t *testing.T, bodyBytes, count int) *sourceView {
 	t.Helper()
 	ctrl, _, _, target := sourceTestFixture(t)
 	representation := canonicalTestRepresentation()
-	revision := "schema-revision"
-	representation.Schema = resourcev2.SchemaBinding{
-		State: "available", Revision: &revision, Dialect: resourcev2.DialectJSONSchema202012,
-		Document: json.RawMessage(`"` + strings.Repeat("x", schemaBytes) + `"`),
-	}
 	s := &sourceSession{
 		coordinator:      ctrl.sources,
 		pluginGeneration: &pluginState{generationID: "generation"},
@@ -31,7 +26,11 @@ func boundedSourceViewFixture(t *testing.T, schemaBytes, count int) *sourceView 
 	}
 	for i := range count {
 		r := sourceTestRecord(target.Target, fmt.Sprint(i), "")
-		member, _, err := makeSourceMember(resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(r)}, defaultSourceStagingBytes)
+		r.Representation = representation
+		if bodyBytes != 0 {
+			r.Body.Map["large"] = resourcev2.Value{Kind: "string", String: strings.Repeat("x", bodyBytes)}
+		}
+		member, _, err := makeTestSourceMember(resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(r)}, defaultSourceStagingBytes)
 		require.NoError(t, err)
 		s.members[fmt.Sprint(i)] = member
 	}
@@ -39,7 +38,7 @@ func boundedSourceViewFixture(t *testing.T, schemaBytes, count int) *sourceView 
 }
 
 func TestSourceViewSnapshotByteChunksAndSequence(t *testing.T) {
-	v := boundedSourceViewFixture(t, 128<<10, 8)
+	v := boundedSourceViewFixture(t, 1<<20, 8)
 	v.syncLocked("")
 	require.True(t, v.synced)
 	require.Greater(t, len(v.snapshotEnds), 1)
@@ -48,7 +47,7 @@ func TestSourceViewSnapshotByteChunksAndSequence(t *testing.T) {
 	for i, end := range v.snapshotEnds {
 		records := make([]HostRecord, 0, end-start)
 		for _, member := range v.snapshot[start:end] {
-			observation, err := decodeSourceMember(member)
+			observation, err := materializeSourceMember(member)
 			require.NoError(t, err)
 			r := observation.Record
 			record, err := envelopeRecord(v.snapshotGeneration, v.owner, v.targetID, v.snapshotTarget, resourcev2.Record{Reference: r.Reference, Body: r.Body, Representation: v.snapshotBinding, Coverage: r.Coverage, SourceRevision: r.SourceRevision})
@@ -60,7 +59,7 @@ func TestSourceViewSnapshotByteChunksAndSequence(t *testing.T) {
 		require.NoError(t, err)
 		require.LessOrEqual(t, len(encoded), sourceViewQueueBytes)
 		for _, record := range event.Records {
-			require.Len(t, record.Record.Representation.Schema.Document, (128<<10)+2)
+			require.Len(t, record.Record.Body.Map["large"].String, 1<<20)
 		}
 		start = end
 	}
@@ -76,15 +75,12 @@ func TestSourceViewSnapshotTransientChunkBoundary(t *testing.T) {
 	for _, extra := range []int{0, 1} {
 		t.Run(fmt.Sprintf("over-by-%d", extra), func(t *testing.T) {
 			v := boundedSourceViewFixture(t, 0, 2)
-			binding := v.session.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
-			bindingCost, err := sourceBindingTransientEstimate(binding)
-			require.NoError(t, err)
 			arrayCost := 256 + 2*(int(unsafe.Sizeof(sourceMember{}))+32)
 			budget := maxSourceTransientBytes - arrayCost
 			for i, cost := range []int{budget / 2, budget - budget/2 + extra} {
 				key := fmt.Sprint(i)
 				member := v.session.members[key]
-				member.transient = cost - bindingCost
+				member.transient = cost
 				require.Positive(t, member.transient)
 				v.session.members[key] = member
 			}
@@ -117,12 +113,9 @@ func TestSourceViewSnapshotTransientChunkBoundary(t *testing.T) {
 
 func TestSourceViewSnapshotSingleRecordExceedsTransientBudget(t *testing.T) {
 	v := boundedSourceViewFixture(t, 0, 1)
-	binding := v.session.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
-	bindingCost, err := sourceBindingTransientEstimate(binding)
-	require.NoError(t, err)
 	arrayCost := 256 + int(unsafe.Sizeof(sourceMember{})) + 32
 	member := v.session.members["0"]
-	member.transient = maxSourceTransientBytes - arrayCost - bindingCost + 1
+	member.transient = maxSourceTransientBytes - arrayCost + 1
 	v.session.members["0"] = member
 
 	v.syncLocked("")
@@ -154,15 +147,17 @@ func TestSourceViewChangesOverflowResnapshots(t *testing.T) {
 	v := boundedSourceViewFixture(t, 0, 1)
 	v.syncLocked("")
 	oldGeneration := v.generation
-	observation, err := decodeSourceMember(v.session.members["0"])
+	observation, err := materializeSourceMember(v.session.members["0"])
 	require.NoError(t, err)
-	record := v.session.fullSourceRecord(observation.Record)
+	record := fullTestSourceRecord(observation.Record)
 	record.Body = resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"large": {Kind: "string", String: strings.Repeat("x", 96<<10)}}}
-	records := make([]resourcev2.Record, 64)
-	for i := range records {
-		records[i] = record
+	member, _, err := makeTestSourceMember(resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}, defaultSourceStagingBytes)
+	require.NoError(t, err)
+	members := make([]sourceMember, 64)
+	for i := range members {
+		members[i] = member
 	}
-	v.changesLocked(records, nil)
+	v.changesLocked(members, nil)
 	require.NotEqual(t, oldGeneration, v.generation)
 	require.True(t, v.synced)
 	require.NotNil(t, v.control)
@@ -171,26 +166,33 @@ func TestSourceViewChangesOverflowResnapshots(t *testing.T) {
 	require.Len(t, v.snapshot, 1)
 }
 
-func TestSourceViewChangesShareLargeSchemaScratch(t *testing.T) {
+func TestSourceViewChangesDeferBodiesUntilDelivery(t *testing.T) {
 	v := boundedSourceViewFixture(t, 32<<10, 1)
 	defer v.close()
 	v.syncLocked("")
 	require.True(t, v.synced)
-	observation, err := decodeSourceMember(v.session.members["0"])
+	observation, err := materializeSourceMember(v.session.members["0"])
 	require.NoError(t, err)
-	record := v.session.fullSourceRecord(observation.Record)
-	records := make([]resourcev2.Record, 16)
-	for i := range records {
-		records[i] = record
-		records[i].Reference.Address.ID = fmt.Sprintf("pod-%d", i)
+	record := fullTestSourceRecord(observation.Record)
+	members := make([]sourceMember, 16)
+	for i := range members {
+		record.Reference.Address.ID = fmt.Sprintf("pod-%d", i)
+		member, _, err := makeTestSourceMember(resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record)}, defaultSourceStagingBytes)
+		require.NoError(t, err)
+		members[i] = member
 	}
-	v.changesLocked(records, nil)
+	v.changesLocked(members, nil)
 	require.True(t, v.synced)
 	require.Nil(t, v.control)
 	require.Len(t, v.queue, 1)
-	require.Len(t, v.queue[0].event.Upserts, len(records))
-	for _, upsert := range v.queue[0].event.Upserts {
-		require.Equal(t, record.Representation.Schema.Document, upsert.Record.Representation.Schema.Document)
+	require.Empty(t, v.queue[0].event.Upserts, "the locked queue stores only immutable member handles")
+	require.Len(t, v.queue[0].members, len(members))
+	event, err := v.queue[0].materialize(v.owner, v.targetID)
+	require.NoError(t, err)
+	require.Len(t, event.Upserts, len(members))
+	for _, upsert := range event.Upserts {
+		require.Equal(t, record.Body, upsert.Record.Body)
+		require.Equal(t, record.Representation, upsert.Record.Representation)
 	}
 }
 
@@ -216,10 +218,10 @@ func TestSourceViewSizeIncludesTaggedNestedValues(t *testing.T) {
 
 func TestSourceViewDepth64SnapshotAndChanges(t *testing.T) {
 	v := boundedSourceViewFixture(t, 0, 1)
-	observation, err := decodeSourceMember(v.session.members["0"])
+	observation, err := materializeSourceMember(v.session.members["0"])
 	require.NoError(t, err)
 	observation.Record.Body = nestedAccountingValue(resourcev2.MaxValueDepth)
-	member, _, err := makeSourceMember(observation, defaultSourceStagingBytes)
+	member, _, err := makeTestSourceMember(observation, defaultSourceStagingBytes)
 	require.NoError(t, err)
 	v.session.members["0"] = member
 	require.NoError(t, resourcev2.ValidateValue(observation.Record.Body))
@@ -230,13 +232,13 @@ func TestSourceViewDepth64SnapshotAndChanges(t *testing.T) {
 	require.Len(t, v.snapshotEnds, 1)
 	generation := v.generation
 
-	record := v.session.fullSourceRecord(observation.Record)
-	v.changesLocked([]resourcev2.Record{record}, nil)
+	v.changesLocked([]sourceMember{member}, nil)
 	require.True(t, v.synced)
 	require.Equal(t, generation, v.generation)
 	require.Nil(t, v.control)
 	require.Len(t, v.queue, 1)
-	event := v.queue[0].event
+	event, err := v.queue[0].materialize(v.owner, v.targetID)
+	require.NoError(t, err)
 	require.Len(t, event.Upserts, 1)
 	size, ok := sourceViewSize(event, sourceViewQueueBytes)
 	require.True(t, ok)

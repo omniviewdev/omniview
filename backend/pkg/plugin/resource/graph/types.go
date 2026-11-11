@@ -28,6 +28,22 @@ const (
 	Both
 )
 
+// RelatedRequest bounds one finite semantic query. Zero requests the whole
+// result; positive limits preserve explicit truncation without partial coverage.
+type RelatedRequest struct {
+	PluginID         string                     `json:"pluginID"`
+	Reference        resource.ResourceReference `json:"reference"`
+	Route            resource.AccessRoute       `json:"route"`
+	Direction        string                     `json:"direction"`
+	RelationshipType *string                    `json:"relationshipType,omitempty"`
+	Limit            int                        `json:"limit,omitempty"`
+}
+
+type RelatedResult struct {
+	Edges     []GraphEdge `json:"edges"`
+	Truncated bool        `json:"truncated"`
+}
+
 // GraphNode identifies a specific resource instance in the graph.
 type GraphNode struct {
 	PluginID  string                     `json:"pluginId"`

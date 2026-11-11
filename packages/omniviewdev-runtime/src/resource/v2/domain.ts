@@ -41,7 +41,13 @@ export interface SchemaBinding {
 }
 export interface SchemaDocumentReference { id: string; revision: string }
 export interface SchemaDocument { reference: SchemaDocumentReference; dialect: string; document: unknown }
-export interface Representation { id: string; revision: string; schema: SchemaBinding }
+export interface Representation { id: string; revision: string }
+export interface AuxiliarySchemaTarget { key: string; reference: ResourceReference; sourceRevision?: string }
+export type SchemaTarget =
+  | { representation: Representation; auxiliary?: never }
+  | { representation?: never; auxiliary: AuxiliarySchemaTarget };
+export interface SchemaRequest { route: AccessRoute; type: string; target: SchemaTarget }
+export interface SchemaDocumentRequest { request: SchemaRequest; reference: SchemaDocumentReference }
 export interface Dimension { name: string; allowEmpty: boolean }
 // "sourceUpdates" describes source sessions; "mutationUpdate" is a native write.
 export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'sourceUpdates' | 'create' | 'mutationUpdate' | 'delete' | 'action';
@@ -61,7 +67,7 @@ export interface ResourceType {
   acquireOnConnect?: boolean;
   nativeAuthorityHint?: NativeAuthorityHint;
 }
-export interface CatalogRequest { route: AccessRoute }
+export interface CatalogRequest { route: AccessRoute; refresh?: boolean }
 /** Provider metadata never grants authority or permission to share identity. */
 export interface NativeAuthorityHint { scheme: string; id: string; continuity: 'connectionLocal' | 'stableNative' }
 export interface Catalog {

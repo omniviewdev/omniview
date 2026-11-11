@@ -12,10 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
-	"github.com/omniviewdev/omniview/backend/pkg/resourcecatalog"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -160,7 +156,7 @@ type mockProvider struct {
 	ScopeValuesFunc            func(ctx context.Context, route resource.AccessRoute, dimension string) ([]string, error)
 	GetActionsFunc             func(ctx context.Context, route resource.AccessRoute, resourceType string) ([]resource.ActionDescriptor, error)
 	StreamActionFunc           func(ctx context.Context, request resource.ActionRequest, stream chan<- resource.ActionEvent) error
-	GetEditorSchemasFunc       func(ctx context.Context, route resource.AccessRoute) ([]resource.EditorSchema, error)
+	ResolveSchemaFunc          func(ctx context.Context, request resource.SchemaRequest) (resource.SchemaBinding, error)
 	GetSchemaDocumentFunc      func(ctx context.Context, route resource.AccessRoute, reference resource.SchemaDocumentReference) (resource.SchemaDocument, error)
 	GetRelationshipsFunc       func(ctx context.Context, route resource.AccessRoute, resourceType string) ([]resource.RelationshipDescriptor, error)
 	ResolveRelationshipsFunc   func(ctx context.Context, request resource.RelationshipResolutionRequest) ([]resource.ResolvedRelationship, error)
@@ -194,24 +190,14 @@ func (p *catalogOnlyProvider) Catalog(ctx context.Context, request resource.Cata
 }
 
 func canonicalTestRepresentation() resource.Representation {
-	return resource.Representation{ID: "native", Revision: "r1", Schema: resource.SchemaBinding{State: "absent"}}
+	return resource.Representation{ID: "native", Revision: "r1"}
 }
 
-// withReferencedSchema makes the first representation of every catalog type
-// bind an available JSON Schema 2020-12 document by reference.
-func withReferencedSchema(catalogFunc func(context.Context, resource.CatalogRequest) (resource.Catalog, error), reference resource.SchemaDocumentReference) func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
-	return func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
-		catalog, err := catalogFunc(ctx, request)
-		if err != nil {
-			return catalog, err
-		}
-		revision := reference.Revision
-		ref := reference
-		for i := range catalog.Types {
-			catalog.Types[i].Representations = append([]resource.Representation(nil), catalog.Types[i].Representations...)
-			catalog.Types[i].Representations[0].Schema = resource.SchemaBinding{State: "available", Revision: &revision, Dialect: resource.DialectJSONSchema202012, DocumentRef: &ref}
-		}
-		return catalog, nil
+// referencedSchema resolves one demanded target to an exact document reference.
+func referencedSchema(reference resource.SchemaDocumentReference) func(context.Context, resource.SchemaRequest) (resource.SchemaBinding, error) {
+	return func(context.Context, resource.SchemaRequest) (resource.SchemaBinding, error) {
+		revision, ref := reference.Revision, reference
+		return resource.SchemaBinding{State: "available", Revision: &revision, Dialect: resource.DialectJSONSchema202012, DocumentRef: &ref}, nil
 	}
 }
 
@@ -523,12 +509,11 @@ func (m *mockProvider) StreamAction(ctx context.Context, request resource.Action
 	return nil
 }
 
-func (m *mockProvider) GetEditorSchemas(ctx context.Context, route resource.AccessRoute) ([]resource.EditorSchema, error) {
-	if m.GetEditorSchemasFunc != nil {
-		return m.GetEditorSchemasFunc(ctx, route)
+func (m *mockProvider) ResolveSchema(ctx context.Context, request resource.SchemaRequest) (resource.SchemaBinding, error) {
+	if m.ResolveSchemaFunc != nil {
+		return m.ResolveSchemaFunc(ctx, request)
 	}
-	var zero []resource.EditorSchema
-	return zero, nil
+	return resource.SchemaBinding{State: "absent"}, nil
 }
 
 func (m *mockProvider) GetSchemaDocument(ctx context.Context, route resource.AccessRoute, reference resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
@@ -674,29 +659,9 @@ func TestRecordingEmitter_Reset(t *testing.T) {
 func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter) {
 	t.Helper()
 	emitter := newRecordingEmitter()
-	store := registry.NewMemoryStore()
-	g := graph.NewRelationshipGraph()
-	graphIndexer := graph.NewGraphIndexer(g, store)
-	disp := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
-	disp.Start()
-	t.Cleanup(disp.Stop)
-
 	svc := appstate.NewTestService(t)
-	ctrl := &controller{
-		logger:              logging.NewNop(),
-		plugins:             make(map[string]*pluginState),
-		connections:         make(map[string][]types.Connection),
-		autoConnectAttempts: make(map[string]string),
-		actions:             newActionRegistry(),
-		emitter:             emitter,
-		registryStore:       store,
-		dispatcher:          disp,
-		graph:               g,
-		pluginStoreFn:       svc.PluginStore,
-		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
-	}
-	ctrl.sources = newSourceCoordinator(ctrl)
-	ctrl.actions.emit = func(id string, snapshot ActionSnapshot) { emitter.Emit("action/stream/"+id, snapshot) }
+	ctrl := NewController(logging.NewNop(), nil, svc.PluginStore, nil).(*controller)
+	ctrl.emitter = emitter
 	t.Cleanup(ctrl.actions.stopAll)
 	t.Cleanup(func() {
 		ctrl.pluginsMu.Lock()

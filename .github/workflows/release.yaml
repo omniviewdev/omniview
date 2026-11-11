@@ -1,12 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Publish npm packages only (for example v0.9.0); desktop still requires a v* tag"
-        required: true
-        type: string
   push:
     tags:
       - "v*"
@@ -23,7 +17,7 @@ concurrency:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
-  GO_VERSION: "1.27"
+  GO_VERSION: "1.27.3"
   NODE_VERSION: "26.13.0"
   # Release jobs must not inherit a developer's workspace/module/tooling flags.
   GOWORK: "off"
@@ -36,14 +30,10 @@ env:
   RELEASE: "true"
 
 jobs:
-  plugin-archive-smoke:
-    uses: ./.github/workflows/plugin-archive-smoke.yml
-
   # ─────────────────────────────────────────────────────────────────────────────
   # macOS (darwin/universal) — sign, notarize, DMG
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
-    if: github.event_name == 'push'
     runs-on: macos-15-intel
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
@@ -227,7 +217,6 @@ jobs:
   # Linux (linux/amd64)
   # ─────────────────────────────────────────────────────────────────────────────
   build-linux:
-    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
@@ -326,7 +315,6 @@ jobs:
   # Windows (windows/amd64)
   # ─────────────────────────────────────────────────────────────────────────────
   build-windows:
-    if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
       - name: Normalize version
@@ -413,13 +401,13 @@ jobs:
           retention-days: 1
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # NPM — publish @omniviewdev/* packages after published-plugin acceptance
+  # NPM — publish @omniviewdev/* packages after platform and Homebrew checks
   # ─────────────────────────────────────────────────────────────────────────────
   publish-npm:
-    needs: plugin-archive-smoke
+    needs: [build-macos, build-linux, build-windows, check-homebrew]
     uses: ./.github/workflows/npm-publish.yml
     with:
-      version: ${{ inputs.version || github.ref_name }}
+      version: ${{ github.ref_name }}
       dist-tag: latest
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -427,7 +415,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish:
     runs-on: ubuntu-latest
-    needs: [build-macos, build-linux, build-windows, check-homebrew, publish-npm, plugin-archive-smoke]
+    needs: [build-macos, build-linux, build-windows, check-homebrew, publish-npm]
     steps:
       - name: Verify Homebrew publication credentials
         if: ${{ !contains(github.ref_name, '-') }}

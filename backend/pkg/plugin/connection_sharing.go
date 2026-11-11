@@ -18,6 +18,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	v2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/hostconnections"
 	sdklifecycle "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	sdktools "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 )
@@ -168,7 +169,7 @@ func (pm *pluginManager) bindConnectionSharing(meta config.PluginMeta, backend p
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	info, err := client.GetInfo(ctx)
-	if err != nil || info.GetPluginId() != meta.ID || info.GetHostConnectionsVersion() != 1 {
+	if err != nil || info.GetPluginId() != meta.ID || info.GetHostConnectionsVersion() != hostconnections.Version {
 		return ownerUnavailable()
 	}
 	service := connshare.New(meta.ID, resources, pm.sharing.boundary)

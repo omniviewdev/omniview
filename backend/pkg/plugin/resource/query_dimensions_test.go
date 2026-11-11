@@ -140,11 +140,8 @@ func TestHostGetQueryOnlyScopePolicyDenialPreventsNativeAcquisition(t *testing.T
 	if app.Code != "FORBIDDEN" || app.RequestID == "" || app.RequestID != metadataSession.RequestID || !identityAllowed || !derivedDenied {
 		t.Fatalf("derived policy admission/correlation lost: %+v metadata=%+v", app, metadataSession)
 	}
-	if calls.Load() != 0 || result.Key != "" {
+	if calls.Load() != 0 || result.Key != "" || result.Record.Body.Kind != "" {
 		t.Fatal("denial acquired or published a native row")
-	}
-	if _, found := ctrl.registryStore.Get("helm-fixture", resolved.Reference, resolved.Route); found {
-		t.Fatal("denial populated registry state")
 	}
 }
 
@@ -232,8 +229,10 @@ func TestHostGetReauthorizationKeepsCapturedRouteEpoch(t *testing.T) {
 		return nil
 	}))
 	done := make(chan error, 1)
+	result := make(chan HostRecord, 1)
 	go func() {
-		_, err := ctrl.Get(testInvocationContext(), "helm-fixture", HostGetRequest{TargetID: resolved.TargetID, Request: resource.GetRequest{Route: resolved.Route, Reference: resolved.Reference, Representation: resolved.Representation}})
+		record, err := ctrl.Get(testInvocationContext(), "helm-fixture", HostGetRequest{TargetID: resolved.TargetID, Request: resource.GetRequest{Route: resolved.Route, Reference: resolved.Reference, Representation: resolved.Representation}})
+		result <- record
 		done <- err
 	}()
 	<-entered
@@ -245,7 +244,7 @@ func TestHostGetReauthorizationKeepsCapturedRouteEpoch(t *testing.T) {
 	if err := <-done; requireAppError(t, err).Code != "RESET_REQUIRED" || calls.Load() != 0 {
 		t.Fatalf("policy callback replaced captured source generation: %v", err)
 	}
-	if _, found := ctrl.registryStore.Get("helm-fixture", resolved.Reference, resolved.Route); found {
-		t.Fatal("retired target populated registry")
+	if record := <-result; record.Key != "" || record.Record.Body.Kind != "" {
+		t.Fatal("retired target exposed a native row or body")
 	}
 }

@@ -37,9 +37,9 @@ func invalidf(format string, args ...any) error {
 // limitf reports a policy ceiling breach; the message always names the field.
 func limitf(field string, ceiling int64, pointer string) error {
 	if pointer == "" {
-		return resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema exceeds %s (%d)", field, ceiling))
+		return &documentLimitError{resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema exceeds %s (%d)", field, ceiling))}
 	}
-	return resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema exceeds %s (%d) at %s", field, ceiling, pointer))
+	return &documentLimitError{resourcev2.NewError(codeResourceLimit, fmt.Sprintf("schema exceeds %s (%d) at %s", field, ceiling, pointer))}
 }
 
 // contextError classifies a done context as CANCELLED or TIMEOUT.

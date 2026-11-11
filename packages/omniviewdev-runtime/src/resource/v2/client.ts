@@ -7,8 +7,10 @@ import type {
   GetRequest,
   MutationRequest,
   Record,
+  SchemaBinding,
   SchemaDocument,
-  SchemaDocumentReference,
+  SchemaDocumentRequest,
+  SchemaRequest,
   Value,
 } from './domain';
 import type {
@@ -22,8 +24,7 @@ import type {
   ResourceHealth,
 } from './ancillary';
 import type {
-  EditorSchemaAssociation,
-  EditorSchemaDocument,
+  EditorSchemaResult,
   SchemaFieldsRequest,
   SchemaFieldsResult,
 } from './schema';
@@ -119,11 +120,10 @@ export const ResolveTarget = (pluginID: string, request: ResolveTargetRequest) =
   invoke<ResolvedResourceTarget>('ResolveTarget', pluginID, request);
 export const ResolveReference = (pluginID: string, request: ResolveReferenceRequest) =>
   invoke<ResolvedResourceReference>('ResolveReference', pluginID, request);
-export const GetSchemaDocument = (
-  pluginID: string,
-  route: AccessRoute,
-  reference: SchemaDocumentReference,
-) => invoke<SchemaDocument>('GetSchemaDocument', pluginID, route, reference);
+export const ResolveSchema = (pluginID: string, request: SchemaRequest) =>
+  invoke<SchemaBinding>('ResolveSchema', pluginID, request);
+export const GetSchemaDocument = (pluginID: string, request: SchemaDocumentRequest) =>
+  invoke<SchemaDocument>('GetSchemaDocument', pluginID, request);
 export const GetAllConnectionStates = () =>
   invoke<{ [pluginID: string]: HostConnectionState[] }>('GetAllConnectionStates');
 export const ListConnectionProfiles = (pluginID: string) =>
@@ -153,10 +153,8 @@ export const GetSchemaFields = (pluginID: string, request: SchemaFieldsRequest) 
   invoke<SchemaFieldsResult>('GetSchemaFields', pluginID, request);
 export const CompletePredicate = (pluginID: string, request: CompletionRequest) =>
   invoke<CompletionResponse>('CompletePredicate', pluginID, request);
-export const GetEditorSchemas = (pluginID: string, route: AccessRoute) =>
-  invoke<EditorSchemaAssociation[]>('GetEditorSchemas', pluginID, route);
-export const GetEditorSchemaDocument = (pluginID: string, route: AccessRoute, documentID: string) =>
-  invoke<EditorSchemaDocument>('GetEditorSchemaDocument', pluginID, route, documentID);
+export const ResolveEditorSchema = (pluginID: string, request: SchemaRequest) =>
+  invoke<EditorSchemaResult>('ResolveEditorSchema', pluginID, request);
 export const GetRelationships = (pluginID: string, route: AccessRoute, type: string) =>
   invoke<RelationshipDescriptor[]>('GetRelationships', pluginID, route, type);
 export const ResolveRelationships = (pluginID: string, request: GetRequest) =>

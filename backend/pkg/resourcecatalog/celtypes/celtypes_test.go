@@ -76,20 +76,31 @@ func resolveIn(t *testing.T, c *resourcecatalog.Catalog, connection, catalogRevi
 		binding = resourcev2.SchemaBinding{State: "available", Revision: &schemaRevision,
 			Dialect: resourcev2.DialectJSONSchema202012, Document: json.RawMessage(document)}
 	}
+	representation := resourcev2.Representation{ID: "r", Revision: representationRevision}
+	resolve := func(_ context.Context, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+		if request.Route.Connection != connection || request.Type != "thing" || request.Target.Auxiliary != nil ||
+			request.Target.Representation == nil || *request.Target.Representation != representation {
+			return resourcev2.SchemaBinding{}, resourcev2.NewError("INVALID_REQUEST", "schema request escaped its CEL fixture")
+		}
+		return binding, nil
+	}
 	s := c.Observe(resourcecatalog.ConnectionKey{PluginID: "p", Generation: "g", Connection: connection, Epoch: 1},
 		resourcev2.Catalog{Provider: "test", Revision: catalogRevision, Types: []resourcev2.ResourceType{{
 			Type: "thing", DisplayName: "thing", DefaultRepresentation: "r",
-			Representations: []resourcev2.Representation{{ID: "r", Revision: representationRevision, Schema: binding}},
+			Representations: []resourcev2.Representation{representation},
 		}}})
 	e, err := s.Entry("thing", "r")
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema, err := e.Resolve(context.Background(), nil)
+	resolution, err := e.Resolve(context.Background(), resolve, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{catalog: c, snapshot: s, entry: e, schema: schema}
+	if resolution.Binding.State != binding.State || e.Current(resolution.Observation) != nil {
+		t.Fatalf("schema observation = %+v, want current %s binding", resolution, binding.State)
+	}
+	return fixture{catalog: c, snapshot: s, entry: e, schema: resolution.Schema}
 }
 
 func newCELEnv(t *testing.T, f fixture) *cel.Env {
@@ -437,23 +448,33 @@ func resolveKubernetesPod(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	revision := "k8s/1"
+	representation := resourcev2.Representation{ID: "r", Revision: "rep/1"}
+	resolve := func(_ context.Context, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+		if request.Route.Connection != "homelab" || request.Type != "core::v1::Pod" || request.Target.Auxiliary != nil ||
+			request.Target.Representation == nil || *request.Target.Representation != representation {
+			return resourcev2.SchemaBinding{}, resourcev2.NewError("INVALID_REQUEST", "schema request escaped its Kubernetes CEL fixture")
+		}
+		return resourcev2.SchemaBinding{State: "available", Revision: &revision, Dialect: resourcev2.DialectOpenAPI30,
+			Root: "#/components/schemas/io.k8s.api.core.v1.Pod", Document: json.RawMessage(raw)}, nil
+	}
 	c := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
 	s := c.Observe(resourcecatalog.ConnectionKey{PluginID: "p", Generation: "g", Connection: "homelab", Epoch: 1},
 		resourcev2.Catalog{Provider: "test", Revision: "c1", Types: []resourcev2.ResourceType{{
 			Type: "core::v1::Pod", DisplayName: "Pod", DefaultRepresentation: "r",
-			Representations: []resourcev2.Representation{{ID: "r", Revision: "rep/1", Schema: resourcev2.SchemaBinding{
-				State: "available", Revision: &revision, Dialect: resourcev2.DialectOpenAPI30,
-				Root: "#/components/schemas/io.k8s.api.core.v1.Pod", Document: json.RawMessage(raw)}}},
+			Representations: []resourcev2.Representation{representation},
 		}}})
 	e, err := s.Entry("core::v1::Pod", "r")
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema, err := e.Resolve(context.Background(), nil)
+	resolution, err := e.Resolve(context.Background(), resolve, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{catalog: c, snapshot: s, entry: e, schema: schema}
+	if err := e.Current(resolution.Observation); err != nil {
+		t.Fatal(err)
+	}
+	return fixture{catalog: c, snapshot: s, entry: e, schema: resolution.Schema}
 }
 
 func TestKubernetesPod(t *testing.T) {

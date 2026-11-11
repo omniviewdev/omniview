@@ -77,6 +77,7 @@ func TestSourceViewTransientContentionAndRelease(t *testing.T) {
 	v.session.transientLedger.release(maxSourceTransientBytes)
 	v.session.staging = make(map[string]sourceMember)
 	observation := accountingObservation()
+	observation.Record.Representation = v.session.ctx.Value(sourceBindingKey{}).(sourceBinding).Representation
 	_, err := v.session.applyLocked(resourcev2.SourceFrame{Snapshot: &resourcev2.SourceSnapshot{Observations: []resourcev2.SourceObservation{observation}}})
 	require.NoError(t, err, "a stalled view must not exhaust source admission")
 	v.transientLedger.release(available)
@@ -99,14 +100,12 @@ func TestSourceViewChangeTransientContentionAndRelease(t *testing.T) {
 	v := boundedSourceViewFixture(t, 0, 1)
 	v.syncLocked("")
 	require.True(t, v.synced)
-	observation, err := decodeSourceMember(v.session.members["0"])
-	require.NoError(t, err)
-	record := v.session.fullSourceRecord(observation.Record)
-	v.changesLocked([]resourcev2.Record{record}, nil)
+	member := v.session.members["0"]
+	v.changesLocked([]sourceMember{member}, nil)
 	require.Len(t, v.queue, 1)
 	available := maxSourceTransientBytes - v.snapshotArrayBytes - v.queue[0].transient
 	require.True(t, v.transientLedger.reserve(available))
-	v.changesLocked([]resourcev2.Record{record}, nil)
+	v.changesLocked([]sourceMember{member}, nil)
 	require.NotNil(t, v.control)
 	require.Equal(t, "overflow", v.control.Reset.Reason)
 	v.transientLedger.release(available)
@@ -180,9 +179,7 @@ func TestSourceViewChangeEmissionReservationReleased(t *testing.T) {
 	emitter := &blockingChangeEmitter{entered: make(chan struct{}), release: make(chan struct{}), status: make(chan struct{})}
 	v.ctrl.emitter = emitter
 	v.syncLocked("")
-	observation, err := decodeSourceMember(v.session.members["0"])
-	require.NoError(t, err)
-	v.changesLocked([]resourcev2.Record{v.session.fullSourceRecord(observation.Record)}, nil)
+	v.changesLocked([]sourceMember{v.session.members["0"]}, nil)
 	require.Len(t, v.queue, 1)
 	cost := v.queue[0].transient
 	require.Positive(t, cost)
@@ -206,20 +203,18 @@ func TestSourceViewChangeEmissionReservationReleased(t *testing.T) {
 func TestSourceViewQueuedChangeReservationLifetime(t *testing.T) {
 	first := boundedSourceViewFixture(t, 0, 1)
 	first.syncLocked("")
-	observation, err := decodeSourceMember(first.session.members["0"])
-	require.NoError(t, err)
-	record := first.session.fullSourceRecord(observation.Record)
-	first.changesLocked([]resourcev2.Record{record}, nil)
+	member := first.session.members["0"]
+	first.changesLocked([]sourceMember{member}, nil)
 	require.Len(t, first.queue, 1)
 	cost := first.queue[0].transient
 	require.Positive(t, cost)
 
 	other := newSourceView(first.session, "other", "owner", "target")
-	other.synced = true
-	available := maxSourceTransientBytes - first.snapshotArrayBytes - cost - (cost - 1)
+	other.syncLocked("")
+	available := maxSourceTransientBytes - first.snapshotArrayBytes - other.snapshotArrayBytes - cost - (cost - 1)
 	require.Positive(t, available)
 	require.True(t, first.transientLedger.reserve(available))
-	other.changesLocked([]resourcev2.Record{record}, nil)
+	other.changesLocked([]sourceMember{member}, nil)
 	require.NotNil(t, other.control)
 	require.Equal(t, "overflow", other.control.Reset.Reason)
 	require.Len(t, first.queue, 1)
@@ -231,7 +226,7 @@ func TestSourceViewQueuedChangeReservationLifetime(t *testing.T) {
 	require.True(t, first.transientLedger.reserve(maxSourceTransientBytes))
 	first.transientLedger.release(maxSourceTransientBytes)
 	first.synced = true
-	first.changesLocked([]resourcev2.Record{record}, nil)
+	first.changesLocked([]sourceMember{member}, nil)
 	require.Len(t, first.queue, 1)
 	first.close()
 	other.close()

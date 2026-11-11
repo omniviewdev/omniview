@@ -3,13 +3,10 @@ package resource
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -53,19 +50,16 @@ func TestFeatureStartupFailureRollsBackBeforeSourcesStart(t *testing.T) {
 	require.Zero(t, loaded.Load(), "failed feature negotiation must not admit connection sources")
 }
 
-type pausedFailedStartStore struct {
-	registry.Store
-	armed   atomic.Bool
+type pausedFailedStartProvider struct {
+	*failingFeatureProvider
 	entered chan struct{}
 	release chan struct{}
 }
 
-func (s *pausedFailedStartStore) DeleteByConnection(pluginID, connectionID string) []registry.ResourceEntry {
-	if s.armed.CompareAndSwap(true, false) {
-		close(s.entered)
-		<-s.release
-	}
-	return s.Store.DeleteByConnection(pluginID, connectionID)
+func (p *pausedFailedStartProvider) Close() error {
+	close(p.entered)
+	<-p.release
+	return nil
 }
 
 type replacementAttemptBackend struct {
@@ -81,31 +75,26 @@ func (b *replacementAttemptBackend) Dispense(name string) (interface{}, error) {
 
 func TestFeatureStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	store := &pausedFailedStartStore{Store: ctrl.registryStore, entered: make(chan struct{}), release: make(chan struct{})}
-	ctrl.registryStore = store
+	closing := &pausedFailedStartProvider{entered: make(chan struct{}), release: make(chan struct{})}
 	defer func() {
 		select {
-		case <-store.release:
+		case <-closing.release:
 		default:
-			close(store.release)
+			close(closing.release)
 		}
 	}()
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown("proof", defaultMeta())) })
 	ctrl.connections["proof"] = []types.Connection{{ID: "previous"}}
 	failed := errors.New("registration rejected")
-	oldProvider := &failingFeatureProvider{mockProvider: &mockProvider{}, fail: func() error {
-		store.armed.Store(true)
+	closing.failingFeatureProvider = &failingFeatureProvider{mockProvider: &mockProvider{}, fail: func() error {
 		return failed
 	}}
 	oldDone := make(chan error, 1)
-	oldBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": oldProvider}})
+	oldBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": closing}})
 	go func() { oldDone <- ctrl.OnPluginStart("proof", defaultMeta(), oldBackend) }()
-	<-store.entered
-	// Ownership stays visible through retirement, while actual provider calls
-	// are unavailable. This existing consumer API also schedules the old gap.
-	retiring, err := ctrl.ListPlugins(testInvocationContext())
-	require.NoError(t, err)
-	retirementFenced := slices.Contains(retiring, "proof")
+	<-closing.entered
+	// A failed generation's native close may overlap a healthy replacement.
+	// No late teardown may erase the replacement's admitted runtime state.
 
 	const resourceType = "proof::v1::Replacement"
 	replacement := &mockProvider{LoadConnectionsFunc: func(context.Context) ([]types.Connection, error) {
@@ -144,18 +133,12 @@ func TestFeatureStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("replacement did not attempt actual provider negotiation")
 	}
-	var replacementErr error
-	if !retirementFenced {
-		// The old implementation permits publication in this exact gap.
-		// Finish it before allowing retired cleanup to resume.
-		replacementErr = <-replaced
-	}
-	close(store.release)
+	require.NoError(t, <-replaced)
+	warm, err := ctrl.GetRelationships(testInvocationContext(), "proof", resource.AccessRoute{Connection: "replacement"}, resourceType)
+	require.NoError(t, err)
+	require.Len(t, warm, 1)
+	close(closing.release)
 	require.ErrorIs(t, <-oldDone, failed)
-	if retirementFenced {
-		replacementErr = <-replaced
-	}
-	require.NoError(t, replacementErr)
 	ctx := testInvocationContext()
 	discovered, err := ctrl.Catalog(ctx, "proof", resource.CatalogRequest{Route: resource.AccessRoute{Connection: "replacement"}})
 	require.NoError(t, err)
@@ -173,9 +156,9 @@ func TestFeatureStartupFailedCleanupCannotEraseReplacement(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("replacement action did not retire after consumer cancellation")
 	}
-	declarations, _, declared := ctrl.graph.GetBoundDeclarations("proof", target.Route, resourceType)
-	require.True(t, declared)
-	require.Len(t, declarations, 1, "retired cleanup erased replacement declarations")
+	declarations, err := ctrl.GetRelationships(ctx, "proof", target.Route, resourceType)
+	require.NoError(t, err)
+	require.Equal(t, warm, declarations, "retired cleanup erased replacement declarations")
 	present, err := ctrl.HasPlugin(testInvocationContext(), "proof")
 	require.NoError(t, err)
 	require.True(t, present)
@@ -218,7 +201,9 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 		expected[i].LastRefresh = time.Time{}
 	}
 	unrelated := []types.Connection{{ID: "other", Name: "Unrelated configuration", Data: map[string]any{"marker": "untouched"}}}
-	registerMockPlugin(ctrl, pluginID, connectionOverlayTestProvider())
+	retiringProvider := connectionOverlayTestProvider()
+	retiringProvider.CatalogFunc = lifecycleTestCatalog(resourceKey)
+	registerMockPlugin(ctrl, pluginID, retiringProvider)
 	registerMockPlugin(ctrl, otherID, connectionOverlayTestProvider())
 	for _, connection := range saved {
 		requireSavedConnectionProfile(t, ctrl, pluginID, connection)
@@ -234,33 +219,44 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 	require.NoError(t, err)
 	require.ElementsMatch(t, expected, loaded, "explicit save must apply effective source configuration and persist desired profiles")
 
+	otherDeclaration := resource.RelationshipDescriptor{Type: resource.RelUses, TargetType: "proof::v1::Unrelated", TargetScope: []resource.ScopeEntry{}}
 	otherProvider := &readinessCloseProvider{mockProvider: connectionOverlayTestProvider()}
 	otherProvider.CatalogFunc = lifecycleTestCatalog(resourceKey, "proof::v1::Unrelated")
+	otherProvider.GetRelationshipsFunc = func(context.Context, resource.AccessRoute, string) ([]resource.RelationshipDescriptor, error) {
+		return []resource.RelationshipDescriptor{otherDeclaration}, nil
+	}
 	otherBackend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": setupGRPCProvider(t, otherProvider)}})
 	require.NoError(t, ctrl.OnPluginStart(otherID, defaultMeta(), otherBackend))
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginShutdown(otherID, defaultMeta())) })
-	otherDeclaration := resource.RelationshipDescriptor{Type: resource.RelUses, TargetType: "proof::v1::Unrelated", TargetScope: []resource.ScopeEntry{}}
-	seedRuntime := func(owner, connection string, declaration resource.RelationshipDescriptor) graph.GraphNode {
-		reference := canonicalTestRecord("proof", "fixture:"+connection, resourceKey, "source").Reference
-		node := graph.GraphNode{PluginID: owner, Reference: reference, Route: resource.AccessRoute{Connection: connection}}
-		target := node
-		target.Reference.Address.ID = "target"
-		target.Reference.Address.Type = declaration.TargetType
-		target.Reference.Address.Authority = "fixture:target:" + connection
-		ctrl.registryStore.Put(registry.ResourceEntry{PluginID: owner, Reference: reference, Route: node.Route})
-		ctrl.pluginsMu.RLock()
-		epoch := ctrl.plugins[owner].sourceEpoch[connection]
-		ctrl.pluginsMu.RUnlock()
-		require.NoError(t, ctrl.graph.SetBoundDeclarations(owner, node.Route, resourceKey, []resource.RelationshipDescriptor{declaration}, graph.DeclarationBindings{
-			Source:      graph.TargetBinding{Target: resource.ReadTarget{Route: node.Route, Provider: reference.Address.Provider, Authority: reference.Address.Authority, Type: resourceKey, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}},
-			Targets:     []graph.TargetBinding{{Target: resource.ReadTarget{Route: target.Route, Provider: target.Reference.Address.Provider, Authority: target.Reference.Address.Authority, Type: declaration.TargetType, Scope: resource.QueryScope{}, Representation: "native"}, IdentityDimensions: []resource.Dimension{}}},
-			SourceEpoch: epoch,
-		}))
-		ctrl.graph.AddEdge(graph.GraphEdge{Source: node, Target: target, Type: declaration.Type})
-		return node
+	seedRuntime := func(plugin, connection string) (*sourceSession, resource.ResourceReference, func(context.Context) error) {
+		resolved := admittedReadTarget(t, ctrl, plugin, connection, resourceKey)
+		admitted, err := ctrl.admit(testInvocationContext(), "resource.OpenSourceView", readTarget(plugin, resolved.Target))
+		require.NoError(t, err)
+		_, generation, ctx, cancel, mode, owner, err := ctrl.sources.prepare(admitted, plugin, resolved.Target, "ifSupported")
+		require.NoError(t, err)
+		t.Cleanup(cancel)
+		session := &sourceSession{
+			coordinator: ctrl.sources, key: plugin + "/" + connection, pluginID: plugin, owner: owner,
+			target: resolved.Target, pluginGeneration: generation, ctx: ctx, cancel: cancel, mode: mode,
+			generation: "retirement-proof", members: map[string]sourceMember{}, staging: map[string]sourceMember{}, views: map[string]*sourceView{},
+		}
+		ctrl.sources.mu.Lock()
+		ctrl.sources.sessions[session.key] = session
+		ctrl.sources.mu.Unlock()
+		record := sourceTestRecord(resolved.Target, "retained", "retirement-incarnation")
+		_, err = session.applyLocked(resource.SourceFrame{Snapshot: &resource.SourceSnapshot{Observations: []resource.SourceObservation{{Record: resource.CompactSourceRecord(record)}}}})
+		require.NoError(t, err)
+		_, err = session.applyLocked(sourceBoundary(resource.EnumerationExhausted))
+		require.NoError(t, err)
+		guard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", plugin, resolved.Target.Route, record.Reference)
+		require.NoError(t, err)
+		require.NoError(t, guard(testInvocationContext()), "positive control must admit real retained source identity")
+		return session, record.Reference, guard
 	}
-	retiredNode := seedRuntime(pluginID, expected[0].ID, resource.RelationshipDescriptor{Type: resource.RelOwns, TargetType: "proof::v1::Retired", TargetScope: []resource.ScopeEntry{}})
-	unrelatedNode := seedRuntime(otherID, unrelated[0].ID, otherDeclaration)
+	retiredSource, retiredReference, retiredGuard := seedRuntime(pluginID, expected[0].ID)
+	unrelatedSource, unrelatedReference, unrelatedGuard := seedRuntime(otherID, unrelated[0].ID)
+	warmDeclarations, err := ctrl.GetRelationships(testInvocationContext(), otherID, unrelatedSource.target.Route, resourceKey)
+	require.NoError(t, err)
 
 	var discoveries atomic.Int32
 	closeFailure := &resource.ResourceOperationError{Code: "PROVIDER_ERROR", Message: "native close failed"}
@@ -277,16 +273,18 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 	present, err := ctrl.HasPlugin(testInvocationContext(), pluginID)
 	require.NoError(t, err)
 	require.False(t, present)
-	handle, err := ctrl.StreamAction(testInvocationContext(), pluginID, resource.ActionRequest{Route: resource.AccessRoute{Connection: expected[0].ID}, Reference: retiredNode.Reference, Action: "unavailable", Input: resource.Value{Kind: "null"}})
+	handle, err := ctrl.StreamAction(testInvocationContext(), pluginID, resource.ActionRequest{Route: resource.AccessRoute{Connection: expected[0].ID}, Reference: retiredReference, Action: "unavailable", Input: resource.Value{Kind: "null"}})
 	require.Error(t, err)
 	require.Empty(t, handle)
-	require.Empty(t, ctrl.registryStore.ScanByResourceKey(pluginID, expected[0].ID, resourceKey))
-	retiredEdges, err := ctrl.graph.GetRelated(retiredNode, graph.Both, nil)
+	require.Error(t, retiredGuard(testInvocationContext()), "failed startup must retire old source identity")
+	retiredSource.mu.Lock()
+	require.True(t, retiredSource.closed)
+	require.Empty(t, retiredSource.members)
+	retiredSource.mu.Unlock()
+	require.NoError(t, unrelatedGuard(testInvocationContext()), "unrelated plugin source identity must survive")
+	otherDeclarations, err := ctrl.GetRelationships(testInvocationContext(), otherID, unrelatedSource.target.Route, resourceKey)
 	require.NoError(t, err)
-	require.Empty(t, retiredEdges)
-	otherDeclarations, _, declared := ctrl.graph.GetBoundDeclarations(otherID, unrelatedNode.Route, resourceKey)
-	require.True(t, declared)
-	require.Equal(t, []resource.RelationshipDescriptor{otherDeclaration}, otherDeclarations)
+	require.Equal(t, warmDeclarations, otherDeclarations)
 	ctrl.actions.mu.Lock()
 	actionAdmissionStopped := ctrl.actions.blocked[pluginID]
 	ctrl.actions.mu.Unlock()
@@ -311,10 +309,13 @@ func TestFeatureStartupFailurePreservesDesiredProfilesThroughFailedUnloadAndRelo
 	otherPresent, err := ctrl.HasPlugin(testInvocationContext(), otherID)
 	require.NoError(t, err)
 	require.True(t, otherPresent)
-	require.Len(t, ctrl.registryStore.ScanByResourceKey(otherID, unrelated[0].ID, resourceKey), 1)
-	unrelatedEdges, err := ctrl.graph.GetRelated(unrelatedNode, graph.Both, nil)
-	require.NoError(t, err)
-	require.Len(t, unrelatedEdges, 1)
+	require.NoError(t, unrelatedGuard(testInvocationContext()))
+	unrelatedSource.mu.Lock()
+	require.Len(t, unrelatedSource.members, 1)
+	for _, member := range unrelatedSource.members {
+		require.Equal(t, unrelatedReference, member.header.reference)
+	}
+	unrelatedSource.mu.Unlock()
 
 	fresh, _ := newTestControllerWithEmitter(t)
 	fresh.pluginStoreFn = ctrl.pluginStoreFn

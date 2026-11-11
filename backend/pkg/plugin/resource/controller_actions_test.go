@@ -293,7 +293,7 @@ func TestAncillaryOptionalAbsenceReturnsUnsupported(t *testing.T) {
 			return err
 		}},
 		{"schemaDocument", func() error {
-			_, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, resource.SchemaDocumentReference{ID: "schema", Revision: "1"})
+			_, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", resource.SchemaDocumentRequest{Request: targetedSchemaRequest(route.Connection, "pods"), Reference: resource.SchemaDocumentReference{ID: "schema", Revision: "1"}})
 			return err
 		}},
 		{"relationships", func() error {
@@ -358,9 +358,9 @@ func TestPresentationAncillaryForwardsCanonicalRouteAndDocumentReference(t *test
 	definition := resource.ResourceDefinition{ColumnDefs: []resource.ColumnDefinition{{ID: "name", Header: "Name"}}}
 	document := resource.SchemaDocument{Reference: reference, Dialect: "https://json-schema.org/draft/2020-12/schema", Document: []byte(`{"type":"object"}`)}
 	registerMockPlugin(ctrl, "p1", &mockProvider{
-		CatalogFunc: withReferencedSchema(func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
+		CatalogFunc: func(context.Context, resource.CatalogRequest) (resource.Catalog, error) {
 			return canonicalTestCatalog("p1", "k8s:/pods"), nil
-		}, reference),
+		},
 		GetResourceGroupsFunc: func(_ context.Context, got resource.AccessRoute) ([]resource.ResourceGroup, error) {
 			assert.Equal(t, route, got)
 			return groups, nil
@@ -370,9 +370,9 @@ func TestPresentationAncillaryForwardsCanonicalRouteAndDocumentReference(t *test
 			assert.Equal(t, "k8s:/pods", resourceType)
 			return definition, nil
 		},
-		GetEditorSchemasFunc: func(_ context.Context, got resource.AccessRoute) ([]resource.EditorSchema, error) {
-			assert.Equal(t, route, got)
-			return []resource.EditorSchema{}, nil
+		ResolveSchemaFunc: func(ctx context.Context, got resource.SchemaRequest) (resource.SchemaBinding, error) {
+			assert.Equal(t, targetedSchemaRequest(route.Connection, "k8s:/pods"), got)
+			return referencedSchema(reference)(ctx, got)
 		},
 		GetSchemaDocumentFunc: func(_ context.Context, got resource.AccessRoute, ref resource.SchemaDocumentReference) (resource.SchemaDocument, error) {
 			assert.Equal(t, route, got)
@@ -386,10 +386,11 @@ func TestPresentationAncillaryForwardsCanonicalRouteAndDocumentReference(t *test
 	gotDefinition, err := ctrl.GetResourceDefinition(testInvocationContext(), "p1", route, "k8s:/pods")
 	require.NoError(t, err)
 	assert.Equal(t, definition, gotDefinition)
-	schemas, err := ctrl.GetEditorSchemas(testInvocationContext(), "p1", route)
+	schemaRequest := targetedSchemaRequest(route.Connection, "k8s:/pods")
+	schema, err := ctrl.ResolveEditorSchema(testInvocationContext(), "p1", schemaRequest)
 	require.NoError(t, err)
-	assert.NotNil(t, schemas)
-	gotDocument, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", route, reference)
+	assert.Equal(t, "available", schema.Status)
+	gotDocument, err := ctrl.GetSchemaDocument(testInvocationContext(), "p1", resource.SchemaDocumentRequest{Request: schemaRequest, Reference: reference})
 	require.NoError(t, err)
 	assert.Equal(t, document, gotDocument)
 }

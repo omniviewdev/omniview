@@ -5,7 +5,7 @@ package resourcecatalog
 type Stats struct {
 	// Connections counts live connection snapshots.
 	Connections int
-	// Entries counts (type, representation) entries across live snapshots.
+	// Entries counts representation and exact auxiliary target entries.
 	Entries int
 	// Documents counts retained normalized documents (shared by digest).
 	Documents int
@@ -23,7 +23,7 @@ func (c *Catalog) Stats() Stats {
 	defer c.mu.Unlock()
 	out := Stats{Connections: len(c.connections)}
 	for _, snapshot := range c.connections {
-		out.Entries += len(snapshot.entries)
+		out.Entries += len(snapshot.entries) + len(snapshot.aux)
 	}
 	retained := c.store.stats()
 	out.Documents = retained.documents

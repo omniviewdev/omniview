@@ -6,7 +6,6 @@ import (
 	hostlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	hostmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
-	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
@@ -24,13 +23,10 @@ type ResourceMetricsReader interface {
 	GetProvidersForResource(string) []hostmetric.MetricProviderSummary
 }
 
-// ResourceGraphReader reads observed relationships with the original invocation
-// principal. The host graph service implements it.
+// ResourceGraphReader reads bounded demanded relationships with the original
+// invocation principal. The host graph service implements it.
 type ResourceGraphReader interface {
-	GetRelated(
-		ctx context.Context, pluginID string, reference resourcev2.ResourceReference,
-		route resourcev2.AccessRoute, direction string, relationshipType *string,
-	) ([]graph.GraphEdge, error)
+	GetRelated(context.Context, graph.RelatedRequest) (graph.RelatedResult, error)
 }
 
 // ResourceReaders are the optional host read lanes advertised beside the catalog.

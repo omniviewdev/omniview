@@ -158,12 +158,16 @@ func artifactSHA256(path string) (string, error) {
 }
 
 func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) {
-	if !filepath.IsAbs(workspace.ManifestPath) || !filepath.IsAbs(workspace.StateRoot) {
-		return "", fmt.Errorf("instance: artifact workspace requires explicit absolute manifest and state paths")
-	}
-	home, err := os.UserHomeDir()
+	home, err := artifactHome("")
 	if err != nil {
 		return "", err
+	}
+	return artifactDirectoryAtHome(home, workspace)
+}
+
+func artifactDirectoryAtHome(home string, workspace devcontract.ResolvedWorkspace) (string, error) {
+	if !filepath.IsAbs(workspace.ManifestPath) || !filepath.IsAbs(workspace.StateRoot) {
+		return "", fmt.Errorf("instance: artifact workspace requires explicit absolute manifest and state paths")
 	}
 	// Revalidate the explicit manifest and selected state, including a custom
 	// binding/owner marker. Never infer identity from a custom root's parent or
@@ -200,6 +204,15 @@ func artifactDirectory(workspace devcontract.ResolvedWorkspace) (string, error) 
 func RecordBuiltArtifact(
 	workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string, sdk devsdk.Identity,
 ) error {
+	return RecordBuiltArtifactAtHome("", workspace, pluginID, binaryPath, sdk)
+}
+
+// RecordBuiltArtifactAtHome records the same verified artifact under an explicit
+// manager home. It always acquires the real stable UUID guard itself; callers
+// must finish their stopped build and release that guard before recording.
+func RecordBuiltArtifactAtHome(
+	home string, workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string, sdk devsdk.Identity,
+) error {
 	if err := state.ValidateComponent(pluginID); err != nil {
 		return err
 	}
@@ -234,7 +247,7 @@ func RecordBuiltArtifact(
 	if err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
+	home, err = artifactHome(home)
 	if err != nil {
 		return err
 	}
@@ -243,7 +256,7 @@ func RecordBuiltArtifact(
 		return err
 	}
 	defer release()
-	dir, err := artifactDirectory(workspace)
+	dir, err := artifactDirectoryAtHome(home, workspace)
 	if err != nil {
 		return err
 	}
@@ -280,16 +293,16 @@ func RecordBuiltArtifact(
 // readPluginArtifactRecord revalidates workspace/root ownership before reading
 // host-owned evidence. Both static preflight and private launch verification
 // must use this path rather than installed plugin metadata.
-func readPluginArtifactRecord(workspace devcontract.ResolvedWorkspace, pluginID string) (string, artifactRecord, error) {
+func readPluginArtifactRecord(home string, workspace devcontract.ResolvedWorkspace, pluginID string) (string, artifactRecord, error) {
 	var record artifactRecord
 	if err := state.ValidateComponent(pluginID); err != nil {
 		return "", record, err
 	}
-	dir, err := artifactDirectory(workspace)
+	home, err := artifactHome(home)
 	if err != nil {
 		return "", record, err
 	}
-	home, err := os.UserHomeDir()
+	dir, err := artifactDirectoryAtHome(home, workspace)
 	if err != nil {
 		return "", record, err
 	}
@@ -346,7 +359,13 @@ func (record *artifactRecord) verifyArtifact(pluginID, binaryPath string) error 
 // only: bytes may subsequently change, so execution must still use the private
 // verified snapshot returned by PreparePluginArtifact.
 func VerifyPluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string) error {
-	_, record, err := readPluginArtifactRecord(workspace, pluginID)
+	return VerifyPluginArtifactAtHome("", workspace, pluginID, binaryPath)
+}
+
+// VerifyPluginArtifactAtHome applies the same ownership and hash checks to an
+// explicit manager home. The caller still holds the selected root ownership flock.
+func VerifyPluginArtifactAtHome(home string, workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string) error {
+	_, record, err := readPluginArtifactRecord(home, workspace, pluginID)
 	if err != nil {
 		return err
 	}
@@ -362,7 +381,7 @@ func VerifyPluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, bin
 // Windows may retain an executing file until process termination.
 func PreparePluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string) (string, func(), error) {
 	noop := func() {}
-	dir, record, err := readPluginArtifactRecord(workspace, pluginID)
+	dir, record, err := readPluginArtifactRecord("", workspace, pluginID)
 	if err != nil {
 		return "", noop, err
 	}
@@ -405,4 +424,18 @@ func PreparePluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, bi
 		return "", noop, err
 	}
 	return prepared, cleanup, nil
+}
+
+func artifactHome(home string) (string, error) {
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+	}
+	if !filepath.IsAbs(home) {
+		return "", fmt.Errorf("instance: artifact home must be absolute")
+	}
+	return devcontract.CanonicalPath(home)
 }

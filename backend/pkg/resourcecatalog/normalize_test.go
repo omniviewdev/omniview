@@ -313,14 +313,14 @@ func TestNormalizePrefixItemsReducesItemsToAny(t *testing.T) {
 			if n.Items != 0 || !hasConstraint(n, "/properties/values", "prefixItems") {
 				t.Fatalf("tuple = %+v", n)
 			}
-			schema := admitSchema(t, d2020, raw, "#")
+			schema := admitSchema(t, d2020, raw, "")
 			mustAdmit(t, schema, body(t, `{"values":["first",true,{"arbitrary":1}]}`), completeCoverage)
 			rejectAdmit(t, schema, body(t, `{"values":[]}`), completeCoverage, "/values")
 		})
 	}
 	// Without a tuple, homogeneous items must remain enforced.
 	raw := `{"properties":{"values":{"type":"array","items":{"type":"integer"}}}}`
-	schema := admitSchema(t, d2020, raw, "#")
+	schema := admitSchema(t, d2020, raw, "")
 	rejectAdmit(t, schema, body(t, `{"values":["not an integer"]}`), completeCoverage, "/values/0")
 }
 
@@ -328,7 +328,7 @@ func TestNormalizePrefixItemsPreservesItemsInOtherDialects(t *testing.T) {
 	for _, dialect := range []string{dDraft7, dOAS30} {
 		t.Run(dialect, func(t *testing.T) {
 			raw := `{"properties":{"values":{"type":"array","prefixItems":[{"type":"string"}],"items":{"type":"integer"}}}}`
-			root, pointer := "#", "/properties/values"
+			root, pointer := "", "/properties/values"
 			if dialect == dOAS30 {
 				raw = `{"components":{"schemas":{"T":` + raw + `}}}`
 				root = "#/components/schemas/T"

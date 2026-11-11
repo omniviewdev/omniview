@@ -1,7 +1,7 @@
 // Handwritten projection of backend/pkg/resourcecatalog navigation/overlay DTOs
 // and backend/pkg/plugin/resource/schema_service.go. Catalog DTO fields carry no
 // JSON tags, so their wire names are the Go field names.
-import type { AccessRoute, Operation, Value } from './domain';
+import type { AccessRoute, Operation, SchemaRequest, SchemaTarget, Value } from './domain';
 
 export type PathSegmentKind = 'field' | 'mapValue' | 'item';
 export interface PathSegment { Kind: PathSegmentKind; Name?: string }
@@ -36,42 +36,62 @@ export interface TypeOverlay {
   Unvalidated: readonly SchemaConstraint[] | null;
 }
 export interface SchemaFieldsRequest {
-  route: AccessRoute;
-  type: string;
-  /** Empty selects the type's default representation. */
-  representation?: string;
+  request: SchemaRequest;
   path: readonly PathSegment[];
 }
 export interface SchemaFieldsResult {
-  catalogRevision: string;
   type: string;
-  representation: string;
-  /** Provider binding state: absent | available | unavailable. */
+  target: SchemaTarget;
+  observation: string;
   schemaState: string;
   schemaRevision?: string;
   dialect?: string;
   overlay: TypeOverlay;
   fields: readonly FieldInfo[];
   truncated: boolean;
-  truncationReason?: 'fields' | 'visits';
+  truncationReason?: string;
 }
 export type EditorSchemaStatus = 'available' | 'absent' | 'unavailable' | 'unsupported' | 'invalid' | 'limit';
-export interface EditorSchemaAssociation {
+export interface EditorSchemaResult {
   type: string;
-  representation?: string;
-  /** Auxiliary schema key; empty for catalog representations. */
-  key?: string;
-  language: string;
-  /** "file:///omniview-schema/<hex16>" */
-  modelDirectory: string;
-  /** "**\/omniview-schema/<hex16>/*" */
-  fileMatch: string;
-  /** Full hex document digest; set only when status is available. */
-  documentId?: string;
-  /** "#/definitions/n<id>"; set only when status is available. */
+  target: SchemaTarget;
+  observation: string;
+  schemaRevision?: string;
+  dialect?: string;
   root?: string;
   status: EditorSchemaStatus;
   code?: string;
+  document?: EditorSchemaDocument;
 }
 /** Host-rendered draft-07 editor document. */
 export interface EditorSchemaDocument { documentId: string; schema: unknown }
+
+/** Stable editor identity. Revisions describe enrichment or content, never a model. */
+export interface ResourceEditorModelIdentity {
+  pluginID: string;
+  route: AccessRoute;
+  type: string;
+  target: SchemaTarget;
+  name: string;
+}
+
+/** Encode every opaque segment, including dot-only names, without host hash coupling. */
+export function resourceEditorModelURI({ pluginID, route, type, target, name }: ResourceEditorModelIdentity): string {
+  const segments = [pluginID, route.connection, type];
+  if (target.representation) {
+    segments.push('representation', target.representation.id);
+  } else {
+    const { key, reference } = target.auxiliary;
+    const { address, incarnation } = reference;
+    segments.push('auxiliary', key, address.provider, address.authority, address.type);
+    const scope = [...address.scope].sort((left, right) =>
+      left.dimension < right.dimension ? -1 : left.dimension > right.dimension ? 1 : 0);
+    segments.push(String(scope.length));
+    for (const { dimension, value } of scope) segments.push(dimension, value);
+    segments.push(address.id, incarnation === undefined ? 'unversioned' : 'incarnation');
+    if (incarnation !== undefined) segments.push(incarnation);
+  }
+  segments.push(name);
+  return `file:///omniview-editor/${segments.map(segment =>
+    `v${encodeURIComponent(segment).replace(/[!'()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`).join('/')}.yaml`;
+}

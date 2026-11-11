@@ -159,8 +159,8 @@ type p07RetentionFixture struct {
 
 func p07RowCatalog() resourcev2.Catalog {
 	return p07Catalog("c1",
-		p07Type("row", []string{"scope"}, p07Binding(p07Draft2020, "row/1", p07RowSchema)),
-		p07Type("plain", []string{"scope"}, p07Binding(p07Draft2020, "plain/1", p07PlainSchema)))
+		p07Type("row", []string{"scope"}),
+		p07Type("plain", []string{"scope"}))
 }
 
 // p07RetainPerRowControl admits and navigates rows while retaining every result,
@@ -192,6 +192,10 @@ func p07NewRetentionFixture(t *testing.T, policy resourcecatalog.Policy, connect
 	t.Helper()
 	fixture := &p07RetentionFixture{catalog: resourcecatalog.NewCatalog(policy), connections: connections}
 	var documents []weak.Pointer[resourcecatalog.Document]
+	bindings := map[string]resourcev2.SchemaBinding{
+		"row":   p07Binding(p07Draft2020, "row/1", p07RowSchema),
+		"plain": p07Binding(p07Draft2020, "plain/1", p07PlainSchema),
+	}
 	for _, connection := range connections {
 		snapshot := fixture.catalog.Observe(p07Key("neutral", connection), p07RowCatalog())
 		for _, name := range []string{"row", "plain"} {
@@ -199,10 +203,11 @@ func p07NewRetentionFixture(t *testing.T, policy resourcecatalog.Policy, connect
 			if err != nil {
 				t.Fatal(err)
 			}
-			schema, err := entry.Resolve(context.Background(), nil)
+			resolution, err := entry.Resolve(context.Background(), p07Source(connection, entry.Descriptor, bindings[name]), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
+			schema := resolution.Schema
 			// Checking environments build the per-document CEL provider once.
 			if _, err := celtypes.NewEnvironment(snapshot.Revision(), entry, schema); err != nil {
 				t.Fatal(err)

@@ -113,10 +113,10 @@ func TestActualSDKChildHostFiniteBoundary(t *testing.T) {
 				Provider: catalog.Provider, Authority: target.Target.Authority, Type: target.Target.Type,
 				ID: "arn:fixture:compute:us-west-2:111111111111:instance/a::b/雪%2F", Scope: []resource.ScopeEntry{{Dimension: "account", Value: "111111111111"}, {Dimension: "region", Value: "us-west-2"}},
 			}}}}
-			_, err = ctrl.Get(context.Background(), nativeChildPluginID, request)
+			denied, err := ctrl.Get(context.Background(), nativeChildPluginID, request)
 			require.Error(t, err, "unissued caller must be denied before acquisition")
-			_, found := ctrl.registryStore.Get(nativeChildPluginID, request.Request.Reference, route)
-			assert.False(t, found, "denial must not materialize registry state")
+			assert.Empty(t, denied.Key)
+			assert.Empty(t, denied.Record.Body.Kind, "denial must not expose native data")
 			get, err := ctrl.Get(testInvocationContext(), nativeChildPluginID, request)
 			if operations[resource.OperationGet] {
 				require.NoError(t, err)
@@ -244,14 +244,14 @@ func TestActualSDKChildHostCatalogGenerationFence(t *testing.T) {
 			}
 			// Admission receives the real A observation only after B (or restored
 			// A) is active. Get must carry A, not the SDK's newest cached token.
-			_, err = ctrl.Get(testInvocationContext(), nativeChildPluginID, request)
+			stale, err := ctrl.Get(testInvocationContext(), nativeChildPluginID, request)
 			require.Equal(t, "RESET_REQUIRED", requireAppError(t, err).Code)
 			assert.Zero(t, aReads.Load(), "retired A must not regain native access")
 			assert.Zero(t, bReads.Load(), "stale A must not dispatch against B")
 			_, err = os.Stat(filepath.Join(control, "entered-1"))
 			require.True(t, os.IsNotExist(err), "stale admission must fail before native Get")
-			_, found := ctrl.registryStore.Get(nativeChildPluginID, request.Request.Reference, route)
-			assert.False(t, found, "rejected native data must not enter host registry")
+			assert.Empty(t, stale.Key)
+			assert.Empty(t, stale.Record.Body.Kind, "rejected native data must not reach the caller")
 			// Observing the replacement binding closes this request first.
 			rejected, err := ctrl.ResolveTarget(testInvocationContext(), nativeChildPluginID, ResolveTargetRequest{
 				Route: route, Type: "native/object", Representation: "document", Scope: resource.QueryScope{},
@@ -263,7 +263,6 @@ func TestActualSDKChildHostCatalogGenerationFence(t *testing.T) {
 			require.Zero(t, bReads.Load())
 			_, err = os.Stat(filepath.Join(control, "entered-1"))
 			require.True(t, os.IsNotExist(err), "binding transition must not dispatch native Get")
-			require.Empty(t, ctrl.registryStore.ScanByResourceKey(nativeChildPluginID, route.Connection, "native/object"))
 			// A new caller request explicitly acquires the active observation.
 			current, err := ctrl.ResolveTarget(testInvocationContext(), nativeChildPluginID, ResolveTargetRequest{
 				Route: route, Type: "native/object", Representation: "document", Scope: resource.QueryScope{},
@@ -295,9 +294,9 @@ func refreshNativeGeneration(t *testing.T, control string, sequence int, endpoin
 		Endpoint string `json:"endpoint"`
 	}{sequence, endpoint})
 	require.NoError(t, err)
-	temporary := filepath.Join(control, "command.tmp")
-	require.NoError(t, os.WriteFile(temporary, body, 0600))
-	require.NoError(t, os.Rename(temporary, filepath.Join(control, "command.json")))
+	// The child ignores incomplete JSON and acknowledges the applied sequence.
+	// Do not rename over a file that its Windows reader may still have open.
+	require.NoError(t, os.WriteFile(filepath.Join(control, "command.json"), body, 0600))
 	var applied []byte
 	require.Eventually(t, func() bool {
 		failure, err := os.ReadFile(filepath.Join(control, "control-error"))
@@ -328,8 +327,18 @@ func TestActualSDKChildSchemaCatalog(t *testing.T) {
 		require.Len(t, catalog.Types, 1)
 		return catalog.Types[0]
 	}
+	schemaRequest := func(route resource.AccessRoute) resource.SchemaRequest {
+		typ := catalogType(route)
+		for _, representation := range typ.Representations {
+			if representation.ID == typ.DefaultRepresentation {
+				return resource.SchemaRequest{Route: route, Type: typ.Type, Target: resource.SchemaTarget{Representation: new(representation)}}
+			}
+		}
+		t.Fatal("default representation is not declared")
+		return resource.SchemaRequest{}
+	}
 	fields := func(route resource.AccessRoute, path ...resourcecatalog.PathSegment) SchemaFieldsResult {
-		result, err := ctrl.GetSchemaFields(ctx, nativeChildPluginID, SchemaFieldsRequest{Route: route, Type: catalogType(route).Type, Path: path})
+		result, err := ctrl.GetSchemaFields(ctx, nativeChildPluginID, SchemaFieldsRequest{Request: schemaRequest(route), Path: path})
 		require.NoError(t, err)
 		// P44 declares no native filtering or native query capability.
 		assert.Empty(t, result.Overlay.NativeQueryLanguages)
@@ -338,30 +347,13 @@ func TestActualSDKChildSchemaCatalog(t *testing.T) {
 		}
 		return result
 	}
-	associations := func(route resource.AccessRoute) []EditorSchemaAssociation {
-		out, err := ctrl.GetEditorSchemas(ctx, nativeChildPluginID, route)
+	catalogAssociation := func(route resource.AccessRoute) EditorSchemaResult {
+		request := schemaRequest(route)
+		out, err := ctrl.ResolveEditorSchema(ctx, nativeChildPluginID, request)
 		require.NoError(t, err)
-		typ := catalogType(route)
-		for _, association := range out {
-			// Associations derive only from representation schemas, never
-			// from action or native-query input schemas.
-			if association.Type != "" {
-				assert.Equal(t, typ.Type, association.Type)
-				if association.Key == "" {
-					assert.Equal(t, typ.DefaultRepresentation, association.Representation)
-				}
-			}
-		}
+		assert.Equal(t, request.Type, out.Type)
+		assert.Equal(t, request.Target, out.Target, "action/query schemas never replace the selected body-format target")
 		return out
-	}
-	catalogAssociation := func(route resource.AccessRoute) EditorSchemaAssociation {
-		for _, association := range associations(route) {
-			if association.Type != "" && association.Key == "" {
-				return association
-			}
-		}
-		require.FailNow(t, "no catalog association", route.Connection)
-		return EditorSchemaAssociation{}
 	}
 	fieldNames := func(result SchemaFieldsResult) []string {
 		names := make([]string, 0, len(result.Fields))
@@ -379,15 +371,16 @@ func TestActualSDKChildSchemaCatalog(t *testing.T) {
 	require.Equal(t, "available", bundledAssociation.Status)
 
 	discovered := start("cloud-discovered-schema")
-	discoveredType := catalogType(discovered)
-	require.NotNil(t, discoveredType.Representations[0].Schema.DocumentRef, "discovered scenario delivers by reference")
+	discoveredBinding, err := ctrl.ResolveSchema(ctx, nativeChildPluginID, schemaRequest(discovered))
+	require.NoError(t, err)
+	require.NotNil(t, discoveredBinding.DocumentRef, "discovered scenario delivers by reference")
 	discoveredFields := fields(discovered)
 	assert.Equal(t, resourcecatalog.HostEvaluationSchemaChecked, discoveredFields.Overlay.HostEvaluation)
 	assert.Equal(t, fieldNames(bundledFields), fieldNames(discoveredFields))
-	raw, err := ctrl.GetSchemaDocument(ctx, nativeChildPluginID, discovered, *discoveredType.Representations[0].Schema.DocumentRef)
+	raw, err := ctrl.GetSchemaDocument(ctx, nativeChildPluginID, resource.SchemaDocumentRequest{Request: schemaRequest(discovered), Reference: *discoveredBinding.DocumentRef})
 	require.NoError(t, err)
 	assert.NotEmpty(t, raw.Document)
-	_, err = ctrl.GetSchemaDocument(ctx, nativeChildPluginID, discovered, resource.SchemaDocumentReference{ID: "conformance/unreferenced", Revision: "schema:opaque/1"})
+	_, err = ctrl.GetSchemaDocument(ctx, nativeChildPluginID, resource.SchemaDocumentRequest{Request: schemaRequest(discovered), Reference: resource.SchemaDocumentReference{ID: "conformance/unreferenced", Revision: "schema:opaque/1"}})
 	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
 
 	absent := start("cloud-absent-schema")
@@ -397,9 +390,8 @@ func TestActualSDKChildSchemaCatalog(t *testing.T) {
 	assert.Equal(t, "absent", catalogAssociation(absent).Status)
 
 	unavailable := start("cloud-unavailable-schema")
-	unavailableFields := fields(unavailable)
-	assert.Equal(t, resourcecatalog.HostEvaluationUnavailable, unavailableFields.Overlay.HostEvaluation)
-	assert.Equal(t, "FORBIDDEN", unavailableFields.Overlay.HostEvaluationCode)
+	_, err = ctrl.GetSchemaFields(ctx, nativeChildPluginID, SchemaFieldsRequest{Request: schemaRequest(unavailable)})
+	assert.Equal(t, "FORBIDDEN", requireAppError(t, err).Code, "schema denial cannot become typed field authority")
 	assert.Equal(t, "unavailable", catalogAssociation(unavailable).Status)
 
 	unsupported := start("container-unsupported-dialect")
@@ -408,15 +400,16 @@ func TestActualSDKChildSchemaCatalog(t *testing.T) {
 	assert.Equal(t, "UNSUPPORTED", unsupportedFields.Overlay.HostEvaluationCode)
 	assert.Equal(t, "unsupported", catalogAssociation(unsupported).Status)
 
-	// A rendered document is served only to connections that reference it.
-	_, err = ctrl.GetEditorSchemaDocument(ctx, nativeChildPluginID, absent, bundledAssociation.DocumentID)
-	assert.Equal(t, "NOT_FOUND", requireAppError(t, err).Code)
-	rendered, err := ctrl.GetEditorSchemaDocument(ctx, nativeChildPluginID, bundled, bundledAssociation.DocumentID)
-	require.NoError(t, err)
-	assert.True(t, json.Valid(rendered.Schema))
+	// Unavailable/absent targets never recover a document by another target's digest.
+	assert.Nil(t, catalogAssociation(absent).Document)
+	require.NotNil(t, bundledAssociation.Document)
+	assert.True(t, json.Valid(bundledAssociation.Document.Schema))
 
 	hypervisor := start("hypervisor-openapi-vms")
-	hypervisorType := catalogType(hypervisor)
+	hypervisorCatalog, err := ctrl.Catalog(ctx, nativeChildPluginID, resource.CatalogRequest{Route: hypervisor})
+	require.NoError(t, err)
+	require.Len(t, hypervisorCatalog.Types, 1)
+	hypervisorType := hypervisorCatalog.Types[0]
 	placement := fields(hypervisor, resourcecatalog.PathSegment{Kind: "field", Name: "placement"})
 	byName := map[string]resourcecatalog.FieldInfo{}
 	for _, field := range placement.Fields {
@@ -431,11 +424,14 @@ func TestActualSDKChildSchemaCatalog(t *testing.T) {
 	assert.NotEqual(t, byName["sizeGiB"].Conditions[0].Branch, byName["cores"].Conditions[0].Branch)
 
 	schemas := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
-	snapshot := schemas.Observe(resourcecatalog.ConnectionKey{PluginID: nativeChildPluginID, Connection: hypervisor.Connection}, resource.Catalog{Provider: "hypervisor", Revision: "r", Types: []resource.ResourceType{hypervisorType}})
+	snapshot := schemas.Observe(resourcecatalog.ConnectionKey{PluginID: nativeChildPluginID, Connection: hypervisor.Connection}, hypervisorCatalog)
 	entry, err := snapshot.Entry(hypervisorType.Type, hypervisorType.DefaultRepresentation)
 	require.NoError(t, err)
-	schema, err := entry.Resolve(ctx, nil)
+	schemaCtx := resource.WithCatalogRevisionForRoute(ctx, hypervisorCatalog.Provider, hypervisor, hypervisorCatalog.Revision)
+	resolution, err := entry.Resolve(schemaCtx, schemaBindingSource(provider), schemaDocumentSource(provider, hypervisor))
 	require.NoError(t, err)
+	require.NotNil(t, resolution.Schema)
+	schema := resolution.Schema
 	nodes := []string{"node/a::1", "node/b::1"}
 	target, err := ctrl.ResolveTarget(ctx, nativeChildPluginID, ResolveTargetRequest{Route: hypervisor, Type: hypervisorType.Type, Representation: hypervisorType.DefaultRepresentation,
 		Scope: resource.QueryScope{{Dimension: "node", Match: resource.ScopeOneOf, Values: &nodes}}})

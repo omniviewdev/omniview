@@ -2,6 +2,7 @@ package graph
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/tidwall/gjson"
 )
@@ -82,7 +83,7 @@ func parseLabelMap(result gjson.Result) labelSelector {
 		return sel
 	}
 	result.ForEach(func(key, value gjson.Result) bool {
-		sel.matchLabels[key.String()] = value.String()
+		sel.matchLabels[strings.Clone(key.String())] = strings.Clone(value.String())
 		return true
 	})
 	return sel
@@ -99,19 +100,19 @@ func parseLabelSelectorObject(result gjson.Result) (labelSelector, bool) {
 	}
 
 	result.Get("matchLabels").ForEach(func(key, value gjson.Result) bool {
-		sel.matchLabels[key.String()] = value.String()
+		sel.matchLabels[strings.Clone(key.String())] = strings.Clone(value.String())
 		return true
 	})
 
 	valid := true
 	result.Get("matchExpressions").ForEach(func(_, expr gjson.Result) bool {
 		req := selectorRequirement{
-			key:      expr.Get("key").String(),
-			operator: expr.Get("operator").String(),
+			key:      strings.Clone(expr.Get("key").String()),
+			operator: strings.Clone(expr.Get("operator").String()),
 			values:   nil,
 		}
 		expr.Get("values").ForEach(func(_, v gjson.Result) bool {
-			req.values = append(req.values, v.String())
+			req.values = append(req.values, strings.Clone(v.String()))
 			return true
 		})
 

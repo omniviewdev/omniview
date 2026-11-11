@@ -2,154 +2,169 @@ package resource
 
 import (
 	"context"
+	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 )
 
-// GraphService exposes observed relationships and rejects incomplete whole results.
+// GraphService owns finite and mounted demand over the same admitted projection.
+// No process-global graph or another owner's retained bodies answer these reads.
 type GraphService struct {
-	graph             *graph.RelationshipGraph
+	ctrl              *controller
 	realm             invocation.ContextScope
 	boundary          *invocation.Boundary
 	validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error
+	mu                sync.Mutex
+	observations      map[graphObservationKey]*graphObservation
+	closed            map[graphObservationKey]struct{}
+	windows           map[invocation.WindowIdentity]*graphWindow
 }
 
-func NewGraphService(g *graph.RelationshipGraph, realm invocation.ContextScope, boundary *invocation.Boundary, validateReference func(context.Context, string, resourcev2.AccessRoute, resourcev2.ResourceReference) error) *GraphService {
-	return &GraphService{graph: g, realm: realm, boundary: boundary, validateReference: validateReference}
+func NewGraphService(ctrl Controller, realm invocation.ContextScope, boundary *invocation.Boundary) *GraphService {
+	implementation, _ := ctrl.(*controller)
+	return &GraphService{ctrl: implementation, realm: realm, boundary: boundary, validateReference: ctrl.ValidateReference, observations: make(map[graphObservationKey]*graphObservation), closed: make(map[graphObservationKey]struct{})}
 }
 
-func (s *GraphService) GetRelated(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, direction string, relType *string) (_result []graph.GraphEdge, retErr error) {
+type graphQueryResult struct {
+	HostGraphObservationSnapshot
+	truncated bool
+}
+
+func (s *GraphService) finite(ctx context.Context, request HostGraphObservationRequest, relatedLimit int) (_ graphQueryResult, retErr error) {
+	operation, err := request.operation()
+	if err != nil {
+		return graphQueryResult{}, err
+	}
 	ctx, end := h3StartOperation(
 		ctx,
-		"graph.GetRelated",
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", route.Connection),
-		attribute.String("resource_type", reference.Address.Type),
-		attribute.String("resource_id", reference.Address.ID),
+		operation,
+		attribute.String("plugin_id", request.PluginID),
+		attribute.String("connection_id", request.Route.Connection),
+		attribute.String("resource_type", request.Reference.Address.Type),
+		attribute.String("resource_id", request.Reference.Address.ID),
 	)
 	defer end(&retErr)
-	ctx, err := s.admit(ctx, "graph.GetRelated", pluginID, reference, route)
+	ctx, err = s.admit(ctx, operation, request.PluginID, request.Reference, request.Route)
 	if err != nil {
-		return nil, err
+		return graphQueryResult{}, err
 	}
 	defer finishResource(ctx, &retErr)
-	var dir graph.Direction
-	switch direction {
-	case "outgoing":
-		dir = graph.Outgoing
-	case "incoming":
-		dir = graph.Incoming
-	case "both":
-		dir = graph.Both
-	default:
-		return nil, apperror.New(apperror.TypeValidation, 400, "Invalid direction", "Direction must be outgoing, incoming, or both.")
-	}
-	var rt *graph.RelationshipType
-	if relType != nil {
-		t := graph.RelationshipType(*relType)
-		rt = &t
-	}
-	edges, err := s.graph.GetRelated(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, dir, rt)
+	demand, err := s.newDemand(ctx, request)
 	if err != nil {
-		return nil, err
+		return graphQueryResult{}, err
 	}
-	output := s.outputAdmission(ctx, "graph.GetRelated")
-	if err := output.edges(edges); err != nil {
-		return nil, err
-	}
-	return edges, nil
+	defer demand.close()
+	demand.relatedLimit = relatedLimit
+	return demand.evaluate(ctx)
 }
 
-func (s *GraphService) GetRelationshipChain(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, relType string, maxDepth int) (_result [][]graph.GraphEdge, retErr error) {
-	ctx, end := h3StartOperation(
-		ctx,
-		"graph.GetRelationshipChain",
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", route.Connection),
-		attribute.String("resource_type", reference.Address.Type),
-		attribute.String("resource_id", reference.Address.ID),
-	)
-	defer end(&retErr)
-	ctx, err := s.admit(ctx, "graph.GetRelationshipChain", pluginID, reference, route)
-	if err != nil {
-		return nil, err
+func (s *GraphService) GetRelated(ctx context.Context, request graph.RelatedRequest) (graph.RelatedResult, error) {
+	if request.Limit < 0 || request.Limit > maxGraphResultItems {
+		return graph.RelatedResult{}, resourcev2.NewError("INVALID_REQUEST", "Graph related limit must be between zero and 10000.")
 	}
-	defer finishResource(ctx, &retErr)
-	chain, err := s.graph.GetRelationshipChain(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, graph.RelationshipType(relType), maxDepth)
+	result, err := s.finite(ctx, HostGraphObservationRequest{PluginID: request.PluginID, Reference: request.Reference, Route: request.Route, Kind: "related", Direction: request.Direction, RelationshipType: request.RelationshipType}, request.Limit)
 	if err != nil {
-		return nil, err
+		return graph.RelatedResult{}, err
 	}
-	output := s.outputAdmission(ctx, "graph.GetRelationshipChain")
-	for _, edges := range chain {
-		if err := output.edges(edges); err != nil {
-			return nil, err
+	return graph.RelatedResult{Edges: result.Edges, Truncated: result.truncated}, nil
+}
+
+func (s *GraphService) GetRelationshipChain(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, relType string, maxDepth int) ([][]graph.GraphEdge, error) {
+	result, err := s.finite(ctx, HostGraphObservationRequest{PluginID: pluginID, Reference: reference, Route: route, Kind: "chain", RelationshipType: &relType, MaxDepth: maxDepth}, 0)
+	return result.Chain, err
+}
+
+func (s *GraphService) GetDependencyTree(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, maxDepth int) (*graph.DependencyTree, error) {
+	result, err := s.finite(ctx, HostGraphObservationRequest{PluginID: pluginID, Reference: reference, Route: route, Kind: "tree", MaxDepth: maxDepth}, 0)
+	return result.Tree, err
+}
+
+func (s *GraphService) GetSubgraph(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, upDepth, downDepth int) (*graph.Subgraph, error) {
+	result, err := s.finite(ctx, HostGraphObservationRequest{PluginID: pluginID, Reference: reference, Route: route, Kind: "subgraph", UpDepth: upDepth, DownDepth: downDepth}, 0)
+	return result.Subgraph, err
+}
+
+func (s *GraphService) graphResult(ctx context.Context, g *graph.RelationshipGraph, request HostGraphObservationRequest, relatedLimit int) (graphQueryResult, error) {
+	result := graphQueryResult{HostGraphObservationSnapshot: HostGraphObservationSnapshot{State: "ready"}}
+	root := graph.GraphNode{PluginID: request.PluginID, Reference: request.Reference, Route: request.Route}
+	operation, err := request.operation()
+	if err != nil {
+		return graphQueryResult{}, err
+	}
+	checkedLimit := 2*maxGraphResultItems + 1
+	if relatedLimit > 0 {
+		checkedLimit = relatedLimit + 1
+	}
+	// One fresh sequential citation pass, never retained across deliveries.
+	ctx = context.WithValue(ctx, admissionBatchContextKey{}, &admissionBatch{})
+	output := graphOutputAdmission{service: s, ctx: ctx, operation: operation, checked: make(map[graphCitation]struct{}), checkedLimit: checkedLimit}
+	if err := g.CheckComplete(root.PluginID, root.Route); err != nil {
+		return graphQueryResult{}, err
+	}
+	if err := output.node(root); err != nil {
+		return graphQueryResult{}, err
+	}
+	switch request.Kind {
+	case "related":
+		direction := graph.Outgoing
+		if request.Direction == "incoming" {
+			direction = graph.Incoming
+		} else if request.Direction == "both" {
+			direction = graph.Both
+		}
+		var relType *graph.RelationshipType
+		if request.RelationshipType != nil {
+			value := graph.RelationshipType(*request.RelationshipType)
+			relType = &value
+		}
+		var related graph.RelatedResult
+		related, err = g.QueryRelated(root, direction, relType, relatedLimit, func(edge graph.GraphEdge) error {
+			if err := output.node(edge.Source); err != nil {
+				return err
+			}
+			return output.node(edge.Target)
+		})
+		result.Edges, result.truncated = related.Edges, related.Truncated
+	case "chain":
+		result.Chain, err = g.GetRelationshipChain(root, graph.RelationshipType(*request.RelationshipType), request.MaxDepth)
+		if err == nil {
+			for _, edges := range result.Chain {
+				if err = output.edges(edges); err != nil {
+					break
+				}
+			}
+		}
+	case "tree":
+		result.Tree, err = g.GetDependencyTree(root, request.MaxDepth)
+		if err == nil {
+			err = output.node(result.Tree.Root)
+		}
+		if err == nil {
+			err = output.dependencies(result.Tree.Children)
+		}
+	case "subgraph":
+		result.Subgraph = g.GetSubgraph(root, request.UpDepth, request.DownDepth)
+		if result.Subgraph.Truncated {
+			return graphQueryResult{}, resourcev2.NewError("RESOURCE_LIMIT", "Graph subgraph limit reached.")
+		}
+		if err = output.node(result.Subgraph.Root); err == nil {
+			for _, node := range result.Subgraph.Nodes {
+				if err = output.node(node.Node); err != nil {
+					break
+				}
+			}
+		}
+		if err == nil {
+			err = output.edges(result.Subgraph.Edges)
 		}
 	}
-	return chain, nil
-}
-
-func (s *GraphService) GetDependencyTree(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, maxDepth int) (_result *graph.DependencyTree, retErr error) {
-	ctx, end := h3StartOperation(
-		ctx,
-		"graph.GetDependencyTree",
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", route.Connection),
-		attribute.String("resource_type", reference.Address.Type),
-		attribute.String("resource_id", reference.Address.ID),
-	)
-	defer end(&retErr)
-	ctx, err := s.admit(ctx, "graph.GetDependencyTree", pluginID, reference, route)
 	if err != nil {
-		return nil, err
-	}
-	defer finishResource(ctx, &retErr)
-	tree, err := s.graph.GetDependencyTree(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, maxDepth)
-	if err != nil {
-		return nil, err
-	}
-	output := s.outputAdmission(ctx, "graph.GetDependencyTree")
-	if err := output.node(tree.Root); err != nil {
-		return nil, err
-	}
-	if err := output.dependencies(tree.Children); err != nil {
-		return nil, err
-	}
-	return tree, nil
-}
-
-func (s *GraphService) GetSubgraph(ctx context.Context, pluginID string, reference resourcev2.ResourceReference, route resourcev2.AccessRoute, upDepth, downDepth int) (_result *graph.Subgraph, retErr error) {
-	ctx, end := h3StartOperation(
-		ctx,
-		"graph.GetSubgraph",
-		attribute.String("plugin_id", pluginID),
-		attribute.String("connection_id", route.Connection),
-		attribute.String("resource_type", reference.Address.Type),
-		attribute.String("resource_id", reference.Address.ID),
-	)
-	defer end(&retErr)
-	ctx, err := s.admit(ctx, "graph.GetSubgraph", pluginID, reference, route)
-	if err != nil {
-		return nil, err
-	}
-	defer finishResource(ctx, &retErr)
-	result := s.graph.GetSubgraph(graph.GraphNode{PluginID: pluginID, Reference: reference, Route: route}, upDepth, downDepth)
-	output := s.outputAdmission(ctx, "graph.GetSubgraph")
-	if err := output.node(result.Root); err != nil {
-		return nil, err
-	}
-	for _, node := range result.Nodes {
-		if err := output.node(node.Node); err != nil {
-			return nil, err
-		}
-	}
-	if err := output.edges(result.Edges); err != nil {
-		return nil, err
+		return graphQueryResult{}, err
 	}
 	return result, nil
 }
@@ -175,53 +190,40 @@ func (s *GraphService) admit(ctx context.Context, operation, pluginID string, re
 	if err := s.validateReference(admitted, pluginID, route, reference); err != nil {
 		return admitted, err
 	}
-	if err := s.graph.CheckComplete(pluginID, route); err != nil {
-		return admitted, err
-	}
 	return admitted, nil
 }
 
-// A citation retains its original provider provenance and access route. Address
-// identity alone is insufficient to cache admission across route aliases or
-// known/unknown incarnations.
 type graphCitation struct {
-	pluginID         string
-	connection       string
-	addressKey       string
-	incarnation      string
-	incarnationKnown bool
+	pluginID, connection, addressKey, incarnation string
+	incarnationKnown                              bool
 }
 
 type graphOutputAdmission struct {
-	service   *GraphService
-	ctx       context.Context
-	operation string
-	checked   map[graphCitation]struct{}
-}
-
-func (s *GraphService) outputAdmission(ctx context.Context, operation string) graphOutputAdmission {
-	return graphOutputAdmission{service: s, ctx: ctx, operation: operation, checked: make(map[graphCitation]struct{})}
+	service      *GraphService
+	ctx          context.Context
+	operation    string
+	checked      map[graphCitation]struct{}
+	checkedLimit int
 }
 
 func (a *graphOutputAdmission) node(node graph.GraphNode) error {
-	addressKey, err := registry.CanonicalAddressKey(node.Reference.Address)
+	key, err := registry.CanonicalAddressKey(node.Reference.Address)
 	if err != nil {
 		return err
 	}
-	citation := graphCitation{pluginID: node.PluginID, connection: node.Route.Connection, addressKey: addressKey}
+	citation := graphCitation{pluginID: node.PluginID, connection: node.Route.Connection, addressKey: key}
 	if node.Reference.Incarnation != nil {
-		citation.incarnationKnown = true
-		citation.incarnation = *node.Reference.Incarnation
+		citation.incarnationKnown, citation.incarnation = true, *node.Reference.Incarnation
 	}
-	if _, ok := a.checked[citation]; ok {
+	if _, checked := a.checked[citation]; checked {
 		return nil
 	}
-	// Resolve the cited target's own route/type against the current host catalog.
-	// Never replace its authority with the root's authority or silently omit it.
 	if _, err := a.service.admit(a.ctx, a.operation, node.PluginID, node.Reference, node.Route); err != nil {
 		return err
 	}
-	a.checked[citation] = struct{}{}
+	if len(a.checked) < a.checkedLimit {
+		a.checked[citation] = struct{}{}
+	}
 	return nil
 }
 

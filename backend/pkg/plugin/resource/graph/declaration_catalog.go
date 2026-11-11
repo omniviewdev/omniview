@@ -68,7 +68,6 @@ func (g *RelationshipGraph) ObserveDeclarationCatalog(plugin string, route resou
 		delete(g.declarationProblems, key)
 	}
 	g.declarationCatalogs[ref] = declarationCatalog{revision: catalogRevision, sourceEpoch: sourceEpoch, types: membership}
-	g.markChanged(plugin, route.Connection)
 }
 
 // sourceTypeExcluded is called with g.mu held. Unknown catalogs retain explicit

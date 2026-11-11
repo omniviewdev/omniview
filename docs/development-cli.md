@@ -484,9 +484,9 @@ is cloned, fetched or added automatically, and consumer Go files are never
 edited. `--reviewed-sdk-revision` stays removed.
 
 Published mode accepts a released tag at or above the controller's own pinned
-SDK (`devsdk.FloorVersion`, currently `v0.19.3`) whose module checksum and go.mod
+SDK (`devsdk.FloorVersion`, currently `v0.20.0`) whose module checksum and go.mod
 checksum equal a row of the controller's compiled-in reviewed-release table. The
-table is append-only and retains `v0.17.0`, `v0.18.0`, `v0.19.0` and `v0.19.2`;
+table is append-only and retains `v0.17.0`, `v0.18.0`, `v0.19.0`, `v0.19.2` and `v0.19.3`;
 the current pin's row equals the controller's own `go.sum` lines. A branch's own `go.sum`
 cannot attest itself: it must agree with a
 row the controller already reviewed. An unknown version or a different checksum

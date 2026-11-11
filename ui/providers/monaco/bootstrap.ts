@@ -33,7 +33,7 @@ window.MonacoEnvironment = {
 
 // Store the MonacoYaml handle for dynamic schema updates
 export const monacoYaml = configureMonacoYaml(monaco, {
-  enableSchemaRequest: true,
+  enableSchemaRequest: false,
   schemas: [],
 });
 // The shared editor package uses this guard for its own Monaco setup.

@@ -10,7 +10,7 @@ export type Feature =
   | 'connectionOverlay'
   | 'scopeValues'
   | 'presentation'
-  | 'editorSchemas'
+  | 'schemaResolver'
   | 'schemaDocuments'
   | 'relationships'
   | 'health'

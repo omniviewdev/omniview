@@ -264,16 +264,21 @@ export class ActivityProgress {
 export type Catalog = any;
 
 /**
- * CatalogRequest discovers support through one explicit access route. Discovery
- * does not start a connection or grant authority over the returned types.
+ * CatalogRequest observes support through one explicit access route. Refresh
+ * requests eligible native discovery; ordinary observation performs no native
+ * discovery or schema acquisition and never starts a connection.
  */
 export class CatalogRequest {
     "route": AccessRoute;
+    "refresh": boolean;
 
     /** Creates a new CatalogRequest instance. */
     constructor($$source: Partial<CatalogRequest> = {}) {
         if (!("route" in $$source)) {
             this["route"] = (new AccessRoute());
+        }
+        if (!("refresh" in $$source)) {
+            this["refresh"] = false;
         }
 
         Object.assign(this, $$source);
@@ -603,9 +608,9 @@ export enum Feature {
     FeaturePresentation = "presentation",
 
     /**
-     * FeatureEditorSchemas enables editor schema bindings.
+     * FeatureSchemaResolver enables targeted schema resolution.
      */
-    FeatureEditorSchemas = "editorSchemas",
+    FeatureSchemaResolver = "schemaResolver",
 
     /**
      * FeatureSchemaDocuments enables acquisition of shared schema documents.
@@ -1136,13 +1141,12 @@ export enum RelationshipType {
 };
 
 /**
- * Representation declares a body format and its schema observation. Revision
- * tracks that format's contract, independently of record or catalog revisions.
+ * Representation identifies one body format. Revision tracks that format's
+ * contract independently of schema observations, records, and catalogs.
  */
 export class Representation {
     "id": string;
     "revision": string;
-    "schema": SchemaBinding;
 
     /** Creates a new Representation instance. */
     constructor($$source: Partial<Representation> = {}) {
@@ -1151,9 +1155,6 @@ export class Representation {
         }
         if (!("revision" in $$source)) {
             this["revision"] = "";
-        }
-        if (!("schema" in $$source)) {
-            this["schema"] = null;
         }
 
         Object.assign(this, $$source);
@@ -1606,7 +1607,7 @@ export class SchemaDocument {
 }
 
 /**
- * SchemaDocumentReference shares one bounded raw document across catalog roots.
+ * SchemaDocumentReference names one exact bounded document held for a demanded target.
  */
 export class SchemaDocumentReference {
     "id": string;
@@ -1632,6 +1633,28 @@ export class SchemaDocumentReference {
         return new SchemaDocumentReference($$parsedSource as Partial<SchemaDocumentReference>);
     }
 }
+
+/**
+ * SchemaDocumentRequest qualifies an exact document reference with its demanded
+ * target. Consumers independently admit current access and the resolved binding;
+ * document identity or shared content alone is not an authorization grant.
+ */
+export type SchemaDocumentRequest = any;
+
+/**
+ * SchemaRequest asks for one schema under an explicitly admitted route and type.
+ * The auxiliary reference must have exactly the requested type. A representation
+ * target requires an explicit format ID and revision, never an inferred default.
+ * Successful resolution does not grant access to the referenced document.
+ */
+export type SchemaRequest = any;
+
+/**
+ * SchemaTarget selects exactly one current representation or auxiliary resource
+ * schema. Callers resolve default representations before constructing a target.
+ * Nested references and pointers are borrowed for the duration of resolution.
+ */
+export type SchemaTarget = any;
 
 /**
  * ScopeEntry is one literal identity dimension, not a query constraint.

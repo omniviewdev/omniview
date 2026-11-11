@@ -68,15 +68,20 @@ func (s *laneService) GetResourceEvents(
 }
 
 type fakeGraphReader struct {
-	calls int
-	edges []graph.GraphEdge
+	calls   int
+	edges   []graph.GraphEdge
+	request graph.RelatedRequest
 }
 
-func (g *fakeGraphReader) GetRelated(
-	context.Context, string, resourcev2.ResourceReference, resourcev2.AccessRoute, string, *string,
-) ([]graph.GraphEdge, error) {
+func (g *fakeGraphReader) GetRelated(_ context.Context, request graph.RelatedRequest) (graph.RelatedResult, error) {
 	g.calls++
-	return g.edges, nil
+	g.request = request
+	edges := g.edges
+	truncated := request.Limit > 0 && len(edges) > request.Limit
+	if truncated {
+		edges = edges[:request.Limit]
+	}
+	return graph.RelatedResult{Edges: edges, Truncated: truncated}, nil
 }
 
 type fakeMetricReader struct {
@@ -203,6 +208,8 @@ func TestRouteLanesAreOnePerRouteAndBindAdvertisedTypes(t *testing.T) {
 	_, err = laneCall(t, service, related, args)
 	require.NoError(t, err)
 	require.Equal(t, 1, graphReader.calls)
+	require.Equal(t, 1000, graphReader.request.Limit)
+	require.Equal(t, "both", graphReader.request.Direction)
 	for _, count := range []int{1000, 1001} {
 		graphReader.edges = make([]graph.GraphEdge, count)
 		result, err = laneCall(t, service, related, args)

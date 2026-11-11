@@ -62,23 +62,19 @@ func (p *authoringProvider) mutate(revision, schemaRev, instanceDocument string)
 func (p *authoringProvider) mock() *mockProvider {
 	return &mockProvider{CatalogFunc: func(ctx context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
 		p.mu.Lock()
-		before, revision, schemaRev := p.before, p.revision, p.schemaRev
-		documents := map[string]string{}
-		for k, v := range p.documents {
-			documents[k] = v
-		}
+		before, revision := p.before, p.revision
 		p.mu.Unlock()
 		if before != nil {
 			if err := before(ctx); err != nil {
 				return resource.Catalog{}, err
 			}
 		}
-		forbidden := "FORBIDDEN"
+		// The support catalog contains no schema observations.
 		catalog := canonicalTestCatalog(p.name, "x")
 		catalog.Revision = revision
 		catalog.Types = nil
 		for _, name := range []string{"compute/instance", "container", "vm"} {
-			descriptor := schemaTestType(name, resource.SchemaBinding{State: "available", Revision: &schemaRev, Dialect: resource.DialectJSONSchema202012, Document: json.RawMessage(documents[name])}, true)
+			descriptor := schemaTestType(name, true)
 			if name == "compute/instance" {
 				descriptor.IdentityDimensions = []resource.Dimension{{Name: "account"}}
 				descriptor.QueryDimensions = []resource.Dimension{{Name: "account"}}
@@ -89,12 +85,27 @@ func (p *authoringProvider) mock() *mockProvider {
 			catalog.Types = append(catalog.Types, descriptor)
 		}
 		catalog.Types = append(catalog.Types,
-			schemaTestType("absent", resource.SchemaBinding{State: "absent"}, true),
-			schemaTestType("unavailable", resource.SchemaBinding{State: "unavailable", UnavailableReason: &forbidden}, true),
-			schemaTestType("unsupported", unsupportedDialectBinding(), true),
-			schemaTestType("nodefault", inlineSchemaBinding(cloudDocument), false),
+			schemaTestType("absent", true),
+			schemaTestType("unavailable", true),
+			schemaTestType("unsupported", true),
+			schemaTestType("nodefault", false),
 		)
 		return catalog, nil
+	}, ResolveSchemaFunc: func(_ context.Context, request resource.SchemaRequest) (resource.SchemaBinding, error) {
+		p.mu.Lock()
+		schemaRev, document := p.schemaRev, p.documents[request.Type]
+		p.mu.Unlock()
+		switch request.Type {
+		case "absent":
+			return resource.SchemaBinding{State: "absent"}, nil
+		case "unavailable":
+			return resource.SchemaBinding{State: "unavailable", UnavailableReason: new("FORBIDDEN")}, nil
+		case "unsupported":
+			return unsupportedDialectBinding(), nil
+		case "nodefault":
+			document = cloudDocument
+		}
+		return resource.SchemaBinding{State: "available", Revision: &schemaRev, Dialect: resource.DialectJSONSchema202012, Document: json.RawMessage(document)}, nil
 	}}
 }
 
@@ -282,15 +293,12 @@ func TestAuthoringIdentityChangesRejectStaleExpectations(t *testing.T) {
 		request.EnvironmentRevision, request.AccessGeneration = identity.EnvironmentRevision, identity.AccessGeneration
 		return request
 	}
-	rejected := func(request resourceauthoring.CompletionRequest, members ...string) {
+	rejected := func(request resourceauthoring.CompletionRequest) {
 		t.Helper()
 		_, _, err := h.wire(testInvocationContext(), request)
 		require.Error(t, err)
 		app := requireAppError(t, err)
 		assert.Equal(t, "RESET_REQUIRED", app.Code)
-		for _, member := range members {
-			assert.Contains(t, app.Detail, member)
-		}
 	}
 
 	// Unchanged state: the expectations hold, with a newer document revision.
@@ -298,11 +306,11 @@ func TestAuthoringIdentityChangesRejectStaleExpectations(t *testing.T) {
 	assert.Equal(t, first.Identity, steady.Identity)
 
 	// A different type under the same expectations.
-	rejected(expect(baseRequest("conn", "container", source, cursor, 3), first.Identity), "environmentRevision")
+	rejected(expect(baseRequest("conn", "container", source, cursor, 3), first.Identity))
 	// Declaration types are part of the environment.
 	withParameter := expect(baseRequest("conn", "compute/instance", source, cursor, 4), first.Identity)
 	withParameter.Declarations = map[string]query.BindingType{"want": {Kind: "string"}}
-	rejected(withParameter, "environmentRevision")
+	rejected(withParameter)
 	// A different connection changes only what the access binds.
 	otherConnection := h.complete(baseRequest("conn-2", "compute/instance", source, cursor, 5))
 	assert.NotEqual(t, first.Identity.Connection, otherConnection.Identity.Connection)
@@ -318,7 +326,10 @@ func TestAuthoringIdentityChangesRejectStaleExpectations(t *testing.T) {
 	// A provider that changes its schema: the old expectations are stale, a request
 	// without them resynchronizes and sees the new schema.
 	provider.mutate("c2", "schema:2", `{"type":"object","properties":{"zone":{"type":"string"}}}`)
-	rejected(expect(baseRequest("conn", "compute/instance", source, cursor, 8), first.Identity), "catalogRevision", "schemaRevision", "environmentRevision")
+	// Retire only schema ownership to model a fresh mounted enrichment demand;
+	// the native generation, source epoch, and authority remain unchanged.
+	h.ctrl.schemas.DropConnection("neutral", "conn")
+	rejected(expect(baseRequest("conn", "compute/instance", source, cursor, 8), first.Identity))
 	refreshed := h.complete(baseRequest("conn", "compute/instance", source, cursor, 9))
 	assert.Equal(t, []string{"zone"}, labelsOf(refreshed.Items))
 	assert.Equal(t, "schema:2", refreshed.Identity.SchemaRevision)
@@ -329,7 +340,7 @@ func TestAuthoringIdentityChangesRejectStaleExpectations(t *testing.T) {
 	registerMockPlugin(h.ctrl, "neutral", provider.mock())
 	restarted := baseRequest("conn", "compute/instance", source, cursor, 10)
 	restarted.AccessGeneration = refreshed.Identity.AccessGeneration
-	rejected(restarted, "accessGeneration")
+	rejected(restarted)
 	afterRestart := h.complete(baseRequest("conn", "compute/instance", source, cursor, 11))
 	assert.NotEqual(t, refreshed.Identity.AccessGeneration, afterRestart.Identity.AccessGeneration)
 

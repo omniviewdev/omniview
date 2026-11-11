@@ -4,6 +4,69 @@ Status: merged correction checks passed. The canonical Kubernetes pin awaits thi
 
 Issue: [omniview #85](https://github.com/omniviewdev/omniview/issues/85).
 
+## Targeted schema ownership cutover (2026-11-10)
+
+The coordinated architecture cutover supersedes schema-bearing support catalogs
+and bulk editor enumeration, not the P07/C04 safety guarantees. Operational
+representations identify only body format ID and revision. Optional
+`ResolveSchema` demand names one explicit representation or exact auxiliary
+resource/key/source revision. The existing host normalizer/store owns that target,
+coalesces its work, retains bounded exact-reference/dialect success associations,
+and revalidates demand after 30 seconds. Unrelated support observations preserve
+unchanged schema entries; schemas never rotate native/source/authority identity.
+
+The public editor boundary is one `ResolveEditorSchema(pluginID, SchemaRequest)`
+bundle. Public/broker raw-document reads require an independently admitted target
+whose current binding names the exact reference, plus final generation and access
+revalidation. A document digest is content identity, never a grant. Frontend model
+URIs exist before enrichment and remain independent of schema content/revisions.
+Field navigation and typed authoring reuse the same target observation; current
+schema-dependent privacy and typed claims still fail closed.
+
+Historical measurements and cohort proofs below remain historical. This cutover
+does not inherit their passing status or claim fresh checks, live-cluster results,
+UI continuity, memory improvement, or complete P07/C04 acceptance. The integration
+owner runs the targeted tests and coordinated source-cohort gates.
+
+### Packed source accounting
+
+Retained source ownership charges the encoded body and owned headers, metadata,
+canonical keys and member lifetime, not a decoded tree that is no longer stored.
+Decoded frames, protobuf construction and output scratch retain independent
+transient limits. No memory ceiling is raised to admit larger collections.
+
+Snapshot and change preflight computes each member's retained/transient costs
+once, before constructing keys or packed members. Bounded frame-local cost
+storage is consumed by packing, not retained as a cache. Whole-observation SDK
+validation, selected binding/authority/generation admission, atomic batch
+preflight and final encoded-body/header reservation checks remain mandatory.
+
+### Demand ownership and release readiness
+
+Source views and mounted graph observations own their admitted work. Optional
+relationships do not delay connection readiness or start browse-only population
+sources. Explicit provider `AcquireOnConnect` advertisements retain native
+connection-lifetime ownership; closing a browser owner releases only that owner's
+interests. Replaced source members keep old packed bodies and headers charged
+until the last snapshot, queued delivery or demanded graph projection releases
+them.
+
+The release integration uses resource wire 3 and host callback broker 2. Utilities
+remain independently wire 2 and the process protocol remains 1. The host requires
+published SDK `v0.20.0` and keeps the scoped grpc-go consumer replacement. The
+published-SDK policy still requires the real released module and go.mod checksum
+row; source-cohort builds do not establish that published-mode trust.
+
+Native acceptance remains separate from browser-server readiness. The prior
+browser capture had healthy native connection/source counts and completed Open
+and initial Sync RPCs, but no accepted initial frontend snapshot. The pinned Wails
+default server bridge provides no verified dispatcher/broadcaster readiness
+acknowledgement for the exact browser client. Native runtime readiness, HTTP
+readiness and logical window lookup do not prove that event-delivery boundary.
+This integration neither claims that stall is fixed nor substitutes retries,
+timers, longer limits or fallback native ownership. The earlier native test build
+predates current-main integration and is not release acceptance.
+
 ## Exact sources
 
 | Component | Actual merged revision |

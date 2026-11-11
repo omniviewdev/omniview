@@ -12,4 +12,7 @@ type Store interface {
 	DeleteByConnection(pluginID, connectionID string) []ResourceEntry
 	ScanByLabel(pluginID, connectionID, resourceType string, selector map[string]string) []ResourceEntry
 	ScanByResourceKey(pluginID, connectionID, resourceType string) []ResourceEntry
+	// VisitByResourceKey exposes immutable metadata only during the callback.
+	// Returning false stops the bounded caller's work; entries must not escape.
+	VisitByResourceKey(pluginID, connectionID, resourceType string, selector map[string]string, visit func(ResourceEntry) bool)
 }

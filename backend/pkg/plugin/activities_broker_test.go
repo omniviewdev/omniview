@@ -165,6 +165,9 @@ func TestActivityBrokerChildProcess(t *testing.T) {
 		GRPCServer: func(options []grpc.ServerOption) *grpc.Server {
 			return grpc.NewServer(append(options, grpc.UnaryInterceptor(func(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 				response, err := handler(ctx, request)
+				if metadata, ok := response.(*lifecyclepb.GetInfoResponse); ok && err == nil && mode == "host-wire1" {
+					metadata.HostConnectionsVersion = 1
+				}
 				if _, binding := request.(*activitypb.BindRequest); binding && err == nil && (mode == "late-unimplemented" || mode == "late-failure" || mode == "wrong-version") {
 					record, reportErr := implementation.binding.BeginTask(ctx, sdkactivity.Spec{Presentation: sdkactivity.Presentation{Title: "Accepted before negotiation failed"}})
 					if reportErr != nil {

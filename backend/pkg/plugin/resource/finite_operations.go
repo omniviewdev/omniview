@@ -187,7 +187,7 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
 		return _result, err
 	}
-	if err := c.observeRecord(ctx, pluginID, request.Route, record); err != nil {
+	if err := c.validateReference(ctx, pluginID, request.Route, record.Reference); err != nil {
 		return _result, err
 	}
 	principal, _ := invocation.FromContext(ctx)
@@ -195,8 +195,13 @@ func (c *controller) Get(ctx context.Context, pluginID string, input HostGetRequ
 	if err != nil {
 		return _result, err
 	}
-	if err := c.currentGeneration(ctx, pluginID, generation); err != nil {
+	c.pluginsMu.RLock()
+	defer c.pluginsMu.RUnlock()
+	if err := c.currentGenerationLocked(ctx, pluginID, generation); err != nil {
 		return _result, err
+	}
+	if !c.referenceCurrentLocked(pluginID, request.Route, record.Reference) {
+		return _result, resourcev2.NewError("RESET_REQUIRED", "Resource authority retired before delivery.")
 	}
 	telemetry.RecordResourceRecords(ctx, "get", 1)
 	return out, nil

@@ -519,13 +519,30 @@ func (g *BuildGraph) buildNode(ctx context.Context, n BuildNode) error {
 }
 
 func (g *BuildGraph) buildPluginBackend(ctx context.Context, n BuildNode) error {
-	before, err := g.verifySDK(ctx, n.Directory)
+	binary, identity, err := g.buildPluginBackendOutput(ctx, n)
 	if err != nil {
 		return err
 	}
+	// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
+	if err = g.recordArtifact(n.PluginID, binary, identity); err != nil {
+		return err
+	}
+	g.recordBuilt(n.ID, identity)
+	return nil
+}
+
+// buildPluginBackendOutput is the canonical native output producer. Its caller
+// must record the verified bytes before using them as a trusted artifact. A
+// stopped finite build may release its profile guard between output production
+// and recording; archive publication independently rechecks the SDK and ledgers.
+func (g *BuildGraph) buildPluginBackendOutput(ctx context.Context, n BuildNode) (string, devsdk.Identity, error) {
+	before, err := g.verifySDK(ctx, n.Directory)
+	if err != nil {
+		return "", before, err
+	}
 	prepared, err := PrepareGeneratedTree(g.workspace, "build/"+n.PluginID, g.options.Generation)
 	if err != nil {
-		return err
+		return "", before, err
 	}
 	stagedBinary := filepath.Join(prepared.Directory, "plugin")
 	args := []string{"build"}
@@ -535,26 +552,21 @@ func (g *BuildGraph) buildPluginBackend(ctx context.Context, n BuildNode) error 
 	}
 	_, buildErr := g.run(ctx, n.Directory, "go", append(args, "-o", stagedBinary, "./pkg")...)
 	if errors.Is(buildErr, errOwnedCommandUncertain) {
-		return errors.Join(buildErr, prepared.stageFile.Close())
+		return "", before, errors.Join(buildErr, prepared.stageFile.Close())
 	}
 	// Proven terminal failures may leave real controlled partial output.
 	// Unknown descendant lifetimes above retain the durable writing intent.
 	if err = errors.Join(buildErr, RecordGeneratedTree(prepared)); err != nil {
-		return err
+		return "", before, err
 	}
 	binary := filepath.Join(prepared.Destination, "plugin")
 	if err = g.verifyUnchangedSDK(ctx, n.Directory, before); err != nil {
-		return err
+		return "", before, err
 	}
 	if err = devsdk.VerifyBinary(g.consumerName(n.Directory), binary, before); err != nil {
-		return err
+		return "", before, err
 	}
-	// Trusted local rebuild binds binary bytes to the exact dirty source snapshot.
-	if err = g.recordArtifact(n.PluginID, binary, before); err != nil {
-		return err
-	}
-	g.recordBuilt(n.ID, before)
-	return nil
+	return binary, before, nil
 }
 
 func (g *BuildGraph) buildHostBackend(ctx context.Context, n BuildNode) error {
@@ -601,7 +613,7 @@ func (g *BuildGraph) recordFingerprinted(nodeID string, identity devsdk.Identity
 func (g *BuildGraph) recordArtifact(pluginID, binary string, sdk devsdk.Identity) error {
 	g.attestMu.Lock()
 	defer g.attestMu.Unlock()
-	if err := instance.RecordBuiltArtifact(g.workspace.ResolvedWorkspace, pluginID, binary, sdk); err != nil {
+	if err := instance.RecordBuiltArtifactAtHome(g.artifactHome(), g.workspace.ResolvedWorkspace, pluginID, binary, sdk); err != nil {
 		return err
 	}
 	if g.attested == nil {
@@ -609,6 +621,13 @@ func (g *BuildGraph) recordArtifact(pluginID, binary string, sdk devsdk.Identity
 	}
 	g.attested[pluginID] = sdk
 	return nil
+}
+
+func (g *BuildGraph) artifactHome() string {
+	if g.manager != nil {
+		return g.manager.options.Home
+	}
+	return ""
 }
 
 // attestedIdentity returns the SDK identity under which this graph recorded

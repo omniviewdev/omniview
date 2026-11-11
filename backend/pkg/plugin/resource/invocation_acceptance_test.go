@@ -36,13 +36,13 @@ func TestProviderDenialThroughRealGRPCDoesNotObserveResult(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "cloud", setupGRPCProvider(t, provider))
 	request := admittedGetRequest(t, ctrl, "cloud", "conn", "opaque", "secret")
-	_, err := ctrl.Get(testInvocationContext(), "cloud", request)
+	result, err := ctrl.Get(testInvocationContext(), "cloud", request)
 	var app *apperror.AppError
 	if !errors.As(err, &app) || app.Code != "FORBIDDEN" || app.RequestID == "" {
 		t.Fatalf("denial lost through transport: %v", err)
 	}
-	if _, found := ctrl.registryStore.Get("cloud", request.Request.Reference, request.Request.Route); found {
-		t.Fatal("denial populated registry")
+	if result.Key != "" || result.Record.Body.Kind != "" {
+		t.Fatal("denial exposed a native row or private body")
 	}
 }
 

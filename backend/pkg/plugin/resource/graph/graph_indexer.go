@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/tidwall/gjson"
 
@@ -17,8 +18,6 @@ type Indexer struct {
 func NewGraphIndexer(graph *RelationshipGraph, store registry.Store) *Indexer {
 	return &Indexer{graph: graph, store: store}
 }
-
-func (gi *Indexer) Name() string { return "relationship-graph" }
 
 func (gi *Indexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
 	gi.graph.RemoveDerivedEdges(entry.EntryKey())
@@ -83,8 +82,8 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 		gi.graph.unresolvedNode(nodeFromEntry(entry), "source declaration binding unavailable", snapshot)
 		return
 	}
-	// A queued observation outside the admitted source belongs to retired or
-	// unbound input, not to this declaration snapshot's coverage.
+	// A captured observation outside the admitted source belongs to retired
+	// or unbound input, not to this declaration snapshot's coverage.
 	if !bindingMatches(snapshot.bindings.Source, nodeFromEntry(entry)) {
 		return
 	}
@@ -143,7 +142,7 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 				break
 			}
 			seen[extractor.Dimension] = true
-			scope = append(scope, resource.ScopeEntry{Dimension: extractor.Dimension, Value: value.String()})
+			scope = append(scope, resource.ScopeEntry{Dimension: extractor.Dimension, Value: strings.Clone(value.String())})
 		}
 		if !valid || !exactScope(targetBinding, scope) || !queryScopeMatches(targetBinding.Target.Scope, scope) {
 			gi.graph.unresolvedNode(sourceNode, "target identity scope mapping incomplete", snapshot)
@@ -197,7 +196,7 @@ func (gi *Indexer) extractFieldPath(
 	for _, targetID := range targetIDs {
 		address := resource.ResourceAddress{
 			Provider: binding.Target.Provider, Authority: binding.Target.Authority,
-			Type: binding.Target.Type, Scope: decl.TargetScope, ID: targetID,
+			Type: binding.Target.Type, Scope: decl.TargetScope, ID: strings.Clone(targetID),
 		}
 		if err := resource.ValidateAddress(address, binding.IdentityDimensions); err != nil {
 			gi.graph.unresolvedNode(source, "target address is invalid", snapshot)
@@ -275,29 +274,18 @@ func (gi *Indexer) extractLabelSelector(
 
 	gi.graph.setSelector(source, decl, selector, binding, snapshot)
 
-	// Narrow candidates by the exact-match labels when there are any.
-	var candidates []registry.ResourceEntry
-	if len(selector.matchLabels) > 0 {
-		candidates = gi.store.ScanByLabel(
-			entry.PluginID, binding.Target.Route.Connection,
-			binding.Target.Type, selector.matchLabels,
-		)
-	} else {
-		candidates = gi.store.ScanByResourceKey(entry.PluginID, binding.Target.Route.Connection, binding.Target.Type)
-	}
-
-	for _, match := range candidates {
-		if !bindingMatches(binding, nodeFromEntry(match)) ||
-			!scopeMatches(decl.TargetScope, match.Reference.Address.Scope) || !selector.matches(match.Labels) {
-			continue
+	gi.store.VisitByResourceKey(entry.PluginID, binding.Target.Route.Connection, binding.Target.Type, selector.matchLabels, func(match registry.ResourceEntry) bool {
+		candidate := nodeFromEntry(match)
+		if !bindingMatches(binding, candidate) || !scopeMatches(decl.TargetScope, match.Reference.Address.Scope) || !selector.matches(match.Labels) {
+			return true
 		}
-		gi.graph.addBoundEdge(GraphEdge{
-			Source: source,
-			Target: nodeFromEntry(match),
-			Type:   decl.Type,
-			Label:  decl.Label,
-		}, source, true, snapshot)
-	}
+		edge := GraphEdge{Source: source, Target: candidate, Type: decl.Type, Label: decl.Label}
+		if decl.Direction == resource.EdgeIncoming {
+			edge.Source, edge.Target = edge.Target, edge.Source
+		}
+		gi.graph.addBoundEdge(edge, source, true, snapshot)
+		return gi.graph.CheckLimit() == nil
+	})
 }
 
 // CheckLabelSelectorsForEntry matches a newly added or updated entry against
@@ -317,13 +305,13 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 			continue
 		}
 
-		gi.graph.addBoundEdge(GraphEdge{
-			Source: selectorNode,
-			Target: entryNode,
-			Type:   cached.decl.Type,
-			Label:  cached.decl.Label,
-		}, selectorNode, true, cached.snapshot)
+		edge := GraphEdge{Source: selectorNode, Target: entryNode, Type: cached.decl.Type, Label: cached.decl.Label}
+		if cached.decl.Direction == resource.EdgeIncoming {
+			edge.Source, edge.Target = edge.Target, edge.Source
+		}
+		gi.graph.addBoundEdge(edge, selectorNode, true, cached.snapshot)
+		if gi.graph.CheckLimit() != nil {
+			return
+		}
 	}
 }
-
-var _ interface{ Name() string } = (*Indexer)(nil)

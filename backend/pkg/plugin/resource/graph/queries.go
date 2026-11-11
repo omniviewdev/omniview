@@ -1,127 +1,151 @@
 package graph
 
-// GetRelated returns edges connected to the given node, filtered by direction and type.
-func (g *RelationshipGraph) GetRelated(
-	ref GraphNode,
-	direction Direction,
-	relType *RelationshipType,
-) ([]GraphEdge, error) {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
+import resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 
-	var edges []GraphEdge
-	nodeKey := ref.Key()
-
-	if direction == Outgoing || direction == Both {
-		for _, e := range g.forward[nodeKey] {
-			if relType == nil || e.Type == *relType {
-				edges = append(edges, cloneEdge(e.GraphEdge))
-			}
-		}
-	}
-
-	if direction == Incoming || direction == Both {
-		for _, e := range g.reverse[nodeKey] {
-			if relType == nil || e.Type == *relType {
-				edges = append(edges, cloneEdge(e.GraphEdge))
-			}
-		}
-	}
-
-	return edges, nil
+// GetRelated is the whole-result form used by bounded traversal planning.
+func (g *RelationshipGraph) GetRelated(ref GraphNode, direction Direction, relType *RelationshipType) ([]GraphEdge, error) {
+	result, err := g.QueryRelated(ref, direction, relType, 0, nil)
+	return result.Edges, err
 }
 
-// GetRelationshipChain follows edges of a specific type up to maxDepth hops.
-// Returns edges organized by depth level. Uses BFS with visited-set cycle detection.
-func (g *RelationshipGraph) GetRelationshipChain(
-	ref GraphNode,
-	relType RelationshipType,
-	maxDepth int,
-) ([][]GraphEdge, error) {
+// QueryRelated materializes only the requested edges. Admission also visits
+// omitted matching citations, so truncation cannot hide a denied object. The
+// callback receives immutable graph metadata and must not modify this graph.
+func (g *RelationshipGraph) QueryRelated(ref GraphNode, direction Direction, relType *RelationshipType, limit int, admit func(GraphEdge) error) (RelatedResult, error) {
+	if limit < 0 || limit > MaxResultItems {
+		return RelatedResult{}, resource.NewError("INVALID_REQUEST", "Graph related limit must be between zero and 10000.")
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if g.limitErr != nil {
+		return RelatedResult{}, g.limitErr
+	}
+	result := RelatedResult{Edges: []GraphEdge{}}
+	budget := resultBudget{}
+	visit := func(edge GraphEdge) error {
+		if relType != nil && edge.Type != *relType {
+			return nil
+		}
+		if admit != nil {
+			if err := admit(edge); err != nil {
+				return err
+			}
+		}
+		if limit > 0 && len(result.Edges) >= limit {
+			result.Truncated = true
+			return nil
+		}
+		if err := budget.edge(edge); err != nil {
+			return err
+		}
+		result.Edges = append(result.Edges, cloneEdge(edge))
+		return nil
+	}
+	key := ref.Key()
+	if direction == Outgoing || direction == Both {
+		for _, edge := range g.forward[key] {
+			if err := visit(edge.GraphEdge); err != nil {
+				return RelatedResult{}, err
+			}
+		}
+	}
+	if direction == Incoming || direction == Both {
+		for _, edge := range g.reverse[key] {
+			if err := visit(edge.GraphEdge); err != nil {
+				return RelatedResult{}, err
+			}
+		}
+	}
+	return result, nil
+}
+
+// GetRelationshipChain follows one relationship type breadth-first. Both output
+// and visited/frontier storage are bounded before each new result is cloned.
+func (g *RelationshipGraph) GetRelationshipChain(ref GraphNode, relType RelationshipType, maxDepth int) ([][]GraphEdge, error) {
 	if maxDepth <= 0 {
 		return nil, nil
 	}
-
+	maxDepth = min(maxDepth, maxDependencyTreeDepth)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-
+	if g.limitErr != nil {
+		return nil, g.limitErr
+	}
 	var result [][]GraphEdge
 	visited := map[string]bool{ref.Key(): true}
 	frontier := []string{ref.Key()}
-
+	budget := resultBudget{}
 	for depth := 0; depth < maxDepth && len(frontier) > 0; depth++ {
 		var depthEdges []GraphEdge
-		var nextFrontier []string
-
-		for _, nodeKey := range frontier {
-			for _, e := range g.forward[nodeKey] {
-				if e.Type != relType {
+		var next []string
+		for _, key := range frontier {
+			for _, edge := range g.forward[key] {
+				if edge.Type != relType {
 					continue
 				}
-				tgtKey := e.Target.Key()
-				if visited[tgtKey] {
+				target := edge.Target.Key()
+				if visited[target] {
 					continue
 				}
-				visited[tgtKey] = true
-				depthEdges = append(depthEdges, cloneEdge(e.GraphEdge))
-				nextFrontier = append(nextFrontier, tgtKey)
+				if err := budget.edge(edge.GraphEdge); err != nil {
+					return nil, err
+				}
+				visited[target] = true
+				depthEdges = append(depthEdges, cloneEdge(edge.GraphEdge))
+				if depth+1 < maxDepth {
+					next = append(next, target)
+				}
 			}
 		}
-
 		if len(depthEdges) == 0 {
 			break
 		}
 		result = append(result, depthEdges)
-		frontier = nextFrontier
+		frontier = next
 	}
-
 	return result, nil
 }
 
-// maxDependencyTreeDepth caps GetDependencyTree's maxDepth to prevent explosion.
 const maxDependencyTreeDepth = 5
 
-// GetDependencyTree follows ALL outgoing edge types recursively from root.
-// maxDepth is capped at 5 to prevent explosion.
 func (g *RelationshipGraph) GetDependencyTree(ref GraphNode, maxDepth int) (*DependencyTree, error) {
-	if maxDepth > maxDependencyTreeDepth {
-		maxDepth = maxDependencyTreeDepth
-	}
-
+	maxDepth = min(maxDepth, maxDependencyTreeDepth)
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-
+	if g.limitErr != nil {
+		return nil, g.limitErr
+	}
+	budget := resultBudget{}
+	if err := budget.node(ref); err != nil {
+		return nil, err
+	}
 	visited := map[string]bool{ref.Key(): true}
-	children := g.buildChildren(ref.Key(), maxDepth, 0, visited)
-
-	return &DependencyTree{
-		Root:     cloneNode(ref),
-		Children: children,
-	}, nil
+	children, err := g.buildChildren(ref.Key(), maxDepth, 0, visited, &budget)
+	if err != nil {
+		return nil, err
+	}
+	return &DependencyTree{Root: cloneNode(ref), Children: children}, nil
 }
 
-func (g *RelationshipGraph) buildChildren(
-	nodeKey string,
-	maxDepth, currentDepth int,
-	visited map[string]bool,
-) []DependencyNode {
-	if currentDepth >= maxDepth {
-		return nil
+func (g *RelationshipGraph) buildChildren(key string, maxDepth, depth int, visited map[string]bool, budget *resultBudget) ([]DependencyNode, error) {
+	if depth >= maxDepth {
+		return nil, nil
 	}
-
 	var children []DependencyNode
-	for _, e := range g.forward[nodeKey] {
-		tgtKey := e.Target.Key()
-		if visited[tgtKey] {
+	for _, edge := range g.forward[key] {
+		target := edge.Target.Key()
+		if visited[target] {
 			continue
 		}
-		visited[tgtKey] = true
-
-		child := DependencyNode{
-			Edge:     cloneEdge(e.GraphEdge),
-			Children: g.buildChildren(tgtKey, maxDepth, currentDepth+1, visited),
+		if err := budget.edge(edge.GraphEdge); err != nil {
+			return nil, err
 		}
-		children = append(children, child)
+		visited[target] = true
+		nested, err := g.buildChildren(target, maxDepth, depth+1, visited, budget)
+		if err != nil {
+			return nil, err
+		}
+		children = append(children, DependencyNode{Edge: cloneEdge(edge.GraphEdge), Children: nested})
 	}
-	return children
+	return children, nil
 }

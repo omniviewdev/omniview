@@ -1,7 +1,10 @@
 /** Deterministic Kubernetes fixtures shaped like what the plugin backend returns. */
 import { emit, handleAll } from '../harness/backend';
 import { jsonToValue } from '@omniviewdev/runtime';
-import type { HostEnumerateRequest, HostSourceViewRequest, ResolveTargetRequest } from '@omniviewdev/runtime';
+import type {
+  EditorSchemaResult, HostEnumerateRequest, HostSourceViewRequest, Representation, ResolveTargetRequest,
+  SchemaBinding, SchemaDocumentRequest, SchemaFieldsRequest, SchemaFieldsResult, SchemaRequest,
+} from '@omniviewdev/runtime';
 import { BENCH_CONNECTION_ID } from './defaults';
 
 /** Small seeded PRNG (mulberry32) so every run sees the same data. */
@@ -170,13 +173,18 @@ export function servePods(initial: Pod[]): PodsFixture {
   const provider = 'kubernetes';
   const authority = `bench:${BENCH_CONNECTION_ID}`;
   const type = 'k8s:/pods';
-  const representation = {
-    id: 'kubernetes-json', revision: 'bench-1',
-    schema: { state: 'unavailable', unavailableReason: 'NOT_SUPPORTED' },
-  };
+  const representation: Representation = { id: 'kubernetes-json', revision: 'bench-1' };
   const coverage = { kind: 'complete', paths: [] };
   const count = { kind: 'exact', value: String(corpus.length) };
   const authorityDisclosure = { continuity: 'connectionLocal' as const, limitations: [] };
+  const schemaObservation = (pluginID: string, request: SchemaRequest) => {
+    const selected = request.target.representation;
+    if (pluginID !== provider || request.route.connection !== BENCH_CONNECTION_ID || request.type !== type
+      || request.target.auxiliary || selected?.id !== representation.id || selected.revision !== representation.revision) {
+      throw new Error('Unsupported benchmark schema target');
+    }
+    return { type, target: request.target, observation: 'bench-schema-1' };
+  };
   interface ViewState extends Omit<SourceViewStats, 'viewId'> { request: HostSourceViewRequest }
   const views = new Map<string, ViewState>();
   let nextView = 0;
@@ -292,6 +300,26 @@ export function servePods(initial: Pod[]): PodsFixture {
           ...(end < selected.length ? { nextCursor: String(end) } : {}),
         },
       };
+    },
+    // The fixture advertises a format, not a schema. Match a provider without an optional resolver.
+    'resource/servicewrapper.ResolveSchema': (pluginID: string, request: SchemaRequest): SchemaBinding => {
+      schemaObservation(pluginID, request);
+      return { state: 'unavailable', unavailableReason: 'UNSUPPORTED' };
+    },
+    'resource/servicewrapper.GetSchemaFields': (pluginID: string, { request }: SchemaFieldsRequest): SchemaFieldsResult => ({
+      ...schemaObservation(pluginID, request), schemaState: 'unavailable',
+      fields: [], truncated: false,
+      overlay: {
+        Operations: ['enumerate', 'sourceUpdates'], NativeQueryLanguages: [],
+        HostEvaluation: 'unsupported', HostEvaluationCode: 'UNSUPPORTED', Validation: 'none', Unvalidated: null,
+      },
+    }),
+    'resource/servicewrapper.ResolveEditorSchema': (pluginID: string, request: SchemaRequest): EditorSchemaResult => ({
+      ...schemaObservation(pluginID, request), status: 'unsupported', code: 'UNSUPPORTED',
+    }),
+    'resource/servicewrapper.GetSchemaDocument': (pluginID: string, { request }: SchemaDocumentRequest) => {
+      schemaObservation(pluginID, request);
+      throw Object.assign(new Error('Schema document is not referenced by the benchmark target.'), { code: 'NOT_FOUND' });
     },
     'resource/servicewrapper.ScopeValues': () => [...new Set(corpus.map((pod) => pod.metadata.namespace))],
     // The host's generic resource table builds its columns from this definition. The fixture's Pods

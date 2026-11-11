@@ -1,10 +1,6 @@
-import { skipToken, useQuery } from '@tanstack/react-query';
-import { GetSubgraph } from '../../resource/v2/graph-client';
 import type { AccessRoute, ResourceReference } from '../../resource/v2/domain';
 import { useResolvedPluginId } from '../useResolvedPluginId';
-import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
-import { useConnectionReadiness } from '../connection/useConnectionReadiness';
-import { useConnectionQueryGuard } from './useConnectionQueryGuard';
+import { useGraphObservation } from './useGraphObservation';
 
 type UseResourceGraphOptions = {
   /**
@@ -28,7 +24,7 @@ type UseResourceGraphOptions = {
    */
   downDepth?: number;
 
-  /** Whether to enable the query */
+  /** Whether to hold mounted graph demand. */
   enabled?: boolean;
 };
 
@@ -37,8 +33,8 @@ type UseResourceGraphOptions = {
  * every node reached within upDepth/downDepth hops, with its signed distance
  * from the root (negative upstream, positive downstream), and every edge
  * between them. Unlike useDependencyTree, a resource reached by several
- * paths keeps all of its edges. Refetches when the host reports a graph
- * change for the connection.
+ * paths keeps all of its edges. The host publishes complete snapshots while
+ * this request remains mounted.
  */
 export const useResourceGraph = ({
   pluginID: explicitPluginID,
@@ -50,26 +46,16 @@ export const useResourceGraph = ({
 }: UseResourceGraphOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
 
-  const queryKey = ['RESOURCE_GRAPH', pluginID, reference, route, upDepth, downDepth];
-  const readiness = useConnectionReadiness({ pluginID, connectionID: route.connection, enabled: enabled && !!reference.address.id });
-  const guardQuery = useConnectionQueryGuard(pluginID, route.connection);
-  const queryEnabled = enabled && !!pluginID && !!route.connection && !!reference.address.id && readiness.phase === 'connected';
-
-  useRefetchOnGraphChange(pluginID, route.connection, queryKey, queryEnabled);
-
-  const query = useQuery({
-    queryKey,
-    queryFn: queryEnabled ? ({ signal, queryKey }) => guardQuery(queryKey, signal, () => GetSubgraph(pluginID, reference, route, upDepth, downDepth)) : skipToken,
-    enabled: queryEnabled,
-    retry: false,
-  });
+  const observation = useGraphObservation({
+    pluginID, reference, route, kind: 'subgraph', upDepth, downDepth,
+  }, enabled);
 
   return {
-    graph: query.data ?? null,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error,
-    refetch: query.refetch,
+    graph: observation.snapshot?.subgraph ?? null,
+    isLoading: observation.isLoading,
+    isFetching: observation.isFetching,
+    error: observation.error,
+    refetch: observation.refetch,
   };
 };
 

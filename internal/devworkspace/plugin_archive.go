@@ -112,7 +112,7 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 		if err = g.verifyUnchangedSDK(ctx, backend.Directory, identity); err != nil {
 			return "", receipt, err
 		}
-		if err = instance.VerifyPluginArtifact(g.workspace.ResolvedWorkspace, plugin.ID, binaryPath); err != nil {
+		if err = instance.VerifyPluginArtifactAtHome(g.artifactHome(), g.workspace.ResolvedWorkspace, plugin.ID, binaryPath); err != nil {
 			return "", receipt, fmt.Errorf("archive plugin %s backend does not match this workspace's build evidence: %w", plugin.ID, err)
 		}
 		if sourceIdentity, isSource := identity.Source(); isSource {

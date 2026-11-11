@@ -6,7 +6,7 @@ import { Button, Stack, Text } from '@omniviewdev/base-ui';
 import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 
 // types
-import { jsonToValue, useResourceEditorModelPath, valueToJSON, type Value, type DrawerComponent, type DrawerContext } from '@omniviewdev/runtime';
+import { jsonToValue, resourceEditorModelURI, useResourceType, valueToJSON, type Value, type DrawerComponent, type DrawerContext, type SchemaRequest } from '@omniviewdev/runtime';
 import { resourceYaml, parseResourceYaml } from './resourceYaml';
 
 // icons
@@ -50,13 +50,6 @@ const LinkedResourceOverview: React.FC<{ ctx: DrawerContext }> = ({ ctx }) => {
 
 // -- Editor View ─────────────────────────────────────────────────────
 
-function ResourceEditorSchemas({ resource }: { resource: NonNullable<DrawerContext['resource']> }) {
-  const { error } = useSchemaRegistration({
-    pluginID: resource.pluginID,
-    connectionID: resource.route.connection,
-  });
-  return error ? <Text tone="danger">Editor schema: {String(error)}</Text> : null;
-}
 
 /**
  * Editable YAML view with submit/cancel/reset/diff — same pattern as
@@ -66,18 +59,37 @@ const LinkedResourceEditor: React.FC<{
   ctx: DrawerContext;
   onSubmit: (ctx: DrawerContext, value: Record<string, any>, canonical?: Value) => void;
   onClose: () => void;
-}> = ({ ctx, onSubmit, onClose }) => {
-  const original = React.useMemo(() => ctx.resource?.record?.record.body ?? jsonToValue(ctx.data ?? null), [ctx]);
+}> = (props) => {
+  const { ctx } = props;
+  if (!ctx.data || !ctx.resource) {
+    return null;
+  }
+
+  const key = JSON.stringify([ctx.resource.pluginID, ctx.resource.route, ctx.resource.reference, ctx.resource.representation]);
+  return <LinkedResourceEditorSession key={key} {...props} resource={ctx.resource} />;
+};
+
+function LinkedResourceEditorSession({ ctx, resource, onSubmit, onClose }: {
+  ctx: DrawerContext;
+  resource: NonNullable<DrawerContext['resource']>;
+  onSubmit: (ctx: DrawerContext, value: Record<string, any>, canonical?: Value) => void;
+  onClose: () => void;
+}) {
+  const original = React.useMemo(() => resource.record?.record.body ?? jsonToValue(ctx.data ?? null), [ctx.data, resource.record]);
   const originalData = React.useMemo(() => resourceYaml(original), [original]);
-  const schemaModelPath = useResourceEditorModelPath({
-    pluginID: ctx.resource?.pluginID,
-    route: ctx.resource?.route ?? { connection: '' },
-    type: ctx.resource?.reference.address.type ?? '',
-    representation: ctx.resource?.representation,
-    name: 'draft',
-    enabled: !!ctx.resource,
+  const editorID = React.useId();
+  const { resourceType } = useResourceType({ pluginID: resource.pluginID, route: resource.route, type: resource.reference.address.type });
+  const format = resource.record?.record.representation
+    ?? resourceType.data?.representations.find((entry) => entry.id === resource.representation);
+  const request = React.useMemo<SchemaRequest | undefined>(() => format ? {
+    route: resource.route, type: resource.reference.address.type, target: { representation: format },
+  } : undefined, [format, resource.route, resource.reference.address.type]);
+  const editorPath = resourceEditorModelURI({
+    pluginID: resource.pluginID, route: resource.route, type: resource.reference.address.type,
+    target: { representation: { id: resource.representation, revision: '' } },
+    name: JSON.stringify([resource.reference, editorID, 'draft']),
   });
-  const editorPath = schemaModelPath ?? 'file:///resource/draft.yaml';
+  const schema = useSchemaRegistration({ pluginID: resource.pluginID, request, modelURI: editorPath });
 
   const [value, setValue] = React.useState<string>(originalData);
   const [changed, setChanged] = React.useState(false);
@@ -109,7 +121,8 @@ const LinkedResourceEditor: React.FC<{
   return (
     <div ref={themeRootRef} style={{ display: 'contents' }}>
       <Stack direction="column" spacing={2} style={{ flex: 1 }}>
-        {ctx.resource && <ResourceEditorSchemas resource={ctx.resource} />}
+        {schema.error && <Text tone="danger">Editor schema is unavailable. Raw YAML remains usable.</Text>}
+        {schema.result && schema.result.status !== 'available' && <Text tone="muted">Editor schema: {schema.result.status}.</Text>}
         {viewDiff ? (
           <DiffEditor
             height='100%'
@@ -169,7 +182,7 @@ const LinkedResourceEditor: React.FC<{
       </Stack>
     </div>
   );
-};
+}
 
 // -- Factory ─────────────────────────────────────────────────────────
 

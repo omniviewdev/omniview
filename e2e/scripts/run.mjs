@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { applicationBudget, assertStandaloneBootstrap, commandTimeout, preparationStarted, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
 import { selectFromGit } from './select-tests.mjs';
 import { discoveredSpecs, forceRegExp, prepareApplication, requiresApplication, startApplicationBroker } from './application.mjs';
-import { retireApplicationCohort } from './cohort.mjs';
+import { retireApplicationCohort, verifyApplicationKubernetesChecks, verifyApplicationPluginContracts } from './cohort.mjs';
 import { initializeToolCache, readToolCache, retirePreparationHome } from './tool-cache.mjs';
 import { preparePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 import { prepareLinuxDependencies } from './browser-dependencies.mjs';
@@ -179,7 +179,8 @@ async function main() {
     selection = { ...selection, specs, reasons: [...selection.reasons, 'actual Playwright discovery before application preparation'] };
     playwrightArgs = ['test', ...specs, '--grep', opts.grep];
   }
-  const needsApplication = opts.cacheOnly || requiresApplication(selection.specs);
+  const needsApplication = opts.cacheOnly || opts.kubernetesChecks || requiresApplication(selection.specs);
+  let application;
   if (needsApplication) {
     if (toolCache) {
       const actual = JSON.parse(execute('go', ['env', '-json', 'GOMODCACHE', 'GOCACHE'], { capture: true }));
@@ -213,22 +214,24 @@ async function main() {
     refs['workspace-probe'] = probe.ref;
   });
   env.OMNIVIEW_E2E_APPLICATION = prepareApplication({ root, privateRoot, sources, refs, env, execute, phase, recordBuildExecution: report => { buildExecution = report; } });
+  application = JSON.parse(readFileSync(env.OMNIVIEW_E2E_APPLICATION, 'utf8'));
   for (const [id, source] of Object.entries(sources)) {
     if (git(source, 'rev-parse', 'HEAD') !== refs[id] || git(source, 'diff', '--name-only', 'HEAD', '--')) throw Error(`Selected ${id} source changed during preparation; refusing mixed committed sources`);
   }
   if (!opts.cacheOnly) {
+    if (opts.kubernetesChecks) verifyApplicationKubernetesChecks(application, execute, phase);
     launchBroker = await startApplicationBroker({ application: env.OMNIVIEW_E2E_APPLICATION, ownershipDir: env.OMNIVIEW_E2E_OWNERSHIP_DIR, env, phases });
     env.OMNIVIEW_E2E_LAUNCH_SOCKET = launchBroker.socketPath;
   }
   }
   if (!opts.cacheOnly) await runApplication([...playwrightArgs, ...(opts.ui ? ['--ui'] : [])]);
   if (needsApplication) {
+    if (!opts.cacheOnly) verifyApplicationPluginContracts(application, execute, phase);
     phase('original-read-only-source-proof-after-run', () => {
       for (const [id, source] of Object.entries(sources)) {
         if (git(source, 'rev-parse', 'HEAD') !== refs[id] || git(source, 'status', '--porcelain', '--untracked-files=all')) throw Error(`Selected original ${id} changed; retaining the private cohort and ownership evidence`);
       }
     });
-    const application = JSON.parse(readFileSync(env.OMNIVIEW_E2E_APPLICATION, 'utf8'));
     phase('canonical-build-cohort-retirement', () => retireApplicationCohort(application.cohort, execute));
   }
   phase('preparation-teardown', () => {

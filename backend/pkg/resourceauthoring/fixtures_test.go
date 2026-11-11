@@ -189,9 +189,17 @@ func newFixtureFrom(t *testing.T, name string, b binding) *fixture {
 		reason := b.reason
 		schemaBinding.UnavailableReason = &reason
 	}
+	representation := resourcev2.Representation{ID: "native", Revision: "native/1"}
+	resolve := func(_ context.Context, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+		if request.Route.Connection != "conn" || request.Type != name || request.Target.Auxiliary != nil ||
+			request.Target.Representation == nil || *request.Target.Representation != representation {
+			return resourcev2.SchemaBinding{}, resourcev2.NewError("INVALID_REQUEST", "schema request escaped its authoring fixture")
+		}
+		return schemaBinding, nil
+	}
 	descriptor := resourcev2.ResourceType{
 		Type: name, DisplayName: name,
-		Representations:       []resourcev2.Representation{{ID: "native", Revision: "native/1", Schema: schemaBinding}},
+		Representations:       []resourcev2.Representation{representation},
 		DefaultRepresentation: "native",
 		Capabilities:          []resourcev2.Capability{{Operation: resourcev2.OperationEnumerate, Scope: resourcev2.QueryScope{}}},
 	}
@@ -200,7 +208,8 @@ func newFixtureFrom(t *testing.T, name string, b binding) *fixture {
 	snapshot := store.Observe(resourcecatalog.ConnectionKey{PluginID: "fixture-plugin", Generation: "g1", Connection: "conn", Epoch: 1}, catalog)
 	entry, err := snapshot.Entry(name, "native")
 	require.NoError(t, err)
-	schema, resolveErr := entry.Resolve(context.Background(), nil)
+	resolution, resolveErr := entry.Resolve(context.Background(), resolve, nil)
+	schema := resolution.Schema
 	overlay := resourcecatalog.OverlayFor(entry, schema, resolveErr)
 	if schema != nil {
 		require.NoError(t, resolveErr)
@@ -210,7 +219,7 @@ func newFixtureFrom(t *testing.T, name string, b binding) *fixture {
 		require.NoError(t, err)
 	}
 	f := &fixture{t: t, snapshot: snapshot, entry: entry, schema: schema, env: environment}
-	f.summary = SchemaSummary{State: entry.Binding.State, Dialect: entry.Binding.Dialect, Validation: overlay.Validation, HostEvaluation: overlay.HostEvaluation, HostEvaluationCode: overlay.HostEvaluationCode}
+	f.summary = SchemaSummary{State: resolution.Binding.State, Dialect: resolution.Binding.Dialect, Validation: overlay.Validation, HostEvaluation: overlay.HostEvaluation, HostEvaluationCode: overlay.HostEvaluationCode}
 	environmentRevision := ""
 	if environment != nil {
 		environmentRevision = environment.Revision
@@ -220,8 +229,8 @@ func newFixtureFrom(t *testing.T, name string, b binding) *fixture {
 		CatalogRevision: snapshot.Revision(), RepresentationRevision: entry.RepresentationRevision,
 		EnvironmentRevision: environmentRevision, AccessGeneration: "ag1.test",
 	}
-	if entry.Binding.Revision != nil {
-		f.identity.SchemaRevision = *entry.Binding.Revision
+	if resolution.Binding.Revision != nil {
+		f.identity.SchemaRevision = *resolution.Binding.Revision
 	}
 	return f
 }

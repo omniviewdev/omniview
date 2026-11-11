@@ -3,16 +3,13 @@ package resourcecatalog_test
 // P07 acceptance: identical types in different scopes and revisions cannot
 // contaminate one another.
 //
-// The catalog key is (plugin, generation, connection, epoch) plus the catalog
-// revision; only immutable normalized documents are shared, and only by content
-// digest (spec §2.2). These tests hold every key dimension fixed except one,
-// give the same type name different documents, and prove the schema each
-// snapshot serves is its own, including while snapshots are being replaced
-// concurrently.
+// Each target belongs to one (plugin, generation, connection, epoch) route and
+// selected operational format. Only immutable normalized content is shared by
+// digest; access still requires the exact target and its current observation.
+// Unrelated support revisions preserve unchanged entries.
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -31,10 +28,6 @@ import (
 // identity is observable through navigation and admission.
 func p07Marked(marker string) string {
 	return `{"type":"object","additionalProperties":false,"properties":{"` + marker + `":{"type":"string"}}}`
-}
-
-func p07DigestOf(schema *resourcecatalog.Schema) string {
-	return hex.EncodeToString(schema.Document.Digest[:])
 }
 
 func p07RequireMarker(t testing.TB, schema *resourcecatalog.Schema, marker string) {
@@ -58,51 +51,89 @@ func p07RequireResetRequired(t testing.TB, err error, what string) {
 
 func TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision(t *testing.T) {
 	catalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
-	observe := func(key resourcecatalog.ConnectionKey, catalogRevision, document, representationRevision string) (*resourcecatalog.Snapshot, *resourcecatalog.Entry) {
-		typ := p07Type("instance", []string{"account"}, p07Binding(p07Draft2020, "schema/"+catalogRevision, document))
+	type scopedFixture struct {
+		key      resourcecatalog.ConnectionKey
+		snapshot *resourcecatalog.Snapshot
+		entry    *resourcecatalog.Entry
+		resolve  resourcecatalog.BindingSource
+	}
+	observe := func(key resourcecatalog.ConnectionKey, catalogRevision, document, representationRevision string) scopedFixture {
+		typ := p07Type("instance", []string{"account"})
 		typ.Representations[0].Revision = representationRevision
 		snapshot := catalog.Observe(key, p07Catalog(catalogRevision, typ))
 		entry, err := snapshot.Entry("instance", "native")
 		if err != nil {
 			t.Fatal(err)
 		}
-		return snapshot, entry
+		return scopedFixture{key, snapshot, entry, p07Source(key.Connection, typ, p07Binding(p07Draft2020, "schema/"+catalogRevision, document))}
 	}
-	resolveEntry := func(entry *resourcecatalog.Entry) *resourcecatalog.Schema {
+	resolveEntry := func(fixture scopedFixture) resourcecatalog.Resolution {
 		t.Helper()
-		schema, err := entry.Resolve(context.Background(), nil)
+		resolution, err := fixture.entry.Resolve(context.Background(), fixture.resolve, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return schema
+		if err := fixture.entry.Current(resolution.Observation); err != nil {
+			t.Fatalf("resolved observation is not current: %v", err)
+		}
+		return resolution
 	}
 	key := func(plugin, generation, connection string, epoch uint64) resourcecatalog.ConnectionKey {
 		return resourcecatalog.ConnectionKey{PluginID: plugin, Generation: generation, Connection: connection, Epoch: epoch}
 	}
 
-	// Four scopes, one type name and one representation name:
-	// alpha and beta differ only by connection; gamma shares alpha's connection
-	// name under another plugin; twin carries alpha's exact bytes on a third
-	// connection with a different representation revision.
-	alphaSnapshot, alphaEntry := observe(key("p1", "g1", "a", 1), "c1", p07Marked("alpha"), "native/1")
-	betaSnapshot, betaEntry := observe(key("p1", "g1", "b", 1), "c1", p07Marked("beta"), "native/1")
-	gammaSnapshot, gammaEntry := observe(key("p2", "g1", "a", 1), "c1", p07Marked("gamma"), "native/1")
-	twinSnapshot, twinEntry := observe(key("p1", "g1", "c", 1), "c1", p07Marked("alpha"), "native/2")
-	alpha, beta, gamma, twin := resolveEntry(alphaEntry), resolveEntry(betaEntry), resolveEntry(gammaEntry), resolveEntry(twinEntry)
+	// Four scopes, one type name and one representation name. Twin carries
+	// alpha's exact bytes under another route and selected format revision.
+	alphaFixture := observe(key("p1", "g1", "a", 1), "c1", p07Marked("alpha"), "native/1")
+	betaFixture := observe(key("p1", "g1", "b", 1), "c1", p07Marked("beta"), "native/1")
+	gammaFixture := observe(key("p2", "g1", "a", 1), "c1", p07Marked("gamma"), "native/1")
+	twinFixture := observe(key("p1", "g1", "c", 1), "c1", p07Marked("alpha"), "native/2")
+	alphaResult, betaResult := resolveEntry(alphaFixture), resolveEntry(betaFixture)
+	gammaResult, twinResult := resolveEntry(gammaFixture), resolveEntry(twinFixture)
+	alpha, beta, gamma, twin := alphaResult.Schema, betaResult.Schema, gammaResult.Schema, twinResult.Schema
 
-	for _, tc := range []struct {
-		name   string
-		schema *resourcecatalog.Schema
-		marker string
-	}{{"alpha", alpha, "alpha"}, {"beta", beta, "beta"}, {"gamma", gamma, "gamma"}, {"twin", twin, "alpha"}} {
-		p07RequireMarker(t, tc.schema, tc.marker)
-		navigation := p07Navigate(t, tc.schema)
+	fixtures := []struct {
+		name    string
+		fixture scopedFixture
+		result  resourcecatalog.Resolution
+		marker  string
+	}{
+		{"alpha", alphaFixture, alphaResult, "alpha"},
+		{"beta", betaFixture, betaResult, "beta"},
+		{"gamma", gammaFixture, gammaResult, "gamma"},
+		{"twin", twinFixture, twinResult, "alpha"},
+	}
+	for _, tc := range fixtures {
+		p07RequireMarker(t, tc.result.Schema, tc.marker)
+		navigation := p07Navigate(t, tc.result.Schema)
 		if got := p07Fields(navigation); !slices.Equal(got, []string{tc.marker}) {
 			t.Fatalf("%s navigation = %v, want [%s]", tc.name, got, tc.marker)
 		}
-		p07RequireAdmitted(t, tc.schema, `{"`+tc.marker+`":"v"}`, p07Complete)
+		p07RequireAdmitted(t, tc.result.Schema, `{"`+tc.marker+`":"v"}`, p07Complete)
+		request := resourcev2.SchemaRequest{Route: resourcev2.AccessRoute{Connection: tc.fixture.key.Connection},
+			Type: "instance", Target: tc.fixture.entry.Target}
+		owned, err := tc.fixture.snapshot.Target(request)
+		if err != nil || owned != tc.fixture.entry {
+			t.Fatalf("%s exact target = %v, %v", tc.name, owned, err)
+		}
+		again := resolveEntry(tc.fixture)
+		if again.Schema.Document != tc.result.Schema.Document || again.Observation != tc.result.Observation ||
+			string(again.Schema.Document.RawJSON()) != p07Marked(tc.marker) {
+			t.Fatalf("%s exact target did not retain its resolved document", tc.name)
+		}
+		for _, other := range fixtures {
+			if other.name == tc.name {
+				continue
+			}
+			p07RequireResetRequired(t, tc.fixture.entry.Current(other.result.Observation), tc.name+": foreign observation")
+			if other.fixture.key.Connection != tc.fixture.key.Connection {
+				foreign := request
+				foreign.Route.Connection = other.fixture.key.Connection
+				_, err := tc.fixture.snapshot.Target(foreign)
+				p07RequireResetRequired(t, err, tc.name+": foreign route")
+			}
+		}
 	}
-	// Another scope's property is closed out of this scope's admission.
 	p07RequireRejected(t, alpha, `{"beta":"v"}`, p07Complete, "/beta")
 	p07RequireRejected(t, beta, `{"alpha":"v"}`, p07Complete, "/alpha")
 	p07RequireRejected(t, gamma, `{"alpha":"v"}`, p07Complete, "/alpha")
@@ -116,42 +147,20 @@ func TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision(t *testing.T) {
 	if stats := catalog.Stats(); stats.Connections != 4 || stats.Entries != 4 || stats.Documents != 3 {
 		t.Fatalf("stats = %+v, want 4 connections, 4 entries and 3 shared-by-digest documents", stats)
 	}
-	if alphaEntry == twinEntry || alphaSnapshot == twinSnapshot {
+	if alphaFixture.entry == twinFixture.entry || alphaFixture.snapshot == twinFixture.snapshot {
 		t.Fatal("entries and snapshots are per connection even when the document is shared")
 	}
 
-	// A snapshot serves only documents its own resolved entries reference.
-	for _, tc := range []struct {
-		name     string
-		snapshot *resourcecatalog.Snapshot
-		own      *resourcecatalog.Schema
-		others   []*resourcecatalog.Schema
-	}{
-		{"alpha", alphaSnapshot, alpha, []*resourcecatalog.Schema{beta, gamma}},
-		{"beta", betaSnapshot, beta, []*resourcecatalog.Schema{alpha, gamma}},
-		{"gamma", gammaSnapshot, gamma, []*resourcecatalog.Schema{alpha, beta}},
-	} {
-		if document, ok := tc.snapshot.Document(p07DigestOf(tc.own)); !ok || document != tc.own.Document {
-			t.Fatalf("%s snapshot must serve its own document", tc.name)
-		}
-		for _, other := range tc.others {
-			if _, ok := tc.snapshot.Document(p07DigestOf(other)); ok {
-				t.Fatalf("%s snapshot served another scope's document", tc.name)
-			}
-		}
-	}
-
-	// Identical content keeps one CEL content key; every revision dimension still
-	// changes the checking identity.
-	environment := func(snapshot *resourcecatalog.Snapshot, entry *resourcecatalog.Entry, schema *resourcecatalog.Schema) *celtypes.Environment {
+	// Content sharing does not merge the CEL checking identity.
+	environment := func(fixture scopedFixture, schema *resourcecatalog.Schema) *celtypes.Environment {
 		t.Helper()
-		env, err := celtypes.NewEnvironment(snapshot.Revision(), entry, schema)
+		env, err := celtypes.NewEnvironment(fixture.snapshot.Revision(), fixture.entry, schema)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return env
 	}
-	alphaEnv, twinEnv, betaEnv := environment(alphaSnapshot, alphaEntry, alpha), environment(twinSnapshot, twinEntry, twin), environment(betaSnapshot, betaEntry, beta)
+	alphaEnv, twinEnv, betaEnv := environment(alphaFixture, alpha), environment(twinFixture, twin), environment(betaFixture, beta)
 	if alphaEnv.ContentKey != twinEnv.ContentKey {
 		t.Fatal("identical document bytes must share the CEL content key")
 	}
@@ -162,60 +171,76 @@ func TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision(t *testing.T) {
 		t.Fatal("different documents must not share a CEL content key or revision")
 	}
 
-	// Replacing one dimension at a time retires the old snapshot; it never serves
-	// stale or foreign schema and never disturbs the other scopes.
-	previous, previousEntry := alphaSnapshot, alphaEntry
+	// Presentation and unrelated support changes do not retire target ownership
+	// or cause a fresh schema observation to be resolved again.
+	updatedType := p07Type("instance", []string{"account"})
+	updatedType.DisplayName = "renamed instance"
+	updated := catalog.Observe(alphaFixture.key, p07Catalog("c2", updatedType, p07Type("unrelated", []string{"account"})))
+	updatedEntry, err := updated.Entry("instance", "native")
+	if err != nil || updatedEntry != alphaFixture.entry {
+		t.Fatalf("unrelated support change replaced the entry: %v, %v", updatedEntry, err)
+	}
+	descriptor, err := updated.Descriptor("instance")
+	if err != nil || descriptor.DisplayName != updatedType.DisplayName || updated.Revision() != "c2" {
+		t.Fatalf("support update was not observed: %+v, %v", descriptor, err)
+	}
+	if again := resolveEntry(alphaFixture); again.Observation != alphaResult.Observation || again.Schema != alpha {
+		t.Fatal("unrelated support change invalidated a fresh schema observation")
+	}
+
+	// Generation, epoch and selected-format changes retire only their owners.
+	previous, previousResult := alphaFixture, alphaResult
 	for _, tc := range []struct {
-		name     string
-		key      resourcecatalog.ConnectionKey
-		revision string
-		document string
-		marker   string
+		name                     string
+		key                      resourcecatalog.ConnectionKey
+		revision, format, marker string
 	}{
-		{"generation", key("p1", "g2", "a", 1), "c1", p07Marked("alpha"), "alpha"},
-		{"epoch", key("p1", "g2", "a", 2), "c1", p07Marked("alpha"), "alpha"},
-		{"catalog revision", key("p1", "g2", "a", 2), "c2", p07Marked("alpha_v2"), "alpha_v2"},
+		{"generation", key("p1", "g2", "a", 1), "c1", "native/1", "alpha"},
+		{"epoch", key("p1", "g2", "a", 2), "c1", "native/1", "alpha"},
+		{"selected format", key("p1", "g2", "a", 2), "c2", "native/2", "alpha_v2"},
 	} {
-		next, nextEntry := observe(tc.key, tc.revision, tc.document, "native/1")
-		if next == previous || nextEntry == previousEntry {
-			t.Fatalf("%s change must replace the snapshot", tc.name)
+		next := observe(tc.key, tc.revision, p07Marked(tc.marker), tc.format)
+		if next.entry == previous.entry {
+			t.Fatalf("%s change must replace the selected entry", tc.name)
 		}
-		_, err := previousEntry.Resolve(context.Background(), nil)
-		p07RequireResetRequired(t, err, tc.name+": retired snapshot")
-		if _, ok := previous.Document(p07DigestOf(alpha)); ok {
-			t.Fatalf("%s: retired snapshot still serves a document", tc.name)
-		}
-		replaced := resolveEntry(nextEntry)
-		p07RequireMarker(t, replaced, tc.marker)
-		if got := p07Fields(p07Navigate(t, replaced)); !slices.Equal(got, []string{tc.marker}) {
+		_, err := previous.entry.Resolve(context.Background(), previous.resolve, nil)
+		p07RequireResetRequired(t, err, tc.name+": retired target")
+		p07RequireResetRequired(t, previous.entry.Current(previousResult.Observation), tc.name+": stale observation")
+		_, err = previous.snapshot.Target(resourcev2.SchemaRequest{
+			Route: resourcev2.AccessRoute{Connection: previous.key.Connection}, Type: "instance", Target: previous.entry.Target})
+		p07RequireResetRequired(t, err, tc.name+": old exact target")
+		replaced := resolveEntry(next)
+		p07RequireMarker(t, replaced.Schema, tc.marker)
+		if got := p07Fields(p07Navigate(t, replaced.Schema)); !slices.Equal(got, []string{tc.marker}) {
 			t.Fatalf("%s: navigation = %v", tc.name, got)
 		}
-		if _, ok := next.Document(p07DigestOf(beta)); ok {
-			t.Fatalf("%s: replacement served the beta scope's document", tc.name)
-		}
-		previous, previousEntry = next, nextEntry
+		p07RequireResetRequired(t, next.entry.Current(betaResult.Observation), tc.name+": foreign observation")
+		previous, previousResult = next, replaced
 	}
-	// The other scopes are untouched by every replacement above.
-	p07RequireMarker(t, resolveEntry(betaEntry), "beta")
-	p07RequireMarker(t, resolveEntry(gammaEntry), "gamma")
-	p07RequireMarker(t, resolveEntry(twinEntry), "alpha")
+	p07RequireMarker(t, resolveEntry(betaFixture).Schema, "beta")
+	p07RequireMarker(t, resolveEntry(gammaFixture).Schema, "gamma")
+	p07RequireMarker(t, resolveEntry(twinFixture).Schema, "alpha")
 
-	// The catalog revision is the observation identity: the same key and revision
-	// returns the stored snapshot and never re-reads different bytes.
-	same, sameEntry := observe(key("p1", "g2", "a", 2), "c2", p07Marked("changed_without_new_revision"), "native/1")
-	if same != previous || sameEntry != previousEntry {
-		t.Fatal("same key and catalog revision must return the stored snapshot")
+	// Re-observing support does not smuggle new schema bytes into the entry.
+	// A fresh target observation remains cached until targeted revalidation.
+	same := observe(key("p1", "g2", "a", 2), "c2", p07Marked("changed_without_schema_demand"), "native/2")
+	if same.entry != previous.entry {
+		t.Fatal("unchanged selected target must preserve its entry")
 	}
-	p07RequireMarker(t, resolveEntry(sameEntry), "alpha_v2")
+	again := resolveEntry(same)
+	p07RequireMarker(t, again.Schema, "alpha_v2")
+	if again.Observation != previousResult.Observation {
+		t.Fatal("fresh demand must reuse the held observation")
+	}
 
-	// Dropping a plugin releases only that plugin's documents.
 	catalog.DropPlugin("p2")
 	if stats := catalog.Stats(); stats.Connections != 3 || stats.Documents != 3 {
 		t.Fatalf("after DropPlugin(p2): %+v", stats)
 	}
-	_, err := gammaEntry.Resolve(context.Background(), nil)
+	_, err = gammaFixture.entry.Resolve(context.Background(), gammaFixture.resolve, nil)
 	p07RequireResetRequired(t, err, "dropped plugin")
-	p07RequireMarker(t, resolveEntry(betaEntry), "beta")
+	p07RequireResetRequired(t, gammaFixture.entry.Current(gammaResult.Observation), "dropped plugin observation")
+	p07RequireMarker(t, resolveEntry(betaFixture).Schema, "beta")
 	catalog.DropPlugin("p1")
 	if stats := catalog.Stats(); stats != (resourcecatalog.Stats{}) {
 		t.Fatalf("after dropping every plugin: %+v", stats)
@@ -229,7 +254,8 @@ func TestAcceptanceIdenticalTypeIsolationAcrossScopeAndRevision(t *testing.T) {
 // fetch would never start.
 func TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently(t *testing.T) {
 	catalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
-	typ := p07Type("instance", []string{"account"}, p07RefBinding(p07Draft2020, "schema/1", "instance"))
+	typ := p07Type("instance", []string{"account"})
+	binding := p07RefBinding(p07Draft2020, "schema/1", "instance")
 	var started atomic.Int32
 	overlap := make(chan struct{})
 	serve := func(marker string) resourcecatalog.DocumentSource {
@@ -249,20 +275,21 @@ func TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently(t *testin
 	}
 	connections := []struct{ name, marker string }{{"a", "only_a"}, {"b", "only_b"}}
 	snapshots := make([]*resourcecatalog.Snapshot, len(connections))
-	schemas := make([]*resourcecatalog.Schema, len(connections))
+	entries := make([]*resourcecatalog.Entry, len(connections))
+	resolutions := make([]resourcecatalog.Resolution, len(connections))
 	errs := make([]error, len(connections))
 	for i, connection := range connections {
 		snapshots[i] = catalog.Observe(p07Key("neutral", connection.name), p07Catalog("c1", typ))
+		entry, err := snapshots[i].Entry("instance", "native")
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[i] = entry
 	}
 	var wg sync.WaitGroup
 	for i, connection := range connections {
 		wg.Go(func() {
-			entry, err := snapshots[i].Entry("instance", "native")
-			if err != nil {
-				errs[i] = err
-				return
-			}
-			schemas[i], errs[i] = entry.Resolve(context.Background(), serve(connection.marker))
+			resolutions[i], errs[i] = entries[i].Resolve(context.Background(), p07Source(connection.name, typ, binding), serve(connection.marker))
 		})
 	}
 	wg.Wait()
@@ -270,40 +297,40 @@ func TestAcceptanceSameReferenceOnTwoConnectionsIsFetchedIndependently(t *testin
 		if errs[i] != nil {
 			t.Fatalf("connection %s: %v", connection.name, errs[i])
 		}
-		p07RequireMarker(t, schemas[i], connection.marker)
+		p07RequireMarker(t, resolutions[i].Schema, connection.marker)
+		if err := entries[i].Current(resolutions[i].Observation); err != nil {
+			t.Fatalf("connection %s observation: %v", connection.name, err)
+		}
+		p07RequireResetRequired(t, entries[i].Current(resolutions[1-i].Observation), "another route's observation")
 	}
 	if started.Load() != 2 {
 		t.Fatalf("fetches = %d, want one per connection", started.Load())
 	}
-	if _, ok := snapshots[0].Document(p07DigestOf(schemas[1])); ok {
-		t.Fatal("connection a served connection b's document")
-	}
+	_, err := snapshots[0].Target(resourcev2.SchemaRequest{Route: resourcev2.AccessRoute{Connection: connections[1].name},
+		Type: "instance", Target: entries[1].Target})
+	p07RequireResetRequired(t, err, "another connection's exact target")
 	if stats := catalog.Stats(); stats.Documents != 2 || stats.Entries != 2 {
 		t.Fatalf("stats = %+v", stats)
 	}
 }
 
 // TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema replaces
-// snapshots at new catalog revisions while workers resolve, navigate and admit
-// against them. Every outcome must be the schema of the snapshot the worker
-// observed, or RESET_REQUIRED when that snapshot was replaced first.
+// selected formats while workers resolve, navigate and admit. A worker receives
+// its exact target's schema or RESET_REQUIRED; stale observations cannot publish.
 func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testing.T) {
 	const slots, workers, rounds, revisions = 6, 24, 250, 40
 	catalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
 	var current [slots]atomic.Int64
 	marker := func(slot int, revision int64) string { return fmt.Sprintf("m%d_r%d", slot, revision) }
-	observe := func(slot int, revision int64) (*resourcecatalog.Snapshot, *resourcecatalog.Entry) {
-		typ := p07Type("instance", []string{"account"}, p07Binding(p07Draft2020, fmt.Sprintf("schema/%d", revision), p07Marked(marker(slot, revision))))
-		snapshot := catalog.Observe(p07Key("neutral", fmt.Sprintf("c%d", slot)), p07Catalog(fmt.Sprintf("r%d", revision), typ))
-		entry, err := snapshot.Entry("instance", "native")
-		if err != nil {
-			panic(err)
-		}
-		return snapshot, entry
+	support := func(revision int64) resourcev2.Catalog {
+		typ := p07Type("instance", []string{"account"})
+		typ.Representations[0].Revision = fmt.Sprintf("native/%d", revision)
+		return p07Catalog(fmt.Sprintf("r%d", revision), typ)
 	}
+	key := func(slot int) resourcecatalog.ConnectionKey { return p07Key("neutral", fmt.Sprintf("c%d", slot)) }
 	for slot := range slots {
 		current[slot].Store(1)
-		observe(slot, 1)
+		catalog.Observe(key(slot), support(1))
 	}
 
 	var resolved, reset atomic.Int64
@@ -319,7 +346,7 @@ func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testin
 		wg.Go(func() {
 			for revision := int64(2); revision <= revisions; revision++ {
 				current[slot].Store(revision)
-				observe(slot, revision)
+				catalog.Observe(key(slot), support(revision))
 			}
 		})
 	}
@@ -328,12 +355,24 @@ func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testin
 			for round := range rounds {
 				slot := (worker + round) % slots
 				revision := current[slot].Load()
-				snapshot, entry := observe(slot, revision)
-				if want := fmt.Sprintf("r%d", revision); snapshot.Revision() != want {
-					fail("snapshot revision = %q, want %q", snapshot.Revision(), want)
-					return
+				routeKey := key(slot)
+				descriptor := support(revision)
+				snapshot := catalog.Observe(routeKey, descriptor)
+				representation := descriptor.Types[0].Representations[0]
+				entry, err := snapshot.Target(resourcev2.SchemaRequest{
+					Route: resourcev2.AccessRoute{Connection: routeKey.Connection}, Type: "instance",
+					Target: resourcev2.SchemaTarget{Representation: &representation}})
+				if err != nil {
+					if resourcev2.ErrorCode(err) != "RESET_REQUIRED" {
+						fail("slot %d revision %d: unexpected target error %v", slot, revision, err)
+						return
+					}
+					reset.Add(1)
+					continue
 				}
-				schema, err := entry.Resolve(context.Background(), nil)
+				resolve := p07Source(routeKey.Connection, descriptor.Types[0],
+					p07Binding(p07Draft2020, fmt.Sprintf("schema/%d", revision), p07Marked(marker(slot, revision))))
+				resolution, err := entry.Resolve(context.Background(), resolve, nil)
 				if err != nil {
 					if code := resourcev2.ErrorCode(err); code != "RESET_REQUIRED" {
 						fail("slot %d revision %d: unexpected resolve error %v", slot, revision, err)
@@ -342,7 +381,7 @@ func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testin
 					reset.Add(1)
 					continue
 				}
-				resolved.Add(1)
+				schema := resolution.Schema
 				want := marker(slot, revision)
 				root := schema.Document.Nodes[schema.Root]
 				if len(root.Properties) != 1 || root.Properties[0].Name != want {
@@ -363,6 +402,15 @@ func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testin
 					fail("slot %d revision %d navigation = %+v, %v", slot, revision, navigation.Fields, err)
 					return
 				}
+				if err := entry.Current(resolution.Observation); err != nil {
+					if resourcev2.ErrorCode(err) != "RESET_REQUIRED" {
+						fail("slot %d revision %d: unexpected observation error %v", slot, revision, err)
+						return
+					}
+					reset.Add(1)
+					continue
+				}
+				resolved.Add(1)
 			}
 		})
 	}
@@ -373,7 +421,7 @@ func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testin
 	}
 	t.Logf("%d resolutions served their own schema, %d observed RESET_REQUIRED after replacement", resolved.Load(), reset.Load())
 	if resolved.Load() == 0 {
-		t.Fatal("no worker resolved a schema")
+		t.Fatal("no worker resolved a current schema")
 	}
 	stats := catalog.Stats()
 	if stats.Connections != slots || stats.Entries != slots || stats.Documents > slots {
@@ -383,4 +431,105 @@ func TestAcceptanceConcurrentReplacementNeverServesAnotherScopesSchema(t *testin
 	if stats := catalog.Stats(); stats != (resourcecatalog.Stats{}) {
 		t.Fatalf("after DropPlugin: %+v", stats)
 	}
+}
+
+func TestAcceptanceSupportRefreshPreservesInflightTargetButFormatChangeCancels(t *testing.T) {
+	catalog := resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy())
+	key := p07Key("neutral", "a")
+	t.Cleanup(func() { catalog.DropConnection(key.PluginID, key.Connection) })
+	typ := p07Type("instance", []string{"account"})
+	snapshot := catalog.Observe(key, p07Catalog("c1", typ))
+	entry, err := snapshot.Entry("instance", "native")
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, canceled, released, returned := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(released) }) }
+	t.Cleanup(release)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	oldSource := p07Source(key.Connection, typ, p07Binding(p07Draft2020, "schema/old", p07Marked("old")))
+	var providerContext context.Context
+	resolve := func(ctx context.Context, request resourcev2.SchemaRequest) (resourcev2.SchemaBinding, error) {
+		defer close(returned)
+		providerContext = ctx
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		<-released
+		// A provider may finish after cancellation. Its result must stay retired.
+		return oldSource(context.Background(), request)
+	}
+	type result struct {
+		resolution resourcecatalog.Resolution
+		err        error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resolution, err := entry.Resolve(ctx, resolve, nil)
+		done <- result{resolution, err}
+	}()
+	await := func(signal <-chan struct{}, name string) {
+		t.Helper()
+		select {
+		case <-signal:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for %s", name)
+		}
+	}
+	await(started, "targeted resolver")
+
+	updatedType := p07Type("instance", []string{"account"})
+	updatedType.DisplayName = "renamed instance"
+	updated := catalog.Observe(key, p07Catalog("c2", updatedType, p07Type("unrelated", []string{"account"})))
+	unchanged, err := updated.Entry("instance", "native")
+	if err != nil || unchanged != entry {
+		t.Fatalf("support refresh replaced the in-flight target: %v, %v", unchanged, err)
+	}
+	if err := providerContext.Err(); err != nil {
+		t.Fatalf("unrelated support refresh canceled provider context: %v", err)
+	}
+	select {
+	case <-canceled:
+		t.Fatal("unrelated support refresh canceled targeted schema work")
+	case <-done:
+		t.Fatal("pending targeted schema work completed before its provider")
+	default:
+	}
+
+	updatedType.Representations[0].Revision = "native/2"
+	next := catalog.Observe(key, p07Catalog("c3", updatedType))
+	await(canceled, "retired target cancellation")
+	release()
+	await(returned, "late provider result")
+	select {
+	case outcome := <-done:
+		p07RequireResetRequired(t, outcome.err, "retired in-flight target")
+		if outcome.resolution.Schema != nil || outcome.resolution.Observation != "" {
+			t.Fatalf("retired waiter published %+v", outcome.resolution)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("retired target waiter did not finish")
+	}
+	p07RequireResetRequired(t, entry.Current(""), "retired target observation")
+	_, err = next.Target(resourcev2.SchemaRequest{Route: resourcev2.AccessRoute{Connection: key.Connection},
+		Type: typ.Type, Target: entry.Target})
+	p07RequireResetRequired(t, err, "retired exact format")
+
+	current, err := next.Entry("instance", "native")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution, err := current.Resolve(context.Background(),
+		p07Source(key.Connection, updatedType, p07Binding(p07Draft2020, "schema/new", p07Marked("new"))), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p07RequireMarker(t, resolution.Schema, "new")
+	if err := current.Current(resolution.Observation); err != nil {
+		t.Fatalf("replacement observation: %v", err)
+	}
+	_, err = entry.Resolve(context.Background(), oldSource, nil)
+	p07RequireResetRequired(t, err, "late provider cannot revive its old owner")
 }

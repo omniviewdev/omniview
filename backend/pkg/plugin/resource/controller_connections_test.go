@@ -249,7 +249,7 @@ func TestStartConnection_Success(t *testing.T) {
 	assert.Equal(t, types.ConnectionStatusConnected, cs.Status)
 }
 
-func TestStartConnectionDoesNotAdmitResourcesBeforeBootstrap(t *testing.T) {
+func TestStartConnectionDoesNotPublishBeforeRequiredAdmission(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once, releaseOnce sync.Once
@@ -280,9 +280,9 @@ func TestStartConnectionDoesNotAdmitResourcesBeforeBootstrap(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
-		t.Fatal("startup did not reach bootstrap")
+		t.Fatal("startup did not reach required catalog admission")
 	}
-	require.Empty(t, emitter.EventsWithKey(EventConnectionStatus), "native registration must not admit resource reads while host bootstrap can retire their epoch")
+	require.Empty(t, emitter.EventsWithKey(EventConnectionStatus), "native registration must not publish readiness while required authority admission can retire its epoch")
 	unblock()
 	select {
 	case err := <-done:
@@ -296,7 +296,7 @@ func TestStartConnectionDoesNotAdmitResourcesBeforeBootstrap(t *testing.T) {
 	require.Equal(t, string(types.ConnectionStatusConnected), payload.Status)
 }
 
-func TestStartConnectionCanceledBootstrapDoesNotPublishConnected(t *testing.T) {
+func TestStartConnectionCanceledAdmissionDoesNotPublishConnected(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	ctx, cancel := context.WithCancel(testInvocationContext())
 	defer cancel()

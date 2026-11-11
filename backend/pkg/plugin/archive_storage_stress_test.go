@@ -27,7 +27,7 @@ func TestArchiveReplacementConcurrentAuthorityAccess(t *testing.T) {
 	require.NoError(t, err)
 	resolver, err := hostresource.NewAuthorityResolver(store)
 	require.NoError(t, err)
-	catalog := resourcev2.Catalog{Provider: "native", Revision: "r1", Coverage: resourcev2.Coverage{Kind: "complete"}, Types: []resourcev2.ResourceType{{Type: "objects", DisplayName: "Objects", Representations: []resourcev2.Representation{{ID: "native", Revision: "r1", Schema: resourcev2.SchemaBinding{State: "absent"}}}}}}
+	catalog := resourcev2.Catalog{Provider: "native", Revision: "r1", Coverage: resourcev2.Coverage{Kind: "complete"}, Types: []resourcev2.ResourceType{{Type: "objects", DisplayName: "Objects", Representations: []resourcev2.Representation{{ID: "native", Revision: "r1"}}}}}
 	_, err = resolver.ObserveCatalog("flux", "live", catalog)
 	require.NoError(t, err)
 	archive := writeTestTarball(t, []tarEntry{{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [ui]\n"}, {name: "assets/", mode: 0755, dir: true}, {name: "assets/entry.js", mode: 0644, body: "candidate"}})

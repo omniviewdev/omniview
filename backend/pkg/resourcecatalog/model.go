@@ -1,6 +1,8 @@
 package resourcecatalog
 
 import (
+	"encoding/json"
+	"errors"
 	"math/big"
 	"regexp"
 	"sort"
@@ -101,7 +103,8 @@ type Node struct {
 type Document struct {
 	Digest  [32]byte // sha256("omniview.schema-doc.v1\x00" + dialect + "\x00" + raw bytes)
 	Dialect string
-	Nodes   []Node // index = NodeID; Nodes[0] unused
+	Nodes   []Node          // index = NodeID; Nodes[0] unused
+	raw     json.RawMessage // immutable exact bytes; already included in retainedBytes
 
 	pointers map[string]NodeID
 
@@ -124,6 +127,9 @@ type Document struct {
 	celProvider documentCache
 }
 
+// RawJSON returns the immutable exact schema bytes held by this document.
+func (d *Document) RawJSON() json.RawMessage { return d.raw }
+
 // Lookup returns the node normalized at an RFC6901 pointer (percent-decoded,
 // without the leading "#"; "" is the document root).
 func (d *Document) Lookup(pointer string) (NodeID, bool) {
@@ -142,19 +148,24 @@ func (d *Document) LoadCELProvider(build func() (any, error)) (any, error) {
 // documentCache is a build-once slot whose value lives exactly as long as its
 // Document.
 type documentCache struct {
-	once  sync.Once
-	built atomic.Bool
-	value any
-	err   error
+	mu       sync.Mutex
+	complete bool
+	built    atomic.Bool
+	value    any
+	err      error
 }
 
 func (c *documentCache) load(build func() (any, error)) (any, error) {
-	c.once.Do(func() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.complete {
 		c.value, c.err = build()
+		var capacity *capacityError
+		c.complete = !errors.As(c.err, &capacity)
 		if c.err == nil {
 			c.built.Store(true)
 		}
-	})
+	}
 	return c.value, c.err
 }
 

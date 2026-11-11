@@ -27,7 +27,7 @@ export function makeHostRecord(index: number, overrides: Record<string, unknown>
     record: {
       reference: { address, incarnation },
       body: jsonToValue({ name: id, phase: PHASES[index % PHASES.length], size: index, ...overrides }),
-      representation: { id: 'json', revision: '1', schema: { state: 'absent' } },
+      representation: { id: 'json', revision: '1' },
       coverage: { kind: 'complete', paths: [] },
     },
   };

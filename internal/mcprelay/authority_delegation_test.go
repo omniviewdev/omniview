@@ -77,3 +77,19 @@ func TestDelegatedAuthorityKeepsConcurrentReadAndWriteSeparate(t *testing.T) {
 	_, err = boundary.Admit(readCtx, "resource.Get", invocation.Target{Provider: "kubernetes", Connection: "cluster", ResourceType: "flux/items"})
 	require.Error(t, err)
 }
+
+func TestDelegatedSchemaAuthorityRequiresGrantedResourceType(t *testing.T) {
+	consumer := config.PluginMeta{ID: "flux", Requires: &config.RequiresSpec{Connections: []config.ConnectionRequirement{{Plugin: "kubernetes", Operations: []string{"catalog"}, ResourceTypes: []string{"flux/*"}}}}}
+	owner := config.PluginMeta{ID: "kubernetes", Exports: &config.ExportsSpec{Connections: &config.ConnectionExport{Operations: []string{"catalog"}, ResourceTypes: []string{"flux/*"}}}}
+	grant, err := config.GrantConnections(consumer, owner)
+	require.NoError(t, err)
+	delegation := &invocation.Delegation{Consumer: "flux", Owner: "kubernetes", Connection: "cluster", ReadOnly: true, Grant: grant}
+	for _, operation := range []string{"resource.ResolveSchema", "resource.GetSchemaDocument"} {
+		target := invocation.Target{Provider: "kubernetes", Connection: "cluster", ResourceType: "flux/items"}
+		require.True(t, delegatedAllowed(delegation, operation, target))
+		target.ResourceType = ""
+		require.False(t, delegatedAllowed(delegation, operation, target), "schema document identity cannot act as connection-wide catalog access")
+		target.ResourceType = "secret/items"
+		require.False(t, delegatedAllowed(delegation, operation, target), "shared group/version content does not grant another target")
+	}
+}

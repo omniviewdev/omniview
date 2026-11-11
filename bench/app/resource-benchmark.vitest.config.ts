@@ -38,7 +38,10 @@ export default defineConfig({
   test: {
     fsModuleCachePath: testCaches.fsModuleCachePath,
     environment: "jsdom",
-    include: ["bench/app/resource-benchmark-lifecycle.test.tsx"],
+    include: [
+      "bench/app/resource-benchmark-lifecycle.test.tsx",
+      "bench/app/resource-schema-fixture.test.ts",
+    ],
     fileParallelism: false,
   },
 });

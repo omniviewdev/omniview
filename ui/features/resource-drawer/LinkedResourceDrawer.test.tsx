@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
   return {
     activeTheme: { id: 'void', base: 'void' },
     settings,
-    useResourceEditorModelPath: vi.fn<() => string | undefined>(() => undefined),
+    registration: vi.fn(() => ({ error: null, isLoading: false, result: undefined })),
     buildMonacoTheme: vi.fn((base: string) => ({ base, inherit: true, rules: [], colors: {} })),
     monaco: {
       editor: { defineTheme, setTheme },
@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/providers/monaco/useSchemaRegistration', () => ({
-  useSchemaRegistration: () => ({ error: null, isLoading: false }),
+  useSchemaRegistration: mocks.registration,
 }));
 
 vi.mock('@omniviewdev/base-ui', () => ({
@@ -50,7 +50,11 @@ vi.mock('@omniviewdev/editors', () => ({
 
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const runtime = await importOriginal<typeof Runtime>();
-  return { ...runtime, useSettings: () => ({ settings: mocks.settings }), useResourceEditorModelPath: mocks.useResourceEditorModelPath };
+  return {
+    ...runtime,
+    useSettings: () => ({ settings: mocks.settings }),
+    useResourceType: () => ({ resourceType: { data: { representations: [{ id: 'json', revision: 'format-1' }] } } }),
+  };
 });
 
 vi.mock('@monaco-editor/react', () => ({
@@ -88,7 +92,6 @@ describe('LinkedResourceDrawer editor themes', () => {
     mocks.activeTheme = { id: 'void', base: 'void' };
     mocks.settings = { 'editor.theme': 'application' };
     vi.clearAllMocks();
-    mocks.useResourceEditorModelPath.mockReturnValue(undefined);
   });
 
   afterEach(cleanup);
@@ -122,19 +125,17 @@ describe('LinkedResourceDrawer editor themes', () => {
     expect(screen.getByTestId('linked-diff-editor')).toHaveAttribute('data-theme', 'brilliance-black');
   });
 
-  it('uses the resource schema model path for the editor', () => {
-    mocks.useResourceEditorModelPath.mockReturnValue('file:///omniview-schema/0123456789abcdef/draft.yaml');
+  it('registers only the selected editor target', () => {
     const drawer = createDrawer();
-    render(drawer.views[1].component(ctx));
-
-    expect(mocks.useResourceEditorModelPath).toHaveBeenCalledWith({
+    const view = render(drawer.views[1].component(ctx));
+    expect(mocks.registration).toHaveBeenLastCalledWith({
       pluginID: 'test',
-      route: { connection: 'test-connection' },
-      type: 'pods',
-      representation: 'json',
-      name: 'draft',
-      enabled: true,
+      request: {
+        route: { connection: 'test-connection' }, type: 'pods',
+        target: { representation: { id: 'json', revision: 'format-1' } },
+      },
+      modelURI: expect.stringContaining('file:///omniview-editor/'),
     });
-    expect(screen.getByTestId('linked-editor')).toHaveAttribute('data-path', 'file:///omniview-schema/0123456789abcdef/draft.yaml');
+    view.unmount();
   });
 });

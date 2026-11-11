@@ -60,17 +60,13 @@ func sourceTestFixture(t *testing.T, configure ...func(*scriptedSourceProvider))
 			catalog.Types[0].Capabilities = append(catalog.Types[0].Capabilities, resourcev2.Capability{Operation: resourcev2.OperationSourceUpdates, Scope: resourcev2.QueryScope{}, Guarantee: resourcev2.ContinuityBestEffort})
 			return catalog, nil
 		},
-		StartConnectionFunc: func(_ context.Context, id string) (types.ConnectionStatus, error) {
-			return types.ConnectionStatus{Connection: &types.Connection{ID: id}, Status: types.ConnectionStatusConnected}, nil
-		},
 	}
 	provider := &scriptedSourceProvider{mockProvider: base, opens: make(chan scriptedSourceOpen, 16)}
 	for _, setup := range configure {
 		setup(provider)
 	}
 	registerMockPlugin(ctrl, "p1", provider)
-	_, err := ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
-	require.NoError(t, err)
+	// Source tests admit their route directly, without independent connection-policy work.
 	return ctrl, events, provider, admittedReadTarget(t, ctrl, "p1", "conn-1", "native::Pod")
 }
 
@@ -220,14 +216,16 @@ func TestSourceCoordinatorSnapshotAndRemove(t *testing.T) {
 		defer session.mu.Unlock()
 		return len(session.staging) == 1
 	}, 5*time.Second, time.Millisecond)
-	_, found := ctrl.registryStore.Get("p1", record.Reference, target.Target.Route)
-	require.False(t, found, "staged records must not enter registry")
+	guard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, record.Reference)
+	require.Error(t, err, "staged records must not authorize observed identity")
+	require.Nil(t, guard)
 	sourceSend(open.stream, sourceBoundary(resourcev2.EnumerationExhausted))
 	waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool {
 		return e.Kind == "snapshotEnd" && e.Status != nil && e.Status.State == "following"
 	})
-	_, found = ctrl.registryStore.Get("p1", record.Reference, target.Target.Route)
-	require.True(t, found)
+	guard, err = ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, record.Reference)
+	require.NoError(t, err)
+	require.NoError(t, guard(testInvocationContext()), "the committed boundary must authorize actual source identity")
 	old := record.Reference
 	oldIncarnation := "old"
 	old.Incarnation = &oldIncarnation
@@ -235,9 +233,9 @@ func TestSourceCoordinatorSnapshotAndRemove(t *testing.T) {
 	updated := record
 	updated.Body.Map = map[string]resourcev2.Value{"name": {Kind: "string", String: "changed"}}
 	sourceSend(open.stream, resourcev2.SourceFrame{Changes: &resourcev2.SourceChanges{Changes: []resourcev2.SourceChange{{Kind: resourcev2.SourceChangeUpsert, Observation: &resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(updated)}}}}})
-	waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool { return e.Kind == "changes" && len(e.Upserts) == 1 })
-	_, found = ctrl.registryStore.Get("p1", record.Reference, target.Target.Route)
-	require.True(t, found, "old incarnation remove must not delete current record")
+	change := waitSourceView(t, events, view.Topic, func(e HostSourceViewEvent) bool { return e.Kind == "changes" && len(e.Upserts) == 1 })
+	require.Equal(t, updated, change.Upserts[0].Record)
+	require.NoError(t, guard(testInvocationContext()), "old incarnation removal must not retire the current observed identity")
 	require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 }
 
@@ -261,8 +259,9 @@ func TestSourceCoordinatorRefreshRetirement(t *testing.T) {
 				status := states.Types[target.Target.Type]
 				return err == nil && status.Coverage != nil && status.Coverage.Enumeration == enumeration && status.State == "following"
 			}, 5*time.Second, time.Millisecond)
-			_, found := ctrl.registryStore.Get("p1", record.Reference, target.Target.Route)
-			require.Equal(t, enumeration == resourcev2.EnumerationPartial, found)
+			guard, err := ctrl.GuardObservedReference(testInvocationContext(), "metric.Query", "p1", target.Target.Route, record.Reference)
+			require.Equal(t, "UNAVAILABLE", resourcev2.ErrorCode(err), "a fresh empty snapshot cannot authorize an unobserved body, even when coverage is partial")
+			require.Nil(t, guard)
 			require.NoError(t, ctrl.CloseSourceView(testInvocationContext(), "p1", view.ViewID))
 		})
 	}

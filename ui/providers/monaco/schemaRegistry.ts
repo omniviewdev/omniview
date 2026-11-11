@@ -1,5 +1,5 @@
 import { monaco, monacoYaml } from '@/providers/monaco/bootstrap';
-import type { EditorSchemaAssociation, EditorSchemaDocument } from '@omniviewdev/runtime';
+import type { EditorSchemaResult } from '@omniviewdev/runtime';
 
 /**
  * EditorSchemaEntry represents a schema registered with the registry.
@@ -13,104 +13,80 @@ export type EditorSchemaEntry = {
   language: 'yaml' | 'json';
 };
 
+type MonacoSchema = {
+  uri: string;
+  fileMatch: string[];
+  schema?: Record<string, unknown>;
+};
+
 /**
- * SchemaRegistry collects editor schemas from all plugins/connections
- * and pushes updates to Monaco (YAML via monaco-yaml, JSON via jsonDefaults).
- *
- * Schemas are registered per plugin and access route. Host-rendered documents
- * are registered once per document ID; each available association maps its
- * model directory to the document root.
+ * Owns exact editor-model schema registrations for host and plugin consumers.
+ * A rendered document is shared only as schema content, never as a model grant.
+ * Each plugin/owner pair controls one independently removable registration.
  */
 class SchemaRegistry {
-  private readonly schemas = new Map<string, EditorSchemaEntry[]>();
+  private readonly schemas = new Map<string, { pluginID: string; entries: EditorSchemaEntry[] }>();
   private flushScheduled = false;
-  private lastFlushedYamlSchemas: Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }> = [];
+  private lastFlushedYamlSchemas: MonacoSchema[] = [];
 
   /**
-   * Register schemas for a plugin + connection pair.
-   * Replaces any previously registered schemas for the same pair.
+   * Replace one owner's exact model registration with one coherent host result.
+   * Validate available documents before replacing the owner's existing entry.
    */
   register(
     pluginID: string,
-    connectionID: string,
-    associations: readonly EditorSchemaAssociation[],
-    documents: readonly EditorSchemaDocument[],
+    ownerID: string,
+    modelURI: string,
+    language: 'yaml' | 'json',
+    result: EditorSchemaResult,
   ): void {
-    const key = `${pluginID}:${connectionID}`;
-
-    const entries: EditorSchemaEntry[] = [];
-    const registeredDocuments = new Set<string>();
-    const parsedDocuments = new Map<string, Record<string, unknown>>();
-    for (const association of associations) {
-      if (association.status !== 'available') {
-        continue;
-      }
-
-      if (!association.documentId) {
-        throw new Error('Available editor schema association has no document ID.');
-      }
-
-      if (association.language !== 'yaml' && association.language !== 'json') {
-        continue;
-      }
-
-      // An authority keeps the URI canonical in YAML and absolute in JSON.
-      const documentURI = `omniview-schema://catalog/${association.documentId}`;
-      const documentKey = `${association.documentId}\u0000${association.language}`;
-      let schema = parsedDocuments.get(association.documentId);
-      if (schema === undefined) {
-        const document = documents.find((entry) => entry.documentId === association.documentId);
-        if (document === undefined) {
-          throw new Error(`Editor schema document ${association.documentId} is unavailable.`);
-        }
-
-        schema = (typeof document.schema === 'string' ? JSON.parse(document.schema) : document.schema) as Record<string, unknown>;
-        parsedDocuments.set(association.documentId, schema);
-      }
-
-      if (!registeredDocuments.has(documentKey)) {
-        entries.push({
-          type: association.type,
-          fileMatch: '',
-          uri: documentURI,
-          language: association.language,
-          schema,
-        });
-        registeredDocuments.add(documentKey);
-      }
-
-      const hex16 = association.modelDirectory.slice(association.modelDirectory.lastIndexOf('/') + 1);
-      entries.push({
-        type: association.type,
-        fileMatch: association.fileMatch,
-        uri: `omniview-schema://catalog/assoc/${hex16}`,
-        language: association.language,
-        schema: { $ref: documentURI + (association.root ?? '') },
-      });
+    if (result.status !== 'available') {
+      this.unregister(pluginID, ownerID);
+      return;
     }
 
-    this.schemas.set(key, entries);
+    const document = result.document;
+    if (document === undefined) {
+      throw new Error('Editor schema document is unavailable.');
+    }
+
+    if (!document.documentId) {
+      throw new Error('Available editor schema result has no document ID.');
+    }
+
+    if (result.root === undefined) {
+      throw new Error('Available editor schema result has no document root.');
+    }
+
+    const schema = (typeof document.schema === 'string' ? JSON.parse(document.schema) : document.schema) as Record<string, unknown>;
+    const documentURI = `omniview-schema://catalog/${document.documentId}`;
+    const key = JSON.stringify([pluginID, ownerID]);
+    const entries: EditorSchemaEntry[] = [
+      { type: result.type, fileMatch: '', uri: documentURI, language, schema },
+      {
+        type: result.type,
+        fileMatch: modelURI,
+        uri: `omniview-schema://editor/${encodeURIComponent(key)}`,
+        language,
+        schema: { $ref: documentURI + result.root },
+      },
+    ];
+    this.schemas.set(key, { pluginID, entries });
     this.scheduleFlush();
   }
 
-  /**
-   * Remove all schemas for a plugin + connection pair.
-   */
-  unregister(pluginID: string, connectionID: string): void {
-    const key = `${pluginID}:${connectionID}`;
-    if (this.schemas.delete(key)) {
+  /** Remove only the named owner's registration. */
+  unregister(pluginID: string, ownerID: string): void {
+    if (this.schemas.delete(JSON.stringify([pluginID, ownerID]))) {
       this.scheduleFlush();
     }
   }
 
-  /**
-   * Remove all schemas for a plugin (all connections).
-   */
+  /** Retire every registration owned by this plugin. */
   unregisterPlugin(pluginID: string): void {
-    const prefix = `${pluginID}:`;
     let changed = false;
-    for (const key of this.schemas.keys()) {
-      if (key.startsWith(prefix)) {
+    for (const [key, registration] of this.schemas) {
+      if (registration.pluginID === pluginID) {
         this.schemas.delete(key);
         changed = true;
       }
@@ -121,41 +97,31 @@ class SchemaRegistry {
     }
   }
 
-  /**
-   * Returns a snapshot of all registered schemas keyed by `pluginID:connectionID`.
-   */
+  /** Diagnostic snapshot keyed by the serialized [pluginID, ownerID] pair. */
   getSnapshot(): Record<string, EditorSchemaEntry[]> {
-    const result: Record<string, EditorSchemaEntry[]> = {};
-    for (const [key, entries] of this.schemas) {
-      result[key] = [...entries];
+    const snapshot: Record<string, EditorSchemaEntry[]> = {};
+    for (const [key, { entries }] of this.schemas) {
+      snapshot[key] = [...entries];
     }
 
-    return result;
+    return snapshot;
   }
 
-  /**
-   * Returns all registered plugin:connection keys.
-   */
   getRegisteredKeys(): string[] {
     return Array.from(this.schemas.keys());
   }
 
-  /**
-   * Returns total schema count across all registrations.
-   */
   getSchemaCount(): number {
     let count = 0;
-    for (const entries of this.schemas.values()) {
+    for (const { entries } of this.schemas.values()) {
       count += entries.length;
     }
 
     return count;
   }
 
-  /**
-   * Returns the schemas last sent to monacoYaml.update().
-   */
-  getLastFlushedYamlSchemas(): Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }> {
+  /** Schemas last sent to the YAML worker, for the existing debug panel. */
+  getLastFlushedYamlSchemas(): MonacoSchema[] {
     return this.lastFlushedYamlSchemas;
   }
 
@@ -165,7 +131,6 @@ class SchemaRegistry {
     }
 
     this.flushScheduled = true;
-    // Batch updates to avoid thrashing Monaco on rapid schema registration
     queueMicrotask(() => {
       this.flushScheduled = false;
       this.flush();
@@ -173,52 +138,28 @@ class SchemaRegistry {
   }
 
   private flush(): void {
-    const yamlSchemas: Array<{
-      uri: string;
-      fileMatch: string[];
-      schema?: Record<string, unknown>;
-    }> = [];
-
-    const jsonSchemas: Array<{
-      uri: string;
-      fileMatch: string[];
-      schema?: Record<string, unknown>;
-    }> = [];
-
-    for (const entries of this.schemas.values()) {
+    const yaml = new Map<string, MonacoSchema>();
+    const json = new Map<string, MonacoSchema>();
+    for (const { entries } of this.schemas.values()) {
       for (const entry of entries) {
-        const schemaConfig = {
+        const languageSchemas = entry.language === 'json' ? json : yaml;
+        languageSchemas.set(entry.uri, {
           uri: entry.uri,
           fileMatch: entry.fileMatch ? [entry.fileMatch] : [],
           ...(entry.schema !== undefined ? { schema: entry.schema } : {}),
-        };
-
-        if (entry.language === 'json') {
-          jsonSchemas.push(schemaConfig);
-        } else {
-          yamlSchemas.push(schemaConfig);
-        }
+        });
       }
     }
 
-    // Capture for debug panel inspection
-    this.lastFlushedYamlSchemas = yamlSchemas;
-
-    // Update YAML schemas via monaco-yaml
+    this.lastFlushedYamlSchemas = Array.from(yaml.values());
     void monacoYaml.update({
-      enableSchemaRequest: true,
-      schemas: yamlSchemas,
+      enableSchemaRequest: false,
+      schemas: this.lastFlushedYamlSchemas,
     });
-
-    // Update JSON schemas via Monaco's built-in JSON diagnostics
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
       validate: true,
-      enableSchemaRequest: true,
-      schemas: jsonSchemas.map((s) => ({
-        uri: s.uri,
-        fileMatch: s.fileMatch,
-        schema: s.schema!,
-      })),
+      enableSchemaRequest: false,
+      schemas: Array.from(json.values()),
     });
   }
 }

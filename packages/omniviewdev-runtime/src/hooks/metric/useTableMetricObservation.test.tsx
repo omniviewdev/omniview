@@ -26,7 +26,7 @@ function member(key: string, incarnation = 'incarnation-1'): HostRecord {
     record: {
       reference: { incarnation, address: { provider: 'inventory', authority: 'admitted-authority', type: 'machines', id: key, scope: [] } },
       body: { kind: 'map', value: {} }, coverage: { kind: 'complete', paths: [] },
-      representation: { id: 'json', revision: '1', schema: { state: 'absent' } },
+      representation: { id: 'json', revision: '1' },
     },
   };
 }
