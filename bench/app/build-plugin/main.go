@@ -135,11 +135,11 @@ func run(ctx context.Context) (resultErr error) {
 		return err
 	}
 	if candidate != nil {
-		archive, receipt, err := manager.BuildPluginArchive(ctx, workspace.Manifest.WorkspaceID, "kubernetes", os.Stderr)
+		_, receipt, err := manager.BuildPluginArchive(ctx, workspace.Manifest.WorkspaceID, "kubernetes", os.Stderr)
 		if err != nil {
 			return err
 		}
-		return candidate.record(archive, receipt, raw)
+		return candidate.record(receipt, raw)
 	}
 	assets, err := manager.BuildPluginUI(ctx, workspace.Manifest.WorkspaceID, "kubernetes", os.Stderr)
 	if err != nil {

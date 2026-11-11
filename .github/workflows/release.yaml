@@ -41,60 +41,42 @@ env:
   RELEASE: "true"
 
 jobs:
-  # Always resolve the archive choice. A skipped/failed candidate producer must
-  # never fall back to the published-archive path and authorize npm publication.
+  # Only explicit npm bootstrap builds source; normal releases use the published pin.
   prepare-plugin-archive:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.kubernetes-commit != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    outputs:
-      archive-artifact: ${{ steps.ready.outputs.archive-artifact }}
     steps:
-      - name: Select archive proof
-        id: selection
-        shell: bash
-        env:
-          KUBERNETES_COMMIT: ${{ inputs.kubernetes-commit }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$KUBERNETES_COMMIT" ]]; then
-            echo "candidate=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          [[ "$EVENT_NAME" == workflow_dispatch ]]
-          [[ "$KUBERNETES_COMMIT" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]
-          echo "candidate=true" >> "$GITHUB_OUTPUT"
       - name: Checkout candidate host
-        if: steps.selection.outputs.candidate == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Setup candidate Node
-        if: steps.selection.outputs.candidate == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Setup candidate Go
-        if: steps.selection.outputs.candidate == 'true'
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
       - name: Setup pinned native pnpm
-        if: steps.selection.outputs.candidate == 'true'
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
           version: 12.14.0
           node-version-file: "false"
           install: false
-      - name: Resolve published host SDK commit
-        if: steps.selection.outputs.candidate == 'true'
+      - name: Validate candidate commit and resolve published SDK
         id: sdk
-        run: node e2e/scripts/sdk-source.mjs github-output
+        shell: bash
+        env:
+          KUBERNETES_COMMIT: ${{ inputs.kubernetes-commit }}
+        run: |
+          [[ "$KUBERNETES_COMMIT" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]
+          node e2e/scripts/sdk-source.mjs github-output
       - name: Checkout resolved SDK
-        if: steps.selection.outputs.candidate == 'true'
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/plugin-sdk
@@ -103,7 +85,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Checkout exact candidate Kubernetes
-        if: steps.selection.outputs.candidate == 'true'
         uses: actions/checkout@v4
         with:
           repository: omniviewdev/omniview-plugin-kubernetes
@@ -111,31 +92,12 @@ jobs:
           path: .candidate-sources/kubernetes
           fetch-depth: 0
           persist-credentials: false
-      - name: Prepare effective candidate host module
-        if: steps.selection.outputs.candidate == 'true'
-        id: module
-        shell: bash
-        run: |
-          set -euo pipefail
-          directory="$(mktemp -d "$RUNNER_TEMP/candidate-host-module.XXXXXX")"
-          chmod 0700 "$directory"
-          modfile="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$PWD/.candidate-sources/sdk" --output-directory "$directory")"
-          printf 'modfile=%s\n' "$modfile" >> "$GITHUB_OUTPUT"
-      - name: Execute actual pinned pnpm protocol probe
-        if: steps.selection.outputs.candidate == 'true'
-        env:
-          A11_PROTOCOL_PROBE: "1"
-          A11_PROTOCOL_REPORT: ${{ runner.temp }}/candidate-link-protocol.json
-          HOST_MODFILE: ${{ steps.module.outputs.modfile }}
-        run: |
-          GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" -mod=readonly -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
-          test -s "$A11_PROTOCOL_REPORT"
-      - name: Build canonical candidate archive
-        if: steps.selection.outputs.candidate == 'true'
+      - name: Probe pinned pnpm and build canonical archive
         id: archive
         shell: bash
         env:
-          HOST_MODFILE: ${{ steps.module.outputs.modfile }}
+          A11_PROTOCOL_PROBE: "1"
+          A11_PROTOCOL_REPORT: ${{ runner.temp }}/candidate-link-protocol.json
           HOST_COMMIT: ${{ github.sha }}
           SDK_COMMIT: ${{ steps.sdk.outputs.sdk }}
           KUBERNETES_COMMIT: ${{ inputs.kubernetes-commit }}
@@ -145,42 +107,36 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
+          GOWORK=off GOFLAGS= go test -mod=readonly -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
+          test -s "$A11_PROTOCOL_REPORT"
           parent="$(mktemp -d "$RUNNER_TEMP/candidate-output.XXXXXX")"
           chmod 0700 "$parent"
-          GOWORK=off GOFLAGS= go run -modfile="$HOST_MODFILE" -mod=readonly -tags server ./bench/app/build-plugin \
+          GOWORK=off GOFLAGS= go run -mod=readonly -tags server ./bench/app/build-plugin \
             --host "$PWD" --host-ref "$HOST_COMMIT" \
             --sdk "$PWD/.candidate-sources/sdk" --sdk-ref "$SDK_COMMIT" \
             --kubernetes "$PWD/.candidate-sources/kubernetes" --kubernetes-ref "$KUBERNETES_COMMIT" \
-            --link-evidence "$RUNNER_TEMP/candidate-link-protocol.json" \
+            --link-evidence "$A11_PROTOCOL_REPORT" \
             --archive-output "$parent/archives" --package-version "$VERSION"
-          node bench/app/build-plugin/verify-candidate.mjs --directory "$parent/archives" \
-            --host-ref "$HOST_COMMIT" --kubernetes-ref "$KUBERNETES_COMMIT" --version "$VERSION"
           printf 'directory=%s\n' "$parent/archives" >> "$GITHUB_OUTPUT"
       - name: Upload same-run candidate proof
-        if: steps.selection.outputs.candidate == 'true'
-        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: npm-candidate-plugin-archive
           path: ${{ steps.archive.outputs.directory }}/
           if-no-files-found: error
           retention-days: 7
-      - name: Authorize only completed candidate producer
-        if: steps.selection.outputs.candidate == 'true'
-        id: ready
-        env:
-          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
-        run: |
-          test -n "$ARTIFACT_ID"
-          echo "archive-artifact=npm-candidate-plugin-archive" >> "$GITHUB_OUTPUT"
   plugin-archive-smoke:
     needs: prepare-plugin-archive
+    # A requested producer must succeed; only a no-input skip may use the pin.
+    if: >-
+      ${{ !cancelled() &&
+          (needs.prepare-plugin-archive.result == 'success' ||
+           (needs.prepare-plugin-archive.result == 'skipped' && !inputs.kubernetes-commit)) }}
     uses: ./.github/workflows/plugin-archive-smoke.yml
     with:
       host-ref: ${{ github.sha }}
-      archive-artifact: ${{ needs.prepare-plugin-archive.outputs.archive-artifact }}
-      candidate-commit: ${{ inputs.kubernetes-commit || '' }}
-      candidate-version: ${{ inputs.kubernetes-commit && inputs.version || '' }}
+      archive-artifact: ${{ inputs.kubernetes-commit && 'npm-candidate-plugin-archive' || '' }}
+      package-version: ${{ inputs.version || github.ref_name }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # macOS (darwin/universal) — sign, notarize, DMG

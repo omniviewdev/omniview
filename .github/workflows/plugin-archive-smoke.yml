@@ -11,12 +11,8 @@ on:
         description: Candidate plugin-archives artifact from this workflow run; empty tests the pinned published plugin
         type: string
         default: ''
-      candidate-commit:
-        description: Exact Kubernetes commit for npm bootstrap; requires a completed same-run canonical archive proof
-        type: string
-        default: ''
-      candidate-version:
-        description: npm version stamped by the canonical bootstrap archive producer
+      package-version:
+        description: Optional npm package version stamped before building host shared packages
         type: string
         default: ''
   workflow_dispatch:
@@ -45,21 +41,6 @@ jobs:
     env:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
-      - name: Require complete candidate selection
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ inputs.candidate-commit }}
-          CANDIDATE_VERSION: ${{ inputs.candidate-version }}
-          ARCHIVE_ARTIFACT: ${{ inputs.archive-artifact }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$CANDIDATE_COMMIT" ]]; then
-            [[ "$CANDIDATE_COMMIT" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]
-            test -n "$CANDIDATE_VERSION"
-            test -n "$ARCHIVE_ARTIFACT"
-          else
-            test -z "$CANDIDATE_VERSION"
-          fi
       - uses: actions/checkout@v4
         with:
           repository: omniviewdev/omniview
@@ -73,11 +54,11 @@ jobs:
           node-version-file: 'false'
           install: false
       - run: pnpm install --frozen-lockfile
-      - name: Stamp candidate host packages as npm publication does
-        if: ${{ inputs.candidate-commit }}
+      - name: Stamp host packages as npm publication does
+        if: ${{ inputs.package-version }}
         shell: bash
         env:
-          INPUT_VERSION: ${{ inputs.candidate-version }}
+          INPUT_VERSION: ${{ inputs.package-version }}
         run: |
           set -euo pipefail
           version="${INPUT_VERSION#v}"
@@ -109,16 +90,6 @@ jobs:
         with:
           name: ${{ inputs.archive-artifact }}
           path: ${{ runner.temp }}/candidate-archives
-      - name: Verify exact npm bootstrap archive provenance
-        if: ${{ inputs.candidate-commit }}
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ inputs.candidate-commit }}
-          CANDIDATE_VERSION: ${{ inputs.candidate-version }}
-        run: |
-          set -euo pipefail
-          node bench/app/build-plugin/verify-candidate.mjs --directory "$RUNNER_TEMP/candidate-archives" \
-            --host-ref "$(git rev-parse HEAD)" --kubernetes-ref "$CANDIDATE_COMMIT" --version "$CANDIDATE_VERSION"
       - name: Extract candidate frontend
         if: ${{ inputs.archive-artifact }}
         run: |

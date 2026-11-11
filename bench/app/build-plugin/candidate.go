@@ -15,12 +15,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/omniviewdev/omniview/internal/devcompose"
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 	"golang.org/x/mod/semver"
@@ -29,10 +28,7 @@ import (
 const candidateArchiveName = "kubernetes-linux_amd64.tar.gz"
 const candidateArchiveLimit int64 = 1 << 30
 const candidateJSONLimit int64 = 1 << 20
-const candidateSDKModule = "github.com/omniviewdev/plugin-sdk"
 
-var digestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
-var moduleSumPattern = regexp.MustCompile(`^h1:[A-Za-z0-9+/]{43}=$`)
 var fullVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+].*)?$`)
 
 var candidatePackages = []struct{ directory, name string }{
@@ -47,19 +43,9 @@ type candidateCommits struct {
 	Kubernetes string `json:"kubernetes"`
 }
 
-type candidateSDK struct {
-	Module   string `json:"module"`
-	Version  string `json:"version"`
-	Sum      string `json:"sum"`
-	GoModSum string `json:"goModSum"`
-	Commit   string `json:"commit"`
-}
-
 type candidateStamp struct {
-	Package       string `json:"package"`
 	Path          string `json:"path"`
 	BeforeVersion string `json:"beforeVersion"`
-	Version       string `json:"version"`
 	BeforeSHA256  string `json:"beforeSHA256"`
 	AfterSHA256   string `json:"afterSHA256"`
 	original      []byte
@@ -69,14 +55,11 @@ type candidateStamp struct {
 }
 
 type candidateReceipt struct {
+	devworkspace.ArchivePluginStatus
 	SchemaVersion      int              `json:"schemaVersion"`
-	Archive            string           `json:"archive"`
-	ArchiveSHA256      string           `json:"archiveSHA256"`
-	BackendSHA256      string           `json:"backendSHA256"`
-	AssetFiles         int              `json:"assetFiles"`
 	Platform           string           `json:"platform"`
 	Commits            candidateCommits `json:"commits"`
-	SDK                candidateSDK     `json:"sdk"`
+	SDK                devsdk.Published `json:"sdk"`
 	NPMVersion         string           `json:"npmVersion"`
 	VersionTransform   string           `json:"versionTransform"`
 	Packages           []candidateStamp `json:"packages"`
@@ -89,7 +72,7 @@ type candidateOutput struct {
 	version     string
 	host        string
 	commits     candidateCommits
-	sdk         candidateSDK
+	sdk         devsdk.Published
 	stamps      []candidateStamp
 	ready       bool
 }
@@ -152,7 +135,7 @@ func (c *candidateOutput) prepare(ctx context.Context, w devworkspace.Workspace,
 		if err != nil {
 			return err
 		}
-		raw, err := candidateCommand(ctx, w, directory, "git", "rev-parse", "HEAD")
+		raw, err := candidateCommand(ctx, w, directory, "git", nil, "rev-parse", "HEAD")
 		if err != nil {
 			return err
 		}
@@ -167,7 +150,7 @@ func (c *candidateOutput) prepare(ctx context.Context, w devworkspace.Workspace,
 		return err
 	}
 	c.host = host
-	target, err := candidateCommand(ctx, w, host, "go", "env", "-json", "GOOS", "GOARCH")
+	target, err := candidateCommand(ctx, w, host, "go", nil, "env", "-json", "GOOS", "GOARCH")
 	if err != nil {
 		return err
 	}
@@ -178,16 +161,28 @@ func (c *candidateOutput) prepare(ctx context.Context, w devworkspace.Workspace,
 	if platform.GOOS != "linux" || platform.GOARCH != "amd64" {
 		return fmt.Errorf("candidate archive output requires the actual linux/amd64 Go target")
 	}
-	c.sdk, err = resolveCandidateSDK(func(args ...string) ([]byte, error) {
-		return candidateCommand(ctx, w, host, "go", args...)
-	}, expected.SDK)
+	identity, err := devsdk.NewVerifier(devsdk.ReleasePolicy())(ctx, devsdk.Request{
+		Selection: devsdk.PublishedSelection(),
+		Consumer:  devsdk.Consumer{Name: "omniview", Directory: host},
+		Run: func(ctx context.Context, directory string, environment []string, args ...string) ([]byte, error) {
+			return candidateCommand(ctx, w, directory, "go", environment, args...)
+		},
+	})
 	if err != nil {
+		return err
+	}
+	c.sdk, _ = identity.Published()
+	if err = requireCandidateSDKCommit(func(args ...string) ([]byte, error) {
+		// Resolve provenance outside every source module so download cannot
+		// write a source go.mod or go.sum.
+		return candidateCommand(ctx, w, c.stage, "go", nil, args...)
+	}, c.sdk, expected.SDK); err != nil {
 		return err
 	}
 	return c.stampPackages()
 }
 
-func candidateCommand(ctx context.Context, w devworkspace.Workspace, directory, program string, args ...string) ([]byte, error) {
+func candidateCommand(ctx context.Context, w devworkspace.Workspace, directory, program string, environment []string, args ...string) ([]byte, error) {
 	cmd := exec.Command(program, args...)
 	cmd.Dir = directory
 	for _, entry := range os.Environ() {
@@ -198,7 +193,9 @@ func candidateCommand(ctx context.Context, w devworkspace.Workspace, directory, 
 		}
 		cmd.Env = append(cmd.Env, entry)
 	}
-	cmd.Env = append(cmd.Env, "GOWORK=off", "GOFLAGS=", "GO111MODULE=on", "GOPROXY=direct")
+	cmd.Env = append(cmd.Env, devsdk.ModuleEnvironment()...)
+	cmd.Env = append(cmd.Env, "GOPROXY=direct")
+	cmd.Env = append(cmd.Env, environment...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := devworkspace.RunRepositoryCommand(ctx, cmd, devsession.ProcessOwner{
@@ -210,46 +207,34 @@ func candidateCommand(ctx context.Context, w devworkspace.Workspace, directory, 
 	return stdout.Bytes(), nil
 }
 
-func resolveCandidateSDK(run func(...string) ([]byte, error), expectedCommit string) (candidateSDK, error) {
-	var proof candidateSDK
-	raw, err := run("list", "-mod=readonly", "-m", "-json", candidateSDKModule)
+// The canonical verifier checks the host's published selection. Its origin is
+// a separate boundary: the selected release must name the requested source.
+func requireCandidateSDKCommit(run func(...string) ([]byte, error), published devsdk.Published, expectedCommit string) error {
+	raw, err := run("mod", "download", "-json", published.Module+"@"+published.Version)
 	if err != nil {
-		return proof, err
-	}
-	var selected struct {
-		Path, Version string
-		Replace       json.RawMessage
-	}
-	if err = json.Unmarshal(raw, &selected); err != nil {
-		return proof, err
-	}
-	if selected.Path != candidateSDKModule || !semver.IsValid(selected.Version) || len(selected.Replace) != 0 {
-		return proof, fmt.Errorf("candidate host must select a published plugin-sdk module without replacement")
-	}
-	raw, err = run("mod", "download", "-json", candidateSDKModule+"@"+selected.Version)
-	if err != nil {
-		return proof, err
+		return err
 	}
 	var downloaded struct {
 		Path, Version, Sum, GoModSum, Info string
 		Origin                             *struct{ VCS, Hash string }
 	}
 	if err = json.Unmarshal(raw, &downloaded); err != nil {
-		return proof, err
+		return err
 	}
 	if downloaded.Origin == nil && downloaded.Info != "" {
 		info, _, readErr := readCandidateRegular(downloaded.Info, candidateJSONLimit)
 		if readErr != nil {
-			return proof, readErr
+			return readErr
 		}
 		if err = json.Unmarshal(info, &downloaded); err != nil {
-			return proof, err
+			return err
 		}
 	}
-	if downloaded.Path != selected.Path || downloaded.Version != selected.Version || !moduleSumPattern.MatchString(downloaded.Sum) || !moduleSumPattern.MatchString(downloaded.GoModSum) || downloaded.Origin == nil || downloaded.Origin.VCS != "git" || !fullCommit.MatchString(downloaded.Origin.Hash) || downloaded.Origin.Hash != expectedCommit {
-		return proof, fmt.Errorf("candidate SDK checkout does not match the published module selected by the host, or module provenance is missing")
+	observed := devsdk.Published{Module: downloaded.Path, Version: downloaded.Version, ModuleSum: downloaded.Sum, GoModSum: downloaded.GoModSum}
+	if observed != published || downloaded.Origin == nil || downloaded.Origin.VCS != "git" || downloaded.Origin.Hash != expectedCommit {
+		return fmt.Errorf("candidate SDK checkout does not match the published module selected by the host, or module provenance is missing")
 	}
-	return candidateSDK{Module: downloaded.Path, Version: downloaded.Version, Sum: downloaded.Sum, GoModSum: downloaded.GoModSum, Commit: downloaded.Origin.Hash}, nil
+	return nil
 }
 
 func (c *candidateOutput) stampPackages() error {
@@ -275,7 +260,7 @@ func (c *candidateOutput) stampPackages() error {
 		}
 		stamped = append(stamped, '\n')
 		c.stamps = append(c.stamps, candidateStamp{
-			Package: name, Path: filepath.ToSlash(relative), BeforeVersion: beforeVersion, Version: c.version,
+			Path: filepath.ToSlash(relative), BeforeVersion: beforeVersion,
 			BeforeSHA256: candidateDigest(raw), AfterSHA256: candidateDigest(stamped),
 			original: raw, stamped: stamped, mode: info.Mode().Perm(), absolute: absolute,
 		})
@@ -306,36 +291,22 @@ func (c *candidateOutput) restore() error {
 	return nil
 }
 
-func (c *candidateOutput) record(archive string, receipt devworkspace.ArchivePluginStatus, evidence []byte) error {
-	if receipt.Archive != archive || !digestPattern.MatchString(receipt.ArchiveSHA256) || !digestPattern.MatchString(receipt.BackendSHA256) || receipt.AssetFiles < 1 || len(c.stamps) != len(candidatePackages) || c.sdk.Commit != c.commits.SDK || !fullCommit.MatchString(c.sdk.Commit) || !fullCommit.MatchString(c.commits.Host) || !fullCommit.MatchString(c.commits.Kubernetes) || int64(len(evidence)) > candidateJSONLimit {
-		return fmt.Errorf("canonical candidate archive evidence is incomplete")
-	}
-	if c.sdk.Module != candidateSDKModule || !semver.IsValid(c.sdk.Version) || !moduleSumPattern.MatchString(c.sdk.Sum) || !moduleSumPattern.MatchString(c.sdk.GoModSum) {
-		return fmt.Errorf("candidate published SDK module evidence is incomplete")
-	}
-	for index, pkg := range candidatePackages {
-		stamp := c.stamps[index]
-		if stamp.Package != pkg.name || stamp.Path != "packages/"+pkg.directory+"/package.json" || stamp.Version != c.version || stamp.BeforeVersion == "" || len(stamp.original) == 0 || len(stamp.stamped) == 0 || stamp.BeforeSHA256 != candidateDigest(stamp.original) || stamp.AfterSHA256 != candidateDigest(stamp.stamped) {
-			return fmt.Errorf("candidate npm version transform evidence is incomplete")
-		}
-	}
-	var protocol devworkspace.LinkProtocolEvidence
-	if err := json.Unmarshal(evidence, &protocol); err != nil {
-		return err
-	}
-	if protocol.Protocol != "workspace" || len(protocol.Versions) != 1 || protocol.Versions[0] != devcompose.Version || !protocol.AtomicDist || !protocol.Peers || !protocol.Runtime {
-		return fmt.Errorf("candidate protocol evidence is missing or does not cover pinned native pnpm")
+// record transports the canonical writer's archive and receipt. Link and
+// BuildPluginArchive already validate protocol, source composition and outputs.
+func (c *candidateOutput) record(receipt devworkspace.ArchivePluginStatus, evidence []byte) error {
+	if int64(len(evidence)) > candidateJSONLimit {
+		return fmt.Errorf("candidate protocol evidence exceeds its size bound")
 	}
 	staged := filepath.Join(c.stage, candidateArchiveName)
-	if err := copyCandidateArchive(archive, staged, receipt.ArchiveSHA256); err != nil {
+	if err := copyCandidateArchive(receipt.Archive, staged, receipt.ArchiveSHA256); err != nil {
 		return err
 	}
-	if err := inspectCandidateArchive(staged, receipt.BackendSHA256); err != nil {
+	if err := requireCandidatePlatform(staged); err != nil {
 		return err
 	}
+	receipt.Archive = candidateArchiveName
 	proof := candidateReceipt{
-		SchemaVersion: 1, Archive: candidateArchiveName, ArchiveSHA256: receipt.ArchiveSHA256,
-		BackendSHA256: receipt.BackendSHA256, AssetFiles: receipt.AssetFiles, Platform: "linux/amd64",
+		ArchivePluginStatus: receipt, SchemaVersion: 1, Platform: "linux/amd64",
 		Commits: c.commits, SDK: c.sdk, NPMVersion: c.version,
 		VersionTransform: "package.json .version = npmVersion", Packages: c.stamps, LinkEvidenceSHA256: candidateDigest(evidence),
 	}
@@ -408,9 +379,10 @@ func copyCandidateArchive(source, destination, expected string) (resultErr error
 	return nil
 }
 
-// Check the advertised platform from actual archived backend bytes, not runner
-// labels or GOOS settings. Packaging still belongs exclusively to devworkspace.
-func inspectCandidateArchive(filename, expectedBackend string) error {
+// The canonical writer verifies backend bytes, not the advertised release
+// platform. Inspect only that distinct boundary, without revalidating the tar
+// layout, frontend contents or backend digest the writer already checked.
+func requireCandidatePlatform(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -422,21 +394,14 @@ func inspectCandidateArchive(filename, expectedBackend string) error {
 	}
 	defer gzipReader.Close()
 	reader := tar.NewReader(gzipReader)
-	seen := map[string]bool{}
-	var total int64
-	for count := 0; ; count++ {
+	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
-			break
+			return fmt.Errorf("candidate archive has no backend")
 		}
 		if err != nil {
 			return err
 		}
-		total += header.Size
-		if count >= 100_000 || header.Size < 0 || header.Size > candidateArchiveLimit || total > candidateArchiveLimit || header.Typeflag != tar.TypeReg || path.Clean(header.Name) != header.Name || path.IsAbs(header.Name) || strings.HasPrefix(header.Name, "../") || seen[header.Name] {
-			return fmt.Errorf("candidate archive contains an unbounded or noncanonical entry")
-		}
-		seen[header.Name] = true
 		if header.Name == "bin/plugin" {
 			var prefix [20]byte
 			if _, err = io.ReadFull(reader, prefix[:]); err != nil {
@@ -445,20 +410,7 @@ func inspectCandidateArchive(filename, expectedBackend string) error {
 			if string(prefix[:4]) != elf.ELFMAG || prefix[4] != byte(elf.ELFCLASS64) || prefix[5] != byte(elf.ELFDATA2LSB) || binary.LittleEndian.Uint16(prefix[18:20]) != uint16(elf.EM_X86_64) {
 				return fmt.Errorf("candidate backend is not an actual linux/amd64 ELF binary")
 			}
-			hash := sha256.New()
-			_, _ = hash.Write(prefix[:])
-			if _, err = io.Copy(hash, reader); err != nil {
-				return err
-			}
-			if hex.EncodeToString(hash.Sum(nil)) != expectedBackend {
-				return fmt.Errorf("candidate backend differs from canonical writer evidence")
-			}
-		} else if header.Size == 0 && (header.Name == "assets/entry.js" || header.Name == "plugin.yaml") {
-			return fmt.Errorf("candidate archive has empty required frontend or metadata")
+			return nil
 		}
 	}
-	if !seen["bin/plugin"] || !seen["assets/entry.js"] || !seen["plugin.yaml"] {
-		return fmt.Errorf("candidate archive must contain matching frontend, backend, and metadata")
-	}
-	return nil
 }

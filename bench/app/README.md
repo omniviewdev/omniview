@@ -115,39 +115,41 @@ The caller's checkout stays unchanged. The selected UI/backend closure uses
 canonical graph producers and `BuildGraph.PublishPluginArchive`; no separate
 packager, host launch, or frontend-only substitute supplies the backend.
 
-On a Linux/amd64 build environment, after preparing the source variables,
-effective host modfile, and real protocol report shown below:
+On a Linux/amd64 build environment, after preparing the source variables and real
+protocol report shown below, run the builder against the host's ordinary `go.mod`:
 
 ```bash
 OUTPUT_PARENT="$(mktemp -d)"
 chmod 0700 "$OUTPUT_PARENT"
-GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
+GOWORK=off GOFLAGS= go run -mod=readonly -tags server ./bench/app/build-plugin \
   --host "$PWD" --host-ref "$(git rev-parse HEAD)" \
   --sdk "$SDK_SOURCE" --sdk-ref "$SDK_COMMIT" \
   --kubernetes "$KUBERNETES_SOURCE" --kubernetes-ref "$KUBERNETES_COMMIT" \
   --link-evidence /absolute/path/link-protocol.json \
   --archive-output "$OUTPUT_PARENT/archives" --package-version 0.36.0
-node bench/app/build-plugin/verify-candidate.mjs --directory "$OUTPUT_PARENT/archives" \
-  --host-ref "$(git rev-parse HEAD)" --kubernetes-ref "$KUBERNETES_COMMIT" --version 0.36.0
 ```
 
 The output directory must not exist and must stay outside every caller checkout.
 It appears only after successful owned workspace cleanup. It contains
 `kubernetes-linux_amd64.tar.gz`, `candidate.json`, `link-protocol.json`, and
 `checksums_sha256.txt`. The receipt records exact host/SDK/Kubernetes commits,
-published SDK module checksums, package-version transforms and before/after file
-hashes, the protocol-report hash, and archive/backend SHA-256. The producer checks
-the actual Go target and archived ELF architecture. Archive size is bounded at
-1 GiB; JSON inputs are bounded at 1 MiB. Failed or uncertain cleanup retains the
-private workspace for recovery and does not publish a candidate output.
+published SDK identity, package-version transforms, protocol evidence, and
+canonical archive hashes. The canonical graph owns build and output validation;
+the producer also checks the archived Linux/amd64 ELF backend. Failed or uncertain
+cleanup retains the private workspace for recovery and publishes no output.
 
-CI uploads these files as a same-run artifact. The reusable smoke verifies the
-expected cohort, version, report, and archive hash before the unchanged production
-frontend/export and chunk-retirement checks. Candidate host packages use the
-same npm version transform. Missing output or evidence fails closed; it never
-falls back to the published archive. Existing plugin callers may still supply
-only `host-ref` and `archive-artifact`. Bootstrap callers additionally pass
-`candidate-commit` and `candidate-version`.
+The optional producer runs only when npm dispatch supplies `kubernetes-commit`.
+CI uploads its completed output as a same-run artifact; GitHub artifact transport
+binds the existing smoke to those bytes without a second provenance validator.
+Release calls always pass their publication version through the generic
+`package-version` input, for npm dispatches and tags alike. The smoke stamps host
+packages before the unchanged frontend/export and chunk-retirement checks.
+Standalone calls may omit this input; plugin callers still need only `host-ref`
+and `archive-artifact`.
+
+A requested producer failure, cancellation, or skip blocks npm publication.
+Only the no-input path selects the pinned published archive. Normal releases
+allocate no producer runner.
 
 This proves canonical archive production and frontend compatibility, not native
 wire negotiation. Real native integration remains a separate release gate.
@@ -213,16 +215,14 @@ git -C "$SDK_SOURCE" checkout --detach "$SDK_COMMIT"
 PR validation runs for stacked PR bases as well as `main`, with read-only
 permissions. Release and nightly workflows retain published dependencies.
 
-Prepare the effective host module with the selected SDK before running the
-probe or builder; keep the generated modfile outside the source checkout:
+Run the probe and builder against the host's ordinary published dependencies.
+The selected SDK checkout supplies managed workspace source, not a Go replacement:
 
 ```bash
-HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
-  --root "$PWD" --sdk-source "$SDK_SOURCE")"
 A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT=/absolute/path/link-protocol.json \
-  GOWORK=off GOFLAGS= go test -mod=readonly -modfile="$HOST_MODFILE" -tags server ./internal/devworkspace \
+  GOWORK=off GOFLAGS= go test -mod=readonly -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1
-GOWORK=off GOFLAGS= go run -mod=readonly -modfile="$HOST_MODFILE" -tags server ./bench/app/build-plugin \
+GOWORK=off GOFLAGS= go run -mod=readonly -tags server ./bench/app/build-plugin \
   --host "$PWD" --host-ref "$(git rev-parse HEAD)" \
   --sdk "$SDK_SOURCE" --sdk-ref "$SDK_COMMIT" \
   --kubernetes "$KUBERNETES_SOURCE" --kubernetes-ref "$KUBERNETES_COMMIT" \

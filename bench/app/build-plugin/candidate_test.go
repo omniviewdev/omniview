@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devworkspace"
 )
 
@@ -83,6 +84,9 @@ func TestCandidateStampsOnlyPrivateWorktreeAndRetiresAfterRestore(t *testing.T) 
 		t.Fatal(err)
 	}
 	candidate := &candidateOutput{host: host, version: "0.36.0"}
+	if err = candidate.prepare(ctx, workspace, candidateCommits{Host: strings.Repeat("0", 40)}); err == nil || !strings.Contains(err.Error(), "omniview checkout does not match its exact requested commit") {
+		t.Fatalf("wrong source commit was not rejected before stamping: %v", err)
+	}
 	if err = candidate.stampPackages(); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +98,8 @@ func TestCandidateStampsOnlyPrivateWorktreeAndRetiresAfterRestore(t *testing.T) 
 	}
 	for _, stamp := range candidate.stamps {
 		raw, err := os.ReadFile(stamp.absolute)
-		if err != nil || candidateDigest(raw) != stamp.AfterSHA256 || stamp.Version != "0.36.0" || stamp.BeforeSHA256 == stamp.AfterSHA256 {
+		var manifest struct{ Version string }
+		if err != nil || json.Unmarshal(raw, &manifest) != nil || manifest.Version != "0.36.0" || candidateDigest(raw) != stamp.AfterSHA256 || stamp.BeforeSHA256 == stamp.AfterSHA256 {
 			t.Fatalf("private version transform not recorded: %+v: %v", stamp, err)
 		}
 	}
@@ -173,69 +178,47 @@ func TestCandidateOutputBoundsAndCompletionGate(t *testing.T) {
 	if _, err := newCandidateOutput(filepath.Join(root, "invalid-version"), "0.36", source); err == nil {
 		t.Fatal("non-publication version accepted")
 	}
-	for _, producerSucceeded := range []bool{false, true} {
-		output := filepath.Join(root, "not-published-"+map[bool]string{false: "producer", true: "cleanup"}[producerSucceeded])
-		candidate, err := newCandidateOutput(output, "v0.36.0", source)
-		if err != nil {
-			t.Fatal(err)
-		}
-		candidate.ready = producerSucceeded
-		var resultErr error
-		if producerSucceeded {
-			resultErr = errors.New("ownership-safe retirement failed")
-		}
-		candidate.finish(&resultErr)
-		if resultErr == nil {
-			t.Fatal("missing producer or failed cleanup authorized publication")
-		}
-		if _, err = os.Lstat(output); !os.IsNotExist(err) {
-			t.Fatal("failed candidate exposed output")
-		}
-		if _, err = os.Lstat(candidate.stage); !os.IsNotExist(err) {
-			t.Fatal("owned candidate staging directory leaked")
-		}
+	output := filepath.Join(root, "not-published")
+	candidate, err := newCandidateOutput(output, "v0.36.0", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resultErr error
+	candidate.finish(&resultErr)
+	if resultErr == nil {
+		t.Fatal("missing producer authorized publication")
+	}
+	if _, err = os.Lstat(output); !os.IsNotExist(err) {
+		t.Fatal("failed candidate exposed output")
+	}
+	if _, err = os.Lstat(candidate.stage); !os.IsNotExist(err) {
+		t.Fatal("owned candidate staging directory leaked")
 	}
 }
 
-func TestCandidateSDKRequiresHostSelectedPublishedModuleCommitAndChecksums(t *testing.T) {
+func TestCandidateSDKRequiresVerifiedPublishedTupleToMatchRequestedSource(t *testing.T) {
 	commit := strings.Repeat("a", 40)
 	sum := "h1:" + strings.Repeat("A", 43) + "="
-	selected := map[string]any{"Path": candidateSDKModule, "Version": "v0.20.0"}
-	downloaded := map[string]any{"Path": candidateSDKModule, "Version": "v0.20.0", "Sum": sum, "GoModSum": sum, "Origin": map[string]string{"VCS": "git", "Hash": commit}}
-	resolve := func(selected, downloaded map[string]any) error {
-		calls := 0
-		proof, err := resolveCandidateSDK(func(args ...string) ([]byte, error) {
-			calls++
-			if calls == 1 {
-				if strings.Join(args, " ") != "list -mod=readonly -m -json "+candidateSDKModule {
-					t.Fatalf("not reading actual host selection: %v", args)
-				}
-				return json.Marshal(selected)
-			}
-			if strings.Join(args, " ") != "mod download -json "+candidateSDKModule+"@v0.20.0" {
-				t.Fatalf("not resolving selected published module: %v", args)
-			}
+	published := devsdk.Published{Module: devsdk.Module, Version: "v0.20.0", ModuleSum: sum, GoModSum: sum}
+	downloaded := map[string]any{"Path": published.Module, "Version": published.Version, "Sum": sum, "GoModSum": sum, "Origin": map[string]string{"VCS": "git", "Hash": commit}}
+	resolve := func(downloaded map[string]any) error {
+		return requireCandidateSDKCommit(func(...string) ([]byte, error) {
 			return json.Marshal(downloaded)
-		}, commit)
-		if err == nil && (proof.Commit != commit || proof.Sum != sum || proof.Version != "v0.20.0") {
-			t.Fatalf("wrong published module proof: %+v", proof)
-		}
-		return err
+		}, published, commit)
 	}
-	if err := resolve(selected, downloaded); err != nil {
+	if err := resolve(downloaded); err != nil {
 		t.Fatal(err)
 	}
-	selected["Replace"] = map[string]string{"Dir": "/arbitrary/sdk"}
-	if err := resolve(selected, downloaded); err == nil {
-		t.Fatal("local replacement authorized candidate")
-	}
-	delete(selected, "Replace")
 	for name, change := range map[string]func(map[string]any){
 		"different tag commit": func(module map[string]any) {
 			module["Origin"] = map[string]string{"VCS": "git", "Hash": strings.Repeat("b", 40)}
 		},
+		"different VCS": func(module map[string]any) {
+			module["Origin"] = map[string]string{"VCS": "hg", "Hash": commit}
+		},
 		"missing origin":    func(module map[string]any) { delete(module, "Origin") },
 		"missing checksum":  func(module map[string]any) { delete(module, "Sum") },
+		"changed checksum":  func(module map[string]any) { module["Sum"] = "h1:" + strings.Repeat("B", 43) + "=" },
 		"different version": func(module map[string]any) { module["Version"] = "v0.19.0" },
 		"different module":  func(module map[string]any) { module["Path"] = "example.invalid/sdk" },
 	} {
@@ -245,14 +228,33 @@ func TestCandidateSDKRequiresHostSelectedPublishedModuleCommitAndChecksums(t *te
 				copy[key] = value
 			}
 			change(copy)
-			if err := resolve(selected, copy); err == nil {
-				t.Fatal("incomplete or mismatched published SDK proof accepted")
+			if err := resolve(copy); err == nil {
+				t.Fatal("changed published tuple or mismatched SDK source accepted")
 			}
 		})
 	}
+	t.Run("cached origin", func(t *testing.T) {
+		filename := filepath.Join(candidateTestRoot(t), "sdk.info")
+		info, err := json.Marshal(map[string]any{"Version": published.Version, "Origin": downloaded["Origin"]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filename, info, 0600); err != nil {
+			t.Fatal(err)
+		}
+		copy := map[string]any{}
+		for key, value := range downloaded {
+			copy[key] = value
+		}
+		delete(copy, "Origin")
+		copy["Info"] = filename
+		if err = resolve(copy); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
-func writeCandidateTestArchive(t *testing.T, filename string, backend []byte, extra *tar.Header) {
+func writeCandidateTestArchive(t *testing.T, filename string, backend []byte) {
 	t.Helper()
 	file, err := os.Create(filename)
 	if err != nil {
@@ -271,16 +273,7 @@ func writeCandidateTestArchive(t *testing.T, filename string, backend []byte, ex
 			t.Fatal(err)
 		}
 	}
-	if extra != nil {
-		if err = writer.WriteHeader(extra); err != nil {
-			t.Fatal(err)
-		}
-	}
-	closeErr := writer.Close()
-	if closeErr != nil && (extra == nil || extra.Size <= candidateArchiveLimit) {
-		t.Fatal(closeErr)
-	}
-	if err = errors.Join(gzipWriter.Close(), file.Close()); err != nil {
+	if err = errors.Join(writer.Close(), gzipWriter.Close(), file.Close()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -292,8 +285,8 @@ func TestCandidateTransportChecksCanonicalDigestActualPlatformAndBounds(t *testi
 	backend[4], backend[5] = byte(elf.ELFCLASS64), byte(elf.ELFDATA2LSB)
 	binary.LittleEndian.PutUint16(backend[18:20], uint16(elf.EM_X86_64))
 	archive := filepath.Join(root, "canonical.tar.gz")
-	writeCandidateTestArchive(t, archive, backend, nil)
-	if err := inspectCandidateArchive(archive, candidateDigest(backend)); err != nil {
+	writeCandidateTestArchive(t, archive, backend)
+	if err := requireCandidatePlatform(archive); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(archive)
@@ -306,24 +299,10 @@ func TestCandidateTransportChecksCanonicalDigestActualPlatformAndBounds(t *testi
 	if err = copyCandidateArchive(archive, filepath.Join(root, "wrong.tar.gz"), strings.Repeat("0", 64)); err == nil {
 		t.Fatal("changed archive bytes accepted")
 	}
-	if err = inspectCandidateArchive(archive, strings.Repeat("0", 64)); err == nil {
-		t.Fatal("changed backend bytes accepted")
-	}
 	backend[18] = byte(elf.EM_AARCH64)
-	writeCandidateTestArchive(t, archive, backend, nil)
-	if err = inspectCandidateArchive(archive, candidateDigest(backend)); err == nil {
+	writeCandidateTestArchive(t, archive, backend)
+	if err = requireCandidatePlatform(archive); err == nil {
 		t.Fatal("wrong advertised platform accepted")
-	}
-	binary.LittleEndian.PutUint16(backend[18:20], uint16(elf.EM_X86_64))
-	for _, header := range []*tar.Header{
-		{Name: "../escape", Typeflag: tar.TypeReg},
-		{Name: "assets/link", Typeflag: tar.TypeSymlink, Linkname: "/foreign"},
-		{Name: "assets/huge", Typeflag: tar.TypeReg, Size: candidateArchiveLimit + 1},
-	} {
-		writeCandidateTestArchive(t, archive, backend, header)
-		if err = inspectCandidateArchive(archive, candidateDigest(backend)); err == nil {
-			t.Fatalf("noncanonical or oversized archive entry accepted: %+v", header)
-		}
 	}
 	if err = os.Truncate(archive, candidateArchiveLimit+1); err != nil {
 		t.Fatal(err)
@@ -340,79 +319,79 @@ func TestCandidateTransportChecksCanonicalDigestActualPlatformAndBounds(t *testi
 	}
 }
 
-func TestCandidateReceiptPublishesOnlyCompleteCanonicalEvidenceAfterCleanup(t *testing.T) {
-	root := candidateTestRoot(t)
-	host := filepath.Join(root, "private-host")
-	writeCandidatePackages(t, host)
-	output := filepath.Join(root, "archives")
-	candidate, err := newCandidateOutput(output, "0.36.0", host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate.host = host
-	candidate.commits = candidateCommits{Host: strings.Repeat("a", 40), SDK: strings.Repeat("b", 40), Kubernetes: strings.Repeat("c", 40)}
-	sum := "h1:" + strings.Repeat("A", 43) + "="
-	candidate.sdk = candidateSDK{Module: candidateSDKModule, Version: "v0.20.0", Sum: sum, GoModSum: sum, Commit: candidate.commits.SDK}
-	if err = candidate.stampPackages(); err != nil {
-		t.Fatal(err)
-	}
-	backend := make([]byte, 20)
-	copy(backend, elf.ELFMAG)
-	backend[4], backend[5] = byte(elf.ELFCLASS64), byte(elf.ELFDATA2LSB)
-	binary.LittleEndian.PutUint16(backend[18:20], uint16(elf.EM_X86_64))
-	archive := filepath.Join(root, "canonical.tar.gz")
-	writeCandidateTestArchive(t, archive, backend, nil)
-	raw, err := os.ReadFile(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	receipt := devworkspace.ArchivePluginStatus{Archive: archive, ArchiveSHA256: candidateDigest(raw), BackendSHA256: candidateDigest(backend), AssetFiles: 1}
-	evidence := []byte(`{"protocol":"workspace","versions":["12.14.0"],"atomicDist":true,"peers":true,"runtime":true}`)
-	for _, missing := range []string{"SDK checksum", "backend digest", "protocol evidence", "version transform"} {
-		t.Run(missing, func(t *testing.T) {
-			copy := *candidate
-			copy.stamps = append([]candidateStamp(nil), candidate.stamps...)
-			writerReceipt := receipt
-			report := evidence
-			switch missing {
-			case "SDK checksum":
-				copy.sdk.Sum = ""
-			case "backend digest":
-				writerReceipt.BackendSHA256 = ""
-			case "protocol evidence":
-				report = []byte(`{}`)
-			case "version transform":
-				copy.stamps[0].AfterSHA256 = strings.Repeat("0", 64)
+func TestCandidateReceiptPublishesOnlyAfterOwnedRestore(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		foreignEdit bool
+	}{{"clean", false}, {"foreign-edit", true}} {
+		t.Run(test.name, func(t *testing.T) {
+			root := candidateTestRoot(t)
+			host := filepath.Join(root, "private-host")
+			writeCandidatePackages(t, host)
+			output := filepath.Join(root, "archives")
+			candidate, err := newCandidateOutput(output, "0.36.0", host)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if err := copy.record(archive, writerReceipt, report); err == nil {
-				t.Fatal("missing canonical evidence accepted")
+			candidate.host = host
+			candidate.commits = candidateCommits{Host: strings.Repeat("a", 40), SDK: strings.Repeat("b", 40), Kubernetes: strings.Repeat("c", 40)}
+			sum := "h1:" + strings.Repeat("A", 43) + "="
+			candidate.sdk = devsdk.Published{Module: devsdk.Module, Version: "v0.20.0", ModuleSum: sum, GoModSum: sum}
+			if err = candidate.stampPackages(); err != nil {
+				t.Fatal(err)
+			}
+			backend := make([]byte, 20)
+			copy(backend, elf.ELFMAG)
+			backend[4], backend[5] = byte(elf.ELFCLASS64), byte(elf.ELFDATA2LSB)
+			binary.LittleEndian.PutUint16(backend[18:20], uint16(elf.EM_X86_64))
+			archive := filepath.Join(root, "canonical.tar.gz")
+			writeCandidateTestArchive(t, archive, backend)
+			raw, err := os.ReadFile(archive)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt := devworkspace.ArchivePluginStatus{Archive: archive, ArchiveSHA256: candidateDigest(raw), BackendSHA256: candidateDigest(backend), AssetFiles: 1}
+			evidence := []byte(`{"protocol":"workspace","versions":["12.14.0"],"atomicDist":true,"peers":true,"runtime":true}`)
+			if err = candidate.record(receipt, evidence); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = os.Stat(output); !os.IsNotExist(err) {
+				t.Fatal("candidate became public before cleanup")
+			}
+			if test.foreignEdit {
+				if err = os.WriteFile(candidate.stamps[0].absolute, []byte("foreign edit\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resultErr := candidate.restore()
+			candidate.finish(&resultErr)
+			if test.foreignEdit {
+				if resultErr == nil {
+					t.Fatal("failed owned restore authorized publication")
+				}
+				if _, err = os.Lstat(output); !os.IsNotExist(err) {
+					t.Fatal("failed cleanup exposed completed output")
+				}
+				if _, err = os.Lstat(candidate.stage); !os.IsNotExist(err) {
+					t.Fatal("failed cleanup leaked owned candidate staging")
+				}
+				return
+			}
+			if resultErr != nil {
+				t.Fatal(resultErr)
+			}
+			raw, err = os.ReadFile(filepath.Join(output, candidateArchiveName))
+			if err != nil || candidateDigest(raw) != receipt.ArchiveSHA256 {
+				t.Fatalf("transport changed canonical archive bytes: %v", err)
+			}
+			var proof candidateReceipt
+			raw, err = os.ReadFile(filepath.Join(output, "candidate.json"))
+			if err != nil || json.Unmarshal(raw, &proof) != nil {
+				t.Fatalf("missing completed candidate receipt: %v", err)
+			}
+			if proof.Archive != candidateArchiveName || proof.BackendSHA256 != receipt.BackendSHA256 || proof.AssetFiles != receipt.AssetFiles || proof.Commits != candidate.commits || proof.SDK != candidate.sdk || proof.NPMVersion != "0.36.0" || proof.LinkEvidenceSHA256 != candidateDigest(evidence) || len(proof.Packages) != 3 {
+				t.Fatalf("canonical/source/transform evidence changed during export: %+v", proof)
 			}
 		})
-	}
-	if err = candidate.record(archive, receipt, evidence); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = os.Stat(output); !os.IsNotExist(err) {
-		t.Fatal("candidate became public before cleanup")
-	}
-	if err = candidate.restore(); err != nil {
-		t.Fatal(err)
-	}
-	var resultErr error
-	candidate.finish(&resultErr)
-	if resultErr != nil {
-		t.Fatal(resultErr)
-	}
-	raw, err = os.ReadFile(filepath.Join(output, candidateArchiveName))
-	if err != nil || candidateDigest(raw) != receipt.ArchiveSHA256 {
-		t.Fatalf("transport changed canonical archive bytes: %v", err)
-	}
-	var proof candidateReceipt
-	raw, err = os.ReadFile(filepath.Join(output, "candidate.json"))
-	if err != nil || json.Unmarshal(raw, &proof) != nil {
-		t.Fatalf("missing completed candidate receipt: %v", err)
-	}
-	if proof.Commits != candidate.commits || proof.NPMVersion != "0.36.0" || proof.LinkEvidenceSHA256 != candidateDigest(evidence) || len(proof.Packages) != 3 {
-		t.Fatalf("source/transform evidence changed during export: %+v", proof)
 	}
 }
