@@ -186,18 +186,26 @@ func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
 	local := strings.TrimSpace(string(version))
 	require.True(t, strings.HasPrefix(local, "go1."), local)
 
-	t.Run("a toolchain line naming the local toolchain", func(t *testing.T) {
-		if local == "go1.27.0" {
-			t.Skip("Go removes a toolchain directive identical to the go directive in readonly mode")
-		}
+	t.Run("matching go and toolchain directives", func(t *testing.T) {
 		f := newFixture(t)
-		expected, err := verifier()(context.Background(), f.request())
-		require.NoError(t, err)
-		appendToFile(t, f.consumer, "go.mod", "\ntoolchain "+local+"\n")
-		got, err := verifier()(context.Background(), f.request())
-		require.NoError(t, err)
-		require.Equal(t, expected, got)
+		appendToFile(t, f.consumer, "go.mod", "\ntoolchain go1.27.0\n")
+		identity, err := verifier()(context.Background(), f.request())
+		typed := refusal(t, err)
+		require.Equal(t, devsdk.CodeDependencyUnavailable, typed.Code, typed.Message)
+		require.Contains(t, typed.Message, "updates to go.mod needed")
+		require.Equal(t, devsdk.Identity{}, identity)
 	})
+	if local != "go1.27.0" {
+		t.Run("a toolchain line naming the local toolchain", func(t *testing.T) {
+			f := newFixture(t)
+			expected, err := verifier()(context.Background(), f.request())
+			require.NoError(t, err)
+			appendToFile(t, f.consumer, "go.mod", "\ntoolchain "+local+"\n")
+			got, err := verifier()(context.Background(), f.request())
+			require.NoError(t, err)
+			require.Equal(t, expected, got)
+		})
+	}
 	t.Run("a newer toolchain line is not honored while the toolchain is local", func(t *testing.T) {
 		f := newFixture(t)
 		expected, err := verifier()(context.Background(), f.request())
