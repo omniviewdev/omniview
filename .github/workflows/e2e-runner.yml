@@ -35,7 +35,7 @@ jobs:
     env:
       GOWORK: "off"
       GOFLAGS: ""
-      GO_VERSION: "1.27"
+      GO_VERSION: "1.27.3"
       NODE_OPTIONS: "--max-old-space-size=4096"
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"

@@ -28,7 +28,7 @@ concurrency:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
-  GO_VERSION: "1.27"
+  GO_VERSION: "1.27.3"
   NODE_VERSION: "26.13.0"
   # Release jobs must not inherit a developer's workspace/module/tooling flags.
   GOWORK: "off"
@@ -59,7 +59,7 @@ jobs:
       - name: Setup candidate Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ env.GO_VERSION }}
           cache: true
           cache-dependency-path: go.sum
       - name: Setup pinned native pnpm
