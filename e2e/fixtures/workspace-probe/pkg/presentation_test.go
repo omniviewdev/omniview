@@ -22,7 +22,7 @@ func newTestProvider(t *testing.T) (*benchmarkSource, *benchmarkProvider) {
 	return source, &benchmarkProvider{Controller: controller}
 }
 
-func TestPresentationIsAdvertisedByTheWrapper(t *testing.T) {
+func TestWrapperAdvertisesPresentationAndSchemaResolution(t *testing.T) {
 	_, provider := newTestProvider(t)
 	ctx := context.Background()
 
@@ -31,15 +31,22 @@ func TestPresentationIsAdvertisedByTheWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !detected.Has(resource.FeaturePresentation) {
-		t.Fatalf("presentation not advertised: %+v", detected)
+	for _, trait := range []resource.Feature{resource.FeaturePresentation, resource.FeatureSchemaResolver} {
+		if !detected.Has(trait) {
+			t.Fatalf("wrapper trait %q not advertised: %+v", trait, detected)
+		}
+	}
+	if detected.Has(resource.FeatureSchemaDocuments) {
+		t.Fatal("inline schemas must not advertise schema document acquisition")
 	}
 	bare, err := provider.Controller.Features(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bare.Has(resource.FeaturePresentation) {
-		t.Fatal("the bare controller must not advertise presentation")
+	for _, trait := range []resource.Feature{resource.FeaturePresentation, resource.FeatureSchemaResolver} {
+		if bare.Has(trait) {
+			t.Fatalf("the bare controller must not advertise %q", trait)
+		}
 	}
 	for _, trait := range bare.Traits {
 		if !detected.Has(trait) {

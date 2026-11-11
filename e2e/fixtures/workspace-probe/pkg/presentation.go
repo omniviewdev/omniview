@@ -20,14 +20,15 @@ const (
 	unregisteredCellComponent = "workspace-probe/unregistered-cell"
 )
 
-// benchmarkProvider adds presentation to the controller. The controller reports only
-// the optional traits it installed, so the wrapper extends that result.
+// benchmarkProvider adds presentation and schema resolution to the controller.
+// The controller reports only the optional traits it installed, so the wrapper extends that result.
 type benchmarkProvider struct {
 	*resource.Controller[benchmarkClient]
 }
 
 var (
 	_ resource.PresentationProvider = (*benchmarkProvider)(nil)
+	_ resource.SchemaResolver       = (*benchmarkProvider)(nil)
 	_ resource.FeatureNegotiator    = (*benchmarkProvider)(nil)
 )
 
@@ -38,6 +39,9 @@ func (p *benchmarkProvider) Features(ctx context.Context) (resource.FeatureSet, 
 	}
 	if !features.Has(resource.FeaturePresentation) {
 		features.Traits = append(features.Traits, resource.FeaturePresentation)
+	}
+	if !features.Has(resource.FeatureSchemaResolver) {
+		features.Traits = append(features.Traits, resource.FeatureSchemaResolver)
 	}
 	return features, resource.ValidateFeatures(features)
 }

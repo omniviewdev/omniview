@@ -253,3 +253,136 @@ func TestAllProfilesAdvertiseOnlyRealOperations(t *testing.T) {
 		}
 	}
 }
+
+func TestSchemaResolutionPreservesNativeAbsenceAndAuthoringDocument(t *testing.T) {
+	source, err := loadBenchmarkSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &benchmarkProvider{Controller: startedBenchmarkController(t, source)}
+	var want any
+	if err := json.Unmarshal([]byte(`{
+		"type": "object", "additionalProperties": false,
+		"properties": {
+			"name": {"type": "string"},
+			"state": {"type": "string", "enum": ["running", "stopped"]},
+			"hardware": {"type": "object", "properties": {"cores": {"type": "integer"}}},
+			"tags": {"type": "object", "additionalProperties": {"type": "string"}}
+		}
+	}`), &want); err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range benchmarkProfiles {
+		t.Run(profile, func(t *testing.T) {
+			route := resource.AccessRoute{Connection: profile}
+			ctx := benchmarkAdmissionContext(t, provider.Controller, route)
+			catalog, err := provider.Catalog(ctx, resource.CatalogRequest{Route: route})
+			if err != nil {
+				t.Fatal(err)
+			}
+			resourceType := catalog.Types[0]
+			representations := []resource.Representation{
+				{ID: "native", Revision: "1"},
+				{ID: "authoring", Revision: "authoring/" + profile},
+			}
+			if resourceType.Type != source.scenarios[profile].Type || resourceType.DefaultRepresentation != "native" || !reflect.DeepEqual(resourceType.Representations, representations) {
+				t.Fatalf("catalog format identity changed: %+v", resourceType)
+			}
+			for _, representation := range resourceType.Representations {
+				binding, err := provider.ResolveSchema(ctx, resource.SchemaRequest{
+					Route: route, Type: resourceType.Type,
+					Target: resource.SchemaTarget{Representation: &representation},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := resource.ValidateSchemaBinding(binding); err != nil {
+					t.Fatal(err)
+				}
+				if representation.ID == "native" {
+					if !reflect.DeepEqual(binding, resource.SchemaBinding{State: "absent"}) {
+						t.Fatalf("native format gained a schema: %+v", binding)
+					}
+					continue
+				}
+				if binding.State != "available" || binding.Revision == nil || *binding.Revision != "authoring/"+profile || binding.Dialect != resource.DialectJSONSchema202012 || binding.Root != "" || binding.DocumentRef != nil {
+					t.Fatalf("authoring schema binding changed: %+v", binding)
+				}
+				var document any
+				if err := json.Unmarshal(binding.Document, &document); err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(document, want) {
+					t.Fatalf("authoring schema content changed: %s", binding.Document)
+				}
+			}
+		})
+	}
+}
+
+func TestSchemaResolutionRejectsInvalidOrChangedTargetsAndCancellation(t *testing.T) {
+	source, err := loadBenchmarkSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &benchmarkProvider{Controller: startedBenchmarkController(t, source)}
+	target := benchmarkTarget(source, "cloud-bundled-pages")
+	record, err := source.record(target, source.records["cloud-arn"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	auxiliary := func() *resource.AuxiliarySchemaTarget {
+		return &resource.AuxiliarySchemaTarget{Key: "values", Reference: record.Reference}
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*resource.SchemaRequest)
+		code   string
+	}{
+		{"missing route", func(request *resource.SchemaRequest) { request.Route = resource.AccessRoute{} }, "INVALID_REQUEST"},
+		{"unknown route", func(request *resource.SchemaRequest) { request.Route.Connection = "unknown" }, "INVALID_REQUEST"},
+		{"missing type", func(request *resource.SchemaRequest) { request.Type = "" }, "INVALID_REQUEST"},
+		{"other type", func(request *resource.SchemaRequest) { request.Type = "vm" }, "UNSUPPORTED"},
+		{"missing target", func(request *resource.SchemaRequest) { request.Target = resource.SchemaTarget{} }, "INVALID_REQUEST"},
+		{"missing format ID", func(request *resource.SchemaRequest) { request.Target.Representation.ID = "" }, "INVALID_REQUEST"},
+		{"missing format revision", func(request *resource.SchemaRequest) { request.Target.Representation.Revision = "" }, "INVALID_REQUEST"},
+		{"unknown format", func(request *resource.SchemaRequest) { request.Target.Representation.ID = "other" }, "UNSUPPORTED"},
+		{"stale authoring revision", func(request *resource.SchemaRequest) { request.Target.Representation.Revision = "old" }, "RESET_REQUIRED"},
+		{"stale native revision", func(request *resource.SchemaRequest) {
+			request.Target.Representation = &resource.Representation{ID: "native", Revision: "old"}
+		}, "RESET_REQUIRED"},
+		{"other route revision", func(request *resource.SchemaRequest) {
+			request.Route.Connection = "hypervisor-bundled-vms"
+			request.Type = source.scenarios[request.Route.Connection].Type
+		}, "RESET_REQUIRED"},
+		{"unsupported auxiliary", func(request *resource.SchemaRequest) {
+			request.Target = resource.SchemaTarget{Auxiliary: auxiliary()}
+		}, "UNSUPPORTED"},
+		{"ambiguous target", func(request *resource.SchemaRequest) { request.Target.Auxiliary = auxiliary() }, "INVALID_REQUEST"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := resource.SchemaRequest{
+				Route: target.Route, Type: target.Type,
+				Target: resource.SchemaTarget{Representation: &resource.Representation{
+					ID: "authoring", Revision: "authoring/" + target.Route.Connection,
+				}},
+			}
+			test.mutate(&request)
+			binding, err := provider.ResolveSchema(context.Background(), request)
+			if resource.ErrorCode(err) != test.code || !reflect.DeepEqual(binding, resource.SchemaBinding{}) {
+				t.Fatalf("rejected target returned %+v, %v; want %s", binding, err, test.code)
+			}
+		})
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	binding, err := provider.ResolveSchema(canceled, resource.SchemaRequest{
+		Route: target.Route, Type: target.Type,
+		Target: resource.SchemaTarget{Representation: &resource.Representation{
+			ID: "authoring", Revision: "authoring/" + target.Route.Connection,
+		}},
+	})
+	if resource.ErrorCode(err) != "CANCELLED" || !reflect.DeepEqual(binding, resource.SchemaBinding{}) {
+		t.Fatalf("canceled resolution returned %+v, %v", binding, err)
+	}
+}
