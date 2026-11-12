@@ -14,6 +14,26 @@ import { toggleMaximiseOnDoubleClick } from './toggleMaximise';
 import styles from './Header.module.css';
 import { GlobalCommandSearch } from '@/features/command-search/GlobalCommandSearch';
 import { useGlobalCommandSearch } from '@/features/command-search/useGlobalCommandSearch';
+import { Call } from '@wailsio/runtime';
+import { openSettings } from '@omniviewdev/runtime';
+
+function UpdateIndicator() {
+  const [version, setVersion] = React.useState('');
+  React.useEffect(() => {
+    const refresh = () => {
+      void Call.ByName('github.com/omniviewdev/omniview.UpdateService.Status')
+        .then((value: unknown) => {
+          const status = value as { state: string; availableVersion: string };
+          setVersion(status.state === 'ready' ? status.availableVersion : '');
+        }).catch(() => {});
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+  if (!version) return null;
+  return <button onClick={() => { void openSettings('/settings?section=core&category=updates'); }}>Update {version} ready</button>;
+}
 
 /**
  * Primary header component for the core main layout
@@ -40,6 +60,7 @@ const CoreLayoutHeader: React.FC = () => {
         {areas?.left.visible && <HeaderItemAreaComponent area={areas.left} onOpenSearch={search.open} />}
         {areas?.center.visible && <HeaderItemAreaComponent area={areas.center} onOpenSearch={search.open} />}
         {areas?.right.visible && <HeaderItemAreaComponent area={areas.right} onOpenSearch={search.open} />}
+        <UpdateIndicator />
       </AppShell.Header>
       <GlobalCommandSearch {...search.paletteProps} />
     </>

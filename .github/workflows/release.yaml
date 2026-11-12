@@ -94,6 +94,14 @@ jobs:
         shell: bash
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
+      - name: Prepare updater public keys
+        shell: bash
+        env:
+          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
+        run: |
+          keys=$(jq -r 'join(",")' <<<"$UPDATER_PUBLIC_KEYS")
+          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
+
       - name: Build Omniview
         shell: bash
         env:
@@ -109,6 +117,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
+              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
@@ -198,6 +207,26 @@ jobs:
       - name: Verify signed universal release archive
         run: bash build/darwin/verify-release-package.sh bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg
 
+      - name: Create and verify macOS update ZIP
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          zip="bin/Omniview_${version}_darwin_universal.zip"
+          ditto -c -k --sequesterRsrc --keepParent bin/dmg-root/Omniview.app "$zip"
+          temp_dir=$(mktemp -d)
+          trap 'rm -rf "$temp_dir"' EXIT
+          ditto -x -k "$zip" "$temp_dir"
+          codesign --verify --deep --strict "$temp_dir/Omniview.app"
+          xcrun stapler validate "$temp_dir/Omniview.app"
+
+      - name: Upload macOS update ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-update-zip
+          path: bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.zip
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -285,6 +314,14 @@ jobs:
       - name: Build frontend
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
+      - name: Prepare updater public keys
+        shell: bash
+        env:
+          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
+        run: |
+          keys=$(jq -r 'join(",")' <<<"$UPDATER_PUBLIC_KEYS")
+          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
+
       - name: Build Omniview
         run: |
           go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
@@ -294,6 +331,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
+              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
@@ -373,6 +411,14 @@ jobs:
         shell: bash
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
+      - name: Prepare updater public keys
+        shell: bash
+        env:
+          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
+        run: |
+          keys=$(jq -r 'join(",")' <<<"$UPDATER_PUBLIC_KEYS")
+          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
+
       - name: Build Omniview
         shell: bash
         run: |
@@ -383,6 +429,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
+              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
@@ -399,6 +446,44 @@ jobs:
           path: bin/Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe
           if-no-files-found: error
           retention-days: 1
+
+  publish-updates:
+    runs-on: [omniview]
+    needs: [build-macos, build-linux, build-windows, check-homebrew]
+    if: ${{ github.event_name == 'push' && !contains(github.ref_name, '-') }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-update-zip
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-binary
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-binary
+          path: dist
+      - name: Publish signed update
+        shell: bash
+        env:
+          UPDATER_SIGNING_KEYS: ${{ secrets.UPDATER_SIGNING_KEYS }}
+          UPDATE_SERVICE_PUBLISH_TOKEN: ${{ secrets.UPDATE_SERVICE_PUBLISH_TOKEN }}
+          UPDATE_SERVICE_URL: http://omniview-update-service-api.omniview.svc.cluster.local:5000
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node build/updater/publish-to-update-service.mjs --channel stable --version "$version" --dir dist \
+            --git-sha "$GITHUB_SHA" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # NPM — publish @omniviewdev/* packages after platform and Homebrew checks
