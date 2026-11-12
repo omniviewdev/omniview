@@ -138,6 +138,7 @@ func boundServiceTypes() []any {
 		(*devserver.ServiceWrapper)(nil),
 		(*bootstrap.Service)(nil),
 		(*AppService)(nil),
+		(*UpdateService)(nil),
 		(*diagnostics.DiagnosticsClient)(nil),
 		(*extensiondiagnosticshost.Service)(nil),
 		(*diagnosticshost.Service)(nil),
