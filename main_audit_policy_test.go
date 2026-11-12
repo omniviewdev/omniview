@@ -77,13 +77,13 @@ func TestEveryBoundMethodIsClassified(t *testing.T) {
 }
 
 // The hook that main runs before registering services must accept the real
-// services and refuse an unreviewed one. AppService is covered by
-// TestEveryBoundMethodIsClassified: under go test its names carry the import
+// services and refuse an unreviewed one. Main-package services are covered by
+// TestEveryBoundMethodIsClassified: under go test their names carry the import
 // path instead of "main".
 func TestStartupAuditCheckCoversRegisteredServices(t *testing.T) {
 	var others []any
 	for _, service := range boundServiceTypes() {
-		if _, isApp := service.(*AppService); !isApp {
+		if reflect.TypeOf(service).Elem().PkgPath() != reflect.TypeFor[AppService]().PkgPath() {
 			others = append(others, service)
 		}
 	}
