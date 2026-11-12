@@ -8,7 +8,7 @@ type Status = { state: string; version: string; availableVersion: string; error:
 export default function UpdatesSettingsPage() {
   const [status, setStatus] = React.useState<Status>();
   const [error, setError] = React.useState('');
-  const refresh = React.useCallback(() => {
+  const refresh = React.useCallback(async () => {
     return Call.ByName(`${service}.Status`).then((value: unknown) => {
       setStatus(value as Status);
     }).catch((err: unknown) => {
