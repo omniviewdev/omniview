@@ -25,14 +25,25 @@ function UpdateIndicator() {
         .then((value: unknown) => {
           const status = value as { state: string; availableVersion: string };
           setVersion(status.state === 'ready' ? status.availableVersion : '');
-        }).catch(() => {});
+        }).catch(() => {
+          setVersion('');
+        });
     };
+
     refresh();
     const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
+
+    return () => {
+      window.clearInterval(timer);
+    };
   }, []);
-  if (!version) return null;
-  return <button onClick={() => { void openSettings('/settings?section=core&category=updates'); }}>Update {version} ready</button>;
+  if (!version) {
+    return null;
+  }
+
+  return <button onClick={() => {
+    void openSettings('/settings?section=core&category=updates');
+  }}>Update {version} ready</button>;
 }
 
 /**
