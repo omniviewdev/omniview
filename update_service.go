@@ -13,20 +13,20 @@ import (
 )
 
 type UpdateService struct {
-	updater *wailsupdater.Updater
-	configured bool
-	mu sync.Mutex
-	flow sync.Mutex
-	lastError string
+	updater          *wailsupdater.Updater
+	configured       bool
+	mu               sync.Mutex
+	flow             sync.Mutex
+	lastError        string
 	availableVersion string
-	cancel context.CancelFunc
+	cancel           context.CancelFunc
 }
 
 type UpdateStatus struct {
-	State string `json:"state"`
-	Version string `json:"version"`
+	State            string `json:"state"`
+	Version          string `json:"version"`
 	AvailableVersion string `json:"availableVersion"`
-	Error string `json:"error"`
+	Error            string `json:"error"`
 }
 
 func newUpdateService(app *application.App, channel, root, version string) *UpdateService {
@@ -36,7 +36,9 @@ func newUpdateService(app *application.App, channel, root, version string) *Upda
 		fmt.Fprintf(os.Stderr, "updater disabled: %v\n", err)
 		return s
 	}
-	if provider == nil { return s }
+	if provider == nil {
+		return s
+	}
 	if err := s.updater.Init(wailsupdater.Config{CurrentVersion: version, Providers: []wailsupdater.Provider{provider}, Window: wailsupdater.WindowNone}); err != nil {
 		fmt.Fprintf(os.Stderr, "updater disabled: %v\n", err)
 		return s
@@ -46,26 +48,41 @@ func newUpdateService(app *application.App, channel, root, version string) *Upda
 }
 
 func (s *UpdateService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	if !s.configured { return nil }
+	if !s.configured {
+		return nil
+	}
 	ctx, s.cancel = context.WithCancel(ctx)
 	go func() {
 		s.check(ctx)
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
-		for { select { case <-ctx.Done(): return; case <-ticker.C: s.check(ctx) } }
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.check(ctx)
+			}
+		}
 	}()
 	return nil
 }
 
 func (s *UpdateService) ServiceShutdown() error {
-	if s.cancel != nil { s.cancel() }
+	if s.cancel != nil {
+		s.cancel()
+	}
 	return nil
 }
 
 func (s *UpdateService) check(ctx context.Context) error {
-	if !s.flow.TryLock() { return nil }
+	if !s.flow.TryLock() {
+		return nil
+	}
 	defer s.flow.Unlock()
-	if s.updater.State() == wailsupdater.StateReady { return nil }
+	if s.updater.State() == wailsupdater.StateReady {
+		return nil
+	}
 	release, err := s.updater.Check(ctx)
 	if err == nil && release != nil {
 		s.mu.Lock()
@@ -74,7 +91,11 @@ func (s *UpdateService) check(ctx context.Context) error {
 		err = s.updater.DownloadAndInstall(ctx)
 	}
 	s.mu.Lock()
-	if err != nil { s.lastError = err.Error() } else { s.lastError = "" }
+	if err != nil {
+		s.lastError = err.Error()
+	} else {
+		s.lastError = ""
+	}
 	s.mu.Unlock()
 	return err
 }
@@ -89,7 +110,9 @@ func (s *UpdateService) Status() UpdateStatus {
 }
 
 func (s *UpdateService) Check() error {
-	if !s.configured { return fmt.Errorf("updater is not configured") }
+	if !s.configured {
+		return fmt.Errorf("updater is not configured")
+	}
 	return s.check(context.Background())
 }
 
