@@ -12,11 +12,6 @@ enum Entity {
   PLUGINS = 'plugins',
 }
 
-export type PluginReleaseState = {
-  effectiveChannel: string;
-  explicit: boolean;
-  channels: Array<{ channel: string; branch: string; status: string; created_at: string }>;
-};
 export type ChannelVersion = {
   version: string;
   channel: string;
@@ -288,7 +283,7 @@ export const usePlugin = ({ id, tab, installed = true, channel }: { id: string; 
     queryKey: [Entity.PLUGINS, id, 'release-state'],
     enabled: external && (!installed || !!tab),
     retry: false,
-    queryFn: async () => await PluginManager.GetPluginReleaseState(id) as PluginReleaseState,
+    queryFn: async () => PluginManager.GetPluginReleaseState(id),
   });
   const selectedChannel = channel ?? releaseState.data?.effectiveChannel;
   const channelVersions = useQuery({
