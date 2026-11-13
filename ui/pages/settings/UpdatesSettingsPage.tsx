@@ -1,6 +1,6 @@
 import React from 'react';
 import { Call } from '@wailsio/runtime';
-import { Button, Select, Switch } from '@omniviewdev/base-ui';
+import { Button, Checkbox, Select, Switch } from '@omniviewdev/base-ui';
 import { HOST_SETTINGS_SCOPE, useScopedSettings, useSettings } from '@omniviewdev/runtime';
 import { LuChevronDown } from 'react-icons/lu';
 
@@ -139,9 +139,7 @@ export default function UpdatesSettingsPage() {
       }} /></label>
       {target && selected !== current && <>
         {target.desktopVersion && <p>Target version: {target.desktopVersion}</p>}
-        {!target.stateExists && <label><input type='checkbox' checked={copy} onChange={event => {
-          setCopy(event.target.checked);
-        }} /> Copy my current data to this channel</label>}
+        {!target.stateExists && <Checkbox size='sm' checked={copy} onCheckedChange={setCopy}>Copy my current data to this channel</Checkbox>}
         <Button disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
           void run('SwitchChannel', selected, copy);
         }}>Download and switch</Button>
