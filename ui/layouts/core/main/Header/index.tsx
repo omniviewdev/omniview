@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { AppShell } from '@omniviewdev/base-ui';
+import { AppShell, Button } from '@omniviewdev/base-ui';
 
 // Components
 import HeaderContextArea from './areas/HeaderContextArea';
@@ -41,9 +41,9 @@ function UpdateIndicator() {
     return null;
   }
 
-  return <button onClick={() => {
+  return <Button onClick={() => {
     void openSettings('/settings?section=core&category=updates');
-  }}>Update {version} ready</button>;
+  }}>Update {version} ready</Button>;
 }
 
 /**
