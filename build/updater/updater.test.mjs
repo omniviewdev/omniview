@@ -9,6 +9,8 @@ import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildManifest, keyIdForPublicKey, signEnvelope } from './envelope.mjs';
+import { publicKeysCSV } from './public-keys.mjs';
+import { api, upload } from './publish-to-update-service.mjs';
 
 const seed = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 const publicKey = createPublicKey(createPrivateKey({ key: Buffer.from(`302e020100300506032b657004220420${seed}`, 'hex'), format: 'der', type: 'pkcs8' }));
@@ -35,10 +37,9 @@ test('manifest envelope round trip and key validation', () => {
   assert.throws(() => signEnvelope(payload, ['invalid']));
 });
 
-async function fixture(t, handler) {
+async function fixture(t, handler, version = '1.4.0') {
   const dir = await mkdtemp(join(tmpdir(), 'updater-test-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const version = '1.4.0';
   for (const suffix of ['darwin_universal.zip', 'darwin_universal.dmg', 'linux_amd64', 'windows_amd64.exe']) {
     await writeFile(join(dir, `Omniview_${version}_${suffix}`), `artifact ${suffix}`);
   }
@@ -66,6 +67,48 @@ test('create conflict reports status and exits nonzero', async (t) => {
     assert.match(error.stderr, /409.*active.*release exists/);
     return true;
   });
+});
+
+test('stable build metadata reaches the service unchanged', async (t) => {
+  const { args, env } = await fixture(t, async (req, res) => {
+    const release = JSON.parse(await body(req));
+    assert.equal(release.version, '1.4.0+ci.1');
+    res.writeHead(409).end(JSON.stringify({ error: 'release exists', status: 'active' }));
+  }, '1.4.0+ci.1');
+  await assert.rejects(run(process.execPath, args, { env }), (error) => {
+    assert.match(error.stderr, /409.*active/);
+    return true;
+  });
+});
+
+test('public key configuration requires a non-empty array of lowercase keys', () => {
+  const key = 'ab'.repeat(32);
+  assert.equal(publicKeysCSV(JSON.stringify([key, '01'.repeat(32)])), `${key},${'01'.repeat(32)}`);
+  for (const value of ['', '[]', '{}', 'null', '[""]', '["AB"]', JSON.stringify([key.toUpperCase()]), JSON.stringify([key, 42])]) {
+    assert.throws(() => publicKeysCSV(value), /UPDATER_PUBLIC_KEYS/);
+  }
+});
+
+test('API deadline aborts a stalled response body', async (t) => {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.write('{');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); });
+  await assert.rejects(api(`http://127.0.0.1:${server.address().port}`, 'token', 'POST', {}, AbortSignal.timeout(100)));
+});
+
+test('upload deadline retries stalled requests', async (t) => {
+  let attempts = 0;
+  const server = createServer(async (req, res) => {
+    await body(req);
+    if (++attempts === 2) res.writeHead(200).end();
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise((resolve) => server.close(resolve)); });
+  await upload({ method: 'PUT', url: `http://127.0.0.1:${server.address().port}`, headers: {} }, 1, () => Buffer.from('x'), 100, [0]);
+  assert.equal(attempts, 2);
 });
 
 test('publishes streamed artifacts and signed envelope before finalize', async (t) => {

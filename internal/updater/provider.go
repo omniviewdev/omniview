@@ -21,6 +21,7 @@ import (
 
 const feedBase = "https://updates.omniview.dev"
 const maxEnvelope = 1 << 20
+const defaultDownloadTimeout = 2 * time.Hour
 
 var nightlyVersion = regexp.MustCompile(`^0\.0\.0-nightly\.[0-9]{8}\.[0-9]+\.[0-9]+$`)
 
@@ -60,6 +61,7 @@ type Provider struct {
 	keys                []ed25519.PublicKey
 	client              *http.Client
 	logger              *log.Logger
+	downloadTimeout     time.Duration
 }
 
 // NewProvider returns nil when this build is not configured for updates.
@@ -106,13 +108,13 @@ func (p *Provider) get(ctx context.Context, url string) (*http.Response, error) 
 }
 
 func validVersion(channel, v string) bool {
-	if !semver.IsValid("v"+v) || semver.Canonical("v"+v) != "v"+v {
+	if !semver.IsValid("v"+v) || semver.Canonical("v"+v) != "v"+strings.TrimSuffix(v, semver.Build("v"+v)) {
 		return false
 	}
 	if channel == "nightly" {
 		return nightlyVersion.MatchString(v)
 	}
-	return semver.Prerelease("v"+v) == "" && semver.Build("v"+v) == ""
+	return semver.Prerelease("v"+v) == ""
 }
 
 func (p *Provider) Check(ctx context.Context, req wails.CheckRequest) (*wails.Release, error) {
@@ -163,7 +165,7 @@ func (p *Provider) Check(ctx context.Context, req wails.CheckRequest) (*wails.Re
 	if m.Schema != "omniview-update-manifest/v1" || m.Product != "omniview" || m.Channel != p.channel || !validVersion(p.channel, m.Version) {
 		return nil, fmt.Errorf("invalid update manifest identity or version")
 	}
-	if err = checkpoint(ctx, p.root, p.channel, m.Version); err != nil {
+	if err = checkpoint(ctx, p.root, p.channel, m.Version, false); err != nil {
 		return nil, err
 	}
 	current := strings.TrimPrefix(req.CurrentVersion, "v")
@@ -213,6 +215,9 @@ func (p *Provider) Check(ctx context.Context, req wails.CheckRequest) (*wails.Re
 	if err != nil || len(digest) != sha256.Size || selected.SHA256 != strings.ToLower(selected.SHA256) {
 		return nil, fmt.Errorf("invalid update digest")
 	}
+	if err = checkpoint(ctx, p.root, p.channel, m.Version, true); err != nil {
+		return nil, err
+	}
 	return &wails.Release{Version: m.Version, Channel: m.Channel, Name: "Omniview " + m.Version, Notes: m.Notes, PublishedAt: m.IssuedAt, Artifact: wails.Artifact{Filename: filename, Size: selected.Size, Platform: req.Platform, Arch: arch}, Verification: &wails.Verification{DigestAlgo: "sha256", Digest: digest}, Metadata: map[string]any{"releaseUrl": m.ReleaseURL}}, nil
 }
 
@@ -234,6 +239,12 @@ func (p *Provider) Download(ctx context.Context, r *wails.Release, dst io.Writer
 	if a.Filename != name {
 		return fmt.Errorf("invalid update filename")
 	}
+	timeout := p.downloadTimeout
+	if timeout <= 0 {
+		timeout = defaultDownloadTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	resp, err := p.get(ctx, p.base+"/releases/"+p.channel+"/"+r.Version+"/"+name)
 	if err != nil {
 		return err

@@ -3,10 +3,13 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { buildManifest, signEnvelope } from './envelope.mjs';
 
 const CDN = 'https://updates.omniview.dev';
 const MAX_SIZE = 1024 * 1024 * 1024;
+const API_TIMEOUT_MS = 30 * 1000;
+const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 function options(args) {
   const result = {};
@@ -37,7 +40,7 @@ async function describeFile(dir, channel, version, platform, arch, kind, suffix)
   return { platform, arch, kind, filename, url: `${CDN}/releases/${channel}/${version}/${filename}`, size: info.size, sha256: hash.digest('hex') };
 }
 
-async function api(url, token, method, body, signal) {
+export async function api(url, token, method, body, signal = AbortSignal.timeout(API_TIMEOUT_MS)) {
   const response = await fetch(url, {
     method, signal,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -50,13 +53,12 @@ async function api(url, token, method, body, signal) {
   return data;
 }
 
-async function upload(target, size, bodyFactory) {
+export async function upload(target, size, bodyFactory, timeoutMs = UPLOAD_TIMEOUT_MS, delays = [5000, 15000, 45000]) {
   if (target.method !== 'PUT' || !target.url || !target.headers) throw new Error('invalid upload descriptor');
-  const delays = [5000, 15000, 45000];
   for (let attempt = 0; ; attempt++) {
     let response;
     try {
-      response = await fetch(target.url, { method: 'PUT', headers: { ...target.headers, 'Content-Length': String(size) }, body: bodyFactory(), duplex: 'half' });
+      response = await fetch(target.url, { method: 'PUT', headers: { ...target.headers, 'Content-Length': String(size) }, body: bodyFactory(), duplex: 'half', signal: AbortSignal.timeout(timeoutMs) });
     } catch (error) {
       if (attempt === delays.length) throw new Error('upload failed after retries', { cause: error });
       await sleep(delays[attempt]);
@@ -114,4 +116,6 @@ async function main() {
   throw new Error('release validation timed out after 30 minutes');
 }
 
-main().catch((error) => { console.error(error.message); process.exitCode = 1; });
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => { console.error(error.message); process.exitCode = 1; });
+}

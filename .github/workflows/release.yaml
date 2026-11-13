@@ -99,7 +99,7 @@ jobs:
         env:
           UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
         run: |
-          keys=$(jq -r 'join(",")' <<<"$UPDATER_PUBLIC_KEYS")
+          keys=$(node build/updater/public-keys.mjs)
           echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
 
       - name: Build Omniview
@@ -319,7 +319,7 @@ jobs:
         env:
           UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
         run: |
-          keys=$(jq -r 'join(",")' <<<"$UPDATER_PUBLIC_KEYS")
+          keys=$(node build/updater/public-keys.mjs)
           echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
 
       - name: Build Omniview
@@ -416,7 +416,7 @@ jobs:
         env:
           UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
         run: |
-          keys=$(jq -r 'join(",")' <<<"$UPDATER_PUBLIC_KEYS")
+          keys=$(node build/updater/public-keys.mjs)
           echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
 
       - name: Build Omniview

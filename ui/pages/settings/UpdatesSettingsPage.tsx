@@ -2,7 +2,7 @@ import React from 'react';
 import { Call } from '@wailsio/runtime';
 import { Button } from '@omniviewdev/base-ui';
 
-const service = 'github.com/omniviewdev/omniview.UpdateService';
+const service = 'main.UpdateService';
 type Status = { state: string; version: string; availableVersion: string; error: string };
 
 export default function UpdatesSettingsPage() {

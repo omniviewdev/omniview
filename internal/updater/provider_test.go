@@ -8,12 +8,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	wails "github.com/wailsapp/wails/v3/pkg/updater"
 )
@@ -161,16 +163,79 @@ func TestTrustConfiguration(t *testing.T) {
 func TestCheckpointPersistsPerChannel(t *testing.T) {
 	root := t.TempDir()
 	ctx := context.Background()
-	if err := checkpoint(ctx, root, "stable", "2.0.0"); err != nil {
+	if err := checkpoint(ctx, root, "stable", "2.0.0", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkpoint(ctx, root, "nightly", "0.0.0-nightly.20261112.1.1"); err != nil {
+	if err := checkpoint(ctx, root, "nightly", "0.0.0-nightly.20261112.1.1", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkpoint(ctx, root, "stable", "1.0.0"); err == nil || !strings.Contains(err.Error(), "feed version older than last seen") {
+	if err := checkpoint(ctx, root, "stable", "1.0.0", true); err == nil || !strings.Contains(err.Error(), "feed version older than last seen") {
 		t.Fatalf("rollback: %v", err)
 	}
-	if err := checkpoint(ctx, root, "stable", "2.0.0"); err != nil {
+	if err := checkpoint(ctx, root, "stable", "2.0.0", true); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStableVersionBuildMetadata(t *testing.T) {
+	for _, v := range []string{"1.2.3", "1.2.3+ci.1"} {
+		if !validVersion("stable", v) {
+			t.Fatalf("valid stable version rejected: %s", v)
+		}
+	}
+	for _, v := range []string{"1.2", "1.2.3-rc.1", "1.2.3+ci..1", "01.2.3"} {
+		if validVersion("stable", v) {
+			t.Fatalf("invalid stable version accepted: %s", v)
+		}
+	}
+}
+
+func TestCheckpointAdvancesOnlyAfterArtifactValidation(t *testing.T) {
+	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	var response []byte
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(response)
+	}))
+	defer srv.Close()
+	p := &Provider{channel: "stable", root: t.TempDir(), base: srv.URL, keys: []ed25519.PublicKey{key.Public().(ed25519.PublicKey)}, client: srv.Client(), logger: log.New(io.Discard, "", 0)}
+	req := wails.CheckRequest{CurrentVersion: "1.0.0", Platform: "linux", Arch: "amd64"}
+	makeManifest := func(version string) manifest {
+		name := "Omniview_" + version + "_linux_amd64"
+		return manifest{Schema: "omniview-update-manifest/v1", Product: "omniview", Channel: "stable", Version: version, Artifacts: []artifact{{Platform: "linux", Arch: "amd64", Kind: "update", Filename: name, URL: srv.URL + "/releases/stable/" + version + "/" + name, Size: 1, SHA256: strings.Repeat("a", 64)}}}
+	}
+	for _, invalid := range []string{"missing", "digest"} {
+		bad := makeManifest("3.0.0")
+		if invalid == "missing" {
+			bad.Artifacts = nil
+		} else {
+			bad.Artifacts[0].SHA256 = "bad"
+		}
+		response = signed(t, bad, key)
+		if _, err := p.Check(context.Background(), req); err == nil {
+			t.Fatalf("%s artifact accepted", invalid)
+		}
+	}
+	response = signed(t, makeManifest("2.0.0+ci.1"), key)
+	release, err := p.Check(context.Background(), req)
+	if err != nil || release == nil || release.Version != "2.0.0+ci.1" {
+		t.Fatalf("valid stable release after invalid feed: %v, %v", release, err)
+	}
+	response = signed(t, makeManifest("1.5.0"), key)
+	if _, err := p.Check(context.Background(), req); err == nil || !strings.Contains(err.Error(), "feed version older than last seen") {
+		t.Fatalf("rollback: %v", err)
+	}
+}
+
+func TestDownloadDeadlineCancelsStalledBody(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	p := &Provider{channel: "stable", base: srv.URL, client: srv.Client(), downloadTimeout: 50 * time.Millisecond}
+	r := &wails.Release{Channel: "stable", Version: "1.0.0", Artifact: wails.Artifact{Platform: "linux", Arch: "amd64", Filename: "Omniview_1.0.0_linux_amd64", Size: 1}}
+	if err := p.Download(context.Background(), r, io.Discard, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stalled download: %v", err)
 	}
 }

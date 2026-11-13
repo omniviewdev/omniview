@@ -21,7 +21,7 @@ function UpdateIndicator() {
   const [version, setVersion] = React.useState('');
   React.useEffect(() => {
     const refresh = () => {
-      void Call.ByName('github.com/omniviewdev/omniview.UpdateService.Status')
+      void Call.ByName('main.UpdateService.Status')
         .then((value: unknown) => {
           const status = value as { state: string; availableVersion: string };
           setVersion(status.state === 'ready' ? status.availableVersion : '');

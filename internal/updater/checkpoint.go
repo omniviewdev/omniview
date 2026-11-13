@@ -12,8 +12,8 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-// checkpoint advances under a process-wide file lock and never accepts a rollback.
-func checkpoint(ctx context.Context, root, channel, version string) error {
+// checkpoint checks for rollback and optionally advances under a process-wide file lock.
+func checkpoint(ctx context.Context, root, channel, version string, advance bool) error {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func checkpoint(ctx context.Context, root, channel, version string) error {
 	if old != "" && semver.Compare("v"+version, "v"+old) < 0 {
 		return fmt.Errorf("feed version older than last seen")
 	}
-	if old != "" && semver.Compare("v"+version, "v"+old) == 0 {
+	if !advance || (old != "" && semver.Compare("v"+version, "v"+old) == 0) {
 		return nil
 	}
 	values[channel] = version
