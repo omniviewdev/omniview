@@ -14,7 +14,7 @@ const channelName = (channel: string) => channel === 'stable' ? 'Stable' : chann
 export default function UpdatesSettingsPage() {
   const [status, setStatus] = React.useState<Status>();
   const [channels, setChannels] = React.useState<ChannelList>();
-  const [selected, setSelected] = React.useState('');
+  const [selectedChannel, setSelected] = React.useState('');
   const [copy, setCopy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -37,19 +37,30 @@ export default function UpdatesSettingsPage() {
       window.clearInterval(timer);
     };
   }, [refresh]);
+  const canListChannels = Boolean(status) && status?.state !== 'unconfigured';
   React.useEffect(() => {
-    if (!status || status.state === 'unconfigured') return;
+    if (!canListChannels) {
+      return;
+    }
+
     let active = true;
     void Call.ByName(`${service}.ListChannels`).then((value: unknown) => {
-      if (!active) return;
+      if (!active) {
+        return;
+      }
+
       const list = value as ChannelList;
       setChannels(list);
       setSelected(current => current || list.current);
     }).catch((err: unknown) => {
-      if (active) setError(String(err));
+      if (active) {
+        setError(String(err));
+      }
     });
-    return () => { active = false; };
-  }, [status?.state === 'unconfigured', Boolean(status)]);
+    return () => {
+      active = false;
+    };
+  }, [canListChannels]);
   const run = async (method: string, ...args: unknown[]) => {
     setError('');
     setBusy(true);
@@ -60,17 +71,15 @@ export default function UpdatesSettingsPage() {
     } finally {
       setBusy(false);
     }
+
     await refresh();
   };
 
   const state = status?.state ?? 'loading';
-  const current = channels?.current || status?.channel || '';
-  React.useEffect(() => {
-    if (!showFeatures && selected.startsWith('feature-') && selected !== current) {
-      setSelected(current);
-      setCopy(false);
-    }
-  }, [showFeatures, selected, current]);
+  const current = channels?.current ?? status?.channel ?? '';
+  const selected = !showFeatures && selectedChannel.startsWith('feature-') && selectedChannel !== current
+    ? current
+    : selectedChannel;
   const target = channels?.options.find(option => option.channel === selected);
   const currentOption = channels?.options.find(option => option.channel === current);
   const options = channels?.options.filter(option =>
@@ -88,10 +97,14 @@ export default function UpdatesSettingsPage() {
     {status?.availableVersion && <p>Available version: {status.availableVersion}</p>}
     {(error || status?.error) && <p role='alert'>{error || status?.error}</p>}
     {state === 'ready'
-      ? <Button onClick={() => { void run('Restart'); }}>
+      ? <Button onClick={() => {
+        void run('Restart');
+      }}>
         {status?.switchTarget ? `Restart into ${status.switchTarget}` : 'Restart to Update'}
       </Button>
-      : <Button disabled={busy || ['loading', 'unconfigured', 'checking', 'downloading', 'verifying', 'installing'].includes(state)} onClick={() => { void run('Check'); }}>
+      : <Button disabled={busy || ['loading', 'unconfigured', 'checking', 'downloading', 'verifying', 'installing'].includes(state)} onClick={() => {
+        void run('Check');
+      }}>
         Check for Updates
       </Button>}
     {status && state !== 'unconfigured' && <section>
@@ -100,7 +113,10 @@ export default function UpdatesSettingsPage() {
       {channels?.error && <p role='alert'>{channels.error}</p>}
       {currentOption?.status === 'archived' && <p role='alert'>This channel was retired. Switch to Stable to keep receiving updates.</p>}
       <Select.Root size='sm' value={selected} items={items} disabled={!channels || busy} onValueChange={(value) => {
-        if (value !== null) { setSelected(value); setCopy(false); }
+        if (value !== null) {
+          setSelected(value);
+          setCopy(false);
+        }
       }}>
         <Select.Trigger aria-label='Release channel'><Select.Value /><Select.Icon><LuChevronDown aria-hidden /></Select.Icon></Select.Trigger>
         <Select.Portal><Select.Positioner sideOffset={4}><Select.Popup><Select.List>
@@ -111,13 +127,24 @@ export default function UpdatesSettingsPage() {
       </Select.Root>
       <label>Show feature channels <Switch checked={showFeatures} onCheckedChange={(checked) => {
         void commit({ 'developer.show_feature_channels': checked }).then(result => {
-          if (!result.applied || result.uncertain) setError(result.message || 'Could not apply setting');
-        }).catch((err: unknown) => setError(String(err)));
+          if (!result.applied || result.uncertain) {
+            setError(result.message ?? 'Could not apply setting');
+          } else if (!checked && selectedChannel.startsWith('feature-') && selectedChannel !== current) {
+            setSelected(current);
+            setCopy(false);
+          }
+        }).catch((err: unknown) => {
+          setError(String(err));
+        });
       }} /></label>
       {target && selected !== current && <>
         {target.desktopVersion && <p>Target version: {target.desktopVersion}</p>}
-        {!target.stateExists && <label><input type='checkbox' checked={copy} onChange={event => setCopy(event.target.checked)} /> Copy my current data to this channel</label>}
-        <Button disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => { void run('SwitchChannel', selected, copy); }}>Download and switch</Button>
+        {!target.stateExists && <label><input type='checkbox' checked={copy} onChange={event => {
+          setCopy(event.target.checked);
+        }} /> Copy my current data to this channel</label>}
+        <Button disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
+          void run('SwitchChannel', selected, copy);
+        }}>Download and switch</Button>
       </>}
     </section>}
   </section>;

@@ -13,7 +13,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
   const [channelChoice, setChannelChoice] = useState<string>();
   const { releaseState, channelVersions: versions, installFromChannel, operation } = usePlugin({ id: pluginID, installed: false, channel: channelChoice });
   const { settings } = useSettings();
-  const effectiveChannel = releaseState.data?.effectiveChannel || 'stable';
+  const effectiveChannel = releaseState.data?.effectiveChannel === '' ? 'stable' : (releaseState.data?.effectiveChannel ?? 'stable');
   const channel = channelChoice ?? effectiveChannel;
   const channels = releaseState.data?.channels ?? [];
   const activeChannels = channels.filter(item => item.status === 'active');
@@ -25,14 +25,14 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
   const releases = (versions.data ?? []) as Release[];
   const list = orderedVersions(releases);
   const compatible = releases.filter(v => v.compatible !== false);
-  const recommended = compatible.find(v => (v.channel || 'stable') === channel) ?? compatible.find(v => !v.channel || v.channel === 'stable');
+  const recommended = compatible.find(v => (v.channel === '' ? 'stable' : (v.channel ?? 'stable')) === channel) ?? compatible.find(v => !v.channel || v.channel === 'stable');
   const selected = list.find(v => selection?.id === pluginID && selection.channel === channel && v.version === selection.version) ?? recommended ?? list[0];
   const downgrade = !!selected && !!currentVersion && compareVersions(selected.version, currentVersion) < 0;
   const busy = !!operation;
   const run = async (version: string) => {
     try {
       const release = list.find(item => item.version === version);
-      await installFromChannel({ channel: release?.channel || 'stable', version });
+      await installFromChannel({ channel: release?.channel === '' ? 'stable' : (release?.channel ?? 'stable'), version });
       setChooser(false);
       setConfirm(false);
     } catch {

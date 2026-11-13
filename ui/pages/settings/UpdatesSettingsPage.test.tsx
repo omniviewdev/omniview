@@ -12,10 +12,14 @@ vi.mock('@omniviewdev/runtime', () => ({
 vi.mock('@omniviewdev/base-ui', () => ({
   Button: ({ children, ...props }: React.ComponentProps<'button'>) => <button {...props}>{children}</button>,
   Switch: ({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (value: boolean) => void }) =>
-    <input type='checkbox' checked={checked} onChange={event => onCheckedChange(event.target.checked)} />,
+    <input type='checkbox' checked={checked} onChange={event => {
+      onCheckedChange(event.target.checked);
+    }} />,
   Select: {
     Root: ({ children, value, onValueChange, disabled }: { children: React.ReactNode; value: string; onValueChange: (value: string) => void; disabled: boolean }) =>
-      <select aria-label='Release channel' value={value} disabled={disabled} onChange={event => onValueChange(event.target.value)}>{children}</select>,
+      <select aria-label='Release channel' value={value} disabled={disabled} onChange={event => {
+        onValueChange(event.target.value);
+      }}>{children}</select>,
     Trigger: () => null, Value: () => null, Icon: () => null,
     Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     Positioner: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -40,10 +44,16 @@ describe('UpdatesSettingsPage channels', () => {
     mocks.showFeatures = false;
     mocks.current = 'stable';
     mocks.commit.mockReset().mockResolvedValue({ applied: true, uncertain: false });
-    mocks.call.mockReset().mockImplementation((method: string) => {
-      if (method.endsWith('.Status')) return Promise.resolve({ state: 'idle', channel: mocks.current });
-      if (method.endsWith('.ListChannels')) return Promise.resolve({ current: mocks.current, options, error: '' });
-      return Promise.resolve();
+    mocks.call.mockReset().mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: mocks.current };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return { current: mocks.current, options, error: '' };
+      }
+
+      return undefined;
     });
   });
   afterEach(cleanup);
@@ -53,7 +63,9 @@ describe('UpdatesSettingsPage channels', () => {
     await screen.findByRole('option', { name: 'Nightly' });
     expect(screen.queryByRole('option', { name: 'feature-abc' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Show feature channels'));
-    await waitFor(() => expect(mocks.commit).toHaveBeenCalledWith({ 'developer.show_feature_channels': true }));
+    await waitFor(() => {
+      expect(mocks.commit).toHaveBeenCalledWith({ 'developer.show_feature_channels': true });
+    });
   });
 
   it('displays active features and disables channels without builds', async () => {
@@ -71,7 +83,9 @@ describe('UpdatesSettingsPage channels', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'feature-abc' } });
     fireEvent.click(screen.getByLabelText('Copy my current data to this channel'));
     fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', true));
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', true);
+    });
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
     expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
   });

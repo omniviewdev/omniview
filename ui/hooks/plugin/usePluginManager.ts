@@ -15,7 +15,7 @@ enum Entity {
 export type PluginReleaseState = {
   effectiveChannel: string;
   explicit: boolean;
-  channels: { channel: string; branch: string; status: string; created_at: string }[];
+  channels: Array<{ channel: string; branch: string; status: string; created_at: string }>;
 };
 export type ChannelVersion = {
   version: string;
@@ -392,15 +392,19 @@ export const usePlugin = ({ id, tab, installed = true, channel }: { id: string; 
 
   const { mutateAsync: installFromChannel } = useMutation({
     mutationFn: async ({ channel, version }: { channel: string; version: string }) => runOperation('Installing and starting plugin…', async () => {
-      const meta = await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginChannelVersion', id, channel, version) as PluginMeta | null;
+      const meta = await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginChannelVersion', id, channel, version);
       if (meta) {
         queryClient.setQueryData(operationKey, 'Loading plugin interface…');
         await recoverInterface(meta.id);
       }
+
       return meta;
     }),
     onSuccess(meta) {
-      if (!meta) return;
+      if (!meta) {
+        return;
+      }
+
       void notify({ title: `${meta.name} ${meta.version} installed`, severity: 'success' });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
     },

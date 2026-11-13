@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   effective: 'stable',
   explicit: false,
   install: vi.fn(),
-  versions: [] as { version: string; channel: string; compatible?: boolean }[],
+  versions: [] as Array<{ version: string; channel: string; compatible?: boolean }>,
 }));
 vi.mock('@omniviewdev/runtime', () => ({ useSettings: () => ({ settings: { 'developer.show_feature_channels': mocks.showFeatures } }) }));
 vi.mock('@/hooks/plugin/usePluginManager', () => ({
@@ -27,11 +27,15 @@ vi.mock('@omniviewdev/base-ui', () => {
     Stack: Container,
     Text: ({ children, role }: React.PropsWithChildren<{ role?: string }>) => <span role={role}>{children}</span>,
     Dialog: Object.assign(({ children, open }: React.PropsWithChildren<{ open: boolean }>) => open ? <div role='dialog'>{children}</div> : null, { Title: Container, Body: Container, Footer: Container }),
-    RadioGroup: Object.assign(({ children, onValueChange }: React.PropsWithChildren<{ onValueChange: (value: string) => void }>) => <div onChange={event => onValueChange((event.target as HTMLInputElement).value)}>{children}</div>, {
+    RadioGroup: Object.assign(({ children, onValueChange }: React.PropsWithChildren<{ onValueChange: (value: string) => void }>) => <div onChange={event => {
+      onValueChange((event.target as HTMLInputElement).value);
+    }}>{children}</div>, {
       Item: ({ children, value, disabled }: React.PropsWithChildren<{ value: string; disabled: boolean }>) => <label><input type='radio' name='version' value={value} disabled={disabled} />{children}</label>,
     }),
     Select: {
-      Root: ({ children, value, onValueChange, disabled }: React.PropsWithChildren<{ value: string; onValueChange: (value: string) => void; disabled: boolean }>) => <select aria-label='Release channel' value={value} disabled={disabled} onChange={event => onValueChange(event.target.value)}>{children}</select>,
+      Root: ({ children, value, onValueChange, disabled }: React.PropsWithChildren<{ value: string; onValueChange: (value: string) => void; disabled: boolean }>) => <select aria-label='Release channel' value={value} disabled={disabled} onChange={event => {
+        onValueChange(event.target.value);
+      }}>{children}</select>,
       Trigger: () => null, Value: () => null, Icon: () => null,
       Portal: Container, Positioner: Container, Popup: Container, List: Container,
       Item: ({ children, value, disabled }: React.PropsWithChildren<{ value: string; disabled?: boolean }>) => <option value={value} disabled={disabled}>{children}</option>,
@@ -70,7 +74,9 @@ describe('plugin release channels', () => {
     render(<PluginUpdateButton pluginID='example' />);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'feature-abc' } });
     fireEvent.click(screen.getByRole('button', { name: 'Install 1.1.0-feature-abc.1.1' }));
-    await waitFor(() => expect(mocks.install).toHaveBeenCalledWith({ channel: 'feature-abc', version: '1.1.0-feature-abc.1.1' }));
+    await waitFor(() => {
+      expect(mocks.install).toHaveBeenCalledWith({ channel: 'feature-abc', version: '1.1.0-feature-abc.1.1' });
+    });
   });
 
   it('uses stable fallback and passes stable channel', async () => {
@@ -79,7 +85,9 @@ describe('plugin release channels', () => {
     render(<PluginUpdateButton pluginID='example' />);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'feature-abc' } });
     fireEvent.click(screen.getByRole('button', { name: 'Install 2.0.0' }));
-    await waitFor(() => expect(mocks.install).toHaveBeenCalledWith({ channel: 'stable', version: '2.0.0' }));
+    await waitFor(() => {
+      expect(mocks.install).toHaveBeenCalledWith({ channel: 'stable', version: '2.0.0' });
+    });
   });
 
   it('confirms downgrades and reports retired explicit channels', async () => {
@@ -87,9 +95,11 @@ describe('plugin release channels', () => {
     mocks.explicit = true;
     mocks.versions = [{ version: '1.0.0', channel: '' }];
     render(<PluginUpdateButton pluginID='example' currentVersion='2.0.0' installed />);
-    expect(screen.getByRole('alert')).toHaveTextContent("This plugin's release channel was retired.");
+    expect(screen.getByRole('alert')).toHaveTextContent('This plugin\'s release channel was retired.');
     fireEvent.click(screen.getByRole('button', { name: 'Update 1.0.0' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm downgrade' }));
-    await waitFor(() => expect(mocks.install).toHaveBeenCalledWith({ channel: 'stable', version: '1.0.0' }));
+    await waitFor(() => {
+      expect(mocks.install).toHaveBeenCalledWith({ channel: 'stable', version: '1.0.0' });
+    });
   });
 });
