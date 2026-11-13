@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -110,7 +111,7 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 				http.Error(w, "download failed", http.StatusInternalServerError)
 				return
 			}
-			_, _ = w.Write(body)
+			http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(body))
 		default:
 			http.NotFound(w, r)
 		}
