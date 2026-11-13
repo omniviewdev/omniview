@@ -3,6 +3,7 @@ package devworkspace
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +11,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
 )
@@ -253,11 +256,24 @@ func TestPrivateNodeAliasesExecuteActualRenamedRuntime(t *testing.T) {
 	for _, selection := range []struct{ name, override, want string }{{"explicit renamed", renamed, renamed}, {"detected default", "", node}} {
 		t.Run(selection.name, func(t *testing.T) {
 			env := append(os.Environ(), "GOWORK=off", "GOFLAGS=", "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"), "OMNIVIEW_PNPM_NODE_PATH="+selection.override)
-			assertRuntime := func(cmd *exec.Cmd) {
+			assertRuntime := func(command func() *exec.Cmd) {
 				t.Helper()
-				cmd.Dir = root
-				cmd.Env = env
-				raw, err := cmd.CombinedOutput()
+				var raw []byte
+				var err error
+				// A fork in a parallel test can briefly inherit the descriptor a file was just
+				// written through, and the kernel then refuses to execute that file (ETXTBSY).
+				// The descriptor closes when that child execs, so the same command succeeds
+				// moments later.
+				for attempt := 1; ; attempt++ {
+					cmd := command()
+					cmd.Dir = root
+					cmd.Env = env
+					raw, err = cmd.CombinedOutput()
+					if !errors.Is(err, syscall.ETXTBSY) || attempt == 5 {
+						break
+					}
+					time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+				}
 				if err != nil {
 					t.Fatalf("actual node alias failed: %v\n%s", err, raw)
 				}
@@ -277,14 +293,18 @@ func TestPrivateNodeAliasesExecuteActualRenamedRuntime(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				assertRuntime(exec.Command(shell, "/d", "/s", "/c", `node inner.cjs "argument with spaces"`))
+				assertRuntime(func() *exec.Cmd {
+					return exec.Command(shell, "/d", "/s", "/c", `node inner.cjs "argument with spaces"`)
+				})
 			} else {
-				assertRuntime(exec.Command("/bin/sh", "-c", `node inner.cjs "argument with spaces"`))
+				assertRuntime(func() *exec.Cmd {
+					return exec.Command("/bin/sh", "-c", `node inner.cjs "argument with spaces"`)
+				})
 				shebang := filepath.Join(root, "env-node")
 				if err = os.WriteFile(shebang, []byte("#!/usr/bin/env node\n"+child), 0700); err != nil {
 					t.Fatal(err)
 				}
-				assertRuntime(exec.Command(shebang, "argument with spaces"))
+				assertRuntime(func() *exec.Cmd { return exec.Command(shebang, "argument with spaces") })
 			}
 		})
 	}
