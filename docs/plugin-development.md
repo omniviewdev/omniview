@@ -1179,6 +1179,8 @@ Use `openSourceView(pluginId, {targetId, target, updates})` for a source view. T
 
 A snapshot's `records` map is never modified after `getSnapshot()` returns it, and a record that a later change or generation repeats unchanged is the same object, matched by host key. Compare objects to learn which records moved; a change that repeats everything keeps the map itself, a status event that repeats the status publishes nothing, and every change event still advances `event.revision`. `useResources({collection: true})` builds its page from that map, so `acquired.page.records` keeps its identity when only the status or count changed.
 
+`useResources({collection: true})` keeps a collection's source view open for a minute after its last observer unmounts, and at most four such views at once, so a remount reuses the view and renders its current snapshot at once instead of streaming the collection again; a view whose open failed, whose source failed or closed, or whose connection generation has moved on is closed at once.
+
 The PR workflow runs `src/resource/v2/sourceView.test.ts` from `packages/omniviewdev-runtime`.
 The suite checks atomic snapshots, frame-batched notifications, continuity gaps, record identity, and view retirement.
 

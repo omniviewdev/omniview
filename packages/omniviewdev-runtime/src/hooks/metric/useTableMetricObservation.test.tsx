@@ -579,3 +579,66 @@ it('leaves no timer behind when a parent unmounts before its cells, including af
   expect(lease.close).toHaveBeenCalledTimes(1);
 });
 
+
+/** The publication timers read `performance.now()`, so it is faked along with the timers. */
+const fakeClock = () => {
+  vi.useRealTimers();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+};
+const burst = (result: { current: TableMetricObservation }, count: number) => {
+  for (let i = 0; i < count; i++) result.current.register({ name: `row-${i}` });
+};
+
+it('publishes a burst of cells once, QUIET_MS after the last touch', () => {
+  fakeClock();
+  const { result } = renderTable();
+  act(() => { burst(result, 25); });
+  act(() => { vi.advanceTimersByTime(10); });
+  act(() => { burst(result, 24); result.current.register(first); });
+  act(() => { vi.advanceTimersByTime(119); });
+  expect(transport.leases).toHaveLength(0);
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('publishes touches every 50ms at the maximum wait after the first, not later', () => {
+  fakeClock();
+  const { result } = renderTable();
+  act(() => { result.current.register(first); });
+  for (let elapsed = 50; elapsed < 250; elapsed += 50) {
+    act(() => { vi.advanceTimersByTime(50); result.current.register({ name: `row-${elapsed}` }); });
+  }
+  act(() => { vi.advanceTimersByTime(49); });
+  expect(transport.leases).toHaveLength(0);
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(1);
+});
+
+it('arms at most two timers and clears none during a burst of cells', () => {
+  fakeClock();
+  const { result } = renderTable();
+  const set = vi.spyOn(window, 'setTimeout');
+  const clear = vi.spyOn(window, 'clearTimeout');
+  act(() => { burst(result, 49); result.current.register(first); });
+  expect(set.mock.calls.length).toBeLessThanOrEqual(2);
+  expect(clear).not.toHaveBeenCalled();
+  act(() => { vi.advanceTimersByTime(120); });
+  expect(transport.leases).toHaveLength(1);
+});
+
+it('clears both timers when the owner detaches while pending, and re-arms QUIET_MS after it attaches again', () => {
+  fakeClock();
+  const view = render(<StrictMode><Table options={base} rows={[firstRow]} /></StrictMode>);
+  // The StrictMode replay detached the owner with demand pending, then attached it again.
+  expect(vi.getTimerCount()).toBe(2);
+  act(() => { vi.advanceTimersByTime(119); });
+  expect(transport.leases).toHaveLength(0);
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(transport.leases).toHaveLength(1);
+  expect(vi.getTimerCount()).toBe(0);
+  view.rerender(<StrictMode><Table options={base} rows={[firstRow, secondRow]} /></StrictMode>);
+  expect(vi.getTimerCount()).toBeGreaterThan(0);
+  view.unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});

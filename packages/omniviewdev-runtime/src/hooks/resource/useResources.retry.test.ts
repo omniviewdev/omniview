@@ -2,6 +2,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { VIEW_LINGER_MS } from '../../resource/v2/sourceViewLimits';
 import { useResources } from './useResources';
 import type { HostEnumerateRequest, HostRecord, HostSourceViewEvent, HostSourceViewOpened } from '../../resource/v2/host';
 import { jsonToValue, valueToJSONText } from '../../resource/v2/value';
@@ -78,6 +79,7 @@ function Collection({ name = 'Collection' }: { name?: string }) {
 let client: QueryClient;
 let emit: (event: { data: HostSourceViewEvent }) => void;
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.clearAllMocks();
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   native.open.mockResolvedValue({ viewId: 'view', topic: 'resource-view', mode: 'snapshotAndUpdates' });
@@ -95,9 +97,12 @@ beforeEach(() => {
   native.refresh.mockResolvedValue(undefined);
   native.close.mockResolvedValue(undefined);
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   client.clear();
+  // A released view lingers. Closing every one here keeps the next test from reusing it.
+  await vi.advanceTimersByTimeAsync(VIEW_LINGER_MS + 1);
+  vi.useRealTimers();
 });
 
 it.each([
@@ -207,6 +212,31 @@ it('keeps a shared pending Retry alive when its initiating observer unmounts', a
   expect(native.close).not.toHaveBeenCalled();
 
   mounted.unmount();
-  await waitFor(() => expect(native.close).toHaveBeenCalledTimes(1));
+  // The view the last observer released lingers for a quick return, then closes once.
+  await act(async () => {});
+  expect(native.close).not.toHaveBeenCalled();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(VIEW_LINGER_MS);
+  });
+  expect(native.close).toHaveBeenCalledTimes(1);
   expect(native.close).toHaveBeenCalledWith('provider', 'view');
+});
+
+it('renders the rows of a view kept open in the first commit of a remount, without streaming them again', async () => {
+  const mounted = render(React.createElement(QueryClientProvider, { client }, React.createElement(Collection)));
+  expect((await screen.findByRole('listitem')).textContent).toBe(bodyText);
+  mounted.unmount();
+  // The query cache does not outlive its observer, so only the view can supply the rows.
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(VIEW_LINGER_MS / 2);
+  });
+  expect(client.getQueryCache().getAll()).toHaveLength(0);
+
+  render(React.createElement(QueryClientProvider, { client }, React.createElement(Collection)));
+  expect(screen.getByRole('listitem').textContent).toBe(bodyText);
+  await act(async () => {});
+  expect(screen.getByRole('status').textContent).toBe('following');
+  expect(native.open).toHaveBeenCalledTimes(1);
+  expect(native.sync).toHaveBeenCalledTimes(1);
+  expect(native.close).not.toHaveBeenCalled();
 });

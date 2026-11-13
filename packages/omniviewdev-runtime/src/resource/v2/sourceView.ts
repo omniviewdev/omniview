@@ -3,6 +3,7 @@ import { Events } from '@wailsio/runtime';
 import { classifyFrontendError, recordFrontendSpan } from '../../telemetry/frontendSpans';
 import { CloseSourceView, OpenSourceView, RefreshSourceView, SyncSourceView } from './client';
 import type { HostRecord, HostRecordRemoval, HostSourceStatus, HostSourceViewEvent, HostSourceViewOpened, HostSourceViewRequest } from './host';
+import { MIN_DELIVERY_INTERVAL_MS } from './sourceViewLimits';
 
 export interface SourceViewSnapshot {
   viewGeneration?: string;
@@ -26,6 +27,10 @@ export interface SourceViewClient {
 }
 
 type SyncReason = 'initial' | 'sequence_gap' | 'reset_required' | 'binding_changed' | 'reconnect' | 'exhausted' | 'other';
+
+const now = (): number => typeof performance !== 'undefined' && typeof performance.now === 'function'
+  ? performance.now()
+  : Date.now();
 
 const openViews = new Set<SourceViewClient>();
 if (typeof window !== 'undefined') {
@@ -79,18 +84,33 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
   let revision = 0;
   let frame: number | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let intervalTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastDelivery: number | undefined;
   let attempts: number[] = [];
   const listeners = new Set<() => void>();
 
   function notify() {
-    if (frame !== undefined || timer !== undefined || closed) return;
+    if (frame !== undefined || timer !== undefined || intervalTimer !== undefined || closed) return;
     const deliver = () => {
       frame = undefined;
       timer = undefined;
-      if (!closed) for (const listener of listeners) listener();
+      if (closed) return;
+      lastDelivery = now();
+      for (const listener of listeners) listener();
     };
-    if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(deliver);
-    else timer = setTimeout(deliver, 0);
+    const schedule = () => {
+      if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(deliver);
+      else timer = setTimeout(deliver, 0);
+    };
+    const wait = lastDelivery === undefined ? 0 : MIN_DELIVERY_INTERVAL_MS - (now() - lastDelivery);
+    if (wait <= 0) {
+      schedule();
+      return;
+    }
+    intervalTimer = setTimeout(() => {
+      intervalTimer = undefined;
+      if (!closed) schedule();
+    }, wait);
   }
 
   function update(patch: Partial<SourceViewSnapshot>, kind?: 'snapshotEnd' | 'changes' | 'reset') {
@@ -243,6 +263,7 @@ export async function openSourceView(pluginID: string, request: HostSourceViewRe
       unsubscribe();
       if (frame !== undefined && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
       clearTimeout(timer);
+      clearTimeout(intervalTimer);
       listeners.clear();
       void CloseSourceView(pluginID, opened.viewId).catch(() => {});
     },
