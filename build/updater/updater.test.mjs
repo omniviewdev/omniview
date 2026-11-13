@@ -81,6 +81,24 @@ test('stable build metadata reaches the service unchanged', async (t) => {
   });
 });
 
+test('feature channel accepts only its matching version', async (t) => {
+  const { args, env } = await fixture(t, async (req, res) => {
+    const release = JSON.parse(await body(req));
+    assert.equal(release.channel, 'feature-abc');
+    res.writeHead(409).end(JSON.stringify({ error: 'release exists', status: 'active' }));
+  }, '0.1.1-feature-abc.3.1');
+  args[2] = 'feature-abc';
+  await assert.rejects(run(process.execPath, args, { env }), (error) => {
+    assert.match(error.stderr, /409.*active/);
+    return true;
+  });
+  args[4] = '0.1.1-feature-def.3.1';
+  await assert.rejects(run(process.execPath, args, { env }), (error) => {
+    assert.match(error.stderr, /invalid channel or version/);
+    return true;
+  });
+});
+
 test('public key configuration requires a non-empty array of lowercase keys', () => {
   const key = 'ab'.repeat(32);
   assert.equal(publicKeysCSV(JSON.stringify([key, '01'.repeat(32)])), `${key},${'01'.repeat(32)}`);

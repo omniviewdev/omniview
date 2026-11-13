@@ -30,426 +30,40 @@ env:
   RELEASE: "true"
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # macOS (darwin/universal) — sign, notarize, DMG
-  # ─────────────────────────────────────────────────────────────────────────────
-  build-macos:
-    runs-on: macos-15-intel
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Normalize version
         id: version
         shell: bash
         run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          version="${GITHUB_REF_NAME#v}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup pnpm
-        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: "go.sum"
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prepare stock host module
-        shell: bash
-        run: |
-          set -eu
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD")"
-          printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
-
-      - name: Install Wails v3
-        shell: bash
-        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
-
-      - name: Build frontend
-        shell: bash
-        run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
-
-      - name: Prepare updater public keys
-        shell: bash
-        env:
-          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
-        run: |
-          keys=$(node build/updater/public-keys.mjs)
-          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
-
-      - name: Build Omniview
-        shell: bash
-        env:
-          CGO_ENABLED: "1"
-          CGO_CFLAGS: "-mmacosx-version-min=13.0"
-          CGO_LDFLAGS: "-mmacosx-version-min=13.0"
-          MACOSX_DEPLOYMENT_TARGET: "13.0"
-        run: |
-          bash build/darwin/build-universal.sh bin/Omniview -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
-            -ldflags "-w -s \
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
-              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
-              -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false \
-              -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
-              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
-              -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
-
-      - name: Build universal developer CLI
-        shell: bash
-        env:
-          BUILD_PACKAGE: ./cmd/omniview-dev
-          CGO_ENABLED: "0"
-        run: |
-          bash build/darwin/build-universal.sh bin/omniview-dev -modfile="$GO_MODFILE" -tags server -trimpath -buildvcs=false \
-            -ldflags "-w -s \
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
-              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }}"
-
-      - name: Create macOS .app bundle
-        run: |
-          task common:generate:icons
-          mkdir -p bin/Omniview.app/Contents/MacOS
-          mkdir -p bin/Omniview.app/Contents/Resources
-          cp build/darwin/icons.icns bin/Omniview.app/Contents/Resources/
-          cp bin/Omniview bin/Omniview.app/Contents/MacOS/
-          cp bin/omniview-dev bin/Omniview.app/Contents/MacOS/
-          cp build/darwin/Info.plist bin/Omniview.app/Contents/
-          version="${{ steps.version.outputs.version }}"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${version%%[-+]*}" bin/Omniview.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" bin/Omniview.app/Contents/Info.plist
-
-      - name: Import Code-Signing Certificates
-        uses: Apple-Actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
-          p12-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
-
-      - name: Sign and Notarize
-        shell: bash
-        env:
-          APPLE_SIGN_ID: ${{ secrets.APPLE_DEVELOPER_SIGN_ID }}
-          NOTARY_USER: ${{ secrets.CLI_MACOS_NOTARY_USER }}
-          NOTARY_PWD: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
-          TEAM_ID: ${{ secrets.CLI_MACOS_TEAM_ID }}
-        run: |
-          codesign --force --options runtime --sign "$APPLE_SIGN_ID" \
-            bin/Omniview.app/Contents/MacOS/omniview-dev
-          codesign --deep --force \
-            --options runtime \
-            --entitlements build/darwin/entitlements.plist \
-            --sign "$APPLE_SIGN_ID" \
-            bin/Omniview.app
-
-          ditto -c -k --keepParent --rsrc bin/Omniview.app archive.zip
-
-          xcrun notarytool submit archive.zip \
-            --apple-id "$NOTARY_USER" \
-            --password "$NOTARY_PWD" \
-            --team-id "$TEAM_ID" \
-            --wait
-
-          xcrun stapler staple bin/Omniview.app
-
-      - name: Checkout create-dmg
-        uses: actions/checkout@v4
-        with:
-          repository: create-dmg/create-dmg
-          path: ./build/create-dmg
-          ref: master
-
-      - name: Create DMG
-        shell: bash
-        working-directory: ./build
-        run: |
-          mkdir -p ../bin/dmg-root
-          mv ../bin/Omniview.app ../bin/dmg-root/
-          ../build/create-dmg/create-dmg \
-            --no-internet-enable \
-            --volname "Omniview" \
-            --text-size 12 \
-            --window-pos 400 400 \
-            --window-size 660 450 \
-            --icon-size 80 \
-            --icon "Omniview.app" 180 180 \
-            --hide-extension "Omniview.app" \
-            --app-drop-link 480 180 \
-            "../bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg" \
-            "../bin/dmg-root"
-
-      - name: Verify signed universal release archive
-        run: bash build/darwin/verify-release-package.sh bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg
-
-      - name: Create and verify macOS update ZIP
-        shell: bash
-        run: |
-          version="${{ steps.version.outputs.version }}"
-          zip="bin/Omniview_${version}_darwin_universal.zip"
-          ditto -c -k --sequesterRsrc --keepParent bin/dmg-root/Omniview.app "$zip"
-          temp_dir=$(mktemp -d)
-          trap 'rm -rf "$temp_dir"' EXIT
-          ditto -x -k "$zip" "$temp_dir"
-          codesign --verify --deep --strict "$temp_dir/Omniview.app"
-          xcrun stapler validate "$temp_dir/Omniview.app"
-
-      - name: Upload macOS update ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-update-zip
-          path: bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.zip
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-dmg
-          path: bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg
-          if-no-files-found: error
-          retention-days: 1
+  build:
+    needs: version
+    uses: ./.github/workflows/desktop-build.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.version.outputs.version }}
+      channel: stable
+      development: ${{ 'false' }}
+      inject-registry-key: true
+      artifact-prefix: ''
 
   check-homebrew:
-    needs: build-macos
+    needs: build
     uses: ./.github/workflows/homebrew-check.yml
     with:
       artifact: macos-dmg
       cask: omniview
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Linux (linux/amd64)
-  # ─────────────────────────────────────────────────────────────────────────────
-  build-linux:
-    runs-on: ubuntu-24.04
-    container:
-      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
-      options: --init
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Match checkout directory ownership to container user
-        run: chown "$(id -u):$(id -g)" "$PWD"
-
-      - name: Normalize version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup pnpm
-        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: "go.sum"
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prepare stock host module
-        shell: bash
-        run: |
-          set -eu
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD")"
-          printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
-
-      - name: Install Wails v3
-        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
-
-      - name: Build frontend
-        run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
-
-      - name: Prepare updater public keys
-        shell: bash
-        env:
-          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
-        run: |
-          keys=$(node build/updater/public-keys.mjs)
-          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
-
-      - name: Build Omniview
-        run: |
-          go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
-            -ldflags "-w -s \
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
-              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
-              -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false \
-              -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
-              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
-              -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
-            -o bin/Omniview .
-
-      - name: Rename executable
-        working-directory: ./bin
-        run: mv Omniview "Omniview_${{ steps.version.outputs.version }}_linux_amd64"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-binary
-          path: bin/Omniview_${{ steps.version.outputs.version }}_linux_amd64
-          if-no-files-found: error
-          retention-days: 1
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Windows (windows/amd64)
-  # ─────────────────────────────────────────────────────────────────────────────
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Normalize version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup pnpm
-        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: "go.sum"
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prepare stock host module
-        shell: bash
-        run: |
-          set -eu
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD")"
-          printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
-
-      - name: Install Wails v3
-        shell: bash
-        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
-
-      - name: Build frontend
-        shell: bash
-        run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
-
-      - name: Prepare updater public keys
-        shell: bash
-        env:
-          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
-        run: |
-          keys=$(node build/updater/public-keys.mjs)
-          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
-
-      - name: Build Omniview
-        shell: bash
-        run: |
-          go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
-            -ldflags "-w -s -H windowsgui \
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
-              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
-              -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false \
-              -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
-              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
-              -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
-            -o bin/Omniview.exe .
-
-      - name: Rename executable
-        working-directory: ./bin
-        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-binary
-          path: bin/Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe
-          if-no-files-found: error
-          retention-days: 1
 
   publish-updates:
     runs-on: [omniview]
-    needs: [build-macos, build-linux, build-windows, check-homebrew]
+    needs: [build, check-homebrew]
     if: ${{ github.event_name == 'push' && !contains(github.ref_name, '-') }}
     permissions:
       contents: read
@@ -489,7 +103,7 @@ jobs:
   # NPM — publish @omniviewdev/* packages after platform and Homebrew checks
   # ─────────────────────────────────────────────────────────────────────────────
   publish-npm:
-    needs: [build-macos, build-linux, build-windows, check-homebrew]
+    needs: [build, check-homebrew]
     uses: ./.github/workflows/npm-publish.yml
     with:
       version: ${{ github.ref_name }}
@@ -500,7 +114,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish:
     runs-on: ubuntu-latest
-    needs: [build-macos, build-linux, build-windows, check-homebrew, publish-npm]
+    needs: [build, check-homebrew, publish-npm]
     steps:
       - name: Verify Homebrew publication credentials
         if: ${{ !contains(github.ref_name, '-') }}

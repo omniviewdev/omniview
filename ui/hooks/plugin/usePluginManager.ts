@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotifications, createErrorHandler, parseAppError, actionToNotification } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { Events } from '@omniviewdev/runtime/runtime';
+import { Call, Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta, PluginInfo } from '@omniviewdev/runtime/models';
 
 import { usePluginService } from '@/features/plugins';
@@ -11,6 +11,19 @@ import { devToolsChannel } from '@/features/devtools/events';
 enum Entity {
   PLUGINS = 'plugins',
 }
+
+export type PluginReleaseState = {
+  effectiveChannel: string;
+  explicit: boolean;
+  channels: { channel: string; branch: string; status: string; created_at: string }[];
+};
+export type ChannelVersion = {
+  version: string;
+  channel: string;
+  compatible?: boolean;
+  compatibility_reason?: string;
+  discovery_supported?: boolean;
+};
 
 function localInstallDiagnosticMessage(error: unknown): string {
   if (typeof error === 'string') {
@@ -201,7 +214,7 @@ export const usePluginManager = () => {
   };
 };
 
-export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: string; installed?: boolean }) => {
+export const usePlugin = ({ id, tab, installed = true, channel }: { id: string; tab?: string; installed?: boolean; channel?: string }) => {
   const queryClient = useQueryClient();
   const { notify } = useNotifications();
   const service = usePluginService();
@@ -269,6 +282,21 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
       const versions = await PluginManager.GetPluginVersions(id);
       return versions;
     },
+  });
+
+  const releaseState = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'release-state'],
+    enabled: external && (!installed || !!tab),
+    retry: false,
+    queryFn: async () => await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginReleaseState', id) as PluginReleaseState,
+  });
+  const selectedChannel = channel ?? releaseState.data?.effectiveChannel;
+  const channelVersions = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'versions', selectedChannel],
+    enabled: external && !!selectedChannel && (!installed || !!tab),
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginChannelVersions', id, selectedChannel) as ChannelVersion[] | null,
   });
 
   const readme = useQuery({
@@ -362,10 +390,29 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     onError: createErrorHandler(notify, 'Plugin update failed'),
   });
 
+  const { mutateAsync: installFromChannel } = useMutation({
+    mutationFn: async ({ channel, version }: { channel: string; version: string }) => runOperation('Installing and starting plugin…', async () => {
+      const meta = await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginChannelVersion', id, channel, version) as PluginMeta | null;
+      if (meta) {
+        queryClient.setQueryData(operationKey, 'Loading plugin interface…');
+        await recoverInterface(meta.id);
+      }
+      return meta;
+    }),
+    onSuccess(meta) {
+      if (!meta) return;
+      void notify({ title: `${meta.name} ${meta.version} installed`, severity: 'success' });
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
+    },
+    onError: createErrorHandler(notify, 'Plugin update failed'),
+  });
+
   return {
     operation: operation.data,
     plugin,
     versions,
+    releaseState,
+    channelVersions,
     readme,
     reviews,
     downloadStats,
@@ -373,6 +420,7 @@ export const usePlugin = ({ id, tab, installed = true }: { id: string; tab?: str
     reload,
     uninstall,
     update,
+    installFromChannel,
     setEnabled,
   };
 };

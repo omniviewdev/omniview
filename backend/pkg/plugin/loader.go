@@ -264,6 +264,7 @@ func newLoadRecord(id string, metadata config.PluginMeta, opts *LoadPluginOption
 		record.Enabled = opts.ExistingState.Enabled
 		record.DevMode = opts.ExistingState.DevMode
 		record.DevPath = opts.ExistingState.DevPath
+		record.ReleaseChannel = opts.ExistingState.ReleaseChannel
 	}
 
 	if opts != nil && opts.DevMode {

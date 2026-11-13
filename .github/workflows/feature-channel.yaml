@@ -1,0 +1,95 @@
+name: Feature Channel Build
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+  packages: read
+
+concurrency:
+  group: feature-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.channel.outputs.enabled }}
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - id: channel
+        uses: omniviewdev/publish-plugin-action/resolve-channel@v1.2.0
+        with:
+          kind: host
+          channels-url: https://updates.omniview.dev/channels/index.json
+
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.enabled == 'true'
+    uses: ./.github/workflows/desktop-build.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      channel: ${{ needs.resolve.outputs.channel }}
+      development: ${{ 'true' }}
+      inject-registry-key: true
+      artifact-prefix: feature-
+
+  publish-updates:
+    runs-on: [omniview]
+    needs: [resolve, build]
+    if: needs.resolve.outputs.enabled == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-macos-dmg
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-macos-update-zip
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-linux-binary
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-windows-binary
+          path: dist
+      - name: Publish signed update
+        shell: bash
+        env:
+          UPDATER_SIGNING_KEYS: ${{ secrets.UPDATER_SIGNING_KEYS }}
+          UPDATE_SERVICE_PUBLISH_TOKEN: ${{ secrets.UPDATE_SERVICE_PUBLISH_TOKEN }}
+          UPDATE_SERVICE_URL: http://omniview-update-service-api.omniview.svc.cluster.local:5000
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          node build/updater/publish-to-update-service.mjs --channel "$CHANNEL" \
+            --version "$VERSION" --dir dist \
+            --git-sha "$GITHUB_SHA" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+  publish-npm:
+    needs: [resolve, build]
+    if: needs.resolve.outputs.enabled == 'true'
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      version: ${{ needs.resolve.outputs.version }}
+      dist-tag: ${{ needs.resolve.outputs.channel }}

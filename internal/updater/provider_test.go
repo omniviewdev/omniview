@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/releasechannel"
 	wails "github.com/wailsapp/wails/v3/pkg/updater"
 )
 
@@ -179,12 +180,12 @@ func TestCheckpointPersistsPerChannel(t *testing.T) {
 
 func TestStableVersionBuildMetadata(t *testing.T) {
 	for _, v := range []string{"1.2.3", "1.2.3+ci.1"} {
-		if !validVersion("stable", v) {
+		if !releasechannel.ValidVersion("stable", v) {
 			t.Fatalf("valid stable version rejected: %s", v)
 		}
 	}
 	for _, v := range []string{"1.2", "1.2.3-rc.1", "1.2.3+ci..1", "01.2.3"} {
-		if validVersion("stable", v) {
+		if releasechannel.ValidVersion("stable", v) {
 			t.Fatalf("invalid stable version accepted: %s", v)
 		}
 	}
@@ -237,5 +238,87 @@ func TestDownloadDeadlineCancelsStalledBody(t *testing.T) {
 	r := &wails.Release{Channel: "stable", Version: "1.0.0", Artifact: wails.Artifact{Platform: "linux", Arch: "amd64", Filename: "Omniview_1.0.0_linux_amd64", Size: 1}}
 	if err := p.Download(context.Background(), r, io.Discard, nil); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("stalled download: %v", err)
+	}
+}
+
+func TestProviderSwitchTarget(t *testing.T) {
+	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	var response []byte
+	var requestedPath string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		_, _ = w.Write(response)
+	}))
+	defer srv.Close()
+	p := &Provider{channel: "stable", root: t.TempDir(), base: srv.URL, keys: []ed25519.PublicKey{key.Public().(ed25519.PublicKey)}, client: srv.Client(), logger: log.New(io.Discard, "", 0)}
+	req := wails.CheckRequest{CurrentVersion: "9.0.0", Platform: "linux", Arch: "amd64"}
+	feed := func(channel, version string) manifest {
+		name := "Omniview_" + version + "_linux_amd64"
+		return manifest{Schema: "omniview-update-manifest/v1", Product: "omniview", Channel: channel, Version: version, Artifacts: []artifact{{Platform: "linux", Arch: "amd64", Kind: "update", Filename: name, URL: srv.URL + "/releases/" + channel + "/" + version + "/" + name, Size: 1, SHA256: strings.Repeat("a", 64)}}}
+	}
+	if err := p.SetTarget("nightly"); err != nil {
+		t.Fatal(err)
+	}
+	response = signed(t, feed("nightly", "0.0.0-nightly.20261112.1.1"), key)
+	r, err := p.Check(context.Background(), req)
+	if err != nil || r == nil || requestedPath != "/channels/nightly.json" {
+		t.Fatalf("nightly switch: release=%v path=%s err=%v", r, requestedPath, err)
+	}
+	if err := p.Download(context.Background(), &wails.Release{Channel: "stable", Version: "1.0.0"}, io.Discard, nil); err == nil {
+		t.Fatal("download accepted non-target channel")
+	}
+	if err := p.SetTarget("feature-abc"); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []manifest{
+		feed("nightly", "0.0.0-nightly.20261112.1.1"),
+		feed("feature-abc", "1.0.0-feature-def.1.1"),
+	} {
+		response = signed(t, m, key)
+		if _, err := p.Check(context.Background(), req); err == nil {
+			t.Fatalf("accepted mismatched feed: %+v", m)
+		}
+	}
+	response = signed(t, feed("feature-abc", "1.0.0-feature-abc.2.1"), key)
+	if r, err := p.Check(context.Background(), req); err != nil || r == nil {
+		t.Fatalf("feature switch: %v, %v", r, err)
+	}
+	response = signed(t, feed("feature-abc", "1.0.0-feature-abc.1.1"), key)
+	if _, err := p.Check(context.Background(), req); err == nil || !strings.Contains(err.Error(), "feed version older than last seen") {
+		t.Fatalf("target rollback: %v", err)
+	}
+	if err := p.SetTarget("feature-x"); err == nil {
+		t.Fatal("invalid target accepted")
+	}
+	if err := p.SetTarget(""); err != nil || p.activeTarget() != "stable" {
+		t.Fatalf("clearing target: %v", err)
+	}
+	if err := p.SetTarget("stable"); err != nil || p.activeTarget() != "stable" {
+		t.Fatalf("own target: %v", err)
+	}
+}
+
+func TestFetchChannelIndex(t *testing.T) {
+	response := `{"schema":"omniview-channel-index/v1","generatedAt":"2026-11-13T00:00:00Z","channels":[{"channel":"feature-abc","branch":"feature/abc","status":"active","desktopVersion":"1.0.0-feature-abc.1.1"}]}`
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/channels/index.json" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, response)
+	}))
+	defer srv.Close()
+	p := &Provider{base: srv.URL, client: srv.Client()}
+	index, err := p.FetchIndex(context.Background())
+	if err != nil || len(index.Channels) != 1 || index.Channels[0].Channel != "feature-abc" {
+		t.Fatalf("index: %+v, %v", index, err)
+	}
+	response = `{"schema":"wrong"}`
+	if _, err := p.FetchIndex(context.Background()); err == nil {
+		t.Fatal("wrong schema accepted")
+	}
+	response = strings.Repeat("a", maxEnvelope+1)
+	if _, err := p.FetchIndex(context.Background()); err == nil {
+		t.Fatal("oversized index accepted")
 	}
 }

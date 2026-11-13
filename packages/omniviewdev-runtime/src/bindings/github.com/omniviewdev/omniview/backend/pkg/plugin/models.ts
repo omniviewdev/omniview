@@ -11,6 +11,9 @@ import * as lifecycle$0 from "./lifecycle/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as types$0 from "./types/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as registry$0 from "../../../../registry/models.js";
 
 /**
  * DeprecatedProtocolPayload is sent with EventDeprecatedProtocol.
@@ -151,6 +154,39 @@ export class PluginProfilingStatus {
     }
 }
 
+export class PluginReleaseState {
+    "effectiveChannel": string;
+    "explicit": boolean;
+    "channels": registry$0.PluginChannel[];
+
+    /** Creates a new PluginReleaseState instance. */
+    constructor($$source: Partial<PluginReleaseState> = {}) {
+        if (!("effectiveChannel" in $$source)) {
+            this["effectiveChannel"] = "";
+        }
+        if (!("explicit" in $$source)) {
+            this["explicit"] = false;
+        }
+        if (!("channels" in $$source)) {
+            this["channels"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginReleaseState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginReleaseState {
+        const $$createField2_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("channels" in $$parsedSource) {
+            $$parsedSource["channels"] = $$createField2_0($$parsedSource["channels"]);
+        }
+        return new PluginReleaseState($$parsedSource as Partial<PluginReleaseState>);
+    }
+}
+
 /**
  * StateChangePayload is sent with EventStateChange.
  */
@@ -278,3 +314,5 @@ export class UpdatePayload {
 // Private type creation functions
 const $$createType0 = types$0.PluginStateRecord.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = registry$0.PluginChannel.createFrom;
+const $$createType3 = $Create.Array($$createType2);

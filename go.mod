@@ -18,7 +18,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nxadm/tail v1.4.11
 	github.com/omniviewdev/plugin-sdk v0.20.0
-	github.com/omniviewdev/registry v0.2.3
+	github.com/omniviewdev/registry v0.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1

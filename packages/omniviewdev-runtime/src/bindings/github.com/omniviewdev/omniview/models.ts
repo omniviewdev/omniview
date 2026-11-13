@@ -5,6 +5,76 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+export class ChannelList {
+    "current": string;
+    "options": ChannelOption[];
+    "error": string;
+
+    /** Creates a new ChannelList instance. */
+    constructor($$source: Partial<ChannelList> = {}) {
+        if (!("current" in $$source)) {
+            this["current"] = "";
+        }
+        if (!("options" in $$source)) {
+            this["options"] = [];
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ChannelList instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ChannelList {
+        const $$createField1_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("options" in $$parsedSource) {
+            $$parsedSource["options"] = $$createField1_0($$parsedSource["options"]);
+        }
+        return new ChannelList($$parsedSource as Partial<ChannelList>);
+    }
+}
+
+export class ChannelOption {
+    "channel": string;
+    "branch": string;
+    "status": string;
+    "desktopVersion": string;
+    "stateExists": boolean;
+
+    /** Creates a new ChannelOption instance. */
+    constructor($$source: Partial<ChannelOption> = {}) {
+        if (!("channel" in $$source)) {
+            this["channel"] = "";
+        }
+        if (!("branch" in $$source)) {
+            this["branch"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("desktopVersion" in $$source)) {
+            this["desktopVersion"] = "";
+        }
+        if (!("stateExists" in $$source)) {
+            this["stateExists"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ChannelOption instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ChannelOption {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ChannelOption($$parsedSource as Partial<ChannelOption>);
+    }
+}
+
 /**
  * FileDialogOptions defines options for file dialogs exposed to the frontend.
  */
@@ -52,7 +122,7 @@ export class FileDialogOptions {
      * Creates a new FileDialogOptions instance from a string or object.
      */
     static createFrom($$source: any = {}): FileDialogOptions {
-        const $$createField3_0 = $$createType1;
+        const $$createField3_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("filters" in $$parsedSource) {
             $$parsedSource["filters"] = $$createField3_0($$parsedSource["filters"]);
@@ -101,6 +171,8 @@ export class UpdateStatus {
     "version": string;
     "availableVersion": string;
     "error": string;
+    "channel": string;
+    "switchTarget": string;
 
     /** Creates a new UpdateStatus instance. */
     constructor($$source: Partial<UpdateStatus> = {}) {
@@ -116,6 +188,12 @@ export class UpdateStatus {
         if (!("error" in $$source)) {
             this["error"] = "";
         }
+        if (!("channel" in $$source)) {
+            this["channel"] = "";
+        }
+        if (!("switchTarget" in $$source)) {
+            this["switchTarget"] = "";
+        }
 
         Object.assign(this, $$source);
     }
@@ -130,5 +208,7 @@ export class UpdateStatus {
 }
 
 // Private type creation functions
-const $$createType0 = FileFilter.createFrom;
+const $$createType0 = ChannelOption.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = FileFilter.createFrom;
+const $$createType3 = $Create.Array($$createType2);

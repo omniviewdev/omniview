@@ -38,6 +38,7 @@ func (manager *pluginManager) retainStoppedDevInventory(state plugintypes.Plugin
 	record := plugintypes.NewPluginRecord(state.ID, state.Metadata, lifecycle.PhaseStopped)
 	record.Enabled, record.DevMode, record.DevPath = state.Enabled, true, state.DevPath
 	record.InstalledAt, record.ErrorCount = state.InstalledAt, state.ErrorCount
+	record.ReleaseChannel = state.ReleaseChannel
 	record.LastError = reason
 	if reason == "" {
 		record.LastError = state.LastError

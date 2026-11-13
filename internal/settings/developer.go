@@ -14,6 +14,13 @@ var Developer = settings.Category{
 	Description: "Settings for developing or writing plugins within Omniview",
 	Icon:        "LuBeaker",
 	Settings: map[string]settings.Setting{
+		"show_feature_channels": {
+			ID:          "show_feature_channels",
+			Label:       "Show feature channels",
+			Description: "List feature branch release channels for the app and plugins.",
+			Type:        settings.Toggle,
+			Default:     false,
+		},
 		"ui_inspection_enabled": {
 			ID:              "ui_inspection_enabled",
 			Label:           "UI inspection (WebKit)",

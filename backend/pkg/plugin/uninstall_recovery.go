@@ -402,6 +402,7 @@ func (pm *pluginManager) restoreUninstallRecovery(id string) (string, error) {
 	record := plugintypes.NewPluginRecord(id, state.Metadata, lifecycle.PhaseFailed)
 	record.Enabled, record.DevMode, record.DevPath = state.Enabled, state.DevMode, state.DevPath
 	record.ErrorCount, record.InstalledAt = state.ErrorCount, state.InstalledAt
+	record.ReleaseChannel = state.ReleaseChannel
 	record.LastError = detail
 	pm.recordsMu.Lock()
 	pm.records[id] = record

@@ -13,6 +13,7 @@ type PluginInfo struct {
 	sdktypes.PluginInfo
 	Origin         string `json:"origin"`
 	FrontendModule string `json:"frontendModule"`
+	ReleaseChannel string `json:"releaseChannel"`
 }
 
 // PluginRecord is the host-side runtime state for a managed plugin.
@@ -28,6 +29,7 @@ type PluginRecord struct {
 	LastError   string                `json:"lastError,omitempty"`
 	ErrorCount  int                   `json:"errorCount"`
 	InstalledAt time.Time             `json:"installedAt"`
+	ReleaseChannel string             `json:"releaseChannel,omitempty"`
 
 	// Runtime-only fields (not persisted).
 	Origin          string                        `json:"-"`
@@ -48,7 +50,7 @@ func (r *PluginRecord) ToInfo() PluginInfo {
 	if origin == "" {
 		origin = "external"
 	}
-	return PluginInfo{Origin: origin, FrontendModule: r.FrontendModule, PluginInfo: sdktypes.PluginInfo{
+	return PluginInfo{Origin: origin, FrontendModule: r.FrontendModule, ReleaseChannel: r.ReleaseChannel, PluginInfo: sdktypes.PluginInfo{
 		ID:           r.ID,
 		Metadata:     r.Metadata,
 		Phase:        phase,
@@ -90,6 +92,7 @@ type PluginStateRecord struct {
 	LastError   string                `json:"lastError,omitempty"`
 	ErrorCount  int                   `json:"errorCount"`
 	InstalledAt time.Time             `json:"installedAt"`
+	ReleaseChannel string             `json:"releaseChannel,omitempty"`
 }
 
 // ToStateRecord converts a PluginRecord to its persistable form.
@@ -104,5 +107,6 @@ func (r *PluginRecord) ToStateRecord() PluginStateRecord {
 		LastError:   r.LastError,
 		ErrorCount:  r.ErrorCount,
 		InstalledAt: r.InstalledAt,
+		ReleaseChannel: r.ReleaseChannel,
 	}
 }

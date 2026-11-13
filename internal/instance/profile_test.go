@@ -46,6 +46,30 @@ func TestResolveChannelsIndependentOfDevelopmentVersion(t *testing.T) {
 	}
 }
 
+func TestFeatureProductionProfile(t *testing.T) {
+	home := t.TempDir()
+	p, err := Resolve(Options{Home: home, CWD: t.TempDir(), Channel: "feature-abc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := devcontract.CanonicalPath(filepath.Join(home, ".omniview-feature-abc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Descriptor.StateRoot != want || p.Descriptor.InstanceID != "feature-abc" || p.Descriptor.DisplayName != "Omniview (feature-abc)" {
+		t.Fatalf("wrong feature profile: %+v", p.Descriptor)
+	}
+	for _, tc := range []struct{ channel, root string }{
+		{"stable", ".Omniview-Feature-def"},
+		{"feature-abc", ".omniview-nightly"},
+	} {
+		_, err := Resolve(Options{Home: home, CWD: t.TempDir(), Channel: tc.channel, StateRoot: filepath.Join(home, tc.root, "nested")})
+		if err == nil {
+			t.Errorf("%s accepted reserved root %s", tc.channel, tc.root)
+		}
+	}
+}
+
 func TestWorkspaceNamesRootsAndExplicitChildEnvironment(t *testing.T) {
 	home := t.TempDir()
 	for _, tc := range []struct{ id, name string }{{fixtureID, "Alpha"}, {"22f2dbb0-9ecd-4b17-9690-a0c2239387ac", "Beta"}} {

@@ -214,7 +214,7 @@ func TestVersionDiscoveryPaginatesAndExplainsCompatibility(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	versions, err := NewClient(server.URL).GetPluginVersions(context.Background(), "kubernetes")
+	versions, err := NewClient(server.URL).GetPluginVersions(context.Background(), "kubernetes", "stable")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestVersionDiscoveryDoesNotClaimOlderAPISupport(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	versions, err := NewClient(server.URL).GetPluginVersions(context.Background(), "kubernetes")
+	versions, err := NewClient(server.URL).GetPluginVersions(context.Background(), "kubernetes", "stable")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestDiscoveryDoesNotRelaxExactInstallLookup(t *testing.T) {
 	}))
 	defer server.Close()
 	client := NewClient(server.URL)
-	if _, err := client.GetPluginVersions(context.Background(), "kubernetes"); err != nil {
+	if _, err := client.GetPluginVersions(context.Background(), "kubernetes", "stable"); err != nil {
 		t.Fatal(err)
 	}
 	if path, err := client.DownloadPlugin(context.Background(), "kubernetes", "0.15.0"); err == nil || path != "" {
@@ -304,5 +304,44 @@ func TestDiscoveryDoesNotRelaxExactInstallLookup(t *testing.T) {
 	}
 	if exactRequests != 1 {
 		t.Fatalf("unexpected install requests: %d", exactRequests)
+	}
+}
+
+func TestReleaseChannels(t *testing.T) {
+	expectedChannel := "feature-abc"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/plugins/kubernetes/versions":
+			if got := r.URL.Query().Get("channel"); got != expectedChannel {
+				t.Errorf("channel query = %q, want %q", got, expectedChannel)
+			}
+			if _, err := w.Write([]byte(`{"success":true,"data":[{"version":"1.0.1-feature-abc.1.1","channel":"feature-abc"}]}`)); err != nil {
+				t.Error(err)
+			}
+		case "/v1/plugins/kubernetes/channels":
+			if _, err := w.Write([]byte(`{"success":true,"data":[{"channel":"feature-abc","branch":"feature/abc","status":"active","created_at":"2026-01-01T00:00:00Z"}]}`)); err != nil {
+				t.Error(err)
+			}
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := NewClient(server.URL).WithHostReleaseChannel("feature-abc")
+	if got := client.HostReleaseChannel(); got != "feature-abc" {
+		t.Fatalf("host channel = %q", got)
+	}
+	versions, err := client.GetPluginVersions(context.Background(), "kubernetes", "feature-abc")
+	if err != nil || len(versions) != 1 || versions[0].Channel != "feature-abc" {
+		t.Fatalf("versions = %#v, err = %v", versions, err)
+	}
+	expectedChannel = ""
+	if _, err := client.GetPluginVersions(context.Background(), "kubernetes", "stable"); err != nil {
+		t.Fatal(err)
+	}
+	channels, err := client.ListChannels(context.Background(), "kubernetes")
+	if err != nil || len(channels) != 1 || channels[0].Channel != "feature-abc" || channels[0].Branch != "feature/abc" {
+		t.Fatalf("channels = %#v, err = %v", channels, err)
 	}
 }

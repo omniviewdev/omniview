@@ -30,16 +30,19 @@
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService.Unsubscribe", "decision": "allow", "reason": "in-memory activity feed subscription or snapshot; changes flow as activity/change/* events"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService.UpsertAlert", "decision": "deny", "reason": "writes or clears persisted activity messages, alerts or presentation state"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPlugin", "decision": "allow", "reason": "plugin inventory read; PluginInfo carries the absolute dev path and last-error text"},
+    {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginChannelVersions", "decision": "allow", "reason": "reads compatible plugin versions from the marketplace"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginDownloadStats", "decision": "allow", "reason": "marketplace read; the host makes an outbound registry HTTP GET and writes nothing (Q11)"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginMeta", "decision": "allow", "reason": "plugin metadata read (maintainer contacts and URLs)"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginProfilingStatuses", "decision": "allow", "reason": "read-only status; asks running plugins for their pprof listener URL"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginReadme", "decision": "allow", "reason": "marketplace read; the host makes an outbound registry HTTP GET and writes nothing (Q11)"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginReleaseHistory", "decision": "allow", "reason": "marketplace read; the host makes an outbound registry HTTP GET and writes nothing (Q11)"},
+    {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginReleaseState", "decision": "allow", "reason": "reads plugin channel selection and marketplace channels"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginReviews", "decision": "allow", "reason": "marketplace read; the host makes an outbound registry HTTP GET and writes nothing (Q11)"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginVersions", "decision": "allow", "reason": "marketplace read; the host makes an outbound registry HTTP GET and writes nothing (Q11)"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallDevPluginFromPath", "decision": "deny", "reason": "installs a plugin binary from a host path that the host then executes"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallFromPathPrompt", "decision": "deny", "reason": "native dialog followed by installing a plugin from a host path"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallInDevMode", "decision": "deny", "reason": "native dialog followed by installing a plugin from a host path"},
+    {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginChannelVersion", "decision": "deny", "reason": "downloads and installs an executable plugin and persists its channel"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginFromPath", "decision": "deny", "reason": "installs a plugin binary from a host path that the host then executes"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginVersion", "decision": "deny", "reason": "downloads and installs an executable plugin"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.ListAvailablePlugins", "decision": "allow", "reason": "marketplace read; the host makes an outbound registry HTTP GET and writes nothing (Q11)"},
@@ -257,8 +260,10 @@
     {"fqn": "main.AppService.SaveFileDialog", "decision": "deny", "reason": "opens a native save dialog on the host"},
     {"fqn": "main.AppService.WriteFileContent", "decision": "deny", "reason": "arbitrary file write on the host (os.WriteFile at a caller-chosen path)"},
     {"fqn": "main.UpdateService.Check", "decision": "deny", "reason": "downloads and stages an application update"},
+    {"fqn": "main.UpdateService.ListChannels", "decision": "allow", "reason": "reads channel metadata and local profile existence"},
     {"fqn": "main.UpdateService.Restart", "decision": "deny", "reason": "restarts the host and replaces the application"},
-    {"fqn": "main.UpdateService.Status", "decision": "allow", "reason": "reads the updater's in-memory state and versions"}
+    {"fqn": "main.UpdateService.Status", "decision": "allow", "reason": "reads the updater's in-memory state and versions"},
+    {"fqn": "main.UpdateService.SwitchChannel", "decision": "deny", "reason": "downloads and stages an application update and may write a profile copy seed"}
   ],
   "runtime": [
     {

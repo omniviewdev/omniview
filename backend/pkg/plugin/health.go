@@ -340,6 +340,7 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 		record := expected.record
 		recoveryOptions = &LoadPluginOptions{ExistingState: &plugintypes.PluginStateRecord{
 			ID: record.ID, Enabled: record.Enabled, DevMode: record.DevMode, DevPath: record.DevPath,
+			ReleaseChannel: record.ReleaseChannel,
 		}}
 		hc.pm.recordsMu.RUnlock()
 	}

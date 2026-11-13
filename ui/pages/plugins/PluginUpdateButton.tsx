@@ -1,26 +1,38 @@
 import { useState } from 'react';
-import { Button, Dialog, RadioGroup, Stack, Text } from '@omniviewdev/base-ui';
+import { Button, Dialog, RadioGroup, Select, Stack, Text } from '@omniviewdev/base-ui';
+import { useSettings } from '@omniviewdev/runtime';
+import { LuChevronDown } from 'react-icons/lu';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import { compareVersions, orderedVersions } from './versionPolicy';
 import styles from './PluginDetails.module.css';
 
 type Props = { pluginID: string; currentVersion?: string; installed?: boolean };
-type Release = { version: string; compatible?: boolean; compatibility_reason?: string; discovery_supported?: boolean };
+type Release = { version: string; channel?: string; compatible?: boolean; compatibility_reason?: string; discovery_supported?: boolean };
 
 export default function PluginUpdateButton({ pluginID, currentVersion = '', installed = false }: Props) {
-  const { versions, update, operation } = usePlugin({ id: pluginID, installed: false });
+  const [channelChoice, setChannelChoice] = useState<string>();
+  const { releaseState, channelVersions: versions, installFromChannel, operation } = usePlugin({ id: pluginID, installed: false, channel: channelChoice });
+  const { settings } = useSettings();
+  const effectiveChannel = releaseState.data?.effectiveChannel || 'stable';
+  const channel = channelChoice ?? effectiveChannel;
+  const channels = releaseState.data?.channels ?? [];
+  const activeChannels = channels.filter(item => item.status === 'active');
+  const showSelector = (settings['developer.show_feature_channels'] === true && activeChannels.length > 0) || effectiveChannel !== 'stable';
+  const retired = releaseState.data?.explicit && effectiveChannel !== 'stable' && !activeChannels.some(item => item.channel === effectiveChannel);
   const [chooser, setChooser] = useState(false);
-  const [selection, setSelection] = useState<{ id: string; version: string }>();
+  const [selection, setSelection] = useState<{ id: string; channel: string; version: string }>();
   const [confirm, setConfirm] = useState(false);
-  const list = orderedVersions((versions.data ?? []) as Release[]);
-  const compatible = list.filter(v => v.compatible !== false);
-  const recommended = compatible.find(v => !v.version.includes('-')) ?? compatible[0];
-  const selected = list.find(v => selection?.id === pluginID && v.version === selection.version) ?? recommended ?? list[0];
+  const releases = (versions.data ?? []) as Release[];
+  const list = orderedVersions(releases);
+  const compatible = releases.filter(v => v.compatible !== false);
+  const recommended = compatible.find(v => (v.channel || 'stable') === channel) ?? compatible.find(v => !v.channel || v.channel === 'stable');
+  const selected = list.find(v => selection?.id === pluginID && selection.channel === channel && v.version === selection.version) ?? recommended ?? list[0];
   const downgrade = !!selected && !!currentVersion && compareVersions(selected.version, currentVersion) < 0;
   const busy = !!operation;
   const run = async (version: string) => {
     try {
-      await update(version);
+      const release = list.find(item => item.version === version);
+      await installFromChannel({ channel: release?.channel || 'stable', version });
       setChooser(false);
       setConfirm(false);
     } catch {
@@ -31,15 +43,36 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
 
   const label = installed ? 'Update' : 'Install';
   return <Stack direction='column' spacing={2} className={styles.InstallCard}>
+    {showSelector && <Select.Root size='sm' value={channel} items={[
+      { value: 'stable', label: 'Stable' },
+      ...activeChannels.map(item => ({ value: item.channel, label: item.channel })),
+      ...(retired ? [{ value: effectiveChannel, label: effectiveChannel }] : []),
+    ]} disabled={busy} onValueChange={value => {
+      if (value !== null) {
+        setChannelChoice(value);
+        setSelection(undefined);
+      }
+    }}>
+      <Select.Trigger aria-label='Release channel'><Select.Value /><Select.Icon><LuChevronDown aria-hidden /></Select.Icon></Select.Trigger>
+      <Select.Portal><Select.Positioner sideOffset={4}><Select.Popup><Select.List>
+        <Select.Item value='stable'><Select.ItemText>Stable</Select.ItemText></Select.Item>
+        {activeChannels.map(item => <Select.Item key={item.channel} value={item.channel}><Select.ItemText>{item.channel}</Select.ItemText></Select.Item>)}
+        {retired && <Select.Item value={effectiveChannel} disabled><Select.ItemText>{effectiveChannel}</Select.ItemText></Select.Item>}
+      </Select.List></Select.Popup></Select.Positioner></Select.Portal>
+    </Select.Root>}
+    {retired && <Text size='sm' role='alert'>This plugin's release channel was retired.</Text>}
     <Stack direction='row' spacing={2} align='center' wrap className={styles.InstallActions}>
       <Button size='sm' color='brand' variant='solid'
-        disabled={busy || !recommended || (!!currentVersion && compareVersions(recommended.version, currentVersion) <= 0)}
+        disabled={busy || !recommended || (!!currentVersion && recommended.version === currentVersion && channel === effectiveChannel)}
         onClick={() => {
-          if (recommended) {
+          if (recommended && currentVersion && compareVersions(recommended.version, currentVersion) < 0) {
+            setSelection({ id: pluginID, channel, version: recommended.version });
+            setConfirm(true);
+          } else if (recommended) {
             void run(recommended.version);
-          } 
+          }
         }}>
-        {versions.isLoading ? 'Loading versions…' : currentVersion && recommended && compareVersions(recommended.version, currentVersion) <= 0 ? 'Installed' : `${label}${recommended ? ` ${recommended.version}` : ''}`}
+        {versions.isLoading ? 'Loading versions…' : currentVersion && recommended?.version === currentVersion && channel === effectiveChannel ? 'Installed' : `${label}${recommended ? ` ${recommended.version}` : ''}`}
       </Button>
       <Button size='sm' variant='outline' disabled={busy} onClick={() => {
         setChooser(true); 
@@ -66,7 +99,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
         <Stack direction='column' spacing={3}>
           <RadioGroup className={styles.VersionList} aria-label='Plugin version'
             value={selected?.version ?? ''} onValueChange={version => {
-              setSelection({ id: pluginID, version }); 
+              setSelection({ id: pluginID, channel, version });
             }}>
             {list.map(release => <RadioGroup.Item key={release.version} className={styles.VersionRow}
               value={release.version} disabled={busy} aria-label={release.version}
@@ -84,7 +117,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
         <Button variant='outline' disabled={busy} onClick={() => {
           setChooser(false); 
         }}>Cancel</Button>
-        <Button color={downgrade ? 'danger' : 'brand'} disabled={busy || !selected || selected.compatible === false || selected.version === currentVersion} onClick={() => {
+        <Button color={downgrade ? 'danger' : 'brand'} disabled={busy || !selected || selected.compatible === false || (selected.version === currentVersion && channel === effectiveChannel)} onClick={() => {
           if (downgrade) {
             setConfirm(true);
           } else if (selected) {

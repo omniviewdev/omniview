@@ -13,6 +13,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/releasechannel"
 )
 
 // buildChannel is independent of optimization tags and version.Development.
@@ -88,7 +89,7 @@ func Resolve(opts Options) (Profile, error) {
 	if channel == "" {
 		channel = "local"
 	}
-	if channel != "local" && channel != "stable" && channel != "nightly" {
+	if channel != "local" && !releasechannel.Valid(channel) {
 		return profile, fmt.Errorf("instance: unknown channel %q", channel)
 	}
 	generation := opts.Generation
@@ -127,11 +128,7 @@ func Resolve(opts Options) (Profile, error) {
 		}
 		root := opts.StateRoot
 		if root == "" {
-			name := ".omniview"
-			if channel == "nightly" {
-				name = ".omniview-nightly"
-			}
-			root = filepath.Join(home, name)
+			root = filepath.Join(home, releasechannel.StateLabel(channel))
 		}
 		root, err = appstate.ValidateRoot(root)
 		if err != nil {
@@ -156,25 +153,23 @@ func Resolve(opts Options) (Profile, error) {
 		if err := devcontract.ValidateProductionProfileIsolation(root, home); err != nil {
 			return profile, err
 		}
-		other := ".omniview-nightly"
-		if channel == "nightly" {
-			other = ".omniview"
+		for _, other := range []string{releasechannel.Stable, releasechannel.Nightly} {
+			if other == channel {
+				continue
+			}
+			protected, e := devcontract.CanonicalPath(filepath.Join(home, releasechannel.StateLabel(other)))
+			if e != nil {
+				return profile, e
+			}
+			overlap, e := devcontract.ProfilePathsOverlap(root, protected)
+			if e != nil {
+				return profile, e
+			}
+			if overlap {
+				return profile, fmt.Errorf("instance: %s state overlaps another production channel", channel)
+			}
 		}
-		protected, e := devcontract.CanonicalPath(filepath.Join(home, other))
-		if e != nil {
-			return profile, e
-		}
-		overlap, e := devcontract.ProfilePathsOverlap(root, protected)
-		if e != nil {
-			return profile, e
-		}
-		if overlap {
-			return profile, fmt.Errorf("instance: %s state overlaps another production channel", channel)
-		}
-		name := "Omniview"
-		if channel == "nightly" {
-			name = "Omniview Nightly"
-		}
+		name := releasechannel.DisplayName(channel)
 		profile.RuntimeRoot = filepath.Join(root, "runtime")
 		profile.Descriptor = devcontract.InstanceDescriptor{SchemaVersion: devcontract.SchemaVersion, InstanceID: channel, Generation: generation, Kind: "production", Channel: channel, DisplayName: name, StateRoot: root}
 	}
@@ -232,11 +227,7 @@ func validateProductionDefaultNamespaces(root, home, channel string) error {
 				return err
 			}
 			label, tail, nested := strings.Cut(relative, string(filepath.Separator))
-			other := ".omniview-nightly"
-			if channel == "nightly" {
-				other = ".omniview"
-			}
-			if sameASCIIProfileLabel(label, other) {
+			if releasechannel.ReservedByOther(label, channel) {
 				return fmt.Errorf("instance: %s state overlaps another production channel's reserved namespace", channel)
 			}
 			if sameASCIIProfileLabel(label, ".omniview-dev") {

@@ -11,6 +11,7 @@ export {
     LoadPluginOptions,
     PluginErrorPayload,
     PluginProfilingStatus,
+    PluginReleaseState,
     StateChangePayload,
     StateWriteErrorPayload,
     UpdateErrorPayload,

@@ -96,6 +96,7 @@ func (r *Reconciler) Reconcile(
 				LastError:   state.LastError,
 				ErrorCount:  state.ErrorCount,
 				InstalledAt: state.InstalledAt,
+				ReleaseChannel: state.ReleaseChannel,
 				Backend:     nil,
 				StateMachine: lifecycle.NewPluginStateMachine(id,
 					r.determineInitialPhase(state, location)),

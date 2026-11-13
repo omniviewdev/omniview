@@ -101,6 +101,9 @@ type Manager interface {
 	SearchPlugins(query, category, sort string) ([]registry.AvailablePlugin, error)
 	GetPluginReadme(pluginID string) (string, error)
 	GetPluginVersions(pluginID string) ([]registry.VersionInfo, error)
+	GetPluginReleaseState(pluginID string) (PluginReleaseState, error)
+	GetPluginChannelVersions(pluginID, channel string) ([]registry.VersionInfo, error)
+	InstallPluginChannelVersion(pluginID, channel, version string) (*config.PluginMeta, error)
 	GetPluginReviews(pluginID string, page int) ([]registry.Review, error)
 	GetPluginDownloadStats(pluginID string) (*registry.DownloadStats, error)
 	GetPluginReleaseHistory(pluginID string) ([]registry.VersionInfo, error)
@@ -582,6 +585,9 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	}
 
 	pm.emitter.Emit(EventInitComplete)
+	if builtinErr == nil {
+		go pm.syncHostChannelPlugins(ctx)
+	}
 
 	return builtinErr
 }
@@ -860,11 +866,14 @@ func (pm *pluginManager) ListPluginMetas() []config.PluginMeta {
 // GetPluginVersions fetches version info for a marketplace plugin.
 func (pm *pluginManager) GetPluginVersions(pluginID string) ([]registry.VersionInfo, error) {
 	pm.syncRegistryURL()
-	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
+	return pm.registryClient.GetPluginVersions(context.Background(), pluginID, pm.effectiveReleaseChannel(pluginID))
 }
 
 // syncRegistryURL checks if marketplace URL or public key settings have changed.
 func (pm *pluginManager) syncRegistryURL() {
+	if pm.settingsProvider == nil {
+		return
+	}
 	url, err := pm.settingsProvider.GetString("developer.marketplace_url")
 	if err == nil {
 		pm.registryClient.SetBaseURL(url)
@@ -912,5 +921,5 @@ func (pm *pluginManager) GetPluginDownloadStats(pluginID string) (*registry.Down
 // GetPluginReleaseHistory fetches version history for a marketplace plugin.
 func (pm *pluginManager) GetPluginReleaseHistory(pluginID string) ([]registry.VersionInfo, error) {
 	pm.syncRegistryURL()
-	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
+	return pm.registryClient.GetPluginVersions(context.Background(), pluginID, pm.effectiveReleaseChannel(pluginID))
 }

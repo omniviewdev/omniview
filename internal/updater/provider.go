@@ -11,10 +11,11 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/releasechannel"
 	wails "github.com/wailsapp/wails/v3/pkg/updater"
 	"golang.org/x/mod/semver"
 )
@@ -23,7 +24,18 @@ const feedBase = "https://updates.omniview.dev"
 const maxEnvelope = 1 << 20
 const defaultDownloadTimeout = 2 * time.Hour
 
-var nightlyVersion = regexp.MustCompile(`^0\.0\.0-nightly\.[0-9]{8}\.[0-9]+\.[0-9]+$`)
+type IndexEntry struct {
+	Channel        string `json:"channel"`
+	Branch         string `json:"branch"`
+	Status         string `json:"status"`
+	DesktopVersion string `json:"desktopVersion"`
+}
+
+type ChannelIndex struct {
+	Schema      string       `json:"schema"`
+	GeneratedAt time.Time    `json:"generatedAt"`
+	Channels    []IndexEntry `json:"channels"`
+}
 
 type signature struct {
 	KeyID     string `json:"keyId"`
@@ -62,6 +74,8 @@ type Provider struct {
 	client              *http.Client
 	logger              *log.Logger
 	downloadTimeout     time.Duration
+	mu                  sync.Mutex
+	target              string
 }
 
 // NewProvider returns nil when this build is not configured for updates.
@@ -71,22 +85,84 @@ func NewProvider(channel, stateRoot string, logger *log.Logger) (*Provider, erro
 	if err != nil {
 		return nil, err
 	}
+	return NewProviderWithConfig(channel, stateRoot, logger, feedBase, keys, http.DefaultClient)
+}
+
+// NewProviderWithConfig constructs a provider using the supplied feed and trust configuration.
+// stateRoot must be persistent and private to this installation.
+func NewProviderWithConfig(channel, stateRoot string, logger *log.Logger, base string, keys []ed25519.PublicKey, client *http.Client) (*Provider, error) {
 	if channel == "local" || len(keys) == 0 {
 		return nil, nil
 	}
-	if channel != "stable" && channel != "nightly" {
+	if !releasechannel.Valid(channel) {
 		return nil, fmt.Errorf("invalid update channel %q", channel)
 	}
 	if stateRoot == "" {
 		return nil, fmt.Errorf("update state root is empty")
 	}
+	if !strings.HasPrefix(base, "https://") || strings.HasSuffix(base, "/") || client == nil {
+		return nil, fmt.Errorf("invalid update provider configuration")
+	}
+	for _, key := range keys {
+		if len(key) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("invalid update public key")
+		}
+	}
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &Provider{channel: channel, root: stateRoot, base: feedBase, keys: keys, client: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, logger: logger}, nil
+	httpClient := *client
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Provider{channel: channel, root: stateRoot, base: base, keys: keys, client: &httpClient, logger: logger}, nil
 }
 
 func (p *Provider) Name() string { return "omniview" }
+
+// SetTarget selects a channel for the next check and download.
+func (p *Provider) SetTarget(channel string) error {
+	if channel != "" && !releasechannel.Valid(channel) {
+		return fmt.Errorf("invalid update channel %q", channel)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if channel == p.channel {
+		channel = ""
+	}
+	p.target = channel
+	return nil
+}
+
+func (p *Provider) activeTarget() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.target != "" {
+		return p.target
+	}
+	return p.channel
+}
+
+// FetchIndex retrieves the unsigned channel index. Individual feeds remain signed.
+func (p *Provider) FetchIndex(ctx context.Context) (ChannelIndex, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := p.get(ctx, p.base+"/channels/index.json")
+	if err != nil {
+		return ChannelIndex{}, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxEnvelope+1))
+	if err != nil {
+		return ChannelIndex{}, err
+	}
+	if len(data) > maxEnvelope {
+		return ChannelIndex{}, fmt.Errorf("channel index too large")
+	}
+	var index ChannelIndex
+	if err := json.Unmarshal(data, &index); err != nil || index.Schema != "omniview-channel-index/v1" {
+		return ChannelIndex{}, fmt.Errorf("invalid channel index")
+	}
+	return index, nil
+}
 
 func (p *Provider) get(ctx context.Context, url string) (*http.Response, error) {
 	if !strings.HasPrefix(url, p.base+"/") || !strings.HasPrefix(p.base, "https://") {
@@ -107,20 +183,11 @@ func (p *Provider) get(ctx context.Context, url string) (*http.Response, error) 
 	return resp, nil
 }
 
-func validVersion(channel, v string) bool {
-	if !semver.IsValid("v"+v) || semver.Canonical("v"+v) != "v"+strings.TrimSuffix(v, semver.Build("v"+v)) {
-		return false
-	}
-	if channel == "nightly" {
-		return nightlyVersion.MatchString(v)
-	}
-	return semver.Prerelease("v"+v) == ""
-}
-
 func (p *Provider) Check(ctx context.Context, req wails.CheckRequest) (*wails.Release, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	resp, err := p.get(ctx, p.base+"/channels/"+p.channel+".json")
+	target := p.activeTarget()
+	resp, err := p.get(ctx, p.base+"/channels/"+target+".json")
 	if err != nil {
 		return nil, err
 	}
@@ -162,18 +229,20 @@ func (p *Provider) Check(ctx context.Context, req wails.CheckRequest) (*wails.Re
 	if err = json.Unmarshal(payload, &m); err != nil {
 		return nil, fmt.Errorf("invalid update manifest: %w", err)
 	}
-	if m.Schema != "omniview-update-manifest/v1" || m.Product != "omniview" || m.Channel != p.channel || !validVersion(p.channel, m.Version) {
+	if m.Schema != "omniview-update-manifest/v1" || m.Product != "omniview" || m.Channel != target || !releasechannel.ValidVersion(target, m.Version) {
 		return nil, fmt.Errorf("invalid update manifest identity or version")
 	}
-	if err = checkpoint(ctx, p.root, p.channel, m.Version, false); err != nil {
+	if err = checkpoint(ctx, p.root, target, m.Version, false); err != nil {
 		return nil, err
 	}
-	current := strings.TrimPrefix(req.CurrentVersion, "v")
-	if !semver.IsValid("v" + current) {
-		return nil, fmt.Errorf("invalid current version %q", req.CurrentVersion)
-	}
-	if semver.Compare("v"+m.Version, "v"+current) <= 0 {
-		return nil, nil
+	if target == p.channel {
+		current := strings.TrimPrefix(req.CurrentVersion, "v")
+		if !semver.IsValid("v" + current) {
+			return nil, fmt.Errorf("invalid current version %q", req.CurrentVersion)
+		}
+		if semver.Compare("v"+m.Version, "v"+current) <= 0 {
+			return nil, nil
+		}
 	}
 	arch := req.Arch
 	switch req.Platform {
@@ -208,21 +277,22 @@ func (p *Provider) Check(ctx context.Context, req wails.CheckRequest) (*wails.Re
 	if selected == nil {
 		return nil, fmt.Errorf("missing update artifact")
 	}
-	if selected.Filename != filename || selected.URL != p.base+"/releases/"+p.channel+"/"+m.Version+"/"+filename || selected.Size <= 0 || selected.Size > 1<<30 {
+	if selected.Filename != filename || selected.URL != p.base+"/releases/"+target+"/"+m.Version+"/"+filename || selected.Size <= 0 || selected.Size > 1<<30 {
 		return nil, fmt.Errorf("invalid update artifact")
 	}
 	digest, err := hex.DecodeString(selected.SHA256)
 	if err != nil || len(digest) != sha256.Size || selected.SHA256 != strings.ToLower(selected.SHA256) {
 		return nil, fmt.Errorf("invalid update digest")
 	}
-	if err = checkpoint(ctx, p.root, p.channel, m.Version, true); err != nil {
+	if err = checkpoint(ctx, p.root, target, m.Version, true); err != nil {
 		return nil, err
 	}
 	return &wails.Release{Version: m.Version, Channel: m.Channel, Name: "Omniview " + m.Version, Notes: m.Notes, PublishedAt: m.IssuedAt, Artifact: wails.Artifact{Filename: filename, Size: selected.Size, Platform: req.Platform, Arch: arch}, Verification: &wails.Verification{DigestAlgo: "sha256", Digest: digest}, Metadata: map[string]any{"releaseUrl": m.ReleaseURL}}, nil
 }
 
 func (p *Provider) Download(ctx context.Context, r *wails.Release, dst io.Writer, onProgress func(int64, int64)) error {
-	if r == nil || r.Channel != p.channel || !validVersion(p.channel, r.Version) || r.Artifact.Size <= 0 || r.Artifact.Size > 1<<30 {
+	target := p.activeTarget()
+	if r == nil || r.Channel != target || !releasechannel.ValidVersion(target, r.Version) || r.Artifact.Size <= 0 || r.Artifact.Size > 1<<30 {
 		return fmt.Errorf("invalid update release")
 	}
 	a := r.Artifact
@@ -245,7 +315,7 @@ func (p *Provider) Download(ctx context.Context, r *wails.Release, dst io.Writer
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	resp, err := p.get(ctx, p.base+"/releases/"+p.channel+"/"+r.Version+"/"+name)
+	resp, err := p.get(ctx, p.base+"/releases/"+target+"/"+r.Version+"/"+name)
 	if err != nil {
 		return err
 	}
