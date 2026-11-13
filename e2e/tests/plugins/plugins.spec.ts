@@ -16,22 +16,23 @@ async function fakeMarketplace(
   page: Page,
   { installed = [], listings = LISTINGS }: { installed?: unknown[]; listings?: unknown[] | BindingError } = {},
 ): Promise<Calls> {
-  const calls: Calls = { InstallPluginVersion: [], UninstallPlugin: [] };
+  const calls: Calls = { InstallPluginChannelVersion: [], UninstallPlugin: [] };
   await mockBindings(page, Service.plugins, {
     ListPlugins: installed,
     ListAvailablePlugins: listings,
     GetPluginReadme: (args: unknown[]) => `# ${String(args[0])} readme\n\nRendered from **markdown**.`,
     GetPluginReviews: [],
     GetPluginReleaseHistory: [],
-    GetPluginVersions: [
+    GetPluginReleaseState: { effectiveChannel: 'stable', explicit: false, channels: [] },
+    GetPluginChannelVersions: [
       { version: '1.2.3', compatible: true },
       { version: '1.10.0-beta.2', compatible: true },
       { version: '1.10.0', compatible: true },
       { version: '1.0.0', compatible: true },
       { version: '2.0.0', compatible: false, compatibility_reason: 'Requires IDE 99.0.0 or newer.' },
     ],
-    InstallPluginVersion: (args: unknown[]) => {
-      calls.InstallPluginVersion.push(args);
+    InstallPluginChannelVersion: (args: unknown[]) => {
+      calls.InstallPluginChannelVersion.push(args);
       return null;
     },
     UninstallPlugin: (args: unknown[]) => {
@@ -128,16 +129,16 @@ test.describe('Plugins page', () => {
     await expect(page.getByText(/Requires IDE 99.0.0/)).toBeVisible();
     await page.getByRole('button', { name: 'Other versions…' }).click();
     await page.getByRole('radio', { name: '1.2.3', exact: true }).check();
-    expect(calls.InstallPluginVersion).toEqual([]);
+    expect(calls.InstallPluginChannelVersion).toEqual([]);
     await page.getByRole('dialog').getByRole('button', { name: 'Install 1.2.3', exact: true }).click();
-    await expect.poll(() => calls.InstallPluginVersion).toEqual([['alpha-tools', '1.2.3']]);
+    await expect.poll(() => calls.InstallPluginChannelVersion).toEqual([['alpha-tools', 'stable', '1.2.3']]);
   });
 
   test('recommended action ignores newer prerelease and incompatible release', async ({ page }) => {
     const calls = await fakeMarketplace(page);
     await page.goto('/#/plugins/alpha-tools');
     await page.getByRole('button', { name: 'Install 1.10.0', exact: true }).click();
-    await expect.poll(() => calls.InstallPluginVersion).toEqual([['alpha-tools', '1.10.0']]);
+    await expect.poll(() => calls.InstallPluginChannelVersion).toEqual([['alpha-tools', 'stable', '1.10.0']]);
   });
 
   test('downgrade needs explicit confirmation', async ({ page }) => {
@@ -148,11 +149,11 @@ test.describe('Plugins page', () => {
     await page.getByRole('button', { name: 'Other versions…' }).click();
     await page.getByRole('radio', { name: '1.0.0', exact: true }).check();
     // The fixture's installed version is 1.2.3; selecting never changes it.
-    expect(calls.InstallPluginVersion).toEqual([]);
+    expect(calls.InstallPluginChannelVersion).toEqual([]);
     await page.getByRole('button', { name: 'Downgrade…', exact: true }).click();
-    expect(calls.InstallPluginVersion).toEqual([]);
+    expect(calls.InstallPluginChannelVersion).toEqual([]);
     await page.getByRole('button', { name: 'Confirm downgrade', exact: true }).click();
-    await expect.poll(() => calls.InstallPluginVersion).toEqual([['e2e-plugin-1', '1.0.0']]);
+    await expect.poll(() => calls.InstallPluginChannelVersion).toEqual([['e2e-plugin-1', 'stable', '1.0.0']]);
   });
 
   test('uninstalling an installed plugin asks first, then returns to the list', async ({ page }) => {

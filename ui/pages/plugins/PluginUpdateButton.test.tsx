@@ -59,6 +59,16 @@ describe('plugin release channels', () => {
   });
   afterEach(cleanup);
 
+  it('recommends the newest compatible stable release from unordered results', () => {
+    mocks.versions = [
+      { version: '1.2.3', channel: '', compatible: true },
+      { version: '1.10.0', channel: '', compatible: true },
+      { version: '2.0.0', channel: '', compatible: false },
+    ];
+    render(<PluginUpdateButton pluginID='plugin' />);
+    expect(screen.getByRole('button', { name: 'Install 1.10.0' })).toBeInTheDocument();
+  });
+
   it('shows active channels only when enabled', () => {
     const view = render(<PluginUpdateButton pluginID='example' />);
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
