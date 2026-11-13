@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 )
@@ -99,6 +100,22 @@ func ApplySwitchSeed(stateRoot string) error {
 	if overlap {
 		return fmt.Errorf("switch seed source overlaps target")
 	}
+	// Startup holds the target guard. Both source locks are nonblocking to
+	// avoid deadlock with another channel starting or switching in reverse.
+	releaseSource, err := LockSwitchProfile(context.Background(), seed.Source)
+	if err != nil {
+		return fmt.Errorf("acquire switch source profile guard: %w", err)
+	}
+	defer releaseSource()
+	sourceLock := flock.New(filepath.Join(seed.Source, ".lock"))
+	locked, err := sourceLock.TryLock()
+	if err != nil {
+		return fmt.Errorf("acquire switch source lock: %w", err)
+	}
+	if !locked {
+		return fmt.Errorf("switch seed source profile is in use")
+	}
+	defer sourceLock.Unlock()
 	staging := filepath.Join(stateRoot, ".switch-seed-staging")
 	manifest := filepath.Join(staging, ".entries.json")
 	var names []string
@@ -126,7 +143,7 @@ func ApplySwitchSeed(stateRoot string) error {
 		names = []string{}
 		for _, entry := range entries {
 			switch entry.Name() {
-			case "runtime", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock":
+			case "runtime", ".lock", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock":
 				continue
 			}
 			if entry.Name() == ".entries.json" || entry.Name() == ".entries.tmp" {

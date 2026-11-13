@@ -145,6 +145,41 @@ describe('UpdatesSettingsPage channels', () => {
     expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
   });
 
+  it('does not copy when refreshed discovery finds existing target data', async () => {
+    mocks.showFeatures = true;
+    let attempts = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'stable' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        attempts += 1;
+        return {
+          current: 'stable',
+          options: options.map(option => option.channel === 'feature-abc'
+            ? { ...option, stateExists: attempts > 1 }
+            : option),
+          error: attempts === 1 ? 'load channel index: offline' : '',
+        };
+      }
+
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'feature-abc' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'feature-abc' } });
+    fireEvent.click(screen.getByLabelText('Copy my current data to this channel'));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry channel discovery' }));
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', false);
+    });
+  });
+
   it('shows retired current channel even when feature channels are hidden', async () => {
     mocks.current = 'feature-old';
     render(<UpdatesSettingsPage />);

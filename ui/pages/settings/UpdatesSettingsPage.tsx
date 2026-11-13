@@ -146,7 +146,7 @@ export default function UpdatesSettingsPage() {
         {target.desktopVersion && <p>Target version: {target.desktopVersion}</p>}
         {!target.stateExists && <Checkbox size='sm' checked={copy} onCheckedChange={setCopy}>Copy my current data to this channel</Checkbox>}
         <Button disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
-          void run('SwitchChannel', selected, copy);
+          void run('SwitchChannel', selected, copy && !target.stateExists);
         }}>Download and switch</Button>
       </>}
     </section>}
