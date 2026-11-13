@@ -18,6 +18,8 @@ export default function UpdatesSettingsPage() {
   const [copy, setCopy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [channelError, setChannelError] = React.useState('');
+  const [channelAttempt, setChannelAttempt] = React.useState(0);
   const { settings } = useSettings();
   const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
   const showFeatures = settings['developer.show_feature_channels'] === true;
@@ -51,16 +53,17 @@ export default function UpdatesSettingsPage() {
 
       const list = value as ChannelList;
       setChannels(list);
+      setChannelError(list.error);
       setSelected(current => current || list.current);
     }).catch((err: unknown) => {
       if (active) {
-        setError(String(err));
+        setChannelError(String(err));
       }
     });
     return () => {
       active = false;
     };
-  }, [canListChannels]);
+  }, [canListChannels, channelAttempt]);
   const run = async (method: string, ...args: unknown[]) => {
     setError('');
     setBusy(true);
@@ -110,7 +113,9 @@ export default function UpdatesSettingsPage() {
     {status && state !== 'unconfigured' && <section>
       <h2>Release channel</h2>
       <p>Current channel: {channelName(current)}</p>
-      {channels?.error && <p role='alert'>{channels.error}</p>}
+      {channelError && <p role='alert'>{channelError} <Button onClick={() => {
+        setChannelAttempt(attempt => attempt + 1);
+      }}>Retry channel discovery</Button></p>}
       {currentOption?.status === 'archived' && <p role='alert'>This channel was retired. Switch to Stable to keep receiving updates.</p>}
       <Select.Root size='sm' value={selected} items={items} disabled={!channels || busy} onValueChange={(value) => {
         if (value !== null) {

@@ -1,13 +1,16 @@
 package instance
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
@@ -20,10 +23,26 @@ type switchSeed struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-func WriteSwitchSeed(targetRoot, sourceRoot string) error {
-	if err := os.MkdirAll(targetRoot, 0700); err != nil {
+// LockSwitchProfile protects production startup and switch seed publication.
+func LockSwitchProfile(ctx context.Context, root string) (func() error, error) {
+	canonical, err := devcontract.CanonicalPath(root)
+	if err != nil {
+		return nil, err
+	}
+	return devcontract.LockProfile(ctx, "", uuid.NewSHA1(uuid.NameSpaceURL, []byte("production-profile:"+canonical)).String())
+}
+
+func WriteSwitchSeed(targetRoot, sourceRoot string) (err error) {
+	if err := os.Mkdir(targetRoot, 0700); err != nil {
 		return fmt.Errorf("create switch target: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			if removeErr := os.Remove(targetRoot); removeErr != nil {
+				err = errors.Join(err, fmt.Errorf("remove incomplete switch target: %w", removeErr))
+			}
+		}
+	}()
 	data, err := json.Marshal(switchSeed{Schema: switchSeedSchema, Source: sourceRoot, CreatedAt: time.Now().UTC()})
 	if err != nil {
 		return fmt.Errorf("encode switch seed: %w", err)
@@ -81,39 +100,91 @@ func ApplySwitchSeed(stateRoot string) error {
 		return fmt.Errorf("switch seed source overlaps target")
 	}
 	staging := filepath.Join(stateRoot, ".switch-seed-staging")
-	if err := os.RemoveAll(staging); err != nil {
-		return fmt.Errorf("remove stale switch staging: %w", err)
+	manifest := filepath.Join(staging, ".entries.json")
+	var names []string
+	manifestData, err := os.ReadFile(manifest)
+	if os.IsNotExist(err) {
+		if err := os.RemoveAll(staging); err != nil {
+			return fmt.Errorf("remove stale switch staging: %w", err)
+		}
+		targetEntries, err := os.ReadDir(stateRoot)
+		if err != nil {
+			return fmt.Errorf("read switch target: %w", err)
+		}
+		for _, entry := range targetEntries {
+			if entry.Name() != SwitchSeedFile {
+				return fmt.Errorf("switch target already contains %q", entry.Name())
+			}
+		}
+		if err := os.Mkdir(staging, 0700); err != nil {
+			return fmt.Errorf("create switch staging: %w", err)
+		}
+		entries, err := os.ReadDir(seed.Source)
+		if err != nil {
+			return fmt.Errorf("read switch source: %w", err)
+		}
+		names = []string{}
+		for _, entry := range entries {
+			switch entry.Name() {
+			case "runtime", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock":
+				continue
+			}
+			if entry.Name() == ".entries.json" || entry.Name() == ".entries.tmp" {
+				return fmt.Errorf("reserved switch entry %q", entry.Name())
+			}
+			if err := copySwitchEntry(filepath.Join(seed.Source, entry.Name()), filepath.Join(staging, entry.Name())); err != nil {
+				return fmt.Errorf("copy switch entry %q: %w", entry.Name(), err)
+			}
+			if _, err := os.Lstat(filepath.Join(staging, entry.Name())); err == nil {
+				names = append(names, entry.Name())
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("stat switch entry: %w", err)
+			}
+		}
+		manifestData, err = json.Marshal(names)
+		if err != nil {
+			return fmt.Errorf("encode switch staging: %w", err)
+		}
+		tmpManifest := filepath.Join(staging, ".entries.tmp")
+		if err := os.WriteFile(tmpManifest, manifestData, 0600); err != nil {
+			return fmt.Errorf("write switch staging: %w", err)
+		}
+		if err := os.Rename(tmpManifest, manifest); err != nil {
+			return fmt.Errorf("publish switch staging: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("read switch staging: %w", err)
+	} else if err := json.Unmarshal(manifestData, &names); err != nil {
+		return fmt.Errorf("decode switch staging: %w", err)
 	}
-	if err := os.Mkdir(staging, 0700); err != nil {
-		return fmt.Errorf("create switch staging: %w", err)
-	}
-	entries, err := os.ReadDir(seed.Source)
-	if err != nil {
-		return fmt.Errorf("read switch source: %w", err)
-	}
-	for _, entry := range entries {
-		switch entry.Name() {
-		case "runtime", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock":
+	for _, name := range names {
+		if name == "" || name == "." || name == ".." || filepath.Base(name) != name || name == ".entries.json" {
+			return fmt.Errorf("invalid switch entry %q", name)
+		}
+		src, dst := filepath.Join(staging, name), filepath.Join(stateRoot, name)
+		_, srcErr := os.Lstat(src)
+		_, dstErr := os.Lstat(dst)
+		if os.IsNotExist(srcErr) && dstErr == nil {
 			continue
 		}
-		if err := copySwitchEntry(filepath.Join(seed.Source, entry.Name()), filepath.Join(staging, entry.Name())); err != nil {
-			return fmt.Errorf("copy switch entry %q: %w", entry.Name(), err)
+		if srcErr != nil {
+			return fmt.Errorf("stat staged switch entry %q: %w", name, srcErr)
 		}
-	}
-	entries, err = os.ReadDir(staging)
-	if err != nil {
-		return fmt.Errorf("read switch staging: %w", err)
-	}
-	for _, entry := range entries {
-		if err := os.Rename(filepath.Join(staging, entry.Name()), filepath.Join(stateRoot, entry.Name())); err != nil {
-			return fmt.Errorf("install switch entry %q: %w", entry.Name(), err)
+		if !os.IsNotExist(dstErr) {
+			if dstErr == nil {
+				return fmt.Errorf("switch target already contains %q", name)
+			}
+			return fmt.Errorf("stat target switch entry %q: %w", name, dstErr)
 		}
-	}
-	if err := os.Remove(staging); err != nil {
-		return fmt.Errorf("remove switch staging: %w", err)
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("install switch entry %q: %w", name, err)
+		}
 	}
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("remove switch seed: %w", err)
+	}
+	if err := os.RemoveAll(staging); err != nil {
+		return fmt.Errorf("remove switch staging: %w", err)
 	}
 	return nil
 }

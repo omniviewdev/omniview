@@ -339,14 +339,21 @@ func (pm *pluginManager) InstallPluginVersion(
 	pluginID string,
 	version string,
 ) (meta *config.PluginMeta, err error) {
+	installMu := pm.installOpsLock(pluginID)
+	installMu.Lock()
+	defer installMu.Unlock()
+	return pm.installPluginVersionLocked(pluginID, version, "")
+}
+
+// installPluginVersionLocked requires the plugin's installation lock.
+//
+//nolint:nonamedreturns // Deferred telemetry records the returned error.
+func (pm *pluginManager) installPluginVersionLocked(pluginID, version, channel string) (meta *config.PluginMeta, err error) {
 	ctx, install := pm.beginInstall("registry", pluginID, version)
 	defer func() { install.finish(err) }()
 	if err := pm.guardProductOwned(pluginID); err != nil {
 		return nil, err
 	}
-	installMu := pm.installOpsLock(pluginID)
-	installMu.Lock()
-	defer installMu.Unlock()
 	if err := pm.guardUninstallRecovery(pluginID); err != nil {
 		return nil, err
 	}
@@ -374,7 +381,7 @@ func (pm *pluginManager) InstallPluginVersion(
 	defer os.Remove(tmpPath) // DownloadPlugin transfers ownership of this temporary archive.
 
 	pm.installLogger().Debugw(ctx, "installing plugin from downloaded archive", "pluginID", pluginID, "version", version)
-	meta, err = pm.installPluginArchive(ctx, tmpPath, pluginID, version)
+	meta, err = pm.installPluginArchive(ctx, tmpPath, pluginID, version, channel)
 	if err != nil {
 		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return meta, err
@@ -396,13 +403,13 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (meta *config.Plugin
 		}
 		install.finish(err)
 	}()
-	return pm.installPluginArchive(ctx, path, "", "")
+	return pm.installPluginArchive(ctx, path, "", "", "")
 }
 
 // installPluginArchive requires the requested marketplace identity lock, held
 // since before download. Local archives acquire their manifest identity lock.
 func (pm *pluginManager) installPluginArchive(
-	ctx context.Context, path, requestedID, version string,
+	ctx context.Context, path, requestedID, version, channel string,
 ) (*config.PluginMeta, error) {
 	log := pm.installLogger()
 	if !isGzippedTarball(path) {
@@ -448,7 +455,7 @@ func (pm *pluginManager) installPluginArchive(
 		return nil, err
 	}
 
-	statePublished, err := pm.installArchiveCandidate(ctx, path, metadata, version)
+	statePublished, err := pm.installArchiveCandidate(ctx, path, metadata, version, channel)
 	if err != nil {
 		var problem *apperror.AppError
 		if !errors.As(err, &problem) || problem.Type != apperror.TypePluginCommittedCleanupPending {

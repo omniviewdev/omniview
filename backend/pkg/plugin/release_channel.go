@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,22 +67,10 @@ func (pm *pluginManager) InstallPluginChannelVersion(pluginID, channel, version 
 	if !valid {
 		return nil, errors.New("invalid channel or version")
 	}
-	meta, err := pm.InstallPluginVersion(pluginID, version)
-	if err != nil {
-		return meta, err
-	}
-	pm.recordsMu.Lock()
-	record := pm.records[pluginID]
-	if record == nil {
-		pm.recordsMu.Unlock()
-		return meta, fmt.Errorf("plugin %q not found after installation", pluginID)
-	}
-	record.ReleaseChannel = channel
-	pm.recordsMu.Unlock()
-	if err := pm.writePluginStateJSON(); err != nil {
-		return meta, err
-	}
-	return meta, nil
+	installMu := pm.installOpsLock(pluginID)
+	installMu.Lock()
+	defer installMu.Unlock()
+	return pm.installPluginVersionLocked(pluginID, version, channel)
 }
 
 func (pm *pluginManager) syncHostChannelPlugins(ctx context.Context) {
@@ -134,7 +121,17 @@ func (pm *pluginManager) syncHostChannelPlugins(ctx context.Context) {
 				for _, version := range versions {
 					if version.Channel == host && version.Compatible {
 						if version.Version != plugin.version {
-							_, err = pm.InstallPluginVersion(plugin.id, version.Version)
+							installMu := pm.installOpsLock(plugin.id)
+							installMu.Lock()
+							pm.recordsMu.RLock()
+							current := pm.records[plugin.id]
+							eligible := current != nil && current.Origin != "builtin" && !current.DevMode &&
+								current.ReleaseChannel == "" && current.Metadata.Version == plugin.version
+							pm.recordsMu.RUnlock()
+							if eligible {
+								_, err = pm.installPluginVersionLocked(plugin.id, version.Version, "")
+							}
+							installMu.Unlock()
 						}
 						break
 					}

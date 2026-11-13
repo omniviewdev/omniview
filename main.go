@@ -270,7 +270,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
 	}
+	var releaseProfile func() error
 	if profile.Descriptor.Kind == "production" {
+		releaseProfile, err = instance.LockSwitchProfile(context.Background(), profile.Descriptor.StateRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: cannot acquire profile guard: %v\n", err)
+			os.Exit(1)
+		}
 		if err := instance.ApplySwitchSeed(profile.Descriptor.StateRoot); err != nil {
 			fmt.Fprintf(os.Stderr, "fatal: copy profile for channel switch: %v\n", err)
 			os.Exit(1)
@@ -321,7 +327,7 @@ func main() {
 	// This stable guard lives outside the purgable profile. Acquire it before
 	// creating/opening state so purge/seed cannot replace the held root-lock
 	// inode and permit a concurrent writer through a newly created .lock.
-	var releaseProfile func() error
+	// Production acquired the same guard before applying a switch seed.
 	if profile.Descriptor.Kind == "development" {
 		home, err := os.UserHomeDir()
 		if err != nil {

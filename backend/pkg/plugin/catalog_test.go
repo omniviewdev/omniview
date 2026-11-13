@@ -296,7 +296,7 @@ func TestBuiltinArchiveReplacementRejectsBeforeStaging(t *testing.T) {
 	before, err := pm.pluginsRoot.ReadDir(".")
 	require.NoError(t, err)
 	published, err := pm.installArchiveCandidate(
-		context.Background(), "does-not-exist.tar.gz", &config.PluginMeta{ID: "owned"}, "1.0.0",
+		context.Background(), "does-not-exist.tar.gz", &config.PluginMeta{ID: "owned"}, "1.0.0", "",
 	)
 	require.ErrorContains(t, err, "built into")
 	require.False(t, published)

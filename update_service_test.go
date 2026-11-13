@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,12 +69,19 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 	digest := sha256.Sum256(body)
 	version := "0.0.0-nightly.20261112.1.1"
 	filename := "Omniview_" + version + "_linux_amd64"
+	var createTargetDuringCheck atomic.Bool
+	var failDownload atomic.Bool
 	var base string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/channels/index.json":
 			fmt.Fprint(w, `{"schema":"omniview-channel-index/v1","channels":[{"channel":"feature-abc","branch":"feature/abc","status":"active","desktopVersion":"1.0.1-feature-abc.1.1"}]}`)
 		case "/channels/nightly.json":
+			if createTargetDuringCheck.Load() {
+				if err := os.Mkdir(filepath.Join(home, ".omniview-nightly"), 0700); err != nil {
+					t.Error(err)
+				}
+			}
 			payload, err := json.Marshal(map[string]any{
 				"schema": "omniview-update-manifest/v1", "product": "omniview",
 				"channel": "nightly", "version": version,
@@ -98,6 +106,10 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 				}},
 			})
 		case "/releases/nightly/" + version + "/" + filename:
+			if failDownload.Load() {
+				http.Error(w, "download failed", http.StatusInternalServerError)
+				return
+			}
 			_, _ = w.Write(body)
 		default:
 			http.NotFound(w, r)
@@ -121,6 +133,25 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 	if err := s.SwitchChannel("feature-missing", false); err == nil || !strings.Contains(err.Error(), "has no active desktop release") {
 		t.Fatalf("missing feature: %v", err)
 	}
+	createTargetDuringCheck.Store(true)
+	if err := s.SwitchChannel("nightly", true); err == nil {
+		t.Fatal("switch accepted concurrently created target")
+	}
+	if s.Status().State == string(wailsupdater.StateReady) {
+		t.Fatal("seed failure left update staged")
+	}
+	createTargetDuringCheck.Store(false)
+	if err := os.Remove(filepath.Join(home, ".omniview-nightly")); err != nil {
+		t.Fatal(err)
+	}
+	failDownload.Store(true)
+	if err := s.SwitchChannel("nightly", true); err == nil {
+		t.Fatal("failed download succeeded")
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".omniview-nightly")); !os.IsNotExist(err) {
+		t.Fatalf("failed download left seed target: %v", err)
+	}
+	failDownload.Store(false)
 	if err := s.SwitchChannel("nightly", true); err != nil {
 		t.Fatal(err)
 	}

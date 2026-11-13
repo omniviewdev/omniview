@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotifications, createErrorHandler, parseAppError, actionToNotification } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { Call, Events } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta, PluginInfo } from '@omniviewdev/runtime/models';
 
 import { usePluginService } from '@/features/plugins';
@@ -288,7 +288,7 @@ export const usePlugin = ({ id, tab, installed = true, channel }: { id: string; 
     queryKey: [Entity.PLUGINS, id, 'release-state'],
     enabled: external && (!installed || !!tab),
     retry: false,
-    queryFn: async () => await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginReleaseState', id) as PluginReleaseState,
+    queryFn: async () => await PluginManager.GetPluginReleaseState(id) as PluginReleaseState,
   });
   const selectedChannel = channel ?? releaseState.data?.effectiveChannel;
   const channelVersions = useQuery({
@@ -296,7 +296,7 @@ export const usePlugin = ({ id, tab, installed = true, channel }: { id: string; 
     enabled: external && !!selectedChannel && (!installed || !!tab),
     staleTime: 60_000,
     retry: false,
-    queryFn: async () => await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.GetPluginChannelVersions', id, selectedChannel) as ChannelVersion[] | null,
+    queryFn: async () => await PluginManager.GetPluginChannelVersions(id, selectedChannel!) as ChannelVersion[] | null,
   });
 
   const readme = useQuery({
@@ -392,7 +392,7 @@ export const usePlugin = ({ id, tab, installed = true, channel }: { id: string; 
 
   const { mutateAsync: installFromChannel } = useMutation({
     mutationFn: async ({ channel, version }: { channel: string; version: string }) => runOperation('Installing and starting plugin…', async () => {
-      const meta = await Call.ByName('github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper.InstallPluginChannelVersion', id, channel, version);
+      const meta = await PluginManager.InstallPluginChannelVersion(id, channel, version);
       if (meta) {
         queryClient.setQueryData(operationKey, 'Loading plugin interface…');
         await recoverInterface(meta.id);

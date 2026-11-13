@@ -7,14 +7,16 @@ const mocks = vi.hoisted(() => ({
   effective: 'stable',
   explicit: false,
   install: vi.fn(),
+  releaseError: false,
+  retryRelease: vi.fn(),
   versions: [] as Array<{ version: string; channel: string; compatible?: boolean }>,
 }));
 vi.mock('@omniviewdev/runtime', () => ({ useSettings: () => ({ settings: { 'developer.show_feature_channels': mocks.showFeatures } }) }));
 vi.mock('@/hooks/plugin/usePluginManager', () => ({
   usePlugin: () => ({
-    releaseState: { data: { effectiveChannel: mocks.effective, explicit: mocks.explicit, channels: [
+    releaseState: { data: mocks.releaseError ? undefined : { effectiveChannel: mocks.effective, explicit: mocks.explicit, channels: [
       { channel: 'feature-abc', status: 'active' }, { channel: 'feature-old', status: 'archived' },
-    ] } },
+    ] }, isError: mocks.releaseError, isLoading: false, refetch: mocks.retryRelease },
     channelVersions: { data: mocks.versions, isLoading: false, isFetching: false, isError: false, refetch: vi.fn() },
     installFromChannel: mocks.install,
     operation: null,
@@ -50,6 +52,8 @@ describe('plugin release channels', () => {
     mocks.showFeatures = false;
     mocks.effective = 'stable';
     mocks.explicit = false;
+    mocks.releaseError = false;
+    mocks.retryRelease.mockReset();
     mocks.install.mockReset().mockResolvedValue({});
     mocks.versions = [
       { version: '2.0.0', channel: '' },
@@ -58,6 +62,20 @@ describe('plugin release channels', () => {
     ];
   });
   afterEach(cleanup);
+
+  it('reports and retries release channel discovery failure', async () => {
+    mocks.releaseError = true;
+    mocks.versions = [];
+    const { rerender } = render(<PluginUpdateButton pluginID='test' />);
+    expect(screen.getByRole('alert').textContent).toContain('Could not load release channels.');
+    expect(screen.queryByText('No compatible releases available.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(mocks.retryRelease).toHaveBeenCalledOnce();
+    mocks.releaseError = false;
+    mocks.versions = [{ version: '2.0.0', channel: '' }];
+    rerender(<PluginUpdateButton pluginID='test' />);
+    expect(screen.getByRole('button', { name: 'Install 2.0.0' })).toBeTruthy();
+  });
 
   it('recommends the newest compatible stable release from unordered results', () => {
     mocks.versions = [

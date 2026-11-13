@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -214,7 +216,20 @@ func (s *UpdateService) SwitchChannel(target string, copyCurrentData bool) (err 
 	}
 	targetRoot := filepath.Join(home, releasechannel.StateLabel(target))
 	if copyCurrentData {
-		if _, statErr := os.Stat(targetRoot); statErr == nil {
+		releaseGuard, lockErr := instance.LockSwitchProfile(context.Background(), targetRoot)
+		if lockErr != nil {
+			return fmt.Errorf("acquire channel profile guard: %w", lockErr)
+		}
+		defer func() {
+			if releaseErr := releaseGuard(); releaseErr != nil {
+				if err != nil {
+					err = errors.Join(err, fmt.Errorf("release channel profile guard: %w", releaseErr))
+				} else {
+					log.Printf("release channel profile guard: %v", releaseErr)
+				}
+			}
+		}()
+		if _, statErr := os.Lstat(targetRoot); statErr == nil {
 			return fmt.Errorf("%s already has its own data; copy is only available for a new channel", target)
 		} else if !os.IsNotExist(statErr) {
 			return fmt.Errorf("check channel data: %w", statErr)
@@ -236,13 +251,22 @@ func (s *UpdateService) SwitchChannel(target string, copyCurrentData bool) (err 
 	if release == nil {
 		return fmt.Errorf("channel %s has no release for this platform", target)
 	}
-	if err = s.updater.DownloadAndInstall(ctx); err != nil {
-		return err
-	}
 	if copyCurrentData {
 		if err = instance.WriteSwitchSeed(targetRoot, s.root); err != nil {
 			return err
 		}
+		defer func() {
+			if err != nil {
+				if removeErr := os.Remove(filepath.Join(targetRoot, instance.SwitchSeedFile)); removeErr != nil {
+					err = errors.Join(err, fmt.Errorf("remove switch seed: %w", removeErr))
+				} else if removeErr := os.Remove(targetRoot); removeErr != nil {
+					err = errors.Join(err, fmt.Errorf("remove switch target: %w", removeErr))
+				}
+			}
+		}()
+	}
+	if err = s.updater.DownloadAndInstall(ctx); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	s.availableVersion = release.Version

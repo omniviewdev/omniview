@@ -521,7 +521,7 @@ func (pm *pluginManager) rollbackArchive(
 
 //nolint:gocognit,gocyclo,cyclop,funlen,nonamedreturns // Transaction and deferred telemetry require this structure.
 func (pm *pluginManager) installArchiveCandidate(
-	ctx context.Context, path string, metadata *config.PluginMeta, version string,
+	ctx context.Context, path string, metadata *config.PluginMeta, version, channel string,
 ) (statePublished bool, err error) {
 	if err := pm.guardProductOwned(metadata.ID); err != nil {
 		return false, err
@@ -666,13 +666,15 @@ func (pm *pluginManager) installArchiveCandidate(
 		cause := apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to load plugin after install")
 		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, true, cause)
 	}
-	if previous != nil {
-		pm.recordsMu.Lock()
-		if record := pm.records[metadata.ID]; record != nil {
+	pm.recordsMu.Lock()
+	if record := pm.records[metadata.ID]; record != nil {
+		if channel != "" {
+			record.ReleaseChannel = channel
+		} else if previous != nil {
 			record.ReleaseChannel = previous.ReleaseChannel
 		}
-		pm.recordsMu.Unlock()
 	}
+	pm.recordsMu.Unlock()
 	installSpanPhase(ctx, "candidate_loaded")
 	stateWritten, commitErr := pm.commitArchiveInventory(ctx, recovery)
 	if recovery.committed {
