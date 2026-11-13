@@ -22,10 +22,10 @@ import (
 
 type updateTestHost struct{}
 
-func (updateTestHost) Emit(string, ...any) bool { return false }
-func (updateTestHost) OnEvent(string, func(any)) func() { return func() {} }
+func (updateTestHost) Emit(string, ...any) bool                                        { return false }
+func (updateTestHost) OnEvent(string, func(any)) func()                                { return func() {} }
 func (updateTestHost) OpenWindow(wailsupdater.WindowOptions) wailsupdater.WindowHandle { return nil }
-func (updateTestHost) Quit() {}
+func (updateTestHost) Quit()                                                           {}
 
 func TestUpdateServiceUnconfigured(t *testing.T) {
 	u := wailsupdater.New(updateTestHost{})
@@ -90,7 +90,7 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 			}
 			keyID := sha256.Sum256(public)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"schema": "omniview-update-envelope/v1",
+				"schema":  "omniview-update-envelope/v1",
 				"payload": base64.StdEncoding.EncodeToString(payload),
 				"signatures": []any{map[string]string{
 					"keyId": hex.EncodeToString(keyID[:8]), "algorithm": "ed25519",

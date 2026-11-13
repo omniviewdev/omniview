@@ -16,9 +16,9 @@ import (
 )
 
 type PluginReleaseState struct {
-	EffectiveChannel string `json:"effectiveChannel"`
-	Explicit bool `json:"explicit"`
-	Channels []regclient.PluginChannel `json:"channels"`
+	EffectiveChannel string                    `json:"effectiveChannel"`
+	Explicit         bool                      `json:"explicit"`
+	Channels         []regclient.PluginChannel `json:"channels"`
 }
 
 func (pm *pluginManager) effectiveReleaseChannel(id string) string {
@@ -95,11 +95,13 @@ func (pm *pluginManager) syncHostChannelPlugins(ctx context.Context) {
 		return
 	}
 	path := pm.stateRoot.ResolvePath("plugin-channel-sync.json")
-	var marker struct { HostChannel string `json:"hostChannel"` }
+	var marker struct {
+		HostChannel string `json:"hostChannel"`
+	}
 	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &marker) == nil && marker.HostChannel == host {
 		return
 	}
-	type candidate struct { id, version string }
+	type candidate struct{ id, version string }
 	pm.recordsMu.RLock()
 	var candidates []candidate
 	for id, record := range pm.records {
@@ -111,20 +113,29 @@ func (pm *pluginManager) syncHostChannelPlugins(ctx context.Context) {
 	pm.syncRegistryURL()
 	failed := false
 	for _, plugin := range candidates {
-		if ctx.Err() != nil { return }
+		if ctx.Err() != nil {
+			return
+		}
 		channels, err := pm.registryClient.ListChannels(ctx, plugin.id)
 		if err == nil {
 			found := false
 			for _, channel := range channels {
-				if channel.Channel == host && channel.Status == "active" { found = true; break }
+				if channel.Channel == host && channel.Status == "active" {
+					found = true
+					break
+				}
 			}
-			if !found { continue }
+			if !found {
+				continue
+			}
 			var versions []registry.VersionInfo
 			versions, err = pm.registryClient.GetPluginVersions(ctx, plugin.id, host)
 			if err == nil {
 				for _, version := range versions {
 					if version.Channel == host && version.Compatible {
-						if version.Version != plugin.version { _, err = pm.InstallPluginVersion(plugin.id, version.Version) }
+						if version.Version != plugin.version {
+							_, err = pm.InstallPluginVersion(plugin.id, version.Version)
+						}
 						break
 					}
 				}
@@ -135,14 +146,22 @@ func (pm *pluginManager) syncHostChannelPlugins(ctx context.Context) {
 			pm.logger.Warnw(ctx, "failed to sync plugin release channel", "pluginID", plugin.id, "error", err)
 		}
 	}
-	if failed || ctx.Err() != nil { return }
+	if failed || ctx.Err() != nil {
+		return
+	}
 	marker.HostChannel = host
 	data, err := json.Marshal(marker)
 	if err == nil {
 		tmp := filepath.Join(filepath.Dir(path), ".plugin-channel-sync.json.tmp")
 		err = os.WriteFile(tmp, data, 0o600)
-		if err == nil { err = os.Rename(tmp, path) }
-		if err != nil { _ = os.Remove(tmp) }
+		if err == nil {
+			err = os.Rename(tmp, path)
+		}
+		if err != nil {
+			_ = os.Remove(tmp)
+		}
 	}
-	if err != nil { pm.logger.Warnw(ctx, "failed to save plugin channel sync", "error", err) }
+	if err != nil {
+		pm.logger.Warnw(ctx, "failed to save plugin channel sync", "error", err)
+	}
 }
