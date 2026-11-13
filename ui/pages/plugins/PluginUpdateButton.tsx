@@ -25,7 +25,8 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
   const releases = (versions.data ?? []) as Release[];
   const list = orderedVersions(releases);
   const compatible = list.filter(v => v.compatible !== false);
-  const recommended = compatible.find(v => (v.channel === '' ? 'stable' : (v.channel ?? 'stable')) === channel) ?? compatible.find(v => !v.channel || v.channel === 'stable');
+  const stable = compatible.find(v => (!v.channel || v.channel === 'stable') && !v.version.split('+')[0].includes('-'));
+  const recommended = (channel === 'stable' ? undefined : compatible.find(v => v.channel === channel)) ?? stable;
   const selected = list.find(v => selection?.id === pluginID && selection.channel === channel && v.version === selection.version) ?? recommended ?? list[0];
   const downgrade = !!selected && !!currentVersion && compareVersions(selected.version, currentVersion) < 0;
   const busy = !!operation;

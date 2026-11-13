@@ -5,7 +5,64 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
+
+func TestApplySwitchSeedRejectsLiveSource(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	source := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(filepath.Join(source, "data"), []byte("source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSwitchSeed(target, source); err != nil {
+		t.Fatal(err)
+	}
+	releaseTarget, err := LockSwitchProfile(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseTarget()
+
+	releaseSource, err := LockSwitchProfile(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplySwitchSeed(target); err == nil {
+		t.Fatal("accepted source with startup guard held")
+	}
+	if err := releaseSource(); err != nil {
+		t.Fatal(err)
+	}
+
+	live, err := appstate.New(appstate.WithRoot(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplySwitchSeed(target); err == nil {
+		t.Fatal("accepted live source with root lock held")
+	}
+	if _, err := os.Stat(filepath.Join(target, SwitchSeedFile)); err != nil {
+		t.Fatalf("seed lost after rejecting live source: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, ".switch-seed-staging")); !os.IsNotExist(err) {
+		t.Fatalf("staging created for live source: %v", err)
+	}
+	if err := live.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplySwitchSeed(target); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(target, "data"))
+	if err != nil || string(data) != "source" {
+		t.Fatalf("copied data %q: %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(target, ".lock")); !os.IsNotExist(err) {
+		t.Fatalf("copied source lock: %v", err)
+	}
+}
 
 func TestApplySwitchSeed(t *testing.T) {
 	source := t.TempDir()

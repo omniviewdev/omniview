@@ -87,6 +87,26 @@ describe('plugin release channels', () => {
     expect(screen.getByRole('button', { name: 'Install 1.10.0' })).toBeInTheDocument();
   });
 
+  it('excludes stable prereleases from recommendations but keeps them in the chooser', () => {
+    mocks.versions = [
+      { version: '3.0.0-beta.1', channel: '' },
+      { version: '2.0.0+build-test', channel: '' },
+      { version: '1.0.0', channel: '' },
+    ];
+    render(<PluginUpdateButton pluginID='plugin' />);
+    expect(screen.getByRole('button', { name: 'Install 2.0.0+build-test' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Other versions…' }));
+    expect(screen.getByRole('radio', { name: /3\.0\.0-beta\.1/ })).toBeInTheDocument();
+  });
+
+  it('does not recommend a stable prerelease as a feature fallback', () => {
+    mocks.showFeatures = true;
+    mocks.versions = [{ version: '3.0.0-beta.1', channel: '' }];
+    render(<PluginUpdateButton pluginID='plugin' />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'feature-abc' } });
+    expect(screen.getByRole('button', { name: 'Install' })).toBeDisabled();
+  });
+
   it('shows active channels only when enabled', () => {
     const view = render(<PluginUpdateButton pluginID='example' />);
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
