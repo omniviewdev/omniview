@@ -49,7 +49,7 @@ jobs:
         id: check
         shell: bash
         run: |
-          NIGHTLY_VERSION="0.0.0-nightly.$(date -u +%Y%m%d)"
+          NIGHTLY_VERSION="0.0.0-nightly.$(date -u +%Y%m%d).${{ github.run_number }}.${{ github.run_attempt }}"
           echo "nightly_version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -127,6 +127,14 @@ jobs:
         shell: bash
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
+      - name: Prepare updater public keys
+        shell: bash
+        env:
+          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
+        run: |
+          keys=$(node build/updater/public-keys.mjs)
+          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
+
       - name: Build Omniview
         shell: bash
         env:
@@ -142,6 +150,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/instance.buildChannel=nightly \
+              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-nightly"
@@ -232,6 +241,26 @@ jobs:
       - name: Verify signed universal release archive
         run: bash build/darwin/verify-release-package.sh bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_darwin_universal.dmg
 
+      - name: Create and verify macOS update ZIP
+        shell: bash
+        run: |
+          version="${{ needs.check-changes.outputs.nightly_version }}"
+          zip="bin/Omniview_${version}_darwin_universal.zip"
+          ditto -c -k --sequesterRsrc --keepParent bin/dmg-root/Omniview.app "$zip"
+          temp_dir=$(mktemp -d)
+          trap 'rm -rf "$temp_dir"' EXIT
+          ditto -x -k "$zip" "$temp_dir"
+          codesign --verify --deep --strict "$temp_dir/Omniview.app"
+          xcrun stapler validate "$temp_dir/Omniview.app"
+
+      - name: Upload macOS update ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-macos-update-zip
+          path: bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_darwin_universal.zip
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -314,6 +343,14 @@ jobs:
       - name: Build frontend
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
+      - name: Prepare updater public keys
+        shell: bash
+        env:
+          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
+        run: |
+          keys=$(node build/updater/public-keys.mjs)
+          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
+
       - name: Build Omniview
         run: |
           go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
@@ -323,6 +360,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/instance.buildChannel=nightly \
+              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-nightly" \
@@ -397,6 +435,14 @@ jobs:
         shell: bash
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
+      - name: Prepare updater public keys
+        shell: bash
+        env:
+          UPDATER_PUBLIC_KEYS: ${{ vars.UPDATER_PUBLIC_KEYS }}
+        run: |
+          keys=$(node build/updater/public-keys.mjs)
+          echo "UPDATER_PUBLIC_KEYS_CSV=$keys" >> "$GITHUB_ENV"
+
       - name: Build Omniview
         shell: bash
         run: |
@@ -407,6 +453,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/instance.buildChannel=nightly \
+              -X github.com/omniviewdev/omniview/internal/updater.trustedKeysHex=${UPDATER_PUBLIC_KEYS_CSV} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-nightly" \
@@ -423,6 +470,44 @@ jobs:
           path: bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_windows_amd64.exe
           if-no-files-found: error
           retention-days: 1
+
+  publish-updates:
+    runs-on: [omniview]
+    needs: [check-changes, build-macos, build-linux, build-windows, check-homebrew]
+    if: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.check-changes.outputs.should_build == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-macos-dmg
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-macos-update-zip
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-linux-binary
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-windows-binary
+          path: dist
+      - name: Publish signed update
+        shell: bash
+        env:
+          UPDATER_SIGNING_KEYS: ${{ secrets.UPDATER_SIGNING_KEYS }}
+          UPDATE_SERVICE_PUBLISH_TOKEN: ${{ secrets.UPDATE_SERVICE_PUBLISH_TOKEN }}
+          UPDATE_SERVICE_URL: http://omniview-update-service-api.omniview.svc.cluster.local:5000
+        run: |
+          node build/updater/publish-to-update-service.mjs --channel nightly \
+            --version "${{ needs.check-changes.outputs.nightly_version }}" --dir dist \
+            --git-sha "$GITHUB_SHA" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # NPM — publish @omniviewdev/* nightly packages

@@ -96,6 +96,39 @@ export class FileFilter {
     }
 }
 
+export class UpdateStatus {
+    "state": string;
+    "version": string;
+    "availableVersion": string;
+    "error": string;
+
+    /** Creates a new UpdateStatus instance. */
+    constructor($$source: Partial<UpdateStatus> = {}) {
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("version" in $$source)) {
+            this["version"] = "";
+        }
+        if (!("availableVersion" in $$source)) {
+            this["availableVersion"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdateStatus($$parsedSource as Partial<UpdateStatus>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = FileFilter.createFrom;
 const $$createType1 = $Create.Array($$createType0);

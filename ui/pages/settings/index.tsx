@@ -14,6 +14,7 @@ import CoreSettingsPage from './CoreSettingsPage';
 import PluginSettingsPage from './PluginSettingsPage';
 import { openSettings } from '@omniviewdev/runtime';
 import AiToolsSettingsPage from './AiToolsSettingsPage';
+import UpdatesSettingsPage from './UpdatesSettingsPage';
 import { Section, SettingsCloseContext, SettingsFocusContext, type SectionSelection } from './settingsContext';
 
 const SECTION_BY_QUERY: Record<string, Section> = {
@@ -140,6 +141,7 @@ export default function SettingsPage({ request, onLocationChange, onClose }: {
     ((section === Section.Core &&
       id !== 'extensions' &&
       id !== 'ai-tools' &&
+      id !== 'updates' &&
       !Object.values(settings.categories).some((category) => category?.id === id)) ||
       (section === Section.Plugins && !plugins.data?.some((plugin) => plugin.id === id)));
   const unavailable = malformed || (!loading && missing) || (section === Section.Plugins && !id);
@@ -305,6 +307,8 @@ const GetSettingsPage = (section: Section, id: string) => {
           return null;
         case 'ai-tools':
           return <AiToolsSettingsPage />;
+        case 'updates':
+          return <UpdatesSettingsPage />;
         default:
           return <CoreSettingsPage key={`core:${id}`} id={id} />;
       }

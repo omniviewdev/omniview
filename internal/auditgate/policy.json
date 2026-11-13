@@ -255,7 +255,10 @@
     {"fqn": "main.AppService.GetOperatingSystem", "decision": "allow", "reason": "pure read of the OS name"},
     {"fqn": "main.AppService.OpenFileSelectionDialog", "decision": "deny", "reason": "opens a native file dialog on the host and returns host paths"},
     {"fqn": "main.AppService.SaveFileDialog", "decision": "deny", "reason": "opens a native save dialog on the host"},
-    {"fqn": "main.AppService.WriteFileContent", "decision": "deny", "reason": "arbitrary file write on the host (os.WriteFile at a caller-chosen path)"}
+    {"fqn": "main.AppService.WriteFileContent", "decision": "deny", "reason": "arbitrary file write on the host (os.WriteFile at a caller-chosen path)"},
+    {"fqn": "main.UpdateService.Check", "decision": "deny", "reason": "downloads and stages an application update"},
+    {"fqn": "main.UpdateService.Restart", "decision": "deny", "reason": "restarts the host and replaces the application"},
+    {"fqn": "main.UpdateService.Status", "decision": "allow", "reason": "reads the updater's in-memory state and versions"}
   ],
   "runtime": [
     {

@@ -138,6 +138,7 @@ func boundServiceTypes() []any {
 		(*devserver.ServiceWrapper)(nil),
 		(*bootstrap.Service)(nil),
 		(*AppService)(nil),
+		(*UpdateService)(nil),
 		(*diagnostics.DiagnosticsClient)(nil),
 		(*extensiondiagnosticshost.Service)(nil),
 		(*diagnosticshost.Service)(nil),
@@ -689,6 +690,7 @@ func main() {
 
 	// Create the AppService
 	appService := NewAppService(profile.Descriptor)
+	updateService := newUpdateService(app, profile.Descriptor.Channel, stateDir.Root(), version.Version)
 
 	// Create the bootstrap service that wraps startup/shutdown logic
 	bootstrapSvc := &bootstrap.Service{
@@ -767,6 +769,7 @@ func main() {
 		application.NewService(bootstrapSvc),
 		// 3. Frontend-facing services (no startup order dependency)
 		application.NewService(appService),
+		application.NewService(updateService),
 		application.NewService(diagnosticsClient),
 		application.NewService(extensiondiagnosticshost.NewService(extensionDiagnostics)),
 		application.NewService(diagnosticshost.NewService(applicationDiagnostics, diagnosticsHTTP)),
