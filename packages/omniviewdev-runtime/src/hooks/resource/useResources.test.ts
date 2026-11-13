@@ -1,8 +1,9 @@
 import React from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CancellablePromise } from '@wailsio/runtime/cancellable';
-import { useResources } from './useResources';
+import { MAX_LINGERING_VIEWS, VIEW_LINGER_MS } from '../../resource/v2/sourceViewLimits';
+import { useResources, type AcquiredResourcePage } from './useResources';
 import { useResolvedResourceTarget } from './useResolvedResourceTarget';
 import { useResource } from './useResource';
 import { useResourceGroups } from './useResourceGroups';
@@ -25,6 +26,8 @@ const native = vi.hoisted(() => ({
   open: vi.fn(),
   phase: 'connected',
   generation: 1,
+  // Connections whose generation moved on alone, by connection ID. Every other connection follows `generation`.
+  generations: new Map<string, number>(),
   listeners: new Set<() => void>(),
   resolveTarget: vi.fn(),
   get: vi.fn(),
@@ -53,9 +56,11 @@ vi.mock('../connection/useConnectionReadiness', () => ({
 }));
 vi.mock('../../connection/connectionReadiness', () => ({
   requireConnectionReady: native.requireReady,
-  getConnectionReadinessGeneration: () => native.generation,
-  isConnectionReadinessCurrent: (_plugin: string, _connection: string, generation: number) =>
-    native.phase === 'connected' && generation === native.generation,
+  getConnectionReadinessGeneration: (_plugin: string, connection: string) =>
+    native.generations.get(connection) ?? native.generation,
+  isConnectionReadinessCurrent: (_plugin: string, connection: string, generation: number) =>
+    native.phase === 'connected' &&
+    generation === (native.generations.get(connection) ?? native.generation),
   connectionReadinessStore: () => ({
     subscribe: (listener: () => void) => {
       native.listeners.add(listener);
@@ -146,7 +151,7 @@ function source() {
   };
 }
 type Wrapper = (props: { children: React.ReactNode }) => React.ReactElement;
-function setup(queries: { refetchOnWindowFocus?: boolean } = {}) {
+function setup(queries: { refetchOnWindowFocus?: boolean; staleTime?: number } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, ...queries } },
   });
@@ -204,10 +209,62 @@ function refocus(client: QueryClient) {
   });
 }
 
+const collectionKey = [...resourceQueryKeys.list('provider', request), 'collection', 'ifSupported'];
+/** A complete snapshot of the collection's one row. */
+const complete = () => ({
+  viewGeneration: 'g1',
+  records: new Map([['one', row]]),
+  status: status('following'),
+  complete: true,
+});
+/** Move the clock, letting the promises and timers it releases run. */
+const advance = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+const settle = () => advance(0);
+const mountCollection = (wrapper: Wrapper, input: HostEnumerateRequest = request) =>
+  renderHook(() => useResources({ pluginID: 'provider', request: input, collection: true }), {
+    wrapper,
+  });
+/** A collection on another connection, so that its generation can move on alone. */
+const requestOn = (connection: string): HostEnumerateRequest => ({
+  ...request,
+  request: { ...request.request, target: { ...request.request.target, route: { connection } } },
+});
+/** Every open yields a new view. The returned list holds the views in the order they were opened. */
+function openFreshViews() {
+  const opened: Array<ReturnType<typeof source>> = [];
+  native.open.mockImplementation(async () => {
+    const view = source();
+    opened.push(view);
+    return view;
+  });
+  return opened;
+}
+type Committed = { resources: { isSuccess: boolean }; acquired?: AcquiredResourcePage };
+/** Mount a collection, keeping what every committed render returned. */
+function mountRecorded(wrapper: Wrapper) {
+  const commits: Committed[] = [];
+  const hook = renderHook(
+    () => {
+      const result = useResources({ pluginID: 'provider', request, collection: true });
+      React.useLayoutEffect(() => {
+        commits.push(result);
+      });
+      return result;
+    },
+    { wrapper },
+  );
+  return { hook, commits };
+}
+
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.clearAllMocks();
   native.phase = 'connected';
   native.generation = 1;
+  native.generations.clear();
   native.listeners.clear();
   native.enumerate.mockImplementation((_plugin: string, input: HostEnumerateRequest) =>
     input.request.cursor ? denied('denied') : ready(page),
@@ -221,6 +278,13 @@ beforeEach(() => {
   native.catalog.mockImplementation(() => ready(catalogOf('Pods')));
   native.resolveTarget.mockReset();
   native.resolveTarget.mockImplementation(() => ready(targetOf(request.targetId)));
+});
+
+afterEach(async () => {
+  cleanup();
+  // A released view lingers. Closing every one here keeps the next test from reusing it.
+  await vi.advanceTimersByTimeAsync(VIEW_LINGER_MS + 1);
+  vi.useRealTimers();
 });
 
 it('waits for a complete collection snapshot, then applies source changes', async () => {
@@ -266,11 +330,15 @@ it('waits for a complete collection snapshot, then applies source changes', asyn
   });
   expect(view.refresh).toHaveBeenCalledTimes(2);
   hook.unmount();
-  await waitFor(() => expect(view.close).toHaveBeenCalledTimes(1));
+  // The released view lingers for a quick return, then closes once.
+  await settle();
+  expect(view.close).not.toHaveBeenCalled();
+  await advance(VIEW_LINGER_MS);
+  expect(view.close).toHaveBeenCalledTimes(1);
   client.clear();
 });
 
-it('shares a source view until its last observer unmounts', async () => {
+it('shares a source view until its last observer unmounts and its linger ends', async () => {
   const view = source();
   native.open.mockResolvedValue(view);
   const { client, wrapper } = setup();
@@ -297,7 +365,10 @@ it('shares a source view until its last observer unmounts', async () => {
   a.unmount();
   expect(view.close).not.toHaveBeenCalled();
   b.unmount();
-  await waitFor(() => expect(view.close).toHaveBeenCalledTimes(1));
+  await settle();
+  expect(view.close).not.toHaveBeenCalled();
+  await advance(VIEW_LINGER_MS);
+  expect(view.close).toHaveBeenCalledTimes(1);
   client.clear();
 });
 
@@ -396,20 +467,380 @@ it('surfaces a failed source view open as a query error', async () => {
   client.clear();
 });
 
-it('closes a view that opens after its last observer unmounts', async () => {
+it('closes a view that opens while it lingers once its linger ends', async () => {
   const pending = Promise.withResolvers<ReturnType<typeof source>>();
   native.open.mockReturnValue(pending.promise);
   const { client, wrapper } = setup();
-  const hook = renderHook(() => useResources({ pluginID: 'provider', request, collection: true }), {
-    wrapper,
-  });
+  const hook = mountCollection(wrapper);
   await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
   hook.unmount();
   const view = source();
   pending.resolve(view);
-  await waitFor(() => expect(view.close).toHaveBeenCalledTimes(1));
+  await settle();
+  expect(view.close).not.toHaveBeenCalled();
+  await advance(VIEW_LINGER_MS);
+  expect(view.close).toHaveBeenCalledTimes(1);
   client.clear();
 });
+
+it('closes a view that opens after its linger ended as soon as it opens', async () => {
+  const pending = Promise.withResolvers<ReturnType<typeof source>>();
+  native.open.mockReturnValue(pending.promise);
+  const { client, wrapper } = setup();
+  const hook = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  hook.unmount();
+  await advance(VIEW_LINGER_MS);
+  const view = source();
+  pending.resolve(view);
+  await settle();
+  expect(view.close).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
+it('renders the rows a released view still holds in the first commit of a remount, without opening it again', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const first = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  act(() => view.publish(complete()));
+  await waitFor(() => expect(first.result.current.acquired?.page.records).toEqual([row]));
+  const records = first.result.current.acquired!.page.records;
+  first.unmount();
+  // The query cache does not outlive its observer, so only the view can supply what the remount renders.
+  await advance(VIEW_LINGER_MS / 2);
+  expect(client.getQueryData(collectionKey)).toBeUndefined();
+  expect(view.close).not.toHaveBeenCalled();
+  const write = vi.spyOn(client, 'setQueryData');
+  const { hook: second, commits } = mountRecorded(wrapper);
+  expect(commits[0].resources.isSuccess).toBe(true);
+  expect(commits[0].acquired?.page.records).toBe(records);
+  expect(second.result.current.acquired?.page.records).toBe(records);
+  await waitFor(() => expect(second.result.current.isLive).toBe(true));
+  expect(native.open).toHaveBeenCalledTimes(1);
+  expect(view.close).not.toHaveBeenCalled();
+  // The page the view holds is the page rendered: nothing is written back, and it keeps its identity.
+  expect(write).not.toHaveBeenCalled();
+  expect(second.result.current.acquired?.page).toBe(commits[0].acquired?.page);
+  // The reused view is the shared owner: a refetch refreshes it instead of opening another.
+  await act(async () => {
+    await second.result.current.resources.refetch();
+  });
+  expect(view.refresh).toHaveBeenCalledTimes(1);
+  expect(native.open).toHaveBeenCalledTimes(1);
+  second.unmount();
+  client.clear();
+});
+
+it('does not hand the rows of a lingering view to a disabled mount', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const first = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  act(() => view.publish(complete()));
+  await waitFor(() => expect(first.result.current.acquired?.page.records).toEqual([row]));
+  first.unmount();
+  await advance(1_000);
+  const second = renderHook(
+    ({ enabled }: { enabled: boolean }) =>
+      useResources({ pluginID: 'provider', request, collection: true, enabled }),
+    { wrapper, initialProps: { enabled: false } },
+  );
+  expect(second.result.current.resources.data).toBeUndefined();
+  expect(second.result.current.acquired).toBeUndefined();
+  // Once enabled it takes the lingering view over, without opening another.
+  second.rerender({ enabled: true });
+  await waitFor(() => expect(second.result.current.acquired?.page.records).toEqual([row]));
+  expect(native.open).toHaveBeenCalledTimes(1);
+  second.unmount();
+  client.clear();
+});
+
+it('closes a released view once after the linger, and a later mount opens a new one', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const first = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  act(() => view.publish(complete()));
+  await waitFor(() => expect(first.result.current.isSynced).toBe(true));
+  first.unmount();
+  await advance(VIEW_LINGER_MS - 1_000);
+  expect(view.close).not.toHaveBeenCalled();
+  await advance(1_000);
+  expect(view.close).toHaveBeenCalledTimes(1);
+  await advance(VIEW_LINGER_MS);
+  expect(view.close).toHaveBeenCalledTimes(1);
+  native.open.mockResolvedValue(source());
+  const second = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(2));
+  // Nothing of the closed view is served.
+  expect(second.result.current.resources.isPending).toBe(true);
+  second.unmount();
+  client.clear();
+});
+
+it('keeps a view released again from the moment of its latest release', async () => {
+  const view = source();
+  native.open.mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const first = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  act(() => view.publish(complete()));
+  await waitFor(() => expect(first.result.current.isSynced).toBe(true));
+  first.unmount();
+  await advance(VIEW_LINGER_MS - 1_000);
+  const second = mountCollection(wrapper);
+  await settle();
+  // The first release's deadline passes while the view is in use again.
+  await advance(VIEW_LINGER_MS);
+  expect(view.close).not.toHaveBeenCalled();
+  second.unmount();
+  await advance(VIEW_LINGER_MS - 1_000);
+  expect(view.close).not.toHaveBeenCalled();
+  await advance(1_000);
+  expect(view.close).toHaveBeenCalledTimes(1);
+  expect(native.open).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
+it('closes the view released longest ago as soon as more than MAX_LINGERING_VIEWS linger', async () => {
+  const opened = openFreshViews();
+  const { client, wrapper } = setup();
+  const inputs = Array.from({ length: MAX_LINGERING_VIEWS + 1 }, (_, index) => ({
+    ...request,
+    targetId: `target-${index}`,
+  }));
+  for (const [index, input] of inputs.entries()) {
+    const hook = mountCollection(wrapper, input);
+    await settle();
+    hook.unmount();
+    await settle();
+    expect(opened).toHaveLength(index + 1);
+    // Only the release that exceeds the cap closes a view, and it closes the one released first.
+    expect(opened[0].close).toHaveBeenCalledTimes(index < MAX_LINGERING_VIEWS ? 0 : 1);
+  }
+  for (const view of opened.slice(1)) expect(view.close).not.toHaveBeenCalled();
+  // The newest is still there to return to. The one that was closed has to be opened again.
+  const newest = mountCollection(wrapper, inputs[MAX_LINGERING_VIEWS]);
+  await settle();
+  expect(opened).toHaveLength(MAX_LINGERING_VIEWS + 1);
+  const evicted = mountCollection(wrapper, inputs[0]);
+  await settle();
+  expect(opened).toHaveLength(MAX_LINGERING_VIEWS + 2);
+  evicted.unmount();
+  newest.unmount();
+  await advance(VIEW_LINGER_MS);
+  // Each opened view closed exactly once.
+  for (const view of opened) expect(view.close).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
+it('closes the view that started lingering first, not the one opened first', async () => {
+  const opened = openFreshViews();
+  const { client, wrapper } = setup();
+  const hooks = Array.from({ length: MAX_LINGERING_VIEWS + 1 }, (_, index) =>
+    mountCollection(wrapper, { ...request, targetId: `target-${index}` }),
+  );
+  await settle();
+  expect(opened).toHaveLength(MAX_LINGERING_VIEWS + 1);
+  // The view opened last is released first and the one opened first is released last.
+  for (const hook of hooks.slice(1).reverse()) hook.unmount();
+  await settle();
+  for (const view of opened) expect(view.close).not.toHaveBeenCalled();
+  hooks[0].unmount();
+  await settle();
+  expect(opened[MAX_LINGERING_VIEWS].close).toHaveBeenCalledTimes(1);
+  for (const view of opened.slice(0, MAX_LINGERING_VIEWS)) expect(view.close).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it('does not keep a failed open for a later mount', async () => {
+  const view = source();
+  native.open
+    .mockRejectedValueOnce(new Error('Plugin does not support source sessions.'))
+    .mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const failed = mountCollection(wrapper);
+  await waitFor(() => expect(failed.result.current.resources.isError).toBe(true));
+  failed.unmount();
+  await advance(1_000);
+  // The next mount opens afresh instead of being served the failure.
+  const retried = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(2));
+  act(() => view.publish(complete()));
+  await waitFor(() => expect(retried.result.current.acquired?.page.records).toEqual([row]));
+  expect(retried.result.current.resources.isError).toBe(false);
+  // A view that opened is kept, which is what the failed one was not.
+  retried.unmount();
+  await settle();
+  expect(view.close).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it('drops a lingering open that fails, so a later mount opens afresh', async () => {
+  const pending = Promise.withResolvers<ReturnType<typeof source>>();
+  const view = source();
+  native.open.mockReturnValueOnce(pending.promise).mockResolvedValue(view);
+  const { client, wrapper } = setup();
+  const first = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  first.unmount();
+  pending.reject(new Error('Plugin does not support source sessions.'));
+  await settle();
+  const second = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(2));
+  act(() => view.publish(complete()));
+  await waitFor(() => expect(second.result.current.acquired?.page.records).toEqual([row]));
+  expect(second.result.current.resources.isError).toBe(false);
+  second.unmount();
+  client.clear();
+});
+
+it('closes a view at once when it is released after its connection generation changed', async () => {
+  const first = source();
+  const second = source();
+  native.open.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+  const { client, wrapper } = setup();
+  const hook = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+  act(() => first.publish(complete()));
+  await waitFor(() => expect(hook.result.current.isSynced).toBe(true));
+  // The connection was replaced, and this observer has not rendered the new generation yet.
+  native.generation++;
+  hook.unmount();
+  await settle();
+  expect(first.close).toHaveBeenCalledTimes(1);
+  // A view released under the current generation lingers.
+  const later = mountCollection(wrapper);
+  await waitFor(() => expect(native.open).toHaveBeenCalledTimes(2));
+  later.unmount();
+  await settle();
+  expect(second.close).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it('closes a lingering view whose connection generation moved on as soon as another view is released', async () => {
+  const opened = openFreshViews();
+  const { client, wrapper } = setup();
+  const lingering = mountCollection(wrapper, requestOn('a'));
+  const other = mountCollection(wrapper, requestOn('b'));
+  await settle();
+  lingering.unmount();
+  await settle();
+  // The connection of the lingering view was replaced, but nothing has been released since, so nothing knows.
+  native.generations.set('a', 2);
+  await advance(1_000);
+  expect(opened[0].close).not.toHaveBeenCalled();
+  // The next release finds it out, without waiting for the view's own timer.
+  other.unmount();
+  await settle();
+  expect(opened[0].close).toHaveBeenCalledTimes(1);
+  expect(opened[1].close).not.toHaveBeenCalled();
+  // Its timer is gone with it: each view closes exactly once.
+  await advance(VIEW_LINGER_MS);
+  expect(opened[0].close).toHaveBeenCalledTimes(1);
+  expect(opened[1].close).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
+it('finds a stale lingering view when the view that is released is itself of a replaced generation', async () => {
+  const opened = openFreshViews();
+  const { client, wrapper } = setup();
+  const lingering = mountCollection(wrapper, requestOn('a'));
+  const released = mountCollection(wrapper, requestOn('b'));
+  await settle();
+  lingering.unmount();
+  await settle();
+  // Both connections were replaced, and the observer still mounted has not rendered the new generation yet.
+  native.generation++;
+  released.unmount();
+  await settle();
+  expect(opened[0].close).toHaveBeenCalledTimes(1);
+  expect(opened[1].close).toHaveBeenCalledTimes(1);
+  client.clear();
+});
+
+it('does not count a lingering view of a replaced generation toward the cap', async () => {
+  const opened = openFreshViews();
+  const { client, wrapper } = setup();
+  // Connection a is opened second, and released second.
+  const hooks = ['b1', 'a', 'b2', 'b3', 'b4'].map((connection) =>
+    mountCollection(wrapper, requestOn(connection)),
+  );
+  await settle();
+  for (const hook of hooks.slice(0, MAX_LINGERING_VIEWS)) hook.unmount();
+  await settle();
+  for (const view of opened) expect(view.close).not.toHaveBeenCalled();
+  native.generations.set('a', 2);
+  // Without a, the fifth release leaves exactly MAX_LINGERING_VIEWS views lingering.
+  hooks[MAX_LINGERING_VIEWS].unmount();
+  await settle();
+  expect(opened[1].close).toHaveBeenCalledTimes(1);
+  // The cap would otherwise have closed b1, which was released longest ago and is still live.
+  expect(opened[0].close).not.toHaveBeenCalled();
+  for (const view of opened.slice(2)) expect(view.close).not.toHaveBeenCalled();
+  client.clear();
+});
+
+it.each(['failed', 'closed'] as const)(
+  'closes a view at once when its last observer leaves while its source is %s',
+  async (state) => {
+    const opened = openFreshViews();
+    const { client, wrapper } = setup();
+    const hook = mountCollection(wrapper);
+    await settle();
+    act(() => opened[0].publish(complete()));
+    await waitFor(() => expect(hook.result.current.isSynced).toBe(true));
+    act(() => opened[0].publish({ ...complete(), status: status(state) }));
+    await waitFor(() => expect(hook.result.current.source?.state).toBe(state));
+    hook.unmount();
+    await settle();
+    // A source that is down leaves nothing to return to, so its view does not linger.
+    expect(opened[0].close).toHaveBeenCalledTimes(1);
+    // The next mount opens afresh instead of being served the failure.
+    const returned = mountCollection(wrapper);
+    await settle();
+    expect(opened).toHaveLength(2);
+    returned.unmount();
+    client.clear();
+  },
+);
+
+it.each(['failed', 'closed'] as const)(
+  'opens afresh when the source of a lingering view went %s before the return',
+  async (state) => {
+    const opened = openFreshViews();
+    const { client, wrapper } = setup();
+    const first = mountCollection(wrapper);
+    await settle();
+    act(() => opened[0].publish(complete()));
+    await waitFor(() => expect(first.result.current.isSynced).toBe(true));
+    first.unmount();
+    await settle();
+    expect(opened[0].close).not.toHaveBeenCalled();
+    // Its source goes down while nobody watches.
+    opened[0].publish({ ...complete(), status: status(state) });
+    await advance(VIEW_LINGER_MS / 2);
+    expect(opened[0].close).not.toHaveBeenCalled();
+    const { hook: returned, commits } = mountRecorded(wrapper);
+    await settle();
+    // The return closes it and opens another, and serves nothing of the old one.
+    expect(opened).toHaveLength(2);
+    expect(opened[0].close).toHaveBeenCalledTimes(1);
+    expect(commits[0].acquired).toBeUndefined();
+    act(() => opened[1].publish(complete()));
+    await waitFor(() => expect(returned.result.current.acquired?.page.records).toEqual([row]));
+    // The old view's deadline passes while the new one is in use: the old closes once, the new not at all.
+    await advance(VIEW_LINGER_MS);
+    expect(opened[0].close).toHaveBeenCalledTimes(1);
+    expect(opened[1].close).not.toHaveBeenCalled();
+    returned.unmount();
+    client.clear();
+  },
+);
 
 it.each(['failed', 'closed'] as const)(
   'rejects a complete initial snapshot with %s status',
@@ -910,5 +1341,27 @@ it('shares one catalog and one target resolution across mounts while the generat
   expect(native.catalog).toHaveBeenCalledTimes(2);
   expect(native.resolveTarget).toHaveBeenCalledTimes(2);
   view.unmount();
+  client.clear();
+});
+
+it('reuses a target admission across remounts within five minutes of resolving it, then resolves it again', async () => {
+  // The app's queries are stale at once, so only the hook's own freshness window can spare the second resolution.
+  const { client, wrapper } = setup({ staleTime: 0 });
+  const first = mountTarget(wrapper);
+  await waitFor(() => expect(first.result.current.data?.targetId).toBe('target'));
+  first.unmount();
+  await advance(4 * 60_000);
+  const second = mountTarget(wrapper);
+  expect(second.result.current.data?.targetId).toBe('target');
+  await settle();
+  expect(native.resolveTarget).toHaveBeenCalledTimes(1);
+  second.unmount();
+  await advance(90_000);
+  const third = mountTarget(wrapper);
+  // An admission past its window is hidden while it resolves again.
+  expect(third.result.current.data).toBeUndefined();
+  await waitFor(() => expect(third.result.current.data?.targetId).toBe('target'));
+  expect(native.resolveTarget).toHaveBeenCalledTimes(2);
+  third.unmount();
   client.clear();
 });

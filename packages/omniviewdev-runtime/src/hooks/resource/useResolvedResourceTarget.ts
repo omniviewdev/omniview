@@ -40,6 +40,9 @@ export function useResolvedResourceTarget({
     } : skipToken,
     enabled: queryEnabled,
     retry: false,
+    // The key carries the connection generation, so within it a remount reuses the admission for as long as the cache
+    // keeps it (the default gcTime) instead of resolving it again.
+    staleTime: 5 * 60_000,
     placeholderData: undefined,
   });
   // An old admission is never a placeholder for a pending, failed or disabled resolution.

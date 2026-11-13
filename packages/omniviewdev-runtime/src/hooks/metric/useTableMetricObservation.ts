@@ -112,6 +112,8 @@ function samePublished(a: PublishedDemand, b: PublishedDemand): boolean {
   return true;
 }
 
+const now = (): number => (typeof performance === 'undefined' ? Date.now() : performance.now());
+
 /**
  * Mounted-cell registry and its bounded publication. Timers exist only while the owning
  * hook is attached. React cleans a parent up before its cells, so a cell that cleans up
@@ -127,6 +129,7 @@ class DemandRegistry {
   private pending = false;
   private quiet: number | undefined;
   private deadline: number | undefined;
+  private lastTouch = 0;
 
   constructor(publish: (demand: PublishedDemand) => void) {
     this.publish = publish;
@@ -179,10 +182,22 @@ class DemandRegistry {
 
   private arm() {
     if (!this.attached) return;
-    window.clearTimeout(this.quiet);
-    this.quiet = window.setTimeout(this.flush, QUIET_MS);
+    // A burst costs one timer, not a clear and a set per touch: the quiet timer is left running and
+    // re-checks the last touch when it fires.
+    this.lastTouch = now();
+    this.quiet ??= window.setTimeout(this.settle, QUIET_MS);
     this.deadline ??= window.setTimeout(this.flush, MAX_WAIT_MS);
   }
+
+  /** Quiet timer: publishes once QUIET_MS have passed since the last touch, else waits out the remainder. */
+  private settle = () => {
+    const remaining = QUIET_MS - (now() - this.lastTouch);
+    if (remaining <= 0) {
+      this.flush();
+      return;
+    }
+    this.quiet = window.setTimeout(this.settle, remaining);
+  };
 
   private disarm() {
     window.clearTimeout(this.quiet);

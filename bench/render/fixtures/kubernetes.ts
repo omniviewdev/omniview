@@ -165,6 +165,14 @@ export interface PodsFixture {
   views(): SourceViewStats[];
 }
 
+/**
+ * View IDs are never issued twice in a page, as the host never does (it names every view with a UUID). The
+ * runtime keeps a released source view open for a while, so a view of an earlier `servePods` host can still be
+ * listening when the next host starts. If the new host issued its ID again, both clients would apply the
+ * other's events, take them for gaps and resync each other until both failed.
+ */
+let nextView = 0;
+
 /** Serve the Kubernetes corpus through the current host-owned V2 resource contract. */
 export function servePods(initial: Pod[]): PodsFixture {
   const metrics = podMetrics(initial);
@@ -187,7 +195,6 @@ export function servePods(initial: Pod[]): PodsFixture {
   };
   interface ViewState extends Omit<SourceViewStats, 'viewId'> { request: HostSourceViewRequest }
   const views = new Map<string, ViewState>();
-  let nextView = 0;
   const selects = (target: HostSourceViewRequest['target'], pod: Pod) => target.scope.every((entry) =>
     entry.match === 'any' || (entry.dimension === 'namespace' && entry.values.includes(pod.metadata.namespace)));
   const select = (target: HostSourceViewRequest['target']) => corpus.filter((pod) => selects(target, pod));

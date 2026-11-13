@@ -10,6 +10,7 @@ vi.mock('./client', () => ({
   RefreshSourceView: mocks.refresh, CloseSourceView: mocks.close,
 }));
 import { openSourceView } from './sourceView';
+import { MIN_DELIVERY_INTERVAL_MS } from './sourceViewLimits';
 import { setFrontendSpanRecorder, type FrontendSpanRecorder } from '../../telemetry/frontendSpans';
 
 const request = { targetId: 'target', target: {}, updates: 'ifSupported' } as HostSourceViewRequest;
@@ -33,6 +34,9 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+// Fake timers would replace the stubbed requestAnimationFrame; keep the stub.
+const useTimers = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
 
 describe('source view spans', () => {
   afterEach(() => setFrontendSpanRecorder(null));
@@ -235,6 +239,7 @@ describe('source views', () => {
     });
 
     it('publishes a status event only when it changes the status', async () => {
+      useTimers();
       const view = await openSourceView('plugin', request);
       const listener = vi.fn();
       view.subscribe(listener);
@@ -247,6 +252,8 @@ describe('source views', () => {
       expect(frame).toBeUndefined();
       expect(view.getSnapshot().status).toBe(held);
       event('one', '3', 'status', { status: { ...status, state: 'finished' } });
+      expect(frame).toBeUndefined();
+      vi.advanceTimersByTime(MIN_DELIVERY_INTERVAL_MS);
       expect(frame).toBeDefined();
       expect(view.getSnapshot().status?.state).toBe('finished');
       view.close();
@@ -275,5 +282,105 @@ describe('source views', () => {
     await expect(openSourceView('plugin', request)).rejects.toThrow('sync failed');
     expect(mocks.off).toHaveBeenCalledTimes(1);
     expect(mocks.close).toHaveBeenCalledWith('plugin', 'view');
+  });
+
+  describe('delivery coalescing', () => {
+    const runFrame = () => {
+      const callback = frame;
+      frame = undefined;
+      callback?.(0);
+    };
+
+    it('delivers the first event on the next frame', async () => {
+      useTimers();
+      const view = await openSourceView('plugin', request);
+      const listener = vi.fn();
+      view.subscribe(listener);
+      event('one', '1', 'snapshotEnd', { status });
+      expect(vi.getTimerCount()).toBe(0);
+      expect(frame).toBeDefined();
+      expect(listener).not.toHaveBeenCalled();
+      runFrame();
+      expect(listener).toHaveBeenCalledTimes(1);
+      view.close();
+    });
+
+    it('coalesces events after a delivery into one trailing delivery of the latest snapshot', async () => {
+      useTimers();
+      const view = await openSourceView('plugin', request);
+      const seen: string[][] = [];
+      view.subscribe(() => { seen.push([...view.getSnapshot().records.keys()]); });
+      event('one', '1', 'snapshotEnd', { status });
+      runFrame();
+      expect(seen).toHaveLength(1);
+      const deliveredAt = performance.now();
+
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(5);
+        event('one', String(i + 2), 'changes', { upserts: [record(`k${i}`)] });
+      }
+      expect(frame).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(1);
+
+      vi.advanceTimersByTime(MIN_DELIVERY_INTERVAL_MS - (performance.now() - deliveredAt) - 1);
+      expect(frame).toBeUndefined();
+      vi.advanceTimersByTime(1);
+      expect(performance.now() - deliveredAt).toBeGreaterThanOrEqual(MIN_DELIVERY_INTERVAL_MS);
+      expect(frame).toBeDefined();
+      expect(seen).toHaveLength(1);
+      runFrame();
+      expect(seen).toHaveLength(2);
+      expect(seen[1]).toEqual(Array.from({ length: 10 }, (_, i) => `k${i}`));
+      expect(vi.getTimerCount()).toBe(0);
+      view.close();
+    });
+
+    it('delivers on the next frame once the interval has elapsed', async () => {
+      useTimers();
+      const view = await openSourceView('plugin', request);
+      const listener = vi.fn();
+      view.subscribe(listener);
+      event('one', '1', 'snapshotEnd', { status });
+      runFrame();
+      vi.advanceTimersByTime(MIN_DELIVERY_INTERVAL_MS);
+      event('one', '2', 'changes', { upserts: [record('a')] });
+      expect(vi.getTimerCount()).toBe(0);
+      runFrame();
+      expect(listener).toHaveBeenCalledTimes(2);
+      view.close();
+    });
+
+    it('keeps a map a reader holds unmodified while delivery is delayed', async () => {
+      useTimers();
+      const view = await openSourceView('plugin', request);
+      view.subscribe(() => {});
+      event('one', '1', 'snapshotEnd', { status });
+      runFrame();
+      const held = view.getSnapshot().records;
+      event('one', '2', 'changes', { upserts: [record('a')] });
+      event('one', '3', 'changes', { upserts: [record('b')] });
+      expect(held.size).toBe(0);
+      vi.advanceTimersByTime(MIN_DELIVERY_INTERVAL_MS);
+      runFrame();
+      expect([...view.getSnapshot().records.keys()]).toEqual(['a', 'b']);
+      expect(held.size).toBe(0);
+      view.close();
+    });
+
+    it('close cancels a pending trailing delivery', async () => {
+      useTimers();
+      const view = await openSourceView('plugin', request);
+      const listener = vi.fn();
+      view.subscribe(listener);
+      event('one', '1', 'snapshotEnd', { status });
+      runFrame();
+      event('one', '2', 'changes', { upserts: [record('a')] });
+      expect(vi.getTimerCount()).toBe(1);
+      view.close();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(MIN_DELIVERY_INTERVAL_MS * 2);
+      runFrame();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
   });
 });

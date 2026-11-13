@@ -9,7 +9,7 @@ import PodTable from 'bench-kubernetes-pod-table';
 import { screenBench } from './harness/bench';
 import { PluginScreen } from './harness/providers';
 import { findScrollable, mount, scrollStep, waitFor, click, findByText, nextFrame, type Mounted } from './harness/dom';
-import { makePods, servePods } from './fixtures/kubernetes';
+import { makePods, servePods, type PodsFixture } from './fixtures/kubernetes';
 import { BENCH_CONNECTION_ID } from './fixtures/defaults';
 
 const POD_NAME = /^[a-z-]+-[0-9a-f]{10}-[0-9a-f]{5}$/;
@@ -58,22 +58,38 @@ function assertScrollRendersNewRows(m: Mounted) {
   if (!after || after === before) throw new Error(`scrolling did not change the visible rows (${before} -> ${after})`);
 }
 
-async function mountLoaded(): Promise<Mounted> {
+/**
+ * Mount the native Pod page and wait for its first row. The rows must come from a source view this mount opened on
+ * `world`: a view an earlier mount left open would time a warm remount, not the cold page load these benches name.
+ */
+async function mountLoaded(world: PodsFixture): Promise<Mounted> {
   localStorage.clear();
+  const served = new Set(world.views().map((view) => view.viewId));
   const m = mount(screen());
-  await waitFor(() => topRowName(m.container), { label: 'first pod row' });
+  try {
+    await waitFor(() => topRowName(m.container), { label: 'first pod row' });
+    if (!world.views().some((view) => !served.has(view.viewId))) {
+      throw new Error('the first pod row did not come from a source view this mount opened');
+    }
+  } catch (error) {
+    // A mount that failed must not stay mounted into the next case.
+    m.unmount();
+    cachedScroller = null;
+    throw error;
+  }
   return m;
 }
 
 for (const count of [1_000, 5_000]) {
   describe(`k8s pod table, native page from ${count}-pod corpus`, () => {
     const pods = makePods(count);
+    let world!: PodsFixture;
     let m: Mounted | null = null;
-    const serve = () => servePods(pods);
+    const serve = () => { world = servePods(pods); };
     const unmount = () => { m?.unmount(); m = null; cachedScroller = null; };
 
     screenBench('mount until first row', async () => {
-      const mounted = await mountLoaded();
+      const mounted = await mountLoaded(world);
       mounted.unmount();
       cachedScroller = null;
     }, { setup: serve });
@@ -106,7 +122,7 @@ for (const count of [1_000, 5_000]) {
     }, {
       iterations: 6,
       setup: async () => {
-        serve(); unmount(); m = await mountLoaded();
+        serve(); unmount(); m = await mountLoaded(world);
         assertScrollRendersNewRows(m);
       },
       teardown: unmount,
@@ -118,7 +134,7 @@ for (const count of [1_000, 5_000]) {
       click(findByText(m!.container, 'Name')!);
       await waitFor(() => { const now = topRowName(m!.container); return now && now !== before; }, { label: 'sorted top row' });
     }, {
-      setup: async () => { serve(); unmount(); m = await mountLoaded(); },
+      setup: async () => { serve(); unmount(); m = await mountLoaded(world); },
       teardown: unmount,
     });
   });
