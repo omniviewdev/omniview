@@ -49,7 +49,7 @@ async function fixture(t, handler, version = '1.4.0') {
   const base = `http://127.0.0.1:${server.address().port}`;
   const args = [cli, '--channel', 'stable', '--version', version, '--dir', dir, '--git-sha', 'a'.repeat(40), '--run-url', 'https://github.com/run/1'];
   const env = { ...process.env, UPDATER_SIGNING_KEYS: JSON.stringify([seed]), UPDATE_SERVICE_URL: base, UPDATE_SERVICE_PUBLISH_TOKEN: 'test-token' };
-  return { base, args, env };
+  return { base, args, env, dir };
 }
 
 async function body(req) {
@@ -141,7 +141,7 @@ test('publishes streamed artifacts and signed envelope before finalize', async (
       assert.equal(req.headers.authorization, 'Bearer test-token');
       created = JSON.parse(data);
       const descriptor = (filename, type) => ({ filename, method: 'PUT', url: `${base}/upload/${encodeURIComponent(filename)}`, headers: { 'Content-Type': type } });
-      res.writeHead(201).end(JSON.stringify({ id: 'release-1', uploads: created.artifacts.map((a) => descriptor(a.filename, 'application/octet-stream')), manifestUpload: descriptor('manifest.json', 'application/json') }));
+      res.writeHead(201).end(JSON.stringify({ id: 'release-1', uploads: created.artifacts.map((a) => ({ filename: a.filename, chunkSize: 16 * 1024 * 1024, chunks: Array.from({ length: Math.ceil(a.size / (16 * 1024 * 1024)) }, (_, i) => descriptor(`${a.filename}.${i}`, 'application/octet-stream')) })), manifestUpload: descriptor('manifest.json', 'application/json') }));
     } else if (req.method === 'PUT') {
       assert.equal(Number(req.headers['content-length']), data.length);
       if (!retried) {
@@ -151,6 +151,14 @@ test('publishes streamed artifacts and signed envelope before finalize', async (
       }
       uploads.set(decodeURIComponent(req.url.slice('/upload/'.length)), data);
       res.writeHead(200).end();
+    } else if (req.method === 'POST' && req.url.endsWith('/assemble')) {
+      const name = JSON.parse(data).filename;
+      const artifact = created.artifacts.find((a) => a.filename === name);
+      const chunks = Array.from({ length: Math.ceil(artifact.size / (16 * 1024 * 1024)) }, (_, i) => uploads.get(`${name}.${i}`));
+      assert.ok(chunks.every(Boolean));
+      for (let i = 0; i < chunks.length; i++) uploads.delete(`${name}.${i}`);
+      uploads.set(name, Buffer.concat(chunks));
+      res.writeHead(200).end('{}');
     } else if (req.method === 'POST' && req.url.endsWith('/finalize')) {
       assert.equal(uploads.size, 5);
       finalized = true;
@@ -161,6 +169,7 @@ test('publishes streamed artifacts and signed envelope before finalize', async (
     }
   });
   base = fixtureData.base;
+  await writeFile(join(fixtureData.dir, 'Omniview_1.4.0_linux_amd64'), Buffer.alloc((16 * 1024 * 1024) + 3, 7));
   const result = await run(process.execPath, fixtureData.args, { env: fixtureData.env });
   assert.match(result.stdout, /active/);
   const envelope = JSON.parse(uploads.get('manifest.json'));

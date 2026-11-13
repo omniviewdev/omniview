@@ -65,7 +65,7 @@ func TestProvider(t *testing.T) {
 		if strings.HasPrefix(r.URL.Path, "/channels/") {
 			w.Write(response)
 		} else {
-			w.Write(body)
+			http.ServeContent(w, r, "artifact", time.Time{}, bytes.NewReader(body))
 		}
 	}))
 	defer srv.Close()
@@ -229,7 +229,8 @@ func TestCheckpointAdvancesOnlyAfterArtifactValidation(t *testing.T) {
 
 func TestDownloadDeadlineCancelsStalledBody(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Range", "bytes 0-0/1")
+		w.WriteHeader(http.StatusPartialContent)
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 	}))
@@ -320,5 +321,33 @@ func TestFetchChannelIndex(t *testing.T) {
 	response = strings.Repeat("a", maxEnvelope+1)
 	if _, err := p.FetchIndex(context.Background()); err == nil {
 		t.Fatal("oversized index accepted")
+	}
+}
+
+func TestDownloadRanges(t *testing.T) {
+	body := bytes.Repeat([]byte("x"), (16<<20)+3)
+	var ranges []string
+	invalid := false
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ranges = append(ranges, r.Header.Get("Range"))
+		if invalid {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.ServeContent(w, r, "artifact", time.Time{}, bytes.NewReader(body))
+	}))
+	defer srv.Close()
+	p := &Provider{channel: "stable", base: srv.URL, client: srv.Client()}
+	r := &wails.Release{Channel: "stable", Version: "1.2.3", Artifact: wails.Artifact{Platform: "linux", Arch: "amd64", Filename: "Omniview_1.2.3_linux_amd64", Size: int64(len(body))}}
+	var out bytes.Buffer
+	if err := p.Download(context.Background(), r, &out, nil); err != nil || !bytes.Equal(out.Bytes(), body) {
+		t.Fatalf("range download: %v", err)
+	}
+	if len(ranges) != 2 || ranges[0] != "bytes=0-16777215" || ranges[1] != "bytes=16777216-16777218" {
+		t.Fatalf("unexpected ranges: %v", ranges)
+	}
+	invalid = true
+	if err := p.Download(context.Background(), r, io.Discard, nil); err == nil {
+		t.Fatal("server ignoring Range accepted")
 	}
 }

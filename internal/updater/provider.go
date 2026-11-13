@@ -315,40 +315,64 @@ func (p *Provider) Download(ctx context.Context, r *wails.Release, dst io.Writer
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	resp, err := p.get(ctx, p.base+"/releases/"+target+"/"+r.Version+"/"+name)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	const chunkSize int64 = 16 << 20
+	url := p.base + "/releases/" + target + "/" + r.Version + "/" + name
 	buf := make([]byte, 32*1024)
 	var total int64
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if total+int64(n) > a.Size {
-			return fmt.Errorf("update artifact exceeds declared size")
+	for total < a.Size {
+		start := total
+		end := start + chunkSize - 1
+		if end >= a.Size {
+			end = a.Size - 1
 		}
-		if n > 0 {
-			written, err := dst.Write(buf[:n])
-			total += int64(written)
-			if err != nil {
-				return err
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+		req.Header.Set("Accept-Encoding", "identity")
+		resp, err := p.client.Do(req)
+		if err != nil {
+			return err
+		}
+		expected := fmt.Sprintf("bytes %d-%d/%d", start, end, a.Size)
+		if resp.StatusCode != http.StatusPartialContent || resp.Header.Get("Content-Range") != expected {
+			resp.Body.Close()
+			return fmt.Errorf("invalid update range response")
+		}
+		for {
+			n, readErr := resp.Body.Read(buf)
+			if total+int64(n) > end+1 {
+				resp.Body.Close()
+				return fmt.Errorf("update artifact exceeds requested range")
 			}
-			if written != n {
-				return io.ErrShortWrite
+			if n > 0 {
+				written, err := dst.Write(buf[:n])
+				total += int64(written)
+				if err != nil {
+					resp.Body.Close()
+					return err
+				}
+				if written != n {
+					resp.Body.Close()
+					return io.ErrShortWrite
+				}
+				if onProgress != nil {
+					onProgress(total, a.Size)
+				}
 			}
-			if onProgress != nil {
-				onProgress(total, a.Size)
+			if readErr == io.EOF {
+				break
+			}
+			if readErr != nil {
+				resp.Body.Close()
+				return readErr
 			}
 		}
-		if readErr == io.EOF {
-			break
+		resp.Body.Close()
+		if total != end+1 {
+			return fmt.Errorf("update artifact size mismatch")
 		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-	if total != a.Size {
-		return fmt.Errorf("update artifact size mismatch")
 	}
 	return nil
 }

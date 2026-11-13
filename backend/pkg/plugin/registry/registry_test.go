@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/omniviewdev/omniview/internal/version"
 	regclient "github.com/omniviewdev/registry"
@@ -123,9 +124,7 @@ func TestDownloadLeavesSignedArtifactURLUnchanged(t *testing.T) {
 			if r.URL.RequestURI() != artifactPath {
 				t.Errorf("changed signed URL: %s", r.URL)
 			}
-			if _, err := w.Write([]byte("artifact bytes")); err != nil {
-				t.Errorf("writing artifact: %v", err)
-			}
+			http.ServeContent(w, r, "plugin", time.Time{}, strings.NewReader("artifact bytes"))
 			return
 		}
 		if strings.Contains(r.URL.Path, "/download/") {
@@ -159,9 +158,7 @@ func TestTrailingSlashRegistryBaseURL(t *testing.T) {
 					if r.URL.RequestURI() != signedPath {
 						t.Errorf("changed signed URL: %s", r.URL)
 					}
-					if _, err := w.Write([]byte("artifact bytes")); err != nil {
-						t.Errorf("writing artifact: %v", err)
-					}
+					http.ServeContent(w, r, "plugin", time.Time{}, strings.NewReader("artifact bytes"))
 					return
 				}
 				if strings.Contains(r.URL.Path, "/download/") {
