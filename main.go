@@ -16,6 +16,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/updater"
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
@@ -258,6 +259,7 @@ func (c auditStartupCheck) verifyServiceTypes(registered ...any) {
 //
 //nolint:funlen // main function is expected to be long
 func main() {
+	updater.HandleHelperMode()
 	if handled, exit := hostruntime.HandleNativeProfileRemoval(os.Args[1:]); handled {
 		os.Exit(exit)
 	}
