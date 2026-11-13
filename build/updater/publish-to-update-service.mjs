@@ -94,13 +94,20 @@ async function main() {
   if (envelope.length > 1024 * 1024) throw new Error('envelope exceeds 1 MiB');
   const release = await api(`${service}/v1/publish/releases`, token, 'POST', { channel, version, gitSha, ciRunUrl: args['--run-url'], artifacts: artifacts.map(({ url, ...artifact }) => artifact) });
   if (typeof release.id !== 'string' || !Array.isArray(release.uploads)) throw new Error('invalid create response');
+  const releaseURL = `${service}/v1/publish/releases/${encodeURIComponent(release.id)}`;
   for (const artifact of artifacts) {
     const matches = release.uploads.filter((item) => item.filename === artifact.filename);
     if (matches.length !== 1) throw new Error(`missing or duplicate upload descriptor: ${artifact.filename}`);
-    await upload(matches[0], artifact.size, () => createReadStream(join(dir, artifact.filename)));
+    const { chunkSize, chunks } = matches[0];
+    if (!Number.isSafeInteger(chunkSize) || chunkSize < 5 * 1024 * 1024 || chunkSize > 16 * 1024 * 1024 || !Array.isArray(chunks) || chunks.length !== Math.ceil(artifact.size / chunkSize)) throw new Error('invalid chunk upload descriptors');
+    for (let i = 0; i < chunks.length; i++) {
+      const start = i * chunkSize;
+      const size = Math.min(chunkSize, artifact.size - start);
+      await upload(chunks[i], size, () => createReadStream(join(dir, artifact.filename), { start, end: start + size - 1 }));
+    }
+    await api(`${releaseURL}/assemble`, token, 'POST', { filename: artifact.filename }, AbortSignal.timeout(UPLOAD_TIMEOUT_MS));
   }
   await upload(release.manifestUpload, envelope.length, () => envelope);
-  const releaseURL = `${service}/v1/publish/releases/${encodeURIComponent(release.id)}`;
   await api(`${releaseURL}/finalize`, token, 'POST');
   const deadline = Date.now() + 30 * 60 * 1000;
   while (Date.now() < deadline) {
