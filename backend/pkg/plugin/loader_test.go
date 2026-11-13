@@ -245,12 +245,15 @@ func TestReloadPlugin_ReloadsSuccessfully(t *testing.T) {
 	// First load.
 	_, err := pm.LoadPlugin("reload-test", nil)
 	require.NoError(t, err)
+	pm.records["reload-test"].ReleaseChannel = "stable"
 
 	// Reload.
 	info, err := pm.ReloadPlugin("reload-test")
 	require.NoError(t, err)
 	assert.Equal(t, "reload-test", info.ID)
 	assert.Equal(t, string(lifecycle.PhaseRunning), info.Phase)
+	assert.Equal(t, "stable", info.ReleaseChannel)
+	assert.Equal(t, "stable", pm.records["reload-test"].ReleaseChannel)
 }
 
 func TestCreateBackend_UsesFactory(t *testing.T) {

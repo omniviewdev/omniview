@@ -84,10 +84,13 @@ export default function PluginUpdateButton({ pluginID, currentVersion = '', inst
     </Stack>
     {recommended?.compatibility_reason && <Text size='xs' tone='muted'>{recommended.compatibility_reason}</Text>}
     {operation && <Text size='sm' role='status'>{operation}</Text>}
+    {releaseState.isError && <Text size='sm' role='alert'>Could not load release channels. <Button size='sm' variant='ghost' onClick={async () => {
+      await releaseState.refetch();
+    }}>Retry</Button></Text>}
     {versions.isError && <Text size='sm' role='alert'>Could not load versions. <Button size='sm' variant='ghost' onClick={async () => {
       await versions.refetch();
     }}>Retry</Button></Text>}
-    {!versions.isLoading && !versions.isError && !list.length && <Text size='sm' tone='muted'>No compatible releases available.</Text>}
+    {!releaseState.isError && !releaseState.isLoading && !versions.isLoading && !versions.isError && !list.length && <Text size='sm' tone='muted'>No compatible releases available.</Text>}
     {list[0]?.compatible === false && <Text size='sm' role='status'>{list[0].version} · {list[0].compatibility_reason ?? 'Not compatible with this IDE.'}</Text>}
     <Dialog open={chooser} onClose={() => {
       if (!busy) {

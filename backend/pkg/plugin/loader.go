@@ -598,6 +598,14 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
+	var existing plugintypes.PluginStateRecord
+	if ok {
+		existing.ID = record.ID
+		existing.Enabled = record.Enabled
+		existing.DevMode = record.DevMode
+		existing.DevPath = record.DevPath
+		existing.ReleaseChannel = record.ReleaseChannel
+	}
 	pm.recordsMu.RUnlock()
 	if !ok {
 		return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginNotLoaded, http.StatusNotFound,
@@ -605,13 +613,6 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 			fmt.Sprintf("Plugin '%s' is not currently loaded.", id)).WithInstance(id)
 	}
 
-	// Build reload opts from the current record state.
-	// Only ID, Enabled, DevMode and DevPath carry over; the rest stays zero.
-	var existing plugintypes.PluginStateRecord
-	existing.ID = record.ID
-	existing.Enabled = record.Enabled
-	existing.DevMode = record.DevMode
-	existing.DevPath = record.DevPath
 	opts := &LoadPluginOptions{
 		DevMode:       false,
 		DevModePath:   "",

@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -166,4 +167,94 @@ func TestHostChannelSyncInstallsSignedFeatureArchive(t *testing.T) {
 		}
 	}
 	require.FileExists(t, pm.stateRoot.ResolvePath("plugin-channel-sync.json"))
+}
+
+func TestChannelInstallsAndHostSyncSerialize(t *testing.T) {
+	const feature = "1.0.1-feature-abc.1.1"
+	const stable = "1.0.0"
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 1.0.0\ncapabilities: [ui]\n"},
+		{name: "assets/", mode: 0755, dir: true},
+		{name: "assets/entry.js", mode: 0644, body: "bundle"},
+	})
+	data, err := os.ReadFile(archive)
+	require.NoError(t, err)
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	require.NoError(t, regclient.AddPublicKey(hex.EncodeToString(publicKey)))
+	hash := sha256.Sum256(data)
+	checksum := hex.EncodeToString(hash[:])
+	signature := base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(checksum)))
+	syncWaiting, releaseSync := make(chan struct{}), make(chan struct{})
+	installWaiting, releaseInstall := make(chan struct{}), make(chan struct{})
+	var downloads atomic.Int32
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/artifact":
+			if downloads.Add(1) == 1 {
+				close(installWaiting)
+				<-releaseInstall
+			}
+			_, _ = w.Write(data)
+		case strings.Contains(r.URL.Path, "/download/"):
+			http.Redirect(w, r, server.URL+"/artifact", http.StatusFound)
+		case strings.HasSuffix(r.URL.Path, "/channels"):
+			_, _ = w.Write([]byte(`{"success":true,"data":[{"channel":"feature-abc","status":"active"}]}`))
+		case strings.HasSuffix(r.URL.Path, "/versions"):
+			close(syncWaiting)
+			<-releaseSync
+			_, _ = w.Write([]byte(`{"success":true,"data":[{"version":"` + feature + `","channel":"feature-abc"}]}`))
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"success": true,
+				"data": map[string]any{
+					"version": stable,
+					"artifacts": map[string]any{
+						regclient.CurrentPlatform(): map[string]string{"checksum": checksum, "signature": signature},
+					},
+				},
+			})
+		}
+	}))
+	defer server.Close()
+
+	pm := newTestManager(t)
+	pm.registryClient = registry.NewClient(server.URL).WithHostReleaseChannel("feature-abc")
+	installPluginFixture(t, pm, "flux", []string{"ui"}, false)
+	require.NoError(t, os.MkdirAll(pm.pluginsRoot.ResolvePath("flux/assets"), 0755))
+	_, err = pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+
+	syncDone := make(chan struct{})
+	go func() {
+		defer close(syncDone)
+		pm.syncHostChannelPlugins(context.Background())
+	}()
+	<-syncWaiting
+	featureDone := make(chan error, 1)
+	go func() {
+		_, installErr := pm.InstallPluginChannelVersion("flux", "feature-abc", feature)
+		featureDone <- installErr
+	}()
+	<-installWaiting
+	stableDone := make(chan error, 1)
+	go func() {
+		_, installErr := pm.InstallPluginChannelVersion("flux", "stable", stable)
+		stableDone <- installErr
+	}()
+	close(releaseInstall)
+	require.NoError(t, <-featureDone)
+	require.NoError(t, <-stableDone)
+	close(releaseSync)
+	<-syncDone
+
+	require.Equal(t, int32(2), downloads.Load())
+	require.Equal(t, stable, pm.records["flux"].Metadata.Version)
+	require.Equal(t, "stable", pm.records["flux"].ReleaseChannel)
+	states, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	require.Equal(t, stable, states[0].Metadata.Version)
+	require.Equal(t, "stable", states[0].ReleaseChannel)
 }

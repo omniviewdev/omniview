@@ -62,6 +62,57 @@ describe('UpdatesSettingsPage channels', () => {
   });
   afterEach(cleanup);
 
+  it('retries failed channel index discovery and restores feature channels', async () => {
+    mocks.showFeatures = true;
+    let attempts = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'stable' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        attempts += 1;
+        return attempts === 1
+          ? { current: 'stable', options: options.slice(0, 2), error: 'load channel index: offline' }
+          : { current: 'stable', options, error: '' };
+      }
+
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    expect((await screen.findByRole('alert')).textContent).toContain('load channel index: offline');
+    expect(screen.queryByRole('option', { name: 'feature-abc' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry channel discovery' }));
+    expect(await screen.findByRole('option', { name: 'feature-abc' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(attempts).toBe(2);
+  });
+
+  it('retries a rejected channel list request', async () => {
+    let attempts = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'stable' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('offline');
+        }
+
+        return { current: 'stable', options, error: '' };
+      }
+
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    expect((await screen.findByRole('alert')).textContent).toContain('offline');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry channel discovery' }));
+    expect(await screen.findByRole('option', { name: 'Nightly' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('filters feature and archived channels and commits visibility setting', async () => {
     render(<UpdatesSettingsPage />);
     await screen.findByRole('option', { name: 'Nightly' });

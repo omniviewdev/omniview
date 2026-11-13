@@ -1427,7 +1427,7 @@ func TestMarketplaceArchive_WrongIdentityLeavesBothInstallationsUntouched(t *tes
 	})
 	lock := pm.installOpsLock("flux")
 	lock.Lock()
-	_, err = pm.installPluginArchive(context.Background(), archive, "flux", "0.14.0")
+	_, err = pm.installPluginArchive(context.Background(), archive, "flux", "0.14.0", "")
 	lock.Unlock()
 	require.ErrorContains(t, err, "identity mismatch")
 	assert.Same(t, flux, pm.records["flux"])
@@ -1448,7 +1448,7 @@ func TestMarketplaceArchive_VersionSurvivesReloadAndLaterLocalReplacement(t *tes
 	require.NoError(t, err)
 	lock := pm.installOpsLock("flux")
 	lock.Lock()
-	metadata, err := pm.installPluginArchive(context.Background(), archive, "flux", "0.14.0")
+	metadata, err := pm.installPluginArchive(context.Background(), archive, "flux", "0.14.0", "")
 	lock.Unlock()
 	require.NoError(t, err)
 	assert.Equal(t, "0.14.0", metadata.Version)
@@ -1501,7 +1501,7 @@ func TestMarketplaceArchive_QueuedUninstallRunsAfterPublication(t *testing.T) {
 		done <- err
 	}()
 	<-started
-	_, installErr := pm.installPluginArchive(context.Background(), archive, "flux", "0.14.0")
+	_, installErr := pm.installPluginArchive(context.Background(), archive, "flux", "0.14.0", "")
 	lock.Unlock()
 	require.NoError(t, installErr)
 	require.NoError(t, <-done)
@@ -1532,7 +1532,7 @@ func TestMarketplaceArchive_QueuedLocalUpdateKeepsItsOwnVersion(t *testing.T) {
 		done <- err
 	}()
 	<-started
-	_, installErr := pm.installPluginArchive(context.Background(), marketplace, "flux", "0.14.0")
+	_, installErr := pm.installPluginArchive(context.Background(), marketplace, "flux", "0.14.0", "")
 	lock.Unlock()
 	require.NoError(t, installErr)
 	require.NoError(t, <-done)
