@@ -71,6 +71,11 @@ relative to the host. Production React and JSX are the default. Use
   `sequence` (`upserts`, and `removes` keyed by the host record key; a recreated Pod is a remove
   and an upsert under a new uid), and `views()` counts what each view delivered.
   `fixtures/updates.ts` drives a declared, seeded sparse-update workload through it.
+  View IDs come from one counter for the whole page, so a later `servePods` host never issues an ID
+  an earlier one did, as the real host never repeats its UUIDs. The runtime keeps a released source
+  view open for a while, and a repeated ID would reach the view an earlier host left behind.
+  The Pod benches fail unless the first row comes from a source view the mount opened on the current
+  host, so a reused view cannot pass as a cold mount.
   `fixtures/metrics.ts` answers the current finite-metrics protocol (view source selection,
   catalog, open/attach/refresh/close observation and `metric/observation` events) as a healthy
   provider or as an absent metrics API. `fixtures/activity.ts` implements the whole Activity

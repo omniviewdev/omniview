@@ -74,3 +74,20 @@ describe('benchmark schema fixture through the current resource client', () => {
       .rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
+
+describe('benchmark source view fixture', () => {
+  const open = () => {
+    const handler = native.handlers.get('resource/servicewrapper.OpenSourceView') as
+      (plugin: string, view: unknown) => { viewId: string; topic: string };
+    return handler('kubernetes', { targetId: 'bench', target: { type: 'k8s:/pods', route: { connection: 'bench' }, scope: [] }, updates: 'none' });
+  };
+
+  it('never issues a view ID twice, even after a new host replaced the one that issued it', () => {
+    // The runtime keeps a released view open, so an ID that a later host issued again would reach it.
+    const earlier = [open(), open()];
+    servePods(makePods(1));
+    const opened = [...earlier, open(), open()];
+    expect(new Set(opened.map(view => view.viewId)).size).toBe(opened.length);
+    expect(new Set(opened.map(view => view.topic)).size).toBe(opened.length);
+  });
+});
