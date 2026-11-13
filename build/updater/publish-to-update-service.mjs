@@ -25,7 +25,9 @@ function options(args) {
   }
   const { '--channel': channel, '--version': version, '--git-sha': gitSha } = result;
   const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-  if (!(channel === 'stable' && stable.test(version)) && !(channel === 'nightly' && /^0\.0\.0-nightly\.\d{8}\.\d+\.\d+$/.test(version))) throw new Error('invalid channel or version');
+  const feature = /^feature-[a-z][a-z0-9-]{0,30}[a-z0-9]$/.test(channel)
+    && new RegExp(`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)-${channel}\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$`).test(version);
+  if (!(channel === 'stable' && stable.test(version)) && !(channel === 'nightly' && /^0\.0\.0-nightly\.\d{8}\.\d+\.\d+$/.test(version)) && !feature) throw new Error('invalid channel or version');
   if (!/^[0-9a-f]{40}$/.test(gitSha)) throw new Error('git SHA must be 40 lowercase hex characters');
   return result;
 }

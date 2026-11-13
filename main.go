@@ -270,6 +270,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: invalid runtime profile: %v\n", err)
 		os.Exit(1)
 	}
+	if profile.Descriptor.Kind == "production" {
+		if err := instance.ApplySwitchSeed(profile.Descriptor.StateRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "fatal: copy profile for channel switch: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	// Finder does not inherit a terminal's login PATH. Resolve it before any
 	// plugin or executable starts, while preserving host isolation authority.
 	if err := shellenv.Restore(context.Background()); err != nil {
@@ -563,7 +569,7 @@ func main() {
 		}))
 	}
 
-	pluginRegistryClient := registry.NewClient("").WithLogger(log.Named("registry"))
+	pluginRegistryClient := registry.NewClient("").WithLogger(log.Named("registry")).WithHostReleaseChannel(profile.Descriptor.Channel)
 	// Product-owned providers are selected at compile time, never by installed metadata.
 	builtinCatalog, err := plugin.NewCatalog([]plugin.CatalogEntry{
 		grafana.CatalogEntry(func() (*os.Root, error) {

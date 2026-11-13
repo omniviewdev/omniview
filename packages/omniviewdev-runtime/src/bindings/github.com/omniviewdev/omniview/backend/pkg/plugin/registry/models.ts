@@ -223,6 +223,7 @@ export class Review {
  */
 export class VersionInfo {
     "version": string;
+    "channel": string;
     "description": string;
     "changelog": string;
     "min_ide_version": string;
@@ -237,6 +238,9 @@ export class VersionInfo {
     constructor($$source: Partial<VersionInfo> = {}) {
         if (!("version" in $$source)) {
             this["version"] = "";
+        }
+        if (!("channel" in $$source)) {
+            this["channel"] = "";
         }
         if (!("description" in $$source)) {
             this["description"] = "";
@@ -273,10 +277,10 @@ export class VersionInfo {
      * Creates a new VersionInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): VersionInfo {
-        const $$createField5_0 = $$createType0;
+        const $$createField6_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("capabilities" in $$parsedSource) {
-            $$parsedSource["capabilities"] = $$createField5_0($$parsedSource["capabilities"]);
+            $$parsedSource["capabilities"] = $$createField6_0($$parsedSource["capabilities"]);
         }
         return new VersionInfo($$parsedSource as Partial<VersionInfo>);
     }

@@ -13,15 +13,26 @@ export function Check(): $CancellablePromise<void> {
     return $Call.ByID(688929688);
 }
 
+export function ListChannels(): $CancellablePromise<$models.ChannelList> {
+    return $Call.ByID(696511440).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function Restart(): $CancellablePromise<void> {
     return $Call.ByID(3205679179);
 }
 
 export function Status(): $CancellablePromise<$models.UpdateStatus> {
     return $Call.ByID(1095988866).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
+export function SwitchChannel(target: string, copyCurrentData: boolean): $CancellablePromise<void> {
+    return $Call.ByID(916049391, target, copyCurrentData);
+}
+
 // Private type creation functions
-const $$createType0 = $models.UpdateStatus.createFrom;
+const $$createType0 = $models.ChannelList.createFrom;
+const $$createType1 = $models.UpdateStatus.createFrom;

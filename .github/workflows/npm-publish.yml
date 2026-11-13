@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       dist-tag:
-        description: "npm dist-tag (latest or nightly)"
+        description: "npm dist-tag (latest, nightly, or feature-<slug>)"
         required: false
         type: string
         default: "latest"
@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require publication from tested trunk source
+      - name: Validate publication source
         shell: bash
         env:
           DIST_TAG: ${{ inputs.dist-tag }}
@@ -37,9 +37,9 @@ jobs:
           SOURCE_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor HEAD origin/main
           case "$DIST_TAG" in
             latest)
+              git merge-base --is-ancestor HEAD origin/main
               if [[ "$EVENT_NAME" != push || "$SOURCE_REF" != refs/tags/v* ]]; then
                 echo "::error::Stable npm publication requires a v* tag push."
                 exit 1
@@ -50,8 +50,17 @@ jobs:
               fi
               ;;
             nightly)
+              git merge-base --is-ancestor HEAD origin/main
               if [[ "$SOURCE_REF" != refs/heads/main ]]; then
                 echo "::error::Nightly npm publication requires main."
+                exit 1
+              fi
+              ;;
+            feature-*)
+              if [[ ! "$DIST_TAG" =~ ^feature-[a-z][a-z0-9-]{0,30}[a-z0-9]$ ]] ||
+                 [[ "$SOURCE_REF" != "refs/heads/feature/${DIST_TAG#feature-}" ]] ||
+                 [[ "$INPUT_VERSION" != *"-$DIST_TAG."* ]]; then
+                echo "::error::Feature npm publication requires a matching branch, dist-tag, and version."
                 exit 1
               fi
               ;;

@@ -74,6 +74,15 @@ func (s *ServiceWrapper) GetPluginReadme(pluginID string) (string, error) {
 func (s *ServiceWrapper) GetPluginVersions(pluginID string) ([]registry.VersionInfo, error) {
 	return s.Mgr.GetPluginVersions(pluginID)
 }
+func (s *ServiceWrapper) GetPluginReleaseState(pluginID string) (PluginReleaseState, error) {
+	return s.Mgr.GetPluginReleaseState(pluginID)
+}
+func (s *ServiceWrapper) GetPluginChannelVersions(pluginID, channel string) ([]registry.VersionInfo, error) {
+	return s.Mgr.GetPluginChannelVersions(pluginID, channel)
+}
+func (s *ServiceWrapper) InstallPluginChannelVersion(pluginID, channel, version string) (*config.PluginMeta, error) {
+	return s.Mgr.InstallPluginChannelVersion(pluginID, channel, version)
+}
 func (s *ServiceWrapper) GetPluginReviews(pluginID string, page int) ([]registry.Review, error) {
 	return s.Mgr.GetPluginReviews(pluginID, page)
 }

@@ -483,6 +483,7 @@ func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 			record.Metadata = state.Metadata
 			record.Enabled, record.DevMode, record.DevPath = state.Enabled, state.DevMode, state.DevPath
 			record.ErrorCount, record.InstalledAt = state.ErrorCount, state.InstalledAt
+			record.ReleaseChannel = state.ReleaseChannel
 		}
 		record.LastError = fmt.Sprintf("pending archive replacement; recovery files at %s", pm.pluginsRoot.ResolvePath(recovery.Stage))
 		if recovery.committed {

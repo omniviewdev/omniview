@@ -50,6 +50,7 @@ type AvailablePlugin struct {
 // VersionInfo represents a plugin version for the frontend.
 type VersionInfo struct {
 	Version             string   `json:"version"`
+	Channel             string   `json:"channel"`
 	Description         string   `json:"description"`
 	Changelog           string   `json:"changelog"`
 	MinIDEVersion       string   `json:"min_ide_version"`
@@ -87,10 +88,11 @@ type DailyStat struct {
 
 // Client wraps the registry client with convenience methods for the desktop app.
 type Client struct {
-	mu      sync.RWMutex
-	inner   *regclient.Client
-	baseURL string // tracks the current API URL so we can detect changes
-	logger  logging.Logger
+	mu                 sync.RWMutex
+	inner              *regclient.Client
+	baseURL            string // tracks the current API URL so we can detect changes
+	logger             logging.Logger
+	hostReleaseChannel string
 }
 
 // NewClient creates a new registry client.
@@ -98,6 +100,21 @@ func NewClient(baseURL string) *Client {
 	c := &Client{mu: sync.RWMutex{}, inner: nil, baseURL: baseURL, logger: nil}
 	c.inner = newRegistryClient(baseURL, c)
 	return c
+}
+
+// WithHostReleaseChannel records the host release channel for plugin selection.
+func (c *Client) WithHostReleaseChannel(channel string) *Client {
+	c.mu.Lock()
+	c.hostReleaseChannel = channel
+	c.mu.Unlock()
+	return c
+}
+
+// HostReleaseChannel returns the host release channel.
+func (c *Client) HostReleaseChannel() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.hostReleaseChannel
 }
 
 // SetBaseURL replaces the underlying client with one pointing at a new API URL.
@@ -129,7 +146,7 @@ func newRegistryClient(baseURL string, owner *Client) *regclient.Client {
 	if baseURL == "" {
 		baseURL = coresettings.DefaultMarketplaceURL
 	}
-	// Registry v0.2.3 appends absolute API paths to this string.
+	// The registry client appends absolute API paths to this string.
 	baseURL = strings.TrimRight(baseURL, "/")
 	client := regclient.NewClient(regclient.WithBaseURL(baseURL))
 	base, err := url.Parse(baseURL)
@@ -138,7 +155,7 @@ func newRegistryClient(baseURL string, owner *Client) *regclient.Client {
 		return client
 	}
 	regclient.WithHTTPClient(&http.Client{
-		Timeout:   30 * time.Second, // Preserve registry v0.2.3's default.
+		Timeout:   30 * time.Second, // Preserve the registry client's default.
 		Transport: &compatibilityTransport{base: base, next: http.DefaultTransport, owner: owner},
 	})(client)
 	return client
@@ -365,7 +382,7 @@ func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (readme s
 // GetPluginVersions fetches version history for a plugin.
 //
 //nolint:nonamedreturns // Deferred telemetry records the result count and error.
-func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) (versions []VersionInfo, err error) {
+func (c *Client) GetPluginVersions(ctx context.Context, pluginID, channel string) (versions []VersionInfo, err error) {
 	ctx, span := startSpan(ctx, "registry.GetPluginVersions", attribute.String("plugin_id", pluginID))
 	defer func() {
 		span.SetAttributes(attribute.Int("count", len(versions)))
@@ -375,6 +392,9 @@ func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) (versio
 	ctx = context.WithValue(ctx, versionDiscoveryKey{}, discovery)
 	inner := c.snapshot()
 	opts := &regclient.ListOptions{Page: 1, PerPage: pluginsPageSize}
+	if channel != "stable" {
+		opts.Channel = channel
+	}
 	versions = make([]VersionInfo, 0)
 	for {
 		result, err := inner.ListVersions(ctx, pluginID, opts)
@@ -389,6 +409,7 @@ func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) (versio
 			reason := compatibilityReason(v.MinIDEVersion, v.MaxIDEVersion)
 			versions = append(versions, VersionInfo{
 				Version:             v.Version,
+				Channel:             v.Channel,
 				Description:         v.Description,
 				Changelog:           v.Changelog,
 				MinIDEVersion:       v.MinIDEVersion,
@@ -409,6 +430,11 @@ func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) (versio
 		return semver.Compare("v"+versions[i].Version, "v"+versions[j].Version) > 0
 	})
 	return versions, nil
+}
+
+// ListChannels returns the active release channels for a plugin.
+func (c *Client) ListChannels(ctx context.Context, pluginID string) ([]regclient.PluginChannel, error) {
+	return c.snapshot().ListChannels(ctx, pluginID)
 }
 
 func compatibilityReason(minimum, maximum string) string {

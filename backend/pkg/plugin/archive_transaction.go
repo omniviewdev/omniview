@@ -218,6 +218,7 @@ func restoreArchiveRecordFields(record *plugintypes.PluginRecord, previous *plug
 	record.DevMode, record.DevPath = previous.DevMode, previous.DevPath
 	record.LastError, record.ErrorCount = previous.LastError, previous.ErrorCount
 	record.InstalledAt = previous.InstalledAt
+	record.ReleaseChannel = previous.ReleaseChannel
 }
 
 func archiveRuntimeUsable(record *plugintypes.PluginRecord) bool {
@@ -664,6 +665,13 @@ func (pm *pluginManager) installArchiveCandidate(
 	if _, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{archive: recovery}); err != nil {
 		cause := apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to load plugin after install")
 		return false, pm.rollbackArchive(ctx, recovery, original, wasManaged, true, true, cause)
+	}
+	if previous != nil {
+		pm.recordsMu.Lock()
+		if record := pm.records[metadata.ID]; record != nil {
+			record.ReleaseChannel = previous.ReleaseChannel
+		}
+		pm.recordsMu.Unlock()
 	}
 	installSpanPhase(ctx, "candidate_loaded")
 	stateWritten, commitErr := pm.commitArchiveInventory(ctx, recovery)

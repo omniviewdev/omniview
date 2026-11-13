@@ -29,6 +29,7 @@ export class PluginInfo {
     "lastError"?: string;
     "origin": string;
     "frontendModule": string;
+    "releaseChannel": string;
 
     /** Creates a new PluginInfo instance. */
     constructor($$source: Partial<PluginInfo> = {}) {
@@ -55,6 +56,9 @@ export class PluginInfo {
         }
         if (!("frontendModule" in $$source)) {
             this["frontendModule"] = "";
+        }
+        if (!("releaseChannel" in $$source)) {
+            this["releaseChannel"] = "";
         }
 
         Object.assign(this, $$source);
@@ -90,6 +94,7 @@ export class PluginStateRecord {
     "lastError"?: string;
     "errorCount": number;
     "installedAt": string;
+    "releaseChannel"?: string;
 
     /** Creates a new PluginStateRecord instance. */
     constructor($$source: Partial<PluginStateRecord> = {}) {

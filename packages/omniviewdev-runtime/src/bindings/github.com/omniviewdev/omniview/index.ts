@@ -9,6 +9,8 @@ export {
 };
 
 export {
+    ChannelList,
+    ChannelOption,
     FileDialogOptions,
     FileFilter,
     UpdateStatus

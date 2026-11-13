@@ -33,21 +33,27 @@ export function GetPlugin(id: string): $CancellablePromise<types$0.PluginInfo> {
     });
 }
 
+export function GetPluginChannelVersions(pluginID: string, channel: string): $CancellablePromise<registry$0.VersionInfo[]> {
+    return $Call.ByID(1195879223, pluginID, channel).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
 export function GetPluginDownloadStats(pluginID: string): $CancellablePromise<registry$0.DownloadStats | null> {
     return $Call.ByID(1152913314, pluginID).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
     });
 }
 
 export function GetPluginMeta(id: string): $CancellablePromise<config$0.PluginMeta> {
     return $Call.ByID(111194374, id).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 export function GetPluginProfilingStatuses(): $CancellablePromise<$models.PluginProfilingStatus[]> {
     return $Call.ByID(1083754477).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -57,19 +63,25 @@ export function GetPluginReadme(pluginID: string): $CancellablePromise<string> {
 
 export function GetPluginReleaseHistory(pluginID: string): $CancellablePromise<registry$0.VersionInfo[]> {
     return $Call.ByID(2859775056, pluginID).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType2($result);
+    });
+}
+
+export function GetPluginReleaseState(pluginID: string): $CancellablePromise<$models.PluginReleaseState> {
+    return $Call.ByID(3383117069, pluginID).then(($result: any) => {
+        return $$createType8($result);
     });
 }
 
 export function GetPluginReviews(pluginID: string, page: number): $CancellablePromise<registry$0.Review[]> {
     return $Call.ByID(2209599792, pluginID, page).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType10($result);
     });
 }
 
 export function GetPluginVersions(pluginID: string): $CancellablePromise<registry$0.VersionInfo[]> {
     return $Call.ByID(3963363730, pluginID).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType2($result);
     });
 }
 
@@ -81,43 +93,49 @@ export function InstallDevPluginFromPath(path: string): $CancellablePromise<type
 
 export function InstallFromPathPrompt(): $CancellablePromise<config$0.PluginMeta | null> {
     return $Call.ByID(2477486666).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
 export function InstallInDevMode(): $CancellablePromise<config$0.PluginMeta | null> {
     return $Call.ByID(976517756).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
+    });
+}
+
+export function InstallPluginChannelVersion(pluginID: string, channel: string, version: string): $CancellablePromise<config$0.PluginMeta | null> {
+    return $Call.ByID(827197809, pluginID, channel, version).then(($result: any) => {
+        return $$createType11($result);
     });
 }
 
 export function InstallPluginFromPath(path: string): $CancellablePromise<config$0.PluginMeta | null> {
     return $Call.ByID(1020548995, path).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
 export function InstallPluginVersion(pluginID: string, version: string): $CancellablePromise<config$0.PluginMeta | null> {
     return $Call.ByID(2004740384, pluginID, version).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
 export function ListAvailablePlugins(): $CancellablePromise<registry$0.AvailablePlugin[]> {
     return $Call.ByID(873697101).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
 export function ListPluginMetas(): $CancellablePromise<config$0.PluginMeta[]> {
     return $Call.ByID(637134283).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
 export function ListPlugins(): $CancellablePromise<types$0.PluginInfo[]> {
     return $Call.ByID(550607756).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType15($result);
     });
 }
 
@@ -141,7 +159,7 @@ export function RetryFailedPlugin(id: string): $CancellablePromise<types$0.Plugi
 
 export function SearchPlugins(query: string, category: string, sort: string): $CancellablePromise<registry$0.AvailablePlugin[]> {
     return $Call.ByID(2783597264, query, category, sort).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
@@ -165,17 +183,18 @@ export function UnlinkDevPlugin(id: string): $CancellablePromise<types$0.PluginI
 
 // Private type creation functions
 const $$createType0 = types$0.PluginInfo.createFrom;
-const $$createType1 = registry$0.DownloadStats.createFrom;
-const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = config$0.PluginMeta.createFrom;
-const $$createType4 = $models.PluginProfilingStatus.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = registry$0.VersionInfo.createFrom;
+const $$createType1 = registry$0.VersionInfo.createFrom;
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = registry$0.DownloadStats.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = config$0.PluginMeta.createFrom;
+const $$createType6 = $models.PluginProfilingStatus.createFrom;
 const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = registry$0.Review.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = $Create.Nullable($$createType3);
-const $$createType11 = registry$0.AvailablePlugin.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = $Create.Array($$createType3);
-const $$createType14 = $Create.Array($$createType0);
+const $$createType8 = $models.PluginReleaseState.createFrom;
+const $$createType9 = registry$0.Review.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = $Create.Nullable($$createType5);
+const $$createType12 = registry$0.AvailablePlugin.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = $Create.Array($$createType5);
+const $$createType15 = $Create.Array($$createType0);
