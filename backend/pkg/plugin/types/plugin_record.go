@@ -20,16 +20,16 @@ type PluginInfo struct {
 // It holds both persisted configuration and runtime-only fields.
 type PluginRecord struct {
 	// Persisted fields.
-	ID          string                `json:"id"`
-	Phase       lifecycle.PluginPhase `json:"phase"`
-	Metadata    config.PluginMeta     `json:"metadata"`
-	Enabled     bool                  `json:"enabled"`
-	DevMode     bool                  `json:"devMode"`
-	DevPath     string                `json:"devPath,omitempty"`
-	LastError   string                `json:"lastError,omitempty"`
-	ErrorCount  int                   `json:"errorCount"`
-	InstalledAt time.Time             `json:"installedAt"`
-	ReleaseChannel string             `json:"releaseChannel,omitempty"`
+	ID             string                `json:"id"`
+	Phase          lifecycle.PluginPhase `json:"phase"`
+	Metadata       config.PluginMeta     `json:"metadata"`
+	Enabled        bool                  `json:"enabled"`
+	DevMode        bool                  `json:"devMode"`
+	DevPath        string                `json:"devPath,omitempty"`
+	LastError      string                `json:"lastError,omitempty"`
+	ErrorCount     int                   `json:"errorCount"`
+	InstalledAt    time.Time             `json:"installedAt"`
+	ReleaseChannel string                `json:"releaseChannel,omitempty"`
 
 	// Runtime-only fields (not persisted).
 	Origin          string                        `json:"-"`
@@ -83,30 +83,30 @@ func NewPluginRecord(id string, meta config.PluginMeta, initialPhase lifecycle.P
 
 // PluginStateRecord is the subset of PluginRecord that gets persisted to disk.
 type PluginStateRecord struct {
-	ID          string                `json:"id"`
-	Phase       lifecycle.PluginPhase `json:"phase"`
-	Metadata    config.PluginMeta     `json:"metadata"`
-	Enabled     bool                  `json:"enabled"`
-	DevMode     bool                  `json:"devMode"`
-	DevPath     string                `json:"devPath,omitempty"`
-	LastError   string                `json:"lastError,omitempty"`
-	ErrorCount  int                   `json:"errorCount"`
-	InstalledAt time.Time             `json:"installedAt"`
-	ReleaseChannel string             `json:"releaseChannel,omitempty"`
+	ID             string                `json:"id"`
+	Phase          lifecycle.PluginPhase `json:"phase"`
+	Metadata       config.PluginMeta     `json:"metadata"`
+	Enabled        bool                  `json:"enabled"`
+	DevMode        bool                  `json:"devMode"`
+	DevPath        string                `json:"devPath,omitempty"`
+	LastError      string                `json:"lastError,omitempty"`
+	ErrorCount     int                   `json:"errorCount"`
+	InstalledAt    time.Time             `json:"installedAt"`
+	ReleaseChannel string                `json:"releaseChannel,omitempty"`
 }
 
 // ToStateRecord converts a PluginRecord to its persistable form.
 func (r *PluginRecord) ToStateRecord() PluginStateRecord {
 	return PluginStateRecord{
-		ID:          r.ID,
-		Phase:       r.Phase,
-		Metadata:    r.Metadata,
-		Enabled:     r.Enabled,
-		DevMode:     r.DevMode,
-		DevPath:     r.DevPath,
-		LastError:   r.LastError,
-		ErrorCount:  r.ErrorCount,
-		InstalledAt: r.InstalledAt,
+		ID:             r.ID,
+		Phase:          r.Phase,
+		Metadata:       r.Metadata,
+		Enabled:        r.Enabled,
+		DevMode:        r.DevMode,
+		DevPath:        r.DevPath,
+		LastError:      r.LastError,
+		ErrorCount:     r.ErrorCount,
+		InstalledAt:    r.InstalledAt,
 		ReleaseChannel: r.ReleaseChannel,
 	}
 }

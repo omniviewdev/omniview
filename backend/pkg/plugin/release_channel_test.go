@@ -55,7 +55,10 @@ func TestHostChannelSyncSkipsExplicitAndRetriesFailures(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		if fail { http.Error(w, "unavailable", http.StatusInternalServerError); return }
+		if fail {
+			http.Error(w, "unavailable", http.StatusInternalServerError)
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/channels") {
 			_, _ = w.Write([]byte(`{"success":true,"data":[{"channel":"feature-abc","status":"active"}]}`))
 			return
@@ -77,7 +80,9 @@ func TestHostChannelSyncSkipsExplicitAndRetriesFailures(t *testing.T) {
 	pm.syncHostChannelPlugins(context.Background())
 	require.FileExists(t, pm.stateRoot.ResolvePath("plugin-channel-sync.json"))
 	require.Len(t, paths, 2)
-	for _, path := range paths { require.Contains(t, path, "/follow/") }
+	for _, path := range paths {
+		require.Contains(t, path, "/follow/")
+	}
 	paths = nil
 	pm.syncHostChannelPlugins(context.Background())
 	require.Empty(t, paths)
