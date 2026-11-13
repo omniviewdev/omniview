@@ -244,8 +244,8 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 
 	// Sync the state machine to Running.
 	if record.StateMachine != nil {
-		record.StateMachine.ForcePhase(lifecycle.PhaseRunning, "plugin loaded successfully")
 		pm.registerStateObserver(id, record.StateMachine)
+		record.StateMachine.ForcePhase(lifecycle.PhaseRunning, "plugin loaded successfully")
 	}
 
 	pm.logger.Infow(pm.lifecycleCtx(id), "plugin started", "pluginID", id,
