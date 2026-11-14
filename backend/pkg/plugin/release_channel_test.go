@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
@@ -115,7 +117,7 @@ func TestHostChannelSyncInstallsSignedFeatureArchive(t *testing.T) {
 		}
 		switch {
 		case r.URL.Path == "/artifact":
-			_, _ = w.Write(data)
+			http.ServeContent(w, r, "artifact.tar.gz", time.Time{}, bytes.NewReader(data))
 		case strings.Contains(r.URL.Path, "/download/"):
 			http.Redirect(w, r, server.URL+"/artifact", http.StatusFound)
 		case strings.HasSuffix(r.URL.Path, "/channels"):
@@ -196,7 +198,7 @@ func TestChannelInstallsAndHostSyncSerialize(t *testing.T) {
 				close(installWaiting)
 				<-releaseInstall
 			}
-			_, _ = w.Write(data)
+			http.ServeContent(w, r, "artifact.tar.gz", time.Time{}, bytes.NewReader(data))
 		case strings.Contains(r.URL.Path, "/download/"):
 			http.Redirect(w, r, server.URL+"/artifact", http.StatusFound)
 		case strings.HasSuffix(r.URL.Path, "/channels"):
@@ -218,6 +220,18 @@ func TestChannelInstallsAndHostSyncSerialize(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	defer func() {
+		select {
+		case <-releaseInstall:
+		default:
+			close(releaseInstall)
+		}
+		select {
+		case <-releaseSync:
+		default:
+			close(releaseSync)
+		}
+	}()
 
 	pm := newTestManager(t)
 	pm.registryClient = registry.NewClient(server.URL).WithHostReleaseChannel("feature-abc")
