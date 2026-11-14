@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,8 +85,33 @@ func captureProfileIdentity(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
+func openProfileIdentity(path string) (*os.File, error) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	h, err := windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, err
+	}
+	var data windows.ByHandleFileInformation
+	if err = windows.GetFileInformationByHandle(h, &data); err != nil {
+		windows.CloseHandle(h)
+		return nil, err
+	}
+	if data.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || data.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
+		windows.CloseHandle(h)
+		return nil, fmt.Errorf("channel data must be a directory, not a reparse point")
+	}
+	return os.NewFile(uintptr(h), path), nil
+}
+
 func deleteInactiveProfile(path string, expected os.FileInfo) error {
-	return deleteInactiveProfileWithRemove(path, expected, os.RemoveAll)
+	return deleteInactiveProfileWithRemove(path, expected, func(path string) error {
+		return removeIsolatedProfile(path, expected)
+	})
 }
 
 func deleteInactiveProfileWithRemove(path string, expected os.FileInfo, removeAll func(string) error) error {
@@ -113,18 +137,13 @@ func deleteInactiveProfileWithRemove(path string, expected os.FileInfo, removeAl
 	if err != nil {
 		return fmt.Errorf("create channel data quarantine: %w", err)
 	}
-	defer os.Remove(quarantine)
 	isolated := filepath.Join(quarantine, "profile")
 	if err := os.Rename(path, isolated); err != nil {
 		return fmt.Errorf("isolate channel data: %w", err)
 	}
 	current, err = os.Lstat(isolated)
 	if err != nil || !current.IsDir() || !os.SameFile(expected, current) || !windowsLockMatches(filepath.Join(isolated, ".lock"), lock) {
-		if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
-			return fmt.Errorf("channel data changed during isolation; retained at %s", isolated)
-		}
-		restoreErr := os.Rename(isolated, path)
-		return errors.Join(fmt.Errorf("channel data or lock changed during isolation; retained at %s if restore failed", isolated), restoreErr)
+		return fmt.Errorf("channel data or lock changed during isolation; retained at %s", isolated)
 	}
 	// The quarantined path is no longer discoverable by profile startup. Windows
 	// cannot remove its directory while our own lock handle remains open.

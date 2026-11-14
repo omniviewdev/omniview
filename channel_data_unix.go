@@ -3,7 +3,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +57,14 @@ func captureProfileIdentity(path string) (os.FileInfo, error) {
 	return os.Lstat(path)
 }
 
+func openProfileIdentity(path string) (*os.File, error) {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_DIRECTORY, 0)
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
+}
+
 func deleteInactiveProfile(path string, expected os.FileInfo) error {
 	lock, err := openProfileLock(path, true)
 	if err != nil {
@@ -72,20 +79,15 @@ func deleteInactiveProfile(path string, expected os.FileInfo) error {
 	if err != nil {
 		return fmt.Errorf("create channel data quarantine: %w", err)
 	}
-	defer os.Remove(quarantine)
 	isolated := filepath.Join(quarantine, "profile")
 	if err := os.Rename(path, isolated); err != nil {
 		return fmt.Errorf("isolate channel data: %w", err)
 	}
 	current, err = os.Lstat(isolated)
 	if err != nil || !current.IsDir() || !os.SameFile(expected, current) || !lockMatches(isolated, lock) {
-		if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
-			return fmt.Errorf("channel data changed during isolation; retained at %s", isolated)
-		}
-		restoreErr := os.Rename(isolated, path)
-		return errors.Join(fmt.Errorf("channel data or lock changed during isolation; retained at %s if restore failed", isolated), restoreErr)
+		return fmt.Errorf("channel data or lock changed during isolation; retained at %s", isolated)
 	}
-	if err := os.RemoveAll(isolated); err != nil {
+	if err := removeIsolatedProfile(isolated, expected); err != nil {
 		return fmt.Errorf("delete isolated channel data at %s: %w", isolated, err)
 	}
 	return nil

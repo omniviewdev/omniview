@@ -7,7 +7,7 @@ import styles from './UpdatesSettingsPage.module.css';
 
 const service = 'main.UpdateService';
 type Status = { state: string; version: string; availableVersion: string; error: string; channel: string; switchTarget: string };
-type ChannelOption = { channel: string; branch: string; status: string; desktopVersion: string; stateExists: boolean; statePath: string; stateModifiedAt: string; stateFileModifiedAt: Record<string, string>; stateInUse: 'in-use' | 'not-in-use' | 'unknown'; stateError: string };
+type ChannelOption = { channel: string; branch: string; status: string; desktopVersion: string; stateExists: boolean; stateIdentity: string; statePath: string; stateModifiedAt: string; stateFileModifiedAt: Record<string, string>; stateInUse: 'in-use' | 'not-in-use' | 'unknown'; stateError: string };
 type ChannelList = { current: string; options: ChannelOption[]; error: string };
 
 const channelName = (channel: string) => channel === 'stable' ? 'Stable' : channel === 'nightly' ? 'Nightly' : channel;
@@ -29,9 +29,11 @@ export default function UpdatesSettingsPage() {
   const [copy, setCopy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [deletionError, setDeletionError] = React.useState('');
   const [channelError, setChannelError] = React.useState('');
   const [channelAttempt, setChannelAttempt] = React.useState(0);
   const [deleteChannel, setDeleteChannel] = React.useState('');
+  const [deleteIdentity, setDeleteIdentity] = React.useState('');
   const [deleteConfirmation, setDeleteConfirmation] = React.useState('');
   const { settings } = useSettings();
   const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
@@ -77,6 +79,14 @@ export default function UpdatesSettingsPage() {
       active = false;
     };
   }, [canListChannels, channelAttempt]);
+  React.useEffect(() => {
+    if (deleteChannel && channels?.options.find(option => option.channel === deleteChannel)?.stateIdentity !== deleteIdentity) {
+      setDeleteChannel('');
+      setDeleteConfirmation('');
+      setDeleteIdentity('');
+      setDeletionError(previous => previous || 'Channel data changed. Open a new deletion confirmation.');
+    }
+  }, [channels, deleteChannel, deleteIdentity]);
   const run = async (method: string, ...args: unknown[]) => {
     setError('');
     setBusy(true);
@@ -94,7 +104,7 @@ export default function UpdatesSettingsPage() {
     await refresh();
   };
   const deleteData = async (channel: string) => {
-    setError('');
+    setDeletionError('');
     setBusy(true);
     try {
       const [list, latestStatus] = await Promise.all([
@@ -105,23 +115,25 @@ export default function UpdatesSettingsPage() {
       setChannelError(list.error);
       setStatus(latestStatus);
       const option = list.options.find(item => item.channel === channel);
-      if (!option || option.stateError || !option.stateExists || option.stateInUse === 'in-use'
+      if (!deleteIdentity || !option || option.stateIdentity !== deleteIdentity || option.stateError || !option.stateExists || option.stateInUse === 'in-use'
         || channel === list.current || channel === latestStatus.channel || channel === latestStatus.switchTarget) {
         throw new Error('Channel data cannot be deleted. Profile status changed or could not be inspected.');
       }
-      await Call.ByName(`${service}.DeleteChannelData`, channel);
+      await Call.ByName(`${service}.DeleteChannelData`, channel, deleteIdentity);
       setChannels(list => list && {
         ...list,
         options: list.options.map(option => option.channel === channel ? { ...option, stateExists: false, stateModifiedAt: '', stateFileModifiedAt: {}, stateInUse: 'unknown' } : option),
       });
       setDeleteChannel('');
+      setDeleteIdentity('');
       setDeleteConfirmation('');
       if (channel === selectedChannel) {
         setCopy(true);
       }
       setChannelAttempt(attempt => attempt + 1);
     } catch (err) {
-      setError(String(err));
+      setDeletionError(String(err));
+      setChannelAttempt(attempt => attempt + 1);
     } finally {
       setBusy(false);
     }
@@ -153,17 +165,20 @@ export default function UpdatesSettingsPage() {
         }} />
       </label>
       <div className={styles.actions}>
-        <Button variant='solid' color='danger' disabled={busy || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget || deleteConfirmation !== option.channel} onClick={() => {
+        <Button variant='solid' color='danger' disabled={busy || !deleteIdentity || option.stateIdentity !== deleteIdentity || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget || deleteConfirmation !== option.channel} onClick={() => {
           void deleteData(option.channel);
         }}>Permanently delete channel data</Button>
         <Button disabled={busy} onClick={() => {
           setDeleteChannel('');
+          setDeleteIdentity('');
           setDeleteConfirmation('');
         }}>Cancel</Button>
       </div>
     </div>
-    : <Button disabled={busy || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget} onClick={() => {
+    : <Button disabled={busy || !option.stateIdentity || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget} onClick={() => {
       setDeleteChannel(option.channel);
+      setDeletionError('');
+      setDeleteIdentity(option.stateIdentity);
       setDeleteConfirmation('');
     }}>{archived ? `Delete data for ${option.channel}` : 'Delete channel data'}</Button>;
 
@@ -174,6 +189,9 @@ export default function UpdatesSettingsPage() {
     <p role='status'>Status: {state === 'unconfigured' ? 'not configured' : state}</p>
     {status?.availableVersion && <p>Available version: {status.availableVersion}</p>}
     {(error || status?.error) && <p role='alert'>{error || status?.error}</p>}
+    {deletionError && <p role='alert'>{deletionError} <Button onClick={() => {
+      setDeletionError('');
+    }}>Dismiss deletion error</Button></p>}
     {state === 'ready'
       ? <Button variant={status?.switchTarget ? 'solid' : undefined} color={status?.switchTarget ? 'danger' : undefined} onClick={() => {
         void run('Restart');
@@ -191,7 +209,7 @@ export default function UpdatesSettingsPage() {
       {channelError && <p role='alert'>{channelError} <Button onClick={() => {
         setChannelAttempt(attempt => attempt + 1);
       }}>Retry channel discovery</Button></p>}
-      {currentOption?.status === 'archived' && <p role='alert'>This channel was retired. Switch to Stable to keep receiving updates.</p>}
+      {!channelError && currentOption?.status === 'archived' && <p role='alert'>This channel was retired. Switch to Stable to keep receiving updates.</p>}
       <Select.Root size='sm' value={selected} items={items} disabled={!channels || busy} onValueChange={(value) => {
         if (value !== null && value !== selected) {
           setSelected(value);
@@ -221,6 +239,9 @@ export default function UpdatesSettingsPage() {
           setError(String(err));
         });
       }} /></label>
+      <Button disabled={busy} onClick={() => {
+        setChannelAttempt(attempt => attempt + 1);
+      }}>Refresh profile data</Button>
       {target && <div className={styles.profile}>
         <p>Data path: {target.statePath}</p>
         <p>Channel data: {target.stateError ? 'Unknown' : target.stateExists ? 'Exists' : 'Not found'}</p>

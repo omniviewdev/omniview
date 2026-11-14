@@ -36,11 +36,11 @@ vi.mock('@omniviewdev/base-ui', () => ({
 import UpdatesSettingsPage from './UpdatesSettingsPage';
 
 const options = [
-  { channel: 'stable', status: 'active', desktopVersion: '1.0.0', stateExists: true, statePath: '/home/user/.omniview' },
+  { channel: 'stable', status: 'active', desktopVersion: '1.0.0', stateExists: true, stateIdentity: 'stable-identity', statePath: '/home/user/.omniview' },
   { channel: 'nightly', status: 'active', desktopVersion: '0.9.0', stateExists: false, statePath: '/home/user/.omniview-nightly' },
   { channel: 'feature-abc', status: 'active', desktopVersion: '1.1.0-feature-abc.1.1', stateExists: false, statePath: '/home/user/.omniview-feature-abc' },
   { channel: 'feature-empty', status: 'active', desktopVersion: '', stateExists: false, statePath: '/home/user/.omniview-feature-empty' },
-  { channel: 'feature-old', status: 'archived', desktopVersion: '1.0.0', stateExists: true, statePath: '/home/user/.omniview-feature-old' },
+  { channel: 'feature-old', status: 'archived', desktopVersion: '1.0.0', stateExists: true, stateIdentity: 'retired-identity', statePath: '/home/user/.omniview-feature-old' },
 ];
 
 describe('UpdatesSettingsPage channels', () => {
@@ -219,6 +219,44 @@ describe('UpdatesSettingsPage channels', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
     expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
   });
+
+  it('does not report the current channel retired when index discovery fails', async () => {
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'feature-old' };
+      if (method.endsWith('.ListChannels')) return { current: 'feature-old', options, error: 'load channel index: offline' };
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    expect(await screen.findByText(/load channel index: offline/)).toBeInTheDocument();
+    expect(screen.queryByText('This channel was retired. Switch to Stable to keep receiving updates.')).not.toBeInTheDocument();
+  });
+
+  it('refreshes profile use status on demand', async () => {
+    let requests = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.ListChannels')) {
+        requests += 1;
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable'
+            ? { ...option, stateInUse: requests === 1 ? 'in-use' : 'not-in-use' }
+            : option),
+          error: '',
+        };
+      }
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    expect(screen.getByRole('button', { name: 'Delete channel data' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh profile data' }));
+    await waitFor(() => {
+      expect(screen.getByText('Profile in use: No')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete channel data' })).toBeEnabled();
+    });
+  });
   it('shows the selected channel data path, existence, and retention guidance', async () => {
     mocks.current = 'nightly';
     render(<UpdatesSettingsPage />);
@@ -396,7 +434,7 @@ describe('UpdatesSettingsPage channels', () => {
     fireEvent.change(screen.getByLabelText('Type feature-old to confirm'), { target: { value: 'feature-old' } });
     fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
     await waitFor(() => {
-      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'feature-old');
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'feature-old', 'retired-identity');
     });
   });
 
@@ -417,7 +455,7 @@ describe('UpdatesSettingsPage channels', () => {
     expect(confirm).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('button', { name: 'Permanently delete channel data' })).not.toBeInTheDocument();
-    expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
+    expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable', 'stable-identity');
   });
 
   it.each(['in-use', 'inspection-error', 'pending', 'request-error'])(
@@ -452,9 +490,82 @@ describe('UpdatesSettingsPage channels', () => {
       await waitFor(() => {
         expect(screen.getByText(scenario === 'request-error' ? /inspection unavailable/ : /Profile status changed or could not be inspected/)).toBeInTheDocument();
       });
-      expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
+      expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable', 'stable-identity');
     },
   );
+  it('requires a new confirmation if discovery finds a different profile', async () => {
+    let lists = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.ListChannels')) {
+        lists += 1;
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable'
+            ? { ...option, stateIdentity: lists === 1 ? 'stable-identity' : 'replacement-identity' }
+            : option),
+          error: lists === 1 ? 'load channel index: offline' : '',
+        };
+      }
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+    fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry channel discovery' }));
+    expect(await screen.findByText(/Open a new deletion confirmation/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Permanently delete channel data' })).not.toBeInTheDocument();
+    expect(mocks.call.mock.calls.some(([method]) => method.endsWith('.DeleteChannelData'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+    expect(screen.getByRole('button', { name: 'Permanently delete channel data' })).toBeDisabled();
+  });
+
+  it('refuses deletion when the preflight discovers a replacement profile', async () => {
+    let lists = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.ListChannels')) {
+        lists += 1;
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable' && lists > 1
+            ? { ...option, stateIdentity: 'replacement-identity' }
+            : option),
+          error: '',
+        };
+      }
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+    fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Permanently delete channel data' })).not.toBeInTheDocument();
+    });
+    expect(mocks.call.mock.calls.some(([method]) => method.endsWith('.DeleteChannelData'))).toBe(false);
+  });
+
+  it('disables deletion when profile identity is unavailable', async () => {
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.ListChannels')) return {
+        current: 'nightly',
+        options: options.map(option => option.channel === 'stable' ? { ...option, stateIdentity: '' } : option),
+        error: '',
+      };
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    expect(screen.getByRole('button', { name: 'Delete channel data' })).toBeDisabled();
+  });
+
 
   it('disables actions while deleting and refreshes discovery after success', async () => {
     mocks.current = 'nightly';
@@ -480,7 +591,7 @@ describe('UpdatesSettingsPage channels', () => {
     fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
     fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
     await waitFor(() => {
-      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable', 'stable-identity');
     });
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Permanently delete channel data' })).toBeDisabled();
@@ -492,6 +603,64 @@ describe('UpdatesSettingsPage channels', () => {
     });
     expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
     expect(screen.queryByRole('button', { name: 'Delete channel data' })).not.toBeInTheDocument();
+  });
+
+  it('refreshes profile metadata after a partial deletion failure', async () => {
+    let failed = false;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.ListChannels')) return {
+        current: 'nightly',
+        options: options.map(option => option.channel === 'stable'
+          ? { ...option, stateExists: !failed, stateIdentity: failed ? '' : option.stateIdentity }
+          : option),
+        error: '',
+      };
+      if (method.endsWith('.DeleteChannelData')) {
+        failed = true;
+        throw new Error('partial deletion; remaining files: /home/user/quarantine');
+      }
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+    fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
+    expect(await screen.findByText(/partial deletion/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Channel data: Not found')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('partial deletion; remaining files: /home/user/quarantine');
+      expect(screen.queryByRole('button', { name: 'Permanently delete channel data' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('preserves the deletion error when a later status poll fails', async () => {
+    let failed = false;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) {
+        if (failed) throw new Error('status unavailable');
+        return { state: 'idle', channel: 'nightly' };
+      }
+      if (method.endsWith('.ListChannels')) return { current: 'nightly', options, error: '' };
+      if (method.endsWith('.DeleteChannelData')) {
+        failed = true;
+        throw new Error('deletion incomplete; remaining files: /home/user/quarantine');
+      }
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+    fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
+    expect(await screen.findByText(/remaining files: \/home\/user\/quarantine/)).toBeInTheDocument();
+    expect(await screen.findByText(/status unavailable/, {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText(/remaining files: \/home\/user\/quarantine/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss deletion error' }));
+    expect(screen.queryByText(/remaining files: \/home\/user\/quarantine/)).not.toBeInTheDocument();
   });
 
   it('reports deletion errors and keeps confirmation available for retry', async () => {
