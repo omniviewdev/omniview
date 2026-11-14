@@ -3,11 +3,14 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gofrs/flock"
+	"github.com/omniviewdev/omniview/internal/instance"
 )
 
 func TestDeleteChannelData(t *testing.T) {
@@ -83,5 +86,71 @@ func TestDeleteChannelDataRejectsLockSymlink(t *testing.T) {
 	}
 	if data, err := os.ReadFile(outside); err != nil || string(data) != "keep" {
 		t.Fatalf("outside file changed: %q, %v", data, err)
+	}
+}
+
+func TestDeleteChannelDataWithSymlinkedHome(t *testing.T) {
+	home := t.TempDir()
+	link := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(home, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", link)
+	target := filepath.Join(home, ".omniview-nightly")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := &UpdateService{channel: "stable", root: filepath.Join(home, ".omniview")}
+	if err := s.DeleteChannelData("nightly"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("profile remains: %v", err)
+	}
+}
+
+func TestDeleteChannelDataRejectsHeldGuard(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	target := filepath.Join(home, ".omniview-nightly")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	release, err := instance.LockSwitchProfile(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	s := &UpdateService{channel: "stable", root: filepath.Join(home, ".omniview")}
+	if err := s.DeleteChannelData("nightly"); err == nil {
+		t.Fatal("deleted profile with held guard")
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListChannelsReportsInspectionFailure(t *testing.T) {
+	s := &UpdateService{channel: "stable", root: filepath.Join(t.TempDir(), strings.Repeat("x", 300))}
+	list := s.ListChannels()
+	if list.Options[0].StateError == "" || list.Options[0].StateExists {
+		t.Fatalf("unexpected current profile state: %+v", list.Options[0])
+	}
+}
+
+func TestListChannelsDoesNotAcquireProfileLocks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	target := filepath.Join(home, ".omniview-nightly")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := &UpdateService{channel: "stable", root: filepath.Join(home, ".omniview")}
+	list := s.ListChannels()
+	if list.Options[1].StateInUse != "unknown" {
+		t.Fatalf("status = %q", list.Options[1].StateInUse)
+	}
+	if _, err := os.Lstat(filepath.Join(target, ".lock")); !os.IsNotExist(err) {
+		t.Fatalf("listing created lock: %v", err)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/omniviewdev/omniview/internal/instance"
 	"golang.org/x/sys/windows"
 )
 
@@ -48,43 +47,43 @@ func windowsLockMatches(path string, lock *os.File) bool {
 	if err != nil {
 		return false
 	}
-	current, err := os.Lstat(path)
+	current, _, err := windowsFileIdentity(path)
 	return err == nil && current.Mode().IsRegular() && os.SameFile(pinned, current)
 }
 
-func windowsBusy(err error) bool {
-	return errors.Is(err, windows.ERROR_LOCK_VIOLATION) || errors.Is(err, windows.ERROR_SHARING_VIOLATION)
+// Probing with an exclusive lock can cause a concurrent profile startup to fail.
+func profileLockStatus(string) string { return "unknown" }
+
+func windowsFileIdentity(path string) (os.FileInfo, uint32, error) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	h, err := windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+		windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	f := os.NewFile(uintptr(h), path)
+	defer f.Close()
+	var attrs windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(h, &attrs); err != nil {
+		return nil, 0, err
+	}
+	info, err := f.Stat()
+	return info, attrs.FileAttributes, err
 }
 
-func profileLockStatus(root string) string {
-	lockPath := filepath.Join(root, ".lock")
-	lock, err := openWindowsLock(lockPath, false)
-	if windowsBusy(err) {
-		return "in-use"
-	}
+func captureProfileIdentity(path string) (os.FileInfo, error) {
+	info, attributes, err := windowsFileIdentity(path)
 	if err != nil {
-		return "unknown"
+		return nil, err
 	}
-	defer lock.Close()
-	if !windowsLockMatches(lockPath, lock) {
-		return "unknown"
+	if attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || attributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
+		return nil, fmt.Errorf("channel data must be a directory, not a reparse point")
 	}
-	guardPath, err := instance.SwitchProfileGuardPath(root)
-	if err != nil {
-		return "unknown"
-	}
-	guard, err := openWindowsLock(guardPath, false)
-	if windowsBusy(err) {
-		return "in-use"
-	}
-	if err != nil {
-		return "unknown"
-	}
-	defer guard.Close()
-	if !windowsLockMatches(guardPath, guard) {
-		return "unknown"
-	}
-	return "not-in-use"
+	return info, nil
 }
 
 func deleteInactiveProfile(path string, expected os.FileInfo) error {
