@@ -11,6 +11,9 @@ vi.mock('@omniviewdev/runtime', () => ({
 }));
 vi.mock('@omniviewdev/base-ui', () => ({
   Button: ({ children, ...props }: React.ComponentProps<'button'>) => <button {...props}>{children}</button>,
+  Input: Object.assign(({ children }: { children: React.ReactNode }) => <span>{children}</span>, {
+    Control: (props: React.ComponentProps<'input'>) => <input {...props} />,
+  }),
   Checkbox: ({ children, checked, onCheckedChange }: { children: React.ReactNode; checked: boolean; onCheckedChange: (value: boolean) => void }) =>
     <label><input type='checkbox' checked={checked} onChange={event => {
       onCheckedChange(event.target.checked);
