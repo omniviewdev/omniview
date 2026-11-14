@@ -43,7 +43,12 @@ export class ChannelOption {
     "branch": string;
     "status": string;
     "desktopVersion": string;
+    "statePath": string;
     "stateExists": boolean;
+    "stateModifiedAt": string;
+    "stateInUse": string;
+    "stateFileModifiedAt": { [_ in string]?: string };
+    "stateError": string;
 
     /** Creates a new ChannelOption instance. */
     constructor($$source: Partial<ChannelOption> = {}) {
@@ -59,8 +64,23 @@ export class ChannelOption {
         if (!("desktopVersion" in $$source)) {
             this["desktopVersion"] = "";
         }
+        if (!("statePath" in $$source)) {
+            this["statePath"] = "";
+        }
         if (!("stateExists" in $$source)) {
             this["stateExists"] = false;
+        }
+        if (!("stateModifiedAt" in $$source)) {
+            this["stateModifiedAt"] = "";
+        }
+        if (!("stateInUse" in $$source)) {
+            this["stateInUse"] = "";
+        }
+        if (!("stateFileModifiedAt" in $$source)) {
+            this["stateFileModifiedAt"] = {};
+        }
+        if (!("stateError" in $$source)) {
+            this["stateError"] = "";
         }
 
         Object.assign(this, $$source);
@@ -70,7 +90,11 @@ export class ChannelOption {
      * Creates a new ChannelOption instance from a string or object.
      */
     static createFrom($$source: any = {}): ChannelOption {
+        const $$createField8_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("stateFileModifiedAt" in $$parsedSource) {
+            $$parsedSource["stateFileModifiedAt"] = $$createField8_0($$parsedSource["stateFileModifiedAt"]);
+        }
         return new ChannelOption($$parsedSource as Partial<ChannelOption>);
     }
 }
@@ -122,7 +146,7 @@ export class FileDialogOptions {
      * Creates a new FileDialogOptions instance from a string or object.
      */
     static createFrom($$source: any = {}): FileDialogOptions {
-        const $$createField3_0 = $$createType3;
+        const $$createField3_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("filters" in $$parsedSource) {
             $$parsedSource["filters"] = $$createField3_0($$parsedSource["filters"]);
@@ -210,5 +234,6 @@ export class UpdateStatus {
 // Private type creation functions
 const $$createType0 = ChannelOption.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = FileFilter.createFrom;
-const $$createType3 = $Create.Array($$createType2);
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = FileFilter.createFrom;
+const $$createType4 = $Create.Array($$createType3);

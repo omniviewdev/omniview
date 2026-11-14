@@ -13,6 +13,13 @@ export function Check(): $CancellablePromise<void> {
     return $Call.ByID(688929688);
 }
 
+/**
+ * DeleteChannelData removes only an inactive channel's default profile.
+ */
+export function DeleteChannelData(channel: string): $CancellablePromise<void> {
+    return $Call.ByID(1463867170, channel);
+}
+
 export function ListChannels(): $CancellablePromise<$models.ChannelList> {
     return $Call.ByID(696511440).then(($result: any) => {
         return $$createType0($result);

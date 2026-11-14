@@ -24,6 +24,15 @@ type switchSeed struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// SwitchProfileGuardPath returns the shared guard location without creating it.
+func SwitchProfileGuardPath(root string) (string, error) {
+	canonical, err := devcontract.CanonicalPath(root)
+	if err != nil {
+		return "", err
+	}
+	return devcontract.ProfileGuardPath("", uuid.NewSHA1(uuid.NameSpaceURL, []byte("production-profile:"+canonical)).String())
+}
+
 // LockSwitchProfile protects production startup and switch seed publication.
 func LockSwitchProfile(ctx context.Context, root string) (func() error, error) {
 	canonical, err := devcontract.CanonicalPath(root)

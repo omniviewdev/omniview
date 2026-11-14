@@ -55,6 +55,43 @@ func TestUpdateServiceListCurrentRetired(t *testing.T) {
 	if len(list.Options) != 3 || list.Options[2].Status != "archived" || !list.Options[2].StateExists {
 		t.Fatalf("ListChannels: %+v", list)
 	}
+	if list.Options[2].StatePath != filepath.Join(home, ".omniview-feature-abc") {
+		t.Fatalf("channel path: %q", list.Options[2].StatePath)
+	}
+}
+
+func TestUpdateServiceListCurrentCustomRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := t.TempDir()
+	s := &UpdateService{channel: releasechannel.Stable, root: root}
+	list := s.ListChannels()
+	if list.Options[0].StatePath != root || !list.Options[0].StateExists {
+		t.Fatalf("current channel: %+v", list.Options[0])
+	}
+	if want := filepath.Join(home, ".omniview-nightly"); list.Options[1].StatePath != want || list.Options[1].StateExists {
+		t.Fatalf("other channel: %+v", list.Options[1])
+	}
+}
+
+func TestUpdateServiceProfileMetadata(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := filepath.Join(home, ".omniview")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "settings.db"), []byte("settings"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := &UpdateService{channel: releasechannel.Stable, root: root}
+	option := s.ListChannels().Options[0]
+	if option.StateInUse != "in-use" || option.StateModifiedAt == "" || option.StateFileModifiedAt["settings.db"] == "" {
+		t.Fatalf("profile metadata: %+v", option)
+	}
+	if _, ok := option.StateFileModifiedAt["plugin_state.json"]; ok {
+		t.Fatalf("reported missing file: %+v", option.StateFileModifiedAt)
+	}
 }
 
 func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
@@ -175,3 +212,4 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 		t.Fatalf("switch while ready: %v", err)
 	}
 }
+
