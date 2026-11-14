@@ -371,6 +371,9 @@ func (p *Provider) Download(ctx context.Context, r *wails.Release, dst io.Writer
 		}
 		resp.Body.Close()
 		if total != end+1 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			return fmt.Errorf("update artifact size mismatch")
 		}
 	}
