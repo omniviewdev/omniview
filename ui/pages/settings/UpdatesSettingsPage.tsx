@@ -1,6 +1,6 @@
 import React from 'react';
 import { Call } from '@wailsio/runtime';
-import { Button, Checkbox, Select, Switch } from '@omniviewdev/base-ui';
+import { Button, Checkbox, Input, Select, Switch } from '@omniviewdev/base-ui';
 import { HOST_SETTINGS_SCOPE, useScopedSettings, useSettings } from '@omniviewdev/runtime';
 import { LuChevronDown } from 'react-icons/lu';
 import styles from './UpdatesSettingsPage.module.css';
@@ -155,9 +155,9 @@ export default function UpdatesSettingsPage() {
       <p>A pending copy from an older app may fail if you delete this data.</p>
       <p>Deletion can stop partway if a filesystem error occurs. Remaining files may be kept in a quarantine folder.</p>
       <label>Type {option.channel} to confirm
-        <input value={deleteConfirmation} disabled={busy} onChange={event => {
+        <Input size='sm'><Input.Control value={deleteConfirmation} disabled={busy} onChange={event => {
           setDeleteConfirmation(event.target.value);
-        }} />
+        }} /></Input>
       </label>
       <div className={styles.actions}>
         <Button variant='solid' color='danger' disabled={busy || !deleteIdentity || option.stateIdentity !== deleteIdentity || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget || deleteConfirmation !== option.channel} onClick={() => {
