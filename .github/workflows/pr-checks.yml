@@ -58,7 +58,7 @@ jobs:
           GOWORK: "off"
           GOFLAGS: ""
       - name: Test Windows channel profile deletion
-        run: go test . -run '^TestWindowsDelete'
+        run: go test . -run '^(TestWindowsDelete|TestUpdateServiceListCurrentCustomRoot)'
         env:
           GOWORK: "off"
           GOFLAGS: ""
