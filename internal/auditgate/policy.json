@@ -260,6 +260,7 @@
     {"fqn": "main.AppService.SaveFileDialog", "decision": "deny", "reason": "opens a native save dialog on the host"},
     {"fqn": "main.AppService.WriteFileContent", "decision": "deny", "reason": "arbitrary file write on the host (os.WriteFile at a caller-chosen path)"},
     {"fqn": "main.UpdateService.Check", "decision": "deny", "reason": "downloads and stages an application update"},
+    {"fqn": "main.UpdateService.DeleteChannelData", "decision": "deny", "reason": "permanently deletes local channel profile data"},
     {"fqn": "main.UpdateService.ListChannels", "decision": "allow", "reason": "reads channel metadata and local profile existence"},
     {"fqn": "main.UpdateService.Restart", "decision": "deny", "reason": "restarts the host and replaces the application"},
     {"fqn": "main.UpdateService.Status", "decision": "allow", "reason": "reads the updater's in-memory state and versions"},

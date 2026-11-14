@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/releasechannel"
 	feed "github.com/omniviewdev/omniview/internal/updater"
@@ -41,11 +42,16 @@ type UpdateStatus struct {
 }
 
 type ChannelOption struct {
-	Channel        string `json:"channel"`
-	Branch         string `json:"branch"`
-	Status         string `json:"status"`
-	DesktopVersion string `json:"desktopVersion"`
-	StateExists    bool   `json:"stateExists"`
+	Channel             string            `json:"channel"`
+	Branch              string            `json:"branch"`
+	Status              string            `json:"status"`
+	DesktopVersion      string            `json:"desktopVersion"`
+	StatePath           string            `json:"statePath"`
+	StateExists         bool              `json:"stateExists"`
+	StateModifiedAt     string            `json:"stateModifiedAt"`
+	StateInUse          string            `json:"stateInUse"`
+	StateFileModifiedAt map[string]string `json:"stateFileModifiedAt"`
+	StateError          string            `json:"stateError"`
 }
 
 type ChannelList struct {
@@ -170,10 +176,34 @@ func (s *UpdateService) ListChannels() ChannelList {
 		list.Options = append(list.Options, ChannelOption{Channel: s.channel, Status: "archived"})
 	}
 	home, err := os.UserHomeDir()
-	if err == nil {
-		for i := range list.Options {
-			_, err := os.Stat(filepath.Join(home, releasechannel.StateLabel(list.Options[i].Channel)))
-			list.Options[i].StateExists = err == nil
+	for i := range list.Options {
+		if list.Options[i].Channel == s.channel && s.root != "" {
+			list.Options[i].StatePath = s.root
+		} else if err == nil {
+			list.Options[i].StatePath = filepath.Join(home, releasechannel.StateLabel(list.Options[i].Channel))
+		}
+		list.Options[i].StateInUse = "unknown"
+		if list.Options[i].StatePath != "" {
+			info, statErr := os.Lstat(list.Options[i].StatePath)
+			if statErr != nil && !os.IsNotExist(statErr) {
+				list.Options[i].StateError = statErr.Error()
+			}
+			list.Options[i].StateExists = statErr == nil
+			if statErr == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				list.Options[i].StateFileModifiedAt = make(map[string]string)
+				for _, name := range []string{"settings.db", "settings.db-wal", "plugin_state.json", instance.SwitchSeedFile, "update-checkpoints.json"} {
+					fileInfo, fileErr := os.Lstat(filepath.Join(list.Options[i].StatePath, name))
+					if fileErr == nil && fileInfo.Mode().IsRegular() {
+						list.Options[i].StateFileModifiedAt[name] = fileInfo.ModTime().UTC().Format(time.RFC3339)
+					}
+				}
+				list.Options[i].StateModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
+				if list.Options[i].Channel == s.channel {
+					list.Options[i].StateInUse = "in-use"
+				} else {
+					list.Options[i].StateInUse = profileLockStatus(list.Options[i].StatePath)
+				}
+			}
 		}
 	}
 	return list
@@ -274,6 +304,55 @@ func (s *UpdateService) SwitchChannel(target string, copyCurrentData bool) (err 
 	s.lastError = ""
 	s.mu.Unlock()
 	return nil
+}
+
+// DeleteChannelData removes only an inactive channel's default profile.
+func (s *UpdateService) DeleteChannelData(channel string) error {
+	s.flow.Lock()
+	defer s.flow.Unlock()
+	if !releasechannel.Valid(channel) {
+		return fmt.Errorf("invalid update channel %q", channel)
+	}
+	if channel == s.channel {
+		return fmt.Errorf("cannot delete the current channel")
+	}
+	s.mu.Lock()
+	target := s.switchTarget
+	s.mu.Unlock()
+	if channel == target {
+		return fmt.Errorf("cannot delete the pending switch target")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("find home directory: %w", err)
+	}
+	path := filepath.Join(home, releasechannel.StateLabel(channel))
+	if s.root == "" {
+		return fmt.Errorf("current profile root is unavailable")
+	}
+	overlap, err := devcontract.ProfilePathsOverlap(path, s.root)
+	if err != nil {
+		return fmt.Errorf("check profile overlap: %w", err)
+	}
+	if overlap {
+		return fmt.Errorf("channel data overlaps the current profile")
+	}
+	if err := devcontract.ValidateProductionProfileIsolation(path, home); err != nil {
+		return fmt.Errorf("check channel profile ownership: %w", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect channel data: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("channel data must be a directory, not a symlink")
+	}
+	release, err := instance.LockSwitchProfile(context.Background(), path)
+	if err != nil {
+		return fmt.Errorf("acquire channel profile guard: %w", err)
+	}
+	defer release()
+	return deleteInactiveProfile(path, info)
 }
 
 func (s *UpdateService) Restart() error { return s.updater.Restart(context.Background()) }
