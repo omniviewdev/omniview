@@ -133,21 +133,36 @@ func deleteInactiveProfileWithRemove(path string, expected os.FileInfo, removeAl
 	if err != nil || !current.IsDir() || !os.SameFile(expected, current) || !windowsLockMatches(lockPath, lock) {
 		return fmt.Errorf("channel data or lock changed while acquiring ownership")
 	}
+	lockInfo, err := lock.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect channel data lock: %w", err)
+	}
 	quarantine, err := os.MkdirTemp(filepath.Dir(path), ".omniview-delete-*")
 	if err != nil {
 		return fmt.Errorf("create channel data quarantine: %w", err)
+	}
+	// Windows cannot rename a directory while a file below it is open. The
+	// profile guard remains held, and another process opening this lock before
+	// the rename makes the rename fail rather than moving a live profile.
+	if err := lock.Close(); err != nil {
+		return fmt.Errorf("release channel data lock before isolation: %w", err)
 	}
 	isolated := filepath.Join(quarantine, "profile")
 	if err := os.Rename(path, isolated); err != nil {
 		return fmt.Errorf("isolate channel data: %w", err)
 	}
-	current, err = os.Lstat(isolated)
-	if err != nil || !current.IsDir() || !os.SameFile(expected, current) || !windowsLockMatches(filepath.Join(isolated, ".lock"), lock) {
+	isolatedLock, err := openWindowsLock(filepath.Join(isolated, ".lock"), false)
+	if err != nil {
+		return fmt.Errorf("acquire isolated channel data lock at %s: %w", isolated, err)
+	}
+	defer isolatedLock.Close()
+	current, err = captureProfileIdentity(isolated)
+	isolatedLockInfo, lockErr := isolatedLock.Stat()
+	if err != nil || !os.SameFile(expected, current) || lockErr != nil ||
+		!os.SameFile(lockInfo, isolatedLockInfo) || !windowsLockMatches(filepath.Join(isolated, ".lock"), isolatedLock) {
 		return fmt.Errorf("channel data or lock changed during isolation; retained at %s", isolated)
 	}
-	// The quarantined path is no longer discoverable by profile startup. Windows
-	// cannot remove its directory while our own lock handle remains open.
-	if err := lock.Close(); err != nil {
+	if err := isolatedLock.Close(); err != nil {
 		return fmt.Errorf("release isolated channel data lock at %s: %w", isolated, err)
 	}
 	if err := removeAll(isolated); err != nil {

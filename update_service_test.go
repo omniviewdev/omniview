@@ -212,4 +212,3 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 		t.Fatalf("switch while ready: %v", err)
 	}
 }
-
