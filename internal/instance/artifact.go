@@ -403,7 +403,7 @@ func PreparePluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, bi
 		cleanup()
 		return "", noop, fmt.Errorf("instance: plugin artifact is not a regular file")
 	}
-	prepared := filepath.Join(launchDir, "plugin")
+	prepared := filepath.Join(launchDir, filepath.Base(binaryPath))
 	output, err := os.OpenFile(prepared, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0500)
 	if err != nil {
 		source.Close()

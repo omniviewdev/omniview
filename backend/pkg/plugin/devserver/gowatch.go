@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
@@ -537,7 +538,7 @@ func (gw *goWatcherProcess) attestBuild() error {
 	if !gw.managedBuild() {
 		return nil
 	}
-	path := gw.pluginsRoot.ResolvePath(filepath.Join(gw.pluginID, "bin", "plugin"))
+	path := gw.pluginsRoot.ResolvePath(filepath.Join(gw.pluginID, "bin", plugintypes.BinaryName()))
 	if gw.buildOpts.Workspace == nil {
 		return fmt.Errorf("resolved workspace required for build source attestation")
 	}
@@ -646,8 +647,8 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	if err != nil {
 		return apperror.Internal(err, "Failed to create private build output")
 	}
-	gw.buildRelativePath = filepath.Join(gw.pluginID, filepath.Base(stage), "plugin")
-	binaryPath := filepath.Join(stage, "plugin")
+	gw.buildRelativePath = filepath.Join(gw.pluginID, filepath.Base(stage), plugintypes.BinaryName())
+	binaryPath := filepath.Join(stage, plugintypes.BinaryName())
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -710,7 +711,7 @@ func (gw *goWatcherProcess) transferBinary() error {
 	if err := gw.ctx.Err(); err != nil {
 		return err
 	}
-	dstRelPath := filepath.Join(binDir, "plugin")
+	dstRelPath := filepath.Join(binDir, plugintypes.BinaryName())
 	if err := gw.pluginsRoot.Rename(gw.buildRelativePath, dstRelPath); err != nil {
 		return apperror.Internal(err, "Failed to publish built binary")
 	}

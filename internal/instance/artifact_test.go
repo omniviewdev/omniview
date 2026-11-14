@@ -38,7 +38,7 @@ func fixtureSDK(t *testing.T) devsdk.Identity {
 
 func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 	workspace := artifactWorkspaceFixture(t)
-	binary := filepath.Join(t.TempDir(), "plugin")
+	binary := filepath.Join(t.TempDir(), "plugin.exe")
 	if err := os.WriteFile(binary, []byte("trusted fixture executable"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +92,9 @@ func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 	defer cleanup()
 	if prepared == binary {
 		t.Fatal("mutable installed executable used directly")
+	}
+	if filepath.Base(prepared) != "plugin.exe" {
+		t.Fatalf("verified snapshot lost executable name: %s", prepared)
 	}
 	if err := os.WriteFile(binary, []byte("replaced fixture executable"), 0700); err != nil {
 		t.Fatal(err)

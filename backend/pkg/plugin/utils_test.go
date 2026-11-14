@@ -9,6 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 type tarEntry struct {
@@ -62,7 +65,28 @@ func TestCheckTarball_BackendWithBinary(t *testing.T) {
 		{name: "./plugin.yaml", mode: 0644, body: backendYaml},
 		{name: "./bin/plugin", mode: 0755, body: "#!/bin/sh\n"},
 	})
-	assert.NoError(t, checkTarball(path))
+	assert.NoError(t, checkTarballForPlatform(path, "plugin", true))
+}
+
+func TestCheckTarball_WindowsBinary(t *testing.T) {
+	path := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: backendYaml},
+		{name: "bin/plugin.exe", mode: 0644, body: "windows binary"},
+	})
+	assert.NoError(t, checkTarballForPlatform(path, "plugin.exe", false))
+	assert.ErrorContains(t, checkTarballForPlatform(path, "plugin", true), "missing required binary")
+}
+
+func TestCheckTarball_NativeArchiveStartsValidation(t *testing.T) {
+	path := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: backendYaml},
+		{name: "bin/" + plugintypes.BinaryName(), mode: 0755, body: "native binary"},
+		{name: "assets/", mode: 0755, dir: true},
+	})
+	require.NoError(t, checkTarball(path))
+	destination := t.TempDir()
+	require.NoError(t, unpackPluginArchive(path, destination))
+	require.NoError(t, validateForStart(config.PluginMeta{Capabilities: []string{"resource", "ui"}}, destination))
 }
 
 func TestCheckTarball_BackendMissingBinary(t *testing.T) {
@@ -79,7 +103,7 @@ func TestCheckTarball_BinaryNotExecutable(t *testing.T) {
 		{name: "plugin.yaml", mode: 0644, body: backendYaml},
 		{name: "bin/plugin", mode: 0644, body: "data"},
 	})
-	err := checkTarball(path)
+	err := checkTarballForPlatform(path, "plugin", true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not executable")
 }

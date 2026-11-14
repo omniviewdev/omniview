@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
@@ -34,14 +36,14 @@ func validateForStart(meta config.PluginMeta, location string) error {
 
 // validateHasBinary checks that the plugin binary exists and is executable.
 func validateHasBinary(path string) error {
-	plugin, err := os.Stat(filepath.Join(path, "bin", "plugin"))
+	plugin, err := os.Stat(filepath.Join(path, "bin", plugintypes.BinaryName()))
 	if os.IsNotExist(err) {
 		return fmt.Errorf("resource plugin binary not found: %s", path)
 	}
 	if err != nil {
 		return fmt.Errorf("error checking plugin binary: %w", err)
 	}
-	if plugin.Mode()&0111 == 0 {
+	if runtime.GOOS != "windows" && plugin.Mode()&0111 == 0 {
 		return fmt.Errorf("resource plugin binary is not executable: %s", path)
 	}
 	return nil
