@@ -47,6 +47,7 @@ func TestUpdateServiceUnconfigured(t *testing.T) {
 func TestUpdateServiceListCurrentRetired(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	if err := os.Mkdir(filepath.Join(home, releasechannel.StateLabel("feature-abc")), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +64,7 @@ func TestUpdateServiceListCurrentRetired(t *testing.T) {
 func TestUpdateServiceListCurrentCustomRoot(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	root := t.TempDir()
 	s := &UpdateService{channel: releasechannel.Stable, root: root}
 	list := s.ListChannels()
@@ -77,6 +79,7 @@ func TestUpdateServiceListCurrentCustomRoot(t *testing.T) {
 func TestUpdateServiceProfileMetadata(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	root := filepath.Join(home, ".omniview")
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)
@@ -97,6 +100,7 @@ func TestUpdateServiceProfileMetadata(t *testing.T) {
 func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	root := filepath.Join(home, ".omniview")
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)

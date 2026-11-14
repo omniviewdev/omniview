@@ -79,14 +79,6 @@ export default function UpdatesSettingsPage() {
       active = false;
     };
   }, [canListChannels, channelAttempt]);
-  React.useEffect(() => {
-    if (deleteChannel && channels?.options.find(option => option.channel === deleteChannel)?.stateIdentity !== deleteIdentity) {
-      setDeleteChannel('');
-      setDeleteConfirmation('');
-      setDeleteIdentity('');
-      setDeletionError(previous => previous || 'Channel data changed. Open a new deletion confirmation.');
-    }
-  }, [channels, deleteChannel, deleteIdentity]);
   const run = async (method: string, ...args: unknown[]) => {
     setError('');
     setBusy(true);
@@ -103,6 +95,7 @@ export default function UpdatesSettingsPage() {
 
     await refresh();
   };
+
   const deleteData = async (channel: string) => {
     setDeletionError('');
     setBusy(true);
@@ -115,10 +108,11 @@ export default function UpdatesSettingsPage() {
       setChannelError(list.error);
       setStatus(latestStatus);
       const option = list.options.find(item => item.channel === channel);
-      if (!deleteIdentity || !option || option.stateIdentity !== deleteIdentity || option.stateError || !option.stateExists || option.stateInUse === 'in-use'
+      if (!deleteIdentity || option?.stateIdentity !== deleteIdentity || option.stateError || !option.stateExists || option.stateInUse === 'in-use'
         || channel === list.current || channel === latestStatus.channel || channel === latestStatus.switchTarget) {
         throw new Error('Channel data cannot be deleted. Profile status changed or could not be inspected.');
       }
+
       await Call.ByName(`${service}.DeleteChannelData`, channel, deleteIdentity);
       setChannels(list => list && {
         ...list,
@@ -130,6 +124,7 @@ export default function UpdatesSettingsPage() {
       if (channel === selectedChannel) {
         setCopy(true);
       }
+
       setChannelAttempt(attempt => attempt + 1);
     } catch (err) {
       setDeletionError(String(err));
@@ -139,7 +134,7 @@ export default function UpdatesSettingsPage() {
     }
   };
 
-
+  const identityChanged = Boolean(deleteChannel && channels?.options.find(option => option.channel === deleteChannel)?.stateIdentity !== deleteIdentity);
   const state = status?.state ?? 'loading';
   const current = channels?.current ?? status?.channel ?? '';
   const selected = !showFeatures && selectedChannel.startsWith('feature-') && selectedChannel !== current
@@ -154,7 +149,7 @@ export default function UpdatesSettingsPage() {
     value: option.channel,
     label: `${channelName(option.channel)}${option.channel.startsWith('feature-') && !option.desktopVersion && option.channel !== current ? ' (no desktop build yet)' : ''}`,
   }));
-  const deleteControls = (option: ChannelOption, archived = false) => deleteChannel === option.channel
+  const deleteControls = (option: ChannelOption, archived = false) => deleteChannel === option.channel && !identityChanged
     ? <div className={styles.confirmation}>
       <p>Permanently delete all files in {option.statePath}. This cannot be undone.</p>
       <p>A pending copy from an older app may fail if you delete this data.</p>
@@ -189,8 +184,11 @@ export default function UpdatesSettingsPage() {
     <p role='status'>Status: {state === 'unconfigured' ? 'not configured' : state}</p>
     {status?.availableVersion && <p>Available version: {status.availableVersion}</p>}
     {(error || status?.error) && <p role='alert'>{error || status?.error}</p>}
-    {deletionError && <p role='alert'>{deletionError} <Button onClick={() => {
+    {(deletionError || identityChanged) && <p role='alert'>{deletionError || 'Channel data changed. Open a new deletion confirmation.'} <Button onClick={() => {
       setDeletionError('');
+      setDeleteChannel('');
+      setDeleteIdentity('');
+      setDeleteConfirmation('');
     }}>Dismiss deletion error</Button></p>}
     {state === 'ready'
       ? <Button variant={status?.switchTarget ? 'solid' : undefined} color={status?.switchTarget ? 'danger' : undefined} onClick={() => {

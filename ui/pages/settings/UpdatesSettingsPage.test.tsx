@@ -222,8 +222,14 @@ describe('UpdatesSettingsPage channels', () => {
 
   it('does not report the current channel retired when index discovery fails', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'feature-old' };
-      if (method.endsWith('.ListChannels')) return { current: 'feature-old', options, error: 'load channel index: offline' };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'feature-old' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return { current: 'feature-old', options, error: 'load channel index: offline' };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -234,7 +240,10 @@ describe('UpdatesSettingsPage channels', () => {
   it('refreshes profile use status on demand', async () => {
     let requests = 0;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
       if (method.endsWith('.ListChannels')) {
         requests += 1;
         return {
@@ -245,6 +254,7 @@ describe('UpdatesSettingsPage channels', () => {
           error: '',
         };
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -267,14 +277,21 @@ describe('UpdatesSettingsPage channels', () => {
     expect(screen.getByText('Data path: /home/user/.omniview')).toBeInTheDocument();
     expect(screen.getByText('Channel data: Exists')).toBeInTheDocument();
   });
+
   it('displays the backend current profile path', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'stable' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'stable',
-        options: options.map(option => option.channel === 'stable' ? { ...option, statePath: '/custom/current' } : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'stable' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'stable',
+          options: options.map(option => option.channel === 'stable' ? { ...option, statePath: '/custom/current' } : option),
+          error: '',
+        };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -283,19 +300,25 @@ describe('UpdatesSettingsPage channels', () => {
 
   it('shows profile directory modification and use status for current, inactive, and retired profiles', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'stable' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'stable',
-        options: options.map(option => ({
-          ...option,
-          stateModifiedAt: option.channel === 'stable' ? '2026-01-02T03:04:05Z' : '',
-          stateFileModifiedAt: option.channel === 'stable'
-            ? { 'settings.db': '2026-01-01T00:00:00Z', 'plugin_state.json': '2026-01-02T00:00:00Z' }
-            : option.channel === 'feature-old' ? { 'switch-seed.json': '2026-01-03T00:00:00Z' } : {},
-          stateInUse: option.channel === 'stable' ? 'in-use' : option.channel === 'nightly' ? 'not-in-use' : 'unknown',
-        })),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'stable' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'stable',
+          options: options.map(option => ({
+            ...option,
+            stateModifiedAt: option.channel === 'stable' ? '2026-01-02T03:04:05Z' : '',
+            stateFileModifiedAt: option.channel === 'stable'
+              ? { 'settings.db': '2026-01-01T00:00:00Z', 'plugin_state.json': '2026-01-02T00:00:00Z' }
+              : option.channel === 'feature-old' ? { 'switch-seed.json': '2026-01-03T00:00:00Z' } : {},
+            stateInUse: option.channel === 'stable' ? 'in-use' : option.channel === 'nightly' ? 'not-in-use' : 'unknown',
+          })),
+          error: '',
+        };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -313,14 +336,20 @@ describe('UpdatesSettingsPage channels', () => {
 
   it('shows inspection errors and prevents deletion of affected profiles', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'nightly',
-        options: options.map(option => ['stable', 'feature-old'].includes(option.channel)
-          ? { ...option, stateExists: false, stateError: `cannot inspect ${option.channel}` }
-          : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'nightly',
+          options: options.map(option => ['stable', 'feature-old'].includes(option.channel)
+            ? { ...option, stateExists: false, stateError: `cannot inspect ${option.channel}` }
+            : option),
+          error: '',
+        };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -334,14 +363,20 @@ describe('UpdatesSettingsPage channels', () => {
 
   it('does not offer copy when target inspection fails', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'stable' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'stable',
-        options: options.map(option => option.channel === 'nightly'
-          ? { ...option, stateError: 'permission denied' }
-          : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'stable' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'stable',
+          options: options.map(option => option.channel === 'nightly'
+            ? { ...option, stateError: 'permission denied' }
+            : option),
+          error: '',
+        };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -355,12 +390,18 @@ describe('UpdatesSettingsPage channels', () => {
 
   it('disables deletion of in-use and pending profiles', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly', switchTarget: 'feature-old' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'nightly',
-        options: options.map(option => option.channel === 'stable' ? { ...option, stateInUse: 'in-use' } : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly', switchTarget: 'feature-old' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable' ? { ...option, stateInUse: 'in-use' } : option),
+          error: '',
+        };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -373,7 +414,10 @@ describe('UpdatesSettingsPage channels', () => {
   it('disables an open deletion confirmation if the profile becomes in use', async () => {
     let attempts = 0;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
       if (method.endsWith('.ListChannels')) {
         attempts += 1;
         return {
@@ -384,6 +428,7 @@ describe('UpdatesSettingsPage channels', () => {
           error: attempts === 1 ? 'load channel index: offline' : '',
         };
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -401,15 +446,24 @@ describe('UpdatesSettingsPage channels', () => {
   it('refreshes profile discovery after switching with copy', async () => {
     let switched = false;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: switched ? 'ready' : 'idle', channel: 'stable', switchTarget: switched ? 'nightly' : '' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'stable',
-        options: options.map(option => option.channel === 'nightly'
-          ? { ...option, stateExists: switched, stateModifiedAt: switched ? 'new timestamp' : '' }
-          : option),
-        error: '',
-      };
-      if (method.endsWith('.SwitchChannel')) switched = true;
+      if (method.endsWith('.Status')) {
+        return { state: switched ? 'ready' : 'idle', channel: 'stable', switchTarget: switched ? 'nightly' : '' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'stable',
+          options: options.map(option => option.channel === 'nightly'
+            ? { ...option, stateExists: switched, stateModifiedAt: switched ? 'new timestamp' : '' }
+            : option),
+          error: '',
+        };
+      }
+
+      if (method.endsWith('.SwitchChannel')) {
+        switched = true;
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -468,9 +522,13 @@ describe('UpdatesSettingsPage channels', () => {
           statuses += 1;
           return { state: 'idle', channel: 'nightly', switchTarget: scenario === 'pending' && statuses > 1 ? 'stable' : '' };
         }
+
         if (method.endsWith('.ListChannels')) {
           lists += 1;
-          if (scenario === 'request-error' && lists > 1) throw new Error('inspection unavailable');
+          if (scenario === 'request-error' && lists > 1) {
+            throw new Error('inspection unavailable');
+          }
+
           return {
             current: 'nightly',
             options: options.map(option => option.channel === 'stable' && lists > 1
@@ -479,6 +537,7 @@ describe('UpdatesSettingsPage channels', () => {
             error: '',
           };
         }
+
         return undefined;
       });
       render(<UpdatesSettingsPage />);
@@ -493,10 +552,14 @@ describe('UpdatesSettingsPage channels', () => {
       expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable', 'stable-identity');
     },
   );
+
   it('requires a new confirmation if discovery finds a different profile', async () => {
     let lists = 0;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
       if (method.endsWith('.ListChannels')) {
         lists += 1;
         return {
@@ -507,6 +570,7 @@ describe('UpdatesSettingsPage channels', () => {
           error: lists === 1 ? 'load channel index: offline' : '',
         };
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -525,7 +589,10 @@ describe('UpdatesSettingsPage channels', () => {
   it('refuses deletion when the preflight discovers a replacement profile', async () => {
     let lists = 0;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
       if (method.endsWith('.ListChannels')) {
         lists += 1;
         return {
@@ -536,6 +603,7 @@ describe('UpdatesSettingsPage channels', () => {
           error: '',
         };
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -552,12 +620,18 @@ describe('UpdatesSettingsPage channels', () => {
 
   it('disables deletion when profile identity is unavailable', async () => {
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'nightly',
-        options: options.map(option => option.channel === 'stable' ? { ...option, stateIdentity: '' } : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable' ? { ...option, stateIdentity: '' } : option),
+          error: '',
+        };
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -566,22 +640,28 @@ describe('UpdatesSettingsPage channels', () => {
     expect(screen.getByRole('button', { name: 'Delete channel data' })).toBeDisabled();
   });
 
-
   it('disables actions while deleting and refreshes discovery after success', async () => {
     mocks.current = 'nightly';
     const deletion = Promise.withResolvers<void>();
     let deleted = false;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'nightly',
-        options: options.map(option => option.channel === 'stable' ? { ...option, stateExists: !deleted } : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable' ? { ...option, stateExists: !deleted } : option),
+          error: '',
+        };
+      }
+
       if (method.endsWith('.DeleteChannelData')) {
         await deletion.promise;
         deleted = true;
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -608,18 +688,25 @@ describe('UpdatesSettingsPage channels', () => {
   it('refreshes profile metadata after a partial deletion failure', async () => {
     let failed = false;
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
-      if (method.endsWith('.ListChannels')) return {
-        current: 'nightly',
-        options: options.map(option => option.channel === 'stable'
-          ? { ...option, stateExists: !failed, stateIdentity: failed ? '' : option.stateIdentity }
-          : option),
-        error: '',
-      };
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable'
+            ? { ...option, stateExists: !failed, stateIdentity: failed ? '' : option.stateIdentity }
+            : option),
+          error: '',
+        };
+      }
+
       if (method.endsWith('.DeleteChannelData')) {
         failed = true;
         throw new Error('partial deletion; remaining files: /home/user/quarantine');
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -640,14 +727,22 @@ describe('UpdatesSettingsPage channels', () => {
     let failed = false;
     mocks.call.mockImplementation(async (method: string) => {
       if (method.endsWith('.Status')) {
-        if (failed) throw new Error('status unavailable');
+        if (failed) {
+          throw new Error('status unavailable');
+        }
+
         return { state: 'idle', channel: 'nightly' };
       }
-      if (method.endsWith('.ListChannels')) return { current: 'nightly', options, error: '' };
+
+      if (method.endsWith('.ListChannels')) {
+        return { current: 'nightly', options, error: '' };
+      }
+
       if (method.endsWith('.DeleteChannelData')) {
         failed = true;
         throw new Error('deletion incomplete; remaining files: /home/user/quarantine');
       }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
@@ -666,9 +761,18 @@ describe('UpdatesSettingsPage channels', () => {
   it('reports deletion errors and keeps confirmation available for retry', async () => {
     mocks.current = 'nightly';
     mocks.call.mockImplementation(async (method: string) => {
-      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
-      if (method.endsWith('.ListChannels')) return { current: 'nightly', options, error: '' };
-      if (method.endsWith('.DeleteChannelData')) throw new Error('deletion incomplete; remaining files: C:\\Users\\user\\quarantine');
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: 'nightly' };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return { current: 'nightly', options, error: '' };
+      }
+
+      if (method.endsWith('.DeleteChannelData')) {
+        throw new Error('deletion incomplete; remaining files: C:\\Users\\user\\quarantine');
+      }
+
       return undefined;
     });
     render(<UpdatesSettingsPage />);
