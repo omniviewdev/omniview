@@ -57,6 +57,11 @@ jobs:
         env:
           GOWORK: "off"
           GOFLAGS: ""
+      - name: Test Windows channel profile deletion
+        run: go test . -run '^TestWindowsDelete'
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
 
   go-checks:
     name: Go checks
