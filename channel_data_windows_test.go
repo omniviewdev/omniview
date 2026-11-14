@@ -26,7 +26,7 @@ func TestWindowsDeleteRejectsActiveProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status := profileLockStatus(root); status != "in-use" {
+	if status := profileLockStatus(root); status != "unknown" {
 		t.Fatalf("profile status = %q", status)
 	}
 	if err := deleteInactiveProfile(root, info); err == nil {
@@ -69,7 +69,7 @@ func TestWindowsDeleteRejectsReplacedProfile(t *testing.T) {
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Lstat(root)
+	info, err := captureProfileIdentity(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,15 @@ func TestWindowsDeleteRejectsReplacedProfile(t *testing.T) {
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)
 	}
+	data := filepath.Join(root, "replacement-data")
+	if err := os.WriteFile(data, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := deleteInactiveProfile(root, info); err == nil {
 		t.Fatal("accepted replacement")
+	}
+	if _, err := os.Stat(data); err != nil {
+		t.Fatalf("replacement data was removed: %v", err)
 	}
 }
 

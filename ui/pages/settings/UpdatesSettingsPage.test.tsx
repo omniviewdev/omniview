@@ -294,6 +294,99 @@ describe('UpdatesSettingsPage channels', () => {
     expect(screen.getByRole('button', { name: 'Delete channel data' })).toBeDisabled();
   });
 
+  it('does not offer copy when target inspection fails', async () => {
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'stable' };
+      if (method.endsWith('.ListChannels')) return {
+        current: 'stable',
+        options: options.map(option => option.channel === 'nightly'
+          ? { ...option, stateError: 'permission denied' }
+          : option),
+        error: '',
+      };
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Nightly' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'nightly' } });
+    expect(screen.getByText('Profile inspection failed: permission denied')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download and switch' })).toBeDisabled();
+    expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'nightly', false);
+  });
+
+  it('disables deletion of in-use and pending profiles', async () => {
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly', switchTarget: 'feature-old' };
+      if (method.endsWith('.ListChannels')) return {
+        current: 'nightly',
+        options: options.map(option => option.channel === 'stable' ? { ...option, stateInUse: 'in-use' } : option),
+        error: '',
+      };
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    expect(await screen.findByRole('button', { name: 'Delete data for feature-old' })).toBeDisabled();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    expect(screen.getByText('Profile in use: Yes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete channel data' })).toBeDisabled();
+  });
+
+  it('disables an open deletion confirmation if the profile becomes in use', async () => {
+    let attempts = 0;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: 'idle', channel: 'nightly' };
+      if (method.endsWith('.ListChannels')) {
+        attempts += 1;
+        return {
+          current: 'nightly',
+          options: options.map(option => option.channel === 'stable'
+            ? { ...option, stateInUse: attempts > 1 ? 'in-use' : 'not-in-use' }
+            : option),
+          error: attempts === 1 ? 'load channel index: offline' : '',
+        };
+      }
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+    fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
+    expect(screen.getByRole('button', { name: 'Permanently delete channel data' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry channel discovery' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Permanently delete channel data' })).toBeDisabled();
+    });
+  });
+
+  it('refreshes profile discovery after switching with copy', async () => {
+    let switched = false;
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) return { state: switched ? 'ready' : 'idle', channel: 'stable', switchTarget: switched ? 'nightly' : '' };
+      if (method.endsWith('.ListChannels')) return {
+        current: 'stable',
+        options: options.map(option => option.channel === 'nightly'
+          ? { ...option, stateExists: switched, stateModifiedAt: switched ? 'new timestamp' : '' }
+          : option),
+        error: '',
+      };
+      if (method.endsWith('.SwitchChannel')) switched = true;
+      return undefined;
+    });
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Nightly' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'nightly' } });
+    expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    await waitFor(() => {
+      expect(screen.getByText('Channel data: Exists')).toBeInTheDocument();
+      expect(screen.getByText('Profile directory top-level entries modified: new timestamp')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
+    });
+    expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'nightly', true);
+  });
+
   it('allows deleting retired profile data without offering it as a switch target', async () => {
     render(<UpdatesSettingsPage />);
     expect(await screen.findByText('Data path: /home/user/.omniview-feature-old')).toBeInTheDocument();
@@ -327,6 +420,42 @@ describe('UpdatesSettingsPage channels', () => {
     expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
   });
 
+  it.each(['in-use', 'inspection-error', 'pending', 'request-error'])(
+    'rechecks profile before deletion when status changes to %s',
+    async scenario => {
+      let lists = 0;
+      let statuses = 0;
+      mocks.call.mockImplementation(async (method: string) => {
+        if (method.endsWith('.Status')) {
+          statuses += 1;
+          return { state: 'idle', channel: 'nightly', switchTarget: scenario === 'pending' && statuses > 1 ? 'stable' : '' };
+        }
+        if (method.endsWith('.ListChannels')) {
+          lists += 1;
+          if (scenario === 'request-error' && lists > 1) throw new Error('inspection unavailable');
+          return {
+            current: 'nightly',
+            options: options.map(option => option.channel === 'stable' && lists > 1
+              ? { ...option, stateInUse: scenario === 'in-use' ? 'in-use' : 'not-in-use', stateError: scenario === 'inspection-error' ? 'permission denied' : '' }
+              : option),
+            error: '',
+          };
+        }
+        return undefined;
+      });
+      render(<UpdatesSettingsPage />);
+      await screen.findByRole('option', { name: 'Stable' });
+      fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
+      fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
+      await waitFor(() => {
+        expect(screen.getByText(scenario === 'request-error' ? /inspection unavailable/ : /Profile status changed or could not be inspected/)).toBeInTheDocument();
+      });
+      expect(mocks.call).not.toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
+    },
+  );
+
   it('disables actions while deleting and refreshes discovery after success', async () => {
     mocks.current = 'nightly';
     const deletion = Promise.withResolvers<void>();
@@ -350,14 +479,16 @@ describe('UpdatesSettingsPage channels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete channel data' }));
     fireEvent.change(screen.getByLabelText('Type stable to confirm'), { target: { value: 'stable' } });
     fireEvent.click(screen.getByRole('button', { name: 'Permanently delete channel data' }));
-    expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.DeleteChannelData', 'stable');
+    });
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Permanently delete channel data' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Download and switch' })).toBeDisabled();
     deletion.resolve();
     await waitFor(() => {
       expect(screen.getByText('Channel data: Not found')).toBeInTheDocument();
-      expect(mocks.call.mock.calls.filter(([method]) => method.endsWith('.ListChannels'))).toHaveLength(2);
+      expect(mocks.call.mock.calls.filter(([method]) => method.endsWith('.ListChannels'))).toHaveLength(3);
     });
     expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
     expect(screen.queryByRole('button', { name: 'Delete channel data' })).not.toBeInTheDocument();

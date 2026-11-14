@@ -326,7 +326,18 @@ func (s *UpdateService) DeleteChannelData(channel string) error {
 	if err != nil {
 		return fmt.Errorf("find home directory: %w", err)
 	}
+	home, err = devcontract.CanonicalPath(home)
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
 	path := filepath.Join(home, releasechannel.StateLabel(channel))
+	info, err := captureProfileIdentity(path)
+	if err != nil {
+		return fmt.Errorf("inspect channel data: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("channel data must be a directory, not a symlink")
+	}
 	if s.root == "" {
 		return fmt.Errorf("current profile root is unavailable")
 	}
@@ -339,13 +350,6 @@ func (s *UpdateService) DeleteChannelData(channel string) error {
 	}
 	if err := devcontract.ValidateProductionProfileIsolation(path, home); err != nil {
 		return fmt.Errorf("check channel profile ownership: %w", err)
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return fmt.Errorf("inspect channel data: %w", err)
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("channel data must be a directory, not a symlink")
 	}
 	release, err := instance.LockSwitchProfile(context.Background(), path)
 	if err != nil {

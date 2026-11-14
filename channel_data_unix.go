@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/omniviewdev/omniview/internal/instance"
-
 	"golang.org/x/sys/unix"
 )
 
@@ -53,39 +51,11 @@ func lockMatches(root string, lock *os.File) bool {
 	return err == nil && current.Mode().IsRegular() && os.SameFile(pinned, current)
 }
 
-func profileLockStatus(root string) string {
-	lock, err := openProfileLock(root, false)
-	if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-		return "in-use"
-	}
-	if err != nil {
-		return "unknown"
-	}
-	defer lock.Close()
-	if !lockMatches(root, lock) {
-		return "unknown"
-	}
-	guardPath, err := instance.SwitchProfileGuardPath(root)
-	if err != nil {
-		return "unknown"
-	}
-	guard, err := openLock(guardPath, false)
-	if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-		return "in-use"
-	}
-	if err != nil {
-		return "unknown"
-	}
-	defer guard.Close()
-	pinned, err := guard.Stat()
-	if err != nil {
-		return "unknown"
-	}
-	current, err := os.Lstat(guardPath)
-	if err != nil || !current.Mode().IsRegular() || !os.SameFile(pinned, current) {
-		return "unknown"
-	}
-	return "not-in-use"
+// Probing with an exclusive lock can cause a concurrent profile startup to fail.
+func profileLockStatus(string) string { return "unknown" }
+
+func captureProfileIdentity(path string) (os.FileInfo, error) {
+	return os.Lstat(path)
 }
 
 func deleteInactiveProfile(path string, expected os.FileInfo) error {

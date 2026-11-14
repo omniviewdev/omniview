@@ -3,6 +3,7 @@ import { Call } from '@wailsio/runtime';
 import { Button, Checkbox, Select, Switch } from '@omniviewdev/base-ui';
 import { HOST_SETTINGS_SCOPE, useScopedSettings, useSettings } from '@omniviewdev/runtime';
 import { LuChevronDown } from 'react-icons/lu';
+import styles from './UpdatesSettingsPage.module.css';
 
 const service = 'main.UpdateService';
 type Status = { state: string; version: string; availableVersion: string; error: string; channel: string; switchTarget: string };
@@ -81,6 +82,9 @@ export default function UpdatesSettingsPage() {
     setBusy(true);
     try {
       await Call.ByName(`${service}.${method}`, ...args);
+      if (method === 'SwitchChannel') {
+        setChannelAttempt(attempt => attempt + 1);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -93,6 +97,18 @@ export default function UpdatesSettingsPage() {
     setError('');
     setBusy(true);
     try {
+      const [list, latestStatus] = await Promise.all([
+        Call.ByName(`${service}.ListChannels`) as Promise<ChannelList>,
+        Call.ByName(`${service}.Status`) as Promise<Status>,
+      ]);
+      setChannels(list);
+      setChannelError(list.error);
+      setStatus(latestStatus);
+      const option = list.options.find(item => item.channel === channel);
+      if (!option || option.stateError || !option.stateExists || option.stateInUse === 'in-use'
+        || channel === list.current || channel === latestStatus.channel || channel === latestStatus.switchTarget) {
+        throw new Error('Channel data cannot be deleted. Profile status changed or could not be inspected.');
+      }
       await Call.ByName(`${service}.DeleteChannelData`, channel);
       setChannels(list => list && {
         ...list,
@@ -127,7 +143,7 @@ export default function UpdatesSettingsPage() {
     label: `${channelName(option.channel)}${option.channel.startsWith('feature-') && !option.desktopVersion && option.channel !== current ? ' (no desktop build yet)' : ''}`,
   }));
   const deleteControls = (option: ChannelOption, archived = false) => deleteChannel === option.channel
-    ? <div>
+    ? <div className={styles.confirmation}>
       <p>Permanently delete all files in {option.statePath}. This cannot be undone.</p>
       <p>A pending copy from an older app may fail if you delete this data.</p>
       <p>Deletion can stop partway if a filesystem error occurs. Remaining files may be kept in a quarantine folder.</p>
@@ -136,15 +152,17 @@ export default function UpdatesSettingsPage() {
           setDeleteConfirmation(event.target.value);
         }} />
       </label>
-      <Button variant='solid' color='danger' disabled={busy || Boolean(option.stateError) || deleteConfirmation !== option.channel} onClick={() => {
-        void deleteData(option.channel);
-      }}>Permanently delete channel data</Button>
-      <Button disabled={busy} onClick={() => {
-        setDeleteChannel('');
-        setDeleteConfirmation('');
-      }}>Cancel</Button>
+      <div className={styles.actions}>
+        <Button variant='solid' color='danger' disabled={busy || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget || deleteConfirmation !== option.channel} onClick={() => {
+          void deleteData(option.channel);
+        }}>Permanently delete channel data</Button>
+        <Button disabled={busy} onClick={() => {
+          setDeleteChannel('');
+          setDeleteConfirmation('');
+        }}>Cancel</Button>
+      </div>
     </div>
-    : <Button disabled={busy || Boolean(option.stateError)} onClick={() => {
+    : <Button disabled={busy || Boolean(option.stateError) || option.stateInUse === 'in-use' || option.channel === status?.switchTarget} onClick={() => {
       setDeleteChannel(option.channel);
       setDeleteConfirmation('');
     }}>{archived ? `Delete data for ${option.channel}` : 'Delete channel data'}</Button>;
@@ -203,7 +221,7 @@ export default function UpdatesSettingsPage() {
           setError(String(err));
         });
       }} /></label>
-      {target && <div>
+      {target && <div className={styles.profile}>
         <p>Data path: {target.statePath}</p>
         <p>Channel data: {target.stateError ? 'Unknown' : target.stateExists ? 'Exists' : 'Not found'}</p>
         {target.stateError && <p role='alert'>Profile inspection failed: {target.stateError}</p>}
@@ -214,7 +232,7 @@ export default function UpdatesSettingsPage() {
         {selected !== current && (target.stateExists || target.stateError) && deleteControls(target)}
       </div>}
       {channels?.options.filter(option => option.status === 'archived' && option.channel !== current && (option.stateExists || option.stateError)).map(option =>
-        <div key={option.channel}>
+        <div key={option.channel} className={styles.profile}>
           <p>Retired channel: {option.channel}</p>
           <p>Data path: {option.statePath}</p>
           {option.stateError && <p role='alert'>Profile inspection failed: {option.stateError}</p>}
@@ -225,8 +243,8 @@ export default function UpdatesSettingsPage() {
         </div>)}
       {target && selected !== current && <>
         {target.desktopVersion && <p>Target version: {target.desktopVersion}</p>}
-        {!target.stateExists && <Checkbox size='sm' checked={copy} onCheckedChange={setCopy}>Copy my current data to this channel</Checkbox>}
-        <Button variant='solid' color='danger' disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
+        {!target.stateExists && !target.stateError && <Checkbox size='sm' checked={copy} onCheckedChange={setCopy}>Copy my current data to this channel</Checkbox>}
+        <Button variant='solid' color='danger' disabled={busy || Boolean(target.stateError) || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
           void run('SwitchChannel', selected, copy && !target.stateExists);
         }}>Download and switch</Button>
       </>}
