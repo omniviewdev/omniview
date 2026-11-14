@@ -287,7 +287,7 @@ func (pm *pluginManager) prepareDevInstallDir(path string, metadata *config.Plug
 	}
 	// A failed build of a newly linked source must not leave the previous
 	// source's executable available for startup/reload.
-	if err := os.Remove(filepath.Join(installLocation, "bin", "plugin")); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(filepath.Join(installLocation, "bin", plugintypes.BinaryName())); err != nil && !os.IsNotExist(err) {
 		return apperror.Wrap(err, apperror.TypePluginInstallFailed, http.StatusInternalServerError,
 			"Failed to remove previous dev plugin binary")
 	}
@@ -666,8 +666,8 @@ func copyPluginMeta(path, installLocation string) error {
 
 // movePluginBinary moves the built plugin binary into installLocation/bin.
 func movePluginBinary(path, installLocation string) error {
-	binaryPath := filepath.Join(path, "build", "bin", "plugin")
-	targetBinPath := filepath.Join(installLocation, "bin", "plugin")
+	binaryPath := filepath.Join(path, "build", "bin", plugintypes.BinaryName())
+	targetBinPath := filepath.Join(installLocation, "bin", plugintypes.BinaryName())
 
 	if err := os.MkdirAll(filepath.Dir(targetBinPath), 0755); err != nil {
 		return apperror.Internal(err, "Failed to create plugin binary directory")

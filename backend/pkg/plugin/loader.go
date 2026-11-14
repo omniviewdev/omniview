@@ -469,7 +469,7 @@ func (pm *pluginManager) createBackend(
 		logOutput = io.MultiWriter(os.Stdout, pm.pluginLogMgr.Stream(id))
 	}
 
-	binaryPath := filepath.Join(location, "bin", "plugin")
+	binaryPath := filepath.Join(location, "bin", plugintypes.BinaryName())
 	var snapshotCleanup func()
 	defer func() {
 		if snapshotCleanup != nil {

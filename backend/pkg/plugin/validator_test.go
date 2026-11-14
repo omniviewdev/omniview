@@ -3,12 +3,14 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
@@ -17,7 +19,7 @@ func TestValidateHasBinary_Exists(t *testing.T) {
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
 
-	binPath := filepath.Join(binDir, "plugin")
+	binPath := filepath.Join(binDir, plugintypes.BinaryName())
 	require.NoError(t, os.WriteFile(binPath, []byte("#!/bin/sh\n"), 0755))
 
 	assert.NoError(t, validateHasBinary(dir))
@@ -31,6 +33,9 @@ func TestValidateHasBinary_Missing(t *testing.T) {
 }
 
 func TestValidateHasBinary_NotExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix executable permissions")
+	}
 	dir := t.TempDir()
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -71,7 +76,7 @@ func TestValidateForStart_BackendOnly(t *testing.T) {
 	// Add binary → pass.
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("x"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, plugintypes.BinaryName()), []byte("x"), 0755))
 
 	assert.NoError(t, validateForStart(meta, dir))
 }
@@ -103,7 +108,7 @@ func TestValidateForPhase_ValidatingPhase(t *testing.T) {
 	// Add binary → pass.
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("x"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, plugintypes.BinaryName()), []byte("x"), 0755))
 	assert.NoError(t, ValidateForPhase(lifecycle.PhaseValidating, meta, dir))
 }
 
@@ -149,7 +154,7 @@ func TestValidateForStart_BackendAndUI(t *testing.T) {
 	// Binary only → fail (UI missing).
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("x"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, plugintypes.BinaryName()), []byte("x"), 0755))
 	err = validateForStart(meta, dir)
 	require.Error(t, err)
 

@@ -181,7 +181,7 @@ func (pm *pluginManager) preflightArchive(metadata config.PluginMeta, candidate 
 	if err != nil {
 		return err
 	}
-	return instance.VerifyPluginArtifact(workspace, metadata.ID, filepath.Join(location, "bin", "plugin"))
+	return instance.VerifyPluginArtifact(workspace, metadata.ID, filepath.Join(location, "bin", plugintypes.BinaryName()))
 }
 
 // Unlike public unload, this private path may stop its captured runtime while

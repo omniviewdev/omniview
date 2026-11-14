@@ -747,7 +747,7 @@ func (pm *pluginManager) migrateDevPluginDirs(states []plugintypes.PluginStateRe
 // when the binary exists or the plugin has no backend.
 func (pm *pluginManager) stubMissingDevBinary(name string, state plugintypes.PluginStateRecord) bool {
 	pluginLocation := pm.pluginsRoot.ResolvePath(name)
-	binPath := filepath.Join(pluginLocation, "bin", "plugin")
+	binPath := filepath.Join(pluginLocation, "bin", plugintypes.BinaryName())
 	if _, statErr := os.Stat(binPath); !os.IsNotExist(statErr) || !state.Metadata.HasBackendCapabilities() {
 		return false
 	}

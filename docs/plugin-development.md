@@ -348,7 +348,7 @@ recovery barrier and private staging evidence instead of adopting another path.
 Managed development workspaces also require host-owned fixed-SDK build evidence
 for backend archives. Build the plugin through the selected workspace's normal
 managed builder first, then package the installed stamped `plugin.yaml` and exact
-`bin/plugin` bytes (plus built assets when applicable). Do not manufacture
+`bin/plugin` bytes (`bin/plugin.exe` on Windows), plus built assets when applicable. Do not manufacture
 `state_isolation` metadata. The trusted artifact record is scoped to the
 destination workspace UUID and is not transported in the archive: an archive
 accepted in one workspace can correctly fail preflight in another until that
@@ -1497,7 +1497,7 @@ rebuild. Do not launch an external binary as a fallback.
 
 **Cause**: The build output path does not match what the IDE expects.
 
-**Fix**: The built binary must be at `build/bin/plugin` relative to the plugin directory. Check your Go build command outputs to the correct path.
+**Fix**: The built binary must be at `build/bin/plugin` (`build/bin/plugin.exe` on Windows) relative to the plugin directory. Check your Go build command outputs to the correct path.
 
 ### 5.9 Shared Dependencies Not Resolving
 

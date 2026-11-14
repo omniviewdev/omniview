@@ -9,10 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v2"
 
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
@@ -20,6 +22,10 @@ import (
 const pluginMetaFile = "plugin.yaml"
 
 func checkTarball(filePath string) error {
+	return checkTarballForPlatform(filePath, plugintypes.BinaryName(), runtime.GOOS != "windows")
+}
+
+func checkTarballForPlatform(filePath, binaryName string, requireExecutable bool) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -50,13 +56,13 @@ func checkTarball(filePath string) error {
 			return err
 		}
 		// check for required files and executable
-		switch header.Name {
-		case "./bin/plugin", "bin/plugin":
+		switch strings.TrimPrefix(header.Name, "./") {
+		case "bin/" + binaryName:
 			hasBinPlugin = true
-			if header.FileInfo().Mode()&0111 == 0 {
-				return errors.New("bin/plugin is not executable")
+			if requireExecutable && header.FileInfo().Mode()&0111 == 0 {
+				return fmt.Errorf("bin/%s is not executable", binaryName)
 			}
-		case "./" + pluginMetaFile, pluginMetaFile:
+		case pluginMetaFile:
 			var meta config.PluginMeta
 			if err = yaml.NewDecoder(tarReader).Decode(&meta); err != nil {
 				return fmt.Errorf("invalid plugin.yaml: %w", err)
