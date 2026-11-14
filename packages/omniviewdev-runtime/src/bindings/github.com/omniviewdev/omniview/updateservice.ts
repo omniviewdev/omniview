@@ -16,8 +16,8 @@ export function Check(): $CancellablePromise<void> {
 /**
  * DeleteChannelData removes only an inactive channel's default profile.
  */
-export function DeleteChannelData(channel: string): $CancellablePromise<void> {
-    return $Call.ByID(1463867170, channel);
+export function DeleteChannelData(channel: string, stateIdentity: string): $CancellablePromise<void> {
+    return $Call.ByID(1463867170, channel, stateIdentity);
 }
 
 export function ListChannels(): $CancellablePromise<$models.ChannelList> {

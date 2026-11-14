@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -26,10 +28,17 @@ type UpdateService struct {
 	configured       bool
 	mu               sync.Mutex
 	flow             sync.Mutex
+	identityMu       sync.Mutex
+	identities       map[string]profileIdentity
 	lastError        string
 	availableVersion string
 	switchTarget     string
 	cancel           context.CancelFunc
+}
+
+type profileIdentity struct {
+	channel string
+	handle  *os.File
 }
 
 type UpdateStatus struct {
@@ -48,6 +57,7 @@ type ChannelOption struct {
 	DesktopVersion      string            `json:"desktopVersion"`
 	StatePath           string            `json:"statePath"`
 	StateExists         bool              `json:"stateExists"`
+	StateIdentity       string            `json:"stateIdentity"`
 	StateModifiedAt     string            `json:"stateModifiedAt"`
 	StateInUse          string            `json:"stateInUse"`
 	StateFileModifiedAt map[string]string `json:"stateFileModifiedAt"`
@@ -104,6 +114,12 @@ func (s *UpdateService) ServiceShutdown() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	s.identityMu.Lock()
+	for _, identity := range s.identities {
+		_ = identity.handle.Close()
+	}
+	s.identities = nil
+	s.identityMu.Unlock()
 	return nil
 }
 
@@ -150,6 +166,10 @@ func (s *UpdateService) Check() error {
 }
 
 func (s *UpdateService) ListChannels() ChannelList {
+	s.identityMu.Lock()
+	defer s.identityMu.Unlock()
+	previous := s.identities
+	s.identities = make(map[string]profileIdentity)
 	list := ChannelList{Current: s.channel, Options: []ChannelOption{
 		{Channel: releasechannel.Stable, Status: "active"},
 		{Channel: releasechannel.Nightly, Status: "active"},
@@ -190,6 +210,45 @@ func (s *UpdateService) ListChannels() ChannelList {
 			}
 			list.Options[i].StateExists = statErr == nil
 			if statErr == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				handle, identityErr := openProfileIdentity(list.Options[i].StatePath)
+				if identityErr == nil {
+					var pinned os.FileInfo
+					pinned, identityErr = handle.Stat()
+					if identityErr == nil && (!pinned.IsDir() || !os.SameFile(info, pinned)) {
+						identityErr = fmt.Errorf("channel data changed during discovery")
+					}
+					value := ""
+					if identityErr == nil {
+						for token, existing := range previous {
+							if existing.channel != list.Options[i].Channel {
+								continue
+							}
+							oldInfo, statErr := existing.handle.Stat()
+							if statErr == nil && os.SameFile(oldInfo, pinned) {
+								value = token
+								_ = handle.Close()
+								handle = existing.handle
+								delete(previous, token)
+								break
+							}
+						}
+						if value == "" {
+							var token [32]byte
+							_, identityErr = rand.Read(token[:])
+							value = hex.EncodeToString(token[:])
+						}
+					}
+					if identityErr == nil {
+						list.Options[i].StateIdentity = value
+						s.identities[value] = profileIdentity{channel: list.Options[i].Channel, handle: handle}
+						info = pinned
+					} else {
+						_ = handle.Close()
+					}
+				}
+				if identityErr != nil {
+					list.Options[i].StateError = identityErr.Error()
+				}
 				list.Options[i].StateFileModifiedAt = make(map[string]string)
 				for _, name := range []string{"settings.db", "settings.db-wal", "plugin_state.json", instance.SwitchSeedFile, "update-checkpoints.json"} {
 					fileInfo, fileErr := os.Lstat(filepath.Join(list.Options[i].StatePath, name))
@@ -205,6 +264,9 @@ func (s *UpdateService) ListChannels() ChannelList {
 				}
 			}
 		}
+	}
+	for _, identity := range previous {
+		_ = identity.handle.Close()
 	}
 	return list
 }
@@ -307,7 +369,7 @@ func (s *UpdateService) SwitchChannel(target string, copyCurrentData bool) (err 
 }
 
 // DeleteChannelData removes only an inactive channel's default profile.
-func (s *UpdateService) DeleteChannelData(channel string) error {
+func (s *UpdateService) DeleteChannelData(channel, stateIdentity string) error {
 	s.flow.Lock()
 	defer s.flow.Unlock()
 	if !releasechannel.Valid(channel) {
@@ -338,6 +400,17 @@ func (s *UpdateService) DeleteChannelData(channel string) error {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("channel data must be a directory, not a symlink")
 	}
+	s.identityMu.Lock()
+	defer s.identityMu.Unlock()
+	identity, ok := s.identities[stateIdentity]
+	if !ok || stateIdentity == "" || identity.channel != channel {
+		return fmt.Errorf("channel data identity is unavailable or expired")
+	}
+	pinned, err := identity.handle.Stat()
+	if err != nil || !os.SameFile(pinned, info) {
+		return fmt.Errorf("channel data changed since discovery")
+	}
+	info = pinned
 	if s.root == "" {
 		return fmt.Errorf("current profile root is unavailable")
 	}
@@ -360,3 +433,39 @@ func (s *UpdateService) DeleteChannelData(channel string) error {
 }
 
 func (s *UpdateService) Restart() error { return s.updater.Restart(context.Background()) }
+
+// removeIsolatedProfile deletes through a pinned directory, never its pathname.
+// The empty quarantine is retained because removing its name would race a rename.
+func removeIsolatedProfile(path string, expected os.FileInfo) error {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Stat(".")
+	if err != nil || !info.IsDir() || !os.SameFile(expected, info) {
+		return fmt.Errorf("isolated channel data changed")
+	}
+	return removeProfileContents(root)
+}
+
+func removeProfileContents(root *os.Root) error {
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	names, err := dir.Readdirnames(-1)
+	closeErr := dir.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	for _, name := range names {
+		if err := root.RemoveAll(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}

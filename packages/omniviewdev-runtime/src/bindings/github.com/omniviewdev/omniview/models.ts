@@ -45,6 +45,7 @@ export class ChannelOption {
     "desktopVersion": string;
     "statePath": string;
     "stateExists": boolean;
+    "stateIdentity": string;
     "stateModifiedAt": string;
     "stateInUse": string;
     "stateFileModifiedAt": { [_ in string]?: string };
@@ -70,6 +71,9 @@ export class ChannelOption {
         if (!("stateExists" in $$source)) {
             this["stateExists"] = false;
         }
+        if (!("stateIdentity" in $$source)) {
+            this["stateIdentity"] = "";
+        }
         if (!("stateModifiedAt" in $$source)) {
             this["stateModifiedAt"] = "";
         }
@@ -90,10 +94,10 @@ export class ChannelOption {
      * Creates a new ChannelOption instance from a string or object.
      */
     static createFrom($$source: any = {}): ChannelOption {
-        const $$createField8_0 = $$createType2;
+        const $$createField9_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stateFileModifiedAt" in $$parsedSource) {
-            $$parsedSource["stateFileModifiedAt"] = $$createField8_0($$parsedSource["stateFileModifiedAt"]);
+            $$parsedSource["stateFileModifiedAt"] = $$createField9_0($$parsedSource["stateFileModifiedAt"]);
         }
         return new ChannelOption($$parsedSource as Partial<ChannelOption>);
     }
