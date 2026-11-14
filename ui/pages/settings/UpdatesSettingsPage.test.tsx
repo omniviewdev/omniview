@@ -136,13 +136,44 @@ describe('UpdatesSettingsPage channels', () => {
     render(<UpdatesSettingsPage />);
     await screen.findByRole('option', { name: 'feature-abc' });
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'feature-abc' } });
-    fireEvent.click(screen.getByLabelText('Copy my current data to this channel'));
+    expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
     await waitFor(() => {
       expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', true);
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
     expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
+  });
+
+  it('preserves deselection until the target changes', async () => {
+    mocks.showFeatures = true;
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'feature-abc' });
+    const select = screen.getByRole('combobox', { name: 'Release channel' });
+    fireEvent.change(select, { target: { value: 'feature-abc' } });
+    fireEvent.click(screen.getByLabelText('Copy my current data to this channel'));
+    expect(screen.getByLabelText('Copy my current data to this channel')).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', false);
+    });
+    expect(screen.getByLabelText('Copy my current data to this channel')).not.toBeChecked();
+    fireEvent.change(select, { target: { value: 'nightly' } });
+    expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
+    fireEvent.change(select, { target: { value: 'feature-abc' } });
+    expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
+  });
+
+  it('does not copy to an existing target', async () => {
+    mocks.current = 'nightly';
+    render(<UpdatesSettingsPage />);
+    await screen.findByRole('option', { name: 'Stable' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'stable' } });
+    expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'stable', false);
+    });
   });
 
   it('does not copy when refreshed discovery finds existing target data', async () => {
@@ -169,7 +200,7 @@ describe('UpdatesSettingsPage channels', () => {
     render(<UpdatesSettingsPage />);
     await screen.findByRole('option', { name: 'feature-abc' });
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'feature-abc' } });
-    fireEvent.click(screen.getByLabelText('Copy my current data to this channel'));
+    expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Retry channel discovery' }));
     await waitFor(() => {
       expect(screen.queryByLabelText('Copy my current data to this channel')).not.toBeInTheDocument();

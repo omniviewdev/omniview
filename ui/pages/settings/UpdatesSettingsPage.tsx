@@ -100,7 +100,7 @@ export default function UpdatesSettingsPage() {
     {status?.availableVersion && <p>Available version: {status.availableVersion}</p>}
     {(error || status?.error) && <p role='alert'>{error || status?.error}</p>}
     {state === 'ready'
-      ? <Button onClick={() => {
+      ? <Button variant={status?.switchTarget ? 'solid' : undefined} color={status?.switchTarget ? 'danger' : undefined} onClick={() => {
         void run('Restart');
       }}>
         {status?.switchTarget ? `Restart into ${status.switchTarget}` : 'Restart to Update'}
@@ -118,9 +118,9 @@ export default function UpdatesSettingsPage() {
       }}>Retry channel discovery</Button></p>}
       {currentOption?.status === 'archived' && <p role='alert'>This channel was retired. Switch to Stable to keep receiving updates.</p>}
       <Select.Root size='sm' value={selected} items={items} disabled={!channels || busy} onValueChange={(value) => {
-        if (value !== null) {
+        if (value !== null && value !== selected) {
           setSelected(value);
-          setCopy(false);
+          setCopy(true);
         }
       }}>
         <Select.Trigger aria-label='Release channel'><Select.Value /><Select.Icon><LuChevronDown aria-hidden /></Select.Icon></Select.Trigger>
@@ -145,7 +145,7 @@ export default function UpdatesSettingsPage() {
       {target && selected !== current && <>
         {target.desktopVersion && <p>Target version: {target.desktopVersion}</p>}
         {!target.stateExists && <Checkbox size='sm' checked={copy} onCheckedChange={setCopy}>Copy my current data to this channel</Checkbox>}
-        <Button disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
+        <Button variant='solid' color='danger' disabled={busy || state === 'ready' || (target.channel.startsWith('feature-') && !target.desktopVersion)} onClick={() => {
           void run('SwitchChannel', selected, copy && !target.stateExists);
         }}>Download and switch</Button>
       </>}
