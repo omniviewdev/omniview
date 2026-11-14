@@ -275,6 +275,29 @@ func TestRegistryReplacementKeepsPaginationOnOneOrigin(t *testing.T) {
 	}
 }
 
+func TestNightlyBypassesCompatibility(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("ignore_ide_compatibility") != "true" || r.URL.Query().Has("ide_version") {
+			t.Errorf("nightly request lacks compatibility override: %s", r.URL)
+		}
+		if strings.HasSuffix(r.URL.Path, "/versions") {
+			w.Header().Set("X-Omniview-Incompatible-Versions", "true")
+			_, _ = w.Write([]byte(`{"success":true,"data":[{"version":"1.0.0","min_ide_version":"999.0.0"}]}`))
+			return
+		}
+		http.Error(w, "lookup reached", http.StatusNotFound)
+	}))
+	defer server.Close()
+	client := NewClient(server.URL).WithHostReleaseChannel("nightly")
+	versions, err := client.GetPluginVersions(context.Background(), "plugin", "stable")
+	if err != nil || len(versions) != 1 || !versions[0].Compatible || versions[0].CompatibilityReason != "" {
+		t.Fatalf("nightly version discovery: %#v, %v", versions, err)
+	}
+	if _, err := client.DownloadPlugin(context.Background(), "plugin", "1.0.0"); err == nil {
+		t.Fatal("expected lookup error")
+	}
+}
+
 func TestDiscoveryDoesNotRelaxExactInstallLookup(t *testing.T) {
 	exactRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

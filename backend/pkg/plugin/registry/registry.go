@@ -231,7 +231,11 @@ func (t *compatibilityTransport) roundTrip(req *http.Request) (*http.Response, e
 	}
 	clone := req.Clone(req.Context())
 	query := clone.URL.Query()
-	query.Set("ide_version", version.CompatibilityVersion())
+	if t.owner != nil && t.owner.HostReleaseChannel() == "nightly" {
+		query.Set("ignore_ide_compatibility", "true")
+	} else {
+		query.Set("ide_version", version.CompatibilityVersion())
+	}
 	discovery, _ := req.Context().Value(versionDiscoveryKey{}).(*versionDiscovery)
 	if discovery != nil && req.Method == http.MethodGet && strings.HasSuffix(req.URL.Path, "/versions") {
 		query.Set("include_incompatible", "true")
@@ -406,7 +410,10 @@ func (c *Client) GetPluginVersions(ctx context.Context, pluginID, channel string
 		trace.SpanFromContext(ctx).AddEvent("page",
 			trace.WithAttributes(attribute.Int("page", opts.Page), attribute.Int("items", len(result.Items))))
 		for _, v := range result.Items {
-			reason := compatibilityReason(v.MinIDEVersion, v.MaxIDEVersion)
+			reason := ""
+			if c.HostReleaseChannel() != "nightly" {
+				reason = compatibilityReason(v.MinIDEVersion, v.MaxIDEVersion)
+			}
 			versions = append(versions, VersionInfo{
 				Version:             v.Version,
 				Channel:             v.Channel,
