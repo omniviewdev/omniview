@@ -17,16 +17,4 @@
   background: var(--ov-color-bg-base);
 }
 .confirmation label { display: block; margin: 12px 0 8px; }
-.confirmation input {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 6px;
-  padding: 8px;
-  border: 1px solid var(--ov-color-border-default);
-  border-radius: 4px;
-  background: var(--ov-color-bg-surface);
-  color: var(--ov-color-fg-default);
-}
-.confirmation input:focus-visible { outline: 2px solid var(--ov-color-border-focus); outline-offset: 2px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
