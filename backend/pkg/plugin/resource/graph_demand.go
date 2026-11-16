@@ -231,6 +231,12 @@ type graphDemand struct {
 	order                []string
 	relatedLimit         int
 	declarationsRevision string
+	// providerOnly records that a matched declaration has no Extractor and no
+	// extractor-backed declaration describes it from the other end, so only the
+	// provider could resolve it; computed records that a matched declaration is
+	// evaluated. Both are rebuilt by every evaluation.
+	providerOnly bool
+	computed     bool
 }
 
 type graphIndexedMember struct {
@@ -437,13 +443,21 @@ func (d *graphDemand) expand(ctx context.Context, nodes []graph.GraphNode, direc
 					scope = node.Reference.Address.Scope
 				}
 				if declaration.Extractor == nil {
-					return resourcev2.NewError("UNSUPPORTED", "Graph declaration requires provider-side relationship resolution.")
+					// A nil Extractor leaves resolution to the provider; it is not an
+					// instruction for the host to scan. Like Indexer, the host computes
+					// edges only from extractors, so the row neither acquires a
+					// population nor fails the query.
+					if !d.extractedInverse(sourceType, declaration) {
+						d.providerOnly = true
+					}
+					continue
 				}
 				switch declaration.Extractor.Method {
 				case "fieldPath", "labelSelector", "labelSelectorObject":
 				default:
 					return resourcev2.NewError("UNSUPPORTED", "Graph declaration extractor is not supported.")
 				}
+				d.computed = true
 				if err := d.addTarget(ctx, sourceType, scope); err != nil {
 					return err
 				}
@@ -466,6 +480,21 @@ func (d *graphDemand) expand(ctx context.Context, nodes []graph.GraphNode, direc
 		}
 	}
 	return nil
+}
+
+// extractedInverse reports whether a declaration on the target type points back
+// at sourceType with the same relationship type and an Extractor. It describes
+// the same relationship from the other end, so the edges of a resolve-only row
+// are computed from it whenever a query reaches either end. The inverse may point
+// the other way (a Pod runs_on a Node, where the Node row reads "runs Pods"); its
+// edges then arrive on the other side of the query.
+func (d *graphDemand) extractedInverse(sourceType string, declaration resourcev2.RelationshipDescriptor) bool {
+	for _, inverse := range d.declarations[declaration.TargetType] {
+		if inverse.Extractor != nil && inverse.TargetType == sourceType && inverse.Type == declaration.Type {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *graphDemand) acquire(ctx context.Context) error {
@@ -808,6 +837,7 @@ func (d *graphDemand) evaluate(ctx context.Context) (graphQueryResult, error) {
 	d.selected = make(map[string][]resourcev2.RelationshipDescriptor)
 	d.declarers, d.allDeclarers = make(map[string]bool), make(map[string]bool)
 	d.selectorDemands = nil
+	d.providerOnly, d.computed = false, false
 	root := graph.GraphNode{PluginID: d.request.PluginID, Route: d.request.Route, Reference: d.request.Reference}
 	upDepth, downDepth := d.request.depths()
 	up, down := []graph.GraphNode{root}, []graph.GraphNode{root}
@@ -863,6 +893,11 @@ func (d *graphDemand) evaluate(ctx context.Context) (graphQueryResult, error) {
 			break
 		}
 	}
+	if d.providerOnly && !d.computed {
+		// Every matched declaration is resolved by the provider alone, so an empty
+		// edge list would be indistinguishable from "no relationships".
+		return graphQueryResult{}, resourcev2.NewError("UNSUPPORTED", "Graph declaration requires provider-side relationship resolution.")
+	}
 	if observed := d.indexed[root.Key()].header; observed != nil {
 		if root.Reference.Incarnation != nil && !sameIncarnation(root.Reference.Incarnation, observed.reference.Incarnation) {
 			return graphQueryResult{}, resourcev2.NewError("RESET_REQUIRED", "Graph root incarnation retired.")
@@ -885,6 +920,15 @@ func (d *graphDemand) evaluate(ctx context.Context) (graphQueryResult, error) {
 	result, err := d.service.graphResult(ctx, g, d.request, d.relatedLimit)
 	if err != nil {
 		return graphQueryResult{}, err
+	}
+	if d.providerOnly {
+		// Relationships only the provider can resolve may be missing. Related and
+		// subgraph results have the only truncation signal; tree and chain results
+		// have none and carry the computed edges alone.
+		result.truncated = true
+		if result.Subgraph != nil {
+			result.Subgraph.Truncated = true
+		}
 	}
 	if err := d.current(ctx); err != nil {
 		return graphQueryResult{}, err

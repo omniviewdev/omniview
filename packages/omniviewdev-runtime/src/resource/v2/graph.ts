@@ -26,7 +26,7 @@ export interface RelatedRequest {
 }
 export interface RelatedResult {
   edges: GraphEdge[];
-  /** Only an explicitly bounded request may return a successful truncated result. */
+  /** An explicit limit may truncate the result; so may relationships only the provider can resolve. */
   truncated: boolean;
 }
 
