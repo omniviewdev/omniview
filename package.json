@@ -10,7 +10,7 @@
     "build:dev": "vite build --minify false --mode development",
     "bundle:yaml-worker": "node scripts/bundle-yaml-worker.mjs",
     "postinstall": "pnpm run bundle:yaml-worker",
-    "lint": "eslint ui bench packages e2e/tests e2e/playwright.config.ts --report-unused-disable-directives && pnpm lint:ui-policy",
+    "lint": "eslint ui ui-next bench packages e2e/tests e2e/playwright.config.ts --report-unused-disable-directives && pnpm lint:ui-policy",
     "lint:ui-policy": "node scripts/ui-audit/check.mjs",
     "test:ui-policy": "node --test scripts/ui-audit/check.test.mjs",
     "preview": "vite preview",

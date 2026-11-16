@@ -25,8 +25,25 @@ if (selectedRoots && !ownedVitePort) {
   throw new Error('Managed host Vite requires its owned WAILS_VITE_PORT');
 }
 
+// One input picks the frontend a build ships: OMNIVIEW_UI. `current` is the shell in ui/ and is what
+// stable and nightly build: unset means `current`, and desktop-build.yml passes it explicitly. `next`
+// is the new tree in ui-next/, passed only by the feature-ui-next channel build
+// (.github/workflows/feature-channel.yaml). A `next` build serves and emits ui-next/ alone: its
+// index.html becomes dist/index.html, which the host already serves at `/`.
+// Vitest keeps the whole repository as its root whatever the value.
+const uiFlavour = process.env.OMNIVIEW_UI || 'current';
+if (uiFlavour !== 'current' && uiFlavour !== 'next') {
+  throw new Error(`OMNIVIEW_UI must be "current" or "next", got "${uiFlavour}"`);
+}
+const uiNextRoot = uiFlavour === 'next' && !process.env.VITEST ? path.join(__dirname, 'ui-next') : undefined;
+const buildOutputDirectory = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dist';
+// The Wails plugin resolves this specifier from the root in the dev server but from the working
+// directory in a build, so it cannot be relative while the root moves into ui-next/.
+const wailsBindings = path.join(__dirname, 'packages/omniviewdev-runtime/src/bindings').split(path.sep).join('/');
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  root: uiNextRoot,
   // Source transforms must not recompile generated optimized dependencies.
   cacheDir: ownedViteCacheDirectory
     ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite')
@@ -39,6 +56,7 @@ export default defineConfig({
     css: false,
     include: [
       'ui/**/*.{spec,test}.{ts,tsx}',
+      'ui-next/**/*.{spec,test}.{ts,tsx}',
       'packages/omniviewdev-runtime/src/telemetry/**/*.{spec,test}.{ts,tsx}',
       'packages/omniviewdev-runtime/src/context/plugins/PluginContextProvider.test.tsx',
       'packages/omniviewdev-runtime/src/hooks/connection/useConnectionMetadata.test.tsx',
@@ -46,7 +64,10 @@ export default defineConfig({
     ],
   },
   build: {
-    outDir: process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dist',
+    // Vite resolves outDir against the root, and dist/ is not inside ui-next/.
+    outDir: uiNextRoot ? path.resolve(__dirname, buildOutputDirectory) : buildOutputDirectory,
+    // Outside its root Vite leaves outDir alone; stale stable chunks must not ship in a channel build.
+    emptyOutDir: uiNextRoot ? true : undefined,
     minify: false,
     sourcemap: false,
   },
@@ -103,10 +124,10 @@ export default defineConfig({
     },
     react({
       // Linked package dist files are already compiled; keep app and benchmark sources live.
-      include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
+      include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|ui-next[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
       babel: { plugins: [['babel-plugin-react-compiler', { target: '19' }]] },
     }),
-    wails('./packages/omniviewdev-runtime/src/bindings'),
+    wails(wailsBindings),
     {
       name: 'optional-local-react-devtools',
       transformIndexHtml(html, ctx) {
