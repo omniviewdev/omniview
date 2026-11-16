@@ -182,12 +182,13 @@ func (c *Catalog) Observe(key ConnectionKey, catalog resourcev2.Catalog) *Snapsh
 
 // Schema access has no native operation capability. Identity dimensions and the
 // exact selected format remain part of admission; presentation does not. A
-// changed declared environment is another backing target, as a changed hint is.
+// declared environment that stops being continuous (resourcev2.EnvironmentContinuous)
+// is another backing target, as a changed hint is.
 func sameTargetContract(a, b resourcev2.ResourceType) bool {
 	return a.Type == b.Type && sameDimensions(a.IdentityDimensions, b.IdentityDimensions) &&
 		sameDimensions(a.QueryDimensions, b.QueryDimensions) &&
 		reflect.DeepEqual(a.NativeAuthorityHint, b.NativeAuthorityHint) &&
-		reflect.DeepEqual(a.Environment, b.Environment)
+		resourcev2.EnvironmentContinuous(a.Environment, b.Environment)
 }
 
 func sameDimensions(a, b []resourcev2.Dimension) bool {
@@ -273,9 +274,7 @@ func cloneResourceType(t resourcev2.ResourceType) resourcev2.ResourceType {
 	if t.NativeAuthorityHint != nil {
 		out.NativeAuthorityHint = new(*t.NativeAuthorityHint)
 	}
-	if t.Environment != nil {
-		out.Environment = new(*t.Environment)
-	}
+	out.Environment = slices.Clone(t.Environment)
 	return out
 }
 
