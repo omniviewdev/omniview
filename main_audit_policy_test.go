@@ -247,7 +247,6 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		"github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService.StartResourceAction",
 		// The MCP relay: its bearer token, its approvals, its listener.
 		mcp + "GetConfig",
-		mcp + "RevealToken",
 		mcp + "CopyClientSetup",
 		mcp + "RotateToken",
 		mcp + "ResolveConfirmation",

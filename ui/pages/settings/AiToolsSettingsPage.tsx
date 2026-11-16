@@ -8,7 +8,6 @@ import Icon from '@/components/icons/Icon';
 import {
   GLOBAL_SCOPE,
   useMcpRelay,
-  useRevealedMcpToken,
   type McpClientSetup,
   type McpConnectionPolicyView,
   type McpScope,
@@ -77,12 +76,16 @@ const scopeFromKey = (key: string): McpScope => {
   return { pluginID, connectionID };
 };
 
-const claudeCommand = (endpoint: string, token: string) =>
-  `claude mcp add --transport http omniview ${endpoint} --header "Authorization: Bearer ${token}"`;
+// The page never holds the bearer token: previews show a placeholder and Copy
+// asks the host to put the real text on the clipboard.
+const TOKEN_MASK = '••••••••••••';
 
-const jsonSnippet = (endpoint: string, token: string) =>
+const claudeCommand = (endpoint: string) =>
+  `claude mcp add --transport http omniview ${endpoint} --header "Authorization: Bearer <token>"`;
+
+const jsonSnippet = (endpoint: string) =>
   JSON.stringify(
-    { mcpServers: { omniview: { type: 'http', url: endpoint, headers: { Authorization: `Bearer ${token}` } } } },
+    { mcpServers: { omniview: { type: 'http', url: endpoint, headers: { Authorization: 'Bearer <token>' } } } },
     null,
     2,
   );
@@ -93,8 +96,6 @@ const AiToolsSettingsPage: React.FC = () => {
   const relay = useMcpRelay(scope);
   const { show: confirm } = useConfirmationModal();
   const { notify } = useNotifications();
-  const [tokenVisible, setTokenVisible] = React.useState(false);
-  const token = useRevealedMcpToken(tokenVisible);
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const [presetName, setPresetName] = React.useState('');
   const [toolSearch, setToolSearch] = React.useState('');
@@ -285,14 +286,7 @@ const AiToolsSettingsPage: React.FC = () => {
             </div>
             <div className={styles.Row}>
               <Text size='sm'>Token:</Text>
-              <Text size='sm' className={styles.ToolName}>
-                {tokenVisible ? token ?? '' : '••••••••••••'}
-              </Text>
-              <Button size='sm' variant='ghost' onClick={() => {
-                setTokenVisible((v) => !v); 
-              }}>
-                {tokenVisible ? 'Hide' : 'Reveal'}
-              </Button>
+              <Text size='sm' className={styles.ToolName}>{TOKEN_MASK}</Text>
               <Button size='sm' variant='ghost' disabled={!config} onClick={() => {
                 copy('Token', 'token'); 
               }}>
@@ -326,7 +320,7 @@ const AiToolsSettingsPage: React.FC = () => {
                     Copy command
                   </Button>
                 </div>
-                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint, token ?? '<token>')}</pre>
+                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint)}</pre>
                 <div className={styles.Row}>
                   <Text size='xs' className={styles.Muted}>JSON (mcpServers)</Text>
                   <Button size='sm' variant='ghost' onClick={() => {
@@ -335,7 +329,7 @@ const AiToolsSettingsPage: React.FC = () => {
                     Copy JSON
                   </Button>
                 </div>
-                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint, token ?? '<token>')}</pre>
+                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint)}</pre>
               </div>
             )}
           </Card>

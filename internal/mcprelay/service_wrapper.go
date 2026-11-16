@@ -32,8 +32,8 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 }
 
 // ConfigView is the server part of the settings page. It carries no
-// credential: the bearer token reaches the page only through RevealToken and
-// the clipboard only through CopyClientSetup.
+// credential: the bearer token never reaches the page, which shows a mask and
+// asks CopyClientSetup to put it on the clipboard.
 type ConfigView struct {
 	Enabled                   bool     `json:"enabled"`
 	Port                      int      `json:"port"`
@@ -112,17 +112,6 @@ func (s *ServiceWrapper) GetConfig() ConfigView {
 	}
 }
 
-// RevealToken returns the bearer token for the settings page's Reveal button.
-// It is the only method that hands the token to JavaScript. The settings page
-// imports this binding by a host-only path; no module shared with plugins may
-// export it.
-func (s *ServiceWrapper) RevealToken() string {
-	r := s.Relay
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.cfg.Token
-}
-
 // The setups CopyClientSetup can put on the clipboard.
 const (
 	// ClientSetupToken is the bare bearer token.
@@ -134,8 +123,9 @@ const (
 )
 
 // CopyClientSetup puts the bearer token, or a client setup that embeds it, on
-// the system clipboard. The text is built and copied here, so the settings
-// page can offer Copy without holding the token.
+// the system clipboard. The text is built and copied here and nothing is
+// returned: no bound method hands the token to JavaScript, so the settings
+// page offers Copy without ever holding it.
 func (s *ServiceWrapper) CopyClientSetup(kind string) error {
 	r := s.Relay
 	r.mu.Lock()

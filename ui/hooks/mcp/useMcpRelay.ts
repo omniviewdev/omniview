@@ -18,7 +18,6 @@ export type McpClientSetup = 'token' | 'claude' | 'json';
 export const GLOBAL_SCOPE: McpScope = { pluginID: '', connectionID: '' };
 
 const ROOT_KEY = ['mcp'];
-const TOKEN_KEY = [...ROOT_KEY, 'token'];
 
 /**
  * State and mutations of the MCP relay (Settings → AI Tools).
@@ -162,28 +161,4 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     setConnectionAccess,
     copyClientSetup,
   };
-};
-
-/**
- * The bearer token, held only while `visible` (the Reveal button on the AI
- * Tools page). It is not part of the config query: hiding it, or leaving the
- * page, drops it from the cache. Rotating the token invalidates the `['mcp']`
- * key, which refetches a visible token.
- */
-export const useRevealedMcpToken = (visible: boolean): string | undefined => {
-  const queryClient = useQueryClient();
-  const { data } = useQuery({
-    queryKey: TOKEN_KEY,
-    queryFn: async () => McpRelayClient.RevealToken(),
-    enabled: visible,
-    gcTime: 0,
-  });
-
-  useEffect(() => {
-    if (!visible) {
-      queryClient.removeQueries({ queryKey: TOKEN_KEY, exact: true });
-    }
-  }, [queryClient, visible]);
-
-  return visible ? data : undefined;
 };

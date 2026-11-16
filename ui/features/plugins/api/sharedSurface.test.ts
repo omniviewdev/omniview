@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * binding exported from them is a binding every plugin can call.
  *
  * The MCP relay is host-only. Its consent calls answer a pending agent
- * request and its token calls hand out the bearer credential. The host's own
+ * request and its client-setup call puts the bearer credential on the clipboard. The host's own
  * approval dialog and settings page import the binding by a path that is not
  * in the shared list.
  */
@@ -17,7 +17,6 @@ const RELAY_NAMES = [
   'McpRelayClient',
   'ResolveConfirmation',
   'ListPendingConfirmations',
-  'RevealToken',
   'CopyClientSetup',
 ] as const;
 

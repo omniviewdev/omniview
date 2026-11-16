@@ -11,8 +11,8 @@ import * as invocation$0 from "../../backend/pkg/invocation/models.js";
 
 /**
  * ConfigView is the server part of the settings page. It carries no
- * credential: the bearer token reaches the page only through RevealToken and
- * the clipboard only through CopyClientSetup.
+ * credential: the bearer token never reaches the page, which shows a mask and
+ * asks CopyClientSetup to put it on the clipboard.
  */
 export class ConfigView {
     "enabled": boolean;

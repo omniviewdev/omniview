@@ -30,23 +30,9 @@ func TestGetConfigDoesNotHandTheBearerTokenToJavaScript(t *testing.T) {
 	require.Equal(t, h.url, view.Endpoint)
 }
 
-func TestRevealTokenReturnsTheCurrentToken(t *testing.T) {
-	h := newHarness(t)
-	h.relay.mu.Lock()
-	token := h.relay.cfg.Token
-	h.relay.mu.Unlock()
-
-	require.Equal(t, token, h.service.RevealToken())
-
-	require.NoError(t, h.service.RotateToken())
-	rotated := h.service.RevealToken()
-	require.NotEmpty(t, rotated)
-	require.NotEqual(t, token, rotated)
-}
-
 func TestCopyClientSetupPutsTheSetupOnTheClipboard(t *testing.T) {
 	h := newHarness(t)
-	token := h.service.RevealToken()
+	token := relayToken(h.relay)
 	var copied []string
 	h.relay.clipboard = func(text string) bool {
 		copied = append(copied, text)
@@ -84,7 +70,7 @@ func TestCopyClientSetupPutsTheSetupOnTheClipboard(t *testing.T) {
 	// A rotated token is what is copied next.
 	require.NoError(t, h.service.RotateToken())
 	rotated := copyOf(ClientSetupToken)
-	require.Equal(t, h.service.RevealToken(), rotated)
+	require.Equal(t, relayToken(h.relay), rotated)
 	require.NotEqual(t, token, rotated)
 }
 
