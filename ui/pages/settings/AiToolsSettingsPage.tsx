@@ -8,6 +8,7 @@ import Icon from '@/components/icons/Icon';
 import {
   GLOBAL_SCOPE,
   useMcpRelay,
+  type McpClientSetup,
   type McpConnectionPolicyView,
   type McpScope,
   type McpToolView,
@@ -75,12 +76,16 @@ const scopeFromKey = (key: string): McpScope => {
   return { pluginID, connectionID };
 };
 
-const claudeCommand = (endpoint: string, token: string) =>
-  `claude mcp add --transport http omniview ${endpoint} --header "Authorization: Bearer ${token}"`;
+// The page never holds the bearer token: previews show a placeholder and Copy
+// asks the host to put the real text on the clipboard.
+const TOKEN_MASK = '••••••••••••';
 
-const jsonSnippet = (endpoint: string, token: string) =>
+const claudeCommand = (endpoint: string) =>
+  `claude mcp add --transport http omniview ${endpoint} --header "Authorization: Bearer <token>"`;
+
+const jsonSnippet = (endpoint: string) =>
   JSON.stringify(
-    { mcpServers: { omniview: { type: 'http', url: endpoint, headers: { Authorization: `Bearer ${token}` } } } },
+    { mcpServers: { omniview: { type: 'http', url: endpoint, headers: { Authorization: 'Bearer <token>' } } } },
     null,
     2,
   );
@@ -91,7 +96,6 @@ const AiToolsSettingsPage: React.FC = () => {
   const relay = useMcpRelay(scope);
   const { show: confirm } = useConfirmationModal();
   const { notify } = useNotifications();
-  const [tokenVisible, setTokenVisible] = React.useState(false);
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const [presetName, setPresetName] = React.useState('');
   const [toolSearch, setToolSearch] = React.useState('');
@@ -152,8 +156,8 @@ const AiToolsSettingsPage: React.FC = () => {
     (c) => c.pluginID === scope.pluginID && c.connectionID === scope.connectionID,
   );
 
-  const copy = (label: string, text: string) => {
-    void navigator.clipboard.writeText(text).then(
+  const copy = (label: string, kind: McpClientSetup) => {
+    void relay.copyClientSetup(kind).then(
       () => {
         void notify({ title: `${label} copied`, severity: 'success' });
       },
@@ -282,16 +286,9 @@ const AiToolsSettingsPage: React.FC = () => {
             </div>
             <div className={styles.Row}>
               <Text size='sm'>Token:</Text>
-              <Text size='sm' className={styles.ToolName}>
-                {tokenVisible ? config?.token ?? '' : '••••••••••••'}
-              </Text>
-              <Button size='sm' variant='ghost' onClick={() => {
-                setTokenVisible((v) => !v); 
-              }}>
-                {tokenVisible ? 'Hide' : 'Reveal'}
-              </Button>
+              <Text size='sm' className={styles.ToolName}>{TOKEN_MASK}</Text>
               <Button size='sm' variant='ghost' disabled={!config} onClick={() => {
-                copy('Token', config?.token ?? ''); 
+                copy('Token', 'token'); 
               }}>
                 Copy token
               </Button>
@@ -318,21 +315,21 @@ const AiToolsSettingsPage: React.FC = () => {
                 <div className={styles.Row}>
                   <Text size='xs' className={styles.Muted}>Claude Code</Text>
                   <Button size='sm' variant='ghost' onClick={() => {
-                    copy('Claude command', claudeCommand(config.endpoint, config.token)); 
+                    copy('Claude command', 'claude'); 
                   }}>
                     Copy command
                   </Button>
                 </div>
-                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
+                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint)}</pre>
                 <div className={styles.Row}>
                   <Text size='xs' className={styles.Muted}>JSON (mcpServers)</Text>
                   <Button size='sm' variant='ghost' onClick={() => {
-                    copy('JSON config', jsonSnippet(config.endpoint, config.token)); 
+                    copy('JSON config', 'json'); 
                   }}>
                     Copy JSON
                   </Button>
                 </div>
-                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
+                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint)}</pre>
               </div>
             )}
           </Card>

@@ -82,6 +82,7 @@ type Relay struct {
 	app                  *application.App
 	authority            *Authority
 	showConfirmation     func() error
+	clipboard            func(text string) bool // nil: the Wails clipboard; tests replace it
 	logs                 ResourceLogsReader
 	metrics              ResourceMetricsReader
 	graph                ResourceGraphReader
@@ -255,6 +256,18 @@ func (r *Relay) emit(name string, payload any) {
 	if r.app != nil {
 		r.app.Event.Emit(name, payload)
 	}
+}
+
+// copyText puts text on the system clipboard from Go, so a value that must not
+// reach JavaScript can still be copied.
+func (r *Relay) copyText(text string) bool {
+	if r.clipboard != nil {
+		return r.clipboard(text)
+	}
+	if r.app == nil {
+		return false
+	}
+	return r.app.Clipboard.SetText(text)
 }
 
 // ---- listener ----

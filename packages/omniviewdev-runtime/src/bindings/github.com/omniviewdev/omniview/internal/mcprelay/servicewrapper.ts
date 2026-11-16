@@ -18,6 +18,16 @@ export function ApplyPreset(scope: $models.Scope, name: string): $CancellablePro
     return $Call.ByID(1112300727, scope, name);
 }
 
+/**
+ * CopyClientSetup puts the bearer token, or a client setup that embeds it, on
+ * the system clipboard. The text is built and copied here and nothing is
+ * returned: no bound method hands the token to JavaScript, so the settings
+ * page offers Copy without ever holding it.
+ */
+export function CopyClientSetup(kind: string): $CancellablePromise<void> {
+    return $Call.ByID(2499919951, kind);
+}
+
 export function DeleteUserPreset(name: string): $CancellablePromise<void> {
     return $Call.ByID(3545575747, name);
 }

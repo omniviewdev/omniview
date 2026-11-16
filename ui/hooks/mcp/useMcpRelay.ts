@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
 import { useNotifications, createErrorHandler } from '@omniviewdev/runtime';
-import { McpRelayClient } from '@omniviewdev/runtime/api';
+import { McpRelayClient } from './hostRelayClient';
 import type { mcprelay } from '@omniviewdev/runtime/models';
 
 export type McpScope = mcprelay.Scope;
@@ -11,6 +11,9 @@ export type McpToolView = mcprelay.ToolView;
 export type McpConnectionPolicyView = mcprelay.ConnectionPolicyView;
 export type McpPresetView = mcprelay.PresetView;
 export type McpPendingConfirmation = mcprelay.PendingConfirmation;
+
+/** What the host copies for the user. Go builds and copies the text, so it never reaches this window. */
+export type McpClientSetup = 'token' | 'claude' | 'json';
 
 export const GLOBAL_SCOPE: McpScope = { pluginID: '', connectionID: '' };
 
@@ -138,6 +141,8 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     ...mutationOptions('Failed to change the connection access'),
   });
 
+  const copyClientSetup = async (kind: McpClientSetup) => McpRelayClient.CopyClientSetup(kind);
+
   return {
     status,
     config,
@@ -154,5 +159,6 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     saveUserPreset,
     deleteUserPreset,
     setConnectionAccess,
+    copyClientSetup,
   };
 };

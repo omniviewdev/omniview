@@ -11,7 +11,8 @@ export * as HostProfiling from './bindings/github.com/omniviewdev/omniview/inter
 export * as ProcessInventory from './bindings/github.com/omniviewdev/omniview/internal/processinfo/service';
 export type { Process as InventoryProcess } from './bindings/github.com/omniviewdev/omniview/internal/processinfo/models';
 export * as UiInspection from './bindings/github.com/omniviewdev/omniview/internal/uiinspection/service';
-export * as McpRelayClient from './bindings/github.com/omniviewdev/omniview/internal/mcprelay/servicewrapper';
+// The MCP relay binding is deliberately not exported: this module is shared with plugins, and the
+// relay answers agent approvals and hands out the bearer token. See ui/hooks/mcp/hostRelayClient.ts.
 export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';
 export * as UIClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/servicewrapper';
 export * as DiagnosticsClient from './bindings/github.com/omniviewdev/omniview/backend/diagnostics/diagnosticsclient';

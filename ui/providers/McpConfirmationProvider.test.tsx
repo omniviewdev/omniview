@@ -13,7 +13,7 @@ const native = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@omniviewdev/runtime/api', () => ({
+vi.mock('@/hooks/mcp/hostRelayClient', () => ({
   McpRelayClient: {
     ListPendingConfirmations: native.listPending,
     ResolveConfirmation: native.resolve,

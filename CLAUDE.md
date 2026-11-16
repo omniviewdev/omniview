@@ -22,7 +22,7 @@ Use `GOWORK=off` for all Go commands — the module is not in the parent `go.wor
 
 ## UI
 
-The frontend is built on `@omniviewdev/base-ui` (with `ai-ui` and `editors`), published from the `omniviewdev/ui` repo. MUI, Emotion and the legacy `@omniviewdev/ui` package are gone, and the host no longer shares them with plugins: a plugin built against them (for example older marketplace releases of upstream plugins such as `omniview-plugin-aws`) fails to load. The plugin shared-deps list lives in `ui/features/plugins/api/shared_dependencies.ts` and `packages/omniviewdev-vite-plugin/src/sharedPackages.ts`; keep them in sync.
+The frontend is built on `@omniviewdev/base-ui` (with `ai-ui` and `editors`), published from the `omniviewdev/ui` repo. MUI, Emotion and the legacy `@omniviewdev/ui` package are gone, and the host no longer shares them with plugins: a plugin built against them (for example older marketplace releases of upstream plugins such as `omniview-plugin-aws`) fails to load. The plugin shared-deps list lives in `ui/features/plugins/api/shared_dependencies.ts` and `packages/omniviewdev-vite-plugin/src/sharedPackages.ts`; keep them in sync. The MCP relay binding (`McpRelayClient`) is host-only: import it from `ui/hooks/mcp/hostRelayClient.ts` and never export it from `packages/omniviewdev-runtime/src/api.ts` or any other shared module (`ui/features/plugins/api/sharedSurface.test.ts` fails if you do).
 
 ## Component composition
 

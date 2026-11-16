@@ -23,11 +23,12 @@ const mocks = vi.hoisted(() => ({
   confirmShow: vi.fn(),
   setPort: vi.fn(),
   saveUserPreset: vi.fn(),
+  copyClientSetup: vi.fn(),
   writeText: vi.fn(),
   listeners: new Map<string, (event: { data: unknown }) => void>(),
 }));
 
-vi.mock('@omniviewdev/runtime/api', () => ({
+vi.mock('@/hooks/mcp/hostRelayClient', () => ({
   McpRelayClient: {
     GetStatus: mocks.getStatus,
     GetConfig: mocks.getConfig,
@@ -44,6 +45,7 @@ vi.mock('@omniviewdev/runtime/api', () => ({
     SetPluginEnabled: vi.fn(),
     SaveUserPreset: mocks.saveUserPreset,
     DeleteUserPreset: vi.fn(),
+    CopyClientSetup: mocks.copyClientSetup,
   },
 }));
 
@@ -118,7 +120,6 @@ describe('AiToolsSettingsPage', () => {
       enabled: true,
       port: 9590,
       endpoint: 'http://127.0.0.1:9590/mcp',
-      token: 'secret-token',
       blockConnectionsByDefault: false,
       globalPreset: 'read-only',
       userPresets: [],
@@ -140,6 +141,7 @@ describe('AiToolsSettingsPage', () => {
     mocks.setEnabled.mockReset().mockResolvedValue(undefined);
     mocks.setPort.mockReset().mockResolvedValue(undefined);
     mocks.saveUserPreset.mockReset().mockResolvedValue(undefined);
+    mocks.copyClientSetup.mockReset().mockResolvedValue(undefined);
     mocks.confirmShow.mockReset();
     mocks.writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: mocks.writeText }, configurable: true });
@@ -280,17 +282,33 @@ describe('AiToolsSettingsPage', () => {
     expect(mocks.setConnectionAccess).toHaveBeenCalledWith('kubernetes', 'prod', 'blocked');
   });
 
-  it('copies the Claude command with the token', async () => {
+  it.each([
+    ['Copy token', 'token'],
+    ['Copy command', 'claude'],
+    ['Copy JSON', 'json'],
+  ])('%s asks the host to copy the %s setup and writes nothing to the clipboard itself', async (name, kind) => {
     renderPage();
     await screen.findByRole('group', { name: 'Kubernetes' });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy command' }));
+      fireEvent.click(screen.getByRole('button', { name }));
     });
 
-    expect(mocks.writeText).toHaveBeenCalledWith(
-      'claude mcp add --transport http omniview http://127.0.0.1:9590/mcp --header "Authorization: Bearer secret-token"',
-    );
+    expect(mocks.copyClientSetup).toHaveBeenCalledExactlyOnceWith(kind);
+    expect(mocks.writeText).not.toHaveBeenCalled();
+  });
+
+  it('never holds the token: it shows a mask, previews a placeholder and offers no reveal', async () => {
+    renderPage();
+    await screen.findByRole('group', { name: 'Kubernetes' });
+
+    expect(screen.getByText('••••••••••••')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hide' })).not.toBeInTheDocument();
+    expect(screen.getByText(
+      'claude mcp add --transport http omniview http://127.0.0.1:9590/mcp --header "Authorization: Bearer <token>"',
+    )).toBeInTheDocument();
+    expect(screen.getAllByText(/Bearer <token>/)).toHaveLength(2);
   });
 
   it('asks for confirmation before applying a preset', async () => {

@@ -10,13 +10,14 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as invocation$0 from "../../backend/pkg/invocation/models.js";
 
 /**
- * ConfigView is the server part of the settings page.
+ * ConfigView is the server part of the settings page. It carries no
+ * credential: the bearer token never reaches the page, which shows a mask and
+ * asks CopyClientSetup to put it on the clipboard.
  */
 export class ConfigView {
     "enabled": boolean;
     "port": number;
     "endpoint": string;
-    "token": string;
     "blockConnectionsByDefault": boolean;
     "globalPreset": string;
     "userPresets": string[];
@@ -31,9 +32,6 @@ export class ConfigView {
         }
         if (!("endpoint" in $$source)) {
             this["endpoint"] = "";
-        }
-        if (!("token" in $$source)) {
-            this["token"] = "";
         }
         if (!("blockConnectionsByDefault" in $$source)) {
             this["blockConnectionsByDefault"] = false;
@@ -52,10 +50,10 @@ export class ConfigView {
      * Creates a new ConfigView instance from a string or object.
      */
     static createFrom($$source: any = {}): ConfigView {
-        const $$createField6_0 = $$createType0;
+        const $$createField5_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("userPresets" in $$parsedSource) {
-            $$parsedSource["userPresets"] = $$createField6_0($$parsedSource["userPresets"]);
+            $$parsedSource["userPresets"] = $$createField5_0($$parsedSource["userPresets"]);
         }
         return new ConfigView($$parsedSource as Partial<ConfigView>);
     }
