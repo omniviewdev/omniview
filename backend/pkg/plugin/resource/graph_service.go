@@ -22,6 +22,7 @@ type GraphService struct {
 	mu                sync.Mutex
 	observations      map[graphObservationKey]*graphObservation
 	closed            map[graphObservationKey]struct{}
+	closedOrder       []graphObservationKey
 	windows           map[invocation.WindowIdentity]*graphWindow
 }
 

@@ -201,6 +201,7 @@ func (s *GraphService) openObservation(ctx, lifetime context.Context, request Ho
 			owned++
 		}
 	}
+	s.evictClosedLocked()
 	if owned >= maxGraphObservationsPerOwner || len(s.observations)+len(s.closed) >= maxGraphObservationTokens {
 		s.mu.Unlock()
 		return HostGraphObservationOpened{}, resourcev2.NewError("RESOURCE_LIMIT", "Graph observation limit reached.")
@@ -314,6 +315,9 @@ func (s *GraphService) closeObservation(ctx context.Context, id string) error {
 	key := graphObservationKey{owner: request.Principal().Owner(), token: id}
 	s.mu.Lock()
 	observation := s.observations[key]
+	if _, exists := s.closed[key]; !exists && observation == nil {
+		s.evictClosedLocked()
+	}
 	if _, exists := s.closed[key]; !exists && len(s.observations)+len(s.closed) >= maxGraphObservationTokens && observation == nil {
 		s.mu.Unlock()
 		return resourcev2.NewError("RESOURCE_LIMIT", "Graph observation retirement limit reached.")
@@ -324,7 +328,7 @@ func (s *GraphService) closeObservation(ctx context.Context, id string) error {
 			return resourcev2.NewError("RESOURCE_LIMIT", "Graph observation retirement metadata is saturated.")
 		}
 	}
-	s.closed[key] = struct{}{}
+	s.tombstoneLocked(key)
 	delete(s.observations, key)
 	s.mu.Unlock()
 	if observation != nil {
@@ -351,7 +355,7 @@ func (s *GraphService) retireObservation(observation *graphObservation) {
 	s.mu.Lock()
 	if s.observations[observation.key] == observation {
 		delete(s.observations, observation.key)
-		s.closed[observation.key] = struct{}{}
+		s.tombstoneLocked(observation.key)
 	}
 	s.mu.Unlock()
 	observation.cancel()
@@ -364,6 +368,30 @@ func (s *GraphService) retireObservation(observation *graphObservation) {
 	}
 	if !active {
 		observation.releaseReservation()
+	}
+}
+
+// tombstoneLocked remembers a closed token so a late open cannot resurrect it.
+func (s *GraphService) tombstoneLocked(key graphObservationKey) {
+	if _, exists := s.closed[key]; exists {
+		return
+	}
+	s.closed[key] = struct{}{}
+	s.closedOrder = append(s.closedOrder, key)
+}
+
+// evictClosedLocked forgets the oldest closed tokens while live observations and
+// remembered tokens fill the token budget, so closed tokens never exhaust it. A
+// token is only guarded against the short open-after-close race, which ends long
+// before a whole budget of newer tokens has closed. Each remembered token holds
+// graphObservationProofBytes of metadata, released with it.
+func (s *GraphService) evictClosedLocked() {
+	for len(s.observations)+len(s.closed) >= maxGraphObservationTokens && len(s.closedOrder) > 0 {
+		oldest := s.closedOrder[0]
+		s.closedOrder[0] = graphObservationKey{}
+		s.closedOrder = s.closedOrder[1:]
+		delete(s.closed, oldest)
+		s.ctrl.graphMetadata.release(graphObservationProofBytes)
 	}
 }
 
