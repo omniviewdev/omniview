@@ -42,6 +42,7 @@ jobs:
     with:
       version: ${{ needs.resolve.outputs.version }}
       channel: ${{ needs.resolve.outputs.channel }}
+      ui: ${{ needs.resolve.outputs.channel == 'feature-ui-next' && 'next' || 'current' }}
       development: ${{ 'true' }}
       inject-registry-key: true
       artifact-prefix: feature-

@@ -49,6 +49,7 @@ function transform(code, filename) {
 
 for (const filename of [
   'ui/components/SourcePanel.tsx',
+  'ui-next/components/SourcePanel.tsx',
   'packages/omniviewdev-runtime/src/components/SourcePanel.tsx',
   'bench/render/harness/SourcePanel.tsx',
   'bench/app/page/SourcePanel.tsx',

@@ -715,6 +715,7 @@ module.exports = [
     // Linked plugins lint their compiler-owned source in their own repositories.
     files: [
       'ui/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
+      'ui-next/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
       'bench/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
       'packages/*/src/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}',
     ],
@@ -730,7 +731,7 @@ module.exports = [
   },
   {
     ...sharedConfig,
-    files: ['ui/**/*.{ts,tsx}'],
+    files: ['ui/**/*.{ts,tsx}', 'ui-next/**/*.{ts,tsx}'],
     languageOptions: {
       ...sharedConfig.languageOptions,
       parserOptions: {
