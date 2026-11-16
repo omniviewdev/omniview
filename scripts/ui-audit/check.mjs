@@ -13,7 +13,7 @@ const sourceExtension = /\.(?:[cm]?[jt]sx?|css)$/i;
 export function isUIFile(file) {
   return sourceExtension.test(file) && !/(?:^|\/)(?:node_modules|dist|build|coverage|__tests__|__fixtures__|generated|bindings)(?:\/|$)/.test(file)
     && !/(?:\.(?:test|spec|stories|story|generated|bundle)|\.d)\.[^.]+$/.test(file)
-    && !/^(?:packages\/(?:base-ui|ai-ui|editors|omniviewdev-ui)\/|ui\/providers\/monaco\/.*\.worker\.)/.test(file);
+    && !/^(?:packages\/(?:base-ui|ai-ui|editors)\/|ui\/providers\/monaco\/.*\.worker\.)/.test(file);
 }
 
 function inspect(file, text) {
