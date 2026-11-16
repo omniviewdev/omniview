@@ -414,6 +414,14 @@ func TestAdvertisedConnectionPolicyWithdrawalRetiresOnlyPolicyInterest(t *testin
 	_, err = ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	native := sourceNextOpen(t, provider.scriptedSourceProvider)
+	// sourceNextOpen only proves the provider was asked to open: the policy
+	// interest is recorded in connectionInterests a moment later, on the
+	// connection-start goroutine. Withdrawing before that finds nothing to retire.
+	require.Eventually(t, func() bool {
+		ctrl.sources.mu.Lock()
+		defer ctrl.sources.mu.Unlock()
+		return len(ctrl.sources.connectionInterests) == 1
+	}, 5*time.Second, time.Millisecond)
 	target := admittedReadTarget(t, ctrl, "p1", "conn-1", "native::Pod")
 	view := sourceTestOpen(t, ctrl, target)
 	require.Empty(t, provider.opens, "same native principal/exact selection may share policy source")

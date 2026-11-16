@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -15,10 +14,10 @@ import (
 func TestH3OperationSpanClassifiesAndRedacts(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
-	previous := otel.GetTracerProvider()
-	otel.SetTracerProvider(provider)
+	previous := tracer
+	tracer = provider.Tracer("test")
 	t.Cleanup(func() {
-		otel.SetTracerProvider(previous)
+		tracer = previous
 		_ = provider.Shutdown(context.Background())
 	})
 	_, end := h3StartOperation(context.Background(), "resource.test")
