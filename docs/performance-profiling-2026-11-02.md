@@ -668,11 +668,11 @@ built an extracted baseline source tree with only the same benchmark fixtures
 copied in. That temporary source tree was removed afterward. Instrumented
 latencies are excluded from the matched uninstrumented timing table.
 
-The finite batches demonstrate queue behavior below capacity, not sustained
-capacity backpressure or native desktop CPU. Full issue acceptance still requires
-review of the measured changed-input allocation tradeoff and these surface
-limits; the implementation does not silently widen its claim to live transport,
-rendering, or source-coordinator changes.
+The finite batches alone demonstrate queue behavior below capacity. The controlled
+backend follow-up below adds repeated capacity backpressure evidence. Full issue
+acceptance still requires review of the changed-input allocation tradeoff and
+desktop surface limits; neither experiment claims live transport, rendering, or
+source-coordinator changes.
 
 For SDK-v2 consumers, carry forward canonical identity and optional incarnation
 separately from route ownership. Bind dependency witnesses to admitted catalog,
@@ -680,6 +680,108 @@ binding, and source-generation lifetimes. Retain all declared selector, field,
 and scope inputs; invalidate on deletion and retirement. Do not infer ownership
 from labels, retain complete resource bodies, introduce an SDK contract here,
 or move dependency construction into a new shared-dispatcher stage.
+
+### Sustained capacity follow-up
+
+The stacked follow-up starts at PR #392 revision
+`8fd85432ced3c888b79e50250d2e9202350725d5`. It changes only tests, benchmarks,
+and this evidence document. It uses the current
+`observeValidatedSourceRecord` ingress in `source_apply.go`; the retired v1
+sink is not part of the experiment. Production ingress and dispatcher behavior
+remain unchanged.
+
+`TestIndexInputsSustainedPressure` uses 300 and 3,000 canonical resources.
+Each workload submits 15,000 observations; recreation also submits 15,000
+deletes with changed incarnation tokens. Workloads cover unchanged relationship
+inputs during status updates, changed labels, changed owner-reference fields,
+changed declared machine fields, and delete/recreate interleaving. Every source
+has two independently expected outgoing relationships, giving 600 or 6,000
+final edges.
+
+A test-only indexer gates the actual dispatcher consumer before the real graph
+indexer. The production channel keeps its 10,000-event capacity. At five
+checkpoints, spaced 1,000 delivered events apart, a registry wrapper acknowledges
+the next actual ingress mutation. The consumer holds one event, the queue holds
+10,000 accepted events, and the producer cannot complete the pending send. The
+test asserts that exact state before each release. Thus pressure repeatedly
+refills capacity across 4,000 consumer advances, rather than extrapolating
+from a finite below-capacity batch. No sleeps, queue replacement, production
+telemetry, or rate assumptions are used.
+
+Blocked-ingress timing spans the registry-mutation acknowledgement through that
+event's enqueue return. It includes scheduling and test synchronization overhead;
+it is not isolated runtime channel-block time or an artificial minimum stall
+target. Throughput includes controlled gates and the delivery journal. Benchmark
+timing and allocation accounting exclude fixture construction, precomputed
+records, and final invariant checks.
+
+The complete delivery journal must equal the independent expected event type,
+resource ID, and monotonic status sequence, including every recreation delete/add
+pair. A producer join followed by the real `Flush` proves eventual drain.
+Final checks cover registry population, old and current label memberships,
+incarnation tokens, both declared targets, and forward/reverse graph membership.
+Unchanged status updates must leave graph change notifications empty.
+
+`TestIndexInputsPressureGenerationRetirement` starts actual `OnPluginStop` while
+observation 10,002 holds the ingress generation read fence behind the full queue.
+The old generation's cancellation acknowledges retirement before the gate opens.
+Retirement cannot pass the pending ingress fence. After release, all 10,002
+observations drain in order, followed by exactly one cleanup delete per resource.
+Registry label memberships and outgoing graph edges become empty. A subsequent
+old-generation observation must fail without dispatch. Cleanup opens gates and
+joins producers and retirement before `Stop`; it does not treat `Stop` as callback
+cancellation or assume `Flush` covers future producer sends.
+
+Before adding the new fixture, a one-operation smoke of the existing benchmark
+reconfirmed its below-capacity baseline. Queue peaks for status, label, owner,
+and recreation were respectively 25, 119, 154, and 136 with 300 resources,
+and 22, 2,399, 2,387, and 4,541 with 3,000 resources. These single samples do
+not replace the earlier matched repeated comparison.
+
+Final verification used Go 1.26.1, darwin/arm64, Apple M5 Max, without race
+instrumentation for timing and allocations. The focused race run passed in
+85.309 seconds, including all ten workload/population combinations and concurrent
+generation retirement. The actual-ingress benchmark smoke passed in 5.447
+seconds. Each benchmark ran once, without warmup; these are capability receipts,
+not a statistically matched performance comparison.
+
+| Objects | Workload | ns/op | B/op | allocs/op | Blocked ingress ns/op | Events/s | Drain ns/op |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 300 | status | 78,601,458 | 74,658,600 | 1,049,889 | 250,043 | 190,851 | 8,318,125 |
+| 300 | label | 245,791,917 | 209,324,624 | 3,210,661 | 269,834 | 61,029 | 128,683,209 |
+| 300 | owner | 238,376,874 | 225,927,336 | 3,225,398 | 241,583 | 62,928 | 125,285,666 |
+| 300 | declared field | 244,872,125 | 226,166,984 | 3,240,392 | 329,915 | 61,258 | 118,101,292 |
+| 300 | recreate | 247,548,792 | 232,223,024 | 3,734,704 | 242,792 | 121,192 | 68,549,875 |
+| 3,000 | status | 83,516,500 | 74,651,456 | 1,049,862 | 264,001 | 179,618 | 7,344,125 |
+| 3,000 | label | 706,752,917 | 208,677,872 | 3,210,047 | 406,165 | 21,224 | 426,212,417 |
+| 3,000 | owner | 580,384,125 | 225,872,328 | 3,224,967 | 386,500 | 25,845 | 341,372,250 |
+| 3,000 | declared field | 581,217,083 | 226,111,720 | 3,239,963 | 462,667 | 25,808 | 342,063,625 |
+| 3,000 | recreate | 712,508,958 | 232,169,640 | 3,731,904 | 332,083 | 42,105 | 212,223,042 |
+
+Every row observed queue high water 10,000 and five saturation checkpoints.
+Non-recreation rows delivered 15,000 events; recreation delivered 30,000.
+Every final graph matched its independently expected 600 or 6,000 edges.
+Blocked-ingress values sum the five acknowledged pending sends, not every
+capacity stall in the run.
+
+Commands:
+
+```bash
+GOWORK=off go test ./backend/pkg/plugin/resource -run '^$' -bench '^BenchmarkIndexInputs$' -benchtime=1x -count=1
+GOWORK=off go test -race ./backend/pkg/plugin/resource -run 'TestIndexInputs(SustainedPressure|PressureGenerationRetirement)$' -count=1 -v -timeout=180s
+GOWORK=off go test ./backend/pkg/plugin/resource -run '^$' -bench '^BenchmarkIndexInputsPressure$' -benchtime=1x -count=1 -timeout=120s
+```
+
+The first new-fixture run failed expected-edge checks because its duplicate
+target bindings were ambiguous. The corrected fixture binds distinct admitted
+owner and machine types. Review also added an explicit pending-send return
+assertion before releasing each gate, followed by the final race and benchmark
+runs above. No production defect was demonstrated. The linker emitted warnings
+about objects built for macOS 27.0 while linking for 11.0; both checks passed.
+
+These are controlled in-process backend proofs, not desktop, native WebKit,
+provider transport, or live-cluster throughput acceptance. They do not close
+[host #214](https://github.com/omniviewdev/omniview/issues/214).
 
 ## Application diagnostics instrument catalogue
 
@@ -721,4 +823,3 @@ Wails v3.1 exposes no supported around-binding execution hook. Wails timing/coun
 instruments therefore have no observations; the UI must show unavailable rather
 than invent zeros. Backend operation timing is real, but is not end-to-end IPC
 or frontend rendering latency.
-
