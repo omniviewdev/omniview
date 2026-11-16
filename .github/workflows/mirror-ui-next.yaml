@@ -1,0 +1,90 @@
+name: Mirror main to feature/ui-next
+
+# `feature/ui-next` is a bot-kept copy of `main`. The channel tooling (resolve-channel in
+# feature-channel.yaml, and npm-publish.yml) only builds a branch named `feature/<slug>`, and the
+# `feature-ui-next` channel tracks `main`, so this job keeps that branch identical to `main` and then
+# starts a channel build on it. See docs/ui-next/channels.md.
+#
+# Nobody commits to `feature/ui-next`. A commit there stops the fast-forward and this job fails
+# until the branch is reset by hand.
+#
+# A ref moved with the workflow token does not trigger other workflows, except workflow_dispatch.
+# So the push to `feature/ui-next` never starts feature-channel.yaml (`push: feature/**`); this job
+# dispatches it on that branch instead. workflow_call would not do: a called workflow keeps the
+# caller's ref (`refs/heads/main`), and both resolve-channel and npm-publish.yml require
+# `refs/heads/feature/<slug>`.
+#
+# Until the update index lists `feature-ui-next` as active, the dispatched run resolves "not a
+# promoted release channel" and builds nothing.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# Serialise runs: a queued run is replaced by a newer one, and each run mirrors the current tip of main.
+concurrency:
+  group: mirror-ui-next
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Fast-forward feature/ui-next
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # create and advance refs/heads/feature/ui-next; main is only read
+      actions: write # dispatch feature-channel.yaml
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      EVENT: ${{ github.event_name }}
+      ATTEMPT: ${{ github.run_attempt }}
+      BRANCH: feature/ui-next
+      CHANNEL_WORKFLOW: feature-channel.yaml
+    steps:
+      - name: Fast-forward the mirror branch to main
+        id: mirror
+        shell: bash
+        run: |
+          # Mirror main as it is now, not the commit that started this run: a newer push may have landed
+          # while this run queued. The workflow token may only point a ref at a commit whose workflow
+          # files match the tip of a branch; the tip of main always does.
+          main_sha=$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)
+          mirror_sha=$(gh api "repos/$REPO/git/matching-refs/heads/$BRANCH" \
+            --jq "map(select(.ref == \"refs/heads/$BRANCH\")) | first | .object.sha // empty")
+
+          changed=false
+          if [ -z "$mirror_sha" ]; then
+            echo "$BRANCH does not exist; creating it at $main_sha"
+            gh api --method POST "repos/$REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$main_sha" --silent
+            changed=true
+          elif [ "$mirror_sha" = "$main_sha" ]; then
+            echo "$BRANCH is already at $main_sha"
+          elif refused=$(gh api --method PATCH "repos/$REPO/git/refs/heads/$BRANCH" -f sha="$main_sha" -F force=false --silent 2>&1); then
+            echo "fast-forwarded $BRANCH from $mirror_sha to $main_sha"
+            changed=true
+          else
+            echo "$refused" >&2
+            echo "::error title=$BRANCH was not fast-forwarded::GitHub refused to move $BRANCH from $mirror_sha to $main_sha (${refused//$'\n'/ }). Nothing was changed. If $BRANCH has commits that main lacks, reset it: git push --force-with-lease=$BRANCH:$mirror_sha origin origin/main:refs/heads/$BRANCH"
+            exit 1
+          fi
+
+          # A manual run or a re-run always starts the build, so it can repair a failed dispatch.
+          dispatch=$changed
+          if [ "$EVENT" = workflow_dispatch ] || [ "$ATTEMPT" -gt 1 ]; then
+            dispatch=true
+          fi
+          echo "dispatch=$dispatch" >> "$GITHUB_OUTPUT"
+          {
+            echo "main: \`$main_sha\`"
+            echo "$BRANCH: \`$(if [ "$changed" = true ]; then echo "$main_sha"; else echo "$mirror_sha"; fi)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start the channel build on the mirror branch
+        if: steps.mirror.outputs.dispatch == 'true'
+        shell: bash
+        run: gh workflow run "$CHANNEL_WORKFLOW" --repo "$REPO" --ref "$BRANCH"

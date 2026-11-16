@@ -1,5 +1,7 @@
 # Claude Code Guidelines
 
+New UI work (`ui-next/`, `packages/kit`): read `docs/ui-next/AGENTS.md` first.
+
 ## Wails Bindings
 
 **Always use the Taskfile task to generate bindings.** Never run `wails3 generate bindings` manually.
