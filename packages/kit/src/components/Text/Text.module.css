@@ -1,0 +1,40 @@
+@layer ov.components {
+  .root {
+    margin: 0;
+    font-family: var(--ov-font-ui);
+    font-synthesis: none;
+    letter-spacing: normal;
+  }
+
+  .root[data-ov-variant='heading'] {
+    font-size: var(--ov-fs-18);
+    font-weight: 600;
+    line-height: var(--ov-lh-24);
+  }
+
+  .root[data-ov-variant='title'] {
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+  }
+
+  .root[data-ov-variant='body'] {
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  .root[data-ov-variant='caption'] {
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  .root[data-ov-tone='default'] {
+    color: var(--ov-fg);
+  }
+
+  .root[data-ov-tone='muted'] {
+    color: var(--ov-fg-muted);
+  }
+}

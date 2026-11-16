@@ -6,6 +6,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { checkStylesheet, declaredLayerOrder } from '../packages/kit/scripts/stylesheet.ts';
+
 // OMNIVIEW_UI chooses the frontend a build ships (see vite.config.ts). Stable and nightly build `current`,
 // so their output must hold nothing from ui-next/; only the feature-ui-next channel builds `next`.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,7 +36,9 @@ test('the stable build output holds nothing from ui-next', async () => {
   assert.ok(files.includes('index.html'), `no stable frontend build at ${stable}; run pnpm build first`);
   assert.deepEqual(files.filter(file => file.toLowerCase().includes('ui-next')), []);
   for (const file of files.filter(name => /\.(?:html|js|css)$/.test(name))) {
-    assert.ok(!(await readFile(path.join(stable, file), 'utf8')).includes(marker), `${file} contains ${marker}`);
+    const content = await readFile(path.join(stable, file), 'utf8');
+    assert.ok(!content.includes(marker), `${file} contains ${marker}`);
+    assert.ok(!content.includes('@layer ov.tokens'), `${file} contains the kit stylesheet`);
   }
 });
 
@@ -55,6 +59,14 @@ test('OMNIVIEW_UI=next builds ui-next alone as the entry and replaces the output
       found ||= (await readFile(path.join(output, file), 'utf8')).includes(marker);
     }
     assert.ok(found, `no script renders ${marker}`);
+    // The kit's stylesheet comes first and declares the layer order once; the host entry's own rules sit inside those layers.
+    const styles = files.filter(file => file.endsWith('.css'));
+    assert.equal(styles.length, 1, 'the entry loads one stylesheet');
+    const layers = await readFile(path.join(root, 'packages/kit/src/styles/layers.css'), 'utf8');
+    assert.deepEqual(
+      checkStylesheet(await readFile(path.join(output, styles[0]), 'utf8'), declaredLayerOrder(layers)),
+      [],
+    );
   } finally {
     await rm(output, { recursive: true, force: true });
   }

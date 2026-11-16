@@ -731,7 +731,7 @@ module.exports = [
   },
   {
     ...sharedConfig,
-    files: ['ui/**/*.{ts,tsx}', 'ui-next/**/*.{ts,tsx}'],
+    files: ['ui/**/*.{ts,tsx}', 'ui-next/**/*.{ts,tsx}', 'packages/kit/{src,tokens,scripts}/**/*.{ts,tsx}'],
     languageOptions: {
       ...sharedConfig.languageOptions,
       parserOptions: {
@@ -786,4 +786,6 @@ module.exports = [
       '@typescript-eslint/no-confusing-void-expression': 'off',
     },
   },
+  // Guards for the new trees: closed props, no static inline style, no old library, no run-time custom property writes.
+  ...require('./packages/kit/eslint/config.cjs'),
 ];

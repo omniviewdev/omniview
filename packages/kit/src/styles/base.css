@@ -1,0 +1,19 @@
+/*
+ * What a theme paints on the document, and the type the document inherits. The selector is the theme's own scope
+ * (:root, or any element that carries `data-ov-theme`), so a nested theme region paints itself. The kit writes no rule for
+ * `html`, `body` or `*`, and no reset: box-sizing and margins are set by each part on its own element.
+ */
+@layer ov.base {
+  :root,
+  [data-ov-theme] {
+    color: var(--ov-fg);
+    background-color: var(--ov-bg-window);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    font-feature-settings: var(--ov-font-features);
+    font-synthesis: none;
+    letter-spacing: normal;
+  }
+}

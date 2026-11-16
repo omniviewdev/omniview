@@ -1,0 +1,83 @@
+/* The frame is host composition, so its rules sit in ov.shell, above the kit's parts. */
+@layer ov.shell {
+  .window {
+    display: flex;
+    min-height: 100vh;
+    padding: var(--ov-spacing-4);
+    background-color: var(--ov-bg-window);
+  }
+
+  .island {
+    flex: 1;
+    padding: var(--ov-spacing-24);
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-bg-island);
+  }
+
+  .rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .row {
+    display: grid;
+    align-items: center;
+    min-height: var(--ov-row-height);
+    padding: 0 var(--ov-spacing-12);
+    border-radius: var(--ov-radius-control);
+  }
+
+  .row:hover {
+    background-color: var(--ov-hover-row);
+  }
+
+  .control {
+    height: var(--ov-control-height);
+    padding: 0 var(--ov-spacing-12);
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg);
+    font: inherit;
+    cursor: default;
+  }
+
+  .control:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .control:active {
+    background-color: var(--ov-pressed);
+  }
+
+  .control:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ov-spacing-12) var(--ov-spacing-20);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .swatch {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-6);
+  }
+
+  /* --_swatch is the part's data parameter: the markup binds it on the element, the default keeps the rule self-contained. */
+  .chip {
+    --_swatch: transparent;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--_swatch);
+  }
+}

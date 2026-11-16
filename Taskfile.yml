@@ -445,6 +445,7 @@ tasks:
     cmds:
       - pnpm exec tsc -p tsconfig.app.json --noEmit
       - pnpm exec tsc -p tsconfig.test.json --noEmit
+      - pnpm --filter @omniviewdev/kit run typecheck
 
   # ──────────────────────────────────────────────
   # Workspace packages
@@ -456,6 +457,7 @@ tasks:
       - pnpm --filter @omniviewdev/providers run build
       - pnpm --filter @omniviewdev/runtime run build
       - pnpm --filter @omniviewdev/vite-plugin run build
+      - pnpm --filter @omniviewdev/kit run build
 
   # ──────────────────────────────────────────────
   # Performance

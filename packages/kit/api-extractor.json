@@ -1,0 +1,24 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+  "projectFolder": ".",
+  "mainEntryPointFilePath": "<projectFolder>/dist/index.d.ts",
+  "compiler": { "tsconfigFilePath": "<projectFolder>/tsconfig.build.json" },
+  "apiReport": {
+    "enabled": true,
+    "reportFolder": "<projectFolder>/api/",
+    "reportFileName": "kit.api.md",
+    "reportTempFolder": "<projectFolder>/node_modules/.cache/api-extractor/"
+  },
+  "docModel": { "enabled": false },
+  "dtsRollup": { "enabled": false },
+  "tsdocMetadata": { "enabled": false },
+  "messages": {
+    "compilerMessageReporting": { "default": { "logLevel": "error" } },
+    "extractorMessageReporting": {
+      "default": { "logLevel": "error", "addToApiReportFile": true },
+      "ae-missing-release-tag": { "logLevel": "none" },
+      "ae-unresolved-link": { "logLevel": "none" }
+    },
+    "tsdocMessageReporting": { "default": { "logLevel": "none" } }
+  }
+}

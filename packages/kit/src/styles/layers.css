@@ -1,0 +1,12 @@
+/*
+ * The cascade layer order, declared here once and first in the stylesheet; a later layer wins over an earlier one.
+ * Every other rule in the kit sits inside one of these layers, and `scripts/check-dist.ts` fails the build when a rule does not.
+ *
+ *   ov.tokens      custom property definitions, generated from the token manifest
+ *   ov.reset       empty in the kit; a host puts its document reset here
+ *   ov.base        the theme's paint of the document and the type it inherits
+ *   ov.plugin      plugin CSS Modules, wrapped by the host; below the components, so a plugin class cannot restyle a kit part by accident
+ *   ov.components  the kit's parts
+ *   ov.shell       host composition: frames, strips and lanes that arrange kit parts
+ */
+@layer ov.tokens, ov.reset, ov.base, ov.plugin, ov.components, ov.shell;

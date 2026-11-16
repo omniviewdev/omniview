@@ -16,7 +16,18 @@ export function isUIFile(file) {
     && !/^(?:packages\/(?:base-ui|ai-ui|editors)\/|ui\/providers\/monaco\/.*\.worker\.)/.test(file);
 }
 
+// `ui-next/` and `packages/kit/` are built from kit parts and may not import @omniviewdev/base-ui, so the rules that send a native
+// control to base-ui cannot apply there. Everything else (legacy imports, parse errors) still does; the new trees' own guards are
+// packages/kit/eslint and packages/kit/stylelint.config.mjs.
+const baseUIControlRules = new Set(['control-reset', 'native-control', 'native-datetime', 'ambiguous-react-control']);
+const newTrees = /^(?:ui-next|packages\/kit)\//;
+
 function inspect(file, text) {
+  const findings = inspectSource(file, text);
+  return newTrees.test(file) ? findings.filter(finding => !baseUIControlRules.has(finding.rule)) : findings;
+}
+
+function inspectSource(file, text) {
   const findings = [];
   const add = (rule, line, message, identity) => findings.push({ rule, file, line, message, identity });
   if (file.endsWith('.css')) {

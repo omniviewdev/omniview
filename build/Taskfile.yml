@@ -27,6 +27,9 @@ tasks:
           BUILD_FLAGS:
             ref: .BUILD_FLAGS
     cmds:
+      # The new tree consumes the kit as a built package, and no release workflow runs `task packages` before this task.
+      # Stable and nightly (OMNIVIEW_UI unset or `current`) never build it.
+      - '[ "${OMNIVIEW_UI:-current}" != "next" ] || pnpm --filter @omniviewdev/kit run build'
       - GOWORK=off GOFLAGS= pnpm run {{.BUILD_COMMAND}}
     env:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
