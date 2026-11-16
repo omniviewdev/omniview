@@ -1,0 +1,129 @@
+# Release channels
+
+How the `feature-ui-next` channel is built from `main`, how it is installed, how plugins follow it, and what is guaranteed. Written 2026-11-16 against `origin/main` 4006e74b. Read it before you touch a channel build, the update index, the mirror workflow or a plugin's `ui-next` stream.
+
+**Evidence key.** `[path:line]` = verified by reading that code. `[ran: …]` = verified by running it. **UNVERIFIED** = not verified; treat it as a hypothesis. Paths are in this repo unless prefixed: `PPA` = `omniviewdev/publish-plugin-action` (`resolve-channel`: `feature-channel.yaml` uses the tag v1.2.0 = `fd62609c`; the Kubernetes, Proxmox and Flux repos pin v1.3.0 = `46937e6b`; `resolve.sh` is identical in the two tags [ran: diff]); `US` = private `omniviewdev/update-service` `462155ea`; `MKT` = private `omniviewdev/marketplace` `4a8c0367`; `K8S` = `omniviewdev/omniview-plugin-kubernetes` `524d1232`; `REG` = Go module `github.com/omniviewdev/registry@v0.3.1`; `WAILS` = `github.com/wailsapp/wails/v3@v3.1.0`. The other repos were read with `gh api`, read-only.
+
+## 1. What a channel is
+
+- **Name.** `stable`, `nightly` or `feature-<slug>`; the slug is `[a-z][a-z0-9-]{0,30}[a-z0-9]`, so `feature-ui-next` is valid [internal/releasechannel/channel.go:16,21–22]. A development workspace requires the channel `local` [internal/instance/profile.go:102–105], and `local` never updates [internal/updater/provider.go:94].
+- **Identity is stamped at link time** with `-X …/internal/instance.buildChannel=<channel>` [.github/workflows/desktop-build.yml:122; internal/instance/profile.go:19–21]. An unstamped binary can be told with `OMNIVIEW_CHANNEL`; a value that disagrees with a stamped channel is fatal [internal/instance/profile.go:53–58]. [ran: an unstamped `task build:server` binary with `OMNIVIEW_CHANNEL=feature-ui-next` reported instance `feature-ui-next`, display name `Omniview (feature-ui-next)`.]
+- **State root.** `~/.omniview` for stable, `~/.omniview-<channel>` otherwise: `~/.omniview-feature-ui-next` [internal/releasechannel/channel.go:43–48; ran: created under the temporary `HOME`, with `plugin-channel-sync.json`, `plugin_state.json`, `settings.db`, `logs/`]. A feature root may not overlap the stable, nightly or `.omniview-dev/profiles` roots [internal/instance/profile.go:137–171,206–231].
+- **Two channels can run at once**: the single-instance id is `com.omniview.<channel>` [main.go:319–322]. **UNVERIFIED** natively: no channel app has been launched beside stable.
+- **Version.** `X.Y.Z-feature-<slug>.<N>.<M>` [internal/releasechannel/channel.go:34–39; US api/internal/channels.go:16–18]. The update client treats a higher semver as newer [internal/updater/provider.go:243].
+- **Feature builds** pass `development: 'true'` and inject the registry key [.github/workflows/feature-channel.yaml:46–47]. `development: true` makes `CompatibilityVersion()` the source baseline `0.35.2`, not the build's version [internal/version/version.go:10,31–40]; this matters for plugins (§4).
+- **Frontend.** `feature-ui-next` builds with `OMNIVIEW_UI=next`; every other channel builds `current` [.github/workflows/feature-channel.yaml:45; .github/workflows/desktop-build.yml:24–27,40].
+
+## 2. From a branch to a channel build
+
+```
+push to main ─► mirror-ui-next.yaml ─► feature/ui-next == main ─► dispatch feature-channel.yaml on feature/ui-next
+   resolve-channel ─► desktop-build (macOS, Linux, Windows) ─► publish-updates (signed, update service)
+                                                            └► publish-npm   (dist-tag feature-ui-next)
+```
+
+1. **Branch rule.** `resolve-channel` enables only a branch named `feature/<slug>`; any other branch resolves `enabled=false` and exits 0 [PPA resolve.sh:3–11]. A channel cannot be built from `main` itself; hence the mirror branch (§6).
+2. **Registration.** `feature-<slug>` must be in `https://updates.omniview.dev/channels/index.json` with the same branch and `status: active` [.github/workflows/feature-channel.yaml:35; PPA resolve.sh:17–26]. If not: a notice, `enabled=false`, and `build`, `publish-updates` and `publish-npm` are skipped [.github/workflows/feature-channel.yaml:39,53,92]. [ran: run 43509362410, an unregistered branch: `resolve` succeeded, the rest skipped.]
+3. **Version.** Latest `vX.Y.Z` tag reachable from HEAD, patch plus one: `X.Y.(Z+1)-feature-<slug>.<run>.<attempt>` [PPA resolve.sh:28–36; .github/workflows/feature-channel.yaml:27–30 fetches tags]. `<run>` counts runs of the workflow, not of the branch [ran: `gh run list --workflow feature-channel.yaml`: runs #4–#6 were on another branch, the smoke build is #7]. The latest tag reachable from `main` is `v0.36.0` [ran: `git tag --merged origin/main`], so the first build is `0.36.1-feature-ui-next.<run>.<attempt>`.
+4. **Build.** `desktop-build.yml`: signed and notarized macOS universal `.dmg` and update `.zip`, Linux amd64, Windows amd64 [.github/workflows/desktop-build.yml:46–243,244,344]. [ran: the smoke channel's run 43534268778 took 25 min end to end; the macOS job alone 13 min 39 s.]
+5. **Publish the update** on a self-hosted `[omniview]` runner with `build/updater/publish-to-update-service.mjs` [.github/workflows/feature-channel.yaml:50–88]. The service requires a registered, active channel, the version pattern and exactly four artifacts [US api/internal/service.go:41–62], activates a feature release automatically after validation [US api/internal/service.go:168], and refuses one that is not strictly greater than the active version [US api/internal/service.go:200]. Do not re-run an old workflow run after a newer build is active.
+6. **Publish npm.** `npm-publish.yml` publishes `@omniviewdev/{providers,runtime,vite-plugin}` with `--tag feature-ui-next`; it refuses unless the ref is `refs/heads/feature/<slug>` and the version contains `-<dist-tag>.` [.github/workflows/npm-publish.yml:59–66,123–142]. [ran: `npm view @omniviewdev/runtime dist-tags` lists `feature-channel-smoke: 0.36.1-feature-channel-smoke.7.1`.] npm trusted publishing must name the calling workflow, `feature-channel.yaml` [CLAUDE.md, "Releases"]. The first channel run failed here with `E404` (run 43514046651) and a later one passed (run 43534268778): **UNVERIFIED** what was changed on npm.
+7. **Concurrency.** `feature-${{ github.ref }}` with `cancel-in-progress: true` [.github/workflows/feature-channel.yaml:15–17]: a new run on the branch cancels the one in flight. With a 25-minute build, pushes to `main` more often than that keep cancelling builds before they publish. **Inference, not observed**; the channel has never been built at this rate. Dials, neither applied: `cancel-in-progress: false` in `feature-channel.yaml` (one running, one pending, the pending one replaced by the newest), or a scheduled mirror.
+8. **What the world sees.** The index lists `{channel, branch, status, desktopVersion}` [US api/internal/channels.go:22–57; internal/updater/provider.go:27–32]; the signed feed is `/channels/<channel>.json`, payloads are `/releases/<channel>/<version>/<file>` [internal/updater/provider.go:190,280; build/updater/README.md]. [ran: HTTP 200 for the smoke channel's feed, `manifest.json`, `.dmg` and `.zip`; 404 for `/channels/feature-ui-next.json`.]
+
+## 3. State and data
+
+- **Profile copy.** Switching with "copy my data" writes `switch-seed.json` into a root that does not exist yet [update_service.go:274–326,347]. The new host applies it at start: it copies every entry of the source root except `runtime`, `.lock`, the seed and `update-checkpoints.*` [main.go:275–284; internal/instance/switchseed.go:155], and only while the source app is closed [internal/instance/switchseed.go:119–125].
+- **No rollback.** A host refuses a feed older than the last one it saw on that channel [internal/updater/checkpoint.go:45].
+- **Retention.** The service prunes non-stable payloads after 30 days and keeps the latest superseded release [US docs/DEPLOY.md, "Operations"; US .ci/chart/values.yaml, `NIGHTLY_RETENTION_DAYS`]. The owner's rule: the state root lives as long as needed (`decisions.md`).
+- **Deleting a channel's data** is a button in the old shell's Settings → Updates [update_service.go:372; ui/pages/settings/UpdatesSettingsPage.tsx:163–178].
+- **WebKit storage isolation** per channel: the owner says it is not a concern now. Not examined here.
+
+## 4. How plugins follow the host channel
+
+### Mechanism
+
+1. `syncHostChannelPlugins` starts as a goroutine at the end of plugin initialization, only if the built-in load had no error [backend/pkg/plugin/manager.go:588–590], and only on a feature host [backend/pkg/plugin/release_channel.go:76–83].
+2. It returns at once if `plugin-channel-sync.json` in the state root already names this host channel [backend/pkg/plugin/release_channel.go:84–90]. [ran: the file `{"hostChannel":"feature-ui-next"}` appeared within a second of the first start of an empty profile.]
+3. Candidates: installed plugins that are not built-in, not in dev mode, and have no explicit channel [backend/pkg/plugin/release_channel.go:91–99].
+4. For each: `GET /v1/plugins/<id>/channels` must list the host channel with status `active`, else the plugin stays as it is, without an error [backend/pkg/plugin/release_channel.go:106–117; MKT api/internal/controllers/plugin_channel.go:37–52, `PublicList`]. Then it takes the first version that has `channel == host` and `compatible` and installs it with no explicit channel, so the plugin keeps following the host [backend/pkg/plugin/release_channel.go:118–138; backend/pkg/plugin/archive_transaction.go:671–675]. The list is sorted by descending semver, so that is the highest compatible build [backend/pkg/plugin/registry/registry.go:436–438].
+5. If any listing or install failed, or the context was cancelled, the marker is not written and the whole pass repeats at the next start; otherwise the marker is written atomically [backend/pkg/plugin/release_channel.go:141–160].
+
+### Guaranteed (by code and test)
+
+- Stable, nightly and local hosts never sync [backend/pkg/plugin/release_channel.go:80–83].
+- An explicit per-plugin channel wins, and such a plugin is not even queried; built-in and dev-mode plugins are untouched [backend/pkg/plugin/release_channel.go:95; backend/pkg/plugin/release_channel_test.go:94–172].
+- A failed pass is retried at the next start; a finished one is not repeated [backend/pkg/plugin/release_channel_test.go:56–92].
+- Sync and a manual install of the same plugin serialize [backend/pkg/plugin/release_channel.go:124–131; backend/pkg/plugin/release_channel_test.go:174].
+- Archives are checked against a SHA-256 and an ed25519 signature before install [REG downloads.go:105–134; backend/pkg/plugin/release_channel_test.go:94–172].
+
+### Best effort (do not rely on it)
+
+- **One attempt per plugin per start**, 30 s per request, no retry or backoff [backend/pkg/plugin/registry/registry.go:158; REG client.go:14,53]. One failure repeats the whole pass at the next start; plugins already moved stay moved.
+- **After the marker exists the sync never runs again for this host channel.** A plugin installed later, or a build published later, is not moved automatically. No code path that re-runs it or auto-updates plugins was found (`backend/` searched). The manual path is the old shell's plugin page [ui/pages/plugins/PluginUpdateButton.tsx:14–20; ui/hooks/plugin/usePluginManager.ts:388–396], which the `ui-next` build does not contain [ran: its output holds no "Release channel", `SwitchChannel` or `UpdateService`; the new shell has no plugin pages]. Today the one-time sync is the only way a plugin reaches a `ui-next` host. To repeat it, delete `plugin-channel-sync.json` and restart [backend/pkg/plugin/release_channel.go:84–90].
+- **Silent skips.** No active channel entry, no compatible version, or an incompatible one: the plugin stays where it is, with no log line and no UI [backend/pkg/plugin/release_channel.go:106–138].
+- **Compatibility is judged against `0.35.2`**, not the host's version: a feature host sends `ide_version=0.35.2` and compares `min_ide_version` against it [backend/pkg/plugin/registry/registry.go:237,447–461; internal/version/version.go:10,31–40]. K8S publishes its feature builds with `min-ide-version: "0.35.0"` and its stable builds with `"0.36.0"` [K8S .github/workflows/feature-channel.yaml:136; K8S .github/workflows/release.yml:175], so keep the `ui-next` stream at or below `0.35.2` until the baseline changes.
+- **Timing and network.** It runs in the background after startup, so the UI can be up before it ends; it needs the marketplace at start. It stops silently without a marker if the context is cancelled [backend/pkg/plugin/release_channel.go:103–104,146–148]. **UNVERIFIED** when Wails cancels that context (`ServiceStartup`, [internal/bootstrap/bootstrap.go:61]); only the empty-profile path was run.
+- **Server side.** The channel list returns active channels only; the version list for a channel also returns the stable versions, which is why the host re-checks `version.Channel == host` [MKT api/internal/routes/plugin_channel.go:27; MKT api/internal/services/release_channel.go:38–43; backend/pkg/plugin/release_channel.go:122].
+
+### What a plugin repo must publish for the host channel `feature-ui-next`
+
+1. A branch `feature/ui-next` (the host channel's slug) in the plugin's GitHub repository. The marketplace checks it with an unauthenticated GitHub call, so by the code the repository must be public [MKT api/internal/services/plugin_channel.go:55–68,95–110]. The Kubernetes, Flux and Proxmox repositories are public; the AWS and Containers repositories are private [gh api]: **UNVERIFIED** that promotion fails for them.
+2. A channel promoted for that plugin on the marketplace by a publisher owner or admin: `POST /v1/publishers/:slug/plugins/:pluginId/channels` with the branch [MKT api/internal/routes/plugin_channel.go:28–32].
+3. A workflow that on `feature/**` or dispatch resolves the channel (`resolve-channel`, `kind: plugin`, `channels-url: <api>/v1/plugins/<id>/channels`) and publishes with `channel` and `version` set to `X.Y.(Z+1)-feature-ui-next.<run>.<attempt>` [K8S .github/workflows/feature-channel.yaml:28–32,128–139]. The action rejects a channel and version that do not match [PPA@v1.3.0 src/index.ts:14–17]; the marketplace checks again and needs an active channel [MKT api/internal/services/submission.go:187–199]. Channel submissions are approved automatically once validation passes [MKT api/internal/services/submission.go:683].
+4. `min-ide-version` at or below the baseline (above).
+5. `archive-smoke` must pass: `publish` needs it [K8S .github/workflows/feature-channel.yaml:83–91]. It runs the old shell's harness from the host at `host-ref: main` [.github/workflows/plugin-archive-smoke.yml:61–62]. **UNVERIFIED** whether that harness can pass a bundle written for the new shell. Check it before the first `ui-next` plugin build.
+
+Where the plugins stand today (2026-11-16): K8S, Proxmox and Flux have a `feature-channel.yaml`; K8S's has never run; Proxmox has one active channel, `feature-incremental-typecheck`; AWS and Containers have no such workflow, so they cannot publish a stream and stay on stable builds on a feature host [gh api; ran: `curl https://mkt.omniview.dev/v1/plugins/<id>/channels` gave `[]` for kubernetes and flux, one entry for proxmox, 404 for aws and containers]. Their release workflows also differ in the publish action: Containers pins v1.1.0 (`da971a73`), AWS uses the floating tag `v1` (today v1.2.0) [gh api: `release.yml` lines 101 and 182 respectively].
+
+## 5. Install and switch
+
+- **Switch from a running app** (old shell): Settings → Updates; turn on "Show feature channels" (setting `developer.show_feature_channels`, off by default), pick the channel under "Release channel", optionally tick "Copy my current data to this channel" (offered only for a new profile), then "Download and switch" [internal/settings/developer.go:17–23; ui/pages/settings/UpdatesSettingsPage.tsx:205–268]. The channel needs `status: active` and a `desktopVersion` in the index [update_service.go:274–302]. The updater replaces the running `.app` in place [WAILS pkg/updater/updater_darwin.go:11–13, `bundleTarget`]: after the switch the stable build is no longer at that path, while its data stays in `~/.omniview`.
+- **A second copy beside stable.** Download the `.dmg` from `https://updates.omniview.dev/releases/<channel>/<version>/Omniview_<version>_darwin_universal.dmg`; `<version>` is `desktopVersion` in the index [build/updater/README.md; ran: the URL pattern returned 200 for the smoke channel]. Every channel's bundle is `Omniview.app` with the bundle id `dev.omniview.app` [build/darwin/Info.plist:26–29; .github/workflows/desktop-build.yml:191–213], so do not drag it over stable in `/Applications`: keep it in another folder and start it by its path. **UNVERIFIED**: two copies with one bundle id under LaunchServices (`open -n` or `…/Contents/MacOS/Omniview`).
+- **Developer loop, no channel needed:** `OMNIVIEW_UI=next task build:server` and `OMNIVIEW_CHANNEL=feature-ui-next` (commands in `AGENTS.md`) [ran].
+- **Going back.** The `ui-next` build has no Updates page [ran: grep of its output], so it cannot switch itself. Start the other install, or reinstall stable.
+- **Updates.** A host with the updater configured checks `/channels/<channel>.json` at start and every 6 hours, downloads a strictly newer version by itself, and applies it on restart [update_service.go:92–110,126–149,284; internal/updater/provider.go:186–247].
+
+## 6. The mirror, and what the owner does
+
+`.github/workflows/mirror-ui-next.yaml` keeps `feature/ui-next` equal to `main`. On every push to `main` it reads the current tip of `main`, creates the branch if it is missing, or fast-forwards it, and then dispatches `feature-channel.yaml` on it. It uses the REST API with the workflow token (`contents: write`, `actions: write`, nothing else) and no third-party action.
+
+- **Why dispatch.** A ref moved with the workflow token does not trigger other workflows, except `workflow_dispatch`, so `feature-channel.yaml`'s `push: feature/**` never fires for it. Dispatching on the branch gives the run the ref both `resolve-channel` and `npm-publish.yml` require [PPA resolve.sh:3; .github/workflows/npm-publish.yml:59–66]. `workflow_call` would keep the caller's ref (`main`) and fail both. The update service already starts channel builds the same way: `POST …/actions/workflows/<file>/dispatches` with `{"ref": branch}` [US api/internal/github.go:124–131].
+- **Fails loudly.** If the branch is not an ancestor of `main` (someone committed to it), GitHub refuses the update, nothing changes, the job fails with an error annotation, and the build is not started. Reset by hand with the command in the annotation: `git push --force-with-lease=feature/ui-next:<old sha> origin origin/main:refs/heads/feature/ui-next`. Nobody commits to `feature/ui-next`.
+- **Runs.** A manual run, or a re-run, always dispatches the build (to repair a failed dispatch); a push dispatches only if the branch moved.
+- **Tested** on a throwaway private scratch repository, with this workflow file and a stub `feature-channel.yaml` [ran]: create when missing; fast-forward across a commit that changed `.github/workflows/`; the dispatched run had `event=workflow_dispatch`, `ref=refs/heads/feature/ui-next`, and no `push` run was triggered; a commit on the mirror made the next run fail with `Update is not a fast forward (HTTP 422)`; the printed reset command worked; a manual run dispatched. The shell logic was also run against a stub `gh` for each branch. **Not proven** on omniview: the organization's token policy (the repository default is `write` [ran: `gh api repos/omniviewdev/omniview/actions/permissions/workflow`]) and the first real dispatch. `main`'s ruleset covers only the default branch, so `feature/ui-next` has no rules [ran: `gh api repos/omniviewdev/omniview/rules/branches/feature%2Fui-next` gave `[]`].
+- **First run.** The merge of the PR that adds the workflow is a push to `main`, so the mirror runs then, creates the branch and dispatches a build that resolves "not a promoted release channel" and builds nothing.
+
+### What the owner does (the agent does not register the channel)
+
+1. After the merge, check `gh api repos/omniviewdev/omniview/branches/feature/ui-next --jq .commit.sha` equals the tip of `main`.
+2. Sign in to the update portal as an organization admin (`https://update-portal.adoah.dev`, through the Tailscale bastion or the internal ingress) [US docs/DEPLOY.md; US api/internal/auth.go:89]. On the Channels page promote `feature/ui-next`. This creates `feature-ui-next` as `active`, republishes the index and dispatches the configured workflow in each configured repository that has the branch [US api/internal/server_channels.go:58–77,111–129]. Configured by default: `omniviewdev/omniview:feature-channel.yaml`, `omniviewdev/ui:release.yml`, `omniviewdev/plugin-sdk` (no workflow) [US api/internal/config/config.go:44]; the deployed value is **UNVERIFIED**. The portal needs the `read:org` and `repo` scopes, and the organization may need to grant its OAuth app access [US docs/DEPLOY.md, "Feature channels"].
+3. That dispatch starts the first build (about 25 min). When it publishes, the index entry gets a `desktopVersion` and the app can switch to it.
+4. From then on every push to `main` builds a new channel version. To build on demand use the portal's build action [US api/internal/server_channels.go:137–141] or `gh workflow run feature-channel.yaml --ref feature/ui-next`.
+5. To stop: archive the channel in the portal. Builds stop (`resolve-channel` needs `active`), and the old shell's Updates page tells users on the channel that it was retired [US api/internal/server_channels.go:142–151; ui/pages/settings/UpdatesSettingsPage.tsx:210]. An archived channel's feed and payloads kept answering 200 [ran: the smoke channel]. To abandon, also delete the mirror workflow and the branch.
+6. For each plugin that should have a stream: promote its branch on the marketplace (§4).
+
+## 7. Checklist: to ship something on the channel
+
+Host build:
+
+- [ ] The mirror run is green and `feature/ui-next` equals `main`: `gh run list --workflow mirror-ui-next.yaml --limit 3`.
+- [ ] The channel is `active` in the index: `curl -s https://updates.omniview.dev/channels/index.json | jq '.channels[] | select(.channel=="feature-ui-next")'`.
+- [ ] A `feature-channel.yaml` run on `feature/ui-next` ran `build` and both publish jobs (not skipped) and is green.
+- [ ] The index shows `desktopVersion` `X.Y.(Z+1)-feature-ui-next.N.M`, `/channels/feature-ui-next.json` answers 200, and `npm view @omniviewdev/runtime dist-tags` lists `feature-ui-next`.
+- [ ] Install it (§5) and check the identity: window title `Omniview (feature-ui-next)`, data in `~/.omniview-feature-ui-next`.
+
+Plugin stream (per plugin):
+
+- [ ] `feature/ui-next` exists in the plugin repository, and the repository is public.
+- [ ] The marketplace lists it as active: `curl -s https://mkt.omniview.dev/v1/plugins/<id>/channels`.
+- [ ] The plugin's channel workflow published `X.Y.(Z+1)-feature-ui-next.N.M` with `min-ide-version` at or below `0.35.2`, and `archive-smoke` passed.
+- [ ] The version is `compatible` for a feature host: `curl -s 'https://mkt.omniview.dev/v1/plugins/<id>/versions?channel=feature-ui-next&ide_version=0.35.2&include_incompatible=true'`.
+- [ ] Start a feature host whose profile has the plugin and no `plugin-channel-sync.json`. Afterwards `plugin_state.json` shows the new version and the marker exists. If not, look in `<state root>/logs/omniview.log` for `failed to sync plugin release channel` [backend/pkg/plugin/release_channel.go:143], fix the cause, delete the marker, restart.
+
+## 8. Not verified
+
+- The mirror workflow on omniview itself (§6).
+- Any native launch of a channel build, side by side with stable; a Windows or Linux channel build; a `ui-next` channel build of any kind (the registered channel does not exist yet; the only build ever published is the archived `feature-channel-smoke`).
+- The plugin sync with a real `ui-next` stream: no plugin has one, so only the unit tests and an empty profile ran.
+- The update service's deployed configuration, the npm trusted-publisher setting, the cancellation behaviour of the sync context, per-channel WebKit storage, and the line numbers here after `origin/main` moves.
