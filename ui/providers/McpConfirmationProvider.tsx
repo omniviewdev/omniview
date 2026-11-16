@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button, Dialog, Text } from '@omniviewdev/base-ui';
 import { Events } from '@wailsio/runtime';
-import { McpRelayClient } from '@omniviewdev/runtime/api';
+import { McpRelayClient } from '@/hooks/mcp/hostRelayClient';
 import type { mcprelay } from '@omniviewdev/runtime/models';
 
 type PendingConfirmation = mcprelay.PendingConfirmation;

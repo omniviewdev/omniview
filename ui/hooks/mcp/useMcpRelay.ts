@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Events } from '@wailsio/runtime';
 import { useNotifications, createErrorHandler } from '@omniviewdev/runtime';
-import { McpRelayClient } from '@omniviewdev/runtime/api';
+import { McpRelayClient } from './hostRelayClient';
 import type { mcprelay } from '@omniviewdev/runtime/models';
 
 export type McpScope = mcprelay.Scope;
@@ -12,9 +12,13 @@ export type McpConnectionPolicyView = mcprelay.ConnectionPolicyView;
 export type McpPresetView = mcprelay.PresetView;
 export type McpPendingConfirmation = mcprelay.PendingConfirmation;
 
+/** What the host copies for the user. Go builds and copies the text, so it never reaches this window. */
+export type McpClientSetup = 'token' | 'claude' | 'json';
+
 export const GLOBAL_SCOPE: McpScope = { pluginID: '', connectionID: '' };
 
 const ROOT_KEY = ['mcp'];
+const TOKEN_KEY = [...ROOT_KEY, 'token'];
 
 /**
  * State and mutations of the MCP relay (Settings → AI Tools).
@@ -138,6 +142,8 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     ...mutationOptions('Failed to change the connection access'),
   });
 
+  const copyClientSetup = async (kind: McpClientSetup) => McpRelayClient.CopyClientSetup(kind);
+
   return {
     status,
     config,
@@ -154,5 +160,30 @@ export const useMcpRelay = (scope: McpScope = GLOBAL_SCOPE) => {
     saveUserPreset,
     deleteUserPreset,
     setConnectionAccess,
+    copyClientSetup,
   };
+};
+
+/**
+ * The bearer token, held only while `visible` (the Reveal button on the AI
+ * Tools page). It is not part of the config query: hiding it, or leaving the
+ * page, drops it from the cache. Rotating the token invalidates the `['mcp']`
+ * key, which refetches a visible token.
+ */
+export const useRevealedMcpToken = (visible: boolean): string | undefined => {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: TOKEN_KEY,
+    queryFn: async () => McpRelayClient.RevealToken(),
+    enabled: visible,
+    gcTime: 0,
+  });
+
+  useEffect(() => {
+    if (!visible) {
+      queryClient.removeQueries({ queryKey: TOKEN_KEY, exact: true });
+    }
+  }, [queryClient, visible]);
+
+  return visible ? data : undefined;
 };

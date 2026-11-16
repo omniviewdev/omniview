@@ -23,11 +23,13 @@ const mocks = vi.hoisted(() => ({
   confirmShow: vi.fn(),
   setPort: vi.fn(),
   saveUserPreset: vi.fn(),
+  revealToken: vi.fn(),
+  copyClientSetup: vi.fn(),
   writeText: vi.fn(),
   listeners: new Map<string, (event: { data: unknown }) => void>(),
 }));
 
-vi.mock('@omniviewdev/runtime/api', () => ({
+vi.mock('@/hooks/mcp/hostRelayClient', () => ({
   McpRelayClient: {
     GetStatus: mocks.getStatus,
     GetConfig: mocks.getConfig,
@@ -39,11 +41,13 @@ vi.mock('@omniviewdev/runtime/api', () => ({
     ApplyPreset: mocks.applyPreset,
     SetEnabled: mocks.setEnabled,
     SetPort: mocks.setPort,
-    RotateToken: vi.fn(),
+    RotateToken: vi.fn().mockResolvedValue(undefined),
     SetBlockConnectionsByDefault: vi.fn(),
     SetPluginEnabled: vi.fn(),
     SaveUserPreset: mocks.saveUserPreset,
     DeleteUserPreset: vi.fn(),
+    RevealToken: mocks.revealToken,
+    CopyClientSetup: mocks.copyClientSetup,
   },
 }));
 
@@ -118,7 +122,6 @@ describe('AiToolsSettingsPage', () => {
       enabled: true,
       port: 9590,
       endpoint: 'http://127.0.0.1:9590/mcp',
-      token: 'secret-token',
       blockConnectionsByDefault: false,
       globalPreset: 'read-only',
       userPresets: [],
@@ -140,6 +143,8 @@ describe('AiToolsSettingsPage', () => {
     mocks.setEnabled.mockReset().mockResolvedValue(undefined);
     mocks.setPort.mockReset().mockResolvedValue(undefined);
     mocks.saveUserPreset.mockReset().mockResolvedValue(undefined);
+    mocks.revealToken.mockReset().mockResolvedValue('secret-token');
+    mocks.copyClientSetup.mockReset().mockResolvedValue(undefined);
     mocks.confirmShow.mockReset();
     mocks.writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: mocks.writeText }, configurable: true });
@@ -280,17 +285,59 @@ describe('AiToolsSettingsPage', () => {
     expect(mocks.setConnectionAccess).toHaveBeenCalledWith('kubernetes', 'prod', 'blocked');
   });
 
-  it('copies the Claude command with the token', async () => {
+  it.each([
+    ['Copy token', 'token'],
+    ['Copy command', 'claude'],
+    ['Copy JSON', 'json'],
+  ])('%s asks the host to copy the %s setup and never touches the token itself', async (name, kind) => {
     renderPage();
     await screen.findByRole('group', { name: 'Kubernetes' });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy command' }));
+      fireEvent.click(screen.getByRole('button', { name }));
     });
 
-    expect(mocks.writeText).toHaveBeenCalledWith(
-      'claude mcp add --transport http omniview http://127.0.0.1:9590/mcp --header "Authorization: Bearer secret-token"',
-    );
+    expect(mocks.copyClientSetup).toHaveBeenCalledExactlyOnceWith(kind);
+    expect(mocks.revealToken).not.toHaveBeenCalled();
+    expect(mocks.writeText).not.toHaveBeenCalled();
+  });
+
+  it('asks for the token only when it is revealed, and drops it when it is hidden', async () => {
+    const command = 'claude mcp add --transport http omniview http://127.0.0.1:9590/mcp --header "Authorization: Bearer ';
+    renderPage();
+    await screen.findByRole('group', { name: 'Kubernetes' });
+    expect(mocks.revealToken).not.toHaveBeenCalled();
+    expect(screen.queryByText('secret-token')).not.toBeInTheDocument();
+    expect(screen.getByText(`${command}<token>"`)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reveal' }));
+    });
+    expect(await screen.findByText('secret-token')).toBeInTheDocument();
+    expect(screen.getByText(`${command}secret-token"`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    expect(screen.queryByText('secret-token')).not.toBeInTheDocument();
+    expect(screen.getByText(`${command}<token>"`)).toBeInTheDocument();
+    expect(mocks.revealToken).toHaveBeenCalledOnce();
+  });
+
+  it('shows the rotated token when the token is revealed while it rotates', async () => {
+    renderPage();
+    await screen.findByRole('group', { name: 'Kubernetes' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reveal' }));
+    });
+    expect(await screen.findByText('secret-token')).toBeInTheDocument();
+
+    mocks.revealToken.mockResolvedValue('rotated-token');
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate token' }));
+    await act(async () => {
+      await mocks.confirmShow.mock.calls[0][0].onConfirm();
+    });
+
+    expect(await screen.findByText('rotated-token')).toBeInTheDocument();
+    expect(screen.queryByText('secret-token')).not.toBeInTheDocument();
   });
 
   it('asks for confirmation before applying a preset', async () => {

@@ -18,6 +18,15 @@ export function ApplyPreset(scope: $models.Scope, name: string): $CancellablePro
     return $Call.ByID(1112300727, scope, name);
 }
 
+/**
+ * CopyClientSetup puts the bearer token, or a client setup that embeds it, on
+ * the system clipboard. The text is built and copied here, so the settings
+ * page can offer Copy without holding the token.
+ */
+export function CopyClientSetup(kind: string): $CancellablePromise<void> {
+    return $Call.ByID(2499919951, kind);
+}
+
 export function DeleteUserPreset(name: string): $CancellablePromise<void> {
     return $Call.ByID(3545575747, name);
 }
@@ -67,6 +76,16 @@ export function ListTools(scope: $models.Scope): $CancellablePromise<$models.Too
 
 export function ResolveConfirmation(id: string, approved: boolean): $CancellablePromise<void> {
     return $Call.ByID(1042852749, id, approved);
+}
+
+/**
+ * RevealToken returns the bearer token for the settings page's Reveal button.
+ * It is the only method that hands the token to JavaScript. The settings page
+ * imports this binding by a host-only path; no module shared with plugins may
+ * export it.
+ */
+export function RevealToken(): $CancellablePromise<string> {
+    return $Call.ByID(482213342);
 }
 
 export function RotateToken(): $CancellablePromise<void> {

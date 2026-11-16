@@ -1,10 +1,13 @@
 package mcprelay
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -28,12 +31,13 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	return s.Relay.ServiceShutdown()
 }
 
-// ConfigView is the server part of the settings page.
+// ConfigView is the server part of the settings page. It carries no
+// credential: the bearer token reaches the page only through RevealToken and
+// the clipboard only through CopyClientSetup.
 type ConfigView struct {
 	Enabled                   bool     `json:"enabled"`
 	Port                      int      `json:"port"`
 	Endpoint                  string   `json:"endpoint"`
-	Token                     string   `json:"token"`
 	BlockConnectionsByDefault bool     `json:"blockConnectionsByDefault"`
 	GlobalPreset              string   `json:"globalPreset"`
 	UserPresets               []string `json:"userPresets"`
@@ -102,11 +106,87 @@ func (s *ServiceWrapper) GetConfig() ConfigView {
 		Enabled:                   r.cfg.Enabled,
 		Port:                      r.cfg.Port,
 		Endpoint:                  r.endpointLocked(),
-		Token:                     r.cfg.Token,
 		BlockConnectionsByDefault: r.cfg.BlockConnectionsByDefault,
 		GlobalPreset:              r.cfg.Global.Preset,
 		UserPresets:               presets,
 	}
+}
+
+// RevealToken returns the bearer token for the settings page's Reveal button.
+// It is the only method that hands the token to JavaScript. The settings page
+// imports this binding by a host-only path; no module shared with plugins may
+// export it.
+func (s *ServiceWrapper) RevealToken() string {
+	r := s.Relay
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cfg.Token
+}
+
+// The setups CopyClientSetup can put on the clipboard.
+const (
+	// ClientSetupToken is the bare bearer token.
+	ClientSetupToken = "token"
+	// ClientSetupClaude is the `claude mcp add` command for this endpoint and token.
+	ClientSetupClaude = "claude"
+	// ClientSetupJSON is an `mcpServers` document for this endpoint and token.
+	ClientSetupJSON = "json"
+)
+
+// CopyClientSetup puts the bearer token, or a client setup that embeds it, on
+// the system clipboard. The text is built and copied here, so the settings
+// page can offer Copy without holding the token.
+func (s *ServiceWrapper) CopyClientSetup(kind string) error {
+	r := s.Relay
+	r.mu.Lock()
+	loaded, endpoint, token := r.loaded, r.endpointLocked(), r.cfg.Token
+	r.mu.Unlock()
+	if !loaded {
+		return errors.New("mcp relay is not initialised")
+	}
+
+	var text string
+	switch kind {
+	case ClientSetupToken:
+		text = token
+	case ClientSetupClaude:
+		text = fmt.Sprintf(`claude mcp add --transport http omniview %s --header "Authorization: Bearer %s"`, endpoint, token)
+	case ClientSetupJSON:
+		var err error
+		if text, err = clientSetupJSON(endpoint, token); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown client setup %q", kind)
+	}
+	if !r.copyText(text) {
+		return errors.New("could not write to the system clipboard")
+	}
+	return nil
+}
+
+// clientSetupJSON is the `mcpServers` document clients such as Claude Desktop read.
+func clientSetupJSON(endpoint, token string) (string, error) {
+	type server struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+	}
+	document := struct {
+		MCPServers map[string]server `json:"mcpServers"`
+	}{MCPServers: map[string]server{"omniview": {
+		Type:    "http",
+		URL:     endpoint,
+		Headers: map[string]string{"Authorization": "Bearer " + token},
+	}}}
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(document); err != nil {
+		return "", fmt.Errorf("encode client setup: %w", err)
+	}
+	return strings.TrimSuffix(out.String(), "\n"), nil
 }
 
 // update saves policy and immediately projects it over the discovered inventory.

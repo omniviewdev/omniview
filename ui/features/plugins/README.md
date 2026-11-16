@@ -367,6 +367,15 @@ This is a trusted in-process UI contract, not a security sandbox. Plugins must u
 host's compatible runtime/base-ui/theme release cohort; MUI/Emotion and private
 Kubernetes components are not shared public dependencies.
 
+The MCP relay binding is host-only. Its consent calls answer a pending agent request and
+`RevealToken` returns the relay's bearer token, so none of it is exported from
+`@omniviewdev/runtime/api` or any other module in `api/shared_dependencies.ts`. The approval
+dialog and the AI Tools page import it from `ui/hooks/mcp/hostRelayClient.ts`, and
+`api/sharedSurface.test.ts` fails if a shared module exposes it again. This keeps the calls
+out of the modules plugins import. It is not an access check: plugin code that calls the raw
+Wails runtime (`Call` is exported from `@omniviewdev/runtime/runtime`) or opens a terminal
+can still reach the bound Go methods.
+
 The host shares `@omniviewdev/base-ui/metrics` as a separate singleton module.
 Keep its entry in `api/shared_dependencies.ts` and the Vite plugin's
 `SHARED_PACKAGES` list in sync: development imports use host-backed shims, while

@@ -8,6 +8,8 @@ import Icon from '@/components/icons/Icon';
 import {
   GLOBAL_SCOPE,
   useMcpRelay,
+  useRevealedMcpToken,
+  type McpClientSetup,
   type McpConnectionPolicyView,
   type McpScope,
   type McpToolView,
@@ -92,6 +94,7 @@ const AiToolsSettingsPage: React.FC = () => {
   const { show: confirm } = useConfirmationModal();
   const { notify } = useNotifications();
   const [tokenVisible, setTokenVisible] = React.useState(false);
+  const token = useRevealedMcpToken(tokenVisible);
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const [presetName, setPresetName] = React.useState('');
   const [toolSearch, setToolSearch] = React.useState('');
@@ -152,8 +155,8 @@ const AiToolsSettingsPage: React.FC = () => {
     (c) => c.pluginID === scope.pluginID && c.connectionID === scope.connectionID,
   );
 
-  const copy = (label: string, text: string) => {
-    void navigator.clipboard.writeText(text).then(
+  const copy = (label: string, kind: McpClientSetup) => {
+    void relay.copyClientSetup(kind).then(
       () => {
         void notify({ title: `${label} copied`, severity: 'success' });
       },
@@ -283,7 +286,7 @@ const AiToolsSettingsPage: React.FC = () => {
             <div className={styles.Row}>
               <Text size='sm'>Token:</Text>
               <Text size='sm' className={styles.ToolName}>
-                {tokenVisible ? config?.token ?? '' : '••••••••••••'}
+                {tokenVisible ? token ?? '' : '••••••••••••'}
               </Text>
               <Button size='sm' variant='ghost' onClick={() => {
                 setTokenVisible((v) => !v); 
@@ -291,7 +294,7 @@ const AiToolsSettingsPage: React.FC = () => {
                 {tokenVisible ? 'Hide' : 'Reveal'}
               </Button>
               <Button size='sm' variant='ghost' disabled={!config} onClick={() => {
-                copy('Token', config?.token ?? ''); 
+                copy('Token', 'token'); 
               }}>
                 Copy token
               </Button>
@@ -318,21 +321,21 @@ const AiToolsSettingsPage: React.FC = () => {
                 <div className={styles.Row}>
                   <Text size='xs' className={styles.Muted}>Claude Code</Text>
                   <Button size='sm' variant='ghost' onClick={() => {
-                    copy('Claude command', claudeCommand(config.endpoint, config.token)); 
+                    copy('Claude command', 'claude'); 
                   }}>
                     Copy command
                   </Button>
                 </div>
-                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
+                <pre className={styles.SnippetCode}>{claudeCommand(config.endpoint, token ?? '<token>')}</pre>
                 <div className={styles.Row}>
                   <Text size='xs' className={styles.Muted}>JSON (mcpServers)</Text>
                   <Button size='sm' variant='ghost' onClick={() => {
-                    copy('JSON config', jsonSnippet(config.endpoint, config.token)); 
+                    copy('JSON config', 'json'); 
                   }}>
                     Copy JSON
                   </Button>
                 </div>
-                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint, tokenVisible ? config.token : '<token>')}</pre>
+                <pre className={styles.SnippetCode}>{jsonSnippet(config.endpoint, token ?? '<token>')}</pre>
               </div>
             )}
           </Card>

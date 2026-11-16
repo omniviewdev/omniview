@@ -212,7 +212,7 @@ func newHarness(t *testing.T) *harness {
 
 	status := service.GetStatus()
 	require.True(t, status.Running, status.Error)
-	return &harness{relay: relay, service: service, tools: fakeTools, store: store, url: status.Endpoint, token: service.GetConfig().Token}
+	return &harness{relay: relay, service: service, tools: fakeTools, store: store, url: status.Endpoint, token: service.RevealToken()}
 }
 
 type bearerTransport struct{ token string }
@@ -435,7 +435,7 @@ func TestRelayGenericOperationsStartNativeConnectionAndConfirm(t *testing.T) {
 	require.NoError(t, service.SetToolOverride(Scope{}, "kubernetes_resource_read", ToolOverride{Confirm: new(true)}))
 	require.NoError(t, service.SetToolOverride(Scope{}, "kubernetes_resource_discover", ToolOverride{Confirm: new(true)}))
 	t.Cleanup(relay.stopListener)
-	h := &harness{relay: relay, service: service, url: service.GetStatus().Endpoint, token: service.GetConfig().Token}
+	h := &harness{relay: relay, service: service, url: service.GetStatus().Endpoint, token: service.RevealToken()}
 	session := h.connect(t, nil)
 	require.Contains(t, toolNames(t, session), "kubernetes_resource_discover")
 	require.Contains(t, toolNames(t, session), "kubernetes_resource_read")
@@ -685,7 +685,7 @@ func TestRelayDisableStopsListener(t *testing.T) {
 	_, err := http.Post(h.url, "application/json", nil)
 	require.Error(t, err)
 	require.NoError(t, h.service.RotateToken())
-	require.NotEqual(t, h.token, h.service.GetConfig().Token)
+	require.NotEqual(t, h.token, h.service.RevealToken())
 }
 
 func TestRelayToolChangeResyncs(t *testing.T) {
@@ -749,7 +749,7 @@ func TestRelayHTTPUsesHostControllerRoutesAndPreservesIntegers(t *testing.T) {
 	require.NoError(t, service.ApplyPreset(Scope{}, PresetAll))
 	require.NoError(t, service.SetEnabled(true))
 	t.Cleanup(relay.stopListener)
-	h := &harness{url: service.GetStatus().Endpoint, token: service.GetConfig().Token}
+	h := &harness{url: service.GetStatus().Endpoint, token: service.RevealToken()}
 	session := h.connect(t, nil)
 	for _, scope := range []string{"plugin", "connection"} {
 		t.Run(scope, func(t *testing.T) {
