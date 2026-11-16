@@ -1207,8 +1207,11 @@ func TestUninstallPlugin_RejectsRecoveryProofFromAnotherProfile(t *testing.T) {
 	restarted := newTestManager(t)
 	restarted.stateRoot, restarted.pluginsRoot = other.stateRoot, other.pluginsRoot
 	restarted.pidTracker = NewPIDTracker(other.stateRoot)
-	assert.Error(t, restarted.Initialize(context.Background()), "foreign proof must fail closed before automatic loading")
-	assert.Empty(t, restarted.ListPlugins())
+	require.NoError(t, restarted.Initialize(context.Background()), "a foreign proof must not stop startup")
+	held, err := restarted.GetPlugin("flux")
+	require.NoError(t, err)
+	assert.Equal(t, "Failed", held.Phase, "a foreign proof must still keep its plugin from loading")
+	assert.NoFileExists(t, other.stateRoot.ResolvePath(uninstallRecoveryName("flux")), "the foreign proof must be moved aside")
 	asset, err = other.pluginsRoot.ReadFile("flux/assets/entry.js")
 	require.NoError(t, err)
 	assert.Equal(t, "other profile asset", string(asset))

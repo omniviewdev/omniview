@@ -18,7 +18,11 @@ func TestOversizedHistoryRejectedBeforeDecode(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewService(root, nil); err == nil {
+	s, err := NewService(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.LoadFailure() == nil {
 		t.Fatal("oversized history admitted")
 	}
 }
@@ -28,7 +32,11 @@ func TestMissingPersistedCollectionRejected(t *testing.T) {
 	if err := root.WriteFile("activities.json", []byte(`{"version":1,"revision":0,"records":null}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewService(root, nil); err == nil {
+	s, err := NewService(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.LoadFailure() == nil {
 		t.Fatal("nil persisted collection admitted")
 	}
 }

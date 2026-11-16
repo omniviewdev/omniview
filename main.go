@@ -36,6 +36,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
@@ -537,6 +538,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot open activity history: %v\n", err)
 		os.Exit(1)
+	}
+	if failure := activityService.LoadFailure(); failure != nil {
+		// Class only: the decoder error can describe file content.
+		log.Errorw(context.Background(), "activity history unreadable; moved aside and starting empty",
+			"file", "activities.json", "quarantine", failure.Quarantine,
+			"errorClass", telemetryutil.ErrorClass(failure.Cause), "errorType", fmt.Sprintf("%T", failure.Cause))
 	}
 	graphService := resource.NewGraphService(resourceController, resourceUIRealm, resourceBoundary)
 	// A nil realm keeps the agent principal from ctx at the boundary.

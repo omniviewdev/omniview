@@ -441,16 +441,24 @@ func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 		return nil, err
 	}
 	blocked := make(map[string]bool)
-	// Validate every proof before publishing any recovery inventory. One foreign
-	// profile or malformed marker must stop startup rather than authorize load.
+	// Validate every proof before publishing any recovery inventory. A foreign
+	// profile or malformed marker never authorizes a load: it is moved aside and
+	// the plugin it named stays blocked, but it does not stop unrelated plugins.
 	recoveries := make([]*archiveRecovery, 0)
 	var builtinErr error
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), archiveRecoveryPrefix) {
 			continue
 		}
+		if appstate.IsQuarantineName(entry.Name()) {
+			continue
+		}
 		if !strings.HasSuffix(entry.Name(), ".json") {
-			return nil, fmt.Errorf("invalid archive recovery marker name %q", entry.Name())
+			badName := fmt.Errorf("invalid archive recovery marker name %q", entry.Name())
+			if quarantineErr := pm.quarantineBadRecoveryMarker(entry.Name(), "", badName); quarantineErr != nil {
+				return nil, errors.Join(badName, quarantineErr)
+			}
+			continue
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), archiveRecoveryPrefix), ".json")
 		_, builtin := pm.builtin(id)
@@ -463,7 +471,12 @@ func (pm *pluginManager) reconcileArchiveRecoveries() (map[string]bool, error) {
 				pm.failBuiltinArchiveRecovery(id, detail)
 				continue
 			}
-			return nil, errors.Join(readErr, fmt.Errorf("cannot validate pending archive replacement for %s", id))
+			cause := errors.Join(readErr, fmt.Errorf("cannot validate pending archive replacement for %s", id))
+			if quarantineErr := pm.quarantineBadRecoveryMarker(entry.Name(), id, cause); quarantineErr != nil {
+				return nil, errors.Join(cause, quarantineErr)
+			}
+			blocked[id] = true
+			continue
 		}
 		recoveries = append(recoveries, recovery)
 	}

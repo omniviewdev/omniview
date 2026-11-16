@@ -57,6 +57,9 @@ func TestUnreadableHistoryIsQuarantinedNotFatal(t *testing.T) {
 			if len(moved) != 1 {
 				t.Fatalf("expected one quarantine file, got %v", moved)
 			}
+			if failure := s.LoadFailure(); failure == nil || failure.Quarantine != moved[0] || failure.Cause == nil {
+				t.Fatalf("load failure not reported: %+v", failure)
+			}
 			kept, err := root.ReadFile(moved[0])
 			if err != nil {
 				t.Fatal(err)
