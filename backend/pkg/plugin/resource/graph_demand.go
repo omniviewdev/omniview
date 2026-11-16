@@ -797,8 +797,26 @@ func graphFrontier(g *graph.RelationshipGraph, nodes []graph.GraphNode, directio
 	return next, nil
 }
 
+// rearm replaces the change notifications of the populations the previous
+// evaluation read. The change that woke this evaluation already closed them, and
+// the evaluation is about to read those populations again. One that fails before
+// project captures them would otherwise leave wait on closed channels and retry
+// in a hot loop until the failure clears.
+func (d *graphDemand) rearm() {
+	for i := range d.populations {
+		if d.populations[i].interest == nil {
+			continue
+		}
+		session := d.populations[i].interest.session
+		session.mu.Lock()
+		_, d.populations[i].changed = d.service.ctrl.sources.sourceRevisionLocked(session)
+		session.mu.Unlock()
+	}
+}
+
 func (d *graphDemand) evaluate(ctx context.Context) (graphQueryResult, error) {
 	d.releaseResult()
+	d.rearm()
 	admitted, err := d.service.admit(ctx, d.operation, d.request.PluginID, d.request.Reference, d.request.Route)
 	if err != nil {
 		return graphQueryResult{}, err
