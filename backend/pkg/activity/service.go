@@ -59,6 +59,20 @@ type Service struct {
 	cancellations map[string]func() error
 	emit          func(string, sdk.Change)
 	starter       func(context.Context, sdk.StartResourceActionRequest) (sdk.Record, error)
+	loadFailure   *LoadFailure
+}
+
+// LoadFailure records that activities.json could not be read at startup. The
+// file was moved aside under Quarantine, in the same directory and with its
+// original mode, and the service started with empty history.
+type LoadFailure struct {
+	Quarantine string
+	Cause      error
+}
+
+// LoadFailure returns the startup load failure, or nil when history loaded.
+func (s *Service) LoadFailure() *LoadFailure {
+	return s.loadFailure
 }
 
 func NewService(root *appstate.ScopedRoot, emit func(string, sdk.Change)) (*Service, error) {
@@ -71,7 +85,14 @@ func NewService(root *appstate.ScopedRoot, emit func(string, sdk.Change)) (*Serv
 		emit:          emit,
 	}
 	if err := s.load(); err != nil {
-		return nil, err
+		// A history that cannot be read must not stop the host. Move it aside
+		// (never copy it: it can hold sensitive text) and start empty.
+		quarantine, quarantineErr := root.Quarantine("activities.json")
+		if quarantineErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("quarantine activity history: %w", quarantineErr))
+		}
+		s.state = diskState{Version: 1, Records: map[string]storedRecord{}}
+		s.loadFailure = &LoadFailure{Quarantine: quarantine, Cause: err}
 	}
 	for id, v := range s.state.Records {
 		changed := false
@@ -93,7 +114,7 @@ func NewService(root *appstate.ScopedRoot, emit func(string, sdk.Change)) (*Serv
 		}
 	}
 	s.pruneLocked()
-	if err := s.persistLocked(); err != nil {
+	if _, err := s.persistFittedLocked(""); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -119,13 +140,53 @@ func eligible(r sdk.Record) bool {
 	return r.Kind == "message" || (r.Task != nil && !active(r)) || (r.Alert != nil && r.Alert.State == "resolved")
 }
 
+var errStorageLimit = errors.New("activity history exceeds storage limit")
+
+// persistFittedLocked persists, first dropping the oldest eligible records
+// (never keep) when the file would exceed its cap, so that a full history does
+// not reject every later commit. It returns the IDs it dropped.
+func (s *Service) persistFittedLocked(keep string) ([]string, error) {
+	err := s.persistLocked()
+	if !errors.Is(err, errStorageLimit) {
+		return nil, err
+	}
+	data, marshalErr := json.Marshal(s.state)
+	if marshalErr != nil {
+		return nil, marshalErr
+	}
+	total := len(data)
+	var candidates []sdk.Record
+	for id, v := range s.state.Records {
+		if id != keep && eligible(v.Record) {
+			candidates = append(candidates, v.Record)
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].UpdatedAt < candidates[j].UpdatedAt
+	})
+	var removed []string
+	for _, r := range candidates {
+		if total <= maxActivityFileBytes {
+			break
+		}
+		entry, marshalErr := json.Marshal(s.state.Records[r.ID])
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		total -= len(entry) + len(r.ID) + 4 // quotes, colon and comma around the entry
+		delete(s.state.Records, r.ID)
+		removed = append(removed, r.ID)
+	}
+	return removed, s.persistLocked()
+}
+
 func (s *Service) persistLocked() error {
 	data, err := json.Marshal(s.state)
 	if err != nil {
 		return err
 	}
 	if len(data) > maxActivityFileBytes {
-		return errors.New("activity history exceeds storage limit")
+		return errStorageLimit
 	}
 	name := "activities-" + newID() + ".tmp"
 	f, err := s.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
@@ -191,10 +252,12 @@ func (s *Service) commitLocked(v storedRecord) (sdk.Record, error) {
 	s.state.Revision = v.Record.Revision
 	s.state.Records[v.Record.ID] = v
 	removed := s.pruneLocked()
-	if err := s.persistLocked(); err != nil {
+	fitted, err := s.persistFittedLocked(v.Record.ID)
+	if err != nil {
 		s.state = old
 		return sdk.Record{}, err
 	}
+	removed = append(removed, fitted...)
 	r := cloneRecord(v.Record)
 	s.publishLocked(sdk.Change{Revision: s.state.Revision, Record: &r, RemovedIDs: removed})
 	return r, nil

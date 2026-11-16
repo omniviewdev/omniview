@@ -232,8 +232,11 @@ func TestArchiveRecovery_RejectsInvalidAndForeignProfileProofs(t *testing.T) {
 			_, err = pm.readArchiveRecovery("flux")
 			assert.Error(t, err)
 			assert.Error(t, pm.guardArchiveRecovery("flux"))
-			_, err = pm.reconcileArchiveRecoveries()
-			assert.Error(t, err, "invalid proof must fail closed before automatic loading")
+			blocked, err := pm.reconcileArchiveRecoveries()
+			require.NoError(t, err, "an invalid proof must not stop unrelated plugins")
+			assert.True(t, blocked["flux"], "an invalid proof must still keep its plugin from loading")
+			assert.NoFileExists(t, pm.stateRoot.ResolvePath(name), "the invalid proof must be moved aside")
+			assert.NoError(t, pm.guardArchiveRecovery("flux"), "no marker remains once quarantined")
 			assert.Empty(t, pm.records)
 		})
 	}

@@ -345,7 +345,11 @@ func (pm *pluginManager) restoreUninstallRecoveries() (map[string]bool, error) {
 		id := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), uninstallRecoveryPrefix), ".json")
 		stage, err := pm.restoreUninstallRecovery(id)
 		if err != nil {
-			return nil, err
+			if quarantineErr := pm.quarantineBadRecoveryMarker(entry.Name(), id, err); quarantineErr != nil {
+				return nil, errors.Join(err, quarantineErr)
+			}
+			blocked[id] = true
+			continue
 		}
 		blocked[id] = true
 		if stage != "" {
