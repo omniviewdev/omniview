@@ -877,6 +877,21 @@ The host checks that captured epoch under the same fence as authority persistenc
 and route invalidation. A stale catalog cannot replace a newer durable binding,
 even when its caller would later reject the stale result.
 
+A type may also declare `ResourceType.environment`, a plugin-asserted fact about
+the target itself (for Kubernetes, the `kube-system` namespace UID) that stays
+equal across connection stops and starts, profile edits and restarts. It is the
+only input to a **durable identity**, which is for history and correlation and
+never for authorization: the host keeps using its own authority for policy,
+consent, MCP call binding, epoch fencing and reference currency, and equal durable
+identities never permit sharing a body, cache, grant or projection. The host
+namespaces every durable identity by the declaring plugin, derives it from the
+type's admitted catalog descriptor (a source session keeps one environment for
+its whole life), and gives a type that declares none no durable identity. A
+consumer that serves history must still authorize each read through the current
+route. The wire field is optional and `WireVersion` is unchanged, but SDK
+receivers with strict unknown-field admission need the matching SDK before a
+plugin declares it: ship the host first.
+
 Native operations pin the **exact accepted** SDK `Catalog.Revision` through
 `WithCatalogRevision`; neither client nor host substitutes a latest-cache token.
 The SDK frames the actual source/client binding epoch separately from native
