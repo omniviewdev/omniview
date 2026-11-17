@@ -1,0 +1,97 @@
+/* The sidebar tree (ch12 SB1; the mock's H.tree): a flat list, rows of 24 px, a 26 px step per level, 5 px of selection clearance inside the
+   pane and 7 px of row padding, so text sits on a 12 px rail. Those two numbers and the step are the mock's geometry, drawn as track sizes. */
+@layer ov.shell {
+  /* The list is the sidebar's scroll owner (S15). Its 5 px side tracks are the selection clearance. */
+  .tree {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: 5px minmax(0, 1fr) 5px;
+    align-content: start;
+    min-inline-size: 0;
+    min-block-size: 0;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: scroll;
+    scrollbar-gutter: auto;
+    list-style: none;
+  }
+
+  /* Columns: the indent (7 px and a step per level), the glyph, the label, what trails (the count, or the disclosure of a group), 7 px. */
+  .row {
+    --_indent: calc(7px + var(--_level, 0) * 26px);
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: var(--_indent) 16px minmax(0, 1fr) auto 7px;
+    align-items: center;
+    box-sizing: border-box;
+    block-size: 24px;
+    border-radius: var(--ov-radius-control);
+    color: var(--ov-fg);
+    cursor: default;
+    user-select: none;
+  }
+
+  .row[aria-expanded] {
+    cursor: pointer;
+  }
+
+  .row:hover {
+    background-color: var(--ov-hover-row);
+  }
+
+  .row[aria-selected='true'],
+  .row[aria-selected='true']:hover {
+    background-color: var(--ov-selection-inactive);
+  }
+
+  .row:focus,
+  .row[aria-selected='true']:focus,
+  .row:focus:hover {
+    outline: 0;
+    background-color: var(--ov-selection-active);
+  }
+
+  .row:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .glyph {
+    display: grid;
+    grid-column: 2;
+    place-items: center;
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--ov-icon);
+  }
+
+  .label {
+    grid-column: 3;
+    min-inline-size: 0;
+    margin-inline-start: var(--ov-spacing-8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .count {
+    grid-column: 4;
+    margin-inline-start: var(--ov-spacing-8);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A group's disclosure is the chevron at the row's end, a 24 px box; open, it points down. */
+  .disclosure {
+    display: grid;
+    grid-column: 4;
+    place-items: center;
+    inline-size: 24px;
+    block-size: 24px;
+    margin-inline-start: var(--ov-spacing-8);
+  }
+
+  .row[aria-expanded='true'] .disclosure > svg {
+    transform: rotate(90deg);
+  }
+}

@@ -12,7 +12,7 @@ export type ShellTreeNode = {
   readonly icon: IconName;
   /** The 12 px count slot at the end of an entry's row (ch12 SB1). Absent: the row has no count. */
   readonly count?: number | undefined;
-  readonly children?: ReadonlyArray<ShellTreeNode>;
+  readonly children?: readonly ShellTreeNode[];
 };
 
 export type ShellSidebar = {
@@ -20,9 +20,9 @@ export type ShellSidebar = {
   readonly label: string;
   /** The title of the sidebar's header. */
   readonly title: string;
-  readonly nodes: ReadonlyArray<ShellTreeNode>;
+  readonly nodes: readonly ShellTreeNode[];
   /** The groups open at first. Every ancestor of `current` is open as well. */
-  readonly open?: ReadonlyArray<string>;
+  readonly open?: readonly string[];
   /** The entry of the page on screen: selected, and where the tree's tab stop starts. */
   readonly current?: string;
 };
@@ -42,14 +42,14 @@ export type ShellRegistration = {
   /** The page as a tab shows it. A title of at most 3 words (ch16 S10). */
   readonly tab: { readonly title: string; readonly icon: IconName };
   /** The status bar's path, root first; the last crumb is the page. Text: a crumb that navigates arrives with navigation. */
-  readonly path: ReadonlyArray<string>;
+  readonly path: readonly string[];
   /**
-   * A 40 px track on the plugin's frame for its tools (R5). The tools themselves are not part of the contract yet: a declared rail
-   * keeps its track empty, so the page lands where the mock puts it (README, "Decisions").
+   * The plugin's frame has a rail of tools (R5): a 40 px track left of the sidebar. The tools are not part of the contract yet, so a
+   * declared rail keeps its track empty and the page lands where the mock puts it (README, "Decisions"). Absent: no rail, no track.
    */
-  readonly rail?: { readonly label: string };
+  readonly rail?: true;
   /** Absent: no sidebar, no track. */
   readonly sidebar?: ShellSidebar;
   /** The scope lane above the page, at most 2 faces (ch16 S10). Absent or empty: no lane, no 40 px. */
-  readonly scope?: ReadonlyArray<ShellScopeFace>;
+  readonly scope?: readonly ShellScopeFace[];
 };

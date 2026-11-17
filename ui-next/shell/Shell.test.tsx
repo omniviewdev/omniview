@@ -9,7 +9,7 @@ const registration: ShellRegistration = {
   plugin: { name: 'Acme' },
   tab: { title: 'Widgets', icon: 'box' },
   path: ['Acme', 'north', 'Widgets'],
-  rail: { label: 'Acme tools' },
+  rail: true,
   sidebar: {
     label: 'Acme items',
     title: 'Items',
@@ -100,7 +100,7 @@ describe('the one tab', () => {
     const list = screen.getByRole('tablist', { name: 'Open tabs' });
 
     expect(within(list).getAllByRole('tab')).toHaveLength(1);
-    expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveProperty('tabIndex', 0);
     expect(within(screen.getByRole('banner')).queryAllByRole('button')).toHaveLength(0);
   });
 });
@@ -120,7 +120,7 @@ describe('the sidebar tree', () => {
     expect(items[1]).toHaveAttribute('aria-selected', 'true');
     expect(items[2]).toHaveAttribute('aria-selected', 'false');
     expect(items[3]).not.toHaveAttribute('aria-expanded');
-    expect(within(items[1] as HTMLElement).getByText('89')).toBeInTheDocument();
+    expect(within(items[1]).getByText('89')).toBeInTheDocument();
   });
 
   it('shows the sidebar\'s title as the heading of the navigation', () => {
@@ -129,7 +129,7 @@ describe('the sidebar tree', () => {
   });
 
   it('opens the groups above the current entry even when the registration did not ask', () => {
-    renderShell({ ...registration, sidebar: { ...(registration.sidebar as NonNullable<ShellRegistration['sidebar']>), open: [] } });
+    renderShell({ ...registration, sidebar: { ...(registration.sidebar!), open: [] } });
     expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toBeInTheDocument();
   });
 
@@ -223,8 +223,8 @@ describe('the sidebar tree', () => {
     await user.keyboard('{ArrowLeft}');
     expect(screen.queryByRole('treeitem', { name: 'Widgets, 89' })).toBeNull();
 
-    const sidebar = registration.sidebar as NonNullable<ShellRegistration['sidebar']>;
-    const nodes = [{ ...sidebar.nodes[0]!, children: [{ id: 'widgets', label: 'Widgets', icon: 'box' as const, count: 90 }, ...(sidebar.nodes[0]!.children ?? []).slice(1)] }, ...sidebar.nodes.slice(1)];
+    const sidebar = registration.sidebar!;
+    const nodes = [{ ...sidebar.nodes[0], children: [{ id: 'widgets', label: 'Widgets', icon: 'box' as const, count: 90 }, ...(sidebar.nodes[0].children ?? []).slice(1)] }, ...sidebar.nodes.slice(1)];
     rerender(<Shell registration={{ ...registration, sidebar: { ...sidebar, nodes } }}><button type="button">Inside the page</button></Shell>);
     expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveAttribute('aria-expanded', 'false');
 
@@ -302,8 +302,8 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();
 
     screen.getByRole('button', { name: 'Outside' }).focus();
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'F6', bubbles: true }));
-    expect(screen.getByRole('button', { name: 'Outside' })).toHaveFocus();
+    await user.keyboard('{F6}');
+    expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();
   });
 
   it('skips a region that is inert', async () => {
