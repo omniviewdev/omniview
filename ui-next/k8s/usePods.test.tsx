@@ -202,16 +202,16 @@ describe('the bounded first set (owner decision A10)', () => {
     expect(result.current.rows).toBe(rows);
   });
 
-  it('counts a complete set by its records when the source reports no count of its own', () => {
+  it('counts a complete set by its records', () => {
     answer({ collection: [pod('a'), pod('b')] });
 
     expect(render().result.current.count).toEqual({ kind: 'exact', value: '2' });
   });
 
-  it('passes an estimate through as an estimate', () => {
-    answer({ collection: [pod('a')], count: { kind: 'estimate', value: '80' } });
+  it('does not trust the count of the source view: it is not kept live (captured on the real host: after a Pod was added the source still said 5025 with 5026 rows held)', () => {
+    answer({ collection: [pod('a'), pod('b'), pod('c')], count: { kind: 'exact', value: '2' } });
 
-    expect(render().result.current.count).toEqual({ kind: 'estimate', value: '80' });
+    expect(render().result.current.count).toEqual({ kind: 'exact', value: '3' });
   });
 });
 
