@@ -1,0 +1,222 @@
+name: UI next Pods cluster check
+
+# Slice 1a, PR 1a.1 (docs/ui-next/slices/1a-pods-list.md, 2.2 and 4.1): the new tree's `?screen=pods` page, served by the real Go host built
+# with OMNIVIEW_UI=next, must agree with `kubectl get pods -A` on a real kind cluster that holds the plan's fixture, with the Kubernetes
+# plugin built from a pinned commit. The job also runs two negative controls (a cluster without the fixture, a host without the plugin);
+# each must make the same check fail, so a check that has gone blind turns this job red.
+#
+# NOT a required check yet (R-11: a cluster job may be slow or flaky). The lead makes it required in the branch protection settings only
+# after it has been green for a while on `main` and on pull requests. It is path-filtered, so it cannot be required as it is: a required
+# check that does not run on a pull request blocks the merge.
+
+on:
+  pull_request:
+    paths:
+      - "ui-next/**"
+      - "packages/kit/**"
+      - ".github/workflows/ui-next-pods.yml"
+      - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "ui-next/**"
+      - "packages/kit/**"
+      - ".github/workflows/ui-next-pods.yml"
+      - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ui-next-pods-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "26.13.0"
+  GO_VERSION: "1.27.3"
+  GOWORK: "off"
+  GOFLAGS: ""
+  GOTOOLCHAIN: local
+  # One-node cluster, pinned: kind v0.30.0 (its Linux amd64 binary is verified by sha256 below) and the node image by digest (tag v1.35.0).
+  KIND_VERSION: v0.30.0
+  KIND_SHA256: 517ab7fc89ddeed5fa65abf71530d90648d9638ef0c4cde22c2c11f8097b8889
+  KIND_NODE_IMAGE: kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661
+  KUBECTL_VERSION: v1.35.0
+  KUBECTL_SHA256: a2e984a18a0c063279d692533031c1eff93a262afcc0afdc517375432d060989
+  # The Kubernetes plugin at the commit the plan was written against (0.21.2, origin/main 524d123 of 2026-11-16). Bump it deliberately.
+  KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
+  KUBERNETES_PLUGIN_REF: 524d1232a499cf868eb028af61912499736a37a5
+  # The host in the mode the skeleton used: browser server mode, OMNIVIEW_UI=next, channel feature-ui-next, a private HOME.
+  OMNIVIEW_UI: next
+  OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
+  KUBECONFIG_PATH: ${{ github.workspace }}/.ui-next-pods/kubeconfig
+
+jobs:
+  pods-cluster:
+    name: Pods cluster check
+    # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout the Kubernetes plugin at the pin
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.KUBERNETES_PLUGIN_REPOSITORY }}
+          ref: ${{ env.KUBERNETES_PLUGIN_REF }}
+          path: omniview-plugin-kubernetes
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            omniview-plugin-kubernetes/go.sum
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Oracle contracts (no cluster)
+        run: node --test ui-next/e2e/oracle.test.mjs
+
+      - name: Install pinned kind and kubectl
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin" "$OMNIVIEW_E2E_WORK"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kind" "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kubectl" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          echo "${KIND_SHA256}  $RUNNER_TEMP/bin/kind" | sha256sum --check --strict
+          echo "${KUBECTL_SHA256}  $RUNNER_TEMP/bin/kubectl" | sha256sum --check --strict
+          chmod +x "$RUNNER_TEMP/bin/kind" "$RUNNER_TEMP/bin/kubectl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Create the kind cluster
+        # The one retried step (R-11): a node image pull or a node start can fail for reasons outside this repository.
+        run: |
+          set -euo pipefail
+          unset KUBECONFIG
+          for attempt in 1 2 3; do
+            if kind create cluster --name ui-next-pods --kubeconfig "$KUBECONFIG_PATH" --image "$KIND_NODE_IMAGE" --wait 180s; then
+              exit 0
+            fi
+            echo "::warning::kind create cluster failed (attempt $attempt)"
+            kind delete cluster --name ui-next-pods --kubeconfig "$KUBECONFIG_PATH" || true
+            sleep 10
+          done
+          echo "::error::the kind cluster did not start in three attempts"
+          exit 1
+
+      - name: Build the workspace packages
+        run: |
+          task packages
+          # `task packages` rewrites this tracked shim (docs/ui-next/AGENTS.md, Commands); it is not part of the change under test.
+          git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+
+      - name: Build the host (OMNIVIEW_UI=next, server mode)
+        run: task build:server
+
+      - name: Build the Kubernetes plugin from the pin
+        working-directory: omniview-plugin-kubernetes
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$KUBERNETES_PLUGIN_REF"
+          version="$(sed -n 's/^version: //p' plugin.yaml | head -n 1)"
+          mkdir -p "$OMNIVIEW_E2E_WORK/plugin/bin"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X github.com/omniview/kubernetes/pkg/pluginid.ID=kubernetes -X github.com/omniview/kubernetes/pkg/pluginid.Version=${version}" \
+            -o "$OMNIVIEW_E2E_WORK/plugin/bin/plugin" ./pkg
+          cp plugin.yaml "$OMNIVIEW_E2E_WORK/plugin/plugin.yaml"
+
+      - name: Install the browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start the host with the plugin
+        run: ui-next/e2e/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+
+      # The cluster holds only kind's own Pods here: the check must report that the fixture is missing, not pass on kube-system.
+      - name: Negative control, cluster without the fixture
+        env:
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
+          OMNIVIEW_CHECK_MODE: control-fixture-absent
+        run: node --test ui-next/e2e/pods-cluster.check.mjs
+
+      - name: Apply the fixture
+        run: |
+          set -euo pipefail
+          export KUBECONFIG="$KUBECONFIG_PATH"
+          kubectl apply -f docs/ui-next/slices/1a-pods-list/fixture.yaml
+          kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s
+          kubectl -n checkout rollout status sts/cart-cache --timeout=240s
+          kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s
+          kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s
+          kubectl get pods -A
+
+      - name: Start the host without the plugin
+        run: ui-next/e2e/host.sh start without-plugin 34202 "$KUBECONFIG_PATH" none
+
+      # Same check, same cluster, same fixture; the plugin is the only difference. It must stop at the connection.
+      - name: Negative control, host without the Kubernetes plugin
+        env:
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34202
+          OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
+          OMNIVIEW_CHECK_MODE: control-plugin-absent
+        run: node --test ui-next/e2e/pods-cluster.check.mjs
+
+      - name: Check that the page and kubectl agree
+        env:
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
+        run: node --test ui-next/e2e/pods-cluster.check.mjs
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          export KUBECONFIG="$KUBECONFIG_PATH"
+          kubectl get pods -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -n 60 || true
+          for name in with-plugin without-plugin; do
+            echo "::group::host $name log"
+            tail -n 120 "$OMNIVIEW_E2E_WORK/$name/host.log" || true
+            echo "::endgroup::"
+          done
+
+      - name: Stop the hosts
+        if: always()
+        run: |
+          ui-next/e2e/host.sh stop with-plugin
+          ui-next/e2e/host.sh stop without-plugin
