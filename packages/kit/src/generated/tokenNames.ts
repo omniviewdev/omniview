@@ -261,6 +261,7 @@ export type TokenName =
   | '--ov-radius-popup'
   | '--ov-radius-island'
   | '--ov-control-height'
+  | '--ov-shadow-tooltip'
   | '--ov-row-height'
   | '--ov-row-pad'
   | '--ov-row-target'
@@ -371,6 +372,7 @@ export const TOKEN_NAMES = [
   '--ov-radius-popup',
   '--ov-radius-island',
   '--ov-control-height',
+  '--ov-shadow-tooltip',
   '--ov-row-height',
   '--ov-row-pad',
   '--ov-row-target',

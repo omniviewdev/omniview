@@ -6,13 +6,15 @@
  *     entry may also import the kit itself, and the root entry holds no example
  *   - no source maps ship
  *   - the stylesheet keeps the layer contract (see `checkStylesheet`) and defines exactly the generated token names
+ *   - the fonts the stylesheet names are the files of `fonts/manifest.json`, shipped beside it in `dist/fonts/`, byte for byte
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOKEN_NAMES } from '../src/generated/tokenNames.ts';
-import { checkStylesheet, declaredLayerOrder, definedTokens } from './stylesheet.ts';
+import { checkStylesheet, declaredLayerOrder, definedTokens, fontFiles } from './stylesheet.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const problems: string[] = [];
@@ -86,6 +88,18 @@ for (const name of TOKEN_NAMES) {
 for (const name of defined) {
   if (!(TOKEN_NAMES as readonly string[]).includes(name)) {
     problems.push(`${name} is defined but is not a generated token name`);
+  }
+}
+
+const fontManifest = JSON.parse(await readFile(path.join(root, 'fonts/manifest.json'), 'utf8')) as { faces: Array<{ file: string; sha256: string }> };
+const named = fontFiles(css);
+assert.deepEqual(named, fontManifest.faces.map((face) => face.file).sort(), 'the stylesheet must name exactly the fonts of fonts/manifest.json');
+for (const face of fontManifest.faces) {
+  const shipped = await readFile(path.join(root, 'dist/fonts', face.file)).catch(() => undefined);
+  if (shipped === undefined) {
+    problems.push(`dist/fonts/${face.file} does not exist`);
+  } else if (createHash('sha256').update(shipped).digest('hex') !== face.sha256) {
+    problems.push(`dist/fonts/${face.file} is not the file of fonts/manifest.json`);
   }
 }
 

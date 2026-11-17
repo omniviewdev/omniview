@@ -9,6 +9,7 @@ import {
   FONTS,
   LINE_HEIGHTS,
   RADII,
+  SHADOWS,
   SPACING,
   TEXT_SIZES,
   TOKEN_PREFIX,
@@ -36,6 +37,7 @@ export function tokenNames(): readonly string[] {
     ...SPACING.map((step) => name(`spacing-${step}`)),
     ...Object.keys(RADII).map((role) => name(`radius-${role}`)),
     name('control-height'),
+    ...Object.keys(SHADOWS).map((role) => name(`shadow-${role}`)),
     ...densityTokenNames.map((token) => name(token)),
     ...groups.flatMap(([, roles]) => roles.map((role) => name(role))),
   ];
@@ -55,7 +57,7 @@ export function renderTokensCss(themes: readonly ThemeDefinition[], defaultTheme
 
   blocks.push(
     [
-      '  /* Type, geometry and spacing. A theme sets colour only; type, density and text size are the other axes. */',
+      '  /* Type, geometry, elevation and spacing. A theme sets colour only; type, density and text size are the other axes. */',
       '  :root {',
       declarations(
         [
@@ -68,6 +70,7 @@ export function renderTokensCss(themes: readonly ThemeDefinition[], defaultTheme
           ...SPACING.map((step): [string, string] => [name(`spacing-${step}`), px(step)]),
           ...Object.entries(RADII).map(([role, size]): [string, string] => [name(`radius-${role}`), px(size)]),
           [name('control-height'), px(CONTROL_HEIGHT)],
+          ...Object.entries(SHADOWS).map(([role, value]): [string, string] => [name(`shadow-${role}`), value]),
         ],
         '    ',
       ),

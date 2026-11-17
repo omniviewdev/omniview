@@ -77,3 +77,5 @@ export type {
 } from './components/PageHeader';
 export { DataView } from './components/DataView';
 export type { DataViewProps, DataViewState } from './components/DataView';
+export { TooltipHost, tip } from './components/TooltipHost';
+export type { TipAttributes, TipOptions } from './components/TooltipHost';

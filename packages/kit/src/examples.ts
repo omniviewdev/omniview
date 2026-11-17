@@ -30,6 +30,7 @@ import * as searchFieldExamples from './components/SearchField/SearchField.examp
 import * as workspaceToolbarExamples from './components/WorkspaceToolbar/WorkspaceToolbar.examples';
 import * as pageHeaderExamples from './components/PageHeader/PageHeader.examples';
 import * as dataViewExamples from './components/DataView/DataView.examples';
+import * as tooltipExamples from './components/TooltipHost/TooltipHost.examples';
 
 /** One example: a component without props that renders one state of a part. Its name is its title, its JSDoc its description. */
 export type Example = () => ReactElement;
@@ -60,4 +61,5 @@ export const examples: PartExamples = {
   WorkspaceToolbar: workspaceToolbarExamples,
   PageHeader: pageHeaderExamples,
   DataView: dataViewExamples,
+  TooltipHost: tooltipExamples,
 };

@@ -14,14 +14,28 @@ on:
     paths:
       - "ui-next/**"
       - "packages/kit/**"
+      - "packages/omniviewdev-runtime/**"
       - ".github/workflows/ui-next-pods.yml"
+      - "*.go"
+      - "backend/**"
+      - "internal/**"
+      - "pkg/**"
+      - "go.mod"
+      - "go.sum"
       - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
   push:
     branches: [main]
     paths:
       - "ui-next/**"
       - "packages/kit/**"
+      - "packages/omniviewdev-runtime/**"
       - ".github/workflows/ui-next-pods.yml"
+      - "*.go"
+      - "backend/**"
+      - "internal/**"
+      - "pkg/**"
+      - "go.mod"
+      - "go.sum"
       - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
   workflow_dispatch:
 
@@ -112,6 +126,10 @@ jobs:
 
       - name: Oracle contracts (no cluster)
         run: node --test ui-next/e2e/oracle.test.mjs
+
+      # The script test of ui-next/e2e/host.sh (PR #520).
+      - name: Host script contracts (no cluster)
+        run: node --test ui-next/e2e/host.test.mjs
 
       - name: Install pinned kind and kubectl
         run: |

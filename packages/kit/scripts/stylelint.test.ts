@@ -67,7 +67,15 @@ describe('the stylelint config rejects', () => {
   }
 });
 
-describe('the stylelint config makes two exceptions', () => {
+describe('the stylelint config makes three exceptions', () => {
+  it('lets the font stylesheet name its families, and only the kit\'s two, only there', async () => {
+    const face = '@font-face { font-family: \'Int UI Inter\'; src: url(\'../../fonts/Inter-Regular.latin.woff2\') format(\'woff2\'); font-style: normal; font-weight: 400; font-display: swap; unicode-range: U+0020-007E; }';
+    expect(await lint(face, 'src/styles/fonts.css')).toEqual([]);
+    expect(await lint('@font-face { font-family: \'Comic Sans\'; src: url(x.woff2); font-weight: 400; }', 'src/styles/fonts.css')).toContain('declaration-property-value-allowed-list');
+    expect(await lint('@font-face { font-family: \'Int UI Inter\'; src: url(x.woff2); font-weight: 500; }', 'src/styles/fonts.css')).toContain('declaration-property-value-allowed-list');
+    expect(await lint(face, 'src/components/Probe/Probe.module.css')).toContain('declaration-property-value-allowed-list');
+  });
+
   it('lets the generated stylesheet define tokens and use hex', async () => {
     expect(await lint('.a { --ov-fg: #D1D3D9; }', 'src/generated/tokens.css')).toEqual([]);
   });

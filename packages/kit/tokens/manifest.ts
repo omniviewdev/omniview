@@ -11,8 +11,8 @@
  * icon/text gap, 6 the label/control gap, 8 the related gap, 12 the pane inset and row gap, 16 the gap between independent
  * controls, 20 the gap between unrelated groups; 2 is a hairline adjustment inside a component, 24 the largest step.
  *
- * Not carried yet, because no part reads them: motion, shadows, z-index, icon sizes, the control insets and the shell geometry.
- * Each arrives with the first screen that needs it.
+ * Not carried yet, because no part reads them: motion, z-index, icon sizes, the control insets and the shell geometry, and the shadows
+ * other than the tooltip's. Each arrives with the first screen that needs it.
  */
 
 /** The CSS custom property prefix. Every generated token starts with it. */
@@ -127,6 +127,12 @@ export const RADII = { mark: 2, control: 4, tab: 6, popup: 8, island: 10 } as co
 
 /** The height of a standard control, in pixels (`--ov-control-height`). */
 export const CONTROL_HEIGHT = 28;
+
+/**
+ * Elevation by owner (`--ov-shadow-<role>`), the same in every theme (research chapter 15, section 3.5). Only the tooltip draws one so
+ * far: the mock's `.tooltip` shadow. The popup shadow (`0 8px 24px #00000040`) arrives with the first popup.
+ */
+export const SHADOWS = { tooltip: '0 2px 8px #0006' } as const;
 
 /**
  * The density axis (`data-ov-density`) changes the rows of lists and tables only; controls, icons, chrome and type keep

@@ -1,0 +1,79 @@
+@layer ov.components {
+  /* The one tooltip of the window (design 12, the tooltip host; the mock's core.css `.tooltip`). A popover in the top layer, so no
+     ancestor clips it and nothing needs a z-index; the host places it with `left` and `top`, so the UA popover rules for inset,
+     margin and size are set aside. Plain text that wraps at 300 px and keeps its own lines; no scrim, no blur, no arrow, and no
+     transition or animation: nothing moves, so reduced motion has nothing to change. */
+  .root {
+    position: fixed;
+    inset: auto;
+    left: 0;
+    top: 0;
+    width: max-content;
+    height: auto;
+    max-width: min(300px, calc(100vw - 16px));
+    margin: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    box-sizing: border-box;
+    overflow: visible;
+    border: 1px solid var(--ov-bg-feedback);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-feedback);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    box-shadow: var(--ov-shadow-tooltip);
+  }
+
+  /* The host limits the HEIGHT OF THE BORDER BOX (max-height, from the room there is), so the root measures by border-box. Open, it is a flex
+     column: the text is one inner element (the host writes it) that shrinks into what the padding and border leave and scrolls, when the host
+     says there is no room for the whole text on any side. `display` is set only while open: the UA hides a closed popover with `display: none`,
+     which an author `display` on the root itself would override. The root never scrolls: that would clip the bridge below, which lies outside
+     its padding box. */
+  .root:popover-open {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .root > [data-ov-tip-body] {
+    min-height: 0;
+  }
+
+  .root[data-ov-clamped='true'] > [data-ov-tip-body] {
+    overflow-y: auto;
+  }
+
+  /* The bridge: the gap between the trigger and the tooltip is not empty to the pointer, which can cross it onto the tooltip (the host
+     keeps the tip open while the tooltip is hovered). It is the gap of placement.ts, 8 px, and the border. */
+  .root::before {
+    content: '';
+    position: absolute;
+  }
+
+  .root[data-placement='bottom']::before {
+    inset: auto 0 100% 0;
+    height: calc(8px + 1px);
+  }
+
+  .root[data-placement='top']::before {
+    inset: 100% 0 auto 0;
+    height: calc(8px + 1px);
+  }
+
+  .root[data-placement='right']::before {
+    inset: 0 100% 0 auto;
+    width: calc(8px + 1px);
+  }
+
+  .root[data-placement='left']::before {
+    inset: 0 auto 0 100%;
+    width: calc(8px + 1px);
+  }
+}
