@@ -17,6 +17,14 @@ export const PLUGIN_CODE = [
 /** Directories exempt from the vocabulary scan: the plugin code, and the slice's real-cluster Playwright check (may not exist yet). */
 export const SCAFFOLDING = [...PLUGIN_CODE, 'ui-next/e2e'];
 
+/**
+ * What a plugin's bundle leaves external and takes from the host at run time: the shared list of contract v1 (`ui-next/plugins/loader/specifiers.ts`, which
+ * `guards.test.mjs` compares this with). The runtime comes through its curated entry only (its main barrel holds the previous UI library), the kit through its
+ * root entry only (its stylesheet is the host's: loaded once, it declares the layer order). A bundle that imports another module of this repository's packages
+ * is refused by the loader before it runs, so scaffolding written to move into a plugin may not import one either.
+ */
+export const PLUGIN_SURFACE = ['react', 'react/jsx-runtime', 'react/compiler-runtime', '@omniviewdev/kit', '@omniviewdev/runtime/ui/v1'];
+
 /** The token written in the source comments that mark scaffolding (tracker row N19). */
 export const MARKER = 'SCAFFOLDING(N19)';
 

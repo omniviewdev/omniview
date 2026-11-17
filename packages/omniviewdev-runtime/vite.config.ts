@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vite";
-import { resolve } from "path";
+import { resolve, sep } from "path";
 import dts from "vite-plugin-dts";
 import react from "@vitejs/plugin-react";
 
@@ -35,12 +35,14 @@ export default defineConfig({
   build: {
     outDir: outputDirectory,
     lib: {
-      entry: [
-        resolve(__dirname, "src/index.ts"),
-        resolve(__dirname, "src/api.ts"),
-        resolve(__dirname, "src/models.ts"),
-        resolve(__dirname, "src/runtime.ts"),
-      ],
+      // The object form names each output after its key: `ui/v1` writes `dist/ui/v1.js` (and `.cjs`), the path the package's `exports` map names.
+      entry: {
+        index: resolve(__dirname, "src/index.ts"),
+        api: resolve(__dirname, "src/api.ts"),
+        models: resolve(__dirname, "src/models.ts"),
+        runtime: resolve(__dirname, "src/runtime.ts"),
+        "ui/v1": resolve(__dirname, "src/ui/v1.ts"),
+      },
       name: "@omniview/runtime",
     },
     rollupOptions: {
@@ -58,7 +60,13 @@ export default defineConfig({
   },
   plugins: [
     react({ babel: { plugins: [["babel-plugin-react-compiler", { target: "19" }]] } }),
-    dts({ tsconfigPath: './tsconfig.app.json', outDirs: outputDirectory })
+    dts({
+      tsconfigPath: './tsconfig.app.json',
+      outDirs: outputDirectory,
+      // The curated entry's declarations come from their own program (tsconfig.ui-v1.json, `dist/ui-v1/`): this program holds the main barrel, and an
+      // inferred type in a declaration emitted from it would name the barrel (`import('../..')`) and so reach the previous UI library.
+      beforeWriteFile: (filePath) => (filePath.split(sep).join("/").startsWith(`${resolve(__dirname, outputDirectory, "ui").split(sep).join("/")}/`) ? false : undefined),
+    }),
   ],
   test: {
     fsModuleCachePath: testCaches.fsModuleCachePath,

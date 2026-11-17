@@ -554,6 +554,9 @@ importers:
         specifier: 0.10.3
         version: 0.10.3
     devDependencies:
+      '@microsoft/api-extractor':
+        specifier: 7.60.1
+        version: 7.60.1(@types/node@26.6.5)
       '@omniviewdev/base-ui':
         specifier: ~0.17.3
         version: 0.17.3(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

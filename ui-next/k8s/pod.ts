@@ -1,4 +1,4 @@
-import { valueToJSON, type HostRecord } from '@omniviewdev/runtime';
+import { valueToJSON, type HostRecord } from '@omniviewdev/runtime/ui/v1';
 
 // The part of a Pod that the list reads. A record body is an exact `Value` tree, not a Kubernetes object: `valueToJSON` is the
 // presentation projection (integers become numbers, timestamps stay strings). Anything the object does not hold is absent here, and

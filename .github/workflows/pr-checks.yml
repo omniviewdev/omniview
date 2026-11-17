@@ -318,6 +318,11 @@ jobs:
           pnpm --filter @omniviewdev/kit run test
           pnpm --filter @omniviewdev/kit run api:check
 
+      # The runtime's curated entry for new-UI plugins (`@omniviewdev/runtime/ui/v1`). Its build (task check:ui-build) already proved that nothing of the previous UI library
+      # is reachable from it in source, declarations and scripts (packages/omniviewdev-runtime/scripts/check-ui-v1.ts); this fails when its API report is stale.
+      - name: Runtime curated entry (API report)
+        run: pnpm --filter @omniviewdev/runtime run api:check
+
       - name: Age clock DST regressions
         run: pnpm exec vitest run ui/utils/ageClock.test.tsx
         env:

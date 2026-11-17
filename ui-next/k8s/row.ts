@@ -1,4 +1,4 @@
-import type { HostRecord } from '@omniviewdev/runtime';
+import type { HostRecord } from '@omniviewdev/runtime/ui/v1';
 import { nameTail, podCreatedAt, podIP, podNode, podReady, podRestarts, type PodReady } from './fields';
 import { podObject } from './pod';
 import { podStatusWord, stateRole, type StateRole } from './status';

@@ -88,13 +88,32 @@ async function open(page, base, hash = '') {
 async function checkHealthy(page, base, engine) {
   const errors = [];
   const failedRequests = [];
+  const failedDetails = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
     // The browser's own line for a request that answered 4xx is not a script error: the requests are listed below and each must be one the check expects.
     if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(`console: ${message.text()}`);
   });
+  // The fixture's `useConnections` swallows a failed call into an empty list, so the rendered count alone cannot tell a failure from an empty answer: the check
+  // records how the host answered the Wails runtime calls that carry the fixture's plugin id (generated bindings are called by id, not by name; the only such call is
+  // `ListConnections(pluginId)`).
+  const connectionCalls = [];
   page.on('response', (response) => {
-    if (response.status() >= 400) failedRequests.push(`${String(response.status())} ${new URL(response.url()).pathname}`);
+    const body = response.request().postData() ?? '';
+    if (new URL(response.url()).pathname === '/wails/runtime' && body.includes(`"${OK}"`)) connectionCalls.push(response.status());
+  });
+  page.on('response', (response) => {
+    if (response.status() < 400) return;
+    const request = response.request();
+    const pathname = new URL(response.url()).pathname;
+    failedRequests.push(`${String(response.status())} ${pathname}`);
+    // What was asked and what came back, so an unexpected 4xx names its call (the Wails runtime's endpoint carries every call in its body).
+    failedDetails.push(
+      response.text().then(
+        (body) => `${request.method()} ${pathname} -> ${String(response.status())}: asked ${String(request.postData() ?? '').slice(0, 400)} | answered ${body.slice(0, 400)}`,
+        () => `${request.method()} ${pathname} -> ${String(response.status())} (no body)`,
+      ),
+    );
   });
 
   // a. no route at all: the first plugin that is ready opens its home page.
@@ -116,15 +135,28 @@ async function checkHealthy(page, base, engine) {
     const bundle = System.get(entry);
     const kit = System.get('shared://@omniviewdev/kit');
     const react = System.get('shared://react');
+    const runtime = System.get('shared://@omniviewdev/runtime/ui/v1');
     return {
       bundleLoaded: bundle !== null,
       sameReact: bundle.imports.useState === react.useState,
       sameKitText: bundle.imports.Text === kit.Text,
       sameKitUseTheme: bundle.imports.useTheme === kit.useTheme,
+      sameRuntimeUseConnections: bundle.imports.useConnections === runtime.useConnections,
       registered: [...System.entries()].map(([id]) => id).filter((id) => id.startsWith('shared://')),
     };
   }, `${base}/_/plugins/${OK}/assets/entry.js`);
-  assert.deepEqual({ ...identity, registered: undefined }, { bundleLoaded: true, sameReact: true, sameKitText: true, sameKitUseTheme: true, registered: undefined }, `${engine}: the bundle holds the registry's instances`);
+  assert.deepEqual(
+    { ...identity, registered: undefined },
+    { bundleLoaded: true, sameReact: true, sameKitText: true, sameKitUseTheme: true, sameRuntimeUseConnections: true, registered: undefined },
+    `${engine}: the bundle holds the registry's instances`,
+  );
+
+  // The runtime read: the plugin's `useConnections()` is the host's shared one, so it ran in the host's QueryClient and activity provider, asked the real host over
+  // the Wails runtime and got its answer back (the fixture has no backend, so the answer is an empty list). Until then the cell says `reading`.
+  await page.waitForFunction(() => /^\d+ connections$/.test(document.querySelector('[data-fixture=connections]')?.textContent?.trim() ?? ''), null, { timeout: 20_000 });
+  console.log(`${engine}: the fixture read through the shared runtime entry: "${(await page.locator('[data-fixture=connections]').first().innerText()).trim()}"`);
+  // The cell cannot tell a failed call from an empty answer (the hook turns a failure into an empty list), so the host's answer to each call is checked too.
+  assert.ok(connectionCalls.length > 0 && connectionCalls.every((status) => status === 200), `${engine}: the host answered the plugin's ListConnections call with success (${connectionCalls.join(', ') || 'none seen'})`);
 
   // The plugin's own CSS arrived inside the kit's plugin layer, and styles its own element.
   const css = await page.evaluate((id) => document.querySelector(`style[data-omniview-plugin-css="${id}"]`)?.textContent ?? '', OK);
@@ -150,6 +182,7 @@ async function checkHealthy(page, base, engine) {
   const [missing, rest] = [failedRequests.filter((entry) => entry.includes(MISSING)), failedRequests.filter((entry) => !entry.includes(MISSING))];
   assert.ok(missing.length > 0 && missing.every((entry) => entry.startsWith('400 ')), `${engine}: the plugin with no bundle was answered 400 (${missing.join(', ')})`);
   console.log(`${engine}: other requests that answered 4xx while the page ran: ${rest.length === 0 ? 'none' : [...new Set(rest)].join(', ')}`);
+  for (const detail of await Promise.all(failedDetails)) if (!detail.includes(MISSING)) console.log(`  ${engine}: ${detail}`);
 }
 
 async function checkRefusals(page, base, engine) {

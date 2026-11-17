@@ -5,6 +5,8 @@ import tsParser from '@typescript-eslint/parser';
 import { ESLint } from 'eslint';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { SHARED_SPECIFIERS_V1 } from '../../../ui-next/plugins/loader/specifiers.ts';
+import { PLUGIN_SURFACE } from './scaffolding.mjs';
 
 // The wiring of the guards on files of the two trees: which globs each rule covers, and what stays exempt.
 const require = createRequire(import.meta.url);
@@ -192,11 +194,25 @@ describe('the host and the kit are plugin-agnostic (decision A13)', () => {
     expect(await boundary(code, 'ui-next/pods/a.tsx')).toBe(specifiers.length);
   });
 
-  it('plugin code may use its own files and the public surface', async () => {
-    const own = ['./b', './sub/c', '@omniviewdev/runtime', '@omniviewdev/kit', '@omniviewdev/kit/styles.css', 'react', 'vitest'];
+  it('plugin code reaches the runtime only through its curated entry and the kit only through its root entry, tests included', async () => {
+    const outside = ['@omniviewdev/runtime', '@omniviewdev/runtime/ui/v2', '@omniviewdev/kit/styles.css', '@omniviewdev/base-ui', '@omniviewdev/providers'];
+    const code = outside.map((specifier, index) => `import x${index} from '${specifier}';`).join('\n');
+    for (const file of ['ui-next/k8s/a.ts', 'ui-next/k8s/a.test.ts', 'ui-next/pods/a.tsx', 'ui-next/pods/a.test.tsx']) {
+      expect(await boundary(code, file), file).toBe(outside.length);
+    }
+  });
+
+  it('plugin code may use its own files and the shared list, and the host and the kit may use the whole runtime', async () => {
+    const own = ['./b', './sub/c', '@omniviewdev/kit', '@omniviewdev/runtime/ui/v1', 'react', 'react/jsx-runtime', 'react/compiler-runtime', 'vitest'];
     expect(await boundary(own.map((specifier, index) => `import x${index} from '${specifier}';`).join('\n'), 'ui-next/k8s/a.ts')).toBe(0);
     expect(await boundary("import { b } from '../b'; import { Page } from '../../pods/Page';", 'ui-next/k8s/sub/d.ts')).toBe(0);
     expect(await boundary("import { usePods } from '../k8s/usePods';", 'ui-next/pods/Page.tsx')).toBe(0);
+    expect(await boundary("import { ActivityProvider } from '@omniviewdev/runtime'; import '@omniviewdev/kit/styles.css';", 'ui-next/main.tsx')).toBe(0);
+  });
+
+  it('what the rule lets a plugin import is the list the host shares with a plugin\'s bundle, so the two cannot drift', () => {
+    // `react/jsx-dev-runtime` is imported by a development server's modules, never written in a source file.
+    expect([...PLUGIN_SURFACE].sort()).toEqual(SHARED_SPECIFIERS_V1.filter((name) => name !== 'react/jsx-dev-runtime').sort());
   });
 
   it('the one mount point is ui-next/main.tsx, marked, and the rule stays active on its other lines', async () => {

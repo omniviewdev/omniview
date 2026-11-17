@@ -1,5 +1,5 @@
-import type { HostRecord } from '@omniviewdev/runtime';
-import * as runtime from '@omniviewdev/runtime';
+import type { HostRecord } from '@omniviewdev/runtime/ui/v1';
+import * as runtime from '@omniviewdev/runtime/ui/v1';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PodSort } from './sort';
@@ -8,7 +8,7 @@ import { usePods, type PodsView } from './usePods';
 
 // `usePods` is the seam: it must drive the same fenced read chain the old screens use (catalog -> resolved target -> collection source
 // view), unchanged, and add the first explicit page beside the collection (docs/ui-next/status/1a.2.md, "E10: the mechanism").
-vi.mock('@omniviewdev/runtime', async (importActual) => {
+vi.mock('@omniviewdev/runtime/ui/v1', async (importActual) => {
   const actual = await importActual<typeof runtime>();
   return {
     ...actual,

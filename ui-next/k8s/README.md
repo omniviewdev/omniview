@@ -2,15 +2,15 @@
 
 Omniview is a general-purpose IDE. **Kubernetes is a separate plugin and is never worked into the core.**
 
-This directory is **temporary slice scaffolding**. It stands in for the Kubernetes plugin until the plugin's own `ui-next` stream exists (decision A13, tracker row N19). It is plugin code, written to move:
+This directory is **temporary slice scaffolding**. It stands in for the Kubernetes plugin until the plugin's own `feature/ui-next` branch carries the new UI (decisions A13 and A16, tracker row N19). It is plugin code, written to move:
 
-- It **moves into `omniview-plugin-kubernetes`** (its `ui-next` stream). It is moved, not rewritten: the row model, the Pod definition and the hooks in here are plugin code and keep their shape.
+- It **moves into `omniview-plugin-kubernetes`**, into the `ui/` project of its `feature/ui-next` branch (A16: that branch's `ui/` becomes the new UI). It is moved, not rewritten: the row model, the Pod definition and the hooks in here are plugin code and keep their shape.
 - It is **deleted from the host before the calibration gate closes slice 1.** After that the host tree holds no Kubernetes code, and the Pods list renders from the plugin.
 
 ## The rules while it lives here
 
 1. **The host and the kit never import it.** Nothing in `packages/kit/**`, and nothing in the shell part of `ui-next/`, may import from `ui-next/k8s/**` (or from the Pods page, `ui-next/pods/**`, which is scaffolding too). The one exception is the single mount point of `?screen=pods` in `ui-next/main.tsx`, marked `SCAFFOLDING(N19)`.
-2. **It imports the host only through what a plugin gets:** the runtime hooks (`@omniviewdev/runtime`, main entry) and the kit (`@omniviewdev/kit`, `@omniviewdev/kit/styles.css`). No shell internals, no `ui/`, no raw RPC (`@omniviewdev/runtime/api` holds `ResourceClient`, `/runtime` holds `Call`), no Wails binding. It reads only through the fenced hooks (`useResourceTypes`, `useResolvedResourceTarget`, `useResources`, `useConnectionReadiness`).
+2. **It imports the host only through what a plugin gets:** the runtime's curated entry (`@omniviewdev/runtime/ui/v1`: never its main barrel, which holds the previous UI library) and the kit (`@omniviewdev/kit`: never its stylesheet, which the host loads once), exactly as the Kubernetes plugin's bundle will, plus React and third-party packages. No shell internals, no `ui/`, no other package of this repository, no raw RPC (`@omniviewdev/runtime/api` holds `ResourceClient`, `/runtime` holds `Call`), no Wails binding. It reads only through the fenced hooks (`useResourceTypes`, `useResolvedResourceTarget`, `useResources`, `useConnectionReadiness`, `useConnections`). The providers those hooks read (the QueryClient, the theme, the activity provider) are the host's: `ui-next/main.tsx` mounts them above the Pods screen.
 3. **No Kubernetes word leaves it.** The kit and the shell stay free of pod, namespace, kubectl, kubernetes and k8s (the vocabulary guard).
 
 Rules 1 to 3 are enforced by `kit/scaffold-boundary` and the vocabulary guard in `packages/kit/eslint`, each proven by failing probes; `docs/ui-next/AGENTS.md` rule 15 states the principle.
@@ -35,6 +35,6 @@ The acquisition rule of the bounded first set, its measurement, and the capture 
 
 ## Moving it
 
-1. Copy this directory into the plugin's `ui-next` stream. Its imports name only `@omniviewdev/runtime` and third-party packages (`react`; the tests use `vitest` and `@testing-library/react`), so no import changes.
+1. Copy this directory into the plugin's `ui/src/pods/data/` on its `feature/ui-next` branch (A16; `docs/ui-next/slices/n19-plugin-seam.md`, section 3). Its imports name only `@omniviewdev/runtime/ui/v1`, `@omniviewdev/kit` and third-party packages (`react`; the tests use `vitest` and `@testing-library/react`), so no import changes.
 2. Delete `ui-next/k8s/` and `ui-next/pods/` from the host, and the `SCAFFOLDING(N19)` lines in `ui-next/main.tsx`.
 3. Remove both directories from `PLUGIN_CODE` and `SCAFFOLDING` in `packages/kit/eslint/scaffolding.mjs`. The vocabulary guard then covers the whole host tree.

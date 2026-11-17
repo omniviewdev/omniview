@@ -1,15 +1,14 @@
-import * as runtime from '@omniviewdev/runtime';
+import * as runtime from '@omniviewdev/runtime/ui/v1';
 import { cleanup, render } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as data from '../k8s';
 import { PodsPage, type PodsPageParts } from './PodsPage';
 
 // The data layer is its own seam, tested in ui-next/k8s: here `usePods` answers a view, and the runtime answers the list of connections. What is under
 // test is what the screen hands the host: which connection it reads, what it registers, what the page lists and in what state, and the one connection it starts.
-vi.mock('@omniviewdev/runtime', async (importActual) => {
+vi.mock('@omniviewdev/runtime/ui/v1', async (importActual) => {
   const actual = await importActual<typeof runtime>();
-  return { ...actual, ActivityProvider: ({ children }: { children: ReactNode }) => <>{children}</>, useConnections: vi.fn() };
+  return { ...actual, useConnections: vi.fn() };
 });
 vi.mock('../k8s', async (importActual) => {
   const actual = await importActual<typeof data>();

@@ -77,10 +77,12 @@ const pluginToHost = [{ messageId: 'pluginToHost' }];
 
 tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
   valid: [
-    // plugin code may use its own files and the public surface
-    ...['./b', './sub/c', '@omniviewdev/runtime', '@omniviewdev/kit', '@omniviewdev/kit/styles.css', 'react', 'vitest', '@tanstack/react-query', '@testing-library/react'].map(
+    // plugin code may use its own files and the shared list a plugin's bundle leaves external (ui-next/plugins/loader/specifiers.ts), and third-party packages
+    ...['./b', './sub/c', '@omniviewdev/kit', '@omniviewdev/runtime/ui/v1', 'react', 'react/jsx-runtime', 'react/compiler-runtime', 'vitest', '@tanstack/react-query', '@testing-library/react'].map(
       (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts') }),
     ),
+    { code: "import type { HostRecord } from '@omniviewdev/runtime/ui/v1'; export type { HostRecord };", filename: at('ui-next/k8s/a.ts') },
+    { code: "export { useResources } from '@omniviewdev/runtime/ui/v1'; const a = import('@omniviewdev/runtime/ui/v1');", filename: at('ui-next/pods/a.ts') },
     // a package whose scope only starts like an alias is not one
     { code: "import x from '@hookstate/core'; import y from '@utilities/z'; export { x, y };", filename: at('ui-next/k8s/a.ts') },
     { code: "import { P } from '../b'; import { Page } from '../../pods/Page'; export { P, Page };", filename: at('ui-next/k8s/sub/d.ts') },
@@ -115,6 +117,21 @@ tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
     ...['../shell/Frame', '../../ui/utils/x', '@/utils/y', '@omniviewdev/runtime/api', '@omniviewdev/runtime/runtime', '@omniviewdev/kit/dist/x', '@omniviewdev/kit/src/x', '@wailsio/runtime', '../App', '../main', '../../packages/kit/src/x', '../k8sish/x'].map(
       (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts'), errors: pluginToHost }),
     ),
+    // the runtime comes through its curated entry only: not the main barrel (which holds the previous UI library), not a later contract that is not on the shared list yet
+    // and not a file of it; the kit comes through its root entry only: the stylesheet is the host's, loaded once, and declares the layer order
+    ...['@omniviewdev/runtime', '@omniviewdev/runtime/ui/v1/hooks', '@omniviewdev/runtime/ui/v2', '@omniviewdev/runtime/dist/index.js', '@omniviewdev/kit/styles.css', '@omniviewdev/kit/examples'].map(
+      (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts'), errors: pluginToHost }),
+    ),
+    // no other package of this repository is on a plugin's surface
+    ...['@omniviewdev/base-ui', '@omniviewdev/base-ui/metrics', '@omniviewdev/ai-ui', '@omniviewdev/editors', '@omniviewdev/providers', '@omniviewdev/vite-plugin'].map((specifier) => ({
+      code: `import x from '${specifier}'; export { x };`,
+      filename: at('ui-next/pods/a.tsx'),
+      errors: pluginToHost,
+    })),
+    { code: "import type { Connection } from '@omniviewdev/runtime'; export type { Connection };", filename: at('ui-next/k8s/a.ts'), errors: pluginToHost },
+    { code: "export { ActivityProvider } from '@omniviewdev/runtime'; const a = import('@omniviewdev/runtime');", filename: at('ui-next/pods/a.ts'), errors: [{ messageId: 'pluginToHost' }, { messageId: 'pluginToHost' }] },
+    { code: "const a = require('@omniviewdev/kit/styles.css');", filename: at('ui-next/k8s/a.ts'), errors: pluginToHost },
+    { code: "import x from '@omniviewdev/runtime'; export { x };", filename: at('ui-next/k8s/a.test.ts'), errors: pluginToHost },
     { code: "import x from '../shell/Frame'; export { x };", filename: at('ui-next/k8s/a.test.ts'), errors: pluginToHost },
     { code: "export { x } from '../shell/Frame';", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
     { code: "export * from '@/x';", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },

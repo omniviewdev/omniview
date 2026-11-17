@@ -1,4 +1,4 @@
-import type { HostSourceStatus } from '@omniviewdev/runtime';
+import type { HostSourceStatus } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, it } from 'vitest';
 import { readPodsState, type PodsReads } from './state';
 

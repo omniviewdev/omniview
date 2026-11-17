@@ -1,4 +1,5 @@
 import * as kit from '@omniviewdev/kit';
+import * as runtime from '@omniviewdev/runtime/ui/v1';
 import * as React from 'react';
 import { describe, expect, it } from 'vitest';
 import { SHARED_V1, registerShared, sharedId } from './shared';
@@ -18,6 +19,12 @@ describe('the shared list', () => {
 
     expect(old).toEqual([]);
   });
+
+  it('shares the runtime as its curated entry and never as the whole barrel, which would bring the old UI library into the build', () => {
+    expect(SHARED_SPECIFIERS_V1).toContain('@omniviewdev/runtime/ui/v1');
+    expect(SHARED_SPECIFIERS_V1).not.toContain('@omniviewdev/runtime');
+    expect(Object.keys(SHARED_V1)).not.toContain('@omniviewdev/runtime');
+  });
 });
 
 describe('registered in SystemJS', () => {
@@ -36,6 +43,15 @@ describe('registered in SystemJS', () => {
     expect(served.Text).toBe(kit.Text);
     expect(served.ThemeProvider).toBe(kit.ThemeProvider);
     expect(served.useTheme).toBe(kit.useTheme);
+  });
+
+  it('serves the runtime\'s curated entry as the instance the host holds, so a plugin\'s hook reads the host\'s query client and connection store', async () => {
+    const served = await systemJs.import<typeof runtime>('@omniviewdev/runtime/ui/v1');
+
+    expect(Object.keys(served).sort()).toEqual(Object.keys(runtime).sort());
+    expect(served.useResources).toBe(runtime.useResources);
+    expect(served.useConnections).toBe(runtime.useConnections);
+    expect(served.parseAppError).toBe(runtime.parseAppError);
   });
 
   it.each(SHARED_SPECIFIERS_V1)('serves %s', async (specifier) => {
