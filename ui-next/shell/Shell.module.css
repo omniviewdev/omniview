@@ -84,4 +84,20 @@
     min-inline-size: 0;
     padding: var(--ov-spacing-12);
   }
+
+  /* The pane layout (ch12 section 5, ch16 S15): the page owns its scrolling, so the shell scrolls nothing. The content fills the island under the
+     scope lane, and its bottom inset is the page's own: a collection's footer is the pane's terminal lane (ch13 G2), so the 12 px would add beneath it. */
+  .page[data-layout='pane'] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .content[data-layout='pane'] {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+    padding-block-end: 0;
+  }
 }

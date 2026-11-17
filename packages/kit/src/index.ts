@@ -56,3 +56,24 @@ export { KindTile } from './components/KindTile';
 export type { KindTileProps, KindTileSize, KindTileTone } from './components/KindTile';
 export { MiddleEllipsis } from './components/MiddleEllipsis';
 export type { MiddleEllipsisProps } from './components/MiddleEllipsis';
+export { CollectionCount, CollectionFooter } from './components/CollectionFooter';
+export type { CollectionCountProps, CollectionFooterProps, CollectionNumber, CollectionTotal } from './components/CollectionFooter';
+export { SearchField } from './components/SearchField';
+export type { SearchFieldProps } from './components/SearchField';
+export { WorkspaceToolbar } from './components/WorkspaceToolbar';
+export type { WorkspaceToolbarProps } from './components/WorkspaceToolbar';
+export { PageHeader } from './components/PageHeader';
+export type {
+  PageHeaderCommand,
+  PageHeaderCommands,
+  PageHeaderCrumb,
+  PageHeaderFact,
+  PageHeaderMenuItem,
+  PageHeaderProps,
+  PageHeaderState,
+  PageOperation,
+  PageOperationAction,
+  PageOperationState,
+} from './components/PageHeader';
+export { DataView } from './components/DataView';
+export type { DataViewProps, DataViewState } from './components/DataView';

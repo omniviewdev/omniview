@@ -57,4 +57,11 @@ export type ShellRegistration = {
   readonly sidebar?: ShellSidebar;
   /** The scope lane above the page, at most 2 faces (ch16 S10). Absent or empty: no lane, no 40 px. */
   readonly scope?: readonly ShellScopeFace[];
+  /**
+   * Who scrolls the page (ch12 section 5; the mock's `AWS.page(id, render, { layout })`). `document` (the default): the shell's page scrolls, the
+   * content flows at its natural height. `pane`: the page owns its scrolling (a collection view), so the shell scrolls nothing: the content fills
+   * the island under the scope lane, its bottom inset is the page's own (a collection's footer is the last lane of the pane), and the page has no
+   * tab stop of its own. The page declares it; a page whose layout depends on its state re-registers.
+   */
+  readonly layout?: 'document' | 'pane';
 };

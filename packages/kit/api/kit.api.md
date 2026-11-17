@@ -58,6 +58,48 @@ export type ChipProps = StaticChip | ToggleChip | RemovableChip;
 // @public
 export type ChipTone = 'success' | 'warning' | 'error' | 'info' | 'muted';
 
+// @public
+export function CollectionCount(input: CollectionCountProps): JSX.Element;
+
+// @public (undocumented)
+export type CollectionCountProps = {
+    readonly shown: CollectionNumber;
+    readonly total: CollectionTotal;
+    readonly noun: string;
+    readonly plural: string;
+} & DataAttributes;
+
+// @public
+export function CollectionFooter(input: CollectionFooterProps): JSX.Element;
+
+// @public (undocumented)
+export type CollectionFooterProps = {
+    readonly shown: CollectionCountProps['shown'];
+    readonly total: CollectionCountProps['total'];
+    readonly noun: string;
+    readonly plural: string;
+    readonly selected?: number | undefined;
+    readonly refreshing?: boolean | undefined;
+    readonly hiddenColumns?: {
+        readonly names: readonly string[];
+    } | undefined;
+} & DataAttributes;
+
+// @public
+export type CollectionNumber = number | string;
+
+// @public
+export type CollectionTotal = {
+    readonly kind: 'exact';
+    readonly value: CollectionNumber;
+} | {
+    readonly kind: 'estimate';
+    readonly value: CollectionNumber;
+} | {
+    readonly kind: 'unknown';
+    readonly loaded?: CollectionNumber | undefined;
+};
+
 // @public (undocumented)
 export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 'bg-inline' | 'bg-popup' | 'bg-feedback' | 'fg' | 'fg-muted' | 'fg-secondary' | 'fg-disabled' | 'fg-editor' | 'fg-over-accent' | 'fg-on-data' | 'icon' | 'icon-disabled' | 'icon-active' | 'border-subtle' | 'border-popup' | 'border-control' | 'border-disabled' | 'border-raised' | 'accent' | 'link' | 'selection-active' | 'selection-inactive' | 'tab-bg' | 'tab-border' | 'tab-inactive-bg' | 'tab-inactive-border' | 'segment-bg' | 'segment-border' | 'segment-focused-bg' | 'hover-row' | 'hover-toolbar' | 'pressed' | 'success-fg' | 'warning-fg' | 'error-fg' | 'info-bg' | 'info-border' | 'warning-bg' | 'warning-border' | 'error-bg' | 'error-border' | 'success-bg' | 'success-border' | 'error-control' | 'error-control-inactive' | 'warning-control' | 'warning-control-inactive' | 'progress-track' | 'chart-purple' | 'chart-teal' | 'syntax-keyword' | 'syntax-string' | 'syntax-number' | 'syntax-comment' | 'syntax-function' | 'syntax-key' | 'syntax-type' | 'syntax-variable' | 'syntax-annotation' | 'syntax-operator' | 'icon-info' | 'icon-success' | 'icon-warning' | 'icon-warning-mark' | 'icon-error' | 'icon-chevron' | 'icon-help' | 'brand-orange' | 'brand-green' | 'brand-blue' | 'brand-purple' | 'brand-pink' | 'brand-red' | 'brand-teal';
 
@@ -133,6 +175,37 @@ export type DataTableSort = {
 
 // @public
 export type DataTableSortKind = 'text' | 'number';
+
+// @public
+function DataView_2<TRow>(input: DataViewProps<TRow>): JSX.Element;
+export { DataView_2 as DataView }
+
+// @public (undocumented)
+export type DataViewProps<TRow> = {
+    readonly label: string;
+    readonly header?: ReactNode;
+    readonly quickFilters?: QuickFiltersProps | undefined;
+    readonly toolbar?: ReactNode;
+    readonly table: Omit<DataTableProps<TRow>, 'label'>;
+    readonly footer: CollectionFooterProps;
+    readonly state?: DataViewState | undefined;
+} & DataAttributes;
+
+// @public
+export type DataViewState = {
+    readonly kind: 'ready';
+} | {
+    readonly kind: 'loading';
+} | {
+    readonly kind: 'empty';
+    readonly hint?: string | undefined;
+} | {
+    readonly kind: 'no-match';
+} | {
+    readonly kind: 'error';
+    readonly message?: string | undefined;
+    readonly onRetry?: (() => void) | undefined;
+};
 
 // @public (undocumented)
 export const DEFAULT_DENSITY: Density;
@@ -215,6 +288,99 @@ export type MissingValueProps = {
     readonly name?: string | undefined;
     readonly reason?: string | undefined;
 } & DataAttributes;
+
+// @public
+export function PageHeader(input: PageHeaderProps): JSX.Element;
+
+// @public
+export type PageHeaderCommand = {
+    readonly id: string;
+    readonly label: string;
+    readonly onSelect: () => void;
+    readonly icon?: IconName | undefined;
+    readonly disabledReason?: string | undefined;
+    readonly busy?: boolean | undefined;
+};
+
+// @public
+export type PageHeaderCommands = {
+    readonly primary?: PageHeaderCommand | undefined;
+    readonly secondary?: readonly PageHeaderCommand[] | undefined;
+    readonly danger?: PageHeaderCommand | undefined;
+    readonly utility?: PageHeaderCommand | undefined;
+    readonly menu?: readonly PageHeaderMenuItem[] | undefined;
+};
+
+// @public
+export type PageHeaderCrumb = {
+    readonly label: string;
+    readonly onSelect?: (() => void) | undefined;
+};
+
+// @public
+export type PageHeaderFact = {
+    readonly text: string;
+    readonly mono?: boolean | undefined;
+    readonly icon?: IconName | undefined;
+    readonly copy?: {
+        readonly label: string;
+        readonly onCopy: () => void;
+    } | undefined;
+};
+
+// Warning: (ae-forgotten-export) The symbol "MenuEntry" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type PageHeaderMenuItem = MenuEntry;
+
+// @public (undocumented)
+export type PageHeaderProps = {
+    readonly title: string;
+    readonly subtitle?: string | undefined;
+    readonly level?: 1 | 2 | 3 | 4 | undefined;
+    readonly path?: readonly PageHeaderCrumb[] | undefined;
+    readonly tile?: {
+        readonly icon: IconName;
+        readonly tone?: KindTileTone | undefined;
+    } | undefined;
+    readonly state?: PageHeaderState | undefined;
+    readonly facts?: readonly PageHeaderFact[] | undefined;
+    readonly note?: string | undefined;
+    readonly commands?: PageHeaderCommands | undefined;
+    readonly operation?: PageOperation | null | undefined;
+    readonly label?: string | undefined;
+} & DataAttributes;
+
+// Warning: (ae-forgotten-export) The symbol "PageHeaderProgressState" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "PageHeaderStaticState" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type PageHeaderState = {
+    readonly label: string;
+} & (PageHeaderProgressState | PageHeaderStaticState);
+
+// @public
+export type PageOperation = {
+    readonly title: string;
+    readonly state: PageOperationState;
+    readonly text: string;
+    readonly progress?: number | 'indeterminate' | undefined;
+    readonly actions?: readonly PageOperationAction[] | undefined;
+    readonly onDismiss?: (() => void) | undefined;
+};
+
+// @public
+export type PageOperationAction = {
+    readonly id: string;
+    readonly label: string;
+    readonly kind?: 'cancel' | 'retry' | 'custom' | undefined;
+    readonly icon?: IconName | undefined;
+    readonly onSelect: () => void;
+    readonly disabledReason?: string | undefined;
+};
+
+// @public
+export type PageOperationState = 'queued' | 'running' | 'paused' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
 
 // @public
 export type QuickFilter = {
@@ -309,6 +475,20 @@ export type RowMenuTriggerProps<TRow> = {
     readonly handle: RowMenuHandle<TRow>;
     readonly row: TRow;
     readonly label: string;
+} & DataAttributes;
+
+// @public
+export function SearchField(input: SearchFieldProps): JSX.Element;
+
+// @public (undocumented)
+export type SearchFieldProps = {
+    readonly label: string;
+    readonly placeholder?: string | undefined;
+    readonly value: string;
+    readonly onValueChange: (value: string) => void;
+    readonly onSubmit?: (() => void) | undefined;
+    readonly count?: string | undefined;
+    readonly invalid?: boolean | undefined;
 } & DataAttributes;
 
 // @public (undocumented)
@@ -461,6 +641,16 @@ export function useAge(value: string | number | Date | null | undefined, formatt
 
 // @public (undocumented)
 export function useTheme(): ThemeState;
+
+// @public
+export function WorkspaceToolbar(input: WorkspaceToolbarProps): JSX.Element;
+
+// @public (undocumented)
+export type WorkspaceToolbarProps = {
+    readonly label: string;
+    readonly children: ReactNode;
+    readonly end?: ReactNode;
+} & DataAttributes;
 
 // Warnings were encountered during analysis:
 //

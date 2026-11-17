@@ -1,0 +1,26 @@
+@layer ov.components {
+  /* The mock's `.toolbar`: one flex lane of controls, 8 px apart, centred on the line, wrapping when the room is short. It paints nothing and has
+     no margin: the 8 px between it and the table is the view's. */
+  .root {
+    display: flex;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    padding: 0;
+  }
+
+  /* The end group: pushed to the end of the line, and wrapping on its own when it has to. */
+  .end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin-inline-start: auto;
+  }
+}

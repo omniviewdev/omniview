@@ -1,0 +1,152 @@
+@layer ov.components {
+  .op {
+    min-width: 0;
+  }
+
+  /* The compact inline presenter of the mock (K12 / X6): ONE 28 px cell, whatever it says or offers. The step label over the 4 px track on the
+     left, the command column on the right; the column is sized to its buttons, so the label gets the rest. */
+  .notify {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--ov-spacing-8);
+    align-items: center;
+    box-sizing: border-box;
+    block-size: var(--ov-control-height);
+    min-block-size: var(--ov-control-height);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    overflow-wrap: anywhere;
+  }
+
+  .notify:focus {
+    outline: 0;
+  }
+
+  .notify:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* The 16 px label over the 4 px track with a 4 px gap: 24 px, centred in the 28 px cell. */
+  .main {
+    display: grid;
+    grid-template-rows: 16px 4px;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .phase {
+    display: block;
+    overflow: hidden;
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The track keeps its 4 px through idle, cancellation and recovery; an idle track is drawn invisible, not removed. */
+  .track {
+    display: block;
+    block-size: 4px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .track[aria-hidden='true'] {
+    visibility: hidden;
+  }
+
+  .bar {
+    --_bar: var(--ov-accent);
+
+    height: 4px;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-progress-track);
+  }
+
+  .bar[data-ov-paused='true'] {
+    --_bar: var(--ov-fg-secondary);
+  }
+
+  .fill {
+    display: block;
+    width: calc(var(--_p, 0) * 1%);
+    height: 100%;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--_bar);
+  }
+
+  /* An indeterminate bar is one stripe running the width of the track. */
+  .bar[data-ov-indeterminate='true'] > .fill {
+    width: 100%;
+    background-image: linear-gradient(90deg, var(--ov-accent) 0%, var(--ov-link) 50%, var(--ov-accent) 100%);
+    background-size: 200% 100%;
+    animation: stripe 800ms linear infinite;
+  }
+
+  @keyframes stripe {
+    from {
+      background-position: 0 0;
+    }
+
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar[data-ov-indeterminate='true'] > .fill {
+      background-image: repeating-linear-gradient(90deg, var(--ov-accent) 0 8px, transparent 8px 16px);
+      animation: none;
+    }
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ov-spacing-8);
+    block-size: var(--ov-control-height);
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* An ended operation: the track gives its place to the sentence, which draws on up to two lines (2 x 16 px, centred in the 28 px cell, so the
+     cell and everything around it stay where they were). A longer sentence ends in one ellipsis on the second line. */
+  .notify[data-ov-ended] > .main {
+    grid-template-rows: 32px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- two lines of 16 px are 32 px in a 28 px cell: the 2 px overhang on each side is geometry, not a step of the spacing scale (the mock's `margin-block: -2px`) */
+    margin-block: -2px;
+  }
+
+  .notify[data-ov-ended] .phase {
+    display: -webkit-box;
+    align-self: center;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .notify[data-ov-ended] .track {
+    display: none;
+  }
+}
