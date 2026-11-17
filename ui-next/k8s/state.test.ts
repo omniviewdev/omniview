@@ -111,6 +111,12 @@ describe('connected: the rows', () => {
     expect(readPodsState(reads({ read: { error: { name: 'AbortError' }, source: undefined } })).state).toEqual({ kind: 'loading' });
   });
 
+  it('still reports a failed source when the query error is a cancelled read', () => {
+    const result = readPodsState(reads({ read: { error: 'cancelled', source: forbiddenSource } }));
+
+    expect(result.state).toMatchObject({ kind: 'denied' });
+  });
+
   it('is loaded as soon as there are rows, complete or not', () => {
     expect(readPodsState(reads({ rows: 256 }))).toEqual({ state: { kind: 'loaded' }, failure: undefined });
     expect(readPodsState(reads({ rows: 5025, complete: true }))).toEqual({ state: { kind: 'loaded' }, failure: undefined });
