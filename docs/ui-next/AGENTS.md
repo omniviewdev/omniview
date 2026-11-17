@@ -42,6 +42,7 @@ pnpm --filter @omniviewdev/kit run build                # generate, vite build, 
 pnpm --filter @omniviewdev/kit run generate             # after editing tokens/manifest.ts or tokens/themes.ts; commit src/generated/*
 pnpm --filter @omniviewdev/kit run api:update           # after changing src/index.ts or src/examples.ts; commit api/kit.api.md and api/kit-examples.api.md
 pnpm --filter @omniviewdev/kit run verify               # generate:check, tsc, stylelint, tests, build, API report (3 s)
+node packages/kit/probes/kit-probe.mjs                  # the parts against the mock in WebKit and Chromium at both viewports (builds ui-next, serves it; needs Playwright browsers; run by hand, CI does not)
 
 # run the new tree
 OMNIVIEW_UI=next pnpm dev                   # Vite only: http://127.0.0.1:9245/ (strict port); no Go host, no Wails runtime, no plugins

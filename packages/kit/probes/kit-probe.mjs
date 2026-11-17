@@ -135,8 +135,12 @@ async function open(browser, url, viewport, options = {}) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)));
+  page.on('response', (response) => {
+    // The Go host serves /wails/*; the static server of this probe does not, and the page does not need it.
+    if (response.status() >= 400 && !response.url().endsWith('/favicon.ico') && !response.url().includes('/wails/')) errors.push(`${response.status()} ${response.url()}`);
+  });
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text().slice(0, 200));
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(message.text().slice(0, 200));
   });
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-example="Button/Secondary"]');
@@ -302,6 +306,7 @@ async function countsAndRootWrites(page, where) {
     observer.observe(document.documentElement, { attributes: true });
     observer.observe(document.body, { attributes: true });
     window.__rootStyleBefore = [document.documentElement.getAttribute('style'), document.body.getAttribute('style')];
+    window.__rootPropsBefore = [...document.documentElement.style];
   });
   const boxes = await page.locator('[data-example] button').evaluateAll((buttons) => buttons.map((b) => { const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width }; }));
   for (const box of boxes.slice(0, 12)) {
@@ -309,21 +314,25 @@ async function countsAndRootWrites(page, where) {
   }
 
   await page.mouse.move(1, 1);
-  const writes = await page.evaluate(() => ({ writes: window.__rootWrites, style: [document.documentElement.getAttribute('style'), document.body.getAttribute('style')], before: window.__rootStyleBefore, props: [...document.documentElement.style].filter((p) => p.startsWith('--')) }));
+  const writes = await page.evaluate(() => ({ writes: window.__rootWrites, style: [document.documentElement.getAttribute('style'), document.body.getAttribute('style')], before: window.__rootStyleBefore, props: [...document.documentElement.style].filter((p) => p.startsWith('--') && !window.__rootPropsBefore.includes(p)) }));
   if (writes.writes.length) fail(where, `writes to the document root while hovering: ${writes.writes.join(', ')}`);
   if (JSON.stringify(writes.style) !== JSON.stringify(writes.before)) fail(where, 'the style attribute of <html> or <body> changed');
   if (writes.props.length) fail(where, `custom properties on <html>: ${writes.props.join(', ')}`);
 }
 
 // ---- keyboard ---------------------------------------------------------------------------------------------------------------
-async function keyboard(page, engineName, where) {
+async function keyboard(browser, url, viewport, engineName, where) {
+  // A fresh page: the sequential focus starting point of the engine is the document, not the last element a probe touched.
+  const context = await browser.newContext({ viewport });
+  const page = await context.newPage();
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForSelector('[data-example="Button/Secondary"]');
   // Safari and Playwright's WebKit on macOS leave buttons out of the Tab order unless the system asks for it; Alt+Tab reaches them.
   const key = engineName === 'webkit' ? 'Alt+Tab' : 'Tab';
   const names = await page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent?.replace(/\s+/g, ' ').trim() ?? ''));
-  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
   await page.mouse.move(1, 1);
-  await page.keyboard.press(key); // into the document
   // Walk until the first button; every following Tab must land on the next button in document order.
+  await page.keyboard.press(key);
   const seen = [];
   for (let i = 0; i < names.length + 4 && seen.length < names.length; i += 1) {
     const info = await page.evaluate(() => {
@@ -337,7 +346,7 @@ async function keyboard(page, engineName, where) {
 
   const indexes = seen.map((s) => s.index);
   const inOrder = indexes.every((value, i) => value === i);
-  if (!inOrder || seen.length !== names.length) fail(where, `Tab order: reached ${seen.length} of ${names.length} buttons, in order: ${inOrder} (first break ${indexes.findIndex((v, i) => v !== i)})`);
+  if (!inOrder || seen.length !== names.length) fail(where, `Tab order: reached ${seen.length} of ${names.length} buttons, in order: ${inOrder} (indexes ${indexes.slice(0, 12).join(',')}...)`);
   const unavailable = seen.filter((s) => s.disabled);
   if (unavailable.length === 0) fail(where, 'no reasoned-disabled button was reached by Tab');
   if (seen.some((s) => s.native)) fail(where, 'a button is natively disabled');
@@ -354,6 +363,7 @@ async function keyboard(page, engineName, where) {
   const afterSpace = await theme();
   if (afterEnter === before || afterSpace === afterEnter) fail(where, `Enter or Space did not activate Next theme (${before} -> ${afterEnter} -> ${afterSpace})`);
   report.keyboard[where].activation = `${before} -> ${afterEnter} -> ${afterSpace}`;
+  await context.close();
 }
 
 // ---- busy -------------------------------------------------------------------------------------------------------------------
@@ -395,7 +405,7 @@ async function busy(browser, url, viewport, where) {
 }
 
 // ---- a11y -------------------------------------------------------------------------------------------------------------------
-async function a11y(page, where) {
+async function a11y(page, engineName, where) {
   const snapshots = {};
   for (const example of await page.locator('[data-example^="Button/"], [data-example^="IconButton/"]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-example')))) {
     snapshots[example] = (await page.locator(`[data-example="${example}"] > div`).ariaSnapshot()).replace(/\n\s*/g, ' ').trim();
@@ -406,15 +416,50 @@ async function a11y(page, where) {
   const unavailable = Object.entries(snapshots).filter(([example]) => /Disabled|DisabledWithVisibleReason/.test(example)).filter(([, snapshot]) => !/\[disabled\]/.test(snapshot)).map(([example]) => example);
   if (unavailable.length) fail(where, `reasoned-disabled examples not exposed as disabled: ${unavailable.join(', ')}`);
   report.a11y[where] = { snapshots };
+
+  // Chromium only: the engine's own accessibility tree (name, description, role and states), which Playwright's aria snapshot does not
+  // show for a description. What the DOM says (aria-label or text, the hidden reason, aria-disabled, aria-busy) must be what the engine computes.
+  if (engineName === 'chromium') {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('DOM.enable');
+    await cdp.send('Accessibility.enable');
+    const { root } = await cdp.send('DOM.getDocument');
+    const tree = {};
+    for (const example of Object.keys(snapshots)) {
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: `[data-example="${example}"] button` });
+      const { nodes } = await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false });
+      const node = nodes[0];
+      const states = Object.fromEntries((node.properties ?? []).map((property) => [property.name, property.value.value]));
+      const dom = await page.locator(`[data-example="${example}"] button`).evaluate((button) => ({
+        name: button.getAttribute('aria-label') ?? [...button.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim(),
+        reason: button.querySelector('[hidden]')?.textContent ?? '',
+        unavailable: button.getAttribute('aria-disabled') === 'true',
+        busy: button.getAttribute('aria-busy') === 'true',
+      }));
+      tree[example] = { role: node.role?.value, name: node.name?.value, description: node.description?.value ?? '', disabled: states.disabled === true, focusable: states.focusable === true, busy: states.busy === true };
+      const row = tree[example];
+      if (row.role !== 'button') fail(where, `${example}: role ${row.role}`);
+      if (row.name !== dom.name) fail(where, `${example}: name ${JSON.stringify(row.name)}, expected ${JSON.stringify(dom.name)}`);
+      if (row.description !== dom.reason) fail(where, `${example}: description ${JSON.stringify(row.description)}, expected ${JSON.stringify(dom.reason)}`);
+      if (row.disabled !== dom.unavailable) fail(where, `${example}: disabled ${row.disabled}, expected ${dom.unavailable}`);
+      if (!row.focusable) fail(where, `${example}: not focusable in the accessibility tree`);
+      // Chromium's tree does not surface aria-busy on a button (busy stays false); the attribute is in the DOM, which is what is checked above.
+      row.busyInDom = dom.busy;
+    }
+
+    report.a11y[where].tree = tree;
+    await cdp.detach();
+  }
+
   if (process.env.AXE) {
     await page.addScriptTag({ path: process.env.AXE });
     const result = await page.evaluate(async () => {
        
       const axeResult = await axe.run({ include: [['[data-example]']] }, { resultTypes: ['violations'] });
-      return axeResult.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help }));
+      return axeResult.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help, where: v.nodes.slice(0, 3).map((n) => ({ target: n.target.join(' '), data: n.any[0]?.data ?? null })) }));
     });
     report.a11y[where].axe = result;
-    for (const violation of result.filter((v) => v.impact === 'serious' || v.impact === 'critical')) fail(where, `axe ${violation.impact}: ${violation.id} on ${violation.nodes} node(s): ${violation.help}`);
+    for (const violation of result.filter((v) => v.impact === 'serious' || v.impact === 'critical')) fail(where, `axe ${violation.impact}: ${violation.id} on ${violation.nodes} node(s): ${violation.help} ${JSON.stringify(violation.where)}`);
   }
 }
 
@@ -430,8 +475,8 @@ try {
       const { page, context, errors } = await open(browser, url, viewport);
       report.parity[where] = { buttons: await parity(page, where), icons: await icons(page, where) };
       await countsAndRootWrites(page, where);
-      await keyboard(page, engineName, where);
-      await a11y(page, where);
+      await keyboard(browser, url, viewport, engineName, where);
+      await a11y(page, engineName, where);
       if (SHOTS) {
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: path.join(SHOTS, `${engineName}-${viewportName}-top.png`) });

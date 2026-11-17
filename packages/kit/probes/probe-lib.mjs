@@ -92,11 +92,12 @@ function readTarget(target, props) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Wait for running CSS transitions/animations and two frames. */
+/** Wait for the transitions and animations that end (a spinner never does: it would cost the whole deadline) and for two frames. */
 async function settle(page) {
   await page.evaluate(async () => {
     const deadline = new Promise((r) => setTimeout(r, 1000));
-    await Promise.race([Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))), deadline]);
+    const ending = document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime ?? 0));
+    await Promise.race([Promise.all(ending.map((a) => a.finished.catch(() => {}))), deadline]);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
 }
@@ -251,7 +252,8 @@ export function summarize(record, { withOutline = false } = {}) {
     font: `${s.fontSize}/${s.lineHeight} ${s.fontWeight} ${s.letterSpacing}`,
     gap: s.columnGap,
     cursor: s.cursor,
-    layout: `${s.display} ${s.alignItems} ${s.justifyContent} ${s.whiteSpace}`,
+    // A control that sits in a flex parent is blockified (inline-flex computes to flex): the layout is compared without it.
+    layout: `${s.display.replace(/^inline-/, '')} ${s.alignItems} ${s.justifyContent} ${s.whiteSpace}`,
     shadow: s.boxShadow,
     opacity: s.opacity,
     pointer: s.pointerEvents,
@@ -280,8 +282,10 @@ export function deviations(reference, got, { tolerance = 1, sameLabel = true, wi
   if (!near(reference.h, got.h)) note('height', reference.h, got.h);
   const chrome = (summary) => summary.w - (summary.label?.w ?? 0);
   if (sameLabel ? !near(reference.w, got.w) : !near(chrome(reference), chrome(got))) note(sameLabel ? 'width' : 'chrome width', sameLabel ? reference.w : chrome(reference), sameLabel ? got.w : chrome(got));
+  // A control in a flex parent is blockified: inline-flex computes to flex, and the same layout is the same.
+  const plain = (key, summary) => (key === 'layout' ? summary[key].replace(/^inline-/, '') : summary[key]);
   for (const key of ['color', 'bg', 'border', 'radius', 'pad', 'font', 'gap', 'cursor', 'layout', 'shadow', 'opacity', 'pointer', ...(withOutline ? ['outline'] : [])]) {
-    if (reference[key] !== got[key]) note(key, reference[key], got[key]);
+    if (plain(key, reference) !== plain(key, got)) note(key, reference[key], got[key]);
   }
 
   for (const part of ['icon', 'label']) {
@@ -290,7 +294,9 @@ export function deviations(reference, got, { tolerance = 1, sameLabel = true, wi
     if ((a === null) !== (b === null)) {
       note(`${part} present`, a !== null, b !== null);
     } else if (a !== null && b !== null) {
-      for (const key of part === 'icon' ? ['w', 'h', 'left', 'top'] : sameLabel ? ['w', 'h', 'left', 'top'] : ['h', 'left', 'top']) {
+      // The height of a label's text range is the engine's measure of a text box (content area or line box), not geometry: left and top
+      // say where the text sits, and the width says how long it is.
+      for (const key of part === 'icon' ? ['w', 'h', 'left', 'top'] : sameLabel ? ['w', 'left', 'top'] : ['left', 'top']) {
         if (!near(a[key], b[key])) note(`${part}.${key}`, a[key], b[key]);
       }
 
