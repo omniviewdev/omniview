@@ -8,11 +8,15 @@
 // This is NOT the root entry and never part of it: the root entry is the plugin-facing API and plugins load it as a singleton
 // at run time. Only `ui-next/parts/**`, the kit's tests and the workshop may import this entry (lint: eslint/config.cjs), and it
 // is never listed among the plugin shared modules. Adding a part means adding one line here.
+// An examples file that has a CSS Module of its own (DataTable.parity.module.css) puts its rules in this entry's graph: the layer order
+// statement still has to be the first rule of the stylesheet, so this entry imports it first, as entry.ts does.
+import './styles/layers.css';
 import type { ReactElement } from 'react';
 import * as buttonExamples from './components/Button/Button.examples';
 import * as iconButtonExamples from './components/IconButton/IconButton.examples';
 import * as iconExamples from './components/Icon/Icon.examples';
 import * as dataTableExamples from './components/DataTable/DataTable.examples';
+import * as dataTableParityExamples from './components/DataTable/DataTable.parity.examples';
 
 /** One example: a component without props that renders one state of a part. Its name is its title, its JSDoc its description. */
 export type Example = () => ReactElement;
@@ -24,4 +28,4 @@ export type ExampleSet = Readonly<Record<string, Example>>;
 export type PartExamples = Readonly<Record<string, ExampleSet>>;
 
 /** The examples of every part. Dev and docs only: the parts page, the kit tests and the workshop render and read this. */
-export const examples: PartExamples = { Icon: iconExamples, Button: buttonExamples, IconButton: iconButtonExamples, DataTable: dataTableExamples };
+export const examples: PartExamples = { Icon: iconExamples, Button: buttonExamples, IconButton: iconButtonExamples, DataTable: dataTableExamples, DataTableParity: dataTableParityExamples };
