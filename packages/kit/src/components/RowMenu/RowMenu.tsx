@@ -170,8 +170,10 @@ function Popup<TRow>({ handle, state, label, items, data }: PopupProps<TRow>) {
         event.preventDefault();
       }}
       onBlur={(event) => {
-        // Focus left the menu for another control, or the window lost it: the menu closes, and focus stays where it went.
-        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) {
+        // Focus left the menu for another control, or the window lost it: the menu closes, and focus stays where it went. Its own trigger is
+        // not another control: a press on it moves focus there (Chromium does, on the press) before the click that toggles the menu closed.
+        const next = event.relatedTarget;
+        if (!(next instanceof Node && (event.currentTarget.contains(next) || state.anchor.contains(next)))) {
           handle.close({ restoreFocus: false });
         }
       }}

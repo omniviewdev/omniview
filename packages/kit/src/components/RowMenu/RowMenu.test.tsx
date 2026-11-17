@@ -619,6 +619,23 @@ describe('closing', () => {
     expect(trigger('web-1').hasAttribute('aria-expanded')).toBe(false);
   });
 
+  it('closes when its own trigger is pressed again in an engine that focuses a button on the press: the focus move does not close it before the click does', () => {
+    // Chromium focuses a button on mousedown, which takes focus out of the menu before the click arrives; a click would then reopen the menu.
+    const { handle } = setup();
+    const button = trigger('web-1');
+    pointerClick(button);
+    fireEvent.pointerDown(button);
+    act(() => {
+      button.focus();
+    });
+    expect(handle.getSnapshot().open).toBe(true);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    pointerClick(button);
+    expect(handle.getSnapshot().open).toBe(false);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(focused()).toBe(button);
+  });
+
   it('closes when its own trigger is pressed again, and keeps focus on it', () => {
     setup();
     const button = trigger('web-1');
