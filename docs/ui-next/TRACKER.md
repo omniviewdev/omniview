@@ -4,7 +4,7 @@ Source of truth for the UI migration. Status files for in-flight rows live under
 
 A new session starts after `AGENTS.md`: read this file, then `decisions.md` (rulings R1–R20). Read nothing else unless a row points to it.
 
-Last updated: 2026-11-16. Phase: **Week 0 → Week 1** (nothing built yet).
+Last updated: 2026-11-16. Phase: **Week 1** (the kit scaffold is in review as #507; no slice on real data yet).
 
 ## Decided (2026-11-16, owner)
 
@@ -16,25 +16,29 @@ Batch A, all yes (`decisions.md`): new library `@omniviewdev/kit` in the omnivie
 |---|---|---|---|---|
 | N1 | Merge the ready fix PRs (see "Open PRs") | omniview | merged, main green | DONE 2026-11-16 |
 | N2 | Set up the review regime: required checks, merge queue, CODEOWNERS on contract paths (test on a scratch repo first) | omniview | a PR cannot merge red; contract path needs approval | todo |
-| N3 | Spike: `ui-next` feature channel builds from `main`, own state root, empty new entry renders | omniview | channel build launches beside stable; stable untouched | DRAFT PR #503, 14/14 checks green. Build input `OMNIVIEW_UI=next`; stable output byte-identical. OPEN: channel workflow never run; release tooling accepts only `feature/<slug>` branches (needs a mirror branch or an action change); native app and Windows not launched; `task dev` with the variable not run. 9 questions for the channel author (answered, see log) |
-| N3b | Make the `ui-next` channel publishable from `main` (update index entry, `resolve-channel` / `npm-publish.yml` branch rule) after the channel author answers | omniview | a signed `feature-ui-next` build installs beside stable | owner answered 2026-11-16 (see log). Mirror workflow `mirror-ui-next.yaml` is in the N4 PR; the owner registers `feature-ui-next` (`channels.md` §6) |
-| N4 | In-repo steering: `docs/ui-next/AGENTS.md` + `docs/ui-next/TRACKER.md` (the tracker lives there), lint globs/compiler/vitest cover the new tree | omniview | new tree compiled, linted, tested in CI | todo |
-| N5 | Safety: remove `ResolveConfirmation` and `ListPendingConfirmations` from the bound surface; `GetConfig` stops returning the token | omniview | failing test first; plugin-realm call rejected | in progress |
-| N6 | Safety: bad `activities.json` and bad recovery marker no longer fatal | omniview | failing test first; host starts with quarantined file | DRAFT PR #502, awaiting owner review (real-app corrupt-profile run and Windows not done; one behaviour change: quarantined marker no longer holds the plugin back on the NEXT start) |
-| N7 | Delete verified-dead files, host repo part (75 files, 21,196 lines) | omniview | build + tests green | DRAFT PR #501, awaiting owner merge (lint, Go, e2e not run) |
+| N3 | Spike: `ui-next` feature channel builds from `main`, own state root, empty new entry renders | omniview | channel build launches beside stable; stable untouched | DONE #503. Build input `OMNIVIEW_UI=next`; stable output byte-identical. Not done: native app and Windows not launched; `task dev` with the variable not run |
+| N3b | Make the `ui-next` channel publishable from `main` (update index entry, `resolve-channel` / `npm-publish.yml` branch rule) after the channel author answers | omniview | a signed `feature-ui-next` build installs beside stable | DONE #506: mirror workflow `mirror-ui-next.yaml` (`main` to `feature/ui-next`) and `channels.md`. The owner still registers `feature-ui-next` (`channels.md` §6); the channel workflow has never run |
+| N4 | In-repo steering: `docs/ui-next/AGENTS.md` + `docs/ui-next/TRACKER.md` (the tracker lives there), lint globs/compiler/vitest cover the new tree | omniview | new tree compiled, linted, tested in CI | DONE #506 |
+| N5 | Safety: remove `ResolveConfirmation` and `ListPendingConfirmations` from the bound surface; `GetConfig` stops returning the token | omniview | failing test first; plugin-realm call rejected | DONE #504 (Reveal removed, clipboard only). Open gap: raw `Call` and `Clipboard` are still exported from the shared `/runtime` surface (N15) |
+| N6 | Safety: bad `activities.json` and bad recovery marker no longer fatal | omniview | failing test first; host starts with quarantined file | DONE #502 (real-app corrupt-profile run and Windows not done; one behaviour change: a quarantined marker no longer holds the plugin back on the NEXT start) |
+| N7 | Delete verified-dead files, host repo part (75 files, 21,196 lines) | omniview | build + tests green | DONE #501 (host part; the plugin repos are N7b) |
 | N7b | Delete verified-dead files in other repos: ledger rows D-40/41/44 (Kubernetes plugin), D-49 (AWS plugin), D-60 (`ui` library: frozen, skip) | plugin repos | build + tests green | todo |
 | N8 | Baseline: `bench/app --minify on`, record numbers; turn `minify` on | omniview | numbers committed under `docs/ui-next/baseline/` | todo |
 | N9 | Release Flux 0.5.0 and Proxmox 0.4.0 (already on their `main`; marketplace serves builds host 0.36 rejects) | plugin repos | marketplace serves working builds | todo |
 | N10 | Spec errata pass, one owner: fix `shell-page-plugins.js:1094`, remove chapter 15 §7 dual scale, resolve the 40 disagreements (11 need the owner), untrack `node_modules`/`dist`; tag `spec/v1.0` | design-lab | tag exists; cards + goldens for slice-1 parts | todo |
-| N11 | Slice 1a: scaffold `packages/kit` (tokens, theme engine carried over, layers), then Pods list on real data in the channel build | omniview (+ k8s plugin `ui-next` stream) | Pods list renders real data by week 3–4; STOP and re-plan at week 6 | todo |
+| N11a | Scaffold `packages/kit`: tokens from the mock's roles (nine themes), theme engine carried over, one layer order, `Text` and `Stack`, guards, API report; `ui-next` renders a themed frame | omniview | `OMNIVIEW_UI=next` build renders the frame; stable output unchanged; typecheck, lint, tests green | DONE in PR #507 (ready, not merged; 14/14 checks green before this tracker edit). Stable output byte-identical (`diff -r`, 137 files); the `next` build runs in WebKit and Chromium and all nine themes flip by attribute; each guard proven by a failing probe. NOT verified: native app, Windows and Linux frontend builds, fonts (not delivered), first-paint script, a kit watch loop. Flags: the plugin SDK repo is AGPL-3.0 (the kit is Apache-2.0, private); `solarized-light` text is `#4C5C63` in `base.css` and `#424D54` in chapter 04 (N10) |
+| N11 | Slice 1a: Pods list on real data in the channel build (the kit scaffold is N11a) | omniview (+ k8s plugin `ui-next` stream) | Pods list renders real data by week 3–4; STOP and re-plan at week 6 | todo |
 | N12 | Measure: real plugin load time in WKWebView; row cost on the real table (≤3 days, rule written first) | omniview | numbers in `docs/ui-next/baseline/` | todo |
 | N13 | Rehearse "abandon" once (delete the new tree on a scratch branch; list every other touch point) | omniview | removal manifest written | todo |
+| N14 | Fix the timing flake in the resource graph-demand tests | omniview | Go checks stable | DONE #505 (test-only; a product gap in `connection_updates.go` is logged in its status file) |
 
 Parallel-safe: N1, N2, N5, N6, N7, N9, N10 are independent. N3 → N4 → N11. N8 before N11's first measurement.
 
 ## Next (after the calibration gate, ~week 7)
 
 Gate output: measured parts/week, review hours/part, a sized plan, flip scope, flip date; freeze starts. Then: Pod detail + Create Pod (form host) · shell parts (tabs, palette, panel, notifications/operations) · remaining Kubernetes archetypes · approvals slice with the plugin-free consent window · Flux, Proxmox · settings and plugins pages · flip · AWS, Containers.
+
+**N15 (deferred, owner-approved): drop raw `Call` and `Clipboard` from the plugin-shared `/runtime` surface** (closes the remaining MCP-token path). Do it WITH the curated plugin surface work (ruling R11), not before. Condition from the owner: no functionality lost. First prove that no first-party plugin (Kubernetes, AWS, Containers, Proxmox, Flux at `origin/main`) and no host feature relies on them through the shared module, give host code a host-only import path, and run each plugin's build against the new surface. Exit test: plugins build and load; the names are absent from the shared-surface test.
 
 ## Open PRs (2026-11-16)
 
@@ -67,3 +71,4 @@ Before starting a row: write `docs/ui-next/status/<row>.md` with: goal, worktree
 - 2026-11-16: marketplace MCP handed to a separate agent by the owner. NOT part of this effort: do not pick it up here.
 - 2026-11-16: merged #504 (N5): consent calls out of the plugin-shared surface, GetConfig returns no token, Reveal removed, clipboard-only. OPEN (owner): a plugin can still call CopyClientSetup via raw `Call` and read `Clipboard.Text()`, both exported from shared /runtime; no first-party plugin uses either. Not containment (R10).
 - 2026-11-16: tracker moved into the repo (`docs/ui-next/TRACKER.md`) with `AGENTS.md`, `decisions.md` and `channels.md`; mirror workflow `mirror-ui-next.yaml` added (rows N4, N3b).
+- 2026-11-16: N11a (kit scaffold) PR #507 ready, checks green. N3, N3b, N4, N5, N6, N7, N14 marked done (#503, #506, #506, #504, #502, #501, #505); N15 added (deferred, owner-approved); AGENTS.md carries the kit commands and the kit conventions (tokens, layers, parts, guards).
