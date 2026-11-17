@@ -154,7 +154,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
 
 // @public (undocumented)
 export type IconProps = {

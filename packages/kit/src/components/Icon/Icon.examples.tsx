@@ -22,7 +22,7 @@ export const Status = () => (
 // Every glyph of the registry, for review: the test of this file fails when the registry and this list differ.
 const ALL: readonly IconName[] = [
   'arrow-down', 'arrow-up', 'box', 'check', 'chevron-down', 'chevron-right', 'circle-minus', 'clock', 'close', 'columns', 'copy',
-  'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
+  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
   'status-success', 'status-warning',
 ];
 
