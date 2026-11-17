@@ -13,3 +13,15 @@ func macWebviewPreferences() application.MacWebviewPreferences {
 	prefs.TabFocusesLinks.Set(true)
 	return prefs
 }
+
+// macTitleBar hides the title bar and extends the content under it, and keeps
+// the traffic lights. MacTitleBarHidden alone leaves them in AppKit's 28 pt
+// title bar, centred 16 px from the top: 4 px above the centre of the new
+// shell's 40 px top row and 3 px above the old header's 38 px. An empty
+// compact unified toolbar makes AppKit lay the lights out for a 38 pt bar
+// instead, centred 20 px from the top (docs/ui-next/status/N22b.md).
+func macTitleBar() application.MacTitleBar {
+	titleBar := application.MacTitleBarHiddenInsetUnified
+	titleBar.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
+	return titleBar
+}

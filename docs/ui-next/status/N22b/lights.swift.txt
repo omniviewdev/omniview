@@ -1,0 +1,21 @@
+import Cocoa
+// usage: lights <png> ; prints bounding box (x0,y0,x1,y1) of the red/yellow/green traffic-light discs in the top-left 120x60 and the tab-chip row text centre
+let path = CommandLine.arguments[1]
+let img = NSBitmapImageRep(data: try! Data(contentsOf: URL(fileURLWithPath: path)))!
+func px(_ x: Int, _ y: Int) -> (Int, Int, Int) {
+  let c = img.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+  return (Int(c.redComponent*255), Int(c.greenComponent*255), Int(c.blueComponent*255))
+}
+var groups: [String: (Int, Int, Int, Int)] = [:]
+for y in 0..<60 { for x in 0..<120 {
+  let (r,g,b) = px(x,y)
+  var k: String? = nil
+  if r > 200 && g < 110 && b < 110 { k = "red" }
+  else if r > 200 && g > 160 && b < 90 { k = "yellow" }
+  else if g > 150 && r < 120 && b < 120 { k = "green" }
+  if let k = k {
+    var v = groups[k] ?? (999, 999, -1, -1)
+    v = (min(v.0,x), min(v.1,y), max(v.2,x), max(v.3,y)); groups[k] = v
+  }
+}}
+for (k, v) in groups.sorted(by: { $0.key < $1.key }) { print(k, "x \(v.0)-\(v.2) y \(v.1)-\(v.3) centre y=\(Double(v.1+v.3)/2)") }
