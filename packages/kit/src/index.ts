@@ -1,7 +1,11 @@
 // The public surface. Everything a plugin or the host may import from "@omniviewdev/kit" is exported here and nowhere else;
 // `api/kit.api.md` is the report of exactly this file, and CI fails when the two differ.
+export { Button } from './components/Button';
+export type { ButtonProps, ButtonSize, ButtonTone, ButtonVariant } from './components/Button';
 export { Icon } from './components/Icon';
 export type { IconName, IconProps, IconSize } from './components/Icon';
+export { IconButton } from './components/IconButton';
+export type { IconButtonProps, IconButtonSize } from './components/IconButton';
 export { Stack } from './components/Stack';
 export type { StackAlign, StackDirection, StackJustify, StackProps } from './components/Stack';
 export { Text } from './components/Text';

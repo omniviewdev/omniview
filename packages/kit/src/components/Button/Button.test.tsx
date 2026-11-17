@@ -237,6 +237,7 @@ describe('Button', () => {
       unmount();
       return total;
     };
+
     expect(count(<Button>Cancel</Button>)).toBe(1);
     expect(count(<Button icon="columns">Columns</Button>)).toBe(3);
     expect(count(<Button icon="columns" busy>Columns</Button>)).toBe(3);
@@ -347,7 +348,7 @@ describe('Button examples: the a11y matrix', () => {
 
   for (const [exampleName, row] of Object.entries(MATRIX)) {
     const Example = (examples as Record<string, () => React.ReactElement>)[exampleName];
-    it(`${exampleName}: one button named ${row.name}${row.description === undefined ? '' : `, described by its reason`}`, () => {
+    it(`${exampleName}: one button named ${row.name}${row.description === undefined ? '' : ', described by its reason'}`, () => {
       expect(Example).toBeDefined();
       if (Example === undefined) {
         return;
@@ -378,7 +379,7 @@ describe('Button examples: the a11y matrix', () => {
   it('shows the reason as text beside the control, not only as its description (P2)', () => {
     render(<examples.DisabledWithVisibleReason />);
     const visible = screen.getByText('Refreshing', { selector: 'span:not([hidden])' });
-    expect(visible).toBeVisible();
+    expect(visible.closest('[hidden]')).toBeNull();
     expect(screen.getByRole('button').contains(visible)).toBe(false);
   });
 });

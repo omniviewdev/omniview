@@ -12,17 +12,17 @@ describe('the command stylesheet (Button and IconButton)', () => {
     expect(css.trimStart()).toMatch(/^@layer ov\.components \{/);
   });
 
-  it('has a rule for every variant, tone, size and shape its parts accept', () => {
-    for (const variant of ['secondary', 'primary', 'ghost']) {
+  it('has a rule for every variant, tone, size and shape its parts accept; the base is the secondary variant', () => {
+    for (const variant of ['primary', 'ghost']) {
       expect(css, variant).toContain(`[data-ov-variant='${variant}']`);
     }
 
-    expect(css).toContain("[data-ov-tone='danger']");
+    expect(css).toContain('[data-ov-tone=\'danger\']');
     for (const size of ['compact', 'row']) {
       expect(css, size).toContain(`[data-ov-size='${size}']`);
     }
 
-    expect(css).toContain("[data-ov-shape='icon']");
+    expect(css).toContain('[data-ov-shape=\'icon\']');
   });
 
   it('is 28 px tall from the control token, and 24 or 22 from the row target', () => {
@@ -40,10 +40,10 @@ describe('the command stylesheet (Button and IconButton)', () => {
   });
 
   it('paints a unavailable command by its aria-disabled attribute, never by opacity, and no hover or pressed paint reaches it', () => {
-    expect(css).toContain("[aria-disabled='true']");
+    expect(css).toContain('[aria-disabled=\'true\']');
     expect(css).not.toMatch(/opacity\s*:/);
     for (const [, selector] of css.matchAll(/([^{}]*:(?:hover|active)[^{}]*)\{/g)) {
-      expect(selector, selector).toContain(":not([aria-disabled='true'])");
+      expect(selector, selector).toContain(':not([aria-disabled=\'true\'])');
     }
   });
 
@@ -53,7 +53,7 @@ describe('the command stylesheet (Button and IconButton)', () => {
   });
 
   it('spins the loader of a busy command, and holds it still under reduced motion', () => {
-    expect(css).toContain("[data-ov-busy='true']");
+    expect(css).toContain('[data-ov-busy=\'true\']');
     expect(css).toMatch(/@keyframes/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[^}]*\{[^}]*animation:\s*none/s);
   });

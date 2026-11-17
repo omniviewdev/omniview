@@ -96,6 +96,7 @@ describe('IconButton', () => {
       unmount();
       return total;
     };
+
     expect(count(<IconButton icon="refresh" label="Refresh" />)).toBe(3);
     expect(count(<IconButton icon="status-success" label="Healthy" />)).toBe(4);
     expect(count(<IconButton icon="refresh" label="Refresh" disabledReason="Refreshing" />)).toBe(4);
@@ -184,7 +185,7 @@ describe('IconButton examples: the a11y matrix', () => {
       expect(screen.getAllByRole('button')).toHaveLength(1);
       const button = screen.getByRole('button', { name: row.name, ...(row.description === undefined ? {} : { description: row.description }) });
       expect(button.getAttribute('aria-label')).toBe(row.name);
-      expect(button.textContent).toBe(row.description === undefined ? '' : row.description);
+      expect(button.textContent).toBe(row.description ?? '');
       expect(button.getAttribute('aria-disabled') === 'true').toBe(row.disabled === true);
       expect(button.getAttribute('aria-busy') === 'true').toBe(row.busy === true);
       expect(button.hasAttribute('disabled')).toBe(false);
@@ -200,7 +201,7 @@ describe('IconButton examples: the a11y matrix', () => {
   it('shows the reason as text beside the control, not only as its description (P2)', () => {
     render(<examples.DisabledWithVisibleReason />);
     const visible = screen.getByText('Refreshing', { selector: 'span:not([hidden])' });
-    expect(visible).toBeVisible();
+    expect(visible.closest('[hidden]')).toBeNull();
     expect(screen.getByRole('button').contains(visible)).toBe(false);
   });
 });

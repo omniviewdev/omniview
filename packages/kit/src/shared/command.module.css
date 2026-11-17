@@ -1,0 +1,139 @@
+@layer ov.components {
+  /* The face of a command, shared by Button and IconButton. The paint is a handful of private properties that the variant, the tone
+     and the unavailable state set and the rules below read, so a state never repeats a colour. Hover and pressed never reach an
+     unavailable command (design 14 V62), and nothing here changes the box: geometry is the same in every state (02 section 8). */
+  .root {
+    --_fg: var(--ov-fg);
+    --_icon: var(--ov-icon);
+    --_bg: transparent;
+    --_border: var(--ov-border-control);
+    --_hover: var(--ov-hover-row);
+    --_active: var(--ov-hover-toolbar);
+
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-12);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_bg);
+    color: var(--_fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  /* The glyph takes the icon role; the variants that paint their own text colour let it follow the text. */
+  .root > svg {
+    color: var(--_icon);
+  }
+
+  .root:where([data-ov-variant='primary']) {
+    --_fg: var(--ov-fg-over-accent);
+    --_icon: currentcolor;
+    --_bg: var(--ov-accent);
+    --_border: var(--ov-accent);
+    --_hover: var(--ov-accent);
+    --_active: var(--ov-accent);
+  }
+
+  .root:where([data-ov-variant='ghost']) {
+    --_border: transparent;
+    --_hover: var(--ov-hover-toolbar);
+    --_active: var(--ov-pressed);
+  }
+
+  .root:where([data-ov-tone='danger']) {
+    --_fg: var(--ov-error-fg);
+    --_icon: currentcolor;
+  }
+
+  .root:where([data-ov-variant='primary'][data-ov-tone='danger']) {
+    --_fg: var(--ov-fg-over-accent);
+    --_bg: var(--ov-error-control);
+    --_border: var(--ov-error-control);
+    --_hover: var(--ov-error-control);
+    --_active: var(--ov-error-control);
+  }
+
+  /* Compact: the toolbar and lane command. Same height, a tighter side. */
+  .root:where([data-ov-size='compact']) {
+    padding-inline: var(--ov-spacing-8);
+  }
+
+  /* Row: a command that lives in a table row or a dense lane takes the row target, 24 px, 22 px in compact density. */
+  .root:where([data-ov-size='row']) {
+    height: var(--ov-row-target);
+    min-height: var(--ov-row-target);
+    padding-block: 0;
+    padding-inline: var(--ov-spacing-8);
+  }
+
+  /* Icon-only: a square of the control height, or of the row target. */
+  .root:where([data-ov-shape='icon']) {
+    width: var(--ov-control-height);
+    padding: var(--ov-spacing-4);
+  }
+
+  .root:where([data-ov-shape='icon'][data-ov-size='row']) {
+    width: var(--ov-row-target);
+    padding: 0;
+  }
+
+  .root:not([aria-disabled='true']):hover {
+    background-color: var(--_hover);
+  }
+
+  .root:not([aria-disabled='true']):active {
+    background-color: var(--_active);
+  }
+
+  /* Unavailable for a reason: the disabled roles, never opacity; the quiet variant keeps no box. The control stays focusable. */
+  .root[aria-disabled='true'] {
+    --_fg: var(--ov-fg-disabled);
+    --_icon: var(--ov-icon-disabled);
+    --_bg: var(--ov-bg-island);
+    --_border: var(--ov-border-disabled);
+
+    cursor: default;
+  }
+
+  .root[aria-disabled='true']:where([data-ov-variant='ghost']) {
+    --_bg: transparent;
+    --_border: transparent;
+  }
+
+  .root:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  /* Busy: the loader takes the icon's slot after a second (the part swaps the glyph), and turns. */
+  .root > svg[data-ov-busy='true'] {
+    animation: spin 1.2s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .root > svg[data-ov-busy='true'] {
+      animation: none;
+    }
+  }
+}

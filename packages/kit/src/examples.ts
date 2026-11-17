@@ -9,6 +9,8 @@
 // at run time. Only `ui-next/parts/**`, the kit's tests and the workshop may import this entry (lint: eslint/config.cjs), and it
 // is never listed among the plugin shared modules. Adding a part means adding one line here.
 import type { ReactElement } from 'react';
+import * as buttonExamples from './components/Button/Button.examples';
+import * as iconButtonExamples from './components/IconButton/IconButton.examples';
 import * as iconExamples from './components/Icon/Icon.examples';
 
 /** One example: a component without props that renders one state of a part. Its name is its title, its JSDoc its description. */
@@ -21,4 +23,4 @@ export type ExampleSet = Readonly<Record<string, Example>>;
 export type PartExamples = Readonly<Record<string, ExampleSet>>;
 
 /** The examples of every part. Dev and docs only: the parts page, the kit tests and the workshop render and read this. */
-export const examples: PartExamples = { Icon: iconExamples };
+export const examples: PartExamples = { Icon: iconExamples, Button: buttonExamples, IconButton: iconButtonExamples };
