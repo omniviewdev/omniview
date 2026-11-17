@@ -330,14 +330,14 @@ Each PR is one reviewable step against `main` with its own exit test; a kit part
 | 1a.0 | this plan, the skeleton, the fixture, tracker rows N11b and N16 | CI green; stable output unchanged; the skeleton run (2.6) | plan | | W1 |
 | 1a.1 | CI cluster: a kind job, the fixture, the plugin at a pin, a Playwright check that the page and `kubectl` agree | job green; negative control: with the plugin binary removed the job fails at the connection | CI | 1a.0 | W1–2 |
 | 1a.2 | Data layer: `ui-next/k8s/` (Pod definition, row model, connection states, `usePods`), the bounded first set with provisional count and sort (E10: mechanism chosen by measurement), lint that forbids `ResourceClient` and `Call` outside it, the bundle guard, plain-text rows replace the skeleton | red goldens first for each fixture state; the page's Ready, Status, Restarts, Age equal `kubectl get pods -A`; the first rows appear before the complete snapshot at 1,025 and 5,025 real Pods, numbers recorded; the runtime's `RESET_REQUIRED` test passes (V1.6) | data | 1a.0 | W1–2 |
-| 1a.3 | `DataTable`, `TableFit`, the bench, the measurement and its decision | 3.3: budgets met or the rule's outcome recorded, numbers in `docs/ui-next/baseline/` | table | 1a.0 | W1–3 |
+| 1a.3 | `DataTable`, `TableFit`, the bench, the measurement and its decision, after reading N17's table section | 3.3: budgets met or the rule's outcome recorded, numbers in `docs/ui-next/baseline/`; every N17 must-not-regress item for tables kept or re-expressed | table | 1a.0, N17 (table section) | W1–3 |
 | 1a.4a | `Icon`, `Button`, `IconButton` | per part: probes at both viewports, a11y matrix, counts | atoms | 1a.0 | W1–2 |
 | 1a.4b | `Chip`, `RovingGroup`, `QuickFilters` | the same; keyboard probe for the group | atoms | 1a.4a | W2 |
 | 1a.4c | `Status`, `MissingValue`, `KindTile`, `MiddleEllipsis` | the same; tail kept on a cut name | atoms | 1a.4a | W2 |
 | 1a.4d | `TooltipHost` and `tip` v0, the fonts | 1,000-trigger stress page; Escape layering; fonts delivered, no layout shift | atoms | 1a.4a | W2–3 |
 | 1a.5 | Shell frame: window, one tab, sidebar tree with one group, scope lane, status bar | every region's rectangle in 1.1 at both viewports | shell | 1a.4a | W2–3 |
 | 1a.6 | Page chrome: `PageHeader`, `WorkspaceToolbar`, `SearchField`, `CollectionFooter`, `DataView` wired | rectangles of title, filters, toolbar, footer; quick-filter counts equal `kubectl` | page | 1a.3, 1a.4b, 1a.5 | W3 |
-| 1a.7 | **The Pods list on real data (milestone M1)**: cells, sort, live updates, plain states, the footer's `N Pods loaded` and the provisional sort while the rest loads (E10) | parity probes at both viewports; budgets B1–B7 on the real page; the CI check green on the kind job; keyboard and a11y matrix; the owner's native pass scheduled | integration | 1a.2, 1a.3, 1a.4c, 1a.4d, 1a.6 | end of W3, no later than W4 |
+| 1a.7 | **The Pods list on real data (milestone M1)**: cells, sort, live updates, plain states, the footer's `N Pods loaded` and the provisional sort while the rest loads (E10) | parity probes at both viewports; budgets B1–B7 on the real page; the CI check green on the kind job; keyboard and a11y matrix; the owner's native pass scheduled | integration | 1a.2, 1a.3, 1a.4c, 1a.4d, 1a.6, N17 (table section) | end of W3, no later than W4 |
 | 1a.8 | States and selection: `CollectionState` family, `Checkbox.Command`, `SelectionBar` | the state matrix of 1.4; selection rules of ch15 §5.4 | page | 1a.7 | W4–5 |
 | 1a.9 | Facets and Columns chooser, hidden columns | parity; chooser keyboard and a11y | page | 1a.7 | W5–6 |
 | 1a.10 | CPU and Memory, current-only, with `metrics-server` in the dev cluster; the wide set at 1006 px | the rectangles of the wide rendering; counts; at most 6 elements per metric cell | page | 1a.7 | W5–6 |
@@ -401,6 +401,7 @@ Record in the part's PR description (a `Calibration:` block) and as a dated line
 | R-4 | The first row of a large cluster waits for the complete snapshot: 2.7 s at 5,025 Pods | E10; `useResources.ts:300-307` | the owner decided a bounded first set (A10); the mechanism, partial snapshots from the hook or a first explicit page, is chosen and measured in 1a.2 |
 | R-5 | Spec disagreements block a part | 1.5; N10 pending | write each in the status file, ask the lead (AGENTS.md) |
 | R-6 | The mock's CPU and Memory trends cannot be real | E2 | current-only cell; owner decision |
+| R-13 | The new table replaces behaviour the host already optimised (virtualisation, the shared ActionMenu handle #470, column sizing variables, memoised rows) and could undo it unseen | N17; the baseline (`docs/ui-next/baseline/2026-11-16.md`) | every PR that touches the table depends on N17's table section and keeps or re-expresses its must-not-regress items (AGENTS rule 14) |
 | R-7 | Parity tolerance is uncalibrated; blocking gates wedge agents (the 8 November wedge) | RT1 4.7 | advisory first, promote one gate at a time |
 | R-8 | The new tree has never run in WKWebView | AGENTS.md "Not verified" | PR 1a.11 in week 4, not week 6 |
 | R-9 | Fonts are not delivered, so pixel parity cannot pass | 2.3 | with K9's PR |
@@ -431,7 +432,7 @@ Owner decision (2026-11-16, A11): 1a shows current CPU and Memory values only (t
 2. Retention and sampling decided: how far back a trend goes, the step, and how many rows may ask (the mock caps metric targets and says `Usage partial`, `MOCK k8s-resources.js:467-474`). One batched range query for the visible rows, not one per cell: the runtime already batches cell demand with a 120 ms quiet and a 250 ms maximum delay (`packages/omniviewdev-runtime/src/hooks/metric/useTableMetricObservation.ts:6-10`) [INFERENCE: range shapes can ride the same demand path].
 3. A real series in the cell: the kit's `Sparkline` (K15) draws real points only, shows gaps, has no axes and carries an accessible summary of unit and time span (ch13 V1–V7, VD3; ch15 L7).
 
-**Which slice carries it.** The slice that first brings a history source into the new tree: the Pod detail Metrics tab (`MOCK k8s-resource.js:27-28` has one) and the cluster Metrics page, which follow the Pods triad in the migration order (`findings` F11 §8, sub-slice S5). List trends ride with it, so the list never gets a history source of its own. Tracker row N17.
+**Which slice carries it.** The slice that first brings a history source into the new tree: the Pod detail Metrics tab (`MOCK k8s-resource.js:27-28` has one) and the cluster Metrics page, which follow the Pods triad in the migration order (`findings` F11 §8, sub-slice S5). List trends ride with it, so the list never gets a history source of its own. Tracker row N18.
 
 ## Appendix A. Runbook: what I ran
 
@@ -515,7 +516,7 @@ Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', {
 ## Appendix C. Questions for the lead and the owner
 
 1. E10 (closed, owner 2026-11-16, A10): a bounded first set; the count and the sort are provisional until loading completes, with the mock's count-unknown wording while loading. The mechanism is chosen in PR 1a.2.
-2. E2 (closed, owner 2026-11-16, A11): current CPU and Memory values only in 1a; trends later (section 6, tracker row N17).
+2. E2 (closed, owner 2026-11-16, A11): current CPU and Memory values only in 1a; trends later (section 6, tracker row N18).
 3. The tier cuts of 1.2, above all: no tab Close and New, no identity link, selection in tier B.
 4. The screenshots (closed, owner 2026-11-16, A12): the design may be public, so the four WebP files stay in this repository.
 5. Whether the plugin-stream prerequisites (2.1) start now in parallel, and who owns them.
