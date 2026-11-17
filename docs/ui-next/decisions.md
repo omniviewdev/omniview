@@ -46,6 +46,9 @@ The binding constraint is review and decision throughput of two people, not agen
 | A7 | Scope: Kubernetes, Flux and Proxmox migrate before the flip; AWS and Containers are rebuilt after it; the marketplace web UI is out. |
 | A8 | Minimum macOS version 15.0. |
 | A9 | Licensing follows Grafana's model (2026-11-16, after batch A; settles the "confirm with the SDK licence" part of A5): the IDE stays AGPL-3.0-only, and everything a plugin links against is Apache-2.0 (`packages/kit`, `packages/omniviewdev-runtime`, `packages/omniviewdev-vite-plugin`), listed in a root `LICENSING.md`. The plugin SDK relicense (AGPL-3.0 to Apache-2.0, separate repo) is for the owner and the second contributor, not an agent task. Done before the first npm publish of the kit (tracker row N16). |
+| A10 | Slice 1a acquisition (2026-11-16, owner): a BOUNDED first set. The first rows paint first; the count and the sort order are provisional until loading completes, and while it loads the footer uses the mock's count-unknown wording (`N Pods loaded`). The mechanism (partial snapshots from the runtime's collection hook, or a first explicit page beside the collection) is chosen and measured in the data-layer PR (plan `slices/1a-pods-list.md`, E10). |
+| A11 | Slice 1a metrics (2026-11-16, owner): CPU and Memory show CURRENT values only. Trends (sparklines) are a later slice: they need a metrics history source, retention and sampling (plan section 6; tracker row N17). |
+| A12 | The design may be public (2026-11-16, owner): screenshots of the mock may live in this repository, so the four reference screenshots of slice 1a stay in `docs/ui-next/slices/1a-pods-list/`. |
 
 ## Owner answers on the channel (2026-11-16)
 

@@ -22,7 +22,15 @@ The build plan for tracker row N11, written under row N11b on 2026-11-16 against
 
 ### 1.1 The screen
 
-The reference is the mock's Pods list (`MOCK k8s-resources.js`, the composition of `shell/page-kit-list`), connection `prod-eu`, 89 Pods, default theme. The design lab is private and this repository is public, so the renderings are not here: appendix B gives the tag, the mock tree hash, the route and the viewport that reproduce each of the four (wide set at 1440 x 900; the same without CPU and Memory, which is the 1a reference for a cluster with no metrics source; two rows selected, which shows the selection bar; the narrow set at 1030 x 720). The rectangles below are measured from them.
+The reference is the mock's Pods list (`MOCK k8s-resources.js`, the composition of `shell/page-kit-list`), connection `prod-eu`, 89 Pods, default theme. Four screenshots, all 1:1 pixels of the mock; appendix B gives the tag, the mock tree hash, the route and the viewport that reproduce each, with the hashes of the original PNG captures. The owner decided on 2026-11-16 that the design may be public.
+
+![Mock, 1440 x 900, wide column set (CPU and Memory with trends; 1a shows the current values only, section 6)](1a-pods-list/mock-pods-1440x900.webp)
+
+![Mock, 1440 x 900, the same list with CPU and Memory hidden: the 1a reference for a cluster without a metrics source](1a-pods-list/mock-pods-1440x900-narrow.webp)
+
+![Mock, 1030 x 720, narrow column set](1a-pods-list/mock-pods-1030x720.webp)
+
+![Mock, 1440 x 900, two rows selected: the selection bar](1a-pods-list/mock-pods-1440x900-narrow-selected.webp)
 
 Anatomy, in DOM order, with measured rectangles `x, y, w, h` in CSS px [ran: appendix A.8]. "Owner" says whether it is the shell, a page composition, or a kit part.
 
@@ -102,7 +110,7 @@ The errata pass (N10) is pending. Each item is for the lead; 1a follows the prop
 | # | Disagreement | Evidence | Proposal for 1a |
 |---|---|---|---|
 | E1 | Pods rows are 40 px (38 compact), not 24: Pods are two-line (identity over namespace). 24 is the single-line baseline. | `MOCK k8s-resources.js:621`; `base.css:1233`; ch13 §7; kit tokens `--ov-table-metadata-height` 40/38 (`packages/kit/src/generated/tokens.css:63,70`) | Use 40/38. |
-| E2 | CPU and Memory draw a 64 x 24 trend from seeded history; native metrics are current-only and history needs an external range source. | `MOCK shell-page-kit-gallery.js:289-292` (invented series); `K8S pkg/plugin/metric/native.go:300-306`; `K8S docs/native-metrics.md:26` | No sparkline without real history (ch13 VD3). A reading, plus a bar only when limits exist. |
+| E2 | CPU and Memory draw a 64 x 24 trend from seeded history; native metrics are current-only and history needs an external range source. | `MOCK shell-page-kit-gallery.js:289-292` (invented series); `K8S pkg/plugin/metric/native.go:300-306`; `K8S docs/native-metrics.md:26` | **Owner decision (2026-11-16, A11): current values only in 1a.** No sparkline; a reading, plus a bar only when limits exist. What a trend needs, and the slice that carries it: section 6. |
 | E3 | Ready: ch13 EN1 prescribes a ratio bar with value; the mock draws mono `2/2`. | `MOCK k8s-resource-definitions.js:740,1020-1023`; ch13 EN1 | Mono `2/2`, as the mock. |
 | E4 | A missing restart count becomes 0 in the mock; D7 says `—`. | `MOCK …:600,1000-1001`; ch13 D7 | `—`. |
 | E5 | The mock emits `tr tabindex=0`; ch15 L2 says rows are not Tab stops. | `MOCK core.js:1312`; ch15 L2 | Rows are not Tab stops. |
@@ -110,7 +118,7 @@ The errata pass (N10) is pending. Each item is for the lead; 1a follows the prop
 | E7 | Skeleton delay: code 250 ms, chapter one second. | `MOCK core.js:1919`; ch15 §5.8 | 250 ms until told otherwise. |
 | E8 | Pending glyph: the code always draws a loader; SR1 says a clock for queued Pending. | `MOCK core.js:108-115`; ch13 SR1 | Follow SR1. |
 | E9 | The no-match body has no Clear filters; the toolbar supplies it. | `MOCK k8s-resources.js:623-624`; ch13 ES2 | One Clear filters, in the toolbar. |
-| E10 | Acquisition: ch17 K23 B3 says bounded pages of 256 with an explicit Load more; the runtime's collection mode, which the old table uses, acquires everything, and its first row waits for the complete snapshot: 0.7 s at 1,025 real Pods, 2.7 s at 5,025 [ran]. The N8 baseline's in-page fake backend reaches the first row of 5,000 records in 179 to 197 ms, so a fake backend hides about 2.5 s of real delivery. | `useResources.ts:300-307`; `K8S …/ResourceTable/index.tsx:198-207`; `docs/ui-next/baseline/2026-11-16.md` | Keep the old table's complete collection for 1a. Progressive paint needs a runtime change: owner decision. |
+| E10 | Acquisition: ch17 K23 B3 says bounded pages of 256 with an explicit Load more; the runtime's collection mode, which the old table uses, acquires everything, and its first row waits for the complete snapshot: 0.7 s at 1,025 real Pods, 2.7 s at 5,025 [ran]. The N8 baseline's in-page fake backend reaches the first row of 5,000 records in 179 to 197 ms, so a fake backend hides about 2.5 s of real delivery. | `useResources.ts:300-307`; `K8S …/ResourceTable/index.tsx:198-207`; `docs/ui-next/baseline/2026-11-16.md` | **Owner decision (2026-11-16, A10): a bounded first set.** The first set (256 rows, the runtime's batch size) paints first; the count and the sort order are provisional until loading completes, and while it loads the footer says `N Pods loaded` (the mock's count-unknown wording, `MOCK core.js:1875-1884`; `N shown · M loaded` when a filter hides rows). The runtime publishes a collection only when its snapshot is complete (`useResources.ts:300-307`), so PR 1a.2 chooses the mechanism by measurement: partial snapshots from the collection hook (a runtime change, through the owner of the hooks) or a first explicit page (`collection: false`, `pageSize: 256`) beside the collection. Either keeps the fenced chain: hooks only. |
 | E11 | The Controller facet is the controller-true owner; the old table uses `ownerReferences[0]`. | ch17 K61; `K8S …/corev1/Pod/Table.tsx:45-49` | The controller owner (tier B). |
 | E12 | The mock's acquisition scope is a read parameter; the old product reads all namespaces and filters client-side. | `MOCK k8s-resources.js:169-170`; `K8S …/ResourceTable/index.tsx:188-206` | All namespaces, client-side filter (tier B). |
 
@@ -147,7 +155,7 @@ The errata pass (N10) is pending. Each item is for the lead; 1a follows the prop
 | Connection | `useConnectionReadiness({ pluginID, connectionID })` | `connect()` is explicit; a read never connects (`hooks/connection/useConnectionReadiness.ts:24`) | phase `checking`, `disconnected`, `connecting`, `connected`, `unauthorized`, `forbidden`, `not-found`, `error` |
 | Catalog | `useResourceTypes({ pluginID, route })` (old table: `useResourceType`) | `route = { connection }` | types; the Pod type is `k8s:/pods`, namespaced, representations `kubernetes.object.v1/v1` (default) and `kubernetes.model.v1/v1`, capabilities include `sourceUpdates` [ran: real catalog] |
 | Target | `useResolvedResourceTarget({ pluginID, route, type: 'k8s:/pods' })` | scope omitted: namespace becomes `any` | `{ targetId, target, authority, catalogRevision }`; asks once more on `RESET_REQUIRED` (`useResolvedResourceTarget.ts:10-19,33-38`) |
-| Rows | `useResources({ pluginID, collection: true, live, request: { targetId, request: { target, pageSize: 256 } } })` | `live` = the type advertises `sourceUpdates` | `resources.data.records: HostRecord[]`, `view.count`, `source` status (`useResources.ts:241-371`) |
+| Rows | `useResources({ pluginID, collection: true, live, request: { targetId, request: { target, pageSize: 256 } } })` | `live` = the type advertises `sourceUpdates` | `resources.data.records: HostRecord[]`, `view.count`, `source` status (`useResources.ts:241-371`); the first set before the snapshot completes is E10's open mechanism |
 
 Real shapes [ran: captured through the page]: a `HostRecord` is `{ key: 'row:<sha256>', addressKey, targetId, route: { connection }, record }` (`resource/v2/host.ts:7-13`); `record.reference.address` is `{ provider: 'kubernetes', authority: 'local:<uuid>', type: 'k8s:/pods', scope: [{ dimension: 'namespace', value }], id: <name> }` with the UID as `incarnation`; `record.body` is an exact `Value` tree (`domain.ts:21-30`), not a Kubernetes object: integers arrive as `int64` strings, `creationTimestamp` as a `string`, and `valueToJSON` is the presentation projection. A running two-container Pod is 13.2 KB in `Value` form (6.6 KB plain, `managedFields` included) and decodes in 18 µs, so 5,000 records cost about 90 ms once and must never be decoded per render (the old plugin keeps a `WeakMap` per record, `K8S ui/src/utils/recordBody.ts`). `view.count` is `{ kind: 'exact', value }` and drives the footer.
 
@@ -321,7 +329,7 @@ Each PR is one reviewable step against `main` with its own exit test; a kit part
 |---|---|---|---|---|---|
 | 1a.0 | this plan, the skeleton, the fixture, tracker rows N11b and N16 | CI green; stable output unchanged; the skeleton run (2.6) | plan | | W1 |
 | 1a.1 | CI cluster: a kind job, the fixture, the plugin at a pin, a Playwright check that the page and `kubectl` agree | job green; negative control: with the plugin binary removed the job fails at the connection | CI | 1a.0 | W1–2 |
-| 1a.2 | Data layer: `ui-next/k8s/` (Pod definition, row model, connection states, `usePods`), lint that forbids `ResourceClient` and `Call` outside it, the bundle guard, plain-text rows replace the skeleton | red goldens first for each fixture state; the page's Ready, Status, Restarts, Age equal `kubectl get pods -A`; the runtime's `RESET_REQUIRED` test passes (V1.6) | data | 1a.0 | W1–2 |
+| 1a.2 | Data layer: `ui-next/k8s/` (Pod definition, row model, connection states, `usePods`), the bounded first set with provisional count and sort (E10: mechanism chosen by measurement), lint that forbids `ResourceClient` and `Call` outside it, the bundle guard, plain-text rows replace the skeleton | red goldens first for each fixture state; the page's Ready, Status, Restarts, Age equal `kubectl get pods -A`; the first rows appear before the complete snapshot at 1,025 and 5,025 real Pods, numbers recorded; the runtime's `RESET_REQUIRED` test passes (V1.6) | data | 1a.0 | W1–2 |
 | 1a.3 | `DataTable`, `TableFit`, the bench, the measurement and its decision | 3.3: budgets met or the rule's outcome recorded, numbers in `docs/ui-next/baseline/` | table | 1a.0 | W1–3 |
 | 1a.4a | `Icon`, `Button`, `IconButton` | per part: probes at both viewports, a11y matrix, counts | atoms | 1a.0 | W1–2 |
 | 1a.4b | `Chip`, `RovingGroup`, `QuickFilters` | the same; keyboard probe for the group | atoms | 1a.4a | W2 |
@@ -329,7 +337,7 @@ Each PR is one reviewable step against `main` with its own exit test; a kit part
 | 1a.4d | `TooltipHost` and `tip` v0, the fonts | 1,000-trigger stress page; Escape layering; fonts delivered, no layout shift | atoms | 1a.4a | W2–3 |
 | 1a.5 | Shell frame: window, one tab, sidebar tree with one group, scope lane, status bar | every region's rectangle in 1.1 at both viewports | shell | 1a.4a | W2–3 |
 | 1a.6 | Page chrome: `PageHeader`, `WorkspaceToolbar`, `SearchField`, `CollectionFooter`, `DataView` wired | rectangles of title, filters, toolbar, footer; quick-filter counts equal `kubectl` | page | 1a.3, 1a.4b, 1a.5 | W3 |
-| 1a.7 | **The Pods list on real data (milestone M1)**: cells, sort, live updates, plain states | parity probes at both viewports; budgets B1–B7 on the real page; the CI check green on the kind job; keyboard and a11y matrix; the owner's native pass scheduled | integration | 1a.2, 1a.3, 1a.4c, 1a.4d, 1a.6 | end of W3, no later than W4 |
+| 1a.7 | **The Pods list on real data (milestone M1)**: cells, sort, live updates, plain states, the footer's `N Pods loaded` and the provisional sort while the rest loads (E10) | parity probes at both viewports; budgets B1–B7 on the real page; the CI check green on the kind job; keyboard and a11y matrix; the owner's native pass scheduled | integration | 1a.2, 1a.3, 1a.4c, 1a.4d, 1a.6 | end of W3, no later than W4 |
 | 1a.8 | States and selection: `CollectionState` family, `Checkbox.Command`, `SelectionBar` | the state matrix of 1.4; selection rules of ch15 §5.4 | page | 1a.7 | W4–5 |
 | 1a.9 | Facets and Columns chooser, hidden columns | parity; chooser keyboard and a11y | page | 1a.7 | W5–6 |
 | 1a.10 | CPU and Memory, current-only, with `metrics-server` in the dev cluster; the wide set at 1006 px | the rectangles of the wide rendering; counts; at most 6 elements per metric cell | page | 1a.7 | W5–6 |
@@ -390,7 +398,7 @@ Record in the part's PR description (a `Calibration:` block) and as a dated line
 | R-1 | Tier A needs the top of capacity (4.3) | the arithmetic above | start the table now; the levers in 4.3 |
 | R-2 | The table misses a budget: the mock's own wide row has 68 elements and its fit cannot be computed at scale | 1.1, 3.4; RT1 4.6 | 3.3's ladder and rule; native atoms; declared widths |
 | R-3 | Review throughput: the second reviewer approved 2 of 72 PRs in the baseline fortnight; tier A is about 14 PRs | `findings` P1 §10; RT2 7.1 | one part or family per PR; the review queue age is tracked; agent pre-review (R16) |
-| R-4 | First paint waits for the complete snapshot: 2.7 s at 5,025 Pods | E10; `useResources.ts:300-307` | owner decision on bounded acquisition or a progressive runtime hook |
+| R-4 | The first row of a large cluster waits for the complete snapshot: 2.7 s at 5,025 Pods | E10; `useResources.ts:300-307` | the owner decided a bounded first set (A10); the mechanism, partial snapshots from the hook or a first explicit page, is chosen and measured in 1a.2 |
 | R-5 | Spec disagreements block a part | 1.5; N10 pending | write each in the status file, ask the lead (AGENTS.md) |
 | R-6 | The mock's CPU and Memory trends cannot be real | E2 | current-only cell; owner decision |
 | R-7 | Parity tolerance is uncalibrated; blocking gates wedge agents (the 8 November wedge) | RT1 4.7 | advisory first, promote one gate at a time |
@@ -410,6 +418,20 @@ Record in the part's PR description (a `Calibration:` block) and as a dated line
 6. **T6** the WKWebView pass finds a defect class the Chromium and WebKit gates cannot see.
 
 The re-plan decides: tier B's scope, whether the plugin stream or the host-side path carries slice 1b, and whether the table needs a different primitive.
+
+## 6. Later: metric trends
+
+Owner decision (2026-11-16, A11): 1a shows current CPU and Memory values only (tier B, PR 1a.10). Trends come later.
+
+**What the mock shows.** In the wide set each CPU and Memory cell is the reading with its unit and a 64 x 24 trend graphic, with a lazily built hover card of the same facts and the Inspect drawer as the keyboard path (`MOCK shell-metric-summary.js:41-44,130-140`; ch13 V1–V8, VD3, VD4; ch17 K55). The mock's history is seeded (`MOCK shell-page-kit-gallery.js:289-292`); the rule for the real list is that history is never invented (ch13 VD3).
+
+**What it needs.**
+
+1. A history source. The native source (metrics-server) is current-only and keeps no history (`K8S pkg/plugin/metric/native.go:300-306`; `K8S docs/native-metrics.md:26`). Range data comes only from an external source through mapped PromQL recipes that support `range`, with Grafana as the generic executor (`K8S docs/native-metrics.md`). The dev cluster then needs Prometheus beside `metrics-server`; the plugin's manual Kind, Prometheus and Grafana lab has no CI workflow (`K8S README.md:1106-1112`).
+2. Retention and sampling decided: how far back a trend goes, the step, and how many rows may ask (the mock caps metric targets and says `Usage partial`, `MOCK k8s-resources.js:467-474`). One batched range query for the visible rows, not one per cell: the runtime already batches cell demand with a 120 ms quiet and a 250 ms maximum delay (`packages/omniviewdev-runtime/src/hooks/metric/useTableMetricObservation.ts:6-10`) [INFERENCE: range shapes can ride the same demand path].
+3. A real series in the cell: the kit's `Sparkline` (K15) draws real points only, shows gaps, has no axes and carries an accessible summary of unit and time span (ch13 V1–V7, VD3; ch15 L7).
+
+**Which slice carries it.** The slice that first brings a history source into the new tree: the Pod detail Metrics tab (`MOCK k8s-resource.js:27-28` has one) and the cluster Metrics page, which follow the Pods triad in the migration order (`findings` F11 §8, sub-slice S5). List trends ride with it, so the list never gets a history source of its own. Tracker row N17.
 
 ## Appendix A. Runbook: what I ran
 
@@ -472,30 +494,30 @@ The server port is fixed at 34115 (`main.go:83`); the e2e harness overrides it w
 
 **A.10 Checks.** `pnpm test ui-next` (13), `pnpm exec tsc -p tsconfig.app.json --noEmit` and `-p tsconfig.test.json`, `pnpm exec eslint ui-next --report-unused-disable-directives`, `pnpm lint:ui-policy`, `node --test scripts/react-compiler.test.mjs scripts/ui-flavour.test.mjs` with `OMNIVIEW_STABLE_DIST` pointing at a stable build. Stable output: `OMNIVIEW_BUILD_OUTPUT_DIRECTORY=… pnpm exec vite build` in a worktree of origin/main and in this one, `diff -r`.
 
-## Appendix B. Reproducing the reference renderings
+## Appendix B. Reference screenshots and how to reproduce them
 
-Source: private repository `omniviewdev/design-lab`, tag `spec-baseline-2026-11-16` (commit `108d7049536e52d8d2f48c9a9b8d8cd94886fe81`), mock tree `c8e44a445bdbec07ad81d5ec036dd26cc0a8bef0` (`app/OmniviewNativeLab/frontend/mock`). The measurements in 1.1 were taken on a local checkout whose mock tree has that same hash [ran: `git rev-parse HEAD:app/OmniviewNativeLab/frontend/mock`].
+The WebP files in `1a-pods-list/` are quality 88 of the PNG captures. Source: private repository `omniviewdev/design-lab`, tag `spec-baseline-2026-11-16` (commit `108d7049536e52d8d2f48c9a9b8d8cd94886fe81`), mock tree `c8e44a445bdbec07ad81d5ec036dd26cc0a8bef0` (`app/OmniviewNativeLab/frontend/mock`). The measurements in 1.1 were taken on a local checkout whose mock tree has that same hash [ran: `git rev-parse HEAD:app/OmniviewNativeLab/frontend/mock`].
 
-Serve the mock (`node server.js` from the mock directory; the parent `package.json` has `"type": "module"`, so run a CommonJS copy, A.8), open `http://127.0.0.1:<port>/` in a freshly loaded page at the viewport below, and run this in the page's console. Wait about 3.5 s and do not move the pointer. Reload the page for each rendering: resizing a page that had rendered once left the table body blank in one capture.
+To reproduce: serve the mock (`node server.js` from the mock directory; the parent `package.json` has `"type": "module"`, so run a CommonJS copy, A.8), open `http://127.0.0.1:<port>/` in a freshly loaded page at the viewport below, and run this in the page's console. Wait about 3.5 s and do not move the pointer. Reload the page for each rendering: resizing a page that had rendered once left the table body blank in one capture.
 
 ```js
 const scope = K8s.connections.defaultScope('prod-eu');
 Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/pods' }, scope), scope }, { how: 'here' });
 ```
 
-| Rendering | Viewport | After opening the route | sha-256 of the PNG capture |
+| File | Viewport | After opening the route | sha-256 of the PNG capture |
 |---|---|---|---|
-| wide set | 1440 x 900 | nothing | `c22003d43e7e72e44a858cfb6de08d8788205a67cd2703d742dcb982aaee6c49` |
-| CPU and Memory hidden | 1440 x 900 | Columns, untick CPU and Memory, Escape | `71b363a3c78ed5d5990e09e9bfd3896b9c0431a9f596db02a23e8ed6f95ff31d` |
-| two rows selected | 1440 x 900 | as the row above, then tick the checkboxes of the first two rows | `14b790c023d6321cb7fa61e9df30c2d278c4ec9754146c71ca331487ecd04b28` |
-| narrow set | 1030 x 720 | nothing | `beb1731d48ffaf1cd1e99f91a049754a38a0c08a88697ec08afbcbde146f2c59` |
+| `mock-pods-1440x900.webp` | 1440 x 900 | nothing | `c22003d43e7e72e44a858cfb6de08d8788205a67cd2703d742dcb982aaee6c49` |
+| `mock-pods-1440x900-narrow.webp` | 1440 x 900 | Columns, untick CPU and Memory, Escape | `71b363a3c78ed5d5990e09e9bfd3896b9c0431a9f596db02a23e8ed6f95ff31d` |
+| `mock-pods-1440x900-narrow-selected.webp` | 1440 x 900 | as the row above, then tick the checkboxes of the first two rows | `14b790c023d6321cb7fa61e9df30c2d278c4ec9754146c71ca331487ecd04b28` |
+| `mock-pods-1030x720.webp` | 1030 x 720 | nothing | `beb1731d48ffaf1cd1e99f91a049754a38a0c08a88697ec08afbcbde146f2c59` |
 
 ## Appendix C. Questions for the lead and the owner
 
-1. E10: complete collection (the old table, 2.7 s to the first row at 5,000 Pods) or bounded pages with Load more (ch17 K23 B3), and whether a progressive runtime hook is wanted.
-2. E2: current-only CPU and Memory, or hold the columns until an external history source exists.
+1. E10 (closed, owner 2026-11-16, A10): a bounded first set; the count and the sort are provisional until loading completes, with the mock's count-unknown wording while loading. The mechanism is chosen in PR 1a.2.
+2. E2 (closed, owner 2026-11-16, A11): current CPU and Memory values only in 1a; trends later (section 6, tracker row N17).
 3. The tier cuts of 1.2, above all: no tab Close and New, no identity link, selection in tier B.
-4. The reference renderings live in the private design lab. Goldens are vendored into the host by content hash after the errata pass (R15, N10); until then parity is checked against the rectangles in 1.1 and a rendering reproduced by appendix B.
+4. The screenshots (closed, owner 2026-11-16, A12): the design may be public, so the four WebP files stay in this repository.
 5. Whether the plugin-stream prerequisites (2.1) start now in parallel, and who owns them.
 6. Where Inter is delivered from and under which licence file (the lab holds `Inter Font License.txt`).
 7. The CI cluster job's owner, and whether a Docker-capable runner is allowed for it.
