@@ -1,0 +1,67 @@
+{
+  "label": "next-minified",
+  "entry": [
+    {
+      "file": "assets/index-DAQPD6ou.js",
+      "raw": 229936,
+      "gzip": 71938,
+      "brotli": 62067,
+      "top5": [
+        {
+          "name": "react-dom",
+          "chars": 209395,
+          "share": 0.9106624858113309
+        },
+        {
+          "name": "react",
+          "chars": 8851,
+          "share": 0.03849315247219891
+        },
+        {
+          "name": "scheduler",
+          "chars": 3730,
+          "share": 0.016221834676454855
+        },
+        {
+          "name": "packages/kit",
+          "chars": 3595,
+          "share": 0.015634717335618015
+        },
+        {
+          "name": "ui-next",
+          "chars": 3587,
+          "share": 0.01559992519690176
+        }
+      ]
+    }
+  ],
+  "eagerPreloads": [],
+  "css": [
+    {
+      "file": "assets/index-lnDlZx3t.css",
+      "raw": 25629,
+      "gzip": 4669,
+      "brotli": 3428
+    }
+  ],
+  "totals": {
+    "js": {
+      "files": 1,
+      "raw": 229936
+    },
+    "css": {
+      "files": 1,
+      "raw": 25629
+    },
+    "other": {
+      "files": 1,
+      "raw": 399
+    }
+  },
+  "largestJs": [
+    {
+      "file": "assets/index-DAQPD6ou.js",
+      "raw": 229936
+    }
+  ]
+}

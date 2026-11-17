@@ -1,0 +1,67 @@
+{
+  "label": "next-shipped",
+  "entry": [
+    {
+      "file": "assets/index-RIvllMjJ.js",
+      "raw": 657429,
+      "gzip": 116115,
+      "brotli": 93600,
+      "top5": [
+        {
+          "name": "react-dom",
+          "chars": 608955,
+          "share": 0.9262659142418205
+        },
+        {
+          "name": "react",
+          "chars": 19109,
+          "share": 0.029066212372419877
+        },
+        {
+          "name": "scheduler",
+          "chars": 10378,
+          "share": 0.015785711026268957
+        },
+        {
+          "name": "ui-next",
+          "chars": 7217,
+          "share": 0.01097759457280623
+        },
+        {
+          "name": "packages/kit",
+          "chars": 6471,
+          "share": 0.009842873005491078
+        }
+      ]
+    }
+  ],
+  "eagerPreloads": [],
+  "css": [
+    {
+      "file": "assets/index-CY7JY9QG.css",
+      "raw": 31298,
+      "gzip": 5077,
+      "brotli": 3735
+    }
+  ],
+  "totals": {
+    "css": {
+      "files": 1,
+      "raw": 31298
+    },
+    "js": {
+      "files": 1,
+      "raw": 657429
+    },
+    "other": {
+      "files": 1,
+      "raw": 399
+    }
+  },
+  "largestJs": [
+    {
+      "file": "assets/index-RIvllMjJ.js",
+      "raw": 657429
+    }
+  ]
+}

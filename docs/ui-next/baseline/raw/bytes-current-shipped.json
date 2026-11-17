@@ -1,0 +1,95 @@
+{
+  "label": "current-shipped",
+  "entry": [
+    {
+      "file": "assets/index-Cl_YW_Y6.js",
+      "raw": 23045947,
+      "gzip": 5621973,
+      "brotli": 4496438,
+      "top5": [
+        {
+          "name": "monaco-editor",
+          "chars": 6409178,
+          "share": 0.2784023545521669
+        },
+        {
+          "name": "react-icons",
+          "chars": 6056331,
+          "share": 0.26307536010815735
+        },
+        {
+          "name": "@omniviewdev/base-ui",
+          "chars": 2632171,
+          "share": 0.11433644126968104
+        },
+        {
+          "name": "ui",
+          "chars": 1607244,
+          "share": 0.06981558539017686
+        },
+        {
+          "name": "refractor",
+          "chars": 883854,
+          "share": 0.03839291632723431
+        }
+      ]
+    }
+  ],
+  "eagerPreloads": [],
+  "css": [
+    {
+      "file": "assets/index-C4-e-Jti.css",
+      "raw": 885864,
+      "gzip": 125108,
+      "brotli": 93799
+    },
+    {
+      "file": "assets/ai-ui-qVMucUHN.css",
+      "raw": 34980,
+      "gzip": 5598,
+      "brotli": 4960
+    },
+    {
+      "file": "assets/entry-Bkeu_sYI.css",
+      "raw": 11794,
+      "gzip": 2365,
+      "brotli": 2002
+    }
+  ],
+  "totals": {
+    "other": {
+      "files": 9,
+      "raw": 2345221
+    },
+    "js": {
+      "files": 123,
+      "raw": 56170822
+    },
+    "css": {
+      "files": 5,
+      "raw": 940960
+    }
+  },
+  "largestJs": [
+    {
+      "file": "assets/index-Cl_YW_Y6.js",
+      "raw": 23045947
+    },
+    {
+      "file": "assets/ts.worker-C4Xg-309.js",
+      "raw": 12093286
+    },
+    {
+      "file": "assets/ts.worker-C40Q5HgU-BqrcRQ5T.js",
+      "raw": 8020240
+    },
+    {
+      "file": "assets/css.worker-DLef65oG.js",
+      "raw": 1829870
+    },
+    {
+      "file": "assets/yaml.worker.bundle-DefvRZ3B.js",
+      "raw": 1827165
+    }
+  ]
+}
