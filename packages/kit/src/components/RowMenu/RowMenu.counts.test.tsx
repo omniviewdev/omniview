@@ -27,13 +27,20 @@ beforeAll(() => {
 });
 
 let errors: MockInstance<Console['error']>;
+let popoverRule: HTMLStyleElement;
 
 beforeEach(() => {
   errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  // jsdom's default stylesheet hides every popover that is not `:popover-open`, a state it cannot match, so nothing in one could be focused
+  // or found by role. A browser shows the popover once showPopover has run: this is the same rule, in the page.
+  popoverRule = document.createElement('style');
+  popoverRule.textContent = '[popover] { display: block; }';
+  document.head.append(popoverRule);
 });
 
 afterEach(() => {
   expect(errors.mock.calls).toEqual([]);
+  popoverRule.remove();
   cellCalls = 0;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -70,11 +77,19 @@ const columnsFor = (handle: RowMenuHandle<Job>): ReadonlyArray<DataTableColumn<J
 ];
 
 const selected: string[] = [];
-const items = (): readonly RowMenuItem<Job>[] => [
-  { id: 'inspect', label: 'Inspect', onSelect: (row) => { selected.push(`inspect ${row.key}`); } },
-  { id: 'rerun', label: 'Run again', onSelect: (row) => { selected.push(`rerun ${row.key}`); } },
-  { id: 'copy', label: 'Copy name', onSelect: (row) => { selected.push(`copy ${row.key}`); } },
-  { id: 'delete', label: 'Delete\u2026', destructive: true, separatorBefore: true, onSelect: (row) => { selected.push(`delete ${row.key}`); } },
+const items = (): ReadonlyArray<RowMenuItem<Job>> => [
+  { id: 'inspect', label: 'Inspect', onSelect: (row) => {
+    selected.push(`inspect ${row.key}`);
+  } },
+  { id: 'rerun', label: 'Run again', onSelect: (row) => {
+    selected.push(`rerun ${row.key}`);
+  } },
+  { id: 'copy', label: 'Copy name', onSelect: (row) => {
+    selected.push(`copy ${row.key}`);
+  } },
+  { id: 'delete', label: 'Delete\u2026', destructive: true, separatorBefore: true, onSelect: (row) => {
+    selected.push(`delete ${row.key}`);
+  } },
 ];
 // root + four items + one separator
 const POPUP_ELEMENTS = 6;
@@ -111,8 +126,8 @@ const roots = () => document.querySelectorAll('[role="menu"]').length;
 const triggers = () => screen.queryAllByRole('button', { name: /^Actions for / });
 const mountedRows = () => document.querySelectorAll('tbody > tr:not([aria-hidden])').length;
 const elementsInDocument = () => document.querySelectorAll('*').length;
-const defined = <T,>(value: T | undefined, what: string): T => {
-  if (value === undefined) {
+const defined = <T,>(value: T | null | undefined, what: string): T => {
+  if (value === undefined || value === null) {
     throw new Error(`no ${what}`);
   }
 
@@ -135,15 +150,11 @@ function trackListeners() {
   const remove = EventTarget.prototype.removeEventListener;
   const windowAdd = window.addEventListener;
   const windowRemove = window.removeEventListener;
-  const ids = new WeakMap<object, number>();
+  const ids = new WeakMap<EventListenerOrEventListenerObject, number>();
   const live = new Set<string>();
   let next = 0;
   let added = 0;
-  const key = (name: string, type: string, listener: unknown, options: unknown) => {
-    if (typeof listener !== 'function') {
-      return undefined;
-    }
-
+  const key = (name: string, type: string, listener: EventListenerOrEventListenerObject, options: unknown) => {
     let id = ids.get(listener);
     if (id === undefined) {
       next += 1;
@@ -155,7 +166,7 @@ function trackListeners() {
     return `${name}:${type}:${String(capture)}:${id}`;
   };
 
-  EventTarget.prototype.addEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+  EventTarget.prototype.addEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
     added += 1;
     const entry = this === document ? key('document', type, listener, options) : undefined;
     if (entry !== undefined) {
@@ -165,7 +176,7 @@ function trackListeners() {
     add.call(this, type, listener, options);
   };
 
-  EventTarget.prototype.removeEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions) {
+  EventTarget.prototype.removeEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) {
     const entry = this === document ? key('document', type, listener, options) : undefined;
     if (entry !== undefined) {
       live.delete(entry);
@@ -174,7 +185,7 @@ function trackListeners() {
     remove.call(this, type, listener, options);
   };
 
-  window.addEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+  window.addEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
     added += 1;
     const entry = key('window', type, listener, options);
     if (entry !== undefined) {
@@ -184,7 +195,7 @@ function trackListeners() {
     windowAdd.call(window, type, listener, options);
   } as typeof window.addEventListener;
 
-  window.removeEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions) {
+  window.removeEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) {
     const entry = key('window', type, listener, options);
     if (entry !== undefined) {
       live.delete(entry);
@@ -379,11 +390,21 @@ describe('listeners', () => {
       const view = render(<Page handle={handle} rows={jobs(60)} />);
       const rest = tracking.live();
       const reasons: Array<() => void> = [
-        () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Inspect' }), { detail: 0 }); },
-        () => { fireEvent.pointerDown(document.body); },
-        () => { fireEvent.scroll(window); },
-        () => { fireEvent(window, new Event('resize')); },
-        () => { view.unmount(); },
+        () => {
+          fireEvent.click(screen.getByRole('menuitem', { name: 'Inspect' }), { detail: 0 });
+        },
+        () => {
+          fireEvent.pointerDown(document.body);
+        },
+        () => {
+          fireEvent.scroll(window);
+        },
+        () => {
+          fireEvent(window, new Event('resize'));
+        },
+        () => {
+          view.unmount();
+        },
       ];
       for (const reason of reasons) {
         const button = triggers()[0];
@@ -490,16 +511,18 @@ describe('renders', () => {
 
   it('keeps the table\'s own counts with the trigger column: a patch to one record in view renders one row, one out of view none', () => {
     const handle = createRowMenu<Job>();
-    const rows = jobs(5025);
+    let current = jobs(5025);
     const commits = { count: 0 };
     const onCommit = () => {
       commits.count += 1;
     };
 
-    const view = render(<Page handle={handle} rows={rows} onCommit={onCommit} />);
+    const view = render(<Page handle={handle} rows={current} onCommit={onCommit} />);
+    // The same rows with one record replaced by a new object, as a live update delivers it.
     const patched = (index: number) => {
-      const next = rows.slice();
-      next[index] = { ...defined(rows[index], `row ${index}`), state: 'Failed' };
+      const next = current.slice();
+      next[index] = { ...defined(current[index], `row ${index}`), state: 'Failed' };
+      current = next;
       return next;
     };
 
@@ -520,7 +543,9 @@ describe('renders', () => {
       const [tick, setTick] = useState(0);
       return (
         <>
-          <button type="button" data-testid="parent" onClick={() => { setTick(tick + 1); }}>{`parent ${tick}`}</button>
+          <button type="button" data-testid="parent" onClick={() => {
+            setTick(tick + 1);
+          }}>{`parent ${tick}`}</button>
           <Page handle={handle} rows={rows} />
         </>
       );

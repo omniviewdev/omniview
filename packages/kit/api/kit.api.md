@@ -6,6 +6,7 @@
 
 import { JSX } from 'react';
 import type { MouseEvent as MouseEvent_2 } from 'react';
+import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 
 // @public
@@ -49,6 +50,9 @@ export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 
 
 // @public
 export const compactAge: AgeFormatter;
+
+// @public
+export function createRowMenu<TRow>(): RowMenuHandle<TRow>;
 
 // @public
 export type DataAttributes = Readonly<Record<`data-${string}`, string | number | boolean | undefined>>;
@@ -167,6 +171,62 @@ export type IconSize = 12 | 16;
 
 // @public (undocumented)
 export type RadiusRole = 'mark' | 'control' | 'tab' | 'popup' | 'island';
+
+// @public
+export function RowMenu<TRow>(input: RowMenuProps<TRow>): ReactElement | null;
+
+// @public
+export type RowMenuFocus = 'first' | 'last' | 'menu';
+
+// @public
+export type RowMenuHandle<TRow> = {
+    readonly id: string;
+    readonly open: (anchor: HTMLElement, row: TRow, focus?: RowMenuFocus) => void;
+    readonly toggle: (anchor: HTMLElement, row: TRow, focus?: RowMenuFocus) => void;
+    readonly close: (options?: {
+        readonly restoreFocus?: boolean | undefined;
+    }) => void;
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly getSnapshot: () => RowMenuState<TRow>;
+};
+
+// @public
+export type RowMenuItem<TRow> = {
+    readonly id: string;
+    readonly label: string;
+    readonly onSelect: (row: TRow) => void;
+    readonly disabled?: boolean | undefined;
+    readonly destructive?: boolean | undefined;
+    readonly separatorBefore?: boolean | undefined;
+};
+
+// @public (undocumented)
+export type RowMenuProps<TRow> = {
+    readonly handle: RowMenuHandle<TRow>;
+    readonly label: string;
+    readonly items: (row: TRow) => ReadonlyArray<RowMenuItem<TRow>>;
+} & DataAttributes;
+
+// @public
+export type RowMenuState<TRow> = {
+    readonly open: false;
+} | {
+    readonly open: true;
+    readonly row: TRow;
+    readonly anchor: HTMLElement;
+    readonly focus: RowMenuFocus;
+    readonly epoch: number;
+};
+
+// @public
+export const RowMenuTrigger: <TRow>(props: RowMenuTriggerProps<TRow>) => ReactElement;
+
+// @public (undocumented)
+export type RowMenuTriggerProps<TRow> = {
+    readonly handle: RowMenuHandle<TRow>;
+    readonly row: TRow;
+    readonly label: string;
+} & DataAttributes;
 
 // @public (undocumented)
 export type SpacingStep = 2 | 4 | 6 | 8 | 12 | 16 | 20 | 24;

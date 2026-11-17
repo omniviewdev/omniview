@@ -47,14 +47,10 @@ function trackListeners() {
   const remove = EventTarget.prototype.removeEventListener;
   const windowAdd = window.addEventListener;
   const windowRemove = window.removeEventListener;
-  const ids = new WeakMap<object, number>();
+  const ids = new WeakMap<EventListenerOrEventListenerObject, number>();
   const live = new Set<string>();
   let next = 0;
-  const key = (name: 'window' | 'document', type: string, listener: unknown, options: unknown) => {
-    if (typeof listener !== 'function') {
-      return undefined;
-    }
-
+  const key = (name: 'window' | 'document', type: string, listener: EventListenerOrEventListenerObject, options: unknown) => {
     let id = ids.get(listener);
     if (id === undefined) {
       next += 1;
@@ -66,7 +62,7 @@ function trackListeners() {
     return `${name}:${type}:${String(capture)}:${id}`;
   };
 
-  EventTarget.prototype.addEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+  EventTarget.prototype.addEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
     const entry = this === document ? key('document', type, listener, options) : undefined;
     if (entry !== undefined) {
       live.add(entry);
@@ -75,7 +71,7 @@ function trackListeners() {
     add.call(this, type, listener, options);
   };
 
-  EventTarget.prototype.removeEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions) {
+  EventTarget.prototype.removeEventListener = function patched(this: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) {
     const entry = this === document ? key('document', type, listener, options) : undefined;
     if (entry !== undefined) {
       live.delete(entry);
@@ -84,7 +80,7 @@ function trackListeners() {
     remove.call(this, type, listener, options);
   };
 
-  window.addEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+  window.addEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
     const entry = key('window', type, listener, options);
     if (entry !== undefined) {
       live.add(entry);
@@ -93,7 +89,7 @@ function trackListeners() {
     windowAdd.call(window, type, listener, options);
   } as typeof window.addEventListener;
 
-  window.removeEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions) {
+  window.removeEventListener = function patched(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) {
     const entry = key('window', type, listener, options);
     if (entry !== undefined) {
       live.delete(entry);

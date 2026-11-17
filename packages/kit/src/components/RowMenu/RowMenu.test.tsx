@@ -43,8 +43,14 @@ function layout(element: Element, left: number, top: number, width = 24, height 
 
 let rectSpy: MockInstance<Element['getBoundingClientRect']>;
 let errors: MockInstance<Console['error']>;
+let popoverRule: HTMLStyleElement;
 
 beforeEach(() => {
+  // jsdom's default stylesheet hides every popover that is not `:popover-open`, a state it cannot match, so nothing in one could be focused
+  // or found by role. A browser shows the popover once showPopover has run: this is the same rule, in the page.
+  popoverRule = document.createElement('style');
+  popoverRule.textContent = '[popover] { display: block; }';
+  document.head.append(popoverRule);
   rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function measure(this: Element) {
     if (this.getAttribute('role') === 'menu') {
       calls.push('measure popup');
@@ -68,12 +74,13 @@ afterEach(() => {
   expect(errors.mock.calls).toEqual([]);
   shown.length = 0;
   calls.length = 0;
+  popoverRule.remove();
   delete (HTMLElement.prototype as Partial<HTMLElement>).showPopover;
   vi.restoreAllMocks();
 });
 
-const defined = <T,>(value: T | undefined, what: string): T => {
-  if (value === undefined) {
+const defined = <T,>(value: T | null | undefined, what: string): T => {
+  if (value === undefined || value === null) {
     throw new Error(`no ${what}`);
   }
 
@@ -83,16 +90,24 @@ const defined = <T,>(value: T | undefined, what: string): T => {
 type Log = Array<readonly [string, string]>;
 
 /** The items of a job: the second is unavailable for a paused job, the last destroys it and sits apart. */
-const itemsFor = (log: Log) => (row: Job): readonly RowMenuItem<Job>[] => [
-  { id: 'inspect', label: 'Inspect', onSelect: (target) => { log.push(['inspect', target.key]); } },
-  { id: 'pause', label: 'Pause', disabled: row.paused === true, onSelect: (target) => { log.push(['pause', target.key]); } },
-  { id: 'rerun', label: 'Run again', onSelect: (target) => { log.push(['rerun', target.key]); } },
-  { id: 'delete', label: 'Delete\u2026', destructive: true, separatorBefore: true, onSelect: (target) => { log.push(['delete', target.key]); } },
+const itemsFor = (log: Log) => (row: Job): ReadonlyArray<RowMenuItem<Job>> => [
+  { id: 'inspect', label: 'Inspect', onSelect: (target) => {
+    log.push(['inspect', target.key]);
+  } },
+  { id: 'pause', label: 'Pause', disabled: row.paused === true, onSelect: (target) => {
+    log.push(['pause', target.key]);
+  } },
+  { id: 'rerun', label: 'Run again', onSelect: (target) => {
+    log.push(['rerun', target.key]);
+  } },
+  { id: 'delete', label: 'Delete\u2026', destructive: true, separatorBefore: true, onSelect: (target) => {
+    log.push(['delete', target.key]);
+  } },
 ];
 
 type TableProps = {
   readonly handle: RowMenuHandle<Job>;
-  readonly items: (row: Job) => readonly RowMenuItem<Job>[];
+  readonly items: (row: Job) => ReadonlyArray<RowMenuItem<Job>>;
   readonly jobs?: readonly Job[];
   readonly onRegionKeyDown?: () => void;
 };
@@ -175,10 +190,16 @@ describe('the popup', () => {
   it('draws one separator before an item that asks for it, and none before the first', () => {
     const log: Log = [];
     const handle = createRowMenu<Job>();
-    const items = (): readonly RowMenuItem<Job>[] => [
-      { id: 'one', label: 'One', separatorBefore: true, onSelect: () => { log.push(['one', '']); } },
-      { id: 'two', label: 'Two', onSelect: () => { log.push(['two', '']); } },
-      { id: 'three', label: 'Three', separatorBefore: true, onSelect: () => { log.push(['three', '']); } },
+    const items = (): ReadonlyArray<RowMenuItem<Job>> => [
+      { id: 'one', label: 'One', separatorBefore: true, onSelect: () => {
+        log.push(['one', '']);
+      } },
+      { id: 'two', label: 'Two', onSelect: () => {
+        log.push(['two', '']);
+      } },
+      { id: 'three', label: 'Three', separatorBefore: true, onSelect: () => {
+        log.push(['three', '']);
+      } },
     ];
     render(<Table handle={handle} items={items} />);
     pointerClick(trigger('web-1'));
@@ -228,7 +249,7 @@ describe('the popup', () => {
     const extra: RowMenuItem<Job> = { id: 'a', label: 'A', onSelect: () => undefined, icon: 'close' };
     // @ts-expect-error label and onSelect are required
     const bare: RowMenuItem<Job> = { id: 'a' };
-    void [ok, extra, bare];
+    expect([ok, extra, bare]).toHaveLength(3);
     const nodes = [
       // @ts-expect-error closed props: no className
       <RowMenuTrigger key="1" handle={handle} row={WEB_1} label="x" className="x" />,
@@ -341,7 +362,9 @@ describe('binding to a row', () => {
     pointerClick(entry('Inspect'));
     expect(log).toEqual([['inspect', 'a']]);
     const logged = vi.fn();
-    const handleItems = (row: Job): readonly RowMenuItem<Job>[] => [{ id: 'x', label: 'X', onSelect: (target) => { logged(target); } }];
+    const handleItems = (): ReadonlyArray<RowMenuItem<Job>> => [{ id: 'x', label: 'X', onSelect: (target) => {
+      logged(target);
+    } }];
     view.rerender(<Table handle={handle} items={handleItems} />);
     pointerClick(trigger('web-1'));
     pointerClick(entry('X'));
@@ -351,8 +374,12 @@ describe('binding to a row', () => {
   it('builds the items again when its owner renders again, so a selection reads what the owner knows now (the old host test, ported)', () => {
     const log: Log = [];
     const handle = createRowMenu<Job>();
-    const first = (): readonly RowMenuItem<Job>[] => [{ id: 'inspect', label: 'Inspect', onSelect: (target) => { log.push(['first', target.key]); } }];
-    const second = (): readonly RowMenuItem<Job>[] => [{ id: 'inspect', label: 'Inspect', onSelect: (target) => { log.push(['second', target.key]); } }];
+    const first = (): ReadonlyArray<RowMenuItem<Job>> => [{ id: 'inspect', label: 'Inspect', onSelect: (target) => {
+      log.push(['first', target.key]);
+    } }];
+    const second = (): ReadonlyArray<RowMenuItem<Job>> => [{ id: 'inspect', label: 'Inspect', onSelect: (target) => {
+      log.push(['second', target.key]);
+    } }];
     const view = render(<Table handle={handle} items={first} />);
     pointerClick(trigger('web-1'));
     view.rerender(<Table handle={handle} items={second} />);
@@ -457,7 +484,7 @@ describe('opening from the keyboard and the pointer', () => {
 
   it('takes the first available item when the first is unavailable, and the popup when none is', () => {
     const handle = createRowMenu<Job>();
-    const items = (): readonly RowMenuItem<Job>[] => [
+    const items = (): ReadonlyArray<RowMenuItem<Job>> => [
       { id: 'a', label: 'A', disabled: true, onSelect: () => undefined },
       { id: 'b', label: 'B', onSelect: () => undefined },
       { id: 'c', label: 'C', disabled: true, onSelect: () => undefined },
@@ -684,7 +711,7 @@ describe('choosing an item', () => {
   it('calls onSelect with the row once, after the menu has closed and focus is back on the trigger', () => {
     const handle = createRowMenu<Job>();
     const seen: Array<{ open: boolean; focus: Element | null; row: Job }> = [];
-    const items = (): readonly RowMenuItem<Job>[] => [
+    const items = (): ReadonlyArray<RowMenuItem<Job>> => [
       {
         id: 'inspect',
         label: 'Inspect',
@@ -703,7 +730,7 @@ describe('choosing an item', () => {
 
   it('lets what a selection does with focus stand: a dialog or a field it opens keeps it', () => {
     const handle = createRowMenu<Job>();
-    const items = (): readonly RowMenuItem<Job>[] => [
+    const items = (): ReadonlyArray<RowMenuItem<Job>> => [
       {
         id: 'rename',
         label: 'Rename',
@@ -852,7 +879,8 @@ describe('where the popup goes', () => {
     setup();
     const button = trigger('web-1');
     layout(button, 500, 100);
-    const direction = vi.spyOn(window, 'getComputedStyle').mockImplementation(() => ({ direction: 'rtl' }) as CSSStyleDeclaration);
+    const rtl: Pick<CSSStyleDeclaration, 'direction'> = { direction: 'rtl' };
+    const direction = vi.spyOn(window, 'getComputedStyle').mockImplementation(() => rtl as CSSStyleDeclaration);
     pointerClick(button);
     expect(menu().style.getPropertyValue('--_x')).toBe('500px');
     direction.mockRestore();
