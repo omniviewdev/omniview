@@ -4,10 +4,10 @@ import { GLYPHS, type IconName } from './glyphs';
 const names = Object.keys(GLYPHS) as IconName[];
 
 // The glyphs slice 1a draws, from the mock's Pods composition (plan 1.2, tiers A and B): command glyphs, the sort arrows, the
-// kind and scope glyphs, the seven status roles' glyphs, the loaders and the no-match glyph.
+// kind and scope glyphs, the seven status roles' glyphs, the loaders and the no-match glyph; the row menu's trigger adds the ellipsis.
 const SLICE_1A = [
   'arrow-down', 'arrow-up', 'box', 'check', 'chevron-down', 'chevron-right', 'circle-minus', 'clock', 'close', 'columns', 'copy',
-  'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
+  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
   'status-success', 'status-warning',
 ];
 
