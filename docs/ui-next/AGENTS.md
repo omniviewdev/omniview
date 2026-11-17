@@ -17,6 +17,7 @@ Progress is counted in slices that run on real data in the real host (first: the
 | Path | What |
 |---|---|
 | `ui-next/` | New shell: `index.html`, `main.tsx`, `App.tsx` (a themed frame built from the kit), `global.css` (the host's document reset, layer `ov.reset`), `App.module.css` (the frame, layer `ov.shell`), `parts/PartsPage.tsx` (every kit part in every state it has an example for, mounted on the frame). |
+| `ui-next/shell/` | The window frame (row 1a.5): `Shell` (top row with one tab, plugin frame, sidebar tree, scope lane, page island, status bar), `core/` (framework-free tree and region rules), `registration.ts` (the seed of the contribution contract), `probes/` (the mock's rectangles against the shell, in both engines; run by hand). Plugin-agnostic: see its `README.md`. |
 | `packages/kit/` | New library `@omniviewdev/kit` (row N11a): token manifest and generator, nine themes, theme provider, `Text` and `Stack`, the guards, the API report. See "The kit" below. |
 | `ui/` | Old shell. Fixes only after the calibration gate. Never imported from the new tree. |
 | `docs/ui-next/` | `AGENTS.md` (this file), `TRACKER.md` (rows, PRs, log: source of truth), `decisions.md` (R1–R20, owner decisions), `channels.md` (release-channel guide), `status/` (one file per in-flight row), `baseline/` (numbers, rows N8 and N12). |
