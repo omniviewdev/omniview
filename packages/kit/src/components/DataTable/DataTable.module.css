@@ -1,0 +1,303 @@
+@layer ov.components {
+  /* The scroll region: the one element that scrolls, named by the caller. It fills what its parent gives it. The row height lives
+     here so the probe, the rows and the header read one expression: a row is the density token or what its text needs, whichever is
+     more, so a larger text size grows rows instead of clipping them (design 13 T2). */
+  .region {
+    --_row-height: max(var(--ov-row-height), calc(var(--ov-lh-16) + 2 * var(--ov-row-pad)));
+
+    position: relative;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    max-height: var(--_max-height, none);
+    overflow: auto;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .region[data-ov-lines='2'] {
+    --_row-height: max(var(--ov-table-metadata-height), calc(2 * var(--ov-lh-16) + 2 * var(--ov-row-pad)));
+  }
+
+  .region:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* One invisible element that is as tall as a row: the table reads the row height from it, and is told when it changes (a density or
+     text size change), so no row is ever measured. */
+  .probe {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: 0;
+    height: var(--_row-height);
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* Fixed layout: the columns have the widths the planner gave them, and the table is as wide as their sum, so it fits its container or
+     scrolls sideways. The header is sticky; no row is. */
+  .table {
+    box-sizing: border-box;
+    width: var(--_table-width, 100%);
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    text-align: left;
+  }
+
+  .col {
+    width: var(--_width, auto);
+  }
+
+  .head,
+  .cell {
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The header cell, sticky to the top of the region. */
+  .head {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    height: var(--ov-table-header-height);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset is the one value outside the spacing scale (design 13, tokens/manifest.ts SPACING) */
+    padding: var(--ov-row-pad) 10px;
+    border-bottom: 1px solid var(--ov-border-subtle);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-muted);
+    font-weight: 400;
+    text-align: left;
+  }
+
+  .head:first-child,
+  .cell:first-child {
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 12 px edge inset of the first and last cell (design 13) */
+    padding-inline-start: 12px;
+  }
+
+  .head:last-child,
+  .cell:last-child {
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 12 px edge inset of the first and last cell (design 13) */
+    padding-inline-end: 12px;
+  }
+
+  .head[data-ov-sortable] {
+    padding-block: 0;
+  }
+
+  /* The sort control: a native button that is the header's text, with the arrow of the active direction after it. */
+  .sort {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--ov-spacing-4);
+    max-width: 100%;
+    min-height: var(--ov-row-target);
+    margin: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), not a step of the spacing scale */
+    padding: var(--ov-row-pad) 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: inherit;
+  }
+
+  .sort:hover {
+    color: var(--ov-fg);
+  }
+
+  .sort:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  .head[data-ov-align='end'] .sort {
+    justify-content: flex-end;
+  }
+
+  .cell {
+    height: var(--_row-height);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), and the cell inset 10 px is outside the spacing scale */
+    padding: var(--ov-row-pad) 10px;
+    background-color: transparent;
+    vertical-align: middle;
+  }
+
+  /* A glyph or a code span in a cell sits at the top of its line box, as in the mock (design 13 T2): on the text baseline it adds the
+     line's descender gap and the row grows past its height, and rows that are taller than the virtualizer thinks drift out of place. */
+  .cell svg,
+  .cell code {
+    vertical-align: top;
+  }
+
+  .cell[data-ov-align='end'],
+  .head[data-ov-align='end'] {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* The selection column: the checkbox is the row target (24 px, 22 compact) around a 16 px mark. */
+  .head[data-ov-kind='select'],
+  .cell[data-ov-kind='select'] {
+    padding-block: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 12 px edge and 10 px cell insets are outside the spacing scale (design 13) */
+    padding-inline: 12px 10px;
+  }
+
+  .check {
+    position: relative;
+    display: inline-grid;
+    appearance: none;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ov-row-target);
+    height: var(--ov-row-target);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background: transparent;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+
+  .check:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .check::before {
+    content: '';
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-mark);
+    background-color: transparent;
+  }
+
+  .check:checked::before,
+  .check:indeterminate::before {
+    border-color: var(--ov-accent);
+    background-color: var(--ov-accent);
+  }
+
+  /* The mark: a check or a dash, drawn as a second pseudo-element over the box, so a checkbox is one element. */
+  .check::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 4px;
+    border-inline-start: 2px solid var(--ov-fg-over-accent);
+    border-block-end: 2px solid var(--ov-fg-over-accent);
+    opacity: 0;
+    transform: translateY(-1px) rotate(-45deg);
+  }
+
+  .check:checked::after {
+    opacity: 1;
+  }
+
+  .check:indeterminate::after {
+    height: 0;
+    border-inline-start: 0;
+    opacity: 1;
+    transform: none;
+  }
+
+  .check:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* The rows above and below the mounted window: one empty cell as tall as the rows it stands for. */
+  .spacer > td {
+    height: var(--_height, 0);
+    padding: 0;
+    border: 0;
+  }
+
+  /* Hover is the pointer's, never React's: a row under the pointer paints only when a click on it does something. */
+  .table[data-ov-activatable] .row {
+    cursor: pointer;
+  }
+
+  .table[data-ov-activatable] .row:hover > .cell {
+    background-image: linear-gradient(var(--ov-hover-row), var(--ov-hover-row));
+  }
+
+  .row[data-ov-selected] > .cell {
+    background-color: var(--ov-selection-inactive);
+    color: var(--ov-fg);
+  }
+
+  .region:focus-within .row[data-ov-selected] > .cell {
+    background-color: var(--ov-selection-active);
+  }
+
+  /* Pinned columns stay at the start edge while the region scrolls sideways. Only cells are sticky, never rows; the offsets are the
+     table's, written once for the table, not once for a cell. */
+  .head[data-ov-pin],
+  .cell[data-ov-pin] {
+    position: sticky;
+    z-index: 1;
+    background-color: var(--ov-bg-island);
+  }
+
+  .head[data-ov-pin] {
+    z-index: 3;
+  }
+
+  .head[data-ov-pin='0'],
+  .cell[data-ov-pin='0'] {
+    inset-inline-start: var(--_pin-0, 0);
+  }
+
+  .head[data-ov-pin='1'],
+  .cell[data-ov-pin='1'] {
+    inset-inline-start: var(--_pin-1, 0);
+  }
+
+  .head[data-ov-pin='2'],
+  .cell[data-ov-pin='2'] {
+    inset-inline-start: var(--_pin-2, 0);
+  }
+
+  .head[data-ov-pin='3'],
+  .cell[data-ov-pin='3'] {
+    inset-inline-start: var(--_pin-3, 0);
+  }
+
+  .head[data-ov-pin='4'],
+  .cell[data-ov-pin='4'] {
+    inset-inline-start: var(--_pin-4, 0);
+  }
+
+  .row[data-ov-selected] > .cell[data-ov-pin] {
+    background-color: var(--ov-selection-inactive);
+  }
+
+  .region:focus-within .row[data-ov-selected] > .cell[data-ov-pin] {
+    background-color: var(--ov-selection-active);
+  }
+
+  /* The edge of the pinned group shows only while the region is scrolled sideways. */
+  .region[data-ov-scrolled] .head[data-ov-edge],
+  .region[data-ov-scrolled] .cell[data-ov-edge] {
+    box-shadow: inset -1px 0 0 var(--ov-border-subtle);
+  }
+}

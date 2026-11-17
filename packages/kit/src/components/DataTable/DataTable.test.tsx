@@ -9,20 +9,32 @@ import type { DataTableColumn, DataTableSort } from './types';
 
 const VIEWPORT = { height: 600, width: 1117 };
 const isRegion = (element: HTMLElement) => element.getAttribute('role') === 'region';
-Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: function get(this: HTMLElement) { return isRegion(this) ? VIEWPORT.height : 0; } });
-Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) { return isRegion(this) ? VIEWPORT.width : 0; } });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: function get(this: HTMLElement) {
+  return isRegion(this) ? VIEWPORT.height : 0; 
+} });
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
+  return isRegion(this) ? VIEWPORT.width : 0; 
+} });
 
 type Item = { readonly key: string; readonly name: string; readonly group: string; readonly count: number | undefined };
 
 const items = (count: number): Item[] =>
   Array.from({ length: count }, (_, index) => ({ key: `k${index}`, name: `item-${index}`, group: `group-${index % 7}`, count: index % 5 === 0 ? undefined : (index * 7) % 11 }));
 
-const columns: readonly DataTableColumn<Item>[] = [
+const columns: ReadonlyArray<DataTableColumn<Item>> = [
   { id: 'name', header: 'Name', fit: 'id', lead: 36, cell: (row) => <span>{row.name}</span>, sortKey: (row) => row.name, text: (row) => row.name },
   { id: 'group', header: 'Group', fit: 'flex', cell: (row) => row.group, sortKey: (row) => row.group, text: (row) => row.group },
   { id: 'count', header: 'Count', fit: 'fixed', width: 72, align: 'end', cell: (row) => (row.count === undefined ? '\u2014' : String(row.count)), sortKey: (row) => row.count, sortKind: 'number' },
   { id: 'note', header: 'Note', fit: 'fixed', width: 80, cell: () => 'ok' },
 ];
+
+const defined = <T,>(value: T | undefined, what: string): T => {
+  if (value === undefined) {
+    throw new Error(`no ${what}`);
+  }
+
+  return value;
+};
 
 const getRowKey = (row: Item) => row.key;
 afterEach(() => {
@@ -31,6 +43,8 @@ afterEach(() => {
 
 const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1);
 const names = () => bodyRows().map((row) => within(row).getAllByRole('cell')[0]?.textContent);
+const bodyRow = (index: number): HTMLElement => defined(bodyRows()[index], `row ${index}`);
+const cellOf = (row: HTMLElement, index: number): HTMLElement => defined(within(row).getAllByRole('cell')[index], `cell ${index}`);
 
 describe('structure', () => {
   it('is a named scroll region holding a native table with its header and the rows in view', () => {
@@ -56,7 +70,7 @@ describe('structure', () => {
 
   it('keeps every cell in its column, in order, with the content the column gives', () => {
     render(<DataTable label="Items" rows={items(10)} getRowKey={getRowKey} columns={columns} />);
-    const cells = within(bodyRows()[1] as HTMLElement).getAllByRole('cell');
+    const cells = within(bodyRow(1)).getAllByRole('cell');
     expect(cells.map((cell) => cell.textContent)).toEqual(['item-1', 'group-1', '7', 'ok']);
   });
 
@@ -68,8 +82,8 @@ describe('structure', () => {
 
   it('makes no row a Tab stop: rows, cells and headers carry no tabindex (15 L2)', () => {
     render(<DataTable label="Items" rows={items(30)} getRowKey={getRowKey} columns={columns} />);
-    const stops = [...screen.getByRole('region').querySelectorAll('[tabindex]')];
-    expect(stops).toEqual([screen.getByRole('region')]);
+    // Inside the region (itself the one Tab stop that scrolls by keyboard) nothing carries a tabindex.
+    expect([...screen.getByRole('region').querySelectorAll('[tabindex]')]).toEqual([]);
   });
 
   it('has no title attribute anywhere (15 L4)', () => {
@@ -111,11 +125,15 @@ describe('windowing', () => {
     const region = screen.getByRole('region');
     let offset = 0;
     Object.defineProperty(region, 'scrollTop', { configurable: true, get: () => offset });
-    for (const top of [0, 137, 4000, 90_000, 150_000, 200_000]) {
+    const scrollTo = (top: number) => {
       act(() => {
         offset = top;
         fireEvent.scroll(region);
       });
+    };
+
+    for (const top of [0, 137, 4000, 90_000, 150_000, 200_000]) {
+      scrollTo(top);
       const first = Math.floor(top / 24);
       const last = Math.min(5024, Math.ceil((top + VIEWPORT.height) / 24) - 1);
       const indexes = new Set(bodyRows().map((row) => Number(row.getAttribute('aria-rowindex')) - 2));
@@ -231,26 +249,37 @@ describe('selection', () => {
             onToggle?.(row);
             setSelected((current) => {
               const next = new Set(current);
-              if (!next.delete(row.key)) next.add(row.key);
+              if (!next.delete(row.key)) {
+                next.add(row.key);
+              }
+
               return next;
             });
           },
-          all: { state: selected.size === 0 ? false : selected.size === 20 ? true : 'mixed', label: 'Select all 20 rows', onToggle: () => setSelected(new Set()) },
+          all: { state: selected.size === 0 ? false : selected.size === 20 ? true : 'mixed', label: 'Select all 20 rows', onToggle: () => {
+            setSelected(new Set()); 
+          } },
         }}
       />
     );
+  }
+
+  function checkbox(name: string): HTMLInputElement {
+    const element = screen.getByRole('checkbox', { name });
+    if (!(element instanceof HTMLInputElement)) {
+      throw new TypeError(`${name} is not an input`);
+    }
+
+    return element;
   }
 
   it('adds a leading column of checkboxes, each named for its row, and a header checkbox for the whole', () => {
     render(<Selecting />);
     const table = screen.getByRole('table');
     expect(within(table).getAllByRole('columnheader')).toHaveLength(5);
-    const box = within(table).getByRole('checkbox', { name: 'Select item-3' });
-    expect(box.tagName).toBe('INPUT');
-    expect((box as HTMLInputElement).checked).toBe(false);
-    expect((within(table).getByRole('checkbox', { name: 'Select item-1' }) as HTMLInputElement).checked).toBe(true);
-    const all = within(table).getByRole('checkbox', { name: 'Select all 20 rows' }) as HTMLInputElement;
-    expect(all.indeterminate).toBe(true);
+    expect(checkbox('Select item-3').checked).toBe(false);
+    expect(checkbox('Select item-1').checked).toBe(true);
+    expect(checkbox('Select all 20 rows').indeterminate).toBe(true);
   });
 
   it('toggles a row from its checkbox, marks the row, and does not activate it', () => {
@@ -260,7 +289,7 @@ describe('selection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select item-3' }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle.mock.calls[0]?.[0]).toMatchObject({ key: 'k3' });
-    expect((screen.getByRole('checkbox', { name: 'Select item-3' }) as HTMLInputElement).checked).toBe(true);
+    expect(checkbox('Select item-3').checked).toBe(true);
     expect(screen.getByRole('checkbox', { name: 'Select item-3' }).closest('tr')?.getAttribute('data-ov-selected')).toBe('true');
     expect(onActivate).not.toHaveBeenCalled();
   });
@@ -275,9 +304,9 @@ describe('selection', () => {
         selection={{ selected: new Set(), label: (row) => `Select ${row.name}`, onToggle: () => undefined }}
       />,
     );
-    const headers = screen.getAllByRole('columnheader');
-    expect(headers[0]?.textContent).toBe('');
-    expect(within(headers[0] as HTMLElement).queryByRole('checkbox')).toBeNull();
+    const lead = defined(screen.getAllByRole('columnheader')[0], 'the selection header');
+    expect(lead.textContent).toBe('');
+    expect(within(lead).queryByRole('checkbox')).toBeNull();
   });
 });
 
@@ -285,7 +314,7 @@ describe('row activation', () => {
   it('calls back with the row for a click on a plain cell, from one handler on the body', () => {
     const onRowActivate = vi.fn();
     render(<DataTable label="Items" rows={items(10)} getRowKey={getRowKey} columns={columns} onRowActivate={onRowActivate} />);
-    fireEvent.click(within(bodyRows()[3] as HTMLElement).getAllByRole('cell')[1] as HTMLElement);
+    fireEvent.click(cellOf(bodyRow(3), 1));
     expect(onRowActivate).toHaveBeenCalledTimes(1);
     expect(onRowActivate.mock.calls[0]?.[0]).toMatchObject({ key: 'k3' });
   });
@@ -293,13 +322,13 @@ describe('row activation', () => {
   it('resolves the row after a sort, not by where it was', () => {
     const onRowActivate = vi.fn();
     render(<DataTable label="Items" rows={items(10).reverse()} getRowKey={getRowKey} columns={columns} sort={{ column: 'name', direction: 'ascending' }} onSortChange={() => undefined} onRowActivate={onRowActivate} />);
-    fireEvent.click(within(bodyRows()[0] as HTMLElement).getAllByRole('cell')[0] as HTMLElement);
+    fireEvent.click(cellOf(bodyRow(0), 0));
     expect(onRowActivate.mock.calls[0]?.[0]).toMatchObject({ key: 'k0' });
   });
 
   it('leaves a control inside the row its own click', () => {
     const onRowActivate = vi.fn();
-    const withControl: DataTableColumn<Item>[] = [...columns, { id: 'go', header: 'Go', fit: 'fixed', width: 60, cell: (row) => <button type="button">{`Open ${row.name}`}</button> }];
+    const withControl: Array<DataTableColumn<Item>> = [...columns, { id: 'go', header: 'Go', fit: 'fixed', width: 60, cell: (row) => <button type="button">{`Open ${row.name}`}</button> }];
     render(<DataTable label="Items" rows={items(5)} getRowKey={getRowKey} columns={withControl} onRowActivate={onRowActivate} />);
     fireEvent.click(screen.getByRole('button', { name: 'Open item-2' }));
     expect(onRowActivate).not.toHaveBeenCalled();

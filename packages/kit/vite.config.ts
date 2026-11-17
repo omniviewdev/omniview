@@ -15,6 +15,9 @@ const cacheDir = process.env['OMNIVIEW_VITE_CACHE_DIRECTORY'] ?? testCaches.cach
 export default defineConfig({
   ...(cacheDir === undefined ? {} : { cacheDir }),
   plugins: [react(), babel({ presets: [reactCompilerPreset({ target: '19' })] })],
+  // TanStack Table's store reaches React's CommonJS with-selector shim, which a bundle cannot call in a browser (`require("react")`); React 19
+  // has the hook, so the specifier points at an ES module of the kit's own (src/table/useSyncExternalStoreWithSelector.ts).
+  resolve: { alias: { 'use-sync-external-store/shim/with-selector': path.join(root, 'src/table/useSyncExternalStoreWithSelector.ts') } },
   css: {
     transformer: 'lightningcss',
     lightningcss: { cssModules: { pattern: '[name]_[local]_[hash]' } },
