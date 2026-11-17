@@ -2,7 +2,7 @@
 
 The build plan for tracker row N11, written under row N11b on 2026-11-16 against host `origin/main` 146c0b03, the Kubernetes plugin `origin/main` 524d123 (0.21.2) and the design lab tag `spec-baseline-2026-11-16` (mock tree `c8e44a44…`). Ruling R8 applies: build through the screen, consumer first. The stop rule: the Pods list on real data by week 3–4, re-plan at week 6 (week 1 starts 2026-11-16). The skeleton in section 2.6 lands with this plan and is the proof of the data seam.
 
-**Evidence key.** `[path:line]` = read in this repo. `K8S path:line` = the plugin at 524d123. `MOCK path:line` = `app/OmniviewNativeLab/frontend/mock/` of the design lab at the tag; `chNN` = the spec chapter `MOCK research/int-ui/NN-*.md`, rule ids as written there (`ch13 T3` is chapter 13, rule T3). `[ran: …]` = I ran it; commands are in appendix A. `[INFERENCE]` = reasoning, not run. **UNVERIFIED** = not verified. Mock numbers were measured in headless WebKit on the design lab's copy of the mock (the screenshots are of that copy); sizes are `S` under 1 day, `M` 1–3, `L` 3–6 of agent work with its tests (the scale of `findings` P2 D5).
+**Evidence key.** `[path:line]` = read in this repo. `K8S path:line` = the plugin at 524d123. `MOCK path:line` = `app/OmniviewNativeLab/frontend/mock/` of the design lab at the tag; `chNN` = the spec chapter `MOCK research/int-ui/NN-*.md`, rule ids as written there (`ch13 T3` is chapter 13, rule T3). `[ran: …]` = I ran it; commands are in appendix A. `[INFERENCE]` = reasoning, not run. **UNVERIFIED** = not verified. Mock numbers were measured in headless WebKit on the design lab's copy of the mock (the screenshots are of that copy). Sizes are my scale: `S` under 1 day, `M` 1 to 3 days, `L` 3 to 6 days of agent work including its tests.
 
 ## 0. Decisions at a glance
 
@@ -40,15 +40,15 @@ Anatomy, in DOM order, with measured rectangles `x, y, w, h` in CSS px [ran: app
 | The one tab `Pods` (close, then New tab `+` at 368,6,28,28) | 156,6,208,28 | 156,6,208,28 | shell | `MOCK shell-tabs.js:170-188`; ch16 TI1 |
 | Rail (Kubernetes tools) | 5,40,40,823 | 5,40,40,643 | shell | `MOCK shell-kubernetes.js:286-295`; ch16 R5 |
 | Sidebar (header 41 px, search 28 px, tree rows 24 px, the Pods row at 50,237,234,24) | 45,40,244,823 | 45,40,244,643 | shell | `MOCK shell-kubernetes.js:329-364,389-436`; ch12 SB1, ch17 K23 B2, K61.2 |
-| Page island | 294,80,1141,783 | 294,80,731,603 | shell | `MOCK shell-regions.js:619-638`; ch16 R7 |
-| Scope lane (connection, namespaces; 28 px faces in a 40 px lane) | 294,40..80 | same | shell | `MOCK shell-kubernetes.js:306-323`; ch17 K5 |
+| Page island (the frame island is 294,40,1141,823 and holds the scope lane; this is the page area below it) | 294,80,1141,783 | 294,80,731,603 | shell | `MOCK shell-regions.js:619-638`; ch16 R7 |
+| Scope lane faces `prod-eu` and `All namespaces` (28 px faces in a 40 px lane) | 306,46,112,28 and 425,46,158,28 | the same | shell | `MOCK shell-kubernetes.js:306-323`; ch17 K5 |
 | Page title `Pods` | 306,92,918,28 | 306,92,508,28 | page + `PageHeader` | `MOCK shell-page-kit.js:214-248`; ch12 PH1–PH3 |
 | Quick filters | 306,132,1117,28 | 306,132,707,28 | page + `QuickFilters` | `MOCK shell-page-kit.js:302-311`; ch13 QF1 |
 | Toolbar (search; facets `All nodes`, `All controllers`; Columns) | 306,168,1117,28 | 306,168,707,28 | page + kit | `MOCK k8s-resources.js:601-612`; ch12 TB1, ch17 K23 B3 |
 | Selection bar (only while rows are selected) | 306,204.. | same | kit part | `MOCK core.js:770-772`; ch14 SEL1 |
 | Table header | 306,204,1117,25 | 306,204,707,25 | kit `DataTable` | `MOCK core.js:1297-1303`; ch13 H1–H4 |
 | Table row (two-line identity) | 306,229,1117,40 | 306,229,707,40 | kit `DataTable` | `MOCK k8s-resources.js:621`; ch13 D2, T2 |
-| Footer (`89 Pods`, 33 px with its separator) | text at 318,846 | text at 318,666 | kit | `MOCK core.js:937-940`; ch13 G1–G5 |
+| Footer (`89 Pods`, 33 px with its separator) | text at 318,839,47,16 | text at 318,659,47,16 | kit | `MOCK core.js:937-940`; ch13 G1–G5 |
 | Status bar (panel toggle, path `Kubernetes > prod-eu > Pods`, items) | 0,868,1440,32 | 0,688,1030,32 | shell | `MOCK shell-regions.js:514-535`; ch16 S90–S97 |
 
 Column widths as fitted by the mock (they sum to the content width): 1440 wide set `46 / 282 / 59 / 157 / 72 / 198 / 198 / 59 / 46` = 1117 (select, Name, Ready, Status, Restarts, CPU, Memory, Age, Inspect); 1440 without CPU and Memory `46 / 678 / 59 / 157 / 72 / 59 / 46`; 1030 `46 / 268 / 59 / 157 / 72 / 59 / 46` = 707. The wide set shows only while the list is at least 1006 px wide (`MOCK k8s-resource-definitions.js:1102-1104`; ch17 K60.3). Elements per row, counted in the mock [ran]: **68** with the wide set (`tr` plus 67 below it; rows range 64–73), **40** with the narrow set (36–41). The page holds 7,984 and 5,387 DOM nodes for 89 rows because the mock renders every row.
@@ -118,7 +118,7 @@ The errata pass (N10) is pending. Each item is for the lead; 1a follows the prop
 | E7 | Skeleton delay: code 250 ms, chapter one second. | `MOCK core.js:1919`; ch15 §5.8 | 250 ms until told otherwise. |
 | E8 | Pending glyph: the code always draws a loader; SR1 says a clock for queued Pending. | `MOCK core.js:108-115`; ch13 SR1 | Follow SR1. |
 | E9 | The no-match body has no Clear filters; the toolbar supplies it. | `MOCK k8s-resources.js:623-624`; ch13 ES2 | One Clear filters, in the toolbar. |
-| E10 | Acquisition: ch17 K23 B3 says bounded pages of 256 with an explicit Load more; the runtime's collection mode, which the old table uses, acquires everything, and its first row waits for the complete snapshot: 0.7 s at 1,025 real Pods, 2.7 s at 5,025 [ran]. | `useResources.ts:300-307`; `K8S …/ResourceTable/index.tsx:198-207` | Keep the old table's complete collection for 1a. Progressive paint needs a runtime change: owner decision. |
+| E10 | Acquisition: ch17 K23 B3 says bounded pages of 256 with an explicit Load more; the runtime's collection mode, which the old table uses, acquires everything, and its first row waits for the complete snapshot: 0.7 s at 1,025 real Pods, 2.7 s at 5,025 [ran]. The N8 baseline's in-page fake backend reaches the first row of 5,000 records in 179 to 197 ms, so a fake backend hides about 2.5 s of real delivery. | `useResources.ts:300-307`; `K8S …/ResourceTable/index.tsx:198-207`; `docs/ui-next/baseline/2026-11-16.md` | Keep the old table's complete collection for 1a. Progressive paint needs a runtime change: owner decision. |
 | E11 | The Controller facet is the controller-true owner; the old table uses `ownerReferences[0]`. | ch17 K61; `K8S …/corev1/Pod/Table.tsx:45-49` | The controller owner (tier B). |
 | E12 | The mock's acquisition scope is a read parameter; the old product reads all namespaces and filters client-side. | `MOCK k8s-resources.js:169-170`; `K8S …/ResourceTable/index.tsx:188-206` | All namespaces, client-side filter (tier B). |
 
@@ -283,6 +283,7 @@ Shell, not kit (built beside, in `ui-next/shell/`, from kit parts): the window f
 | Engines | Chromium through `pnpm bench:render`; Playwright WebKit on every change; real WKWebView through the owner's native pass and `wkperf` once per milestone (the new tree has never run in one: AGENTS.md). Absolute budgets only; a CI proxy is not a native number. |
 | Variants | V-native: native atoms per row. V-Base UI: Base UI's checkbox and tooltip trigger per row. Chip, status and text are native in both. The narrow and the wide set each. |
 | Harness | `bench/render` gets a bench for the new table beside `k8s-pod-table.bench.tsx` (which imports the old plugin table), same fixtures, same iteration rules (`bench/render/harness/bench.ts:21-40`). |
+| Reference | Today's Pods table, from the N8 baseline (Chromium headless, software rendering, fake backend, machine load 7 to 14, so differences under about 15% are noise): render bench, 1,000-Pod corpus: mount to first row 72 to 80 ms, 30 scroll steps 383 to 385 ms, sort 15 to 17 ms; 5,000-Pod corpus: 133 to 140 ms, 334 to 392 ms, 22 to 24 ms; whole app, 5,000 records to first row 179 to 197 ms, 31 scroll steps 1,042 to 1,089 ms wall and 661 to 702 ms main-thread busy (`docs/ui-next/baseline/2026-11-16.md`). V1.2 compares the new table with these on the same machine, same day. |
 
 **The decision rule (committed now).**
 
