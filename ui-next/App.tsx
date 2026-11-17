@@ -1,4 +1,5 @@
 import {
+  Button,
   DEFAULT_DENSITY,
   DEFAULT_TEXT_SIZE,
   DEFAULT_THEME_ID,
@@ -13,6 +14,7 @@ import {
 } from '@omniviewdev/kit';
 import { useState } from 'react';
 import styles from './App.module.css';
+import { PartsPage } from './parts/PartsPage';
 
 // Colour roles shown as swatches: they change with the theme, which is how a flip is seen at a glance.
 const SWATCHES = [
@@ -47,7 +49,7 @@ type FrameProps = {
 };
 
 // The themed app frame: a window plane, an island, and the kit's two parts on them.
-// The three buttons exercise the theme engine end to end in the real page; the Settings page replaces them.
+// The three buttons exercise the theme engine end to end in the real page, and the parts below them follow it; the Settings page replaces the buttons.
 function Frame({ onNextTheme, onNextDensity, onNextTextSize }: FrameProps) {
   const { activeTheme, density, textSize } = useTheme();
 
@@ -57,7 +59,7 @@ function Frame({ onNextTheme, onNextDensity, onNextTextSize }: FrameProps) {
         <Stack gap={16}>
           <Stack gap={4}>
             <Text as="h1" variant="heading">Omniview ui-next</Text>
-            <Text tone="muted">The new UI&apos;s frame: kit tokens, themes, and the first two parts.</Text>
+            <Text tone="muted">The new UI&apos;s frame: kit tokens, themes, and the parts built so far.</Text>
           </Stack>
           <Stack gap={8}>
             <Text as="h2" variant="title">Appearance</Text>
@@ -68,9 +70,9 @@ function Frame({ onNextTheme, onNextDensity, onNextTextSize }: FrameProps) {
             </ul>
           </Stack>
           <Stack direction="row" gap={8}>
-            <button type="button" className={styles.control} onClick={onNextTheme}>Next theme</button>
-            <button type="button" className={styles.control} onClick={onNextDensity}>Next density</button>
-            <button type="button" className={styles.control} onClick={onNextTextSize}>Next text size</button>
+            <Button onClick={onNextTheme}>Next theme</Button>
+            <Button onClick={onNextDensity}>Next density</Button>
+            <Button onClick={onNextTextSize}>Next text size</Button>
           </Stack>
           <Stack gap={8}>
             <Text as="h2" variant="title">Colour roles</Text>
@@ -83,6 +85,7 @@ function Frame({ onNextTheme, onNextDensity, onNextTextSize }: FrameProps) {
               ))}
             </ul>
           </Stack>
+          <PartsPage />
         </Stack>
       </div>
     </main>

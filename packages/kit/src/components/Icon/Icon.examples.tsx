@@ -26,17 +26,28 @@ const ALL: readonly IconName[] = [
   'status-success', 'status-warning',
 ];
 
+const ROW = 8;
+const rows = (names: readonly IconName[]): IconName[][] => Array.from({ length: Math.ceil(names.length / ROW) }, (_row, index) => names.slice(index * ROW, (index + 1) * ROW));
+
 /** Every glyph of the registry, at both sizes. */
 export const AllGlyphs = () => (
-  <Stack gap={8}>
-    <Stack direction="row" gap={8} align="center">
-      {ALL.map((name) => (
-        <Icon key={name} name={name} />
+  <Stack gap={12}>
+    <Stack gap={8}>
+      {rows(ALL).map((row) => (
+        <Stack key={row.join()} direction="row" gap={8} align="center">
+          {row.map((name) => (
+            <Icon key={name} name={name} />
+          ))}
+        </Stack>
       ))}
     </Stack>
-    <Stack direction="row" gap={8} align="center">
-      {ALL.map((name) => (
-        <Icon key={name} name={name} size={12} />
+    <Stack gap={8}>
+      {rows(ALL).map((row) => (
+        <Stack key={row.join()} direction="row" gap={8} align="center">
+          {row.map((name) => (
+            <Icon key={name} name={name} size={12} />
+          ))}
+        </Stack>
       ))}
     </Stack>
   </Stack>

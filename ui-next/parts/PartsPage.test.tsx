@@ -50,13 +50,13 @@ describe('the parts page', () => {
     }
 
     expect(container.querySelector('[title]')).toBeNull();
-    const primary = within(container.querySelector('[data-example="Button/Primary"]') as HTMLElement).getByRole('button', { name: 'Create' });
+    const primary = within(container.querySelector('[data-example="Button/Primary"]')!).getByRole('button', { name: 'Create' });
     expect(primary).toHaveProperty('dataset.ovVariant', 'primary');
   });
 
   it('keeps a reasoned-disabled example focusable and described', () => {
     const { container } = renderPage();
-    const example = container.querySelector('[data-example="IconButton/DisabledWithVisibleReason"]') as HTMLElement;
+    const example = container.querySelector('[data-example="IconButton/DisabledWithVisibleReason"]')!;
     const button = within(example).getByRole('button', { name: 'Refresh Pods', description: 'Refreshing' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
     button.focus();

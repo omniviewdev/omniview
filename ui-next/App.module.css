@@ -32,30 +32,6 @@
     background-color: var(--ov-hover-row);
   }
 
-  .control {
-    height: var(--ov-control-height);
-    padding: 0 var(--ov-spacing-12);
-    border: 1px solid var(--ov-border-control);
-    border-radius: var(--ov-radius-control);
-    background-color: transparent;
-    color: var(--ov-fg);
-    font: inherit;
-    cursor: default;
-  }
-
-  .control:hover {
-    background-color: var(--ov-hover-toolbar);
-  }
-
-  .control:active {
-    background-color: var(--ov-pressed);
-  }
-
-  .control:focus-visible {
-    outline: 2px solid var(--ov-accent);
-    outline-offset: 2px;
-  }
-
   .swatches {
     display: flex;
     flex-wrap: wrap;
