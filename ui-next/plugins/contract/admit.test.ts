@@ -1,0 +1,144 @@
+import { describe, expect, it } from 'vitest';
+import { ContractError } from '../loader/failure';
+import { admit, admitOrThrow, openable, CONTRIBUTION_EXPORT_V1 } from './admit';
+import type { SidebarNodeV1 } from './v1';
+
+// Admission reads what a bundle hands the host as `unknown`. Each test breaks one thing in an otherwise good contribution, and the problem must name it:
+// that is what a plugin author reads in the log. The names are invented (Acme, widgets); the host knows no plugin.
+
+type Loose = Record<string, unknown>;
+
+const definition = (patch: Loose = {}): Loose => ({
+  title: 'Widgets',
+  nouns: { one: 'Widget', other: 'Widgets' },
+  columns: [{ id: 'name' }],
+  lines: 1,
+  getRowKey: () => 'k',
+  searchText: () => 't',
+  ...patch,
+});
+
+const page = (patch: Loose = {}): Loose => ({ kind: 'list', definition: definition(), usePage: () => ({}), ...patch });
+
+const sidebar = (patch: Loose = {}): Loose => ({
+  label: 'Acme navigation',
+  title: 'Acme',
+  nodes: [{ id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', count: 3 }] }],
+  useNodes: () => undefined,
+  ...patch,
+});
+
+/** A good contribution, with `patch` laid over its top-level fields. */
+const contribution = (patch: Loose = {}): Loose => ({
+  plugin: { name: 'Acme', accent: 'blue' },
+  rail: true,
+  sidebar: sidebar(),
+  pages: { widgets: page() },
+  home: 'widgets',
+  ...patch,
+});
+
+const exportsOf = (value: unknown): Loose => ({ [CONTRIBUTION_EXPORT_V1]: value });
+
+const problemsOf = (value: Loose): readonly string[] => {
+  const admission = admit(exportsOf(value));
+  return admission.ok ? [] : admission.problems;
+};
+
+describe('admit', () => {
+  it('admits a good contribution and hands back the plugin\'s own object', () => {
+    const value = contribution();
+    const admission = admit(exportsOf(value));
+
+    expect(admission.ok).toBe(true);
+    expect(admission.ok && admission.contribution).toBe(value);
+  });
+
+  it('admits a contribution with the fewest fields: no rail, no accent, no hook', () => {
+    const { rail: _rail, ...rest } = contribution({ plugin: { name: 'Acme' }, sidebar: sidebar({ useNodes: undefined }) });
+
+    expect(admit(exportsOf(rest)).ok).toBe(true);
+  });
+
+  it('refuses a bundle that exports no contribution of this version, and names the export', () => {
+    expect(admit({ plugin: {} })).toEqual({ ok: false, problems: ['the bundle exports no contributionV1'] });
+    expect(admit(undefined)).toEqual({ ok: false, problems: ['the bundle exports no contributionV1'] });
+    expect(admit(exportsOf('text'))).toEqual({ ok: false, problems: ['contributionV1 is not an object'] });
+  });
+
+  it.each([
+    ['a plugin without a name', contribution({ plugin: { name: ' ' } }), 'plugin.name is not a non-empty string'],
+    ['a colour the shell does not have', contribution({ plugin: { name: 'Acme', accent: 'chartreuse' } }), 'plugin.accent "chartreuse" is not one of the shell\'s colours'],
+    ['a rail that is not true', contribution({ rail: 1 }), 'rail is neither absent nor true'],
+    ['a sidebar without a title', contribution({ sidebar: sidebar({ title: '' }) }), 'sidebar needs a label and a title'],
+    ['a sidebar hook that is not a function', contribution({ sidebar: sidebar({ useNodes: 'yes' }) }), 'sidebar.useNodes is not a function'],
+    ['a home that is not a page', contribution({ home: 'gadgets' }), 'home "gadgets" is not one of the pages'],
+    ['no pages', contribution({ pages: {} }), 'pages is not an object with a page in it'],
+    ['a page of a kind this version does not draw', contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }), 'pages.widgets.kind is "dashboard", and this version draws "list" pages'],
+    ['a page without a data hook', contribution({ pages: { widgets: page({ usePage: undefined }) } }), 'pages.widgets.usePage is not a function'],
+    ['a page without a title', contribution({ pages: { widgets: page({ definition: definition({ title: '' }) }) } }), 'pages.widgets.definition.title is not a non-empty string'],
+    ['a page without nouns', contribution({ pages: { widgets: page({ definition: definition({ nouns: { one: 'Widget' } }) }) } }), 'pages.widgets.definition.nouns needs "one" and "other"'],
+    ['a page without columns', contribution({ pages: { widgets: page({ definition: definition({ columns: [] }) }) } }), 'pages.widgets.definition.columns is not a list with a column in it'],
+    ['a page with three lines to a row', contribution({ pages: { widgets: page({ definition: definition({ lines: 3 }) }) } }), 'pages.widgets.definition.lines is not 1 or 2'],
+    ['a page without a row key', contribution({ pages: { widgets: page({ definition: definition({ getRowKey: undefined }) }) } }), 'pages.widgets.definition needs getRowKey and searchText functions'],
+  ])('refuses %s', (_name, value, expected) => {
+    expect(problemsOf(value)).toContain(expected);
+  });
+
+  it('refuses a sidebar entry that opens no page: a stub entry is not shipped', () => {
+    const value = contribution({ sidebar: sidebar({ nodes: [{ id: 'orphan', label: 'Orphan', icon: 'box' }] }) });
+
+    expect(problemsOf(value)).toContain('the sidebar entry "orphan" opens no page');
+  });
+
+  it('refuses two nodes with one id, and a node with no label or icon', () => {
+    const value = contribution({
+      sidebar: sidebar({
+        nodes: [
+          { id: 'widgets', label: 'Widgets', icon: 'box' },
+          { id: 'widgets', label: '', icon: '' },
+        ],
+      }),
+    });
+
+    expect(problemsOf(value)).toEqual(
+      expect.arrayContaining(['sidebar.nodes[1].id "widgets" is used twice', 'sidebar.nodes[1].label is not a non-empty string', 'sidebar.nodes[1].icon is not a glyph name']),
+    );
+  });
+
+  it('refuses a count that is not a number', () => {
+    const value = contribution({ sidebar: sidebar({ nodes: [{ id: 'widgets', label: 'Widgets', icon: 'box', count: '3' }] }) });
+
+    expect(problemsOf(value)).toContain('sidebar.nodes[0].count is not a number');
+  });
+
+  it('reports at most eight problems, enough to fix a bundle', () => {
+    const admission = admit(exportsOf({ plugin: {}, sidebar: { nodes: Array.from({ length: 30 }, () => ({})) }, pages: {}, home: 1 }));
+
+    expect(!admission.ok && admission.problems).toHaveLength(8);
+  });
+});
+
+describe('admitOrThrow', () => {
+  it('throws the problems as one contract error', () => {
+    const attempt = () => admitOrThrow(exportsOf({ plugin: { name: 'Acme' } }));
+
+    expect(attempt).toThrow(ContractError);
+    expect(attempt).toThrow(/sidebar is not an object/);
+  });
+});
+
+describe('openable', () => {
+  const nodes: readonly SidebarNodeV1[] = [
+    { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box' }, { id: 'ghost', label: 'Ghost', icon: 'box' }] },
+    { id: 'empty', label: 'Empty', icon: 'layers', children: [{ id: 'ghost2', label: 'Ghost', icon: 'box' }] },
+    { id: 'gadgets', label: 'Gadgets', icon: 'box' },
+  ];
+
+  it('keeps the entries that open a page, the groups that still hold one, and drops the rest', () => {
+    expect(openable(nodes, { widgets: {}, gadgets: {} })).toEqual([
+      { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box' }] },
+      { id: 'gadgets', label: 'Gadgets', icon: 'box' },
+    ]);
+  });
+});

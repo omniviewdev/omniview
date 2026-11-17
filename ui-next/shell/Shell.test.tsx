@@ -247,6 +247,49 @@ describe('the sidebar tree', () => {
     document.removeEventListener('keydown', keydown);
   });
 
+  it('tells the host which entry was chosen, by a click, Enter or Space, and never for a group', async () => {
+    const user = userEvent.setup();
+    const onChoose = vi.fn();
+    render(
+      <Shell registration={registration} onChoose={onChoose}>
+        <button type="button">Inside the page</button>
+      </Shell>,
+    );
+
+    await user.click(screen.getByRole('treeitem', { name: 'Gadgets' }));
+    expect(onChoose).toHaveBeenLastCalledWith('gadgets');
+
+    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    await user.keyboard('{Enter}');
+    expect(onChoose).toHaveBeenLastCalledWith('widgets');
+    await user.keyboard(' ');
+    expect(onChoose).toHaveBeenCalledTimes(3);
+
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    await user.keyboard('{Enter}');
+    expect(onChoose).toHaveBeenCalledTimes(3);
+  });
+
+  it('leaves the current entry to the host: choosing one selects nothing until the screen registers the page it opened', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <Shell registration={registration} onChoose={vi.fn()}>
+        <button type="button">Inside the page</button>
+      </Shell>,
+    );
+
+    await user.click(screen.getByRole('treeitem', { name: 'Gadgets' }));
+    expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveAttribute('aria-selected', 'true');
+
+    rerender(
+      <Shell registration={{ ...registration, sidebar: { ...registration.sidebar!, current: 'gadgets' } }} onChoose={vi.fn()}>
+        <button type="button">Inside the page</button>
+      </Shell>,
+    );
+    expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('keeps what the user opened and closed when the screen registers again with a new count', async () => {
     const user = userEvent.setup();
     const { rerender } = renderShell();

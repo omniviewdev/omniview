@@ -1,0 +1,7 @@
+/* The fixture's own stylesheet. The build folds it into the bundle inside `@layer ov.plugin` (the kit's plugin layer, below its components), so it can
+   style the fixture's own elements and can never beat a kit part. It reads the kit's tokens like any plugin CSS: a spacing value is a token. */
+.theme {
+  display: inline-flex;
+  padding-inline: var(--ov-spacing-4);
+  outline: 1px dotted currentcolor;
+}
