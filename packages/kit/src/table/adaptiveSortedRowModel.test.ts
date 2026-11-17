@@ -26,9 +26,9 @@ const columns: Array<ColumnDef<typeof features, Item>> = [
   { accessorKey: 'score', sortFn: (a, b) => a.original.score - b.original.score },
 ];
 const source: Item[] = [
-  { id: 'a', name: 'pod-10', score: 1 },
-  { id: 'b', name: 'pod-2', score: 1 },
-  { id: 'c', name: 'pod-1', score: 2 },
+  { id: 'a', name: 'item-10', score: 1 },
+  { id: 'b', name: 'item-2', score: 1 },
+  { id: 'c', name: 'item-1', score: 2 },
 ];
 const IMMUTABLE_META = { dataTableImmutableRows: true };
 function make(data = source, sorting: SortingState = [{ id: 'name', desc: false }],
@@ -63,13 +63,13 @@ describe.each([false, true])('adaptive sorted input (immutable=%s)', (immutable)
     table.setData(source);
     expect(ids(table)).toEqual(['c', 'b', 'a']);
     const updated = { ...source[0]!, score: 9 };
-    const next = [updated, { id: 'b-new', name: 'pod-2', score: 3 }, { id: 'd', name: 'pod-3', score: 4 }];
+    const next = [updated, { id: 'b-new', name: 'item-2', score: 3 }, { id: 'd', name: 'item-3', score: 4 }];
     table.setData(next);
     expect(ids(table)).toEqual(['b-new', 'd', 'a']);
     expect(table.model().rowsById.a!.original).toBe(updated);
     expect(table.model().rowsById.b).toBeUndefined();
     expect(table.model().rowsById.c).toBeUndefined();
-    table.setData([{ ...updated, name: 'pod-0' }, ...next.slice(1)]);
+    table.setData([{ ...updated, name: 'item-0' }, ...next.slice(1)]);
     expect(ids(table)).toEqual(['a', 'b-new', 'd']);
   });
 
@@ -77,9 +77,9 @@ describe.each([false, true])('adaptive sorted input (immutable=%s)', (immutable)
     const table = make(undefined, undefined, immutable);
     expect(ids(table)).toEqual(['c', 'b', 'a']);
     const next = [
-      { id: 'a', name: 'pod-30', score: 4 },
-      { id: 'a', name: 'pod-0', score: 5 },
-      { id: 'b', name: 'pod-20', score: 6 },
+      { id: 'a', name: 'item-30', score: 4 },
+      { id: 'a', name: 'item-0', score: 5 },
+      { id: 'b', name: 'item-20', score: 6 },
     ];
     table.setData(next);
     expect(table.model().rows.map((row) => row.original)).toEqual([next[1], next[2], next[0]]);
@@ -108,12 +108,12 @@ describe.each([false, true])('adaptive sorted input (immutable=%s)', (immutable)
 
   it('does not carry rows between table instances or disjoint replacements', () => {
     const first = make(undefined, undefined, immutable);
-    const other = [{ id: 'a', name: 'pod-0', score: 7 }, { id: 'b', name: 'pod-20', score: 8 }];
+    const other = [{ id: 'a', name: 'item-0', score: 7 }, { id: 'b', name: 'item-20', score: 8 }];
     const second = make(other, undefined, immutable);
     expect(ids(first)).toEqual(['c', 'b', 'a']);
     expect(ids(second)).toEqual(['a', 'b']);
     expect(second.model().rows[0]!.original).toBe(other[0]);
-    const replacement = [{ id: 'z', name: 'pod-30', score: 0 }];
+    const replacement = [{ id: 'z', name: 'item-30', score: 0 }];
     first.setData(replacement);
     expect(ids(first)).toEqual(['z']);
     expect(first.model().rows[0]!.original).toBe(replacement[0]);
@@ -135,12 +135,12 @@ describe('immutable sort-key reuse', () => {
     expect(model.flatRows.map((row) => row.original)).toEqual([second[2], second[1], second[0]]);
     expect(model.rowsById.b!.getValue('score')).toBe(11);
 
-    table.setData([{ ...second[0]!, name: 'pod-0' }, second[1]!, second[2]!]);
+    table.setData([{ ...second[0]!, name: 'item-0' }, second[1]!, second[2]!]);
     expect(ids(table)).toEqual(['a', 'c', 'b']);
   });
 
   it('respects new source-index ties and sorting changes after reusing an order', () => {
-    const tied = source.map((item, index) => ({ ...item, name: index < 2 ? 'pod-2' : 'pod-1' }));
+    const tied = source.map((item, index) => ({ ...item, name: index < 2 ? 'item-2' : 'item-1' }));
     const table = make(tied, undefined, true);
     expect(ids(table)).toEqual(['c', 'a', 'b']);
     const first = tied.map((item) => ({ ...item, score: item.score + 1 }));
@@ -172,7 +172,7 @@ describe('immutable sort-key reuse', () => {
   });
 
   it('still sorts changed children in hierarchical models', () => {
-    const parent: Item = { id: 'parent', name: 'pod-10', score: 0, children: [source[1]!, source[2]!] };
+    const parent: Item = { id: 'parent', name: 'item-10', score: 0, children: [source[1]!, source[2]!] };
     const initial = [parent, source[0]!];
     const { result, rerender } = renderHook(({ data }) => useTable({
       features, columns, data, meta: IMMUTABLE_META, getRowId: (row) => row.id,
@@ -184,18 +184,18 @@ describe('immutable sort-key reuse', () => {
     rerender({ data: [{ ...parent, score: 1 }, source[0]!] });
     expect(result.current.getSortedRowModel().rows.find((row) => row.id === 'parent')!.subRows.map((row) => row.id))
       .toEqual(['c', 'b']);
-    rerender({ data: [{ ...parent, children: [source[1]!, { ...source[2]!, name: 'pod-30' }] }, source[0]!] });
+    rerender({ data: [{ ...parent, children: [source[1]!, { ...source[2]!, name: 'item-30' }] }, source[0]!] });
     const model = result.current.getSortedRowModel();
     expect(model.rows.find((row) => row.id === 'parent')!.subRows.map((row) => row.id))
       .toEqual(['b', 'c']);
-    expect(model.flatRows.find((row) => row.id === 'c')!.original.name).toBe('pod-30');
+    expect(model.flatRows.find((row) => row.id === 'c')!.original.name).toBe('item-30');
   });
 
   it('does not assume immutability for tables that did not opt in', () => {
     const mutable = source.map((item) => ({ ...item }));
     const table = make(mutable);
     expect(ids(table)).toEqual(['c', 'b', 'a']);
-    mutable[0]!.name = 'pod-0';
+    mutable[0]!.name = 'item-0';
     table.setData([...mutable]);
     expect(ids(table)).toEqual(['a', 'c', 'b']);
   });
@@ -221,11 +221,11 @@ const pagedColumns: Array<ColumnDef<typeof pagedFeatures, Item>> = [
 ];
 // Sorted by name: c, e, b, d, a. Two rows per page: [c, e], [b, d], [a].
 const pagedSource: Item[] = [
-  { id: 'a', name: 'pod-5', score: 1 },
-  { id: 'b', name: 'pod-3', score: 1 },
-  { id: 'c', name: 'pod-1', score: 2 },
-  { id: 'd', name: 'pod-4', score: 2 },
-  { id: 'e', name: 'pod-2', score: 3 },
+  { id: 'a', name: 'item-5', score: 1 },
+  { id: 'b', name: 'item-3', score: 1 },
+  { id: 'c', name: 'item-1', score: 2 },
+  { id: 'd', name: 'item-4', score: 2 },
+  { id: 'e', name: 'item-2', score: 3 },
 ];
 const pick = (data: Item[], ...ids: string[]) =>
   ids.map((id) => data.find((item) => item.id === id)!);
@@ -297,7 +297,7 @@ describe.each(sorters)('paginated sorted rows (%s)', (sorter) => {
 
     // A changed sort value also returns to the first page, in the new order.
     table.goToPage(1);
-    data = renamed(data, 'a', 'pod-0');
+    data = renamed(data, 'a', 'item-0');
     await table.setData(data);
     expect(table.page()).toEqual({ index: 0, items: pick(data, 'a', 'c') });
     table.goToPage(1);
@@ -317,7 +317,7 @@ describe.each(sorters)('paginated sorted rows (%s)', (sorter) => {
       expect(table.page()).toEqual({ index: 1, items: pick(data, 'b', 'd') });
     }
 
-    data = renamed(data, 'a', 'pod-0');
+    data = renamed(data, 'a', 'item-0');
     await table.setData(data);
     expect(table.page()).toEqual({ index: 1, items: pick(data, 'e', 'b') });
   });
