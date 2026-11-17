@@ -147,13 +147,14 @@ jobs:
           git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
 
       # `task build:server` also regenerates the Wails bindings, which needs GTK 4 and WebKitGTK to compile on Linux; the bindings are tracked
-      # and checked by "Bindings freshness", so this step runs its other two stages: the frontend build and the server binary.
+      # and checked by "Bindings freshness", so this step runs its other two stages: the frontend build and the server binary. The server
+      # binary is built without cgo: the plain runner has no GTK or WebKitGTK, and server mode serves a browser, not a native window.
       - name: Build the host (OMNIVIEW_UI=next, server mode)
         run: |
           set -euo pipefail
           PRODUCTION=true pnpm run build
           HOST_MODFILE="$(task --silent host:prepare)"
-          go build -tags production,server -trimpath -buildvcs=false -ldflags="-w -s" -modfile="$HOST_MODFILE" -o bin/Omniview-server .
+          CGO_ENABLED=0 go build -tags production,server -trimpath -buildvcs=false -ldflags="-w -s" -modfile="$HOST_MODFILE" -o bin/Omniview-server .
 
       - name: Build the Kubernetes plugin from the pin
         working-directory: omniview-plugin-kubernetes
