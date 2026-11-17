@@ -34,6 +34,7 @@
     "test": "vitest run",
     "api:check": "api-extractor run && api-extractor run --config api-extractor.examples.json",
     "api:update": "api-extractor run --local && api-extractor run --local --config api-extractor.examples.json",
+    "refresh": "pnpm run generate && pnpm run build && pnpm run api:update",
     "verify": "pnpm run generate:check && pnpm run typecheck && pnpm run lint:css && pnpm run test && pnpm run build && pnpm run api:check"
   },
   "peerDependencies": {

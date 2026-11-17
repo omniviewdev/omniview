@@ -99,7 +99,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium webkit
 
       # The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
-      - name: Build ui-next once, for all three probes
+      - name: Build ui-next once, for every probe below
         run: |
           echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
           OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build

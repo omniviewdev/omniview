@@ -10,3 +10,5 @@ export type {
   DataTableSortKind,
   TextRun,
 } from './types';
+export { ageTip, compactAge, useAge } from '../../table/age';
+export type { AgeFormatter, AgeLabel } from '../../table/age';
