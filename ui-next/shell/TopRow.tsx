@@ -15,14 +15,14 @@ type TopRowProps = {
 export function TopRow({ title, icon, tabId, panelId }: TopRowProps) {
   return (
     <header className={styles.topRow} data-shell-region="topRow" aria-label="Window">
-      <div className={styles.safeArea} aria-hidden="true">
+      <div className={styles.safeArea} data-shell-part="safeArea" aria-hidden="true">
         <span className={styles.dots}>
           <span className={styles.dot} />
           <span className={styles.dot} />
           <span className={styles.dot} />
         </span>
       </div>
-      <div className={styles.reserved} aria-hidden="true" />
+      <div className={styles.reserved} />
       <div className={styles.strip} role="tablist" aria-label="Open tabs">
         <button type="button" role="tab" id={tabId} className={styles.tab} aria-selected="true" aria-controls={panelId} data-shell-focus="">
           <span className={styles.glyph}>
@@ -33,7 +33,7 @@ export function TopRow({ title, icon, tabId, panelId }: TopRowProps) {
           </span>
         </button>
       </div>
-      <div className={styles.dragLane} aria-hidden="true" />
+      <div className={styles.dragLane} />
     </header>
   );
 }

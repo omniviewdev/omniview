@@ -15,6 +15,9 @@ export type ShellTreeNode = {
   readonly children?: readonly ShellTreeNode[];
 };
 
+/** The colours the design gives a plugin's glyphs: the brand roles of the token manifest (ch01 palette policy). */
+export type ShellAccent = 'orange' | 'green' | 'blue' | 'purple' | 'pink' | 'red' | 'teal';
+
 export type ShellSidebar = {
   /** Names the navigation landmark and its tree. */
   readonly label: string;
@@ -25,6 +28,8 @@ export type ShellSidebar = {
   readonly open?: readonly string[];
   /** The entry of the page on screen: selected, and where the tree's tab stop starts. */
   readonly current?: string;
+  /** The colour of the tree's glyphs (the mock's tile colour, one per plugin). Absent: the icon colour of the theme. */
+  readonly accent?: ShellAccent | undefined;
 };
 
 /** One face of the scope lane: the scope the page is read in. Text for now; the menus that change it arrive with their slice. */

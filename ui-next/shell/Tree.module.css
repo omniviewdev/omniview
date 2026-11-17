@@ -36,6 +36,10 @@
     cursor: pointer;
   }
 
+  .row:focus {
+    outline: 0;
+  }
+
   .row:hover {
     background-color: var(--ov-hover-row);
   }
@@ -48,7 +52,6 @@
   .row:focus,
   .row[aria-selected='true']:focus,
   .row:focus:hover {
-    outline: 0;
     background-color: var(--ov-selection-active);
   }
 
@@ -64,6 +67,35 @@
     inline-size: 16px;
     block-size: 16px;
     color: var(--ov-icon);
+  }
+
+  /* The glyphs take the plugin's accent, one of the brand roles (the mock's tile colour). */
+  .tree[data-accent='orange'] .glyph {
+    color: var(--ov-brand-orange);
+  }
+
+  .tree[data-accent='green'] .glyph {
+    color: var(--ov-brand-green);
+  }
+
+  .tree[data-accent='blue'] .glyph {
+    color: var(--ov-brand-blue);
+  }
+
+  .tree[data-accent='purple'] .glyph {
+    color: var(--ov-brand-purple);
+  }
+
+  .tree[data-accent='pink'] .glyph {
+    color: var(--ov-brand-pink);
+  }
+
+  .tree[data-accent='red'] .glyph {
+    color: var(--ov-brand-red);
+  }
+
+  .tree[data-accent='teal'] .glyph {
+    color: var(--ov-brand-teal);
   }
 
   .label {

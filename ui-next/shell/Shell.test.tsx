@@ -119,7 +119,7 @@ describe('the sidebar tree', () => {
     const tree = screen.getByRole('tree', { name: 'Acme items' });
     const items = within(tree).getAllByRole('treeitem');
 
-    expect(items.map((item) => item.textContent)).toEqual(['Group', 'Widgets89', 'Gadgets', 'Other']);
+    expect(items.map((item) => item.textContent)).toEqual(['Group', 'Widgets 89', 'Gadgets', 'Other']);
     expect(items.filter((item) => item.hasAttribute('aria-label'))).toEqual([]);
     expect(items[0]).toHaveAttribute('aria-level', '1');
     expect(items[0]).toHaveAttribute('aria-expanded', 'true');

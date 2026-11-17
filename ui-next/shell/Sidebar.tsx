@@ -15,7 +15,7 @@ export function Sidebar({ sidebar }: SidebarProps) {
       <div className={styles.header} data-shell-part="sidebarHeader">
         <Text as="h2" variant="title">{sidebar.title}</Text>
       </div>
-      <Tree label={sidebar.label} nodes={sidebar.nodes} open={sidebar.open} current={sidebar.current} />
+      <Tree label={sidebar.label} nodes={sidebar.nodes} open={sidebar.open} current={sidebar.current} accent={sidebar.accent} />
     </nav>
   );
 }

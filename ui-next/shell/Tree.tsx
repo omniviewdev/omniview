@@ -1,7 +1,7 @@
 import { Icon, Text } from '@omniviewdev/kit';
 import { useState, type KeyboardEvent } from 'react';
 import { press, revealed, stopOf, toggled, visibleRows } from './core/tree';
-import type { ShellTreeNode } from './registration';
+import type { ShellAccent, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
 type TreeProps = {
@@ -10,6 +10,7 @@ type TreeProps = {
   /** The groups open at first, and the entry that is current: read once, when the tree mounts. */
   readonly open: readonly string[] | undefined;
   readonly current: string | undefined;
+  readonly accent: ShellAccent | undefined;
 };
 
 type RowProps = {
@@ -28,6 +29,8 @@ type RowProps = {
   readonly onFocusRow: (id: string) => void;
 };
 
+// A row is named by its text, the label and the count (WCAG 2.5.3: the name contains the visible text). The space between them is a text
+// node, not layout: it is ignored by the grid and it keeps the name "Label 89" wherever the name is computed without CSS.
 function Row({ id, label, icon, count, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow }: RowProps) {
   return (
     <li
@@ -42,7 +45,6 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       aria-setsize={setSize}
       aria-expanded={expandable ? expanded : undefined}
       aria-selected={selected}
-      aria-label={count === undefined ? undefined : `${label}, ${count}`}
       onFocus={() => {
         onFocusRow(id);
       }}
@@ -59,9 +61,12 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
         <Text>{label}</Text>
       </span>
       {count === undefined ? null : (
-        <span className={styles.count}>
-          <Text variant="caption" tone="muted">{count}</Text>
-        </span>
+        <>
+          {' '}
+          <span className={styles.count}>
+            <Text variant="caption" tone="muted">{count}</Text>
+          </span>
+        </>
       )}
       {expandable ? (
         <span className={styles.disclosure}>
@@ -79,7 +84,7 @@ type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | u
  * click on a group to open or close it. What a user opened or closed lives here and survives the screen registering again.
  * Choosing an entry does nothing yet: with one tab and no navigation, the entry on screen is the current page. Kit part it should become: Tree.
  */
-export function Tree({ label, nodes, open, current }: TreeProps) {
+export function Tree({ label, nodes, open, current, accent }: TreeProps) {
   const [state, setState] = useState<TreeState>(() => ({ open: revealed(nodes, open ?? [], current), stop: undefined }));
   const rows = visibleRows(nodes, state.open);
   const stop = stopOf(rows, state.stop, current);
@@ -113,7 +118,7 @@ export function Tree({ label, nodes, open, current }: TreeProps) {
   };
 
   return (
-    <ul role="tree" aria-label={label} className={styles.tree} onKeyDown={onKeyDown}>
+    <ul role="tree" aria-label={label} className={styles.tree} data-accent={accent} onKeyDown={onKeyDown}>
       {rows.map((row) => (
         <Row
           key={row.id}
