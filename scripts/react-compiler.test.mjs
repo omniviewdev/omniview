@@ -77,6 +77,7 @@ for (const filename of [
 for (const filename of [
   path.join(path.dirname(root), 'ui/packages/base-ui/dist/index.js'),
   path.join(root, 'packages/omniviewdev-providers/dist/index.js'),
+  path.join(root, 'packages/kit/dist/index.js'),
   path.join(root, 'dist/assets/index.js'),
   path.join(root, 'ui/node_modules/third-party/index.js'),
   path.join(root, 'node_modules/.vite/deps/@omniviewdev_base-ui.js'),

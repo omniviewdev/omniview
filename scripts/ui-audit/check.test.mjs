@@ -83,6 +83,18 @@ test('excludes tests, stories, generated files, and library implementation direc
   assert.deepEqual(await checkFiles(root, files), []);
 });
 
+test('the new trees may use native controls, which base-ui cannot supply there, but may not import legacy UI', async t => {
+  const { root, put } = await fixture(t);
+  await put('ui-next/View.tsx', 'const a = <button/>; const b = <input type="datetime-local"/>;');
+  await put('ui-next/view.css', 'button { all: unset; }');
+  await put('packages/kit/src/Button.tsx', 'const a = <button style={{all:"unset"}}/>;');
+  await put('ui-next/legacy.ts', "import Box from '@mui/material/Box';");
+  await put('ui/View.tsx', 'const a = <button/>;');
+  assert.deepEqual(await checkFiles(root, ['ui-next/View.tsx', 'ui-next/view.css', 'packages/kit/src/Button.tsx']), []);
+  assert.deepEqual(rules(await checkFiles(root, ['ui-next/legacy.ts'])), ['legacy-ui-import']);
+  assert.deepEqual(rules(await checkFiles(root, ['ui/View.tsx'])), ['native-control']);
+});
+
 test('baseline permits debt and line movement, but counts newly duplicated violations and untracked files', async t => {
   const { root, put } = await fixture(t);
   git(root, 'init');

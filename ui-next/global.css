@@ -1,0 +1,13 @@
+/* The host entry's document reset. The kit writes no rule for html, body or *; this is where the host does, in the layer
+   reserved for it. Box sizing is border-box everywhere in the design, so a 28px control stays 28px with its border. */
+@layer ov.reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+  }
+}

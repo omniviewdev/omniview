@@ -311,6 +311,13 @@ jobs:
       - name: Component tests
         run: pnpm test
 
+      # The kit's build, typecheck and stylelint already ran above (task check:ui-build, check:ui-typecheck, check:ui-lint).
+      - name: Kit contracts (generated tokens, tests, API report)
+        run: |
+          pnpm --filter @omniviewdev/kit run generate:check
+          pnpm --filter @omniviewdev/kit run test
+          pnpm --filter @omniviewdev/kit run api:check
+
       - name: Age clock DST regressions
         run: pnpm exec vitest run ui/utils/ageClock.test.tsx
         env:
