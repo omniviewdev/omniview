@@ -2,11 +2,11 @@
 # Records the N8 performance baseline of the current app (row N8, docs/ui-next/TRACKER.md).
 # Run from the repository root of a checkout where `pnpm install --frozen-lockfile` and `task packages` have run.
 #   KUBERNETES_SOURCE=/abs/path/omniview-plugin-kubernetes  (checked out at the revision to measure, UI built: `pnpm --dir $KUBERNETES_SOURCE/ui install --frozen-lockfile && pnpm --dir $KUBERNETES_SOURCE/ui run build`)
-#   bash docs/ui-next/baseline/run.sh [raw-directory]
+#   bash docs/ui-next/baseline/run.sh <pass-directory>   e.g. docs/ui-next/baseline/raw/pass1: `collect.mjs report` reads only raw/pass<digits>/
 # Every step logs the load average first; a run started under load above 2 is noisy, and the file says so.
 set -euo pipefail
 : "${KUBERNETES_SOURCE:?set KUBERNETES_SOURCE to a Kubernetes plugin checkout with a built ui/dist}"
-RAW="${1:-docs/ui-next/baseline/raw}"
+RAW="${1:?give the pass directory, e.g. docs/ui-next/baseline/raw/pass1 (collect.mjs report reads only raw/pass<digits>/)}"
 RUNS="${RUNS:-5}"
 mkdir -p "$RAW"
 
