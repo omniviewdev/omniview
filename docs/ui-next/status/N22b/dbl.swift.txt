@@ -1,0 +1,10 @@
+import Cocoa
+import CoreGraphics
+// usage: dbl X Y : a real double click (clickState 1 then 2)
+let a = CommandLine.arguments; let x = Double(a[1])!, y = Double(a[2])!
+let p = CGPoint(x: x, y: y)
+CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap); usleep(150000)
+for n in 1...2 {
+  let d = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: p, mouseButton: .left); d?.setIntegerValueField(.mouseEventClickState, value: Int64(n)); d?.post(tap: .cghidEventTap); usleep(40000)
+  let u = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: p, mouseButton: .left); u?.setIntegerValueField(.mouseEventClickState, value: Int64(n)); u?.post(tap: .cghidEventTap); usleep(80000)
+}
