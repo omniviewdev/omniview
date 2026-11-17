@@ -13,10 +13,12 @@ export const PLUGIN_ID = 'kubernetes';
  */
 export const FIRST_SET = 256;
 
-/** The descriptor the footer takes (MOCK core.js `count`): exact, an estimate, or unknown with how many are loaded so far. */
+/**
+ * The descriptor the footer takes (MOCK core.js `count`). While the set loads the total is unknown and `loaded` says how many are here
+ * (`N Pods loaded`); a complete set is counted by its records.
+ */
 export type PodsCount =
   | { readonly kind: 'exact'; readonly value: string }
-  | { readonly kind: 'estimate'; readonly value: string }
   | { readonly kind: 'unknown'; readonly loaded: string };
 
 export type PodsView = {
@@ -54,14 +56,6 @@ export type UsePodsOptions = {
 
 const NO_ROWS: readonly PodRow[] = [];
 
-function countOf(source: { readonly kind: string; readonly value?: string } | undefined, loaded: number): PodsCount {
-  if ((source?.kind === 'exact' || source?.kind === 'estimate') && source.value !== undefined) {
-    return { kind: source.kind, value: source.value };
-  }
-
-  // The set is complete, so what is loaded is all there is.
-  return { kind: 'exact', value: String(loaded) };
-}
 
 /** The runtime's own errors are the state; a command that fails does not throw into an event handler. */
 async function settled(operation: () => Promise<unknown>): Promise<void> {
@@ -139,7 +133,8 @@ export function usePods({ connectionID, sort = podDefinition.list.defaultSort }:
     rows,
     loaded: rows.length,
     complete,
-    count: complete ? countOf(collection.view?.count, rows.length) : { kind: 'unknown', loaded: String(rows.length) },
+    // The count of the source view is not kept live (a Pod added after the snapshot left it one short), so a complete set is counted by its records.
+    count: complete ? { kind: 'exact', value: String(rows.length) } : { kind: 'unknown', loaded: String(rows.length) },
     live: collection.isLive,
     refreshing: complete && (collection.resources.isFetching || collection.isSyncing),
     connect,
