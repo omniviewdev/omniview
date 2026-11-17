@@ -172,7 +172,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Start the host with the plugin
-        run: ui-next/e2e/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+        run: ui-next/e2e/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" none
 
       # The cluster holds only kind's own Pods here: the check must report that the fixture is missing, not pass on kube-system.
       - name: Negative control, cluster without the fixture
