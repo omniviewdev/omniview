@@ -453,6 +453,36 @@ async function a11y(page, engineName, where) {
   }
 }
 
+// ---- MiddleEllipsis: a cut name is announced and copied once, whole -----------------------------------------------------------
+// Head and tail are two boxes of a flex row, which both engines read as two words (`alertmanager-5d5bcf5596 -qxv45`) and copy with a line
+// break between. The name is the single string `data-ov-full` holds: the accessibility tree (Playwright's aria snapshot, both engines) of
+// the example must be that one text, and selecting the whole box and copying must yield it unchanged. At least one example is cut, or the
+// check proves nothing.
+async function ellipsisName(page, where) {
+  const examples = await page.locator('[data-example^="MiddleEllipsis/"]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-example')));
+  if (examples.length === 0) fail(where, 'no MiddleEllipsis example on the parts page');
+  let cutOnes = 0;
+  const rows = {};
+  for (const example of examples) {
+    const root = page.locator(`[data-example="${example}"] [data-ov-clip]`);
+    const read = await root.evaluate((box) => {
+      const selection = getSelection();
+      selection.selectAllChildren(box);
+      const copied = selection.toString();
+      selection.removeAllRanges();
+      return { name: box.getAttribute('data-ov-full') ?? box.textContent, cut: box.scrollWidth > box.clientWidth + 1, copied };
+    });
+    const snapshot = (await root.ariaSnapshot()).replace(/\n\s*/g, ' ').trim();
+    if (read.cut) cutOnes += 1;
+    rows[example] = { ...read, snapshot };
+    if (snapshot !== `- text: ${read.name}`) fail(where, `${example}: the accessibility tree reads ${JSON.stringify(snapshot)}, expected the one text ${JSON.stringify(read.name)}`);
+    if (read.copied.trim() !== read.name) fail(where, `${example}: selecting the name copies ${JSON.stringify(read.copied)}, expected ${JSON.stringify(read.name)}`);
+  }
+
+  if (cutOnes === 0) fail(where, 'no MiddleEllipsis example is cut on the parts page: the check of a cut name proves nothing');
+  report.a11y[where].ellipsis = rows;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 const dist = buildUiNext();
 const { server, url } = await serve(dist);
@@ -467,6 +497,7 @@ try {
       await countsAndRootWrites(page, where);
       await keyboard(browser, url, viewport, engineName, where);
       await a11y(page, engineName, where);
+      await ellipsisName(page, where);
       if (SHOTS) {
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: path.join(SHOTS, `${engineName}-${viewportName}-top.png`) });

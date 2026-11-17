@@ -21,9 +21,8 @@ const RESTARTS = fieldOf('restarts');
 const AGE = fieldOf('age');
 
 /**
- * The Name column: the kind's tile, the name, and the namespace under it. A generated name keeps its distinguishing end when it is cut. A cut name is
- * two spans in a flex row, which assistive technology reads as two words (`alertmanager-5d5bcf5596 -qxv45`): the drawn name is hidden from it and the
- * whole name is in the cell once, for it (found by the real-engine probe, in both engines).
+ * The Name column: the kind's tile, the name, and the namespace under it. A generated name keeps its distinguishing end when it is cut; the kit part
+ * reads and copies it once, whole.
  */
 export function IdentityCell({ row }: { readonly row: PodRow }) {
   const { second, tail } = podDefinition.list.identity;
@@ -32,14 +31,9 @@ export function IdentityCell({ row }: { readonly row: PodRow }) {
     <div className={styles.identity}>
       <KindTile icon="box" tone="blue" />
       <div className={styles.lines}>
-        <span aria-hidden="true">
-          <MiddleEllipsis data-testid="pod-name" tail={tail(row)}>
-            {row.name}
-          </MiddleEllipsis>
-        </span>
-        <span className={styles.name} data-testid="pod-name-text">
+        <MiddleEllipsis data-testid="pod-name" tail={tail(row)}>
           {row.name}
-        </span>
+        </MiddleEllipsis>
         {namespace === null ? null : (
           <small className={styles.second} data-testid="pod-namespace">
             {namespace}

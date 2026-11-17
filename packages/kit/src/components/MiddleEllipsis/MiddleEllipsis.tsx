@@ -20,6 +20,10 @@ export type MiddleEllipsisProps = {
  * full name only while the root is cut (its scroll width exceeds its width). It is a block-level box: in a block container it fills the
  * width, in a flex row it takes the width of its name up to the space it is given; its type is the context's. Props are closed: no
  * `className`, no `style`, no `title`; `data-*` passes through.
+ *
+ * The name is announced and copied once, whole. The two halves are boxes of a flex row, which assistive technology reads as two words
+ * (`alertmanager-5d5bcf5596 -qxv45`) and a selection copies with a line break between, so they hold no text: each is hidden from assistive
+ * technology and draws its half from an attribute in the stylesheet, and the name is real text in one element of its own that takes no room.
  */
 export function MiddleEllipsis({ children, tail, ...rest }: MiddleEllipsisProps) {
   // Characters, not code units: a pair is never split.
@@ -37,8 +41,9 @@ export function MiddleEllipsis({ children, tail, ...rest }: MiddleEllipsisProps)
 
   return (
     <span {...dataAttributes(rest)} className={styles.root} data-ov-shape="split" data-ov-clip="" data-ov-full={children}>
-      <span className={styles.head}>{characters.slice(0, -keep).join('')}</span>
-      <span className={styles.tail}>{characters.slice(-keep).join('')}</span>
+      <span aria-hidden="true" className={styles.head} data-ov-text={characters.slice(0, -keep).join('')} />
+      <span aria-hidden="true" className={styles.tail} data-ov-text={characters.slice(-keep).join('')} />
+      <span className={styles.name}>{children}</span>
     </span>
   );
 }

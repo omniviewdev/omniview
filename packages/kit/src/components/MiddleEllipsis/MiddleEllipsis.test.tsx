@@ -9,7 +9,20 @@ import * as examples from './MiddleEllipsis.examples';
 
 const NAME = 'report-renderer-7d8c6f49b-7x5nx';
 
-const halves = (root: Element) => [...root.children].map((child) => child.textContent);
+// The two drawn halves are the first two children; each carries its text as an attribute that the stylesheet draws (see the module).
+const halves = (root: Element) => [...root.children].slice(0, 2).map((child) => child.getAttribute('data-ov-text'));
+
+/** What assistive technology reads inside `node`: its text, minus whatever is hidden from it (`aria-hidden`). */
+function exposedText(node: Node): string {
+  if (node instanceof Element && node.getAttribute('aria-hidden') === 'true') {
+    return '';
+  }
+
+  return node.nodeType === Node.TEXT_NODE ? (node.textContent ?? '') : [...node.childNodes].map(exposedText).join('');
+}
+
+/** The elements that hold `text` as text of their own. */
+const holding = (container: Element, text: string) => [...container.querySelectorAll('*')].filter((element) => [...element.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent === text));
 
 describe('MiddleEllipsis', () => {
   describe('a name that can be cut', () => {
@@ -19,7 +32,26 @@ describe('MiddleEllipsis', () => {
       expect(root.tagName).toBe('SPAN');
       expect(root).toHaveProperty('dataset.ovShape', 'split');
       expect(halves(root)).toEqual(['report-renderer-7d8c6f49b', '-7x5nx']);
-      expect([...root.children].map((child) => child.tagName)).toEqual(['SPAN', 'SPAN']);
+      expect([...root.children].map((child) => child.tagName)).toEqual(['SPAN', 'SPAN', 'SPAN']);
+    });
+
+    it('reads once, whole, as one text: the halves are drawn and hidden from assistive technology, one element holds the name', () => {
+      const { container } = render(<MiddleEllipsis tail={6}>{NAME}</MiddleEllipsis>);
+      const root = container.firstElementChild as HTMLElement;
+      const [head, tail, name] = [...root.children];
+      expect(head?.getAttribute('aria-hidden')).toBe('true');
+      expect(tail?.getAttribute('aria-hidden')).toBe('true');
+      expect(name?.hasAttribute('aria-hidden')).toBe(false);
+      // what is announced is the one string, with no break and no space where the cut falls
+      expect(exposedText(root)).toBe(NAME);
+      expect(holding(root, NAME)).toEqual([name]);
+    });
+
+    it('copies once, whole: the halves hold no text of their own, so a selection and find-in-page meet the name only once', () => {
+      const { container } = render(<MiddleEllipsis tail={6}>{NAME}</MiddleEllipsis>);
+      const root = container.firstElementChild as HTMLElement;
+      expect([...root.children].slice(0, 2).map((half) => half.textContent)).toEqual(['', '']);
+      expect(root.textContent).toBe(NAME);
     });
 
     it('reads as the whole name, once: the halves are one text, and nothing else is drawn', () => {
@@ -37,7 +69,7 @@ describe('MiddleEllipsis', () => {
 
     it('keeps the number of trailing characters the caller says: `-7x5nx` stays whole', () => {
       const { container } = render(<MiddleEllipsis tail={6}>{NAME}</MiddleEllipsis>);
-      expect(container.querySelectorAll('span')[2]?.textContent).toBe('-7x5nx');
+      expect(container.querySelectorAll('span')[2]?.getAttribute('data-ov-text')).toBe('-7x5nx');
       const { container: timestamped } = render(<MiddleEllipsis tail={9}>nightly-backup-28733280</MiddleEllipsis>);
       expect(halves(timestamped.firstElementChild!)).toEqual(['nightly-backup', '-28733280']);
     });
@@ -115,9 +147,9 @@ describe('MiddleEllipsis', () => {
     });
   });
 
-  it('has the elements it says: one for a short name, three for a name that can be cut', () => {
+  it('has the elements it says: one for a short name, four for a name that can be cut (the root, the two drawn halves, the name)', () => {
     expect(render(<MiddleEllipsis>worker-0</MiddleEllipsis>).container.querySelectorAll('*')).toHaveLength(1);
-    expect(render(<MiddleEllipsis>{NAME}</MiddleEllipsis>).container.querySelectorAll('*')).toHaveLength(3);
+    expect(render(<MiddleEllipsis>{NAME}</MiddleEllipsis>).container.querySelectorAll('*')).toHaveLength(4);
   });
 
   it('passes data-* attributes through and nothing else', () => {
@@ -198,6 +230,12 @@ describe('the MiddleEllipsis stylesheet', () => {
     });
   });
 
+  it('draws the halves from their attribute and the name as text nobody sees: a halves\' text is generated, the name is real and takes no room', () => {
+    expect(rule('.head::before')).toMatchObject({ content: 'attr(data-ov-text)' });
+    expect(rule('.tail::before')).toMatchObject({ content: 'attr(data-ov-text)' });
+    expect(rule('.name')).toMatchObject({ position: 'absolute', 'inline-size': '1px', 'block-size': '1px', overflow: 'hidden', 'clip-path': 'inset(50%)', 'white-space': 'nowrap', 'pointer-events': 'none' });
+  });
+
   it('gives the pointer to the root, not to the halves, so one hover lands on the box that holds the whole name', () => {
     expect(rule('.head')['pointer-events']).toBe('none');
     expect(rule('.tail')['pointer-events']).toBe('none');
@@ -242,6 +280,7 @@ describe('MiddleEllipsis examples: the a11y matrix', () => {
       expect(root?.getAttribute('data-ov-shape')).toBe(row.shape);
       // the name reads once and whole, whatever is cut on screen
       expect(container.textContent).toBe(row.text);
+      expect(exposedText(container)).toBe(row.text);
       if (row.halves !== undefined) {
         expect(halves(root as Element)).toEqual([...row.halves]);
         expect(root?.getAttribute('data-ov-full')).toBe(row.text);
