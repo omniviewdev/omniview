@@ -8,11 +8,16 @@
 // This is NOT the root entry and never part of it: the root entry is the plugin-facing API and plugins load it as a singleton
 // at run time. Only `ui-next/parts/**`, the kit's tests and the workshop may import this entry (lint: eslint/config.cjs), and it
 // is never listed among the plugin shared modules. Adding a part means adding one line here.
+// An examples file that has a CSS Module of its own (DataTable.parity.module.css) puts its rules in this entry's graph: the layer order
+// statement still has to be the first rule of the stylesheet, so this entry imports it first, as entry.ts does.
+import './styles/layers.css';
 import type { ReactElement } from 'react';
 import * as buttonExamples from './components/Button/Button.examples';
 import * as iconButtonExamples from './components/IconButton/IconButton.examples';
 import * as iconExamples from './components/Icon/Icon.examples';
 import * as dataTableExamples from './components/DataTable/DataTable.examples';
+import * as dataTableParityExamples from './components/DataTable/DataTable.parity.examples';
+import * as rowMenuExamples from './components/RowMenu/RowMenu.examples';
 import * as chipExamples from './components/Chip/Chip.examples';
 import * as rovingGroupExamples from './components/RovingGroup/RovingGroup.examples';
 import * as quickFiltersExamples from './components/QuickFilters/QuickFilters.examples';
@@ -36,6 +41,8 @@ export const examples: PartExamples = {
   Button: buttonExamples,
   IconButton: iconButtonExamples,
   DataTable: dataTableExamples,
+  DataTableParity: dataTableParityExamples,
+  RowMenu: rowMenuExamples,
   Chip: chipExamples,
   RovingGroup: rovingGroupExamples,
   QuickFilters: quickFiltersExamples,

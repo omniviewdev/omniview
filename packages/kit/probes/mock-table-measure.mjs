@@ -34,7 +34,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENGINES, VIEWPORTS, normalizeFont, setContext, sleep, settle, measure, summarize } from './probe-lib.mjs';
+import { ENGINES, VIEWPORTS, normalizeFont, setContext, sleep, settle, measure, buttonStates, installRecordLib } from './probe-lib.mjs';
 
 const URL = process.env.MOCK_URL ?? 'http://127.0.0.1:49231/';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -57,117 +57,13 @@ const MAX_BYTES = 150 * 1024;
 /* ------------------------------------------------------------------------------------------------------------------------------ */
 
 function installLib() {
-  const r2 = (n) => Math.round(n * 100) / 100;
-  const px = (s) => String(s).replace(/(\d+\.\d{3,})px/g, (m, n) => `${r2(Number(n))}px`);
-  const quad = (css, p) => ['Top', 'Right', 'Bottom', 'Left'].map((s) => css[`${p}${s}`]).join(' ');
-  const side = (css, s) => (css[`border${s}Width`] === '0px' ? '0' : `${css[`border${s}Width`]} ${css[`border${s}Style`]} ${css[`border${s}Color`]}`);
+  // The node record (styleOf, nodeOf, walk, elements, scrollerOf) is probe-lib's installRecordLib, installed first: the kit's table probe
+  // (table-probe.mjs) records the kit's table with the same functions.
+  const { r2, styleOf, nodeOf, walk, elements, scrollerOf } = window.__rec;
 
-  /** The computed style that matters to a table, defaults left out. Geometry is the node's rect, not a style. */
-  const styleOf = (el) => {
-    const css = getComputedStyle(el);
-    const o = {};
-    const put = (k, v, skip) => { if (v !== skip && v !== '' && v != null) o[k] = px(v); };
-    o.color = css.color;
-    put('bg', css.backgroundColor, 'rgba(0, 0, 0, 0)');
-    put('bgImage', css.backgroundImage, 'none');
-    put('bT', side(css, 'Top'), '0');
-    put('bR', side(css, 'Right'), '0');
-    put('bB', side(css, 'Bottom'), '0');
-    put('bL', side(css, 'Left'), '0');
-    put('radius', css.borderTopLeftRadius, '0px');
-    put('pad', quad(css, 'padding'), '0px 0px 0px 0px');
-    put('margin', quad(css, 'margin'), '0px 0px 0px 0px');
-    o.font = `${css.fontSize}/${css.lineHeight} ${css.fontWeight}`;
-    put('ls', css.letterSpacing, 'normal');
-    put('fstyle', css.fontStyle, 'normal');
-    put('nums', css.fontVariantNumeric, 'normal');
-    put('mono', /monospace|Menlo|Consolas|Courier|SF Mono/i.test(css.fontFamily) ? 'yes' : '', '');
-    if (/^(TD|TH)$/.test(el.tagName)) o.align = css.textAlign;
-    put('valign', css.verticalAlign, 'baseline');
-    put('ws', css.whiteSpace, 'normal');
-    put('overflow', `${css.overflowX} ${css.overflowY}`, 'visible visible');
-    put('textOverflow', css.textOverflow, 'clip');
-    o.display = css.display;
-    put('position', css.position, 'static');
-    if (css.position === 'sticky') { o.top = css.top; o.left = css.left; put('z', css.zIndex, 'auto'); }
-    else if (css.position === 'absolute' || css.position === 'fixed') { o.top = css.top; o.right = css.right; o.bottom = css.bottom; put('z', css.zIndex, 'auto'); }
-    else if (css.position === 'relative') put('z', css.zIndex, 'auto');
-    if (/flex|grid/.test(css.display)) { put('alignItems', css.alignItems, 'normal'); put('justify', css.justifyContent, 'normal'); put('dir', css.flexDirection, 'row'); }
-    put('gap', css.columnGap, 'normal');
-    if (/^(TR|TH|BUTTON|A)$/.test(el.tagName)) put('cursor', css.cursor, 'auto');
-    if (css.outlineStyle !== 'none' && css.outlineWidth !== '0px') o.outline = `${css.outlineWidth} ${css.outlineStyle} ${css.outlineColor} ${css.outlineOffset}`;
-    put('shadow', css.boxShadow, 'none');
-    put('opacity', css.opacity, '1');
-    put('box', css.boxSizing, 'border-box');
-    if (css.minWidth !== '0px') put('minW', css.minWidth, 'auto');
-    put('maxW', css.maxWidth, 'none');
-    put('pe', css.pointerEvents, 'auto');
-    put('visibility', css.visibility, 'visible');
-    return o;
-  };
-
-  const ATTR_OK = /^(tabindex|role|scope|colspan|type|datetime|viewBox|width|height|aria-(?!description)[a-z]+|data-(tooltip[a-z-]*|clamp|full|fit|column-pinned|state-[a-z]+|icon-button|density))$/;
-  const ownText = (el) => [...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.textContent).join('').trim();
-
-  const nodeOf = (el, origin, { text = true } = {}) => {
-    const b = el.getBoundingClientRect();
-    const n = { t: el.tagName.toLowerCase(), r: [r2(b.left - origin.left), r2(b.top - origin.top), r2(b.width), r2(b.height)], s: styleOf(el) };
-    const cls = (el.getAttribute('class') || '').trim().replace(/\s+/g, ' ');
-    if (cls) n.c = cls;
-    const attrs = {};
-    for (const a of el.attributes) {
-      if (a.name === 'data-action') attrs[a.name] = 'present';
-      else if (ATTR_OK.test(a.name)) attrs[a.name] = a.value;
-    }
-    if (Object.keys(attrs).length) n.a = attrs;
-    const vars = {};
-    for (let i = 0; i < (el.style?.length ?? 0); i += 1) {
-      const name = el.style[i];
-      if (/^--(identifier|tile|viz|measure|prose|cell-max)/.test(name)) vars[name] = px(el.style.getPropertyValue(name).trim());
-    }
-    if (Object.keys(vars).length) n.v = vars;
-    if (text) {
-      const t = ownText(el);
-      if (t) {
-        n.x = t.slice(0, 80);
-        const node = [...el.childNodes].find((c) => c.nodeType === 3 && c.textContent.trim());
-        const range = document.createRange();
-        range.selectNodeContents(node);
-        const rb = range.getBoundingClientRect();
-        n.xr = [r2(rb.left - origin.left), r2(rb.width)];
-      }
-    }
-    if (!(el instanceof SVGElement) && el.scrollWidth > el.clientWidth + 0.5 && getComputedStyle(el).overflowX !== 'visible') n.cut = 1;
-    return n;
-  };
-
-  /** Every element below `root`, in DOM order, with its depth; the inside of an svg is only counted. */
-  const walk = (root, origin) => {
-    const out = [];
-    const visit = (el, depth) => {
-      for (const c of el.children) {
-        const n = nodeOf(c, origin);
-        n.d = depth;
-        out.push(n);
-        if (c instanceof SVGElement) { n.inner = c.querySelectorAll('*').length; continue; }
-        visit(c, depth + 1);
-      }
-    };
-    visit(root, 0);
-    return out;
-  };
-
-  const elements = (el) => 1 + el.querySelectorAll('*').length;
   const isMetric = (td) => !!td.querySelector('.metric-cell');
   const headLabel = (th) => th.textContent.trim().replace(/\s+/g, ' ') || th.getAttribute('aria-label') || '';
 
-  const scrollerOf = (el) => {
-    for (let e = el.parentElement; e; e = e.parentElement) {
-      const o = getComputedStyle(e).overflowY;
-      if (o === 'auto' || o === 'scroll') return e;
-    }
-    return null;
-  };
   const ABS = { left: 0, top: 0 };
 
   const tdRecord = (td, origin, th, walkIt) => {
@@ -477,6 +373,7 @@ async function loadMock(browser, viewport) {
   const ok = await page.evaluate(() => typeof window.H === 'object' && typeof fitTables === 'function' && typeof prepareIdentifiers === 'function');
   if (!ok) throw new Error('mock did not expose H, fitTables and prepareIdentifiers');
   await normalizeFont(page, { rootVar: '--int-font-ui' });
+  await page.evaluate(installRecordLib);
   await page.evaluate(installLib);
   return { page, context, errors };
 }
@@ -543,12 +440,6 @@ async function rowStates(page, { scope, hoverRow, focusRow, selectedRows, tick, 
   await pointerAway(page);
   return out;
 }
-
-/** probe-lib's summary of a control in rest, hover and focus, as a style (no geometry), a size, an icon and a label box. */
-const buttonStates = (m) => Object.fromEntries(Object.entries(m).map(([state, rec]) => {
-  const { w, h, el, icon, label, ...style } = summarize(rec, { withOutline: state === 'focus' });
-  return [state, { size: [w, h], n: el, s: style, ...(icon ? { icon: [icon.left, icon.top, icon.w, icon.h, icon.color] } : {}), ...(label ? { label: [label.left, label.w, label.text] } : {}) }];
-}));
 
 /** Sort header: the th, its button and icon in the three states, with hover and focus-visible paint of the button. */
 async function sortStates(page, scope, clickToDescend) {

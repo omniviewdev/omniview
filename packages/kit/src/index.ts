@@ -40,6 +40,8 @@ export type {
 } from './components/DataTable';
 export { ageTip, compactAge, useAge } from './table/age';
 export type { AgeFormatter, AgeLabel } from './table/age';
+export { RowMenu, RowMenuTrigger, createRowMenu } from './components/RowMenu';
+export type { RowMenuFocus, RowMenuHandle, RowMenuItem, RowMenuProps, RowMenuState, RowMenuTriggerProps } from './components/RowMenu';
 export { Chip } from './components/Chip';
 export type { ChipProps, ChipTone } from './components/Chip';
 export { RovingGroup } from './components/RovingGroup';

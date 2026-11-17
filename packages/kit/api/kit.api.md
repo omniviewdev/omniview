@@ -6,6 +6,7 @@
 
 import { JSX } from 'react';
 import type { MouseEvent as MouseEvent_2 } from 'react';
+import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 
 // @public
@@ -62,6 +63,9 @@ export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 
 
 // @public
 export const compactAge: AgeFormatter;
+
+// @public
+export function createRowMenu<TRow>(): RowMenuHandle<TRow>;
 
 // @public
 export type DataAttributes = Readonly<Record<`data-${string}`, string | number | boolean | undefined>>;
@@ -167,7 +171,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
 
 // @public (undocumented)
 export type IconProps = {
@@ -249,6 +253,62 @@ export type RovingGroupProps = {
     readonly wrap?: boolean | undefined;
     readonly align?: StackAlign | undefined;
     readonly children?: ReactNode;
+} & DataAttributes;
+
+// @public
+export function RowMenu<TRow>(input: RowMenuProps<TRow>): ReactElement | null;
+
+// @public
+export type RowMenuFocus = 'first' | 'last' | 'menu';
+
+// @public
+export type RowMenuHandle<TRow> = {
+    readonly id: string;
+    readonly open: (anchor: HTMLElement, row: TRow, focus?: RowMenuFocus) => void;
+    readonly toggle: (anchor: HTMLElement, row: TRow, focus?: RowMenuFocus) => void;
+    readonly close: (options?: {
+        readonly restoreFocus?: boolean | undefined;
+    }) => void;
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly getSnapshot: () => RowMenuState<TRow>;
+};
+
+// @public
+export type RowMenuItem<TRow> = {
+    readonly id: string;
+    readonly label: string;
+    readonly onSelect: (row: TRow) => void;
+    readonly disabled?: boolean | undefined;
+    readonly destructive?: boolean | undefined;
+    readonly separatorBefore?: boolean | undefined;
+};
+
+// @public (undocumented)
+export type RowMenuProps<TRow> = {
+    readonly handle: RowMenuHandle<TRow>;
+    readonly label: string;
+    readonly items: (row: TRow) => ReadonlyArray<RowMenuItem<TRow>>;
+} & DataAttributes;
+
+// @public
+export type RowMenuState<TRow> = {
+    readonly open: false;
+} | {
+    readonly open: true;
+    readonly row: TRow;
+    readonly anchor: HTMLElement;
+    readonly focus: RowMenuFocus;
+    readonly epoch: number;
+};
+
+// @public
+export const RowMenuTrigger: <TRow>(props: RowMenuTriggerProps<TRow>) => ReactElement;
+
+// @public (undocumented)
+export type RowMenuTriggerProps<TRow> = {
+    readonly handle: RowMenuHandle<TRow>;
+    readonly row: TRow;
+    readonly label: string;
 } & DataAttributes;
 
 // @public (undocumented)

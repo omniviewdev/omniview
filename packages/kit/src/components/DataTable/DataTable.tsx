@@ -70,6 +70,7 @@ export function DataTable<TRow>({
   const regionRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const [scrolled, setScrolled] = useState(false);
+  const scrolledRef = useRef(false);
 
   const sorted = useRowModel({ rows, getRowKey, columns, sort, rowsAreImmutable });
   const rowHeight = useMeasure(probeRef, heightOf, lines === 2 ? TWO_LINES : ONE_LINE);
@@ -133,7 +134,13 @@ export function DataTable<TRow>({
       style={{ '--_max-height': maxHeight === undefined ? undefined : `${maxHeight}px` }}
       data-ov-scrolled={scrolled ? '' : undefined}
       onScroll={(event) => {
-        setScrolled(event.currentTarget.scrollLeft > 0);
+        // Only a change is state: a scroll event that leaves it as it is must not ask React to render, because a same-value update on a
+        // fiber that has just rendered still costs one render (the table counted two commits for every window change).
+        const next = event.currentTarget.scrollLeft > 0;
+        if (next !== scrolledRef.current) {
+          scrolledRef.current = next;
+          setScrolled(next);
+        }
       }}
     >
       <span ref={probeRef} className={styles.probe} aria-hidden="true" />

@@ -31,6 +31,7 @@ export type IconName =
   | 'close'
   | 'columns'
   | 'copy'
+  | 'ellipsis'
   | 'folder-tree'
   | 'layers'
   | 'loader'
@@ -90,6 +91,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   columns: { box: 24, layers: [{ d: 'M5 3H19A2 2 0 0 1 21 5V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3ZM9 3v18M15 3v18', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI general/copy_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuCopy. */
   copy: { box: 16, layers: [{ d: 'M4 3H10A2 2 0 0 1 12 5V12A2 2 0 0 1 10 14H4A2 2 0 0 1 2 12V5A2 2 0 0 1 4 3ZM4 4H10A1 1 0 0 1 11 5V12A1 1 0 0 1 10 13H4A1 1 0 0 1 3 12V5A1 1 0 0 1 4 4ZM5.5 6H8.5A.5 .5 0 0 1 9 6.5V6.5A.5 .5 0 0 1 8.5 7H5.5A.5 .5 0 0 1 5 6.5V6.5A.5 .5 0 0 1 5.5 6ZM5.5 8H8.5A.5 .5 0 0 1 9 8.5V8.5A.5 .5 0 0 1 8.5 9H5.5A.5 .5 0 0 1 5 8.5V8.5A.5 .5 0 0 1 5.5 8ZM5.5 10H8.5A.5 .5 0 0 1 9 10.5V10.5A.5 .5 0 0 1 8.5 11H5.5A.5 .5 0 0 1 5 10.5V10.5A.5 .5 0 0 1 5.5 10ZM11.002 2H11.6C12.373 2 13 2.627 13 3.4V3.911C13.001 3.94 13.002 3.97 13.002 4V11.548C13.606 11.112 14 10.402 14 9.6V3.4C14 2.075 12.925 1 11.6 1H6.4C5.597 1 4.886 1.394 4.45 2H6.4 11.002Z', fill: 'ink', evenodd: true }] },
+  /* Int UI general/moreHorizontal_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuEllipsis. */
+  ellipsis: { box: 16, layers: [{ d: 'M2 8A1 1 0 1 0 4 8A1 1 0 1 0 2 8ZM7 8A1 1 0 1 0 9 8A1 1 0 1 0 7 8ZM12 8A1 1 0 1 0 14 8A1 1 0 1 0 12 8Z', fill: 'ink' }] },
   /* Lucide folder-tree (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuFolderTree. */
   'folder-tree': { box: 24, layers: [{ d: 'M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1ZM20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1ZM3 5a2 2 0 0 0 2 2h3M3 3v13a2 2 0 0 0 2 2h3', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide layers (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuLayers. */
