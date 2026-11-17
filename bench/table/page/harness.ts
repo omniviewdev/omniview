@@ -497,4 +497,96 @@ export class Harness {
       activeAnimations: document.getAnimations().length,
     };
   }
+
+  // ---- the count runs (counts.mjs): what React did for one controlled change ------------------------------------------------------------
+
+  /** Re-render the page's root with the same rows: an unrelated parent update. Set by the page. */
+  rerender: (() => void) | undefined;
+
+  /** The text the identity cell of a mounted row shows (name, then namespace): a row's name and namespace together are unique in the corpus. */
+  private mountedIdentities(): Set<string> {
+    const probe = this.probe;
+    const body = probe?.body();
+    const identities = new Set<string>();
+    if (probe === undefined || body === null || body === undefined) {
+      return identities;
+    }
+
+    for (const child of body.children) {
+      if (child.hasAttribute(probe.indexAttribute)) {
+        identities.add(child.children[1]?.textContent ?? '');
+      }
+    }
+
+    return identities;
+  }
+
+  /** One record replaced by a new object, as a live update delivers it: a row in view, or the last row (out of view). Returns the row's name. */
+  patch(where: 'inView' | 'outOfView') {
+    const mounted = this.mountedIdentities();
+    const rows = this.latestRows.slice();
+    const index = where === 'inView' ? rows.findIndex((row) => mounted.has(row.name + row.namespace)) : rows.findLastIndex((row) => !mounted.has(row.name + row.namespace));
+    const row = rows[index];
+    if (row === undefined) {
+      throw new Error(`no row to patch ${where}`);
+    }
+
+    rows[index] = { ...row, restarts: (row.restarts ?? 0) + 1 };
+    this.latestRows = rows;
+    this.setRows?.(rows);
+    return row.name;
+  }
+
+  private rootRecords: string[] = [];
+  private rootObserver: MutationObserver | undefined;
+
+  /** From now on, record every attribute write on <html> and <body> (B7, rule 4). The theme provider writes before the page is ready, so the runner starts this after. */
+  watchRoot() {
+    this.rootRecords = [];
+    this.rootObserver?.disconnect();
+    this.rootObserver = new MutationObserver((list) => {
+      for (const record of list) {
+        this.rootRecords.push(`${(record.target as Element).tagName}.${record.attributeName ?? ''}`);
+      }
+    });
+    this.rootObserver.observe(document.documentElement, { attributes: true });
+    this.rootObserver.observe(document.body, { attributes: true });
+  }
+
+  rootWrites(): string[] {
+    for (const record of this.rootObserver?.takeRecords() ?? []) {
+      this.rootRecords.push(`${(record.target as Element).tagName}.${record.attributeName ?? ''}`);
+    }
+
+    return this.rootRecords;
+  }
+
+  /** The widths of the first mounted row's cells, in px: the column plan as the engine laid it out. */
+  cellWidths(): number[] {
+    const probe = this.probe;
+    const body = probe?.body();
+    const row = body === null || body === undefined || probe === undefined ? undefined : [...body.children].find((child) => child.hasAttribute(probe.indexAttribute));
+    return row === undefined ? [] : [...row.children].map((cell) => Math.round(cell.getBoundingClientRect().width * 100) / 100);
+  }
+
+  /** Jump through the whole scroll range in `steps` positions, reading the column widths after each: any change after the first reading is a refit while scrolling. */
+  async sweepWidths(steps: number) {
+    const scroller = this.probe?.scroller();
+    if (scroller === null || scroller === undefined) {
+      throw new Error('no scroller');
+    }
+
+    const range = scroller.scrollHeight - scroller.clientHeight;
+    const readings: number[][] = [];
+    for (let step = 0; step <= steps; step += 1) {
+      scroller.scrollTop = Math.round((range * step) / steps);
+      await nextFrame();
+      await nextFrame();
+      readings.push(this.cellWidths());
+    }
+
+    scroller.scrollTop = 0;
+    await nextFrame();
+    return readings;
+  }
 }

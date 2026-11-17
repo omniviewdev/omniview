@@ -33,5 +33,7 @@ export default defineConfig({
     sourcemap: false,
     // One CSS file per lazily loaded variant: the page of one variant never carries another's stylesheet.
     cssCodeSplit: true,
+    // Two pages: the table (index) and the fit planner's own bench (fit).
+    rollupOptions: { input: { index: path.join(here, 'page/index.html'), fit: path.join(here, 'page/fit.html') } },
   },
 });

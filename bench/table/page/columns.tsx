@@ -33,7 +33,10 @@ function AgeCell({ createdAt }: { readonly createdAt: number | undefined }) {
 
 type Cells = 'plain' | 'real';
 
-/** Columns are built once per page and keep their identity (a table input must). `count` wraps each cell in a call counter. */
+/**
+ * Columns are built once per page and keep their identity (a table input must). `count` counts the calls of the identity cell into
+ * `window.__cellCalls`: one call is one row rendered (the cells of a row are all called together), as the kit's counts tests read it.
+ */
 export function createColumns(cells: Cells, count: boolean): ReadonlyArray<DataTableColumn<Row>> {
   const counted = (cell: DataTableColumn<Row>['cell']): DataTableColumn<Row>['cell'] =>
     count
@@ -70,25 +73,23 @@ export function createColumns(cells: Cells, count: boolean): ReadonlyArray<DataT
           ),
       ),
     },
-    { id: 'ready', header: 'Ready', fit: 'fixed', width: 59, align: 'end', sortKey: (row) => (row.ready === undefined ? undefined : row.ready.ready / Math.max(1, row.ready.total)), sortKind: 'number', cell: counted(real ? (row) => <span>{readyText(row)}</span> : readyText) },
+    { id: 'ready', header: 'Ready', fit: 'fixed', width: 59, align: 'end', sortKey: (row) => (row.ready === undefined ? undefined : row.ready.ready / Math.max(1, row.ready.total)), sortKind: 'number', cell: real ? (row) => <span>{readyText(row)}</span> : readyText },
     {
       id: 'status',
       header: 'Status',
       fit: 'fixed',
       width: 157,
       sortKey: (row) => row.status?.word,
-      cell: counted(
-        real
-          ? (row) => (
-            <>
-              <Icon name={glyphOf(row)} />
-              <span>{row.status?.word ?? ''}</span>
-            </>
-          )
-          : (row) => row.status?.word ?? '',
-      ),
+      cell: real
+        ? (row) => (
+          <>
+            <Icon name={glyphOf(row)} />
+            <span>{row.status?.word ?? ''}</span>
+          </>
+        )
+        : (row) => row.status?.word ?? '',
     },
-    { id: 'restarts', header: 'Restarts', fit: 'fixed', width: 72, align: 'end', sortKey: (row) => row.restarts, sortKind: 'number', cell: counted(real ? (row) => <span>{restartsText(row)}</span> : restartsText) },
-    { id: 'age', header: 'Age', fit: 'fixed', width: 59, sortKey: (row) => row.createdAt, sortKind: 'number', cell: counted(real ? (row) => <AgeCell createdAt={row.createdAt} /> : plainAge) },
+    { id: 'restarts', header: 'Restarts', fit: 'fixed', width: 72, align: 'end', sortKey: (row) => row.restarts, sortKind: 'number', cell: real ? (row) => <span>{restartsText(row)}</span> : restartsText },
+    { id: 'age', header: 'Age', fit: 'fixed', width: 59, sortKey: (row) => row.createdAt, sortKind: 'number', cell: real ? (row) => <AgeCell createdAt={row.createdAt} /> : plainAge },
   ];
 }

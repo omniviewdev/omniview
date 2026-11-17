@@ -14,7 +14,7 @@ import type { VariantModule, VariantProps } from './variant';
 const params = new URLSearchParams(window.location.search);
 const variant = params.get('variant') ?? 's';
 const rowsName = params.get('rows') ?? '5025';
-const options: Omit<VariantProps, 'rows' | 'layout'> = {
+const options: Omit<VariantProps, 'rows' | 'layout' | 'tick'> = {
   cells: params.get('cells') === 'real' ? 'real' : 'plain',
   count: params.get('count') === '1',
   overscan: Number(params.get('overscan') ?? 8),
@@ -23,6 +23,10 @@ const options: Omit<VariantProps, 'rows' | 'layout'> = {
 
 const harness = new Harness();
 window.__bench = harness;
+// B1 needs a window of 60 rows: a taller region (`?height=1720`) mounts about 60 with the overscan.
+if (params.has('height')) {
+  document.documentElement.style.setProperty('--stage-height', `${Number(params.get('height'))}px`);
+}
 
 async function load(): Promise<VariantModule> {
   if (variant === 'r') {
@@ -52,10 +56,15 @@ async function start() {
 
   function App() {
     const [current, setCurrent] = useState<readonly Row[]>(rows);
+    const [tick, setTick] = useState(0);
     useEffect(() => {
       harness.attach(module.probe, rows, setCurrent);
+      harness.rerender = () => {
+        setTick((value) => value + 1);
+      };
     }, []);
-    return <Variant rows={current} layout={layout} {...options} />;
+    // `tick` is a prop the variants pass to the table as a data attribute: a render of the parent with nothing else changed is a real render of the table.
+    return <Variant rows={current} layout={layout} tick={tick} {...options} />;
   }
 
   const started = performance.now();
