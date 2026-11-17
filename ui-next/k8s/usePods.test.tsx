@@ -320,3 +320,64 @@ describe('the commands: explicit, and each does one thing', () => {
     expect(refetchCollection).toHaveBeenCalledTimes(1);
   });
 });
+
+// The data-layer items of docs/ui-next/optimisations.md that this hook touches (2.1, 11.2). Each is a guard the inventory asks for.
+describe('must not regress: the data layer (optimisations.md MNR-D1, D3, D5, D6)', () => {
+  it('MNR-D1: one source view, the collection; the first page is a finite read, not a second view', () => {
+    answer({ page: [pod('a')] });
+
+    render();
+
+    expect(resources.mock.calls.filter(([options]) => options.collection === true)).toHaveLength(1);
+    expect(resources.mock.calls.filter(([options]) => options.collection !== true)).toHaveLength(1);
+  });
+
+  it('MNR-D5: every page request asks for at most 256 records, and for no tiny page', () => {
+    answer({ page: [pod('a')] });
+
+    render();
+
+    for (const [options] of resources.mock.calls) {
+      const pageSize = options.request?.request.pageSize ?? 0;
+      expect(pageSize).toBeLessThanOrEqual(256);
+      expect(pageSize).toBeGreaterThanOrEqual(64);
+    }
+  });
+
+  it('MNR-D3: the order of the rows does not depend on the order the host delivers them in', () => {
+    const names = ['pod-10', 'pod-2', 'alpha', 'pod-1', 'Zeta', 'mid'];
+    const records = names.map((name) => pod(name));
+    const shuffled = [4, 0, 5, 2, 1, 3].map((index) => records[index]);
+
+    answer({ collection: records });
+    const sorted = render().result.current.rows.map((row) => row.key);
+    cleanup();
+    answer({ collection: shuffled });
+
+    expect(render().result.current.rows.map((row) => row.key)).toEqual(sorted);
+  });
+
+  it('MNR-D3: a connection that leaves `connected` clears the rows: nothing is applied across a generation', () => {
+    answer({ collection: [pod('a'), pod('b')] });
+    const { result, rerender } = render();
+    expect(result.current.loaded).toBe(2);
+
+    answer({ phase: 'checking', collection: [pod('a'), pod('b')] });
+    rerender({});
+
+    expect(result.current).toMatchObject({ rows: [], loaded: 0, complete: false, state: { kind: 'connecting' } });
+  });
+
+  it('MNR-D6: a failed read is shown once and never asked for again by the hook', () => {
+    const forbidden = { code: 'FORBIDDEN', title: '', message: 'Source session failed.' };
+    answer({ collectionError: forbidden });
+
+    const { rerender } = render();
+    rerender({});
+    rerender({});
+
+    for (const refetch of [refetchCollection, refetchCatalog, refetchTarget, retry, connect]) {
+      expect(refetch).not.toHaveBeenCalled();
+    }
+  });
+});
