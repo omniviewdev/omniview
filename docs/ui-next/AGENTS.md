@@ -87,6 +87,7 @@ Not verified: `OMNIVIEW_UI=next task dev` (the managed dev workspace, `docs/deve
 13. **Pull requests.** One row, one PR, ready for review (not draft), against `main`. Description: what, why (tracker row), how verified, what was not verified. Wait for CI and report the checks. Do not merge: the lead merges green PRs.
 14. **Do not undo existing optimisation.** Before replacing or rewriting any existing table, log viewer, terminal, editor, data hook or startup path, read `docs/ui-next/optimisations.md` and keep or re-express every item on its "must not regress" list; if the file does not cover what you are touching, stop and add it first (tracker row N17).
 15. **The host and the kit are plugin-agnostic.** No plugin-specific code or vocabulary outside a marked scaffolding directory (`ui-next/k8s/`, `ui-next/pods/`: temporary, moved into the Kubernetes plugin and deleted from the host before the calibration gate; decision A13, row N19). `kit/scaffold-boundary` and the vocabulary guard in `packages/kit/eslint` enforce it.
+16. **Automated review.** Before reporting a PR ready, check for automated review comments (CodeRabbit). If it reviewed, read every comment, fix or answer each in the PR, and report how many there were and what you did. If it was rate-limited or skipped, say so and move on.
 
 ## The kit
 

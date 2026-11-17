@@ -45,9 +45,18 @@ start() {
 }
 
 stop() {
-  local pidfile="$work/$1/host.pid"
+  local pidfile="$work/$1/host.pid" pid
   if [[ -f "$pidfile" ]]; then
-    kill "$(cat "$pidfile")" 2>/dev/null || true
+    pid="$(cat "$pidfile")"
+    kill "$pid" 2>/dev/null || true
+    # Wait for the exit so a stale host cannot hold the port of the next run; SIGKILL after 10 s.
+    for _ in $(seq 1 50); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.2
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
     rm -f "$pidfile"
   fi
 }
