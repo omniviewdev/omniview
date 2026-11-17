@@ -90,4 +90,18 @@ export type DataTableProps<TRow> = {
   readonly rowsAreImmutable?: boolean | undefined;
   /** The height at which the region starts to scroll, in px. Without it the region fills what its parent gives it (a data view's body). */
   readonly maxHeight?: number | undefined;
-} & DataAttributes;
+} & DataTableMeasurementKnobs &
+  DataAttributes;
+
+/**
+ * MEASUREMENT KNOBS of row 1a.3b (`docs/ui-next/status/1a.3b.md`): the two row layouts under test and the window constants of the sweep.
+ * They exist only on the commit the bench measures; the cleanup commit removes them together with the losing layout.
+ */
+export type DataTableMeasurementKnobs = {
+  /** `spacer`: native rows in normal flow between two spacer rows (plan 3.3 item 2). `absolute`: rows `position: absolute` moved by `translateY`, with explicit ARIA roles. */
+  readonly layout?: 'spacer' | 'absolute' | undefined;
+  /** Rows mounted beyond the viewport on each side, before the step rounds the window outwards. */
+  readonly overscan?: number | undefined;
+  /** The window moves in steps of this many rows. */
+  readonly rangeStep?: number | undefined;
+};

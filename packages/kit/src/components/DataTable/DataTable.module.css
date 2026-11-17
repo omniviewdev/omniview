@@ -300,4 +300,132 @@
   .region[data-ov-scrolled] .cell[data-ov-edge] {
     box-shadow: inset -1px 0 0 var(--ov-border-subtle);
   }
+
+  /* LAYOUT UNDER TEST (row 1a.3b, removed by the cleanup commit): `absolute`. The shipped technique of the old table, rebuilt on these
+     components: the body has the total height, every row is `position: absolute` and moved by `translateY` of one custom property on
+     the row, rows and header rows are `display: flex` (a sticky cell is constrained to its grid area, so grid rows would break pinned
+     columns), and the column widths are the table's custom properties `--_w-N`. Explicit roles on the parts are in the markup. */
+  .table[data-ov-layout='absolute'] {
+    display: block;
+  }
+
+  .table[data-ov-layout='absolute'] > thead {
+    display: block;
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+  }
+
+  .table[data-ov-layout='absolute'] > thead > tr {
+    display: flex;
+    width: 100%;
+  }
+
+  .table[data-ov-layout='absolute'] .head:not([data-ov-pin]) {
+    position: static;
+  }
+
+  .table[data-ov-layout='absolute'] > tbody {
+    display: block;
+    position: relative;
+    height: var(--_body-height, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > tbody > tr {
+    display: flex;
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    height: var(--_row-height);
+    transform: translateY(var(--_row-offset, 0));
+  }
+
+  .table[data-ov-layout='absolute'] > tbody > tr > .cell {
+    display: block;
+  }
+
+  .table[data-ov-layout='absolute'] > tbody > tr > .cell[data-ov-kind='select'] {
+    display: flex;
+    align-items: center;
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(1) {
+    flex: 0 0 var(--_w-0, 0);
+    width: var(--_w-0, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(2) {
+    flex: 0 0 var(--_w-1, 0);
+    width: var(--_w-1, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(3) {
+    flex: 0 0 var(--_w-2, 0);
+    width: var(--_w-2, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(4) {
+    flex: 0 0 var(--_w-3, 0);
+    width: var(--_w-3, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(5) {
+    flex: 0 0 var(--_w-4, 0);
+    width: var(--_w-4, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(6) {
+    flex: 0 0 var(--_w-5, 0);
+    width: var(--_w-5, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(7) {
+    flex: 0 0 var(--_w-6, 0);
+    width: var(--_w-6, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(8) {
+    flex: 0 0 var(--_w-7, 0);
+    width: var(--_w-7, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(9) {
+    flex: 0 0 var(--_w-8, 0);
+    width: var(--_w-8, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(10) {
+    flex: 0 0 var(--_w-9, 0);
+    width: var(--_w-9, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(11) {
+    flex: 0 0 var(--_w-10, 0);
+    width: var(--_w-10, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(12) {
+    flex: 0 0 var(--_w-11, 0);
+    width: var(--_w-11, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(13) {
+    flex: 0 0 var(--_w-12, 0);
+    width: var(--_w-12, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(14) {
+    flex: 0 0 var(--_w-13, 0);
+    width: var(--_w-13, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(15) {
+    flex: 0 0 var(--_w-14, 0);
+    width: var(--_w-14, 0);
+  }
+
+  .table[data-ov-layout='absolute'] > :is(thead, tbody) > tr > :nth-child(16) {
+    flex: 0 0 var(--_w-15, 0);
+    width: var(--_w-15, 0);
+  }
 }

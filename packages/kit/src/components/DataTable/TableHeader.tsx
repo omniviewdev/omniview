@@ -10,6 +10,8 @@ type HeaderProps<TRow> = {
   /** Present only when the table can change its sort: a header then holds a button. */
   readonly onSort: ((column: string) => void) | undefined;
   readonly pins: Pins;
+  /** Layout `absolute` (1a.3b): the table's own parts lose their native roles under `display: flex`, so the header names them. */
+  readonly roles: boolean;
 };
 
 type AllProps = {
@@ -41,14 +43,15 @@ function SelectAll({ state, label, onToggle }: AllProps) {
 }
 
 /** The header row, sticky to the top of the region: one cell a column, a native button in each sortable one, the sort state in `aria-sort`. */
-export function TableHeader<TRow>({ columns, selection, sort, onSort, pins }: HeaderProps<TRow>) {
+export function TableHeader<TRow>({ columns, selection, sort, onSort, pins, roles }: HeaderProps<TRow>) {
   const shift = selection === undefined ? 0 : 1;
   return (
-    <thead>
-      <tr aria-rowindex={1}>
+    <thead role={roles ? 'rowgroup' : undefined}>
+      <tr role={roles ? 'row' : undefined} aria-rowindex={1}>
         {selection === undefined ? null : (
           <th
             scope="col"
+            role={roles ? 'columnheader' : undefined}
             className={styles.head}
             data-ov-kind="select"
             data-ov-pin={pins.pinned[0] ? 0 : undefined}
@@ -66,6 +69,7 @@ export function TableHeader<TRow>({ columns, selection, sort, onSort, pins }: He
             <th
               key={column.id}
               scope="col"
+              role={roles ? 'columnheader' : undefined}
               className={styles.head}
               data-ov-align={column.align === 'end' ? 'end' : undefined}
               data-ov-sortable={sortable ? '' : undefined}

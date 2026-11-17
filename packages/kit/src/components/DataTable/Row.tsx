@@ -20,18 +20,28 @@ type RowProps<TRow> = {
   readonly selectLabel: string;
   readonly columns: ReadonlyArray<DataTableColumn<TRow>>;
   readonly pins: Pins;
+  /** Layout `absolute` (1a.3b): the row's distance from the top of the body in px, and explicit ARIA roles on the row and its cells. Undefined in layout `spacer`. */
+  readonly start: number | undefined;
 };
 
 // A controlled checkbox needs a change handler to be valid, and the table has one handler for every row: the body's. One shared function
 // is a function that is not made again for each row.
 const noop = () => undefined;
 
-function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins }: RowProps<TRow>) {
+function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins, start }: RowProps<TRow>) {
   const shift = selected === undefined ? 0 : 1;
+  const absolute = start !== undefined;
   return (
-    <tr className={styles.row} aria-rowindex={index + 2} data-ov-index={index} data-ov-selected={selected === true ? 'true' : undefined}>
+    <tr
+      className={styles.row}
+      role={absolute ? 'row' : undefined}
+      style={absolute ? { '--_row-offset': `${start}px` } : undefined}
+      aria-rowindex={index + 2}
+      data-ov-index={index}
+      data-ov-selected={selected === true ? 'true' : undefined}
+    >
       {selected === undefined ? null : (
-        <td className={styles.cell} data-ov-kind="select" data-ov-pin={pins.pinned[0] ? 0 : undefined} data-ov-edge={pins.edge === 0 ? '' : undefined}>
+        <td className={styles.cell} role={absolute ? 'cell' : undefined} data-ov-kind="select" data-ov-pin={pins.pinned[0] ? 0 : undefined} data-ov-edge={pins.edge === 0 ? '' : undefined}>
           <input type="checkbox" className={styles.check} checked={selected} onChange={noop} aria-label={selectLabel} data-ov-select="" />
         </td>
       )}
@@ -41,6 +51,7 @@ function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins }: Row
           <td
             key={column.id}
             className={styles.cell}
+            role={absolute ? 'cell' : undefined}
             data-ov-align={column.align === 'end' ? 'end' : undefined}
             data-ov-pin={pins.pinned[slot] ? slot : undefined}
             data-ov-edge={pins.edge === slot ? '' : undefined}
