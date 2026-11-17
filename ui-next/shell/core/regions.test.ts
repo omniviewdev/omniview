@@ -28,23 +28,16 @@ describe('cycle (F6 and Shift+F6)', () => {
   });
 
   it('visits every region once in a full turn, each way', () => {
-    const forward: string[] = [];
-    let at: string | undefined;
-    for (let step = 0; step < stops.length; step += 1) {
-      at = cycle(stops, at, 1);
-      forward.push(String(at));
-    }
+    const turn = (step: 1 | -1) => {
+      let at: string | undefined;
+      return stops.map(() => {
+        at = cycle(stops, at, step);
+        return String(at);
+      });
+    };
 
-    expect(forward).toEqual(stops);
-
-    const back: string[] = [];
-    at = undefined;
-    for (let step = 0; step < stops.length; step += 1) {
-      at = cycle(stops, at, -1);
-      back.push(String(at));
-    }
-
-    expect(back).toEqual([...stops].reverse());
+    expect(turn(1)).toEqual(stops);
+    expect(turn(-1)).toEqual([...stops].reverse());
   });
 });
 

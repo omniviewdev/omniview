@@ -26,8 +26,8 @@ export type TreeRow<Node extends TreeShape<Node> = TreeLike> = {
 };
 
 /** The rows on screen, in order: every root, and the children of each open group. One pass over what is visible. */
-export function visibleRows<Node extends TreeShape<Node>>(nodes: readonly Node[], open: ReadonlySet<string>): TreeRow<Node>[] {
-  const rows: TreeRow<Node>[] = [];
+export function visibleRows<Node extends TreeShape<Node>>(nodes: readonly Node[], open: ReadonlySet<string>): Array<TreeRow<Node>> {
+  const rows: Array<TreeRow<Node>> = [];
   const walk = (siblings: readonly Node[], level: number, parent: string | undefined): void => {
     siblings.forEach((node, index) => {
       const expandable = (node.children?.length ?? 0) > 0;
@@ -38,6 +38,7 @@ export function visibleRows<Node extends TreeShape<Node>>(nodes: readonly Node[]
       }
     });
   };
+
   walk(nodes, 1, undefined);
   return rows;
 }
@@ -61,6 +62,7 @@ export function revealed<Node extends TreeShape<Node>>(nodes: readonly Node[], o
       }
     }
   };
+
   visit(nodes, []);
 
   const result = new Set<string>();
@@ -95,7 +97,7 @@ export function toggled(open: ReadonlySet<string>, id: string, force?: boolean):
 }
 
 /** The row that holds the tree's one tab stop: the stop if it is still a row, else the current entry, else the first row. */
-export function stopOf<Node extends TreeShape<Node>>(rows: readonly TreeRow<Node>[], stop: string | undefined, current: string | undefined): string | undefined {
+export function stopOf<Node extends TreeShape<Node>>(rows: ReadonlyArray<TreeRow<Node>>, stop: string | undefined, current: string | undefined): string | undefined {
   const isRow = (id: string | undefined) => id !== undefined && rows.some((row) => row.id === id);
   if (isRow(stop)) {
     return stop;
@@ -117,7 +119,7 @@ export type KeyResult = {
  * Right opens a group and then enters it, Left closes an open group and then goes to the parent, Enter and Space open or close a group
  * and choose an entry. The opened set is the one given unless a group opened or closed.
  */
-export function press<Node extends TreeShape<Node>>(rows: readonly TreeRow<Node>[], open: ReadonlySet<string>, stop: string | undefined, key: string): KeyResult {
+export function press<Node extends TreeShape<Node>>(rows: ReadonlyArray<TreeRow<Node>>, open: ReadonlySet<string>, stop: string | undefined, key: string): KeyResult {
   const at = rows.findIndex((row) => row.id === stop);
   const row = rows[at];
   const ignored: KeyResult = { handled: false, open, stop, activate: undefined };

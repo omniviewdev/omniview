@@ -26,8 +26,8 @@ describe('visibleRows', () => {
     const rows = visibleRows(nodes, set('gamma', 'gamma-1'));
     const byId = Object.fromEntries(rows.map((row) => [row.id, row]));
 
-    expect(byId['alpha']).toMatchObject({ level: 1, position: 1, setSize: 3, parent: undefined, expandable: true, expanded: false });
-    expect(byId['beta']).toMatchObject({ level: 1, position: 2, setSize: 3, expandable: false, expanded: false });
+    expect(byId.alpha).toMatchObject({ level: 1, position: 1, setSize: 3, parent: undefined, expandable: true, expanded: false });
+    expect(byId.beta).toMatchObject({ level: 1, position: 2, setSize: 3, expandable: false, expanded: false });
     expect(byId['gamma-1']).toMatchObject({ level: 2, position: 1, setSize: 2, parent: 'gamma', expandable: true, expanded: true });
     expect(byId['gamma-1-x']).toMatchObject({ level: 3, position: 1, setSize: 1, parent: 'gamma-1', expandable: false });
   });
