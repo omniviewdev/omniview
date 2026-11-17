@@ -19,7 +19,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ENGINES, buildPage, ensureCorpus, environment, here, openPage, pageIdentity, serve } from './lib.mjs';
 
-const { values: args } = parseArgs({ options: { variants: { type: 'string', default: 's,a,r' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false }, tag: { type: 'string', default: 'a11y' } } });
+const { values: args } = parseArgs({ options: { variants: { type: 'string', default: 's,r' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false }, tag: { type: 'string', default: 'a11y' } } });
 const AXE = process.env.AXE ?? '/tmp/axe-core/node_modules/axe-core/axe.min.js';
 const dist = path.resolve(args.dist ?? path.join(here, '.dist-normal'));
 if (!args['no-build']) {

@@ -104,7 +104,7 @@ export class Harness {
   private cellCallsAtStart = 0;
 
   /** React's own count of what it rendered (the profiling build; the normal build leaves it at zero): commits by phase and their durations. */
-  readonly profile = { commits: 0, mount: 0, update: 0, 'nested-update': 0, actualMs: 0, baseMs: 0 };
+  readonly profile: { commits: number; mount: number; update: number; 'nested-update': number; actualMs: number; baseMs: number; log: Array<[string, number, number]> } = { commits: 0, mount: 0, update: 0, 'nested-update': 0, actualMs: 0, baseMs: 0, log: [] };
   failure: string | undefined;
 
   /** Resolves with the page's facts once a row is on screen. */

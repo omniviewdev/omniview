@@ -65,12 +65,8 @@ export function DataTable<TRow>({
   onRowActivate,
   rowsAreImmutable = false,
   maxHeight,
-  layout = 'spacer',
-  overscan = OVERSCAN,
-  rangeStep = RANGE_STEP,
   ...rest
 }: DataTableProps<TRow>) {
-  const absolute = layout === 'absolute';
   const regionRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -79,7 +75,7 @@ export function DataTable<TRow>({
   const sorted = useRowModel({ rows, getRowKey, columns, sort, rowsAreImmutable });
   const rowHeight = useMeasure(probeRef, heightOf, lines === 2 ? TWO_LINES : ONE_LINE);
   const width = useMeasure(regionRef, widthOf, 0);
-  const windowed = useVirtualRows({ count: sorted.length, getScrollElement: () => regionRef.current, rowHeight, overscan, rangeStep });
+  const windowed = useVirtualRows({ count: sorted.length, getScrollElement: () => regionRef.current, rowHeight, overscan: OVERSCAN, rangeStep: RANGE_STEP });
 
   const hasSelection = selection !== undefined;
   const canSort = onSortChange !== undefined;
@@ -150,8 +146,6 @@ export function DataTable<TRow>({
       <span ref={probeRef} className={styles.probe} aria-hidden="true" />
       <table
         className={styles.table}
-        role={absolute ? 'table' : undefined}
-        data-ov-layout={layout}
         style={{
           '--_table-width': `${plan.total}px`,
           '--_pin-0': offset(0),
@@ -159,18 +153,15 @@ export function DataTable<TRow>({
           '--_pin-2': offset(2),
           '--_pin-3': offset(3),
           '--_pin-4': offset(4),
-          ...(absolute ? Object.fromEntries(plan.widths.map((columnWidth, slot) => [`--_w-${slot}`, `${columnWidth}px`])) : {}),
         }}
         aria-rowcount={sorted.length + 1}
         data-ov-activatable={onRowActivate === undefined ? undefined : ''}
       >
-        {absolute ? null : (
-          <colgroup>
-            {plan.widths.map((columnWidth, slot) => (
-              <col key={fitted[slot]?.id ?? slot} className={styles.col} style={{ '--_width': `${columnWidth}px` }} />
-            ))}
-          </colgroup>
-        )}
+        <colgroup>
+          {plan.widths.map((columnWidth, slot) => (
+            <col key={fitted[slot]?.id ?? slot} className={styles.col} style={{ '--_width': `${columnWidth}px` }} />
+          ))}
+        </colgroup>
         <TableHeader
           columns={columns}
           selection={selection}
@@ -179,7 +170,6 @@ export function DataTable<TRow>({
             onSortChange({ column, direction: nextDirection(sort, column) });
           }}
           pins={pins}
-          roles={absolute}
         />
         <TableBody
           rows={sorted}
@@ -191,7 +181,6 @@ export function DataTable<TRow>({
           pins={pins}
           span={fitted.length}
           onClick={onBodyClick}
-          layout={layout}
         />
       </table>
     </div>

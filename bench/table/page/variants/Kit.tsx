@@ -1,5 +1,5 @@
-// The kit's DataTable, as ui-next mounts it: the built package, its stylesheet and a ThemeProvider. S and A are this one component with the
-// `layout` knob (row 1a.3b); everything else is shared.
+// The kit's DataTable, as ui-next mounts it: the built package, its stylesheet and a ThemeProvider. (The measurement of row 1a.3b also mounted
+// layout A through knobs that existed only on commit f4b92809; docs/ui-next/baseline/2026-11-16-table.md names it.)
 import '@omniviewdev/kit/styles.css';
 import { DataTable, ThemeProvider, type DataTableSelection, type DataTableSort } from '@omniviewdev/kit';
 import { useMemo, useState } from 'react';
@@ -22,7 +22,7 @@ export const probe: Probe = {
   sortControl: () => [...document.querySelectorAll<HTMLElement>('[data-bench-scroller] thead th button')].find((button) => button.textContent?.startsWith('Name')) ?? null,
 };
 
-export default function KitVariant({ rows, cells, count, layout, overscan, rangeStep, tick }: VariantProps) {
+export default function KitVariant({ rows, cells, count, tick }: VariantProps) {
   const columns = useMemo(() => createColumns(cells, count), [cells, count]);
   const [sort, setSort] = useState<DataTableSort | undefined>({ column: 'name', direction: 'ascending' });
   const [selected, setSelected] = useState<ReadonlySet<string>>(NO_SELECTION);
@@ -58,9 +58,6 @@ export default function KitVariant({ rows, cells, count, layout, overscan, range
           onSortChange={setSort}
           selection={count ? live : fixed}
           rowsAreImmutable
-          layout={layout}
-          overscan={overscan}
-          rangeStep={rangeStep}
         />
       </div>
     </ThemeProvider>

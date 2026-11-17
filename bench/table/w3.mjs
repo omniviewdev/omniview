@@ -13,7 +13,7 @@ import { parseArgs } from 'node:util';
 import { ENGINES, buildPage, ensureCorpus, environment, here, load1, pageIdentity, serve, series } from './lib.mjs';
 
 const { values: args } = parseArgs({
-  options: { engine: { type: 'string' }, configs: { type: 'string', default: 's,a,r' }, only: { type: 'string', default: 'b1,mount,sort' }, rounds: { type: 'string', default: '15' }, pages: { type: 'string', default: '5' }, tag: { type: 'string' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false } },
+  options: { engine: { type: 'string' }, configs: { type: 'string', default: 's,r' }, only: { type: 'string', default: 'b1,mount,sort' }, rounds: { type: 'string', default: '15' }, pages: { type: 'string', default: '5' }, tag: { type: 'string' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false } },
 });
 const engine = args.engine;
 if (!(engine in ENGINES)) {

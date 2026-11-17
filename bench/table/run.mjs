@@ -30,7 +30,7 @@ const { values: args } = parseArgs({
   options: {
     engine: { type: 'string' },
     workload: { type: 'string', default: 'w1' },
-    configs: { type: 'string', default: 's,a,r,c' },
+    configs: { type: 'string', default: 's,r,c' },
     rounds: { type: 'string', default: '15' },
     cpu: { type: 'string', default: '1' },
     rows: { type: 'string', default: '5025' },
@@ -68,7 +68,7 @@ const out = path.join(here, 'results', tag);
 mkdirSync(out, { recursive: true });
 
 const configs = args.configs.split(',').map((token) => {
-  const match = /^([sarc])(?:@(\d+)\/(\d+))?$/.exec(token);
+  const match = /^([src])(?:@(\d+)\/(\d+))?$/.exec(token);
   if (match === null) {
     throw new Error(`bad config ${token}`);
   }

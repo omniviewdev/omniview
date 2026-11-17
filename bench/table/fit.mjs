@@ -7,7 +7,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { ENGINES, buildPage, ensureCorpus, environment, here, openPage, pageIdentity, pointerOverTable, serve, sleep, wheel } from './lib.mjs';
 
-const { values: args } = parseArgs({ options: { engine: { type: 'string' }, layouts: { type: 'string', default: 's,a' }, tag: { type: 'string' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false } } });
+const { values: args } = parseArgs({ options: { engine: { type: 'string' }, layouts: { type: 'string', default: 's' }, tag: { type: 'string' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false } } });
 const engine = args.engine;
 if (!(engine in ENGINES)) {
   throw new Error('--engine must be chromium or webkit');

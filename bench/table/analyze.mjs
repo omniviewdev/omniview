@@ -8,7 +8,6 @@
 // `prefix` is what matrix.sh was given (m1): the directories bench/table/results/<prefix>-<engine>-<workload>[-4x].
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { median } from '../app/stats.mjs';
 import { beats, figures, fmt, percent, readTrials, round2 } from './figures.mjs';
 
 const { values: args, positionals } = parseArgs({ allowPositionals: true, options: { a11y: { type: 'string' }, json: { type: 'string' } } });
@@ -188,5 +187,3 @@ process.stdout.write(`${lines.join('\n')}\n`);
 if (args.json !== undefined) {
   writeFileSync(args.json, `${JSON.stringify(out, null, 2)}\n`);
 }
-
-void median;

@@ -19,7 +19,7 @@ import { parseArgs } from 'node:util';
 import { ENGINES, SPARSE, buildPage, ensureCorpus, environment, here, openPage, pageIdentity, pointerOverTable, serve, sleep, wheel } from './lib.mjs';
 
 const { values: args } = parseArgs({
-  options: { engine: { type: 'string' }, layouts: { type: 'string', default: 's,a' }, tag: { type: 'string' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false }, rows: { type: 'string', default: 'rows' }, seconds: { type: 'string', default: '10' } },
+  options: { engine: { type: 'string' }, layouts: { type: 'string', default: 's' }, tag: { type: 'string' }, dist: { type: 'string' }, 'no-build': { type: 'boolean', default: false }, rows: { type: 'string', default: 'rows' }, seconds: { type: 'string', default: '10' } },
 });
 const engine = args.engine;
 if (!(engine in ENGINES)) {
@@ -57,10 +57,15 @@ async function exercise(browser, variant, rows) {
     await sleep(300);
     result.patchInView = delta(before, await snapshot(page));
 
-    before = await snapshot(page);
-    await page.evaluate(() => window.__bench.patch('outOfView'));
-    await sleep(300);
-    result.patchOutOfView = delta(before, await snapshot(page));
+    // With 25 rows the window holds all of them: there is no row out of view to patch.
+    if (Number(rows) > result.shape.mountedRows) {
+      before = await snapshot(page);
+      await page.evaluate(() => window.__bench.patch('outOfView'));
+      await sleep(300);
+      result.patchOutOfView = delta(before, await snapshot(page));
+    } else {
+      result.patchOutOfView = null;
+    }
 
     before = await snapshot(page);
     await page.evaluate(() => window.__bench.rerender());

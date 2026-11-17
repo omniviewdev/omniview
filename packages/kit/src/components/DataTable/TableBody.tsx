@@ -18,23 +18,20 @@ type BodyProps<TRow> = {
   readonly span: number;
   /** The table's one click handler. */
   readonly onClick: MouseEventHandler<HTMLTableSectionElement>;
-  /** Layout under test (1a.3b): `absolute` positions each row itself and gives the body its total height; `spacer` stands the rows out of the window in for two rows. */
-  readonly layout: 'spacer' | 'absolute';
 };
 
 /**
  * The rows in the window, in normal flow between two spacer rows that stand for the rows above and below it (plan 3.3 item 2; the
  * layout the measurement chose, `docs/ui-next/baseline/`). The body has one click handler for all rows.
  */
-export function TableBody<TRow>({ rows, items, totalSize, rowHeight, columns, selection, pins, span, onClick, layout }: BodyProps<TRow>) {
-  const absolute = layout === 'absolute';
+export function TableBody<TRow>({ rows, items, totalSize, rowHeight, columns, selection, pins, span, onClick }: BodyProps<TRow>) {
   const first = items[0];
   const last = items.at(-1);
   const above = first === undefined ? 0 : first.start;
   const below = last === undefined ? 0 : Math.max(0, totalSize - last.start - rowHeight);
   return (
-    <tbody onClick={onClick} role={absolute ? 'rowgroup' : undefined} style={absolute ? { '--_body-height': `${totalSize}px` } : undefined}>
-      {!absolute && above > 0 ? <Spacer height={above} span={span} /> : null}
+    <tbody onClick={onClick}>
+      {above > 0 ? <Spacer height={above} span={span} /> : null}
       {items.map((item) => {
         const row = rows[item.index];
         if (row === undefined) {
@@ -50,11 +47,10 @@ export function TableBody<TRow>({ rows, items, totalSize, rowHeight, columns, se
             selectLabel={selection === undefined ? '' : selection.label(row.original)}
             columns={columns}
             pins={pins}
-            start={absolute ? item.start : undefined}
           />
         );
       })}
-      {!absolute && below > 0 ? <Spacer height={below} span={span} /> : null}
+      {below > 0 ? <Spacer height={below} span={span} /> : null}
     </tbody>
   );
 }
