@@ -4,7 +4,7 @@
 - Goal: write `docs/ui-next/slices/1a-pods-list.md` (the build plan for the Kubernetes Pods list on real data in `ui-next`) and land the thinnest skeleton that removes the biggest unknown it finds (the `ui-next` entry reading a live Pod list from a connected cluster through the existing runtime). Plan merged-ready; skeleton verified or its blocker documented; CI green; stable build output unchanged.
 - Worktree: `~/Repos/omniviewdev/worktrees/ui-next-slice-1a-plan` (read-only plugin checkout at origin/main 524d123: `~/Repos/omniviewdev/worktrees/ui-next-slice-1a-plan-k8s`; base for the stable-output compare: `~/Repos/omniviewdev/worktrees/ui-next-slice-1a-plan-base`)
 - Branch: `ui-next/slice-1a-plan`
-- PR: see the tracker row N11b
+- PR: https://github.com/omniviewdev/omniview/pull/509 (ready, base `main`; not merged)
 
 ## Log
 
