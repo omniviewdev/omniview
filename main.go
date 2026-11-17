@@ -845,8 +845,9 @@ func main() {
 		),
 		UseApplicationMenu: true,
 		Mac: application.MacWindow{
-			TitleBar: application.MacTitleBarHidden,
-			Backdrop: application.MacBackdropTranslucent,
+			TitleBar:           application.MacTitleBarHidden,
+			Backdrop:           application.MacBackdropTranslucent,
+			WebviewPreferences: macWebviewPreferences(),
 		},
 	}
 

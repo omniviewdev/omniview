@@ -1,0 +1,23 @@
+// N22 LOCAL ONLY (never committed): on-screen log of focus order, key presses, activations and console errors, so the native window can be read without a Web Inspector.
+let seq = 0;
+const lines: string[] = [];
+const box = document.createElement('pre');
+box.id = 'n22-debug';
+box.style.cssText = 'position:fixed;right:4px;bottom:24px;max-width:46vw;max-height:60vh;overflow:hidden;margin:0;padding:4px 6px;font:10px/12px monospace;color:#0f0;background:rgba(0,0,0,.85);z-index:2147483647;pointer-events:none;white-space:pre-wrap;';
+const describe = (t: HTMLElement) => `${t.tagName.toLowerCase()}${t.getAttribute('role') ? ` role=${t.getAttribute('role')}` : ''}${t.getAttribute('aria-label') ? ` aria="${t.getAttribute('aria-label')}"` : ''} text="${(t.textContent ?? '').trim().slice(0, 22)}"`;
+const push = (kind: string, text: string) => {
+  lines.push(`${new Date().toISOString().slice(17, 23)} ${kind} ${text.slice(0, 200)}`);
+  while (lines.length > 40) lines.shift();
+  box.textContent = lines.join('\n');
+};
+for (const kind of ['error', 'warn'] as const) {
+  const original = console[kind].bind(console);
+  console[kind] = (...args: unknown[]) => { push(kind, args.map(String).join(' ')); original(...args); };
+}
+window.addEventListener('error', (e) => push('onerror', `${e.message} ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => push('rejection', String(e.reason)));
+document.addEventListener('focusin', (e) => push(`focus#${++seq}`, describe(e.target as HTMLElement)));
+document.addEventListener('keydown', (e) => push('key', `${e.shiftKey ? 'Shift+' : ''}${e.key === ' ' ? 'Space' : e.key} on ${describe(e.target as HTMLElement)}`), true);
+document.addEventListener('click', (e) => push('click', describe(e.target as HTMLElement)), true);
+window.addEventListener('DOMContentLoaded', () => document.body.appendChild(box));
+window.addEventListener('load', () => push('ua', `${navigator.userAgent.slice(-40)} dpr=${window.devicePixelRatio} inner=${innerWidth}x${innerHeight}`));
