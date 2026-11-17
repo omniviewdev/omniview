@@ -3,15 +3,38 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { formatFailures, scanText, scanTrees } from './vocabulary.mjs';
+import { formatFailures, RATCHET, ratchetFailures, scanText, scanTrees } from './vocabulary.mjs';
 
 const BEGIN = '// SCAFFOLDING(N19): begin';
 const END = '// SCAFFOLDING(N19): end';
 
 describe('the real trees', () => {
-  it('hold no plugin vocabulary outside a marked scaffolding directory or region', () => {
+  it('hold no plugin vocabulary outside a marked scaffolding directory or region, beyond the ratchet', () => {
     const result = scanTrees();
-    expect([...result.hits, ...result.problems].length, formatFailures(result)).toBe(0);
+    const failures = ratchetFailures(result.hits);
+    expect([...failures, ...result.problems], `${formatFailures({ hits: [], problems: result.problems })}\n${failures.join('\n')}`).toEqual([]);
+  });
+
+  it('the ratchet lists only files that exist', () => {
+    const files = new Set(scanTrees().hits.map((hit) => hit.file));
+    for (const file of Object.keys(RATCHET)) expect(files.has(file), file).toBe(true);
+  });
+});
+
+describe('ratchetFailures', () => {
+  const hit = (file) => ({ file, line: 1, word: 'Pod' });
+
+  it('fails a file that is not listed, on its first word', () => {
+    expect(ratchetFailures([hit('a.ts')], {})).toEqual(['a.ts: 1 plugin words, none allowed']);
+  });
+
+  it('fails a listed file that gains a word, and one that has none left', () => {
+    expect(ratchetFailures([hit('a.ts'), hit('a.ts')], { 'a.ts': 1 })).toEqual(['a.ts: 2 plugin words, 1 allowed']);
+    expect(ratchetFailures([], { 'a.ts': 1 })).toEqual(['a.ts: no plugin word left, remove it from RATCHET']);
+  });
+
+  it('passes a listed file at or under its allowance', () => {
+    expect(ratchetFailures([hit('a.ts')], { 'a.ts': 2 })).toEqual([]);
   });
 });
 

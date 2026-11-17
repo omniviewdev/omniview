@@ -56,12 +56,13 @@ function* walk(directory, root, skipped) {
 }
 
 /**
- * Scans the two trees under `root`: `packages/kit/` (minus the guard folder, which holds the probes) and `ui-next/`
- * (minus every scaffolding directory). A tree that does not exist is skipped.
+ * Scans the two trees under `root`: `packages/kit/` (minus the guard folder, which holds the probes, and `probes/`, the recordings of
+ * the design mock, whose sample data is Kubernetes) and `ui-next/` (minus every scaffolding directory). A tree that does not exist is
+ * skipped.
  */
 export function scanTrees(root = REPO_ROOT) {
   const trees = [
-    { dir: 'packages/kit', skipped: ['packages/kit/eslint'] },
+    { dir: 'packages/kit', skipped: ['packages/kit/eslint', 'packages/kit/probes'] },
     { dir: 'ui-next', skipped: SCAFFOLDING },
   ];
   const hits = [];
@@ -81,6 +82,35 @@ export function scanTrees(root = REPO_ROOT) {
     }
   }
   return { hits, problems };
+}
+
+/**
+ * The files that already held plugin words when this guard came in: they merged with the kit atoms (#515) while decision A13 was being
+ * written. A RATCHET, so it only goes down: a file that is not listed fails on its first word, a listed file fails when it gains a word,
+ * and fails when it has none left (delete its line). The owner of those files replaces the sample words with neutral ones.
+ */
+export const RATCHET = Object.freeze({
+  'packages/kit/src/components/Button/Button.test.tsx': 3,
+  'packages/kit/src/components/Icon/glyphs.test.ts': 1,
+  'packages/kit/src/components/Icon/glyphs.ts': 1,
+  'packages/kit/src/components/IconButton/IconButton.examples.tsx': 7,
+  'packages/kit/src/components/IconButton/IconButton.test.tsx': 12,
+  'ui-next/parts/PartsPage.test.tsx': 1,
+});
+
+/** What the ratchet objects to: a file over its allowance (none, when it is not listed), and a listed file that has none left. */
+export function ratchetFailures(hits, allowed = RATCHET) {
+  const counts = new Map();
+  for (const { file } of hits) counts.set(file, (counts.get(file) ?? 0) + 1);
+  const failures = [];
+  for (const [file, count] of counts) {
+    const allowance = allowed[file] ?? 0;
+    if (count > allowance) failures.push(`${file}: ${count} plugin words, ${allowance === 0 ? 'none allowed' : `${allowance} allowed`}`);
+  }
+  for (const file of Object.keys(allowed)) {
+    if (!counts.has(file)) failures.push(`${file}: no plugin word left, remove it from RATCHET`);
+  }
+  return failures;
 }
 
 /** The failure message: every `file:line:word`, and where plugin vocabulary goes. */
