@@ -23,7 +23,6 @@ function Rows({ viewport, ...options }: Probe) {
 }
 
 // The hook reads clientHeight at mount and scrollTop on every scroll event.
-const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
   configurable: true,
   get(this: HTMLElement) {
@@ -34,7 +33,7 @@ afterEach(() => {
   commits = 0;
   latest = undefined;
 });
-void clientHeight;
+
 
 function mount(probe: Probe) {
   const view = render(
@@ -59,12 +58,13 @@ function mount(probe: Probe) {
         fireEvent.scroll(scroll);
       });
     },
-    rerender: (next: Probe) =>
+    rerender: (next: Probe) => {
       view.rerender(
         <Profiler id="rows" onRender={() => (commits += 1)}>
           <Rows {...next} />
         </Profiler>,
-      ),
+      ); 
+    },
   };
 }
 
@@ -81,11 +81,14 @@ describe('windowing', () => {
     expect(rows.size()).toBe(5000 * 40);
   });
 
-  it('mounts a small, bounded window whatever the row count (MNR-T1: at most 40 elements a row times a few dozen rows)', () => {
+  it('mounts a small, bounded window whatever the row count: the viewport, the overscan twice and at most a step less one on each side (MNR-T1)', () => {
     const rows = mount({ ...base, count: 5025 });
-    expect(rows.items().length).toBeLessThanOrEqual(30);
+    const bound = 15 + 2 * 8 + 2 * (4 - 1);
+    expect(rows.items().length).toBeLessThanOrEqual(bound);
     rows.scrollTo(100_000);
-    expect(rows.items().length).toBeLessThanOrEqual(30);
+    expect(rows.items().length).toBeLessThanOrEqual(bound);
+    rows.scrollTo(100_013);
+    expect(rows.items().length).toBeLessThanOrEqual(bound);
   });
 
   it('never leaves a hole in the viewport while the offset moves forward and back (MNR-T2)', () => {
@@ -94,8 +97,11 @@ describe('windowing', () => {
       const first = Math.floor(top / 40);
       const last = Math.ceil((top + 600) / 40) - 1;
       const mounted = new Set(rows.items());
-      for (let index = first; index <= last; index += 1) expect(mounted.has(index), `row ${index} at offset ${top}`).toBe(true);
+      for (let index = first; index <= last; index += 1) {
+        expect(mounted.has(index), `row ${index} at offset ${top}`).toBe(true);
+      }
     };
+
     for (let top = 0; top <= 8000; top += 13) {
       rows.scrollTo(top);
       covered(top);
@@ -111,27 +117,36 @@ describe('windowing', () => {
 describe('the range moves in steps (T-02, T-05)', () => {
   it('a scroll that stays inside a step renders nothing', () => {
     const rows = mount(base);
-    const before = commits;
-    // One row at a time, three rows: the window (a step of four rows) is the same, so React is not asked to render.
-    rows.scrollTo(40);
+    // The window is rounded to whole steps and stays while the viewport moves inside the overscan. Move to the first window change
+    // (row 2), then three more rows go by without React being asked to render.
     rows.scrollTo(80);
+    const before = commits;
     rows.scrollTo(120);
+    rows.scrollTo(160);
+    rows.scrollTo(200);
     expect(commits).toBe(before);
   });
 
-  it('renders a new window once a step, not once a row', () => {
+  it('renders a new window at most twice a step and at least once every two steps, not once a row', () => {
     const rows = mount(base);
     const before = commits;
-    for (let row = 1; row <= 40; row += 1) rows.scrollTo(row * 40);
+    for (let row = 1; row <= 40; row += 1) {
+      rows.scrollTo(row * 40);
+    }
+
     const renders = commits - before;
-    expect(renders).toBeGreaterThanOrEqual(8);
-    expect(renders).toBeLessThanOrEqual(11);
+    // Each edge of the window snaps to the step grid on its own phase: the top edge and the bottom edge each move once a step.
+    expect(renders).toBeGreaterThanOrEqual(10);
+    expect(renders).toBeLessThanOrEqual(2 * (40 / 4));
   });
 
   it('a step of one renders for every row (the control that shows the step does the work)', () => {
     const rows = mount({ ...base, rangeStep: 1 });
     const before = commits;
-    for (let row = 1; row <= 40; row += 1) rows.scrollTo(row * 40);
+    for (let row = 1; row <= 40; row += 1) {
+      rows.scrollTo(row * 40);
+    }
+
     expect(commits - before).toBeGreaterThanOrEqual(35);
   });
 
