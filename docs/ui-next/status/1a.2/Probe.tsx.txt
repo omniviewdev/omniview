@@ -1,0 +1,152 @@
+import {
+  ActivityProvider,
+  useConnectionReadiness,
+  useResolvedResourceTarget,
+  useResourceTypes,
+  useResources,
+  type HostRecord,
+} from '@omniviewdev/runtime';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+
+// SCRATCH, never committed: measures how the Pods list acquires its rows (docs/ui-next/status/1a.2.md, E10).
+// mode=collection  C0: the collection only (the first row waits for the complete snapshot)
+// mode=page        B:  a first explicit page (pageSize 256) beside the collection
+// mode=deferred    B2: the first page first, the collection starts when the page has painted
+const PLUGIN_ID = 'kubernetes';
+const POD_TYPE = 'k8s:/pods';
+const EMPTY: readonly HostRecord[] = [];
+
+interface Acq {
+  marks: Record<string, number>;
+  counts: Record<string, number>;
+  blockedMs: number;
+  done: boolean;
+  firstKeys?: string[];
+  firstAddressKeys?: string[];
+  keyCheck?: { first: number; sameKey: number; sameAddress: number };
+  phase?: string;
+  error?: string;
+}
+declare global {
+  interface Window { __acq: Acq }
+}
+window.__acq = { marks: {}, counts: {}, blockedMs: 0, done: false };
+const acq = window.__acq;
+const mark = (name: string, count?: number) => {
+  if (!(name in acq.marks)) {
+    acq.marks[name] = performance.now();
+    if (count !== undefined) {
+      acq.counts[name] = count;
+    }
+  }
+};
+
+// The main thread's blocked time: a 10 ms heartbeat, every gap over 50 ms counts as blocked (the long task API does not exist in WebKit).
+let last = performance.now();
+setInterval(() => {
+  const at = performance.now();
+  if (at - last > 50 && acq.marks['connected'] !== undefined && !acq.done) {
+    acq.blockedMs += at - last - 10;
+  }
+  last = at;
+}, 10);
+
+function Probe({ connectionID, mode }: { readonly connectionID: string; readonly mode: string }) {
+  mark('mount');
+  const route = useMemo(() => ({ connection: connectionID }), [connectionID]);
+  const readiness = useConnectionReadiness({ pluginID: PLUGIN_ID, connectionID });
+  const { connect } = readiness;
+  useEffect(() => {
+    if (readiness.phase === 'disconnected') {
+      void connect();
+    }
+  }, [readiness.phase, connect]);
+  const { resourceTypes } = useResourceTypes({ pluginID: PLUGIN_ID, route });
+  const podType = resourceTypes.data?.find((type) => type.type === POD_TYPE);
+  const target = useResolvedResourceTarget({ pluginID: PLUGIN_ID, route, type: POD_TYPE, enabled: podType !== undefined });
+  const request = target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 256 } } : undefined;
+  const live = podType?.capabilities.some((capability) => capability.operation === 'sourceUpdates') ?? false;
+
+  const [pageSeen, setPageSeen] = useState(false);
+  const collection = useResources({
+    pluginID: PLUGIN_ID,
+    request: mode === 'deferred' && !pageSeen ? undefined : request,
+    collection: true,
+    live,
+  });
+  const done = collection.resources.isSuccess && collection.resources.data !== undefined;
+  const first = useResources({ pluginID: PLUGIN_ID, request: mode === 'collection' || done ? undefined : request, collection: false });
+
+  const collectionRecords = collection.resources.data?.records;
+  const firstRecords = first.resources.data?.records;
+  const rows = collectionRecords ?? firstRecords ?? EMPTY;
+
+  useLayoutEffect(() => {
+    acq.phase = readiness.phase;
+    if (readiness.phase === 'connected') {
+      mark('connected');
+    }
+    if (resourceTypes.data !== undefined) {
+      mark('types');
+    }
+    if (target.data !== undefined) {
+      mark('target');
+    }
+    if (firstRecords !== undefined && firstRecords.length > 0) {
+      mark('firstPage', firstRecords.length);
+      if (acq.firstKeys === undefined) {
+        acq.firstKeys = firstRecords.map((record) => record.key);
+        acq.firstAddressKeys = firstRecords.map((record) => record.addressKey);
+      }
+    }
+    if (rows.length > 0) {
+      mark('firstRow', rows.length);
+    }
+    if (done && collectionRecords !== undefined) {
+      mark('complete', collectionRecords.length);
+      if (acq.firstKeys !== undefined && acq.keyCheck === undefined) {
+        const keys = new Set(collectionRecords.map((record) => record.key));
+        const addresses = new Set(collectionRecords.map((record) => record.addressKey));
+        acq.keyCheck = {
+          first: acq.firstKeys.length,
+          sameKey: acq.firstKeys.filter((key) => keys.has(key)).length,
+          sameAddress: (acq.firstAddressKeys ?? []).filter((key) => addresses.has(key)).length,
+        };
+      }
+      acq.done = true;
+    }
+    if (collection.resources.error !== null || first.resources.error !== null) {
+      acq.error = String(collection.resources.error ?? first.resources.error);
+    }
+  });
+  useEffect(() => {
+    if (firstRecords !== undefined && firstRecords.length > 0 && !pageSeen) {
+      requestAnimationFrame(() => {
+        mark('firstPagePainted');
+        setPageSeen(true);
+      });
+    }
+  }, [firstRecords, pageSeen]);
+
+  return (
+    <main data-mode={mode} data-phase={readiness.phase} data-loaded={rows.length} data-complete={done}>
+      <p>{`${connectionID} ${readiness.phase} ${rows.length} loaded${done ? ' complete' : ''}`}</p>
+      {rows.slice(0, 60).map((record) => (
+        <div key={record.key} data-testid="pod-row">{record.addressKey}</div>
+      ))}
+    </main>
+  );
+}
+
+export function MeasureProbe() {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } }));
+  const params = new URLSearchParams(window.location.search);
+  return (
+    <QueryClientProvider client={client}>
+      <ActivityProvider>
+        <Probe connectionID={params.get('connection') ?? ''} mode={params.get('mode') ?? 'collection'} />
+      </ActivityProvider>
+    </QueryClientProvider>
+  );
+}

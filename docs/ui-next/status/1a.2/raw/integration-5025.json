@@ -1,0 +1,96 @@
+{
+ "transitions": [
+  {
+   "t": 35,
+   "state": "connecting",
+   "loaded": 0,
+   "complete": false,
+   "count": "unknown:0",
+   "live": false,
+   "refreshing": false,
+   "first": []
+  },
+  {
+   "t": 39,
+   "state": "disconnected",
+   "loaded": 0,
+   "complete": false,
+   "count": "unknown:0",
+   "live": false,
+   "refreshing": false,
+   "first": []
+  },
+  {
+   "t": 39,
+   "state": "connecting",
+   "loaded": 0,
+   "complete": false,
+   "count": "unknown:0",
+   "live": false,
+   "refreshing": false,
+   "first": []
+  },
+  {
+   "t": 67,
+   "state": "loading",
+   "loaded": 0,
+   "complete": false,
+   "count": "unknown:0",
+   "live": false,
+   "refreshing": false,
+   "first": []
+  },
+  {
+   "t": 384,
+   "state": "loaded",
+   "loaded": 256,
+   "complete": false,
+   "count": "unknown:256",
+   "live": false,
+   "refreshing": false,
+   "first": [
+    "monitoring/alertmanager-5d5bcf5596-j5q49",
+    "checkout/bad-image",
+    "batch/broken-migration-tkqz2",
+    "checkout/cart-api-86bf766589-78whc",
+    "checkout/cart-api-86bf766589-rnlm5"
+   ]
+  },
+  {
+   "t": 3046,
+   "state": "loaded",
+   "loaded": 5025,
+   "complete": true,
+   "count": "exact:5025",
+   "live": true,
+   "refreshing": false,
+   "first": [
+    "monitoring/alertmanager-5d5bcf5596-j5q49",
+    "checkout/bad-image",
+    "batch/broken-migration-tkqz2",
+    "checkout/cart-api-86bf766589-78whc",
+    "checkout/cart-api-86bf766589-rnlm5"
+   ]
+  }
+ ],
+ "marks": {
+  "mount": 32,
+  "firstRow": 384,
+  "complete": 3046
+ },
+ "counts": {
+  "firstRow": 256,
+  "complete": 5025
+ },
+ "mismatches": {
+  "ready": 0,
+  "status": 0,
+  "restarts": 0,
+  "age": 0,
+  "node": 0,
+  "ip": 0,
+  "missing": 0
+ },
+ "compared": 5025,
+ "dashRestarts": 5001
+}

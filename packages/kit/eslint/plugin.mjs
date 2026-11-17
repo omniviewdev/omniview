@@ -6,6 +6,8 @@
  * allowed only as a data parameter: an object of custom properties whose values are computed. A static value is a class,
  * and there is no passthrough (strategy R7).
  */
+import path from 'node:path';
+import { PLUGIN_CODE, classify, isPluginCode, repoRelative } from './scaffolding.mjs';
 
 const STATIC_NODE_TYPES = ['Literal'];
 
@@ -182,11 +184,83 @@ export const noRestyle = {
   },
 };
 
+const PLUGIN_PATH_PATTERN = new RegExp(`(?:^|/)(?:${PLUGIN_CODE.map((dir) => dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:/|$)`);
+
+/** Specifier of an import, re-export, dynamic import of a literal, or require('literal'); with the node to report on. */
+function moduleSpecifier(node) {
+  if (node.type === 'ImportExpression') return node.source.type === 'Literal' && typeof node.source.value === 'string' ? node.source.value : undefined;
+  if (node.type === 'CallExpression') {
+    const [first] = node.arguments;
+    return node.callee.type === 'Identifier' && node.callee.name === 'require' && first?.type === 'Literal' && typeof first.value === 'string'
+      ? first.value
+      : undefined;
+  }
+  return typeof node.source?.value === 'string' ? node.source.value : undefined;
+}
+
+/** Why a plugin-code file may not import `specifier` (a messageId), or undefined when it is on the public surface. */
+function pluginViolation(specifier, resolved) {
+  if (specifier.startsWith('.')) return resolved !== undefined && isPluginCode(resolved) ? undefined : 'pluginToHost';
+  if (specifier.startsWith('/') || specifier === '@' || specifier.startsWith('@/')) return 'pluginToHost';
+  if (specifier.startsWith('@wailsio/')) return 'pluginToHost';
+  if (specifier === '@omniviewdev/runtime' || specifier === '@omniviewdev/kit' || specifier === '@omniviewdev/kit/styles.css') return undefined;
+  if (specifier.startsWith('@omniviewdev/runtime/') || specifier.startsWith('@omniviewdev/kit/')) return 'pluginToHost';
+  return undefined;
+}
+
+/**
+ * Keeps the host and the kit plugin-agnostic (decision A13). Host and kit files may not import plugin scaffolding
+ * (`ui-next/k8s`, `ui-next/pods`); scaffolding may import only what a plugin gets: relative files of its own,
+ * `@omniviewdev/runtime` (main entry), `@omniviewdev/kit` and its stylesheet, and third-party packages.
+ * The only escape is `// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): <reason>`.
+ */
+export const scaffoldBoundary = {
+  meta: {
+    type: 'problem',
+    docs: { description: 'Keep host and kit plugin-agnostic: no import of plugin scaffolding, and scaffolding imports only the plugin surface' },
+    messages: {
+      hostToPlugin:
+        'The host and the kit are plugin-agnostic (decision A13). "{{specifier}}" is plugin code: ui-next/k8s/ is temporary plugin scaffolding, and only the single marked mount point (ui-next/main.tsx, SCAFFOLDING(N19)) may reference it.',
+      pluginToHost:
+        'Plugin code gets only the public surface (decision A13): its own files, "@omniviewdev/runtime" (main entry), "@omniviewdev/kit", "@omniviewdev/kit/styles.css" and third-party packages. "{{specifier}}" is host internals, the old shell, an alias into it, a raw RPC entry or a Wails binding.',
+    },
+    schema: [],
+  },
+  create(context) {
+    const file = repoRelative(path.resolve(context.filename));
+    const kind = file === undefined ? 'other' : classify(file);
+    if (kind !== 'kit' && kind !== 'shell' && kind !== 'plugin-code') return {};
+    const directory = path.dirname(path.resolve(context.filename));
+
+    function check(node) {
+      const specifier = moduleSpecifier(node);
+      if (specifier === undefined) return;
+      const resolved = specifier.startsWith('.') ? repoRelative(path.resolve(directory, specifier)) : undefined;
+      if (kind === 'plugin-code') {
+        const messageId = pluginViolation(specifier, resolved);
+        if (messageId) context.report({ node, messageId, data: { specifier } });
+        return;
+      }
+      const intoPlugin = resolved !== undefined ? isPluginCode(resolved) : PLUGIN_PATH_PATTERN.test(specifier);
+      if (intoPlugin) context.report({ node, messageId: 'hostToPlugin', data: { specifier } });
+    }
+
+    return {
+      ImportDeclaration: check,
+      ExportNamedDeclaration: check,
+      ExportAllDeclaration: check,
+      ImportExpression: check,
+      CallExpression: check,
+    };
+  },
+};
+
 export default {
   meta: { name: 'omniview-kit' },
   rules: {
     'no-static-style': noStaticStyle,
     'closed-props': closedProps,
     'no-restyle': noRestyle,
+    'scaffold-boundary': scaffoldBoundary,
   },
 };

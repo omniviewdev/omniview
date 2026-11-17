@@ -1,0 +1,87 @@
+import {
+  ActivityProvider,
+  parseAppError,
+  useConnectionReadiness,
+  useResolvedResourceTarget,
+  useResourceTypes,
+  useResources,
+} from '@omniviewdev/runtime';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+
+// SCRATCH, never committed: logs what the runtime hooks return for a connection, commit by commit (docs/ui-next/status/1a.2.md).
+const PLUGIN_ID = 'kubernetes';
+const POD_TYPE = 'k8s:/pods';
+
+declare global {
+  interface Window { __states: unknown[]; __connectNow: () => void }
+}
+window.__states = [];
+
+function plain(error: unknown): unknown {
+  if (error === null || error === undefined) {
+    return null;
+  }
+  let own: unknown;
+  try {
+    own = JSON.parse(JSON.stringify(error, Object.getOwnPropertyNames(error as object)));
+  } catch {
+    own = String(error);
+  }
+  return { constructor: (error as object).constructor?.name ?? typeof error, own, parsed: parseAppError(error) };
+}
+
+function Probe({ connectionID, auto }: { readonly connectionID: string; readonly auto: boolean }) {
+  const route = useMemo(() => ({ connection: connectionID }), [connectionID]);
+  const readiness = useConnectionReadiness({ pluginID: PLUGIN_ID, connectionID });
+  const { connect } = readiness;
+  useEffect(() => {
+    window.__connectNow = () => void connect();
+    if (auto && readiness.phase === 'disconnected') {
+      void connect();
+    }
+  }, [auto, readiness.phase, connect]);
+  const { resourceTypes } = useResourceTypes({ pluginID: PLUGIN_ID, route });
+  const podType = resourceTypes.data?.find((type) => type.type === POD_TYPE);
+  const target = useResolvedResourceTarget({ pluginID: PLUGIN_ID, route, type: POD_TYPE, enabled: podType !== undefined });
+  const request = target.data ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 256 } } : undefined;
+  const { resources, source, isLive, isSyncing, sourceError } = useResources({ pluginID: PLUGIN_ID, request, collection: true, live: true });
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((value) => value + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  useLayoutEffect(() => {
+    const entry = {
+      t: Math.round(performance.now()),
+      readiness: { phase: readiness.phase, message: readiness.message ?? null, connection: readiness.connection?.id ?? null },
+      types: { status: resourceTypes.status, fetch: resourceTypes.fetchStatus, count: resourceTypes.data?.length ?? null, hasPod: podType !== undefined, error: plain(resourceTypes.error) },
+      target: { status: target.status, fetch: target.fetchStatus, has: target.data !== undefined, error: plain(target.error) },
+      resources: { status: resources.status, fetch: resources.fetchStatus, rows: resources.data?.records.length ?? null, count: resources.data?.view?.count ?? null, error: plain(resources.error) },
+      source: source ?? null,
+      flags: { isLive, isSyncing, sourceError },
+    };
+    const last = window.__states.at(-1) as { t: number } | undefined;
+    const { t: _t, ...rest } = entry;
+    const { t: _u, ...before } = (last ?? {}) as Record<string, unknown>;
+    void _t;
+    void _u;
+    if (JSON.stringify(rest) !== JSON.stringify(before)) {
+      window.__states.push(entry);
+    }
+  });
+  return <main data-phase={readiness.phase} data-tick={tick}>{`${connectionID} ${readiness.phase}`}</main>;
+}
+
+export function StatesProbe() {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } }));
+  const params = new URLSearchParams(window.location.search);
+  return (
+    <QueryClientProvider client={client}>
+      <ActivityProvider>
+        <Probe connectionID={params.get('connection') ?? ''} auto={params.get('connect') === '1'} />
+      </ActivityProvider>
+    </QueryClientProvider>
+  );
+}

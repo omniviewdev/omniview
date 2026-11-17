@@ -1,0 +1,719 @@
+{
+ "unauth": [
+  {
+   "t": 28,
+   "readiness": {
+    "phase": "checking",
+    "message": null,
+    "connection": null
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 32,
+   "readiness": {
+    "phase": "disconnected",
+    "message": null,
+    "connection": "unauth"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 33,
+   "readiness": {
+    "phase": "connecting",
+    "message": null,
+    "connection": "unauth"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 40,
+   "readiness": {
+    "phase": "unauthorized",
+    "message": "The provider requires authentication.",
+    "connection": "unauth"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  }
+ ],
+ "denied": [
+  {
+   "t": 29,
+   "readiness": {
+    "phase": "checking",
+    "message": null,
+    "connection": null
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 33,
+   "readiness": {
+    "phase": "disconnected",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 33,
+   "readiness": {
+    "phase": "connecting",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 53,
+   "readiness": {
+    "phase": "connected",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "fetching",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 64,
+   "readiness": {
+    "phase": "connected",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "success",
+    "fetch": "idle",
+    "count": 70,
+    "hasPod": true,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "fetching",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 69,
+   "readiness": {
+    "phase": "connected",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "success",
+    "fetch": "idle",
+    "count": 70,
+    "hasPod": true,
+    "error": null
+   },
+   "target": {
+    "status": "success",
+    "fetch": "idle",
+    "has": true,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 74,
+   "readiness": {
+    "phase": "connected",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "success",
+    "fetch": "idle",
+    "count": 70,
+    "hasPod": true,
+    "error": null
+   },
+   "target": {
+    "status": "success",
+    "fetch": "idle",
+    "has": true,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "fetching",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 92,
+   "readiness": {
+    "phase": "connected",
+    "message": null,
+    "connection": "denied"
+   },
+   "types": {
+    "status": "success",
+    "fetch": "idle",
+    "count": 70,
+    "hasPod": true,
+    "error": null
+   },
+   "target": {
+    "status": "success",
+    "fetch": "idle",
+    "has": true,
+    "error": null
+   },
+   "resources": {
+    "status": "error",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": {
+     "constructor": "Object",
+     "own": {
+      "code": "FORBIDDEN",
+      "title": "",
+      "message": "Source session failed."
+     },
+     "parsed": {
+      "type": "omniview:resource/forbidden",
+      "status": 403,
+      "code": "FORBIDDEN",
+      "recovery": "none",
+      "title": "Access denied",
+      "detail": "The operation could not be completed."
+     }
+    }
+   },
+   "source": {
+    "state": "failed",
+    "mode": "snapshotAndUpdates",
+    "count": {
+     "kind": "exact",
+     "value": "0"
+    },
+    "error": {
+     "code": "FORBIDDEN",
+     "title": "",
+     "message": "Source session failed."
+    }
+   },
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": true
+   }
+  }
+ ],
+ "unreachable": [
+  {
+   "t": 29,
+   "readiness": {
+    "phase": "checking",
+    "message": null,
+    "connection": null
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 33,
+   "readiness": {
+    "phase": "disconnected",
+    "message": null,
+    "connection": "unreachable"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 33,
+   "readiness": {
+    "phase": "connecting",
+    "message": null,
+    "connection": "unreachable"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 36,
+   "readiness": {
+    "phase": "error",
+    "message": "resource operation failed",
+    "connection": "unreachable"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  }
+ ],
+ "missing": [
+  {
+   "t": 31,
+   "readiness": {
+    "phase": "checking",
+    "message": null,
+    "connection": null
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 35,
+   "readiness": {
+    "phase": "not-found",
+    "message": "resource operation failed",
+    "connection": null
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  }
+ ],
+ "disconnected": [
+  {
+   "t": 30,
+   "readiness": {
+    "phase": "checking",
+    "message": null,
+    "connection": null
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  },
+  {
+   "t": 33,
+   "readiness": {
+    "phase": "disconnected",
+    "message": null,
+    "connection": "kind-ui1a2"
+   },
+   "types": {
+    "status": "pending",
+    "fetch": "idle",
+    "count": null,
+    "hasPod": false,
+    "error": null
+   },
+   "target": {
+    "status": "pending",
+    "fetch": "idle",
+    "has": false,
+    "error": null
+   },
+   "resources": {
+    "status": "pending",
+    "fetch": "idle",
+    "rows": null,
+    "count": null,
+    "error": null
+   },
+   "source": null,
+   "flags": {
+    "isLive": false,
+    "isSyncing": false,
+    "sourceError": false
+   }
+  }
+ ]
+}

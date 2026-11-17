@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: scale}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: scale-probe, namespace: scale}
+spec:
+  replicas: 1000
+  selector: {matchLabels: {app: scale-probe}}
+  template:
+    metadata: {labels: {app: scale-probe}}
+    spec:
+      nodeSelector: {does-not-exist: "true"}
+      containers:
+        - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}

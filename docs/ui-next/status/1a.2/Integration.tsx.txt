@@ -1,0 +1,112 @@
+import { ActivityProvider } from '@omniviewdev/runtime';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { podDefinition, usePods, type Cell, type PodSort } from '../k8s';
+
+// SCRATCH, never committed: the real `usePods` and the real definition on a real cluster (docs/ui-next/status/1a.2.md, integration check).
+interface Transition {
+  t: number;
+  state: string;
+  loaded: number;
+  complete: boolean;
+  count: string;
+  live: boolean;
+  refreshing: boolean;
+  first?: string[];
+  failure?: string;
+}
+interface Acq {
+  marks: Record<string, number>;
+  counts: Record<string, number>;
+  transitions: Transition[];
+  done: boolean;
+  dump?: () => unknown;
+  click?: () => void;
+}
+declare global {
+  interface Window { __int: Acq }
+}
+window.__int = { marks: {}, counts: {}, transitions: [], done: false };
+const acq = window.__int;
+const mark = (name: string, count?: number) => {
+  if (!(name in acq.marks)) {
+    acq.marks[name] = performance.now();
+    if (count !== undefined) {
+      acq.counts[name] = count;
+    }
+  }
+};
+
+const text = (cell: Cell): string => {
+  switch (cell.kind) {
+    case 'text': return cell.text;
+    case 'status': return `${cell.raw}:${cell.role}`;
+    case 'age': return cell.text;
+    case 'none': return '—';
+  }
+};
+
+function Page({ connectionID, sort, autoConnect }: { readonly connectionID: string; readonly sort: PodSort; readonly autoConnect: boolean }) {
+  mark('mount');
+  const pods = usePods({ connectionID, sort });
+  const { connect, state } = pods;
+  useEffect(() => {
+    if (autoConnect && state.kind === 'disconnected') {
+      void connect();
+    }
+  }, [autoConnect, state.kind, connect]);
+
+  useLayoutEffect(() => {
+    const countText = pods.count.kind === 'unknown' ? `unknown:${pods.count.loaded}` : `${pods.count.kind}:${pods.count.value}`;
+    const last = acq.transitions.at(-1);
+    if (last === undefined || last.state !== pods.state.kind || last.loaded !== pods.loaded || last.complete !== pods.complete || last.count !== countText || last.refreshing !== pods.refreshing || last.live !== pods.live) {
+      acq.transitions.push({
+        t: Math.round(performance.now() * 10) / 10,
+        state: pods.state.kind,
+        loaded: pods.loaded,
+        complete: pods.complete,
+        count: countText,
+        live: pods.live,
+        refreshing: pods.refreshing,
+        first: pods.rows.slice(0, 5).map((row) => `${row.namespace}/${row.name}`),
+        failure: pods.failure?.kind,
+      });
+    }
+    if (pods.loaded > 0) {
+      mark('firstRow', pods.loaded);
+    }
+    if (pods.complete) {
+      mark('complete', pods.loaded);
+      acq.done = true;
+    }
+    acq.dump = () => {
+      const now = Date.now();
+      return pods.rows.map((row) => Object.fromEntries([['key', row.key], ['namespace', row.namespace], ...podDefinition.fields.map((field) => [field.id, text(field.display(row, now))])]));
+    };
+    acq.click = () => void pods.refresh();
+  });
+
+  return (
+    <main data-state={pods.state.kind} data-loaded={pods.loaded} data-complete={pods.complete} data-count={pods.count.kind === 'unknown' ? pods.count.loaded : pods.count.value}>
+      <p data-testid="footer">{pods.count.kind === 'unknown' ? `${pods.count.loaded} Pods loaded` : `${pods.count.value} Pods`}</p>
+      {pods.rows.slice(0, 40).map((row) => (
+        <div key={row.key} data-testid="pod-row">
+          {podDefinition.fields.map((field) => text(field.display(row, Date.now()))).join(' | ')}
+        </div>
+      ))}
+    </main>
+  );
+}
+
+export function IntegrationProbe() {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } }));
+  const params = new URLSearchParams(window.location.search);
+  const sort: PodSort = { id: (params.get('sort') as PodSort['id'] | null) ?? 'name', direction: params.get('dir') === 'desc' ? 'desc' : 'asc' };
+  return (
+    <QueryClientProvider client={client}>
+      <ActivityProvider>
+        <Page connectionID={params.get('connection') ?? ''} sort={sort} autoConnect={params.get('connect') !== '0'} />
+      </ActivityProvider>
+    </QueryClientProvider>
+  );
+}

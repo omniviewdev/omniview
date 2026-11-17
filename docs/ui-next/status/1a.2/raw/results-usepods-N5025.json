@@ -1,0 +1,114 @@
+{
+ "warm": [
+  {
+   "load": "7.2",
+   "firstRow": 276,
+   "firstRowCount": 256,
+   "complete": 2604,
+   "completeCount": 5025,
+   "connectedToFirst": 267,
+   "loadingToComplete": 2595
+  },
+  {
+   "load": "7.2",
+   "firstRow": 270,
+   "firstRowCount": 256,
+   "complete": 2639,
+   "completeCount": 5025,
+   "connectedToFirst": 261,
+   "loadingToComplete": 2630
+  },
+  {
+   "load": "7.2",
+   "firstRow": 277,
+   "firstRowCount": 256,
+   "complete": 2695,
+   "completeCount": 5025,
+   "connectedToFirst": 266,
+   "loadingToComplete": 2684
+  },
+  {
+   "load": "7.2",
+   "firstRow": 267,
+   "firstRowCount": 256,
+   "complete": 2581,
+   "completeCount": 5025,
+   "connectedToFirst": 258,
+   "loadingToComplete": 2572
+  },
+  {
+   "load": "7.1",
+   "firstRow": 278,
+   "firstRowCount": 256,
+   "complete": 2593,
+   "completeCount": 5025,
+   "connectedToFirst": 267,
+   "loadingToComplete": 2582
+  }
+ ],
+ "cold": [
+  {
+   "load": "7.0",
+   "firstRow": 347,
+   "firstRowCount": 256,
+   "complete": 3063,
+   "completeCount": 5025,
+   "connectedToFirst": 312,
+   "loadingToComplete": 3028
+  },
+  {
+   "load": "7.0",
+   "firstRow": 349,
+   "firstRowCount": 256,
+   "complete": 3033,
+   "completeCount": 5025,
+   "connectedToFirst": 313,
+   "loadingToComplete": 2997
+  },
+  {
+   "load": "6.8",
+   "firstRow": 348,
+   "firstRowCount": 256,
+   "complete": 3029,
+   "completeCount": 5025,
+   "connectedToFirst": 309,
+   "loadingToComplete": 2990
+  },
+  {
+   "load": "6.9",
+   "firstRow": 353,
+   "firstRowCount": 256,
+   "complete": 3029,
+   "completeCount": 5025,
+   "connectedToFirst": 318,
+   "loadingToComplete": 2994
+  },
+  {
+   "load": "6.9",
+   "firstRow": 337,
+   "firstRowCount": 256,
+   "complete": 3128,
+   "completeCount": 5025,
+   "connectedToFirst": 296,
+   "loadingToComplete": 3087
+  }
+ ],
+ "summary": {
+  "warm": {
+   "firstRow": 276,
+   "firstRowCount": 256,
+   "complete": 2604,
+   "completeCount": 5025,
+   "loadingToFirst": 266,
+   "loadingToComplete": 2595
+  },
+  "cold": {
+   "firstRow": 348,
+   "firstRowCount": 256,
+   "complete": 3033,
+   "completeCount": 5025,
+   "loadingToFirst": 312,
+   "loadingToComplete": 2997
+  }
+ }
+}
