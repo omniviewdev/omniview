@@ -1,0 +1,62 @@
+// The measurement driver of row 1a.2, as it ran (an `eval` cell of the omp agent: `browser` and `Bun` are its globals; not a repo script).
+// It drives the scratch probe pages Probe.tsx.txt (raw hooks, ?screen=measure), States.tsx.txt (?screen=states) and Integration.tsx.txt
+// (the real usePods, ?screen=integration) served by the real Go host. Results of each batch are in raw/.
+const fs = require('node:fs');
+const os = require('node:os');
+const HOST_ROOT = '<worktree with the probes>'; // contains bin/Omniview-server built with OMNIVIEW_UI=next task build:server
+const HOST_LOG = '/tmp/ui1a2/host.log';
+const hostEnv = () => ({ ...process.env, HOME: '/tmp/ui1a2/home', OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_PORT: '34215', KUBECONFIG: undefined });
+
+async function startHost() {
+  globalThis.hostProc = Bun.spawn([`${HOST_ROOT}/bin/Omniview-server`], { cwd: HOST_ROOT, env: hostEnv(), stdout: Bun.file(HOST_LOG), stderr: Bun.file(HOST_LOG) });
+  for (let i = 0; i < 200; i++) {
+    try { if ((await fetch('http://127.0.0.1:34215/')).ok) return; } catch { /* not up yet */ }
+    await Bun.sleep(100);
+  }
+  throw new Error('host did not start');
+}
+async function coldStart() { // the host and the plugin restarted: no source session is held
+  globalThis.hostProc?.kill();
+  await Bun.$`pkill -f ui1a2/home/.omniview-feature-ui-next/plugins/kubernetes/bin/plugin`.nothrow().quiet();
+  try { fs.rmSync(HOST_LOG); } catch { /* none */ }
+  await startHost();
+  for (let i = 0; i < 200 && !/INFO\s+plugin started/.test(fs.readFileSync(HOST_LOG, 'utf8')); i++) await Bun.sleep(50);
+}
+
+// One run: load the probe page, wait until the collection is complete, read the marks (ms since the first commit with the connection `connected`).
+async function runOnce({ mode, connection = 'kind-ui1a2' }) {
+  const tab = browser.tab('acq');
+  await tab.goto('data:text/html,<title>blank</title>');
+  await tab.goto(`http://127.0.0.1:34215/?screen=measure&mode=${mode}&connection=${connection}`); // mode: collection (C0) or page (B)
+  await tab.waitForSelector('[data-complete="true"]', { timeout: 90000 });
+  const { marks: m, counts, blockedMs, keyCheck } = JSON.parse(await tab.evaluate('JSON.stringify(window.__acq)'));
+  const rel = (key) => (m[key] === undefined ? null : Math.round((m[key] - m.connected) * 10) / 10);
+  return { mode, target: rel('target'), firstRow: rel('firstRow'), firstRowCount: counts.firstRow, complete: rel('complete'), completeCount: counts.complete, blockedMs, keyCheck };
+}
+
+// A batch interleaves the modes (C0, B, C0, B...) so a slow minute hurts both: 5 runs each, warm (page reload) or cold.
+async function batch({ modes, cold, runs = 5 }) {
+  const out = [];
+  if (!cold) await runOnce({ mode: modes[0] }); // warm-up
+  for (let i = 0; i < runs; i++) {
+    for (const mode of modes) {
+      if (cold) await coldStart();
+      out.push({ cold, load: os.loadavg()[0].toFixed(1), ...(await runOnce({ mode })) });
+    }
+  }
+  return out;
+}
+
+// A's upper bound: a tab opened with an init script that wraps `WebSocket` and logs the arrival time and size of every
+// `snapshot` / `snapshotEnd` / `changes` message (the kind is read from the text), compared with `__acq` marks of the same page.
+const webSocketHook = `(() => { const Orig = window.WebSocket; window.__ws = { msgs: [] };
+  function Hooked(...a) { const ws = new Orig(...a); ws.addEventListener('message', (e) => { const d = typeof e.data === 'string' ? e.data : '';
+    const m = /"kind":"(snapshotEnd|snapshot|changes|status|reset)"/.exec(d); window.__ws.msgs.push({ t: performance.now(), n: d.length, kind: m ? m[1] : null }); }); return ws; }
+  Hooked.prototype = Orig.prototype; window.WebSocket = Hooked; })();`;
+// const wsTab = await browser.open({ name: 'acqws', url: 'about:blank', app: 'webkit', viewport: { width: 1440, height: 900 }, init_scripts: [webSocketHook] });
+
+// The oracle: kubectl proxy, then the Table the API server prints, with the objects of the same response.
+//   kubectl proxy --port=18099 &
+//   curl -H 'Accept: application/json;as=Table;g=meta.k8s.io;v=v1' 'http://127.0.0.1:18099/api/v1/pods?includeObject=Object'
+// The cells are [Name, Ready, Status, Restarts, Age, IP, Node, Nominated Node, Readiness Gates]; the page and the oracle are compared per row.
+export { batch, coldStart, runOnce, startHost, webSocketHook };

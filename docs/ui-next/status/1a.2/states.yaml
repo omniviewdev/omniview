@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: states}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: init-wait, namespace: states}
+spec:
+  initContainers:
+    - {name: wait, image: busybox:1.37.0, command: [sh, -c, "sleep 3600"]}
+  containers:
+    - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: init-fail, namespace: states}
+spec:
+  initContainers:
+    - {name: boom, image: busybox:1.37.0, command: [sh, -c, "exit 3"]}
+  containers:
+    - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: gated, namespace: states}
+spec:
+  schedulingGates:
+    - name: example.com/hold
+  containers:
+    - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: sidecar, namespace: states}
+spec:
+  initContainers:
+    - {name: side, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"], restartPolicy: Always}
+  containers:
+    - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: terminating, namespace: states}
+spec:
+  terminationGracePeriodSeconds: 3600
+  containers:
+    - {name: app, image: busybox:1.37.0, command: [sh, -c, "trap '' TERM; while true; do sleep 1; done"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: mixed, namespace: states}
+spec:
+  restartPolicy: OnFailure
+  containers:
+    - {name: quick, image: busybox:1.37.0, command: [sh, -c, "echo hi"]}
+    - {name: long, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: oom, namespace: states}
+spec:
+  containers:
+    - name: hog
+      image: busybox:1.37.0
+      command: [sh, -c, "x=$(head -c 60000000 /dev/zero | tr '\\0' a); echo ${#x}; sleep 100"]
+      resources: {limits: {memory: 12Mi}}

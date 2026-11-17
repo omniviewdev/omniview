@@ -1,0 +1,37 @@
+{
+ "unauth": [
+  "connecting",
+  "disconnected",
+  "connecting",
+  "needs-sign-in"
+ ],
+ "denied": [
+  "connecting",
+  "disconnected",
+  "connecting",
+  "loading",
+  "denied"
+ ],
+ "unreachable": [
+  "connecting",
+  "disconnected",
+  "connecting",
+  "unreachable"
+ ],
+ "missing": [
+  "connecting",
+  "not-found"
+ ],
+ "disconnected": [
+  "connecting",
+  "disconnected"
+ ],
+ "good": [
+  "connecting",
+  "disconnected",
+  "connecting",
+  "loading",
+  "loaded loaded=256",
+  "loaded loaded=5025 complete"
+ ]
+}

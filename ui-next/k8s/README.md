@@ -25,12 +25,16 @@ Rules 1 to 3 are enforced by `kit/scaffold-boundary` and the vocabulary guard in
 | `row.ts` | `PodRow`: one row per `HostRecord` object, computed once (a `WeakMap`), keyed by the host key. |
 | `sort.ts` | The column comparisons of the mock; a missing value is always last. |
 | `definition.ts` | The Pod definition: columns, list rules, quick filters, facets, and one display function per field that answers a `Cell`. |
+| `state.ts` | The state of the body (`connecting`, `disconnected`, `needs-sign-in`, `denied`, `unreachable`, `not-found`, `failed`, `unsupported`, `loading`, `empty`, `loaded`), mapped from what the runtime hooks return, and the failure kept beside rows. |
+| `usePods.ts` | `usePods({ connectionID, sort })`: the fenced read chain, a first explicit page of 256 beside the collection (the bounded first set), the provisional order, `loaded`, `complete`, `count`, and the commands `connect`, `retry`, `refresh`. |
+| `index.ts` | The public surface the Pods page reads. |
 | `fixtures/pods-table.json` | Real Pod objects and the cells kubectl's server printed for them, from one kind v1.35 cluster: the oracle of `golden.test.ts`. |
+| `testing.ts` | Test support: builds a `HostRecord` the way the host hands one over. Nothing else imports it. |
 
-The data hook, the connection states and the acquisition rule of the bounded first set are described in `docs/ui-next/status/1a.2.md`.
+The acquisition rule of the bounded first set, its measurement, and the capture of what the runtime hooks return for each state are in `docs/ui-next/status/1a.2.md`.
 
 ## Moving it
 
-1. Copy this directory into the plugin's `ui-next` stream. Its imports already name only `@omniviewdev/runtime` and `@omniviewdev/kit`, so no import changes.
+1. Copy this directory into the plugin's `ui-next` stream. Its imports name only `@omniviewdev/runtime` and third-party packages (`react`; the tests use `vitest` and `@testing-library/react`), so no import changes.
 2. Delete `ui-next/k8s/` and `ui-next/pods/` from the host, and the `SCAFFOLDING(N19)` lines in `ui-next/main.tsx`.
 3. Remove both directories from `PLUGIN_CODE` and `SCAFFOLDING` in `packages/kit/eslint/scaffolding.mjs`. The vocabulary guard then covers the whole host tree.

@@ -1,0 +1,99 @@
+[
+ {
+  "i": 0,
+  "cold": false,
+  "mode": "collection",
+  "target": 17,
+  "firstRow": 2515,
+  "complete": 2515,
+  "firstSnapshotMsg": 2092,
+  "lastSnapshotMsg": 2513,
+  "snapshotEndMsg": 2514,
+  "snapshotMsgs": 20,
+  "snapshotBytes": 39606471,
+  "firstChunkBytes": 2009029,
+  "allKinds": [
+   "snapshot",
+   "snapshotEnd"
+  ],
+  "wsOpened": 1
+ },
+ {
+  "i": 1,
+  "cold": true,
+  "mode": "collection",
+  "target": 16,
+  "firstRow": 2964,
+  "complete": 2964,
+  "firstSnapshotMsg": 2512,
+  "lastSnapshotMsg": 2962,
+  "snapshotEndMsg": 2963,
+  "snapshotMsgs": 20,
+  "snapshotBytes": 39606471,
+  "firstChunkBytes": 2013284,
+  "allKinds": [
+   null,
+   "snapshot",
+   "snapshotEnd"
+  ],
+  "wsOpened": 1
+ },
+ {
+  "i": 2,
+  "cold": false,
+  "mode": "collection",
+  "target": 15,
+  "firstRow": 2547,
+  "complete": 2547,
+  "firstSnapshotMsg": 2096,
+  "lastSnapshotMsg": 2545,
+  "snapshotEndMsg": 2546,
+  "snapshotMsgs": 20,
+  "snapshotBytes": 39606471,
+  "firstChunkBytes": 2013645,
+  "allKinds": [
+   "snapshot",
+   "snapshotEnd"
+  ],
+  "wsOpened": 1
+ },
+ {
+  "i": 3,
+  "cold": true,
+  "mode": "collection",
+  "target": 15,
+  "firstRow": 3055,
+  "complete": 3055,
+  "firstSnapshotMsg": 2612,
+  "lastSnapshotMsg": 3053,
+  "snapshotEndMsg": 3054,
+  "snapshotMsgs": 20,
+  "snapshotBytes": 39606471,
+  "firstChunkBytes": 2012917,
+  "allKinds": [
+   null,
+   "snapshot",
+   "snapshotEnd"
+  ],
+  "wsOpened": 1
+ },
+ {
+  "i": 4,
+  "cold": false,
+  "mode": "collection",
+  "target": 14,
+  "firstRow": 2547,
+  "complete": 2547,
+  "firstSnapshotMsg": 2084,
+  "lastSnapshotMsg": 2545,
+  "snapshotEndMsg": 2546,
+  "snapshotMsgs": 20,
+  "snapshotBytes": 39606471,
+  "firstChunkBytes": 2026731,
+  "allKinds": [
+   "snapshot",
+   "snapshotEnd"
+  ],
+  "wsOpened": 1
+ }
+]
