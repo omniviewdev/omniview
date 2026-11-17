@@ -1,0 +1,151 @@
+@layer ov.components {
+  /* The quiet chip of the mock (design 14 V3, 13 section 8): 12/16 type, a 1 px subtle edge, no fill, muted text. The paint is three private
+     properties that the shape, the tone and the pressed state set and the rules below read, so a state never repeats a colour. The
+     order of the rules is the mock's: a tone paints over the control edge of a button chip, and a pressed chip paints over its tone. */
+  .root {
+    --_border: var(--ov-border-subtle);
+    --_bg: transparent;
+    --_fg: var(--ov-fg-muted);
+
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 var(--ov-spacing-6);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_bg);
+    color: var(--_fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+    overflow: clip;
+  }
+
+  /* Text only: an inline block, which is the box an ellipsis works on (it does nothing on a flex container). */
+  .root[data-ov-shape='static']:not([data-ov-counted='true']) {
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+
+  /* The pieces of a chip that is a row of flex items give way to the line, inside the chip, with an ellipsis. */
+  .label,
+  .root > b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .root b {
+    color: var(--ov-fg);
+    font-weight: 400;
+  }
+
+  /* A toggle: the control height, the control edge and the pointer. */
+  .root[data-ov-shape='action'] {
+    --_border: var(--ov-border-control);
+
+    justify-content: flex-start;
+    min-height: var(--ov-control-height);
+    padding-inline: var(--ov-spacing-8);
+    cursor: pointer;
+  }
+
+  /* A chip with a Remove button: the control height and edge, and no side of its own where the button sits. */
+  .root[data-ov-shape='removable'] {
+    --_border: var(--ov-border-control);
+
+    min-height: var(--ov-control-height);
+    padding-inline: var(--ov-spacing-8) 0;
+  }
+
+  .root[data-ov-tone='success'] {
+    --_border: var(--ov-success-border);
+    --_bg: var(--ov-success-bg);
+    --_fg: var(--ov-success-fg);
+  }
+
+  .root[data-ov-tone='warning'] {
+    --_border: var(--ov-warning-border);
+    --_bg: var(--ov-warning-bg);
+    --_fg: var(--ov-warning-fg);
+  }
+
+  .root[data-ov-tone='error'] {
+    --_border: var(--ov-error-border);
+    --_bg: var(--ov-error-bg);
+    --_fg: var(--ov-error-fg);
+  }
+
+  .root[data-ov-tone='info'] {
+    --_border: var(--ov-info-border);
+    --_bg: var(--ov-info-bg);
+    --_fg: var(--ov-link);
+  }
+
+  .root[data-ov-tone='muted'] {
+    --_border: var(--ov-border-subtle);
+    --_bg: var(--ov-bg-inline);
+    --_fg: var(--ov-fg-muted);
+  }
+
+  /* Pressed: the selection fill and the raised edge, in the plain text colour, whatever the tone. */
+  .root[data-ov-shape='action'][aria-pressed='true'] {
+    --_border: var(--ov-border-raised);
+    --_bg: var(--ov-selection-inactive);
+    --_fg: var(--ov-fg);
+  }
+
+  /* The hover is layered over the fill as a gradient, so a tone fill stays under it. */
+  .root[data-ov-shape='action']:hover {
+    background-image: linear-gradient(var(--ov-hover-row), var(--ov-hover-row));
+  }
+
+  .root:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  /* The Remove button: a 24 px square in the icon role, inside the chip's edge. */
+  .remove {
+    display: inline-flex;
+    flex: 0 0 24px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ov-spacing-4);
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background: transparent;
+    color: var(--ov-icon);
+    font: inherit;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  .remove:hover {
+    background: var(--ov-hover-toolbar);
+  }
+
+  .remove:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+}

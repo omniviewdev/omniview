@@ -25,6 +25,8 @@ export const STYLE_PROPS = [
   'cursor', 'outlineColor', 'outlineWidth', 'outlineStyle', 'outlineOffset', 'boxShadow',
   'opacity', 'display', 'alignItems', 'justifyContent', 'minWidth', 'minHeight',
   'whiteSpace', 'pointerEvents',
+  // The paint a chip hover layers as a gradient, and the keys a clipped text is judged by.
+  'backgroundImage', 'overflowX', 'textOverflow', 'maxWidth', 'verticalAlign', 'textDecorationLine',
 ];
 
 const AWAY = { x: 1, y: 1 };
@@ -236,7 +238,7 @@ export async function setContext(page, { textScale, density, flavour = 'mock' } 
 export { sleep, settle };
 
 /** The comparable form of a measurement: one string per concern, so a difference names what differs. */
-export function summarize(record, { withOutline = false } = {}) {
+export function summarize(record, { withOutline = false, extra = [] } = {}) {
   const s = record.style;
   const sides = ['Top', 'Right', 'Bottom', 'Left'];
   const uniform = (kind) => new Set(sides.map((side) => s[`border${side}${kind}`])).size === 1;
@@ -262,6 +264,11 @@ export function summarize(record, { withOutline = false } = {}) {
     out.outline = `${s.outlineWidth} ${s.outlineStyle} ${s.outlineColor} ${s.outlineOffset}`;
   }
 
+  // Further computed-style keys a part is judged by (STYLE_PROPS holds them); compared exactly by `deviations({ extra })`.
+  for (const key of extra) {
+    out[key] = s[key];
+  }
+
   const { icon, label } = record.parts;
   out.icon = icon === null ? null : { w: icon.rect.w, h: icon.rect.h, left: icon.left, top: icon.top, color: icon.style.color };
   out.label = label === null ? null : { w: label.rect.w, h: label.rect.h, left: label.left, top: label.top, text: label.text };
@@ -273,7 +280,7 @@ export function summarize(record, { withOutline = false } = {}) {
  * every length; every string (colours, border, padding, font, gap, cursor, layout) must be equal. When the labels differ
  * (`sameLabel: false`) widths are compared without the label: the chrome width, width minus label width.
  */
-export function deviations(reference, got, { tolerance = 1, sameLabel = true, withOutline = false, skip = [] } = {}) {
+export function deviations(reference, got, { tolerance = 1, sameLabel = true, withOutline = false, skip = [], extra = [] } = {}) {
   const out = [];
   const near = (a, b) => Math.abs(a - b) <= tolerance;
   const note = (what, a, b) => {
@@ -284,7 +291,7 @@ export function deviations(reference, got, { tolerance = 1, sameLabel = true, wi
   if (sameLabel ? !near(reference.w, got.w) : !near(chrome(reference), chrome(got))) note(sameLabel ? 'width' : 'chrome width', sameLabel ? reference.w : chrome(reference), sameLabel ? got.w : chrome(got));
   // A control in a flex parent is blockified: inline-flex computes to flex, and the same layout is the same.
   const plain = (key, summary) => (key === 'layout' ? summary[key].replace(/^inline-/, '') : summary[key]);
-  for (const key of ['color', 'bg', 'border', 'radius', 'pad', 'font', 'gap', 'cursor', 'layout', 'shadow', 'opacity', 'pointer', ...(withOutline ? ['outline'] : [])]) {
+  for (const key of ['color', 'bg', 'border', 'radius', 'pad', 'font', 'gap', 'cursor', 'layout', 'shadow', 'opacity', 'pointer', ...(withOutline ? ['outline'] : []), ...extra]) {
     if (plain(key, reference) !== plain(key, got)) note(key, reference[key], got[key]);
   }
 

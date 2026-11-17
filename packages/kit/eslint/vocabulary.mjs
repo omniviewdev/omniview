@@ -85,18 +85,11 @@ export function scanTrees(root = REPO_ROOT) {
 }
 
 /**
- * The files that already held plugin words when this guard came in: they merged with the kit atoms (#515) while decision A13 was being
- * written. A RATCHET, so it only goes down: a file that is not listed fails on its first word, a listed file fails when it gains a word,
- * and fails when it has none left (delete its line). The owner of those files replaces the sample words with neutral ones.
+ * The files that may still hold plugin words. A RATCHET, so it only goes down: a file that is not listed fails on its first word, a
+ * listed file fails when it gains a word, and fails when it has none left (delete its line). It is empty: the six files that merged
+ * with the kit atoms (#515) while decision A13 was being written (25 words) were rewritten with neutral sample words in 1a.4b/1a.4c.
  */
-export const RATCHET = Object.freeze({
-  'packages/kit/src/components/Button/Button.test.tsx': 3,
-  'packages/kit/src/components/Icon/glyphs.test.ts': 1,
-  'packages/kit/src/components/Icon/glyphs.ts': 1,
-  'packages/kit/src/components/IconButton/IconButton.examples.tsx': 7,
-  'packages/kit/src/components/IconButton/IconButton.test.tsx': 12,
-  'ui-next/parts/PartsPage.test.tsx': 1,
-});
+export const RATCHET = Object.freeze({});
 
 /** What the ratchet objects to: a file over its allowance (none, when it is not listed), and a listed file that has none left. */
 export function ratchetFailures(hits, allowed = RATCHET) {
