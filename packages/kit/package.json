@@ -17,6 +17,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./examples": {
+      "types": "./dist/examples.d.ts",
+      "import": "./dist/examples.js"
+    },
     "./styles.css": "./dist/styles.css"
   },
   "types": "./dist/index.d.ts",
@@ -27,8 +31,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint:css": "stylelint --config stylelint.config.mjs \"src/**/*.css\" \"../../ui-next/**/*.css\"",
     "test": "vitest run",
-    "api:check": "api-extractor run",
-    "api:update": "api-extractor run --local",
+    "api:check": "api-extractor run && api-extractor run --config api-extractor.examples.json",
+    "api:update": "api-extractor run --local && api-extractor run --local --config api-extractor.examples.json",
     "verify": "pnpm run generate:check && pnpm run typecheck && pnpm run lint:css && pnpm run test && pnpm run build && pnpm run api:check"
   },
   "peerDependencies": {
