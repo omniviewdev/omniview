@@ -1,5 +1,6 @@
 // Provenance: carried from omniviewdev/ui at 65bbefb, packages/base-ui/src/components/data-table/utils/createAdaptiveSortedRowModel.test.ts
 // (the twelve tests, unchanged but for the import). The counts the register asks for (MNR-T7) are in adaptiveSortedRowModel.counts.test.ts.
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion -- carried as it was: the kit compiles with noUncheckedIndexedAccess, the lint project (tsconfig.app.json) does not, so the assertions on indexed access are needed by tsc and look unneeded to the rule */
 import {
   createPaginatedRowModel,
   createSortedRowModel,
@@ -15,12 +16,12 @@ import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { createAdaptiveSortedRowModel } from './adaptiveSortedRowModel';
 
-interface Item { id: string; name: string; score: number; children?: Item[] }
+type Item = { id: string; name: string; score: number; children?: Item[] };
 const features = tableFeatures({
   rowSortingFeature,
   sortedRowModel: createAdaptiveSortedRowModel(),
 });
-const columns: ColumnDef<typeof features, Item>[] = [
+const columns: Array<ColumnDef<typeof features, Item>> = [
   { accessorKey: 'name', sortFn: sortFn_alphanumeric },
   { accessorKey: 'score', sortFn: (a, b) => a.original.score - b.original.score },
 ];
@@ -35,17 +36,24 @@ function make(data = source, sorting: SortingState = [{ id: 'name', desc: false 
   const { result, rerender } = renderHook(
     ({ data, enabled }) => useTable({
       features, columns: definitions, data, getRowId: (row) => row.id,
-      meta: immutable ? IMMUTABLE_META : undefined,
+      ...(immutable ? { meta: IMMUTABLE_META } : {}),
       enableSorting: enabled, initialState: { sorting },
     }),
     { initialProps: { data, enabled: true } },
   );
   return {
     model: () => result.current.getRowModel(),
-    setData: (data: Item[], enabled = true) => rerender({ data, enabled }),
-    setSorting: (sorting: SortingState) => act(() => result.current.setSorting(sorting)),
+    setData: (data: Item[], enabled = true) => {
+      rerender({ data, enabled }); 
+    },
+    setSorting: (sorting: SortingState) => {
+      act(() => {
+        result.current.setSorting(sorting); 
+      }); 
+    },
   };
 }
+
 const ids = (table: ReturnType<typeof make>) => table.model().rows.map((row) => row.id);
 
 describe.each([false, true])('adaptive sorted input (immutable=%s)', (immutable) => {
@@ -207,7 +215,7 @@ const nativePagedFeatures: typeof pagedFeatures = {
   ...pagedFeatures,
   sortedRowModel: createSortedRowModel(),
 };
-const pagedColumns: ColumnDef<typeof pagedFeatures, Item>[] = [
+const pagedColumns: Array<ColumnDef<typeof pagedFeatures, Item>> = [
   { accessorKey: 'name', sortFn: sortFn_alphanumeric },
   { accessorKey: 'score' },
 ];
@@ -235,7 +243,7 @@ async function makePaged(sorter: Sorter, autoResetPageIndex: boolean) {
         columns: pagedColumns,
         data,
         getRowId: (row) => row.id,
-        meta: sorter === 'immutable' ? IMMUTABLE_META : undefined,
+        ...(sorter === 'immutable' ? { meta: IMMUTABLE_META } : {}),
         autoResetPageIndex,
         initialState: {
           sorting: [{ id: 'name', desc: false }],
@@ -249,14 +257,20 @@ async function makePaged(sorter: Sorter, autoResetPageIndex: boolean) {
   );
   // The mount render primes the row models and queues their first-run auto-reset callbacks as
   // microtasks. Settle them before the page moves, so only later data changes can reset it.
-  await act(async () => {});
+  await act(async () => {
+    await Promise.resolve();
+  });
   return {
     // The page as last rendered.
     page: () => ({
       index: result.current.table.state.pagination.pageIndex,
       items: result.current.rows.map((row) => row.original),
     }),
-    goToPage: (index: number) => act(() => result.current.table.setPageIndex(index)),
+    goToPage: (index: number) => {
+      act(() => {
+        result.current.table.setPageIndex(index); 
+      }); 
+    },
     // Page resets are queued as microtasks; act settles them and the render they cause.
     setData: async (data: Item[]) => {
       await act(async () => {

@@ -20,8 +20,8 @@ type Item = { id: string; name: string; restarts: number };
 
 const adaptiveFeatures = tableFeatures({ rowSortingFeature, sortedRowModel: createAdaptiveSortedRowModel() });
 const nativeFeatures = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel() });
-const columns: ColumnDef<typeof adaptiveFeatures, Item>[] = [{ accessorKey: 'name', sortFn: sortFn_alphanumeric }, { accessorKey: 'restarts' }];
-const nativeColumns = columns as unknown as ColumnDef<typeof nativeFeatures, Item>[];
+const columns: Array<ColumnDef<typeof adaptiveFeatures, Item>> = [{ accessorKey: 'name', sortFn: sortFn_alphanumeric }, { accessorKey: 'restarts' }];
+const nativeColumns = columns as unknown as Array<ColumnDef<typeof nativeFeatures, Item>>;
 
 // A small deterministic generator (mulberry32), so the corpus and the patches are the same on every run.
 function random(seed: number) {
@@ -52,7 +52,10 @@ afterEach(() => {
 function comparisons(measure: () => void): number {
   let calls = 0;
   Array.prototype.sort = function (this: unknown[], compare?: (a: unknown, b: unknown) => number) {
-    if (compare === undefined) return originalSort.call(this);
+    if (compare === undefined) {
+      return originalSort.call(this);
+    }
+
     return originalSort.call(this, (a: unknown, b: unknown) => {
       calls += 1;
       return compare(a, b);
@@ -78,7 +81,11 @@ function patches(count: number, kind: 'mixed' | 'status'): Patch[] {
     const out = rows.slice();
     for (let touched = 0; touched < 2; touched += 1) {
       const index = Math.floor(next() * out.length);
-      const row = out[index]!;
+      const row = out.at(index);
+      if (row === undefined) {
+        continue;
+      }
+
       touches += 1;
       if (kind === 'mixed' && touches % 10 === 0) {
         out.splice(index, 1);
@@ -106,7 +113,9 @@ function harness(kind: 'adaptive' | 'native', data: Item[]) {
   );
   return {
     rows: () => view.result.current,
-    update: (rows: Item[]) => view.rerender({ rows }),
+    update: (rows: Item[]) => {
+      view.rerender({ rows }); 
+    },
     ids: () => view.result.current.map((row) => row.id),
   };
 }
@@ -119,15 +128,23 @@ describe('comparator calls of sparse immutable patches (MNR-T7)', () => {
     let adaptiveCalls = 0;
     let nativeCalls = 0;
     for (const patch of patches(50, 'mixed')) {
-      data = patch(data);
-      adaptiveCalls += comparisons(() => adaptive.update(data));
-      nativeCalls += comparisons(() => native.update(data));
+      const patched = patch(data);
+      data = patched;
+      adaptiveCalls += comparisons(() => {
+        adaptive.update(patched); 
+      });
+      nativeCalls += comparisons(() => {
+        native.update(patched); 
+      });
       expect(adaptive.ids()).toEqual(native.ids());
     }
 
     // Every returned row is the current object, not a stale one from the previous order.
     const current = new Map(data.map((row) => [row.id, row]));
-    for (const row of adaptive.rows()) expect(row.original).toBe(current.get(row.id));
+    for (const row of adaptive.rows()) {
+      expect(row.original).toBe(current.get(row.id));
+    }
+
     expect(adaptiveCalls).toBeLessThanOrEqual(300_000);
     // The reduction is the point: upstream sorting pays the full sort on every patch (the old probe: 2,747,070 against 250,068).
     expect(nativeCalls).toBeGreaterThan(adaptiveCalls * 5);
@@ -138,8 +155,11 @@ describe('comparator calls of sparse immutable patches (MNR-T7)', () => {
     const adaptive = harness('adaptive', data);
     let calls = 0;
     for (const patch of patches(50, 'status')) {
-      data = patch(data);
-      calls += comparisons(() => adaptive.update(data));
+      const patched = patch(data);
+      data = patched;
+      calls += comparisons(() => {
+        adaptive.update(patched); 
+      });
     }
 
     // The first patch compares the rows once in order to verify the kept order (n - 1 comparisons); the other 49 make none.
@@ -150,7 +170,9 @@ describe('comparator calls of sparse immutable patches (MNR-T7)', () => {
     const data = corpus();
     const adaptive = harness('adaptive', data);
     const calls = comparisons(() => {
-      for (let render = 0; render < 50; render += 1) adaptive.update(data);
+      for (let render = 0; render < 50; render += 1) {
+        adaptive.update(data);
+      }
     });
     expect(calls).toBe(0);
   });

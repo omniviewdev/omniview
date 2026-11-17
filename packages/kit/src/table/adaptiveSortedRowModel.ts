@@ -1,6 +1,7 @@
 // Provenance: carried as an engine from omniviewdev/ui at 65bbefb, packages/base-ui/src/components/data-table/utils/createAdaptiveSortedRowModel.ts
 // (last changed by 470b8f2, "Improve shared table rendering (#125)"). The body is unchanged; only this note and the file name are new.
 // It imports nothing but @tanstack/react-table. Register: docs/ui-next/optimisations.md T-15 and MNR-T7.
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion -- carried as it was: the kit compiles with noUncheckedIndexedAccess, the lint project (tsconfig.app.json) does not, so the assertions on indexed access are needed by tsc and look unneeded to the rule */
 import {
   createSortedRowModel,
   sortFn_alphanumeric,
@@ -14,14 +15,14 @@ import {
   type TableFeatures,
 } from '@tanstack/react-table';
 
-interface SortKey {
+type SortKey = {
   id: string;
   desc: boolean;
   fn: unknown;
   accessor: unknown;
   undefinedOrder: unknown;
   inverted: unknown;
-}
+};
 
 const builtInSorts = new Set<unknown>([sortFn_alphanumeric, sortFn_text]);
 type SortFeatures = Pick<typeof stockFeatures, 'rowSortingFeature' | 'rowPaginationFeature'>;
@@ -37,12 +38,21 @@ function sortKey<TData extends RowData>(
   sortable: Table<SortFeatures, TData>,
 ): SortKey | undefined {
   const sorting = sortable.atoms.sorting?.get();
-  if (sorting?.length !== 1) return undefined;
+  if (sorting?.length !== 1) {
+    return undefined;
+  }
+
   const entry = sorting[0]!;
   const column = sortable.getColumn(entry.id);
-  if (!column?.getCanSort()) return undefined;
+  if (!column?.getCanSort()) {
+    return undefined;
+  }
+
   const fn = column.getSortFn();
-  if (!builtInSorts.has(fn)) return undefined;
+  if (!builtInSorts.has(fn)) {
+    return undefined;
+  }
+
   return {
     id: entry.id, desc: entry.desc, fn, accessor: column.accessorFn,
     undefinedOrder: column.columnDef.sortUndefined, inverted: column.columnDef.invertSorting,
@@ -59,20 +69,35 @@ function compareKeys<TFeatures extends TableFeatures, TData extends RowData>(
   next: RowModel<TFeatures, TData>,
   key: SortKey,
 ): 'same' | 'changed' | 'structure' {
-  if (previous.rows.length !== next.rows.length || next.rows.length !== next.flatRows.length) return 'structure';
+  if (previous.rows.length !== next.rows.length || next.rows.length !== next.flatRows.length) {
+    return 'structure';
+  }
+
   for (let index = 0; index < next.rows.length; index++) {
     const before = previous.rows[index]!;
     const after = next.rows[index]!;
     // Source positions preserve the upstream tie-breaker. Hierarchical models use the full sorter.
     if (before.id !== after.id || before.index !== after.index || before.depth !== 0 ||
-      after.depth !== 0 || before.subRows.length || after.subRows.length) return 'structure';
-    if (before.original === after.original) continue;
+      after.depth !== 0 || before.subRows.length || after.subRows.length) {
+      return 'structure';
+    }
+
+    if (before.original === after.original) {
+      continue;
+    }
+
     const oldValue = before.getValue(key.id);
     const value = after.getValue(key.id);
     const type = typeof value;
-    if ((value !== null && type === 'object') || type === 'function' || type === 'symbol') return 'changed';
-    if (!Object.is(oldValue, value)) return 'changed';
+    if ((value !== null && type === 'object') || type === 'function' || type === 'symbol') {
+      return 'changed';
+    }
+
+    if (!Object.is(oldValue, value)) {
+      return 'changed';
+    }
   }
+
   return 'same';
 }
 
@@ -103,47 +128,74 @@ export function createAdaptiveSortedRowModel<TFeatures extends TableFeatures, TD
       getPreSortedRowModel: {
         value: () => {
           const next = table.getPreSortedRowModel();
-          if (next === input) return prepared!;
+          if (next === input) {
+            return prepared!;
+          }
+
           input = next;
           if (!order || next.rows.length < 2) {
             uniqueOrder = false;
             return (prepared = next);
           }
+
           if (order.length === next.rows.length) {
             let sameOrder = true;
             for (let index = 0; index < order.length; index++) {
-              if (order[index] !== next.rows[index]!.id) { sameOrder = false; break; }
+              if (order[index] !== next.rows[index]!.id) {
+                sameOrder = false; break; 
+              }
             }
+
             if (sameOrder) {
               if (reuseImmutableRows && !uniqueOrder) {
                 uniqueOrder = true;
                 for (const row of next.rows) {
-                  if (next.rowsById[row.id] !== row) { uniqueOrder = false; break; }
+                  if (next.rowsById[row.id] !== row) {
+                    uniqueOrder = false; break; 
+                  }
                 }
               }
+
               return (prepared = next);
             }
           }
 
           const remaining = new Map<string, Row<TFeatures, TData>>();
-          for (const row of next.rows) remaining.set(row.id, row);
+          for (const row of next.rows) {
+            remaining.set(row.id, row);
+          }
+
           // A seed must be a complete permutation, even when a caller supplies colliding IDs.
           uniqueOrder = remaining.size === next.rows.length;
-          if (!uniqueOrder) return (prepared = next);
+          if (!uniqueOrder) {
+            return (prepared = next);
+          }
+
           const rows = new Array<Row<TFeatures, TData>>(next.rows.length);
           let index = 0;
           let changed = false;
           for (const id of order) {
             const row = remaining.get(id);
-            if (!row) continue;
-            if (row !== next.rows[index]) changed = true;
+            if (!row) {
+              continue;
+            }
+
+            if (row !== next.rows[index]) {
+              changed = true;
+            }
+
             rows[index++] = row;
             remaining.delete(id);
           }
+
           for (const row of remaining.values()) {
-            if (row !== next.rows[index]) changed = true;
+            if (row !== next.rows[index]) {
+              changed = true;
+            }
+
             rows[index++] = row;
           }
+
           return (prepared = changed ? { ...next, rows } : next);
         },
       },
@@ -156,9 +208,13 @@ export function createAdaptiveSortedRowModel<TFeatures extends TableFeatures, TD
         // An upstream early return means sorting is absent or unavailable. Restore source order.
         order = result === prepared ? undefined : result.rows.map((row) => row.id);
       }
+
       return result === prepared && input ? input : result;
     };
-    if (!reuseImmutableRows) return readSorted;
+
+    if (!reuseImmutableRows) {
+      return readSorted;
+    }
 
     let previousKey: SortKey | undefined;
     let reusedOrder = false;
@@ -184,15 +240,21 @@ export function createAdaptiveSortedRowModel<TFeatures extends TableFeatures, TD
           reusedOrder = true;
           return prepared;
         }
+
         // Stop checking stability after a sort value changes; release the extra memo's snapshots.
         if (comparison === 'changed' || (next.rows.length > 0 &&
-          (!key || next.rows.length !== next.flatRows.length))) readCurrent = readSorted;
+          (!key || next.rows.length !== next.flatRows.length))) {
+          readCurrent = readSorted;
+        }
+
         const result = readSorted();
         previousKey = key;
         return result;
       },
       onAfterUpdate: () => {
-        if (reusedOrder) sortable.autoResetPageIndex?.();
+        if (reusedOrder) {
+          sortable.autoResetPageIndex?.();
+        }
       },
     });
     return () => readCurrent();
