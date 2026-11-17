@@ -1,0 +1,11 @@
+import Cocoa
+let args = CommandLine.arguments
+let pid: Int32? = args.count > 1 ? Int32(args[1]) : nil
+let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String: Any]]
+for w in list {
+  let owner = w[kCGWindowOwnerPID as String] as? Int32 ?? 0
+  if let p = pid, owner != p { continue }
+  let b = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
+  let x = b["X"] ?? 0, y = b["Y"] ?? 0, wd = b["Width"] ?? 0, ht = b["Height"] ?? 0
+  print("\(w[kCGWindowNumber as String] ?? 0)\t\(w[kCGWindowOwnerName as String] ?? "")\t\(w[kCGWindowName as String] ?? "")\tlayer=\(w[kCGWindowLayer as String] ?? 0)\tonscreen=\(w[kCGWindowIsOnscreen as String] ?? false)\t\(x),\(y) \(wd)x\(ht)")
+}
