@@ -42,10 +42,15 @@ const cartApi: HostRecord = {
 const connect = vi.fn(async () => undefined);
 
 // The hooks return react-query results; only the fields the skeleton reads are given.
-function answer({ phase = 'connected', types = ['k8s:/pods'], targetReady = true }: { phase?: string; types?: string[]; targetReady?: boolean } = {}) {
+type TypeAnswer = { readonly type: string; readonly operations?: readonly string[] };
+const podType: TypeAnswer = { type: 'k8s:/pods', operations: ['enumerate', 'sourceUpdates'] };
+
+function answer({ phase = 'connected', types = [podType], targetReady = true }: { phase?: string; types?: readonly TypeAnswer[]; targetReady?: boolean } = {}) {
   connections.mockReturnValue({ connections: { data: [{ id: 'kind-a' }, { id: 'kind-b' }], isPending: false } } as never);
   readiness.mockReturnValue({ phase, connect, retry: vi.fn() } as never);
-  resourceTypes.mockReturnValue({ resourceTypes: { data: types.map((type) => ({ type })) } } as never);
+  resourceTypes.mockReturnValue({
+    resourceTypes: { data: types.map(({ type, operations = [] }) => ({ type, capabilities: operations.map((operation) => ({ operation, scope: [] })) })) },
+  } as never);
   resolvedTarget.mockReturnValue({ data: targetReady ? { targetId: 'target-1', target } : undefined } as never);
   resources.mockReturnValue({ resources: { data: { records: [cartApi] } }, isLive: true } as never);
 }
@@ -70,7 +75,7 @@ describe('PodsSkeleton', () => {
     expect(resolvedTarget).toHaveBeenCalledWith({ pluginID: 'kubernetes', route: { connection: 'kind-a' }, type: 'k8s:/pods', enabled: true });
     expect(resources).toHaveBeenLastCalledWith({
       pluginID: 'kubernetes',
-      request: { targetId: 'target-1', request: { target, pageSize: 500 } },
+      request: { targetId: 'target-1', request: { target, pageSize: 256 } },
       collection: true,
       live: true,
     });
@@ -78,8 +83,16 @@ describe('PodsSkeleton', () => {
     expect(screen.getByTestId('pods-status')).toHaveTextContent('kind-a · connected · live · 1 pods');
   });
 
+  it('follows the source live only when the Pod type advertises sourceUpdates, as the old table does', () => {
+    answer({ types: [{ type: 'k8s:/pods', operations: ['enumerate'] }] });
+
+    render(<PodsSkeleton />);
+
+    expect(resources).toHaveBeenLastCalledWith(expect.objectContaining({ collection: true, live: false }));
+  });
+
   it('does not resolve a target until the catalog lists the Pod type, and acquires nothing before the target answers', () => {
-    answer({ types: ['k8s:apps/deployments'], targetReady: false });
+    answer({ types: [{ type: 'k8s:apps/deployments', operations: ['enumerate', 'sourceUpdates'] }], targetReady: false });
 
     render(<PodsSkeleton />);
 
