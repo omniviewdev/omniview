@@ -1,0 +1,85 @@
+{
+  "tag": "m1-webkit-w1",
+  "started": "2026-11-17T04:42:46.360Z",
+  "finished": "2026-11-17T04:55:06.388Z",
+  "command": "node bench/table/run.mjs --no-build --dist bench/table/.dist-matrix --rounds 15 --engine webkit --workload w1 --tag m1-webkit-w1",
+  "args": {
+    "no-build": true,
+    "dist": "bench/table/.dist-matrix",
+    "rounds": "15",
+    "engine": "webkit",
+    "workload": "w1",
+    "tag": "m1-webkit-w1",
+    "configs": "s,a,r,c",
+    "cpu": "1",
+    "rows": "5025",
+    "cells": "plain",
+    "warmup-ms": "3000",
+    "measure-ms": "5000",
+    "max-load": "12"
+  },
+  "configs": [
+    {
+      "name": "s",
+      "variant": "s",
+      "overscan": 8,
+      "step": 4
+    },
+    {
+      "name": "a",
+      "variant": "a",
+      "overscan": 8,
+      "step": 4
+    },
+    {
+      "name": "r",
+      "variant": "r",
+      "overscan": 8,
+      "step": 4
+    },
+    {
+      "name": "c",
+      "variant": "c",
+      "overscan": 8,
+      "step": 4
+    }
+  ],
+  "kit": {
+    "kitDistSha256": "a91dd3a17e37aec6ed87b0c4f8612abec4ae9e1c0c03acc7bf9ceb7a93d43cbb",
+    "kitDistBytes": 253519,
+    "commit": "1570a87242008bb7e39c3551447eec743d710c86",
+    "dirty": false,
+    "react": "normal",
+    "builtAt": "2026-11-17T04:31:22.858Z"
+  },
+  "corpus": {
+    "pods-fixture.json": {
+      "sha256": "1a2cf2fab06abd8dbbebf47d729e6969bdc42417e83e5938a4422e1876a06216",
+      "bytes": 264500
+    },
+    "pods-1025.json": {
+      "sha256": "631d8a6ea75bd9736fd630892715121a9ecd10f2734aa146dc169eac7c16bd90",
+      "bytes": 5970437
+    },
+    "pods-5025.json": {
+      "sha256": "1cf75dbfc5ebbe0d97e97ba76940029b49b86c01a172eeade4f03be73a78bcf6",
+      "bytes": 28796312
+    }
+  },
+  "environment": {
+    "node": "v26.12.0",
+    "playwright": "1.64.1",
+    "browsers": {
+      "webkit": "27.2"
+    },
+    "os": "Darwin 27.0.0 arm64",
+    "cpus": 18,
+    "memoryGiB": 128,
+    "loadAverage": [
+      7.19,
+      7.79,
+      7.87
+    ]
+  },
+  "trials": 60
+}

@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { here } from './lib.mjs';
 
-const [file, prefix, a11y] = process.argv.slice(2);
+const [file, prefix, a11y, prefixB] = process.argv.slice(2);
 const json = '/tmp/1a3b-analysis.json';
 const output = execFileSync('node', [path.join(here, 'analyze.mjs'), prefix, '--a11y', a11y, '--json', json], { encoding: 'utf8', maxBuffer: 1 << 28 });
 const tables = output.split('\n## rule')[0].trim();
@@ -34,5 +34,7 @@ for (const [engine, b] of Object.entries(rule.budgets ?? {})) {
 
 const steps = (rule.steps ?? []).map((step) => `- ${step}`).join('\n');
 let text = readFileSync(file, 'utf8');
-text = text.replace('<!-- TABLES -->', tables).replace('<!-- BUDGETS -->', budgets.join('\n')).replace('<!-- RULE -->', steps);
+// A second prefix (the 4x run of S and A only) fills <!-- TABLES-B -->.
+const tablesB = prefixB === undefined ? '' : execFileSync('node', [path.join(here, 'analyze.mjs'), prefixB, '--a11y', a11y], { encoding: 'utf8', maxBuffer: 1 << 28 }).split('\n## rule')[0].trim();
+text = text.replace('<!-- TABLES -->', tables).replace('<!-- TABLES-B -->', tablesB).replace('<!-- BUDGETS -->', budgets.join('\n')).replace('<!-- RULE -->', steps);
 writeFileSync(file, text);

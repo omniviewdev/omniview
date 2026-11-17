@@ -1,0 +1,592 @@
+{
+  "kit": {
+    "kitDistSha256": "a91dd3a17e37aec6ed87b0c4f8612abec4ae9e1c0c03acc7bf9ceb7a93d43cbb",
+    "kitDistBytes": 253519,
+    "commit": "1570a87242008bb7e39c3551447eec743d710c86",
+    "dirty": false,
+    "react": "normal",
+    "builtAt": "2026-11-17T04:31:22.858Z"
+  },
+  "environment": {
+    "node": "v26.12.0",
+    "playwright": "1.64.1",
+    "browsers": {
+      "chromium": "156.0.8078.4"
+    },
+    "os": "Darwin 27.0.0 arm64",
+    "cpus": 18,
+    "memoryGiB": 128,
+    "loadAverage": [
+      9.56,
+      8.44,
+      7.96
+    ]
+  },
+  "chromium": {
+    "s": {
+      "variant": "s",
+      "problems": [],
+      "attributes": {
+        "tableTag": "TABLE",
+        "tableRole": null,
+        "ariaRowcount": "5026",
+        "headerRowIndex": "1",
+        "firstRowIndex": "2",
+        "nameHeaderTag": "TH",
+        "nameHeaderRole": null,
+        "nameHeaderSort": "ascending",
+        "mountedRows": 28,
+        "rowTabIndexes": [
+          -1
+        ],
+        "rowTabindexAttributes": 0,
+        "cellTabindexAttributes": 0,
+        "regionTabIndex": 0
+      },
+      "snapshot": "- region \"Pods\":\n  - table:\n    - rowgroup:\n      - row \"Selection Name Ready Status Restarts Age\":\n        - columnheader \"Selection\"\n        - columnheader \"Name\":\n          - button \"Name\"\n        - columnheader \"Ready\":\n          - button \"Ready\"\n        - columnheader \"Status\":\n          - button \"Status\"\n        - columnheader \"Restarts\":\n          - button \"Restarts\"\n        - columnheader \"Age\":\n          - button \"Age\"\n    - rowgroup:\n      - row \"Select alertmanager-5d5bcf5596-85hgb alertmanager-5d5bcf5596-85hgbmonitoring 1/1 Running 0 1h\":\n        - cell \"Select alertmanager-5d5bcf5596-85hgb\":\n          - checkbox \"Select alertmanager-5d5bcf5596-85hgb\"\n        - cell \"alertmanager-5d5bcf5596-85hgbmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select bad-image bad-imagecheckout 0/1 ImagePullBackOff 0 1h\":\n        - cell \"Select bad-image\":\n          - checkbox \"Select bad-image\"\n        - cell \"bad-imagecheckout\"\n        - cell \"0/1\"\n        - cell \"ImagePullBackOff\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select broken-migration-6f8mq broken-migration-6f8mqbatch 0/1 Error 0 1h\":\n        - cell \"Select broken-migration-6f8mq\":\n          - checkbox \"Select broken-migration-6f8mq\"\n        - cell \"broken-migration-6f8mqbatch\"\n        - cell \"0/1\"\n        - cell \"Error\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-6c29w cart-api-86bf766589-6c29wcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-6c29w\":\n          - checkbox \"Select cart-api-86bf766589-6c29w\"\n        - cell \"cart-api-86bf766589-6c29wcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-27vpx cart-api-86bf766589-27vpxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-27vpx\":\n          - checkbox \"Select cart-api-86bf766589-27vpx\"\n        - cell \"cart-api-86bf766589-27vpxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-lrpbx cart-api-86bf766589-lrpbxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-lrpbx\":\n          - checkbox \"Select cart-api-86bf766589-lrpbx\"\n        - cell \"cart-api-86bf766589-lrpbxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-0 cart-cache-0checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-0\":\n          - checkbox \"Select cart-cache-0\"\n        - cell \"cart-cache-0checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-1 cart-cache-1checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-1\":\n          - checkbox \"Select cart-cache-1\"\n        - cell \"cart-cache-1checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-tz2jp coredns-7d764666f9-tz2jpkube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-tz2jp\":\n          - checkbox \"Select coredns-7d764666f9-tz2jp\"\n        - cell \"coredns-7d764666f9-tz2jpkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-w6tc4 coredns-7d764666f9-w6tc4kube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-w6tc4\":\n          - checkbox \"Select coredns-7d764666f9-w6tc4\"\n        - cell \"coredns-7d764666f9-w6tc4kube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select crashloop crashloopcheckout 0/1 CrashLoopBackOff 5 1h\":\n        - cell \"Select crashloop\":\n          - checkbox \"Select crashloop\"\n        - cell \"crashloopcheckout\"\n        - cell \"0/1\"\n        - cell \"CrashLoopBackOff\"\n        - cell \"5\"\n        - cell \"1h\"\n      - row \"Select etcd-ui1a3-table-control-plane etcd-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select etcd-ui1a3-table-control-plane\":\n          - checkbox \"Select etcd-ui1a3-table-control-plane\"\n        - cell \"etcd-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kindnet-qfrfv kindnet-qfrfvkube-system 1/1 Running 0 1h\":\n        - cell \"Select kindnet-qfrfv\":\n          - checkbox \"Select kindnet-qfrfv\"\n        - cell \"kindnet-qfrfvkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-apiserver-ui1a3-table-control-plane kube-apiserver-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-apiserver-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-apiserver-ui1a3-table-control-plane\"\n        - cell \"kube-apiserver-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-controller-manager-ui1a3-table-control-plane kube-controller-manager-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-controller-manager-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-controller-manager-ui1a3-table-control-plane\"\n        - cell \"kube-controller-manager-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-proxy-thpzn kube-proxy-thpznkube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-proxy-thpzn\":\n          - checkbox \"Select kube-proxy-thpzn\"\n        - cell \"kube-proxy-thpznkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-scheduler-ui1a3-table-control-plane kube-scheduler-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-scheduler-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-scheduler-ui1a3-table-control-plane\"\n        - cell \"kube-scheduler-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select local-path-provisioner-67b8995b4b-lfvrn local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage 1/1 Running 0 1h\":\n        - cell \"Select local-path-provisioner-67b8995b4b-lfvrn\":\n          - checkbox \"Select local-path-provisioner-67b8995b4b-lfvrn\"\n        - cell \"local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-rbzfl nightly-report-rbzflbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-rbzfl\":\n          - checkbox \"Select nightly-report-rbzfl\"\n        - cell \"nightly-report-rbzflbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-s672f nightly-report-s672fbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-s672f\":\n          - checkbox \"Select nightly-report-s672f\"\n        - cell \"nightly-report-s672fbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-z2wdl nightly-report-z2wdlbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-z2wdl\":\n          - checkbox \"Select nightly-report-z2wdl\"\n        - cell \"nightly-report-z2wdlbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select node-agent-86bdv node-agent-86bdvmonitoring 1/1 Running 0 1h\":\n        - cell \"Select node-agent-86bdv\":\n          - checkbox \"Select node-agent-86bdv\"\n        - cell \"node-agent-86bdvmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-84pkq payment-gateway-6f45c7c7cd-84pkqcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-84pkq\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-84pkq\"\n        - cell \"payment-gateway-6f45c7c7cd-84pkqcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-85hhm payment-gateway-6f45c7c7cd-85hhmcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-85hhm\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-85hhm\"\n        - cell \"payment-gateway-6f45c7c7cd-85hhmcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b6zc scale-probe-5cbb9f8dfd-2b6zcscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b6zc\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b6zc\"\n        - cell \"scale-probe-5cbb9f8dfd-2b6zcscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b25m scale-probe-5cbb9f8dfd-2b25mscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b25m\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b25m\"\n        - cell \"scale-probe-5cbb9f8dfd-2b25mscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bpdv scale-probe-5cbb9f8dfd-2bpdvscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bpdv\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bpdv\"\n        - cell \"scale-probe-5cbb9f8dfd-2bpdvscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bqwd scale-probe-5cbb9f8dfd-2bqwdscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bqwd\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bqwd\"\n        - cell \"scale-probe-5cbb9f8dfd-2bqwdscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"",
+      "snapshotRoles": {
+        "table": 1,
+        "rowgroup": 2,
+        "row": 29,
+        "columnheader": 6,
+        "cell": 168,
+        "checkbox": 28,
+        "button": 5
+      },
+      "snapshotNameHeader": "        - columnheader \"Name\":",
+      "cdp": {
+        "roles": {
+          "table": 1,
+          "rowgroup": 2,
+          "row": 29,
+          "columnheader": 6,
+          "cell": 168,
+          "gridcell": 0,
+          "rowheader": 0,
+          "generic": 3
+        },
+        "tableName": "",
+        "tableProperties": [],
+        "columnHeaders": [
+          "Selection",
+          "Name",
+          "Ready",
+          "Status",
+          "Restarts",
+          "Age"
+        ],
+        "nameHeaderProperties": [
+          "readonly=false",
+          "required=false"
+        ],
+        "nameHeaderSort": null
+      },
+      "tabStops": [
+        {
+          "key": "Tab",
+          "seen": [
+            "div[role=region]\"Pods\"",
+            "button",
+            "button",
+            "button",
+            "button",
+            "button",
+            "input\"Select alertmanager-5d5bcf5596-85hgb\"",
+            "input\"Select bad-image\"",
+            "input\"Select broken-migration-6f8mq\"",
+            "input\"Select cart-api-86bf766589-6c29w\""
+          ]
+        },
+        {
+          "key": "Alt+Tab",
+          "seen": [
+            "input\"Select cart-api-86bf766589-27vpx\"",
+            "input\"Select cart-api-86bf766589-lrpbx\"",
+            "input\"Select cart-cache-0\"",
+            "input\"Select cart-cache-1\"",
+            "input\"Select coredns-7d764666f9-tz2jp\"",
+            "input\"Select coredns-7d764666f9-w6tc4\"",
+            "input\"Select crashloop\"",
+            "input\"Select etcd-ui1a3-table-control-plane\"",
+            "input\"Select kindnet-qfrfv\"",
+            "input\"Select kube-apiserver-ui1a3-table-control-plane\""
+          ]
+        }
+      ],
+      "axe": {
+        "version": "4.14.1",
+        "violations": [
+          {
+            "id": "empty-table-header",
+            "impact": "minor",
+            "nodes": 1,
+            "help": "Table header text should not be empty"
+          }
+        ],
+        "passes": 25,
+        "incomplete": []
+      },
+      "failures": [],
+      "pass": true
+    },
+    "a": {
+      "variant": "a",
+      "problems": [],
+      "attributes": {
+        "tableTag": "TABLE",
+        "tableRole": "table",
+        "ariaRowcount": "5026",
+        "headerRowIndex": "1",
+        "firstRowIndex": "2",
+        "nameHeaderTag": "TH",
+        "nameHeaderRole": "columnheader",
+        "nameHeaderSort": "ascending",
+        "mountedRows": 28,
+        "rowTabIndexes": [
+          -1
+        ],
+        "rowTabindexAttributes": 0,
+        "cellTabindexAttributes": 0,
+        "regionTabIndex": 0
+      },
+      "snapshot": "- region \"Pods\":\n  - table:\n    - rowgroup:\n      - row \"Selection Name Ready Status Restarts Age\":\n        - columnheader \"Selection\"\n        - columnheader \"Name\":\n          - button \"Name\"\n        - columnheader \"Ready\":\n          - button \"Ready\"\n        - columnheader \"Status\":\n          - button \"Status\"\n        - columnheader \"Restarts\":\n          - button \"Restarts\"\n        - columnheader \"Age\":\n          - button \"Age\"\n    - rowgroup:\n      - row \"Select alertmanager-5d5bcf5596-85hgb alertmanager-5d5bcf5596-85hgbmonitoring 1/1 Running 0 1h\":\n        - cell \"Select alertmanager-5d5bcf5596-85hgb\":\n          - checkbox \"Select alertmanager-5d5bcf5596-85hgb\"\n        - cell \"alertmanager-5d5bcf5596-85hgbmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select bad-image bad-imagecheckout 0/1 ImagePullBackOff 0 1h\":\n        - cell \"Select bad-image\":\n          - checkbox \"Select bad-image\"\n        - cell \"bad-imagecheckout\"\n        - cell \"0/1\"\n        - cell \"ImagePullBackOff\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select broken-migration-6f8mq broken-migration-6f8mqbatch 0/1 Error 0 1h\":\n        - cell \"Select broken-migration-6f8mq\":\n          - checkbox \"Select broken-migration-6f8mq\"\n        - cell \"broken-migration-6f8mqbatch\"\n        - cell \"0/1\"\n        - cell \"Error\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-6c29w cart-api-86bf766589-6c29wcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-6c29w\":\n          - checkbox \"Select cart-api-86bf766589-6c29w\"\n        - cell \"cart-api-86bf766589-6c29wcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-27vpx cart-api-86bf766589-27vpxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-27vpx\":\n          - checkbox \"Select cart-api-86bf766589-27vpx\"\n        - cell \"cart-api-86bf766589-27vpxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-lrpbx cart-api-86bf766589-lrpbxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-lrpbx\":\n          - checkbox \"Select cart-api-86bf766589-lrpbx\"\n        - cell \"cart-api-86bf766589-lrpbxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-0 cart-cache-0checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-0\":\n          - checkbox \"Select cart-cache-0\"\n        - cell \"cart-cache-0checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-1 cart-cache-1checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-1\":\n          - checkbox \"Select cart-cache-1\"\n        - cell \"cart-cache-1checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-tz2jp coredns-7d764666f9-tz2jpkube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-tz2jp\":\n          - checkbox \"Select coredns-7d764666f9-tz2jp\"\n        - cell \"coredns-7d764666f9-tz2jpkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-w6tc4 coredns-7d764666f9-w6tc4kube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-w6tc4\":\n          - checkbox \"Select coredns-7d764666f9-w6tc4\"\n        - cell \"coredns-7d764666f9-w6tc4kube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select crashloop crashloopcheckout 0/1 CrashLoopBackOff 5 1h\":\n        - cell \"Select crashloop\":\n          - checkbox \"Select crashloop\"\n        - cell \"crashloopcheckout\"\n        - cell \"0/1\"\n        - cell \"CrashLoopBackOff\"\n        - cell \"5\"\n        - cell \"1h\"\n      - row \"Select etcd-ui1a3-table-control-plane etcd-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select etcd-ui1a3-table-control-plane\":\n          - checkbox \"Select etcd-ui1a3-table-control-plane\"\n        - cell \"etcd-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kindnet-qfrfv kindnet-qfrfvkube-system 1/1 Running 0 1h\":\n        - cell \"Select kindnet-qfrfv\":\n          - checkbox \"Select kindnet-qfrfv\"\n        - cell \"kindnet-qfrfvkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-apiserver-ui1a3-table-control-plane kube-apiserver-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-apiserver-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-apiserver-ui1a3-table-control-plane\"\n        - cell \"kube-apiserver-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-controller-manager-ui1a3-table-control-plane kube-controller-manager-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-controller-manager-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-controller-manager-ui1a3-table-control-plane\"\n        - cell \"kube-controller-manager-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-proxy-thpzn kube-proxy-thpznkube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-proxy-thpzn\":\n          - checkbox \"Select kube-proxy-thpzn\"\n        - cell \"kube-proxy-thpznkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-scheduler-ui1a3-table-control-plane kube-scheduler-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-scheduler-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-scheduler-ui1a3-table-control-plane\"\n        - cell \"kube-scheduler-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select local-path-provisioner-67b8995b4b-lfvrn local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage 1/1 Running 0 1h\":\n        - cell \"Select local-path-provisioner-67b8995b4b-lfvrn\":\n          - checkbox \"Select local-path-provisioner-67b8995b4b-lfvrn\"\n        - cell \"local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-rbzfl nightly-report-rbzflbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-rbzfl\":\n          - checkbox \"Select nightly-report-rbzfl\"\n        - cell \"nightly-report-rbzflbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-s672f nightly-report-s672fbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-s672f\":\n          - checkbox \"Select nightly-report-s672f\"\n        - cell \"nightly-report-s672fbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-z2wdl nightly-report-z2wdlbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-z2wdl\":\n          - checkbox \"Select nightly-report-z2wdl\"\n        - cell \"nightly-report-z2wdlbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select node-agent-86bdv node-agent-86bdvmonitoring 1/1 Running 0 1h\":\n        - cell \"Select node-agent-86bdv\":\n          - checkbox \"Select node-agent-86bdv\"\n        - cell \"node-agent-86bdvmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-84pkq payment-gateway-6f45c7c7cd-84pkqcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-84pkq\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-84pkq\"\n        - cell \"payment-gateway-6f45c7c7cd-84pkqcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-85hhm payment-gateway-6f45c7c7cd-85hhmcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-85hhm\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-85hhm\"\n        - cell \"payment-gateway-6f45c7c7cd-85hhmcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b6zc scale-probe-5cbb9f8dfd-2b6zcscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b6zc\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b6zc\"\n        - cell \"scale-probe-5cbb9f8dfd-2b6zcscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b25m scale-probe-5cbb9f8dfd-2b25mscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b25m\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b25m\"\n        - cell \"scale-probe-5cbb9f8dfd-2b25mscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bpdv scale-probe-5cbb9f8dfd-2bpdvscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bpdv\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bpdv\"\n        - cell \"scale-probe-5cbb9f8dfd-2bpdvscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bqwd scale-probe-5cbb9f8dfd-2bqwdscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bqwd\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bqwd\"\n        - cell \"scale-probe-5cbb9f8dfd-2bqwdscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"",
+      "snapshotRoles": {
+        "table": 1,
+        "rowgroup": 2,
+        "row": 29,
+        "columnheader": 6,
+        "cell": 168,
+        "checkbox": 28,
+        "button": 5
+      },
+      "snapshotNameHeader": "        - columnheader \"Name\":",
+      "cdp": {
+        "roles": {
+          "table": 1,
+          "rowgroup": 2,
+          "row": 29,
+          "columnheader": 6,
+          "cell": 168,
+          "gridcell": 0,
+          "rowheader": 0,
+          "generic": 3
+        },
+        "tableName": "",
+        "tableProperties": [],
+        "columnHeaders": [
+          "Selection",
+          "Name",
+          "Ready",
+          "Status",
+          "Restarts",
+          "Age"
+        ],
+        "nameHeaderProperties": [
+          "readonly=false",
+          "required=false"
+        ],
+        "nameHeaderSort": null
+      },
+      "tabStops": [
+        {
+          "key": "Tab",
+          "seen": [
+            "div[role=region]\"Pods\"",
+            "button",
+            "button",
+            "button",
+            "button",
+            "button",
+            "input\"Select alertmanager-5d5bcf5596-85hgb\"",
+            "input\"Select bad-image\"",
+            "input\"Select broken-migration-6f8mq\"",
+            "input\"Select cart-api-86bf766589-6c29w\""
+          ]
+        },
+        {
+          "key": "Alt+Tab",
+          "seen": [
+            "input\"Select cart-api-86bf766589-27vpx\"",
+            "input\"Select cart-api-86bf766589-lrpbx\"",
+            "input\"Select cart-cache-0\"",
+            "input\"Select cart-cache-1\"",
+            "input\"Select coredns-7d764666f9-tz2jp\"",
+            "input\"Select coredns-7d764666f9-w6tc4\"",
+            "input\"Select crashloop\"",
+            "input\"Select etcd-ui1a3-table-control-plane\"",
+            "input\"Select kindnet-qfrfv\"",
+            "input\"Select kube-apiserver-ui1a3-table-control-plane\""
+          ]
+        }
+      ],
+      "axe": {
+        "version": "4.14.1",
+        "violations": [
+          {
+            "id": "empty-table-header",
+            "impact": "minor",
+            "nodes": 1,
+            "help": "Table header text should not be empty"
+          }
+        ],
+        "passes": 27,
+        "incomplete": []
+      },
+      "failures": [],
+      "pass": true
+    },
+    "r": {
+      "variant": "r",
+      "problems": [],
+      "attributes": {
+        "tableTag": "TABLE",
+        "tableRole": "table",
+        "ariaRowcount": null,
+        "headerRowIndex": null,
+        "firstRowIndex": null,
+        "nameHeaderTag": "TH",
+        "nameHeaderRole": null,
+        "nameHeaderSort": "ascending",
+        "mountedRows": 40,
+        "rowTabIndexes": [
+          -1
+        ],
+        "rowTabindexAttributes": 0,
+        "cellTabindexAttributes": 0,
+        "regionTabIndex": -1
+      },
+      "snapshot": "- table:\n  - rowgroup:\n    - row \"Sort by Name Sort by Namespace Sort by Ready Sort by Status Sort by Restarts Sort by Age\":\n      - columnheader\n      - columnheader \"Sort by Name\":\n        - button \"Sort by Name\": Name ↑\n      - columnheader \"Sort by Namespace\":\n        - button \"Sort by Namespace\": Namespace\n      - columnheader \"Sort by Ready\":\n        - button \"Sort by Ready\": Ready\n      - columnheader \"Sort by Status\":\n        - button \"Sort by Status\": Status\n      - columnheader \"Sort by Restarts\":\n        - button \"Sort by Restarts\": Restarts\n      - columnheader \"Sort by Age\":\n        - button \"Sort by Age\": Age\n  - rowgroup:\n    - row \"Select row alertmanager-5d5bcf5596-85hgb monitoring 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"alertmanager-5d5bcf5596-85hgb\"\n      - cell \"monitoring\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row bad-image checkout 0/1 ImagePullBackOff 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"bad-image\"\n      - cell \"checkout\"\n      - cell \"0/1\"\n      - cell \"ImagePullBackOff\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row broken-migration-6f8mq batch 0/1 Error 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"broken-migration-6f8mq\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Error\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-api-86bf766589-6c29w checkout 2/2 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-api-86bf766589-6c29w\"\n      - cell \"checkout\"\n      - cell \"2/2\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-api-86bf766589-27vpx checkout 2/2 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-api-86bf766589-27vpx\"\n      - cell \"checkout\"\n      - cell \"2/2\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-api-86bf766589-lrpbx checkout 2/2 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-api-86bf766589-lrpbx\"\n      - cell \"checkout\"\n      - cell \"2/2\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-cache-0 checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-cache-0\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-cache-1 checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-cache-1\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row coredns-7d764666f9-tz2jp kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"coredns-7d764666f9-tz2jp\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row coredns-7d764666f9-w6tc4 kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"coredns-7d764666f9-w6tc4\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row crashloop checkout 0/1 CrashLoopBackOff 5 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"crashloop\"\n      - cell \"checkout\"\n      - cell \"0/1\"\n      - cell \"CrashLoopBackOff\"\n      - cell \"5\"\n      - cell \"1h\"\n    - row \"Select row etcd-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"etcd-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kindnet-qfrfv kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kindnet-qfrfv\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-apiserver-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-apiserver-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-controller-manager-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-controller-manager-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-proxy-thpzn kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-proxy-thpzn\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-scheduler-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-scheduler-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row local-path-provisioner-67b8995b4b-lfvrn local-path-storage 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"local-path-provisioner-67b8995b4b-lfvrn\"\n      - cell \"local-path-storage\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row nightly-report-rbzfl batch 0/1 Completed 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"nightly-report-rbzfl\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Completed\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row nightly-report-s672f batch 0/1 Completed 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"nightly-report-s672f\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Completed\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row nightly-report-z2wdl batch 0/1 Completed 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"nightly-report-z2wdl\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Completed\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row node-agent-86bdv monitoring 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"node-agent-86bdv\"\n      - cell \"monitoring\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row payment-gateway-6f45c7c7cd-84pkq checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"payment-gateway-6f45c7c7cd-84pkq\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row payment-gateway-6f45c7c7cd-85hhm checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"payment-gateway-6f45c7c7cd-85hhm\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2b6zc scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2b6zc\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2b25m scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2b25m\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bpdv scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bpdv\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bqwd scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bqwd\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2br5f scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2br5f\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bwt8 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bwt8\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bxqk scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bxqk\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2c9f2 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2c9f2\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2c48r scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2c48r\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cm9j scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cm9j\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2ctq6 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2ctq6\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cvf8 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cvf8\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cvns scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cvns\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cz96 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cz96\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2d8j7 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2d8j7\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2dggs scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2dggs\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"",
+      "snapshotRoles": {
+        "table": 1,
+        "rowgroup": 2,
+        "row": 41,
+        "columnheader": 7,
+        "cell": 280,
+        "checkbox": 40,
+        "button": 6
+      },
+      "snapshotNameHeader": null,
+      "cdp": {
+        "roles": {
+          "table": 1,
+          "rowgroup": 2,
+          "row": 41,
+          "columnheader": 7,
+          "cell": 280,
+          "gridcell": 0,
+          "rowheader": 0,
+          "generic": 4
+        },
+        "tableName": "",
+        "tableProperties": [],
+        "columnHeaders": [
+          "",
+          "Sort by Name",
+          "Sort by Namespace",
+          "Sort by Ready",
+          "Sort by Status",
+          "Sort by Restarts",
+          "Sort by Age"
+        ],
+        "nameHeaderProperties": null,
+        "nameHeaderSort": null
+      },
+      "tabStops": [
+        {
+          "key": "Tab",
+          "seen": [
+            "button\"Sort by Name\"",
+            "button\"Sort by Namespace\"",
+            "button\"Sort by Ready\"",
+            "button\"Sort by Status\"",
+            "button\"Sort by Restarts\"",
+            "button\"Sort by Age\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\""
+          ]
+        },
+        {
+          "key": "Alt+Tab",
+          "seen": [
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\""
+          ]
+        }
+      ],
+      "axe": {
+        "version": "4.14.1",
+        "violations": [
+          {
+            "id": "empty-table-header",
+            "impact": "minor",
+            "nodes": 1,
+            "help": "Table header text should not be empty"
+          }
+        ],
+        "passes": 24,
+        "incomplete": [
+          "aria-prohibited-attr",
+          "color-contrast"
+        ]
+      },
+      "failures": [
+        "aria-rowcount null"
+      ],
+      "pass": false
+    }
+  },
+  "webkit": {
+    "s": {
+      "variant": "s",
+      "problems": [],
+      "attributes": {
+        "tableTag": "TABLE",
+        "tableRole": null,
+        "ariaRowcount": "5026",
+        "headerRowIndex": "1",
+        "firstRowIndex": "2",
+        "nameHeaderTag": "TH",
+        "nameHeaderRole": null,
+        "nameHeaderSort": "ascending",
+        "mountedRows": 28,
+        "rowTabIndexes": [
+          -1
+        ],
+        "rowTabindexAttributes": 0,
+        "cellTabindexAttributes": 0,
+        "regionTabIndex": 0
+      },
+      "snapshot": "- region \"Pods\":\n  - table:\n    - rowgroup:\n      - row \"Selection Name Ready Status Restarts Age\":\n        - columnheader \"Selection\"\n        - columnheader \"Name\":\n          - button \"Name\"\n        - columnheader \"Ready\":\n          - button \"Ready\"\n        - columnheader \"Status\":\n          - button \"Status\"\n        - columnheader \"Restarts\":\n          - button \"Restarts\"\n        - columnheader \"Age\":\n          - button \"Age\"\n    - rowgroup:\n      - row \"Select alertmanager-5d5bcf5596-85hgb alertmanager-5d5bcf5596-85hgbmonitoring 1/1 Running 0 1h\":\n        - cell \"Select alertmanager-5d5bcf5596-85hgb\":\n          - checkbox \"Select alertmanager-5d5bcf5596-85hgb\"\n        - cell \"alertmanager-5d5bcf5596-85hgbmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select bad-image bad-imagecheckout 0/1 ImagePullBackOff 0 1h\":\n        - cell \"Select bad-image\":\n          - checkbox \"Select bad-image\"\n        - cell \"bad-imagecheckout\"\n        - cell \"0/1\"\n        - cell \"ImagePullBackOff\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select broken-migration-6f8mq broken-migration-6f8mqbatch 0/1 Error 0 1h\":\n        - cell \"Select broken-migration-6f8mq\":\n          - checkbox \"Select broken-migration-6f8mq\"\n        - cell \"broken-migration-6f8mqbatch\"\n        - cell \"0/1\"\n        - cell \"Error\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-6c29w cart-api-86bf766589-6c29wcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-6c29w\":\n          - checkbox \"Select cart-api-86bf766589-6c29w\"\n        - cell \"cart-api-86bf766589-6c29wcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-27vpx cart-api-86bf766589-27vpxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-27vpx\":\n          - checkbox \"Select cart-api-86bf766589-27vpx\"\n        - cell \"cart-api-86bf766589-27vpxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-lrpbx cart-api-86bf766589-lrpbxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-lrpbx\":\n          - checkbox \"Select cart-api-86bf766589-lrpbx\"\n        - cell \"cart-api-86bf766589-lrpbxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-0 cart-cache-0checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-0\":\n          - checkbox \"Select cart-cache-0\"\n        - cell \"cart-cache-0checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-1 cart-cache-1checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-1\":\n          - checkbox \"Select cart-cache-1\"\n        - cell \"cart-cache-1checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-tz2jp coredns-7d764666f9-tz2jpkube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-tz2jp\":\n          - checkbox \"Select coredns-7d764666f9-tz2jp\"\n        - cell \"coredns-7d764666f9-tz2jpkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-w6tc4 coredns-7d764666f9-w6tc4kube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-w6tc4\":\n          - checkbox \"Select coredns-7d764666f9-w6tc4\"\n        - cell \"coredns-7d764666f9-w6tc4kube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select crashloop crashloopcheckout 0/1 CrashLoopBackOff 5 1h\":\n        - cell \"Select crashloop\":\n          - checkbox \"Select crashloop\"\n        - cell \"crashloopcheckout\"\n        - cell \"0/1\"\n        - cell \"CrashLoopBackOff\"\n        - cell \"5\"\n        - cell \"1h\"\n      - row \"Select etcd-ui1a3-table-control-plane etcd-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select etcd-ui1a3-table-control-plane\":\n          - checkbox \"Select etcd-ui1a3-table-control-plane\"\n        - cell \"etcd-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kindnet-qfrfv kindnet-qfrfvkube-system 1/1 Running 0 1h\":\n        - cell \"Select kindnet-qfrfv\":\n          - checkbox \"Select kindnet-qfrfv\"\n        - cell \"kindnet-qfrfvkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-apiserver-ui1a3-table-control-plane kube-apiserver-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-apiserver-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-apiserver-ui1a3-table-control-plane\"\n        - cell \"kube-apiserver-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-controller-manager-ui1a3-table-control-plane kube-controller-manager-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-controller-manager-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-controller-manager-ui1a3-table-control-plane\"\n        - cell \"kube-controller-manager-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-proxy-thpzn kube-proxy-thpznkube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-proxy-thpzn\":\n          - checkbox \"Select kube-proxy-thpzn\"\n        - cell \"kube-proxy-thpznkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-scheduler-ui1a3-table-control-plane kube-scheduler-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-scheduler-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-scheduler-ui1a3-table-control-plane\"\n        - cell \"kube-scheduler-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select local-path-provisioner-67b8995b4b-lfvrn local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage 1/1 Running 0 1h\":\n        - cell \"Select local-path-provisioner-67b8995b4b-lfvrn\":\n          - checkbox \"Select local-path-provisioner-67b8995b4b-lfvrn\"\n        - cell \"local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-rbzfl nightly-report-rbzflbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-rbzfl\":\n          - checkbox \"Select nightly-report-rbzfl\"\n        - cell \"nightly-report-rbzflbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-s672f nightly-report-s672fbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-s672f\":\n          - checkbox \"Select nightly-report-s672f\"\n        - cell \"nightly-report-s672fbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-z2wdl nightly-report-z2wdlbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-z2wdl\":\n          - checkbox \"Select nightly-report-z2wdl\"\n        - cell \"nightly-report-z2wdlbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select node-agent-86bdv node-agent-86bdvmonitoring 1/1 Running 0 1h\":\n        - cell \"Select node-agent-86bdv\":\n          - checkbox \"Select node-agent-86bdv\"\n        - cell \"node-agent-86bdvmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-84pkq payment-gateway-6f45c7c7cd-84pkqcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-84pkq\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-84pkq\"\n        - cell \"payment-gateway-6f45c7c7cd-84pkqcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-85hhm payment-gateway-6f45c7c7cd-85hhmcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-85hhm\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-85hhm\"\n        - cell \"payment-gateway-6f45c7c7cd-85hhmcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b6zc scale-probe-5cbb9f8dfd-2b6zcscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b6zc\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b6zc\"\n        - cell \"scale-probe-5cbb9f8dfd-2b6zcscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b25m scale-probe-5cbb9f8dfd-2b25mscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b25m\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b25m\"\n        - cell \"scale-probe-5cbb9f8dfd-2b25mscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bpdv scale-probe-5cbb9f8dfd-2bpdvscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bpdv\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bpdv\"\n        - cell \"scale-probe-5cbb9f8dfd-2bpdvscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bqwd scale-probe-5cbb9f8dfd-2bqwdscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bqwd\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bqwd\"\n        - cell \"scale-probe-5cbb9f8dfd-2bqwdscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"",
+      "snapshotRoles": {
+        "table": 1,
+        "rowgroup": 2,
+        "row": 29,
+        "columnheader": 6,
+        "cell": 168,
+        "checkbox": 28,
+        "button": 5
+      },
+      "snapshotNameHeader": "        - columnheader \"Name\":",
+      "tabStops": [
+        {
+          "key": "Tab",
+          "seen": [
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body"
+          ]
+        },
+        {
+          "key": "Alt+Tab",
+          "seen": [
+            "div[role=region]\"Pods\"",
+            "button",
+            "button",
+            "button",
+            "button",
+            "button",
+            "input\"Select alertmanager-5d5bcf5596-85hgb\"",
+            "input\"Select bad-image\"",
+            "input\"Select broken-migration-6f8mq\"",
+            "input\"Select cart-api-86bf766589-6c29w\""
+          ]
+        }
+      ],
+      "axe": {
+        "version": "4.14.1",
+        "violations": [
+          {
+            "id": "empty-table-header",
+            "impact": "minor",
+            "nodes": 1,
+            "help": "Table header text should not be empty"
+          }
+        ],
+        "passes": 25,
+        "incomplete": []
+      },
+      "failures": [],
+      "pass": true
+    },
+    "a": {
+      "variant": "a",
+      "problems": [],
+      "attributes": {
+        "tableTag": "TABLE",
+        "tableRole": "table",
+        "ariaRowcount": "5026",
+        "headerRowIndex": "1",
+        "firstRowIndex": "2",
+        "nameHeaderTag": "TH",
+        "nameHeaderRole": "columnheader",
+        "nameHeaderSort": "ascending",
+        "mountedRows": 28,
+        "rowTabIndexes": [
+          -1
+        ],
+        "rowTabindexAttributes": 0,
+        "cellTabindexAttributes": 0,
+        "regionTabIndex": 0
+      },
+      "snapshot": "- region \"Pods\":\n  - table:\n    - rowgroup:\n      - row \"Selection Name Ready Status Restarts Age\":\n        - columnheader \"Selection\"\n        - columnheader \"Name\":\n          - button \"Name\"\n        - columnheader \"Ready\":\n          - button \"Ready\"\n        - columnheader \"Status\":\n          - button \"Status\"\n        - columnheader \"Restarts\":\n          - button \"Restarts\"\n        - columnheader \"Age\":\n          - button \"Age\"\n    - rowgroup:\n      - row \"Select alertmanager-5d5bcf5596-85hgb alertmanager-5d5bcf5596-85hgbmonitoring 1/1 Running 0 1h\":\n        - cell \"Select alertmanager-5d5bcf5596-85hgb\":\n          - checkbox \"Select alertmanager-5d5bcf5596-85hgb\"\n        - cell \"alertmanager-5d5bcf5596-85hgbmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select bad-image bad-imagecheckout 0/1 ImagePullBackOff 0 1h\":\n        - cell \"Select bad-image\":\n          - checkbox \"Select bad-image\"\n        - cell \"bad-imagecheckout\"\n        - cell \"0/1\"\n        - cell \"ImagePullBackOff\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select broken-migration-6f8mq broken-migration-6f8mqbatch 0/1 Error 0 1h\":\n        - cell \"Select broken-migration-6f8mq\":\n          - checkbox \"Select broken-migration-6f8mq\"\n        - cell \"broken-migration-6f8mqbatch\"\n        - cell \"0/1\"\n        - cell \"Error\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-6c29w cart-api-86bf766589-6c29wcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-6c29w\":\n          - checkbox \"Select cart-api-86bf766589-6c29w\"\n        - cell \"cart-api-86bf766589-6c29wcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-27vpx cart-api-86bf766589-27vpxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-27vpx\":\n          - checkbox \"Select cart-api-86bf766589-27vpx\"\n        - cell \"cart-api-86bf766589-27vpxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-api-86bf766589-lrpbx cart-api-86bf766589-lrpbxcheckout 2/2 Running 0 1h\":\n        - cell \"Select cart-api-86bf766589-lrpbx\":\n          - checkbox \"Select cart-api-86bf766589-lrpbx\"\n        - cell \"cart-api-86bf766589-lrpbxcheckout\"\n        - cell \"2/2\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-0 cart-cache-0checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-0\":\n          - checkbox \"Select cart-cache-0\"\n        - cell \"cart-cache-0checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select cart-cache-1 cart-cache-1checkout 1/1 Running 0 1h\":\n        - cell \"Select cart-cache-1\":\n          - checkbox \"Select cart-cache-1\"\n        - cell \"cart-cache-1checkout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-tz2jp coredns-7d764666f9-tz2jpkube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-tz2jp\":\n          - checkbox \"Select coredns-7d764666f9-tz2jp\"\n        - cell \"coredns-7d764666f9-tz2jpkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select coredns-7d764666f9-w6tc4 coredns-7d764666f9-w6tc4kube-system 1/1 Running 0 1h\":\n        - cell \"Select coredns-7d764666f9-w6tc4\":\n          - checkbox \"Select coredns-7d764666f9-w6tc4\"\n        - cell \"coredns-7d764666f9-w6tc4kube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select crashloop crashloopcheckout 0/1 CrashLoopBackOff 5 1h\":\n        - cell \"Select crashloop\":\n          - checkbox \"Select crashloop\"\n        - cell \"crashloopcheckout\"\n        - cell \"0/1\"\n        - cell \"CrashLoopBackOff\"\n        - cell \"5\"\n        - cell \"1h\"\n      - row \"Select etcd-ui1a3-table-control-plane etcd-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select etcd-ui1a3-table-control-plane\":\n          - checkbox \"Select etcd-ui1a3-table-control-plane\"\n        - cell \"etcd-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kindnet-qfrfv kindnet-qfrfvkube-system 1/1 Running 0 1h\":\n        - cell \"Select kindnet-qfrfv\":\n          - checkbox \"Select kindnet-qfrfv\"\n        - cell \"kindnet-qfrfvkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-apiserver-ui1a3-table-control-plane kube-apiserver-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-apiserver-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-apiserver-ui1a3-table-control-plane\"\n        - cell \"kube-apiserver-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-controller-manager-ui1a3-table-control-plane kube-controller-manager-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-controller-manager-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-controller-manager-ui1a3-table-control-plane\"\n        - cell \"kube-controller-manager-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-proxy-thpzn kube-proxy-thpznkube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-proxy-thpzn\":\n          - checkbox \"Select kube-proxy-thpzn\"\n        - cell \"kube-proxy-thpznkube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select kube-scheduler-ui1a3-table-control-plane kube-scheduler-ui1a3-table-control-planekube-system 1/1 Running 0 1h\":\n        - cell \"Select kube-scheduler-ui1a3-table-control-plane\":\n          - checkbox \"Select kube-scheduler-ui1a3-table-control-plane\"\n        - cell \"kube-scheduler-ui1a3-table-control-planekube-system\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select local-path-provisioner-67b8995b4b-lfvrn local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage 1/1 Running 0 1h\":\n        - cell \"Select local-path-provisioner-67b8995b4b-lfvrn\":\n          - checkbox \"Select local-path-provisioner-67b8995b4b-lfvrn\"\n        - cell \"local-path-provisioner-67b8995b4b-lfvrnlocal-path-storage\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-rbzfl nightly-report-rbzflbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-rbzfl\":\n          - checkbox \"Select nightly-report-rbzfl\"\n        - cell \"nightly-report-rbzflbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-s672f nightly-report-s672fbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-s672f\":\n          - checkbox \"Select nightly-report-s672f\"\n        - cell \"nightly-report-s672fbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select nightly-report-z2wdl nightly-report-z2wdlbatch 0/1 Completed 0 1h\":\n        - cell \"Select nightly-report-z2wdl\":\n          - checkbox \"Select nightly-report-z2wdl\"\n        - cell \"nightly-report-z2wdlbatch\"\n        - cell \"0/1\"\n        - cell \"Completed\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select node-agent-86bdv node-agent-86bdvmonitoring 1/1 Running 0 1h\":\n        - cell \"Select node-agent-86bdv\":\n          - checkbox \"Select node-agent-86bdv\"\n        - cell \"node-agent-86bdvmonitoring\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-84pkq payment-gateway-6f45c7c7cd-84pkqcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-84pkq\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-84pkq\"\n        - cell \"payment-gateway-6f45c7c7cd-84pkqcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select payment-gateway-6f45c7c7cd-85hhm payment-gateway-6f45c7c7cd-85hhmcheckout 1/1 Running 0 1h\":\n        - cell \"Select payment-gateway-6f45c7c7cd-85hhm\":\n          - checkbox \"Select payment-gateway-6f45c7c7cd-85hhm\"\n        - cell \"payment-gateway-6f45c7c7cd-85hhmcheckout\"\n        - cell \"1/1\"\n        - cell \"Running\"\n        - cell \"0\"\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b6zc scale-probe-5cbb9f8dfd-2b6zcscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b6zc\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b6zc\"\n        - cell \"scale-probe-5cbb9f8dfd-2b6zcscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2b25m scale-probe-5cbb9f8dfd-2b25mscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2b25m\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2b25m\"\n        - cell \"scale-probe-5cbb9f8dfd-2b25mscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bpdv scale-probe-5cbb9f8dfd-2bpdvscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bpdv\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bpdv\"\n        - cell \"scale-probe-5cbb9f8dfd-2bpdvscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"\n      - row \"Select scale-probe-5cbb9f8dfd-2bqwd scale-probe-5cbb9f8dfd-2bqwdscale 0/1 Pending 1h\":\n        - cell \"Select scale-probe-5cbb9f8dfd-2bqwd\":\n          - checkbox \"Select scale-probe-5cbb9f8dfd-2bqwd\"\n        - cell \"scale-probe-5cbb9f8dfd-2bqwdscale\"\n        - cell \"0/1\"\n        - cell \"Pending\"\n        - cell\n        - cell \"1h\"",
+      "snapshotRoles": {
+        "table": 1,
+        "rowgroup": 2,
+        "row": 29,
+        "columnheader": 6,
+        "cell": 168,
+        "checkbox": 28,
+        "button": 5
+      },
+      "snapshotNameHeader": "        - columnheader \"Name\":",
+      "tabStops": [
+        {
+          "key": "Tab",
+          "seen": [
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body",
+            "div[role=region]\"Pods\"",
+            "body"
+          ]
+        },
+        {
+          "key": "Alt+Tab",
+          "seen": [
+            "div[role=region]\"Pods\"",
+            "button",
+            "button",
+            "button",
+            "button",
+            "button",
+            "input\"Select alertmanager-5d5bcf5596-85hgb\"",
+            "input\"Select bad-image\"",
+            "input\"Select broken-migration-6f8mq\"",
+            "input\"Select cart-api-86bf766589-6c29w\""
+          ]
+        }
+      ],
+      "axe": {
+        "version": "4.14.1",
+        "violations": [
+          {
+            "id": "empty-table-header",
+            "impact": "minor",
+            "nodes": 1,
+            "help": "Table header text should not be empty"
+          }
+        ],
+        "passes": 27,
+        "incomplete": []
+      },
+      "failures": [],
+      "pass": true
+    },
+    "r": {
+      "variant": "r",
+      "problems": [],
+      "attributes": {
+        "tableTag": "TABLE",
+        "tableRole": "table",
+        "ariaRowcount": null,
+        "headerRowIndex": null,
+        "firstRowIndex": null,
+        "nameHeaderTag": "TH",
+        "nameHeaderRole": null,
+        "nameHeaderSort": "ascending",
+        "mountedRows": 40,
+        "rowTabIndexes": [
+          -1
+        ],
+        "rowTabindexAttributes": 0,
+        "cellTabindexAttributes": 0,
+        "regionTabIndex": -1
+      },
+      "snapshot": "- table:\n  - rowgroup:\n    - row \"Sort by Name Sort by Namespace Sort by Ready Sort by Status Sort by Restarts Sort by Age\":\n      - columnheader\n      - columnheader \"Sort by Name\":\n        - button \"Sort by Name\": Name ↑\n      - columnheader \"Sort by Namespace\":\n        - button \"Sort by Namespace\": Namespace\n      - columnheader \"Sort by Ready\":\n        - button \"Sort by Ready\": Ready\n      - columnheader \"Sort by Status\":\n        - button \"Sort by Status\": Status\n      - columnheader \"Sort by Restarts\":\n        - button \"Sort by Restarts\": Restarts\n      - columnheader \"Sort by Age\":\n        - button \"Sort by Age\": Age\n  - rowgroup:\n    - row \"Select row alertmanager-5d5bcf5596-85hgb monitoring 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"alertmanager-5d5bcf5596-85hgb\"\n      - cell \"monitoring\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row bad-image checkout 0/1 ImagePullBackOff 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"bad-image\"\n      - cell \"checkout\"\n      - cell \"0/1\"\n      - cell \"ImagePullBackOff\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row broken-migration-6f8mq batch 0/1 Error 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"broken-migration-6f8mq\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Error\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-api-86bf766589-6c29w checkout 2/2 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-api-86bf766589-6c29w\"\n      - cell \"checkout\"\n      - cell \"2/2\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-api-86bf766589-27vpx checkout 2/2 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-api-86bf766589-27vpx\"\n      - cell \"checkout\"\n      - cell \"2/2\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-api-86bf766589-lrpbx checkout 2/2 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-api-86bf766589-lrpbx\"\n      - cell \"checkout\"\n      - cell \"2/2\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-cache-0 checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-cache-0\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row cart-cache-1 checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"cart-cache-1\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row coredns-7d764666f9-tz2jp kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"coredns-7d764666f9-tz2jp\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row coredns-7d764666f9-w6tc4 kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"coredns-7d764666f9-w6tc4\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row crashloop checkout 0/1 CrashLoopBackOff 5 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"crashloop\"\n      - cell \"checkout\"\n      - cell \"0/1\"\n      - cell \"CrashLoopBackOff\"\n      - cell \"5\"\n      - cell \"1h\"\n    - row \"Select row etcd-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"etcd-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kindnet-qfrfv kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kindnet-qfrfv\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-apiserver-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-apiserver-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-controller-manager-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-controller-manager-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-proxy-thpzn kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-proxy-thpzn\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row kube-scheduler-ui1a3-table-control-plane kube-system 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"kube-scheduler-ui1a3-table-control-plane\"\n      - cell \"kube-system\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row local-path-provisioner-67b8995b4b-lfvrn local-path-storage 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"local-path-provisioner-67b8995b4b-lfvrn\"\n      - cell \"local-path-storage\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row nightly-report-rbzfl batch 0/1 Completed 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"nightly-report-rbzfl\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Completed\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row nightly-report-s672f batch 0/1 Completed 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"nightly-report-s672f\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Completed\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row nightly-report-z2wdl batch 0/1 Completed 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"nightly-report-z2wdl\"\n      - cell \"batch\"\n      - cell \"0/1\"\n      - cell \"Completed\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row node-agent-86bdv monitoring 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"node-agent-86bdv\"\n      - cell \"monitoring\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row payment-gateway-6f45c7c7cd-84pkq checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"payment-gateway-6f45c7c7cd-84pkq\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row payment-gateway-6f45c7c7cd-85hhm checkout 1/1 Running 0 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"payment-gateway-6f45c7c7cd-85hhm\"\n      - cell \"checkout\"\n      - cell \"1/1\"\n      - cell \"Running\"\n      - cell \"0\"\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2b6zc scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2b6zc\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2b25m scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2b25m\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bpdv scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bpdv\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bqwd scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bqwd\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2br5f scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2br5f\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bwt8 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bwt8\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2bxqk scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2bxqk\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2c9f2 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2c9f2\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2c48r scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2c48r\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cm9j scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cm9j\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2ctq6 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2ctq6\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cvf8 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cvf8\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cvns scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cvns\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2cz96 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2cz96\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2d8j7 scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2d8j7\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"\n    - row \"Select row scale-probe-5cbb9f8dfd-2dggs scale 0/1 Pending 1h\":\n      - cell \"Select row\":\n        - checkbox \"Select row\"\n      - cell \"scale-probe-5cbb9f8dfd-2dggs\"\n      - cell \"scale\"\n      - cell \"0/1\"\n      - cell \"Pending\"\n      - cell\n      - cell \"1h\"",
+      "snapshotRoles": {
+        "table": 1,
+        "rowgroup": 2,
+        "row": 41,
+        "columnheader": 7,
+        "cell": 280,
+        "checkbox": 40,
+        "button": 6
+      },
+      "snapshotNameHeader": null,
+      "tabStops": [
+        {
+          "key": "Tab",
+          "seen": [
+            "body",
+            "body",
+            "body",
+            "body",
+            "body",
+            "body",
+            "body",
+            "body",
+            "body",
+            "body"
+          ]
+        },
+        {
+          "key": "Alt+Tab",
+          "seen": [
+            "button\"Sort by Name\"",
+            "button\"Sort by Namespace\"",
+            "button\"Sort by Ready\"",
+            "button\"Sort by Status\"",
+            "button\"Sort by Restarts\"",
+            "button\"Sort by Age\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\"",
+            "input\"Select row\""
+          ]
+        }
+      ],
+      "axe": {
+        "version": "4.14.1",
+        "violations": [
+          {
+            "id": "empty-table-header",
+            "impact": "minor",
+            "nodes": 1,
+            "help": "Table header text should not be empty"
+          }
+        ],
+        "passes": 24,
+        "incomplete": [
+          "aria-prohibited-attr",
+          "color-contrast"
+        ]
+      },
+      "failures": [
+        "aria-rowcount null"
+      ],
+      "pass": false
+    }
+  }
+}

@@ -1,0 +1,1140 @@
+{
+  "engine": "webkit",
+  "kit": {
+    "kitDistSha256": "fe07e8bc009405bd695e447044206bcd724f0a469aaef91ebec2150abbd8c736",
+    "kitDistBytes": 251238,
+    "commit": "62a0d50fbd4ebd5eee1b8a5cb9c54ec254579ec8",
+    "dirty": false,
+    "react": "normal",
+    "builtAt": "2026-11-17T05:00:12.745Z"
+  },
+  "fit": [
+    {
+      "dataset": "5025",
+      "rows": 5025,
+      "columns": 12,
+      "planMs": {
+        "cold": {
+          "n": 30,
+          "p50": 2.9799999999999898,
+          "p95": 3.3000000000000114,
+          "max": 7.399999999999977,
+          "min": 0.5199999999999818
+        },
+        "coldSample": {
+          "n": 30,
+          "p50": 2.960000000000008,
+          "p95": 3.240000000000009,
+          "max": 6.899999999999977,
+          "min": 0.5
+        },
+        "warm": {
+          "n": 30,
+          "p50": 0.539999999999992,
+          "p95": 0.7199999999999989,
+          "max": 1.7199999999999989,
+          "min": 0.47999999999998977
+        }
+      },
+      "sampleVsOracle": [
+        {
+          "id": "name",
+          "oracleText": 314,
+          "sampleText": 314,
+          "canvasAllText": 314,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 56,
+          "sampleTail": 50,
+          "tailDiff": -6
+        },
+        {
+          "id": "node",
+          "oracleText": 156,
+          "sampleText": 156,
+          "canvasAllText": 156,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "ip",
+          "oracleText": 70,
+          "sampleText": 70,
+          "canvasAllText": 70,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "controller",
+          "oracleText": 275,
+          "sampleText": 275,
+          "canvasAllText": 275,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "namespace",
+          "oracleText": 114,
+          "sampleText": 114,
+          "canvasAllText": 114,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "created",
+          "oracleText": 128,
+          "sampleText": 128,
+          "canvasAllText": 128,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "selector",
+          "oracleText": 429,
+          "sampleText": 429,
+          "canvasAllText": 429,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        }
+      ],
+      "plans": [
+        {
+          "available": 1117,
+          "sampledWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "oracleWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scroll": [
+            false,
+            false
+          ]
+        },
+        {
+          "available": 707,
+          "sampledWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            90,
+            96,
+            108,
+            92,
+            94
+          ],
+          "oracleWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            90,
+            96,
+            108,
+            92,
+            94
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scroll": [
+            true,
+            true
+          ]
+        }
+      ],
+      "growth": {
+        "changes": 0,
+        "changedAt": [],
+        "windows": 126
+      },
+      "fixed": {
+        "ready": {
+          "declared": 59,
+          "widest": 40,
+          "cells": 0
+        },
+        "status": {
+          "declared": 157,
+          "widest": 155,
+          "cells": 0
+        },
+        "restarts": {
+          "declared": 72,
+          "widest": 29,
+          "cells": 0
+        }
+      },
+      "fontCheck": {
+        "text": true,
+        "family": "'Int UI Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      },
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15"
+    },
+    {
+      "dataset": "tail-5025",
+      "rows": 5025,
+      "columns": 12,
+      "planMs": {
+        "cold": {
+          "n": 30,
+          "p50": 0.9400000000000546,
+          "p95": 7.920000000000073,
+          "max": 8.200000000000045,
+          "min": 0.8600000000000136
+        },
+        "coldSample": {
+          "n": 30,
+          "p50": 0.9399999999999409,
+          "p95": 7.899999999999977,
+          "max": 8.160000000000082,
+          "min": 0.8600000000000136
+        },
+        "warm": {
+          "n": 30,
+          "p50": 1.6599999999999682,
+          "p95": 2.3599999999999,
+          "max": 2.5,
+          "min": 1.4600000000000364
+        }
+      },
+      "sampleVsOracle": [
+        {
+          "id": "name",
+          "oracleText": 361,
+          "sampleText": 333,
+          "canvasAllText": 360,
+          "textDiff": -28,
+          "canvasDiff": -1,
+          "oracleTail": 55,
+          "sampleTail": 54,
+          "tailDiff": -1
+        },
+        {
+          "id": "node",
+          "oracleText": 276,
+          "sampleText": 275,
+          "canvasAllText": 275,
+          "textDiff": -1,
+          "canvasDiff": -1,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "ip",
+          "oracleText": 80,
+          "sampleText": 80,
+          "canvasAllText": 80,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "controller",
+          "oracleText": 318,
+          "sampleText": 281,
+          "canvasAllText": 318,
+          "textDiff": -37,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "namespace",
+          "oracleText": 131,
+          "sampleText": 131,
+          "canvasAllText": 131,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "created",
+          "oracleText": 137,
+          "sampleText": 137,
+          "canvasAllText": 137,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "selector",
+          "oracleText": 473,
+          "sampleText": 435,
+          "canvasAllText": 472,
+          "textDiff": -38,
+          "canvasDiff": -1,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        }
+      ],
+      "plans": [
+        {
+          "available": 1117,
+          "sampledWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "oracleWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            -28,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            -37,
+            0,
+            0,
+            -38
+          ],
+          "scroll": [
+            false,
+            false
+          ]
+        },
+        {
+          "available": 707,
+          "sampledWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            92,
+            96,
+            108,
+            92,
+            94
+          ],
+          "oracleWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            92,
+            96,
+            108,
+            92,
+            94
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            -28,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            -37,
+            0,
+            0,
+            -38
+          ],
+          "scroll": [
+            true,
+            true
+          ]
+        }
+      ],
+      "growth": {
+        "changes": 0,
+        "changedAt": [],
+        "windows": 126
+      },
+      "fixed": {
+        "ready": {
+          "declared": 59,
+          "widest": 41,
+          "cells": 0
+        },
+        "status": {
+          "declared": 157,
+          "widest": 155,
+          "cells": 0
+        },
+        "restarts": {
+          "declared": 72,
+          "widest": 53,
+          "cells": 0
+        }
+      },
+      "fontCheck": {
+        "text": true,
+        "family": "'Int UI Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      },
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15"
+    },
+    {
+      "dataset": "1025",
+      "rows": 1025,
+      "columns": 12,
+      "planMs": {
+        "cold": {
+          "n": 30,
+          "p50": 0.44000000000005457,
+          "p95": 1.4200000000000728,
+          "max": 1.8600000000001273,
+          "min": 0.4199999999998454
+        },
+        "coldSample": {
+          "n": 30,
+          "p50": 0.44000000000005457,
+          "p95": 1.4200000000000728,
+          "max": 1.8400000000001455,
+          "min": 0.4199999999998454
+        },
+        "warm": {
+          "n": 30,
+          "p50": 0.12000000000011823,
+          "p95": 0.5199999999999818,
+          "max": 0.5199999999999818,
+          "min": 0.10000000000013642
+        }
+      },
+      "sampleVsOracle": [
+        {
+          "id": "name",
+          "oracleText": 314,
+          "sampleText": 314,
+          "canvasAllText": 314,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 54,
+          "sampleTail": 51,
+          "tailDiff": -3
+        },
+        {
+          "id": "node",
+          "oracleText": 156,
+          "sampleText": 156,
+          "canvasAllText": 156,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "ip",
+          "oracleText": 70,
+          "sampleText": 70,
+          "canvasAllText": 70,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "controller",
+          "oracleText": 275,
+          "sampleText": 275,
+          "canvasAllText": 275,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "namespace",
+          "oracleText": 114,
+          "sampleText": 114,
+          "canvasAllText": 114,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "created",
+          "oracleText": 127,
+          "sampleText": 127,
+          "canvasAllText": 127,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "selector",
+          "oracleText": 429,
+          "sampleText": 429,
+          "canvasAllText": 429,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        }
+      ],
+      "plans": [
+        {
+          "available": 1117,
+          "sampledWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "oracleWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scroll": [
+            false,
+            false
+          ]
+        },
+        {
+          "available": 707,
+          "sampledWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            90,
+            96,
+            108,
+            92,
+            94
+          ],
+          "oracleWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            90,
+            96,
+            108,
+            92,
+            94
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scroll": [
+            true,
+            true
+          ]
+        }
+      ],
+      "growth": {
+        "changes": 0,
+        "changedAt": [],
+        "windows": 26
+      },
+      "fixed": {
+        "ready": {
+          "declared": 59,
+          "widest": 40,
+          "cells": 0
+        },
+        "status": {
+          "declared": 157,
+          "widest": 148,
+          "cells": 0
+        },
+        "restarts": {
+          "declared": 72,
+          "widest": 29,
+          "cells": 0
+        }
+      },
+      "fontCheck": {
+        "text": true,
+        "family": "'Int UI Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      },
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15"
+    },
+    {
+      "dataset": "25",
+      "rows": 25,
+      "columns": 12,
+      "planMs": {
+        "cold": {
+          "n": 30,
+          "p50": 0.10000000000013642,
+          "p95": 0.13999999999987267,
+          "max": 0.2599999999999909,
+          "min": 0.09999999999990905
+        },
+        "coldSample": {
+          "n": 30,
+          "p50": 0.10000000000013642,
+          "p95": 0.12000000000011823,
+          "max": 0.2400000000000091,
+          "min": 0.07999999999992724
+        },
+        "warm": {
+          "n": 30,
+          "p50": 0.01999999999998181,
+          "p95": 0.020000000000209184,
+          "max": 0.03999999999996362,
+          "min": 0
+        }
+      },
+      "sampleVsOracle": [
+        {
+          "id": "name",
+          "oracleText": 314,
+          "sampleText": 314,
+          "canvasAllText": 314,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 49,
+          "sampleTail": 49,
+          "tailDiff": 0
+        },
+        {
+          "id": "node",
+          "oracleText": 156,
+          "sampleText": 156,
+          "canvasAllText": 156,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "ip",
+          "oracleText": 70,
+          "sampleText": 70,
+          "canvasAllText": 70,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "controller",
+          "oracleText": 275,
+          "sampleText": 275,
+          "canvasAllText": 275,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "namespace",
+          "oracleText": 114,
+          "sampleText": 114,
+          "canvasAllText": 114,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "created",
+          "oracleText": 125,
+          "sampleText": 125,
+          "canvasAllText": 125,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        },
+        {
+          "id": "selector",
+          "oracleText": 429,
+          "sampleText": 429,
+          "canvasAllText": 429,
+          "textDiff": 0,
+          "canvasDiff": 0,
+          "oracleTail": 0,
+          "sampleTail": 0,
+          "tailDiff": 0
+        }
+      ],
+      "plans": [
+        {
+          "available": 1117,
+          "sampledWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "oracleWidths": [
+            46,
+            218,
+            59,
+            157,
+            72,
+            59,
+            72,
+            72,
+            96,
+            108,
+            85,
+            73
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scroll": [
+            false,
+            false
+          ]
+        },
+        {
+          "available": 707,
+          "sampledWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            90,
+            96,
+            108,
+            92,
+            94
+          ],
+          "oracleWidths": [
+            46,
+            216,
+            59,
+            157,
+            72,
+            59,
+            92,
+            90,
+            96,
+            108,
+            92,
+            94
+          ],
+          "diff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "naturalDiff": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "scroll": [
+            true,
+            true
+          ]
+        }
+      ],
+      "growth": {
+        "changes": 0,
+        "changedAt": [],
+        "windows": 1
+      },
+      "fixed": {
+        "ready": {
+          "declared": 59,
+          "widest": 40,
+          "cells": 0
+        },
+        "status": {
+          "declared": 157,
+          "widest": 148,
+          "cells": 0
+        },
+        "restarts": {
+          "declared": 72,
+          "widest": 29,
+          "cells": 0
+        }
+      },
+      "fontCheck": {
+        "text": true,
+        "family": "'Int UI Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      },
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15"
+    }
+  ],
+  "table": [
+    {
+      "variant": "s",
+      "rows": "5025",
+      "firstReading": [
+        46,
+        724,
+        59,
+        157,
+        72,
+        59
+      ],
+      "changesDuringSweep": 0,
+      "positions": 201,
+      "widthsAfterSweep": [
+        46,
+        724,
+        59,
+        157,
+        72,
+        59
+      ],
+      "widthsAfterWheel": [
+        46,
+        724,
+        59,
+        157,
+        72,
+        59
+      ],
+      "changedByWheel": false
+    },
+    {
+      "variant": "s",
+      "rows": "tail-5025",
+      "firstReading": [
+        46,
+        724,
+        59,
+        157,
+        72,
+        59
+      ],
+      "changesDuringSweep": 0,
+      "positions": 201,
+      "widthsAfterSweep": [
+        46,
+        724,
+        59,
+        157,
+        72,
+        59
+      ],
+      "widthsAfterWheel": [
+        46,
+        724,
+        59,
+        157,
+        72,
+        59
+      ],
+      "changedByWheel": false
+    }
+  ],
+  "environment": {
+    "node": "v26.12.0",
+    "playwright": "1.64.1",
+    "browsers": {
+      "webkit": "27.2"
+    },
+    "os": "Darwin 27.0.0 arm64",
+    "cpus": 18,
+    "memoryGiB": 128,
+    "loadAverage": [
+      9.11,
+      8.32,
+      8.05
+    ]
+  }
+}

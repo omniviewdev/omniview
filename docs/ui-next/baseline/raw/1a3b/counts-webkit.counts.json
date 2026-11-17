@@ -1,0 +1,822 @@
+{
+  "engine": "webkit",
+  "kit": {
+    "kitDistSha256": "df90bd755fcf339d8cd0cd30e57ab240a0b6c59302ffbf0947f306776d544277",
+    "kitDistBytes": 253654,
+    "commit": "54ba08bf6f2937309fcbf6d8b444110ee1f74862",
+    "dirty": true,
+    "react": "profiling",
+    "builtAt": "2026-11-17T04:52:34.459Z"
+  },
+  "environment": {
+    "node": "v26.12.0",
+    "playwright": "1.64.1",
+    "browsers": {
+      "webkit": "27.2"
+    },
+    "os": "Darwin 27.0.0 arm64",
+    "cpus": 18,
+    "memoryGiB": 128,
+    "loadAverage": [
+      7.21,
+      7.98,
+      7.94
+    ]
+  },
+  "results": [
+    {
+      "variant": "s",
+      "rows": "25",
+      "ready": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+        "crossOriginIsolated": true,
+        "reactBuild": "profiling",
+        "rows": 25,
+        "rowHeight": 40,
+        "headerHeight": 25,
+        "scrollerHeight": 795,
+        "scrollerWidth": 1117,
+        "scrollRange": 230,
+        "mountToFirstRowMs": 22.439999999999998,
+        "elements": 514,
+        "mountedRows": 25
+      },
+      "problems": [],
+      "shape": {
+        "elementsInDocument": 514,
+        "mountedRows": 25,
+        "elementsPerRow": {
+          "19": 25
+        },
+        "activeAnimations": 0
+      },
+      "afterMount": {
+        "adds": 179,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "patchInView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 1
+      },
+      "patchOutOfView": null,
+      "parentRender": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "hover": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "selectionClick": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "scroll": {
+        "declaredHz": 60,
+        "events": 60,
+        "acknowledged": 60,
+        "failures": 0,
+        "firstFailure": null,
+        "backpressureWaits": 0,
+        "requestedPx": 1200,
+        "durationMs": 1000,
+        "actualHz": 60,
+        "latenessMs": {
+          "count": 60,
+          "min": 0,
+          "mean": 0.008,
+          "p50": 0.007,
+          "p90": 0.014,
+          "p95": 0.015,
+          "p99": 0.037,
+          "max": 0.037
+        },
+        "ackLatencyMs": {
+          "count": 60,
+          "min": 14.454,
+          "mean": 15.94,
+          "p50": 15.981,
+          "p90": 16.503,
+          "p95": 17.207,
+          "p99": 18.936,
+          "max": 18.936
+        }
+      },
+      "scrollCounts": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "sortCounts": {
+        "commits": 2,
+        "mount": 0,
+        "update": 2,
+        "rowsRendered": 0
+      },
+      "afterInteractions": {
+        "adds": 192,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "shapeAfter": {
+        "elementsInDocument": 514,
+        "mountedRows": 25,
+        "elementsPerRow": {
+          "19": 25
+        },
+        "activeAnimations": 0
+      },
+      "rootWrites": [],
+      "live": {
+        "commits": 51,
+        "mount": 0,
+        "update": 51,
+        "rowsRendered": 100,
+        "ledger": {
+          "events": 50,
+          "touches": 100,
+          "recreated": 10,
+          "removed": 10,
+          "added": 10
+        },
+        "commitsPerUpdate": 1.02,
+        "rowsRenderedPerUpdate": 2
+      }
+    },
+    {
+      "variant": "s",
+      "rows": "1025",
+      "ready": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+        "crossOriginIsolated": true,
+        "reactBuild": "profiling",
+        "rows": 1025,
+        "rowHeight": 40,
+        "headerHeight": 25,
+        "scrollerHeight": 795,
+        "scrollerWidth": 1117,
+        "scrollRange": 40230,
+        "mountToFirstRowMs": 26.880000000000024,
+        "elements": 573,
+        "mountedRows": 28
+      },
+      "problems": [],
+      "shape": {
+        "elementsInDocument": 573,
+        "mountedRows": 28,
+        "elementsPerRow": {
+          "19": 28
+        },
+        "activeAnimations": 0
+      },
+      "afterMount": {
+        "adds": 182,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "patchInView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 1
+      },
+      "patchOutOfView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "parentRender": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "hover": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "selectionClick": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "scroll": {
+        "declaredHz": 60,
+        "events": 60,
+        "acknowledged": 60,
+        "failures": 0,
+        "firstFailure": null,
+        "backpressureWaits": 0,
+        "requestedPx": 1200,
+        "durationMs": 1000,
+        "actualHz": 60,
+        "latenessMs": {
+          "count": 60,
+          "min": 0,
+          "mean": 0.01,
+          "p50": 0.008,
+          "p90": 0.02,
+          "p95": 0.026,
+          "p99": 0.036,
+          "max": 0.036
+        },
+        "ackLatencyMs": {
+          "count": 60,
+          "min": 15.132,
+          "mean": 17.616,
+          "p50": 16.925,
+          "p90": 20.56,
+          "p95": 21.439,
+          "p99": 21.712,
+          "max": 21.712
+        }
+      },
+      "scrollCounts": {
+        "commits": 13,
+        "mount": 0,
+        "update": 13,
+        "rowsRendered": 32
+      },
+      "sortCounts": {
+        "commits": 2,
+        "mount": 0,
+        "update": 2,
+        "rowsRendered": 80
+      },
+      "afterInteractions": {
+        "adds": 309,
+        "removes": 3,
+        "inRegionAdds": 5
+      },
+      "shapeAfter": {
+        "elementsInDocument": 803,
+        "mountedRows": 40,
+        "elementsPerRow": {
+          "19": 40
+        },
+        "activeAnimations": 0
+      },
+      "rootWrites": [],
+      "live": {
+        "commits": 49,
+        "mount": 0,
+        "update": 49,
+        "rowsRendered": 3,
+        "ledger": {
+          "events": 49,
+          "touches": 98,
+          "recreated": 9,
+          "removed": 9,
+          "added": 9
+        },
+        "commitsPerUpdate": 1,
+        "rowsRenderedPerUpdate": 0.061224489795918366
+      }
+    },
+    {
+      "variant": "s",
+      "rows": "5025",
+      "ready": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+        "crossOriginIsolated": true,
+        "reactBuild": "profiling",
+        "rows": 5025,
+        "rowHeight": 40,
+        "headerHeight": 25,
+        "scrollerHeight": 795,
+        "scrollerWidth": 1117,
+        "scrollRange": 200230,
+        "mountToFirstRowMs": 30.840000000000003,
+        "elements": 573,
+        "mountedRows": 28
+      },
+      "problems": [],
+      "shape": {
+        "elementsInDocument": 573,
+        "mountedRows": 28,
+        "elementsPerRow": {
+          "19": 28
+        },
+        "activeAnimations": 0
+      },
+      "afterMount": {
+        "adds": 182,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "patchInView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 1
+      },
+      "patchOutOfView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "parentRender": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "hover": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "selectionClick": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "scroll": {
+        "declaredHz": 60,
+        "events": 60,
+        "acknowledged": 60,
+        "failures": 0,
+        "firstFailure": null,
+        "backpressureWaits": 0,
+        "requestedPx": 1200,
+        "durationMs": 1000,
+        "actualHz": 60.02,
+        "latenessMs": {
+          "count": 60,
+          "min": 0,
+          "mean": 0.028,
+          "p50": 0.007,
+          "p90": 0.024,
+          "p95": 0.17,
+          "p99": 0.425,
+          "max": 0.425
+        },
+        "ackLatencyMs": {
+          "count": 60,
+          "min": 15.159,
+          "mean": 17.618,
+          "p50": 17.042,
+          "p90": 20.744,
+          "p95": 20.906,
+          "p99": 21.801,
+          "max": 21.801
+        }
+      },
+      "scrollCounts": {
+        "commits": 13,
+        "mount": 0,
+        "update": 13,
+        "rowsRendered": 32
+      },
+      "sortCounts": {
+        "commits": 2,
+        "mount": 0,
+        "update": 2,
+        "rowsRendered": 80
+      },
+      "afterInteractions": {
+        "adds": 309,
+        "removes": 3,
+        "inRegionAdds": 5
+      },
+      "shapeAfter": {
+        "elementsInDocument": 803,
+        "mountedRows": 40,
+        "elementsPerRow": {
+          "19": 40
+        },
+        "activeAnimations": 0
+      },
+      "rootWrites": [],
+      "live": {
+        "commits": 49,
+        "mount": 0,
+        "update": 49,
+        "rowsRendered": 0,
+        "ledger": {
+          "events": 49,
+          "touches": 98,
+          "recreated": 9,
+          "removed": 9,
+          "added": 9
+        },
+        "commitsPerUpdate": 1,
+        "rowsRenderedPerUpdate": 0
+      }
+    },
+    {
+      "variant": "a",
+      "rows": "25",
+      "ready": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+        "crossOriginIsolated": true,
+        "reactBuild": "profiling",
+        "rows": 25,
+        "rowHeight": 40,
+        "headerHeight": 25,
+        "scrollerHeight": 795,
+        "scrollerWidth": 1117,
+        "scrollRange": 230,
+        "mountToFirstRowMs": 22.159999999999997,
+        "elements": 507,
+        "mountedRows": 25
+      },
+      "problems": [],
+      "shape": {
+        "elementsInDocument": 507,
+        "mountedRows": 25,
+        "elementsPerRow": {
+          "19": 25
+        },
+        "activeAnimations": 0
+      },
+      "afterMount": {
+        "adds": 179,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "patchInView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 1
+      },
+      "patchOutOfView": null,
+      "parentRender": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "hover": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "selectionClick": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "scroll": {
+        "declaredHz": 60,
+        "events": 60,
+        "acknowledged": 60,
+        "failures": 0,
+        "firstFailure": null,
+        "backpressureWaits": 0,
+        "requestedPx": 1200,
+        "durationMs": 1000,
+        "actualHz": 60,
+        "latenessMs": {
+          "count": 60,
+          "min": 0,
+          "mean": 0.007,
+          "p50": 0.006,
+          "p90": 0.014,
+          "p95": 0.018,
+          "p99": 0.049,
+          "max": 0.049
+        },
+        "ackLatencyMs": {
+          "count": 60,
+          "min": 14.592,
+          "mean": 15.891,
+          "p50": 16.052,
+          "p90": 16.585,
+          "p95": 16.908,
+          "p99": 18.23,
+          "max": 18.23
+        }
+      },
+      "scrollCounts": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "sortCounts": {
+        "commits": 2,
+        "mount": 0,
+        "update": 2,
+        "rowsRendered": 0
+      },
+      "afterInteractions": {
+        "adds": 192,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "shapeAfter": {
+        "elementsInDocument": 507,
+        "mountedRows": 25,
+        "elementsPerRow": {
+          "19": 25
+        },
+        "activeAnimations": 0
+      },
+      "rootWrites": [],
+      "live": {
+        "commits": 49,
+        "mount": 0,
+        "update": 49,
+        "rowsRendered": 98,
+        "ledger": {
+          "events": 49,
+          "touches": 98,
+          "recreated": 9,
+          "removed": 9,
+          "added": 9
+        },
+        "commitsPerUpdate": 1,
+        "rowsRenderedPerUpdate": 2
+      }
+    },
+    {
+      "variant": "a",
+      "rows": "1025",
+      "ready": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+        "crossOriginIsolated": true,
+        "reactBuild": "profiling",
+        "rows": 1025,
+        "rowHeight": 40,
+        "headerHeight": 25,
+        "scrollerHeight": 795,
+        "scrollerWidth": 1117,
+        "scrollRange": 40230,
+        "mountToFirstRowMs": 27.28,
+        "elements": 564,
+        "mountedRows": 28
+      },
+      "problems": [],
+      "shape": {
+        "elementsInDocument": 564,
+        "mountedRows": 28,
+        "elementsPerRow": {
+          "19": 28
+        },
+        "activeAnimations": 0
+      },
+      "afterMount": {
+        "adds": 182,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "patchInView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 1
+      },
+      "patchOutOfView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "parentRender": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "hover": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "selectionClick": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "scroll": {
+        "declaredHz": 60,
+        "events": 60,
+        "acknowledged": 60,
+        "failures": 0,
+        "firstFailure": null,
+        "backpressureWaits": 0,
+        "requestedPx": 1200,
+        "durationMs": 1000,
+        "actualHz": 60,
+        "latenessMs": {
+          "count": 60,
+          "min": 0,
+          "mean": 0.04,
+          "p50": 0.007,
+          "p90": 0.036,
+          "p95": 0.215,
+          "p99": 0.635,
+          "max": 0.635
+        },
+        "ackLatencyMs": {
+          "count": 60,
+          "min": 15.721,
+          "mean": 18.124,
+          "p50": 17.675,
+          "p90": 20.335,
+          "p95": 20.447,
+          "p99": 23.081,
+          "max": 23.081
+        }
+      },
+      "scrollCounts": {
+        "commits": 13,
+        "mount": 0,
+        "update": 13,
+        "rowsRendered": 32
+      },
+      "sortCounts": {
+        "commits": 2,
+        "mount": 0,
+        "update": 2,
+        "rowsRendered": 80
+      },
+      "afterInteractions": {
+        "adds": 309,
+        "removes": 3,
+        "inRegionAdds": 5
+      },
+      "shapeAfter": {
+        "elementsInDocument": 792,
+        "mountedRows": 40,
+        "elementsPerRow": {
+          "19": 40
+        },
+        "activeAnimations": 0
+      },
+      "rootWrites": [],
+      "live": {
+        "commits": 50,
+        "mount": 0,
+        "update": 50,
+        "rowsRendered": 3,
+        "ledger": {
+          "events": 50,
+          "touches": 100,
+          "recreated": 10,
+          "removed": 10,
+          "added": 10
+        },
+        "commitsPerUpdate": 1,
+        "rowsRenderedPerUpdate": 0.06
+      }
+    },
+    {
+      "variant": "a",
+      "rows": "5025",
+      "ready": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15",
+        "crossOriginIsolated": true,
+        "reactBuild": "profiling",
+        "rows": 5025,
+        "rowHeight": 40,
+        "headerHeight": 25,
+        "scrollerHeight": 795,
+        "scrollerWidth": 1117,
+        "scrollRange": 200230,
+        "mountToFirstRowMs": 32.079999999999984,
+        "elements": 564,
+        "mountedRows": 28
+      },
+      "problems": [],
+      "shape": {
+        "elementsInDocument": 564,
+        "mountedRows": 28,
+        "elementsPerRow": {
+          "19": 28
+        },
+        "activeAnimations": 0
+      },
+      "afterMount": {
+        "adds": 182,
+        "removes": 1,
+        "inRegionAdds": 5
+      },
+      "patchInView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 1
+      },
+      "patchOutOfView": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "parentRender": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "hover": {
+        "commits": 0,
+        "mount": 0,
+        "update": 0,
+        "rowsRendered": 0
+      },
+      "selectionClick": {
+        "commits": 1,
+        "mount": 0,
+        "update": 1,
+        "rowsRendered": 0
+      },
+      "scroll": {
+        "declaredHz": 60,
+        "events": 60,
+        "acknowledged": 60,
+        "failures": 0,
+        "firstFailure": null,
+        "backpressureWaits": 0,
+        "requestedPx": 1200,
+        "durationMs": 1000,
+        "actualHz": 60,
+        "latenessMs": {
+          "count": 60,
+          "min": 0,
+          "mean": 0.1,
+          "p50": 0.01,
+          "p90": 0.403,
+          "p95": 0.555,
+          "p99": 0.865,
+          "max": 0.865
+        },
+        "ackLatencyMs": {
+          "count": 60,
+          "min": 6.357,
+          "mean": 18.303,
+          "p50": 18.135,
+          "p90": 20.24,
+          "p95": 21.073,
+          "p99": 23.022,
+          "max": 23.022
+        }
+      },
+      "scrollCounts": {
+        "commits": 13,
+        "mount": 0,
+        "update": 13,
+        "rowsRendered": 32
+      },
+      "sortCounts": {
+        "commits": 2,
+        "mount": 0,
+        "update": 2,
+        "rowsRendered": 80
+      },
+      "afterInteractions": {
+        "adds": 309,
+        "removes": 3,
+        "inRegionAdds": 5
+      },
+      "shapeAfter": {
+        "elementsInDocument": 792,
+        "mountedRows": 40,
+        "elementsPerRow": {
+          "19": 40
+        },
+        "activeAnimations": 0
+      },
+      "rootWrites": [],
+      "live": {
+        "commits": 49,
+        "mount": 0,
+        "update": 49,
+        "rowsRendered": 0,
+        "ledger": {
+          "events": 49,
+          "touches": 98,
+          "recreated": 9,
+          "removed": 9,
+          "added": 9
+        },
+        "commitsPerUpdate": 1,
+        "rowsRenderedPerUpdate": 0
+      }
+    }
+  ]
+}
