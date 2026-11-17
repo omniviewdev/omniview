@@ -310,6 +310,9 @@ tasks:
           set -- -json
         fi
         GOWORK=off GOFLAGS= go test "$@" -modfile="$HOST_MODFILE" ./...
+        if [ "$(go env CGO_ENABLED)" = "1" ]; then
+          GOWORK=off GOFLAGS= go test "$@" -race -modfile="$HOST_MODFILE" ./internal/auditgate/... ./internal/devsession/...
+        fi
 
   check:go-test-devcontrol:
     summary: Run the development-control host tests that only build with the devcontrol tag
