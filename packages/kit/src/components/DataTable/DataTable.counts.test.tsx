@@ -201,6 +201,31 @@ describe('renders', () => {
     expect(cellCalls).toBe(0);
   });
 
+  it('a scroll that moves no row boundary commits nothing, not even right after a window change (T-05, B2)', () => {
+    const table = setup(jobs(5025));
+    table.settle();
+    const region = table.view.getByRole('region');
+    let offset = 0;
+    Object.defineProperty(region, 'scrollTop', { configurable: true, get: () => offset, set: (value: number) => (offset = value) });
+    // The window moves: a real commit. The scroll handler must not leave one more render behind it: React's eager bail-out of a state
+    // update that sets the value it already has holds only on a fiber that has not just rendered, so a handler that sets state on every
+    // scroll event costs a render after each commit (the real engine counted two commits for every window change, bench/table/counts.mjs).
+    act(() => {
+      offset = 2000;
+      fireEvent.scroll(region);
+    });
+    table.settle();
+    // Inside that window: the next scroll events move no row boundary.
+    for (const next of [2012, 2024, 2036]) {
+      act(() => {
+        offset = next;
+        fireEvent.scroll(region);
+      });
+    }
+
+    expect(table.commits()).toBe(0);
+  });
+
   it('a click on a checkbox renders at most two rows in one commit (MNR-T4)', () => {
     const rowsOnce = jobs(5025);
     let commits = 0;
