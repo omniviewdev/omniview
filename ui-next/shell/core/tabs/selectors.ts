@@ -1,6 +1,6 @@
-import { identities } from './identity';
+import { identities, type IdentityEntry } from './identity';
 import { sameItems } from './json';
-import type { Breadcrumb, Identity, Selectors, StripItem, TabId, TabsState } from './types';
+import type { Breadcrumb, Identity, Selectors, StripItem, Tab, TabId, TabsState } from './types';
 
 // What a tab strip, a page host and a status-bar breadcrumb each subscribe to. Every selector is a function of the snapshot. One that only reads a part of the state returns
 // that part, which is the same object while it did not change (the state is updated by structural sharing); one that derives a list or an object keeps its last answer and
@@ -10,10 +10,27 @@ import type { Breadcrumb, Identity, Selectors, StripItem, TabId, TabsState } fro
 type Derived = {
   readonly tabs: TabsState['tabs'];
   readonly order: TabsState['order'];
-  readonly identities: ReadonlyMap<TabId, Identity>;
+  readonly entries: ReadonlyMap<TabId, IdentityEntry>;
   readonly items: ReadonlyMap<TabId, StripItem>;
   readonly strip: readonly StripItem[];
 };
+
+const stripItemOf = (id: TabId, identity: Identity, tab: Tab): StripItem =>
+  Object.freeze({
+    id,
+    identity,
+    icon: tab.face.icon,
+    scope: tab.face.scope?.label ?? '',
+    pinned: tab.flags.pinned,
+    preview: tab.flags.preview,
+    unsaved: tab.flags.unsaved,
+    attention: tab.flags.attention,
+    singleton: tab.face.singleton,
+  });
+
+const sameStripItem = (item: StripItem, identity: Identity, tab: Tab): boolean =>
+  item.identity === identity && item.icon === tab.face.icon && item.scope === (tab.face.scope?.label ?? '') && item.pinned === tab.flags.pinned && item.preview === tab.flags.preview
+  && item.unsaved === tab.flags.unsaved && item.attention === tab.flags.attention && item.singleton === tab.face.singleton;
 
 /** The selectors of one store. Their caches belong to it: two stores share nothing. */
 export function createSelectors(): Selectors {
@@ -26,34 +43,23 @@ export function createSelectors(): Selectors {
       return derived;
     }
 
-    const made = identities(state, derived?.identities);
+    const entries = identities(state, derived?.entries);
     const items = new Map<TabId, StripItem>();
+    const list: StripItem[] = [];
     for (const id of state.order) {
       const tab = state.tabs[id];
-      const identity = made.get(id);
-      if (!tab || !identity) {
+      const entry = entries.get(id);
+      if (tab === undefined || entry === undefined) {
         continue;
       }
 
-      const next: StripItem = {
-        id,
-        identity,
-        icon: tab.face.icon,
-        scope: tab.face.scope?.label ?? '',
-        pinned: tab.flags.pinned,
-        preview: tab.flags.preview,
-        unsaved: tab.flags.unsaved,
-        attention: tab.flags.attention,
-        singleton: tab.face.singleton,
-      };
       const before = derived?.items.get(id);
-      const same = before?.identity === next.identity && before.icon === next.icon && before.scope === next.scope && before.pinned === next.pinned && before.preview === next.preview
-        && before.unsaved === next.unsaved && before.attention === next.attention && before.singleton === next.singleton;
-      items.set(id, before && same ? before : Object.freeze(next));
+      const item = before !== undefined && sameStripItem(before, entry.identity, tab) ? before : stripItemOf(id, entry.identity, tab);
+      items.set(id, item);
+      list.push(item);
     }
 
-    const strip = sameItems(derived?.strip, state.order.flatMap((id) => items.get(id) ?? []));
-    derived = { tabs: state.tabs, order: state.order, identities: made, items, strip };
+    derived = { tabs: state.tabs, order: state.order, entries, items, strip: sameItems(derived?.strip, Object.freeze(list)) };
     return derived;
   };
 
@@ -65,11 +71,11 @@ export function createSelectors(): Selectors {
     face: (state, id) => state.tabs[id]?.face,
     flags: (state, id) => state.tabs[id]?.flags,
     reveal: (state, id) => state.tabs[id]?.reveal,
-    identity: (state, id) => derive(state).identities.get(id),
+    identity: (state, id) => derive(state).entries.get(id)?.identity,
     strip: (state) => derive(state).strip,
     stripItem: (state, id) => derive(state).items.get(id),
     breadcrumb: (state) => {
-      const identity = state.active === null ? undefined : derive(state).identities.get(state.active);
+      const identity = state.active === null ? undefined : derive(state).entries.get(state.active)?.identity;
       if (!identity || state.active === null) {
         breadcrumb = undefined;
       } else if (breadcrumb?.tab !== state.active || breadcrumb.crumbs !== identity.path) {

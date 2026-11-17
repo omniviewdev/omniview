@@ -36,7 +36,7 @@ The model asks the plugin host (never a plugin) through five pure, synchronous m
 | Page host | `mounted`, `location(id)`, `reveal(id)`, `active` | the route, a reload, which pages are mounted, a request |
 | Status-bar breadcrumb | `breadcrumb` | the active tab's path or qualifier changes |
 
-A title change in one tab changes what reads that tab and nothing that reads another; `store.test.ts` asserts the object identities. Identity (`Identity`: label, accessible name, tooltip, path) is computed in one place: a tab whose icon and title read like another's gets the shortest qualifier from its facets (the plugin's, then scope, the crumb above the page, the plugin's name). The All tabs list is the strip: the pinned zone always leads, so "pinned first" needs no sort.
+A title change in one tab changes what reads that tab and nothing that reads another; `store.test.ts` asserts the object identities. Identity (`Identity`: label, accessible name, tooltip, path) is computed in one place: a tab whose icon and title read like another's gets the shortest qualifier from its facets (the plugin's, then scope, the crumb above the page, the plugin's name). The All tabs list is the strip: the pinned zone always leads, so "pinned first" needs no sort. A strip that is subscribed pays for every change with one pass over the tabs (about 0.03 ms at 500 tabs): what depends on one face is worked out once per face object, and a tab's identity and strip item are made again only when its face, qualifier or flags changed.
 
 ## Keep-alive (an open question for the owner)
 
@@ -48,7 +48,7 @@ The old shell mounted a tab on first show and kept it mounted until it closed, w
 
 ## Guarantees
 
-Every operation is O(1) or O(tabs) and asks the plugins a fixed number of questions however many tabs are open (`perf.test.ts`: 500 tabs). `checkInvariants(state)` lists every rule a sound state keeps; the fuzz tests apply it after each of thousands of random operations and also check that what the session would save comes back whole. One tab per singleton page in the whole strip, including through Back, Forward, reopen, restore and duplicate.
+Every operation is O(1) or O(tabs) and asks the plugins a fixed number of questions however many tabs are open (`perf.test.ts`: 500 tabs, about 1,770 operations in about 120 ms with a strip, a page host and a breadcrumb subscribed; the bound is 2 s and the fastest of up to three runs is compared with it, because a shared runner is several times slower than a laptop). `checkInvariants(state)` lists every rule a sound state keeps; the fuzz tests apply it after each of thousands of random operations and also check that what the session would save comes back whole. One tab per singleton page in the whole strip, including through Back, Forward, reopen, restore and duplicate.
 
 ## Not here
 

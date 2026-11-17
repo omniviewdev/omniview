@@ -15,7 +15,7 @@
 
 ## The oracle: what became of the 99 checks
 
-`tests/shell-model-harness/R2Store/unit.cjs` of the design lab runs the mock's own `shell-core.js` in a vm and holds 99 checks (92 `test`, 7 `atest`); the file's name list is the order below. Against the mock as it stands 98 pass and one fails (case 75, the plugin world). Counted here: **47 ported whole, 16 ported in part, 36 out of scope** (total 99). The TypeScript tests are in `ui-next/shell/core/tabs/*.test.ts` (141 tests); they port the assertions, not the mock's API: a page-driven `go()` became `navigate` and `replace`, a promise from the guard became a `confirm` result, `announce` became a result the caller words. Out of scope means one of: windows and split panes (no window kind exists, AGENTS "Out of scope"), the mock's page-model seam, the plugin world and lab, a menu or palette view model, the command registry, health and operations, the panel and layout, DOM concerns (IME, focus).
+`tests/shell-model-harness/R2Store/unit.cjs` of the design lab runs the mock's own `shell-core.js` in a vm and holds 99 checks (92 `test`, 7 `atest`); the file's name list is the order below. Against the mock as it stands 98 pass and one fails (case 75, the plugin world). Counted here: **47 ported whole, 16 ported in part, 36 out of scope** (total 99). The TypeScript tests are in `ui-next/shell/core/tabs/*.test.ts` (143 tests); they port the assertions, not the mock's API: a page-driven `go()` became `navigate` and `replace`, a promise from the guard became a `confirm` result, `announce` became a result the caller words. Out of scope means one of: windows and split panes (no window kind exists, AGENTS "Out of scope"), the mock's page-model seam, the plugin world and lab, a menu or palette view model, the command registry, health and operations, the panel and layout, DOM concerns (IME, focus).
 
 | # | line | case | outcome | where, or why |
 |---|---:|---|---|---|
@@ -123,22 +123,43 @@
 
 - 2026-11-17: tests first. The suites were written before any source file: `open`, `close`, `history`, `arrange`, `identity`, `store`, `keepAlive`, `persist`, `fuzz`, `perf` and `purity` tests, with a fixture world (`testing.ts`: `host`, `cloud`, `stack`, `access`, `broken` and two plugins whose pages read alike). Red run, before the model existed: `pnpm test ui-next/shell/core/tabs` failed 10 of 11 files (nothing to import) and 2 of the 3 `purity` tests (no sources to scan).
 - 2026-11-17: model written to pass them: `json`, `route`, `face`, `plugins` (the guarded seam), `identity`, `keepAlive`, `state`, `resolve`, `open`, `close`, `arrange`, `persist`, `saver`, `disposition`, `selectors`, `store`, `index`. First green run: 135 of 141; the six failures were three wrong expectations in my tests, one real gap (Back, `navigate` and `replace` could put a second tab on a singleton page, found by the fuzz; fixed in the model), one identity that changed when only a title did (`refresh` rebuilt `location`; fixed), and the mounted list not frozen (fixed).
-- 2026-11-17: exit tests run (below). README written. Not wired to any component.
+- 2026-11-17: exit tests run (below). README written. Not wired to any component. PR #533 opened.
+- 2026-11-17: CI on #533 (head f554669e): `UI checks` failed in "Component tests" at `perf.test.ts`, the model's own 500-tab test: 2,311 ms against its 2,000 ms bound. Cause, reproduction and fix below. I had run `pnpm test ui-next`, not the full root `pnpm test` that the job runs.
 
 ## Result
 
 | Check | Result |
 |---|---|
 | Ported harness cases | 47 whole, 16 in part, 36 out, of 99 (table above) |
-| `pnpm test ui-next` | 40 files, 698 tests green; the model's are 11 files, 141 tests |
+| `pnpm test ui-next` | 40 files, 700 tests green; the model's are 11 files, 143 tests |
+| full `pnpm test` (the CI step "Component tests") | 185 files passed, 1 skipped; 2,441 tests passed, 3 skipped; 28 s on this machine (18 cores). Not run before the first push: that is how the failure below got through |
+| the steps the failure skipped on CI, run here | kit `generate:check`, `test` (1,279 tests) and `api:check`; runtime `api:check`; `TZ=America/New_York pnpm exec vitest run ui/utils/ageClock.test.tsx` (18 tests): green. Not run: "Runtime contract regressions" (it reads the Go job's `C02_ERROR_CORPUS`) |
 | `pnpm exec tsc -p tsconfig.app.json --noEmit` and `tsconfig.test.json` | clean |
 | `pnpm exec eslint ui-next packages/kit --report-unused-disable-directives` | clean |
 | `pnpm lint:ui-policy` | clean |
 | `pnpm --filter @omniviewdev/kit exec vitest run eslint` (vocabulary guard scans `ui-next/`) | 187 tests green; the new directory holds no plugin word |
 | `next` bundle (`node scripts/ui-next-bundle.mjs`) | identical to `origin/main` 19720e3a: entry 609,412 B (190,702 gzip), loader 16,090 B (6,327), `jsx-dev-runtime` 650 B (430): **+0 B**, 0 modules of `shell/core/tabs` in the build (nothing imports it) |
-| 500 open tabs (`perf.test.ts`) | 500 opens about 15 ms, 500 shows with the strip read after each about 1 ms, 500 closes about 19 ms, about 35 ms in all (macOS arm64, Node 26, jsdom, after a warm-up run); the test's budget is 2,000 ms and guards a quadratic loop, not a slow machine. A second test asserts that an open, a navigation, a show, a pin and a close ask the plugins the same number of questions at 5 tabs and at 500 (a show, a pin and a close ask none) |
+| 500 open tabs (`perf.test.ts`) | The scenario is 500 opens, 500 shows, 100 pins, 167 navigations and 500 closes (about 1,770 operations, 1,270 of which change the strip), with a strip, a page host and a breadcrumb subscribed. On this machine (macOS arm64, Node 26, jsdom, after a warm-up run): **45 ms for the operations alone; 118 ms with the three subscribers** (460 ms before the fix below). One pass of the strip's identities over 500 tabs: 0.03 ms (0.475 ms before). The bound is 2,000 ms, compared with the fastest of up to three runs. A second test asserts that an open, a navigation, a show, a pin and a close ask the plugins the same number of questions at 5 tabs and at 500 (a show, a pin and a close ask none); a third that a pin, a navigation and a close at 500 tabs leave the strip item and the identity of every other tab the same object |
 
-Run from the worktree root; the suite takes about 1.2 s.
+Run from the worktree root; the model's tests take about 1.4 s, the whole root suite about 28 s here and 160 s on the CI runner.
+
+## The first CI run failed: the 500-tab test (2026-11-17)
+
+**Failure.** Job `UI checks`, step "Component tests" (run 44195119670): `ui-next/shell/core/tabs/perf.test.ts > 500 open tabs > open, show, pin, navigate and close within a small time bound ...`: `AssertionError: expected 2311.009226 to be less than 2000`. One test of 2,442; the other 184 files passed, and the model's other 10 files passed on the runner (`fuzz` 358 ms, `persist` 431 ms).
+
+**Cause: my change, not a flaky old-UI test.** The test's scenario cost 461 ms on this machine, not the 35 ms I had written down: I had measured the operations without the three subscribers the test attaches. With a strip subscribed, every one of the 1,270 changes to the tabs made the strip's selector work out the identity of all 500 tabs again (0.475 ms a pass: strings, arrays and a deep comparison per tab), which is O(tabs) per change as required, with a constant that left no room. The runner is about five times slower than this machine under the whole suite (the same run: the 83 ms test took 16 ms here, the 176 ms test 29 ms, `perf.test.ts` as a whole 2,657 ms), so 461 ms became 2,311 ms and the bound was exceeded by 16%. A bound I called "generous" was 23% of the budget on my machine and 116% on the runner's.
+
+**Reproduced locally**, on the unchanged head, by running the perf file while busy loops kept every core busy (`/tmp/s1a/loaded.sh`, a script that starts N loops, runs the command and kills them): no load 471 ms; 36 loops 1,555 ms; 72 loops **fail: 3,381 ms, `expected 3377.29 to be less than 2000`**, the runner's assertion. The full root suite alone does not fail here (185 files green, 28 s) because 18 fast cores leave no contention.
+
+**Fix, and what it does not change.**
+1. The strip's identities are worked out once per face object (a frozen face cannot go stale), a tab whose face and qualifier are the ones its identity was made from is not touched, and a group of tabs that read alike is looked for with one lookup per tab instead of an array per tab (`identity.ts`, `selectors.ts`). The pass over 500 tabs went from 0.475 ms to 0.03 ms; the scenario from 461 ms to 118 ms. The outputs are the same objects as before wherever the content is the same: 140 of the 141 tests that existed pass unchanged (the one that changed is the timed scenario, item 2).
+2. `perf.test.ts` compares the fastest of up to three runs with the bound (it stops at the first run inside it), because a run slowed down by a busy machine says nothing about the model and a slow model is slow in every run; each run still asserts its end state and invariants. An explicit 30 s timeout keeps three slow runs from tripping the 5 s default.
+3. **The bound is not loosened: 2,000 ms, as before, and no assertion was removed.** Two tests were added: object identity of every untouched tab at 500 tabs after a pin, a navigation and a close, and an identity kept when a plugin describes a tab again with the same words (a change inside the page). They hold on a machine of any speed.
+4. The numbers in this file, the test's comment and the README were wrong or missing and are corrected.
+
+**Result.** The same perf file under the same load that failed it: 36 loops 327 ms, 72 loops 997 ms, 108 loops 1,401 ms, all green with the bound unchanged. Full `pnpm test`, `tsc`, `eslint ui-next packages/kit`, `lint:ui-policy` and the kit's guards green; the `next` bundle is still byte-identical to `origin/main` (609,412 B).
+
+**Residual risk.** A wall-clock test on a shared runner can still fail if the runner is more than about fifteen times slower than this machine (the bound is 17 times what the scenario costs here). The model's cost is checked deterministically in three places that do not depend on speed: the questions asked of the plugins (5 tabs against 500), the identity of untouched tabs (objects) and the invariants; the wall-clock test is the only one that can flake.
 
 ## What the mock leaves open, and what this step did
 
@@ -170,7 +191,7 @@ The old shell mounts a tab the first time it is shown and keeps it mounted, hidd
 
 ## Not verified
 
-The model is not wired to a component, so nothing was run in the real host (browser server mode or WKWebView). Not run: the full `pnpm lint` and `pnpm test` (only `ui-next`, the kit's lint guards and `lint:ui-policy`), `node --test scripts/react-compiler.test.mjs scripts/ui-flavour.test.mjs`, a differential run of random operations against the mock's own model (the harness cases were ported and read, not executed against both), Windows and Linux. Timings are from one machine.
+The model is not wired to a component, so nothing was run in the real host (browser server mode or WKWebView). Not run: the full `pnpm lint` (CI's "Lint" step passed on the first push; the changed files were linted here with `eslint ui-next packages/kit`), `node --test scripts/react-compiler.test.mjs scripts/ui-flavour.test.mjs` (CI's steps passed on the first push, before the strip change; the `next` bundle was rebuilt here and is unchanged), the CI step "Runtime contract regressions" (needs the Go job's corpus), a differential run of random operations against the mock's own model (the harness cases were ported and read, not executed against both), Windows and Linux. Timings are from one machine.
 
 ## Files
 
