@@ -121,6 +121,7 @@ export type DataTableAlign = 'start' | 'end';
 export type DataTableColumn<TRow> = {
     readonly id: string;
     readonly header: string;
+    readonly hideHeader?: boolean | undefined;
     readonly fit: DataTableFit;
     readonly width?: number | undefined;
     readonly align?: DataTableAlign | undefined;
@@ -670,7 +671,7 @@ export type WorkspaceToolbarProps = {
 
 // Warnings were encountered during analysis:
 //
-// dist/components/TableFit/sample.d.ts:12:5 - (ae-forgotten-export) The symbol "FitFont" needs to be exported by the entry point index.d.ts
+// dist/components/TableFit/sample.d.ts:14:5 - (ae-forgotten-export) The symbol "FitFont" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

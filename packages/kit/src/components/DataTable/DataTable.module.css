@@ -58,12 +58,33 @@
     width: var(--_width, auto);
   }
 
+  /* A cell is one line (design 14 E1). Only the cells of the flexible columns clip, and with an ellipsis (base.css 1275, the mock's `.fx`):
+     a fixed column has the width of its content, and a header is never cut, because the fit never takes a column below its header text.
+     A clip on every cell cut a fixed value whose face was wider than its declared width ("10/..." where the mock draws "10/10") and
+     cut the focus ring of the sort button down to two bars. */
   .head,
   .cell {
     box-sizing: border-box;
+    white-space: nowrap;
+  }
+
+  .cell[data-ov-flexible] {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* A word that names a column for assistive technology and draws nothing: the mock's `.visually-hidden` (base.css 1592). */
+  .hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the visually hidden box takes its own pixel back (the mock's rule) */
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
     white-space: nowrap;
+    border: 0;
   }
 
   /* The header cell, sticky to the top of the region. */
@@ -97,7 +118,9 @@
     padding-block: 0;
   }
 
-  /* The sort control: a native button that is the header's text, with the arrow of the active direction after it. */
+  /* The sort control: a native button that is the header's text, with the arrow of the active direction after it. Its box is the row
+     target and it has the radius of a control, so that its focus ring follows it (base.css 1229, 1243); the arrow keeps the icon colour
+     at rest, on hover and in focus: only the word changes on hover. */
   .sort {
     display: inline-flex;
     box-sizing: border-box;
@@ -107,14 +130,18 @@
     max-width: 100%;
     min-height: var(--ov-row-target);
     margin: 0;
-    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), not a step of the spacing scale */
-    padding: var(--ov-row-pad) 0;
+    padding: 0;
     border: 0;
+    border-radius: var(--ov-radius-control);
     background: transparent;
     color: inherit;
     cursor: pointer;
     font: inherit;
     text-align: inherit;
+  }
+
+  .sort svg {
+    color: var(--ov-icon);
   }
 
   .sort:hover {
@@ -126,10 +153,6 @@
     outline-offset: 2px;
   }
 
-  .head[data-ov-align='end'] .sort {
-    justify-content: flex-end;
-  }
-
   .cell {
     height: var(--_row-height);
     /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), and the cell inset 10 px is outside the spacing scale */
@@ -138,10 +161,19 @@
     vertical-align: middle;
   }
 
-  /* A glyph or a code span in a cell sits at the top of its line box, as in the mock (design 13 T2): on the text baseline it adds the
-     line's descender gap and the row grows past its height, and rows that are taller than the virtualizer thinks drift out of place. */
+  /* A cell that holds a command gives back its block padding: a 24 px command in a 24 px row would otherwise make the row 32 px, and a row
+     that is taller than the virtualizer thinks drifts out of place (base.css 1317, 1615). */
+  .cell:has(> button) {
+    padding-block: 0;
+  }
+
+  /* An inline box in a cell sits at the top of its line box, as in the mock (design 13 T2; base.css 1313: `.mono, code, .resource-state,
+     .ic`): on the text baseline, or centred on it as a state's box is, it adds the line's descender gap and the row grows past its
+     height (24.6 px in Chromium and 25.1 px in WebKit for a 16 px state in a 24 px row), and rows that are taller than the virtualizer
+     thinks drift out of place. */
   .cell svg,
-  .cell code {
+  .cell code,
+  .cell > span {
     vertical-align: top;
   }
 
@@ -180,14 +212,16 @@
     background-color: var(--ov-hover-toolbar);
   }
 
+  /* The mark: a 16 px box with the radius of a control, an island fill and the raised edge when off; accent, edge and all, when on or
+     mixed (base.css 1138-1139). */
   .check::before {
     content: '';
     box-sizing: border-box;
     width: 16px;
     height: 16px;
-    border: 1px solid var(--ov-border-control);
-    border-radius: var(--ov-radius-mark);
-    background-color: transparent;
+    border: 1px solid var(--ov-border-raised);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-island);
   }
 
   .check:checked::before,

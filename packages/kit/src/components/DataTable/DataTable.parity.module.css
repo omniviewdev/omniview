@@ -1,7 +1,6 @@
-/* What the parity fixtures put in a cell, drawn the way the design mock draws it (its .namecell, .cell2, .pmid and .resource-identifier
-   rules in base.css and shell-panel.css), so that the table probe compares the table, not a cell that was drawn differently. The middle
-   ellipsis is the mock's markup: a head that clips with an ellipsis and a tail that stays whole. It leaves this file when the
-   MiddleEllipsis part lands (PR #516). */
+/* What the parity fixtures put in a cell around the kit's own parts, drawn the way the design mock draws it (its .namecell, .cell2 and
+   .resource-identifier rules in base.css and shell-panel.css), so that the table probe compares the table, not a cell that was drawn
+   differently. The tile, the middle-cut name and the state are the kit's parts; what is here is the layout around them. */
 @layer ov.components {
   /* A tile and a name over a second line. */
   .identity {
@@ -9,17 +8,6 @@
     align-items: center;
     gap: var(--ov-spacing-8);
     min-width: 0;
-  }
-
-  .tile {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: var(--ov-radius-control);
-    color: var(--ov-brand-blue);
   }
 
   /* The two lines: the name and what it belongs to. Each clips on its own, as the mock's `.fx .cell2 > *` does. */
@@ -38,33 +26,15 @@
     white-space: nowrap;
   }
 
+  /* A name is a link: the mock's `a.link`. */
+  .name {
+    color: var(--ov-link);
+  }
+
   .group {
     color: var(--ov-fg-muted);
     font-size: var(--ov-fs-12);
     line-height: var(--ov-lh-16);
-  }
-
-  /* A name that keeps its end when it is cut: the start clips with an ellipsis, the end stays whole. */
-  .cut {
-    position: relative;
-    display: flex;
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-    color: var(--ov-link);
-  }
-
-  .head {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: pre;
-  }
-
-  .tail {
-    flex: 0 0 auto;
-    white-space: pre;
   }
 
   /* A value in the code face with the command that copies it after it. */

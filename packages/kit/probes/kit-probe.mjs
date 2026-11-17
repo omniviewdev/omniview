@@ -18,17 +18,14 @@
 //               activate an available button; busy shows the loader after one second and the loader holds still under reduced motion
 //   a11y        the accessibility tree of each example (Playwright aria snapshot), and axe-core when AXE is given
 // Exit code 1 when anything outside KNOWN_DEVIATIONS differs.
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import http from 'node:http';
-import os from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { ENGINES, VIEWPORTS, STATES, awaitFonts, deviations, launch, measure, setContext, summarize } from './probe-lib.mjs';
+import { buildUiNext, serve } from './serve.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repo = path.resolve(here, '../../..');
 const reference = JSON.parse(readFileSync(path.join(here, 'mock-reference.json'), 'utf8'));
 const AXE = process.env.AXE ?? createRequire(import.meta.url).resolve('axe-core/axe.min.js');
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
@@ -95,31 +92,6 @@ const THEME_CASES = [
   { example: 'Button/PrimaryWithIcon', rest: { color: '--ov-fg-over-accent', border: '--ov-accent', bg: '--ov-accent', icon: '--ov-fg-over-accent' }, hover: {}, active: {} },
   { example: 'IconButton/Danger', rest: { color: '--ov-error-fg', border: '--ov-border-control', bg: null, icon: '--ov-error-fg' }, hover: {}, active: {} },
 ];
-
-// ---------------------------------------------------------------------------------------------------------------------------
-async function build() {
-  if (process.env.DIST) return process.env.DIST;
-  const out = mkdtempSync(path.join(os.tmpdir(), 'kit-probe-'));
-  execFileSync('pnpm', ['exec', 'vite', 'build'], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next', OMNIVIEW_BUILD_OUTPUT_DIRECTORY: out }, stdio: 'pipe' });
-  return out;
-}
-
-function serve(dist) {
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
-  const server = http.createServer((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://x');
-    const file = path.join(dist, url.pathname === '/' ? 'index.html' : url.pathname);
-    try {
-      if (!file.startsWith(dist)) throw new Error('outside');
-      response.setHeader('content-type', types[path.extname(file)] ?? 'application/octet-stream');
-      response.end(readFileSync(file));
-    } catch {
-      response.statusCode = 404;
-      response.end('not found');
-    }
-  });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}/` })));
-}
 
 const failures = [];
 const report = { parity: {}, themes: {}, counts: {}, keyboard: {}, a11y: {}, notes: [] };
@@ -482,7 +454,7 @@ async function a11y(page, engineName, where) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-const dist = await build();
+const dist = buildUiNext();
 const { server, url } = await serve(dist);
 try {
   for (const engineName of engineNames) {

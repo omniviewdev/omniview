@@ -25,6 +25,13 @@ function RowMenuTriggerImpl<TRow>({ handle, row, label, ...rest }: RowMenuTrigge
       data-ov-size="row"
       aria-label={label}
       aria-haspopup="menu"
+      onMouseDown={(event) => {
+        // A press on a trigger moves no focus. Chromium would focus the button; WebKit gives a button no focus on a press and takes it to
+        // the nearest focusable ancestor instead, the table's region. Either is a focus move away from the open menu, and WebKit's closed it
+        // on the press, so that the click which follows opened it again: the open trigger could not close its menu. The click is what
+        // decides, and the menu that opens takes focus itself.
+        event.preventDefault();
+      }}
       onClick={(event) => {
         // A click with no pointer behind it is a key (Enter, Space, a screen reader's press): the first item takes focus. A pointer's
         // click focuses the menu and leaves every item to the user.

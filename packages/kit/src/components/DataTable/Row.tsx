@@ -42,6 +42,9 @@ function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins }: Row
             key={column.id}
             className={styles.cell}
             data-ov-align={column.align === 'end' ? 'end' : undefined}
+            // The cell of a flexible column takes the width the planner gives it and clips (the mock's `.fx`). This is NOT `data-ov-clip`: that is
+            // the cut signal the tip host reads (a part that cuts its own text names the text a tip may show), and a cell is not such a part.
+            data-ov-flexible={column.fit === 'fixed' ? undefined : ''}
             data-ov-pin={pins.pinned[slot] ? slot : undefined}
             data-ov-edge={pins.edge === slot ? '' : undefined}
           >

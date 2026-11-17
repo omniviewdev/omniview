@@ -1,6 +1,6 @@
 // Probes the kit's DataTable against the design mock's table, in WebKit and Chromium at 1440 x 900 and 1030 x 720: the parity probe of the
-// table. Its reference is mock-table.json (made by mock-table-measure.mjs, which says how a record reads); kit-probe.mjs does the same
-// for the atoms.
+// table. Its reference is mock-table.json (made by mock-table-measure.mjs, which says how a record reads, and certified by
+// generate-reference.mjs, which writes where it came from into the file); kit-probe.mjs does the same for the parts.
 //
 //   node packages/kit/probes/table-probe.mjs      # builds the kit and ui-next (OMNIVIEW_UI=next) into a temp dir, serves it, probes it
 //
@@ -9,14 +9,15 @@
 //   ONLY=<regex>               only the mock cases whose id matches: line-plain-comfortable, pods-narrow-compact, cell-identity, ...
 //   REPORT=<file>              write the full report as JSON
 //   SHOTS=<dir>                a screenshot of every staged fixture
-//   NEGATIVE_CONTROL=<name>    perturb ONE measured value in the page (header-colour, row-height or cell-padding): the probe must fail and
-//                              name the value. It prints "detected" and exits 1 when it did; "NOT DETECTED" and exit 2 when it did not.
+//   NEGATIVE_CONTROL=<name>    perturb ONE measured value in the page (header-colour, row-height, cell-padding or header-ink): the probe must fail
+//                              and name the value. It prints "detected" and exits 1 when it did; "NOT DETECTED" and exit 2 when it did not.
 //                              Run it after changing this file: a probe that cannot fail proves nothing.
+//   FONT_DELAY_MS=40           serve every font file that late (serve.mjs): what a runner does, which a local server hides
 //
 // What it compares. Every fixture is a kit example of DataTable.parity.examples.tsx (the parts page shows them): the data, the columns and
 // the widths of one case of the mock's own measurement. The probe stages the example the way the mock stages a table (a full-screen stage
-// with 40 px of padding and the width the mock's table had), puts the font in Helvetica as the mock did (`--ov-font-ui`; the table is told
-// the fonts arrived, so it measures its text in it), sets the density of the case (`data-ov-density` on <html>), and records the table
+// with 40 px of padding and the width the mock's table had), waits for the real fonts (the kit's Inter and JetBrains Mono against the mock's
+// own, with the same advances: nothing is normalized; the table measures its text again when the fonts are loaded), sets the density of the case (`data-ov-density` on <html>), and records the table
 // with the SAME page-side functions the mock was recorded with (probe-lib.installRecordLib). Both records are then compared as what the
 // DOM looks like:
 //
@@ -41,13 +42,12 @@
 // `aria-rowindex`, cells by `td`, `th` or their roles, controls by their roles, so a change of the row layout needs a new
 // KNOWN_DEVIATIONS where it changes a value on purpose, not a new probe. Exit code 1 when anything outside KNOWN_DEVIATIONS differs.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import http from 'node:http';
-import os from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expandCase } from './mock-table-measure.mjs';
-import { ENGINES, VIEWPORTS, buttonStates, installRecordLib, measure, normalizeFont, setContext, settle, sleep } from './probe-lib.mjs';
+import { ENGINES, VIEWPORTS, awaitFonts, buttonStates, installRecordLib, launch, measure, setContext, settle, sleep } from './probe-lib.mjs';
+import { buildUiNext, serve } from './serve.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
@@ -110,18 +110,6 @@ const KNOWN_DEVIATIONS = [
     reason: 'See one-sort-at-a-time: the point the mock tests, the middle of the Status header, is on its button there (button plus arrow) and beside the narrower button in the kit.',
   },
   {
-    id: 'sort-button-padding',
-    path: /^sort\.\w+\.button\.(rest|hover|focus)\.pad$/,
-    when: (mock, kit) => mock === '0px 0px 0px 0px' && /^[34]px 0px [34]px 0px$/.test(kit),
-    reason: 'The kit\'s sort button pads by the row padding (4 px, 3 compact) inside its minimum height of the row target; the mock computes no padding for the same height. The box is the same (size is compared and equal), so is every pixel.',
-  },
-  {
-    id: 'sort-button-justify',
-    path: /^sort\.\w+\.button\.(rest|hover|focus)\.layout$/,
-    when: (mock, kit) => mock === 'flex center flex-start nowrap' && kit === 'flex center flex-end nowrap',
-    reason: 'The button of a right-aligned column justifies its content to the end in the kit and to the start in the mock; the button is as wide as its content, so where the content starts inside it is not visible.',
-  },
-  {
     id: 'glyph-without-wrapper',
     path: /^sort\.\w+\.button\.(rest|hover|focus)\.elements$/,
     when: (mock, kit) => mock - kit === 1,
@@ -147,18 +135,11 @@ const KNOWN_DEVIATIONS = [
     reason: 'See managed-column-header: a text column of the mock\'s Pods list holds, beside its sort button, a resize handle and a sort arrow that is there at rest with opacity 0 and appears under the pointer; the kit\'s header cell holds an arrow only on the column that is sorted.',
   },
   {
-    id: 'cut-copy-of-the-name',
-    cases: /^cell-identity$/,
-    path: /^rows\.\d+\.td\.\d+\.cut\.clip$/,
-    when: (mock, kit) => mock === 1 && kit === 0,
-    reason: 'The mock\'s .pmid draws an invisible copy of the whole name (::after, visibility hidden) that overflows it, and that is what its clip flag reads; the kit fixture has no such copy (the fit measures the text itself). The clip of the part that shows, the head, is compared and equal.',
-  },
-  {
     id: 'identifier-ends-with-an-ellipsis',
     cases: /^cell-identifier$/,
     path: /^rows\.\d+\.td\.\d+\.identifierText\.clip$/,
     when: (mock, kit) => mock === 0 && kit === 1,
-    reason: 'The mock cuts an identifier in the middle with its own two halves, so its text box holds exactly what shows. The fixture\'s text clips at its end with an ellipsis until the MiddleEllipsis part lands (PR #516), so its box holds more than shows.',
+    reason: 'The mock cuts an identifier in the middle with its own two halves (prefix and suffix, sized by its own measure), so its text box holds exactly what shows. The kit has no part for an identifier yet (MiddleEllipsis is the rule for names: a third of the name stays, 6 to 12 characters), so the fixture\'s text clips at its end with an ellipsis and its box holds more than shows.',
   },
 ];
 
@@ -167,11 +148,11 @@ const NOT_COMPARED = [
   'z-index: the mock stacks a header cell at 1 or 3, the kit at 2 or 3; what stacking must do is compared by what is under the header after the region scrolled (sticky.hit).',
   'display, vertical-align, min and max width, box-sizing: how a cell is laid out is not how it looks; where its content ends up is compared (rectangles, text positions).',
   'class names, the hashed CSS Module classes, `data-ov-*` attributes and the mock\'s `data-action`, `data-tooltip` and `data-column-*`: implementation.',
-  'tooltips (`data-tooltip`, `data-tooltip-clip`): the kit has no tooltip until the tooltip step lands (PR #519).',
-  'font metrics of the code face: the mock bundles Int UI Mono, the kit has no font delivery yet, so the text of a monospaced run is not compared (its box is).',
-  'the middle ellipsis itself (the prefix and suffix halves of the identifier, `--identifier-prefix-size` and the mock\'s measure): the kit has no MiddleEllipsis part until PR #516. The cut name is the fixture\'s own head and tail; what is compared is the table\'s: the clip, the width the fit gives the column, where the kept end sits.',
+  'tooltips (`data-tooltip`, `data-tooltip-clip`): the table gives no cell a tip; the consumer marks its own cell content (`tip()`, `data-ov-clip`), as the mock marks its spans.',
+  'the text inside a cell\'s own spans (a monospaced ready count): the cell\'s box is compared and the span is not a named part; the fonts are the real ones on both sides, so a width that differs shows in the rectangle.',
+  'the middle cut of an identifier (the prefix and suffix halves, `--identifier-prefix-size`, the mock\'s measure): the kit has no part for an identifier; the cut of a NAME is compared (the halves, their clip, colour and font, and where the kept end sits).',
   'the shape of the check and dash glyphs inside the 16 px mark: the mock draws an 11 px svg, the kit draws with borders; their colour and the box and paint of the mark itself are compared.',
-  'the text of the cells of the two-line list (its data are the fixture\'s, not the mock\'s), its wide column set (CPU and Memory metric cells), the mock\'s column menu and resize handles, row expansion and grouping.',
+  'the text of the cells of the two-line list (its data are the fixture\'s, not the mock\'s), its wide column set (CPU and Memory metric cells), the mock\'s column menu and resize handles, row expansion and grouping. The mock\'s `cell-text` case (its Image cell is a clip slot, `.cell-clip`, which caps what its column asks for at 240 px in the mock\'s measure: base.css 1271) stays in mock-table.json and is not probed, because the kit has no clip slot; `cell-text-plain` (the same table with plain text cells) is.',
   'the 16 px mark\'s values come from the live mock (base.css `.cb::before`: 16 px, radius 4, island fill and --int-border-raised edge off, --int-accent on), because mock-table.json holds no pseudo-element.',
   'scroll region sizes and the page around the table (`wrap`, `scroll`): the page or the viewport sets them.',
 ];
@@ -190,7 +171,7 @@ const CASES = [
   { id: 'pods-narrow-compact', example: 'TwoLineListCompact', density: 'compact', states: LIST_STATES, descend: true, sameText: false },
   { id: 'cell-identity', example: 'IdentityCell', density: 'comfortable' },
   { id: 'cell-identifier', example: 'IdentifierCell', density: 'comfortable' },
-  { id: 'cell-text', example: 'TextCells', density: 'comfortable' },
+  { id: 'cell-text-plain', example: 'TextCells', density: 'comfortable' },
 ];
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -414,36 +395,19 @@ const PERTURBATIONS = {
   'header-colour': '[data-probe-stage] th { color: rgb(1, 2, 3) !important; }',
   'row-height': '[data-probe-stage] tbody td { height: 41px !important; }',
   'cell-padding': '[data-probe-stage] tbody td { padding-left: 11px !important; }',
+  // A hidden header word drawn: the header of a command column then has ink the mock's does not.
+  'header-ink': '[data-probe-stage] th [data-ov-hidden] { position: static !important; width: auto !important; height: auto !important; margin: 0 !important; clip-path: none !important; overflow: visible !important; }',
 };
-const EXPECTED_BY_CONTROL = { 'header-colour': /^th\.\d+\.color$/, 'row-height': /^rows\.\d+\.(r\.h|td\.\d+\.r\.h)$/, 'cell-padding': /^rows\.\d+\.td\.\d+\.pad$/ };
+const EXPECTED_BY_CONTROL = { 'header-colour': /^th\.\d+\.color$/, 'row-height': /^rows\.\d+\.(r\.h|td\.\d+\.r\.h)$/, 'cell-padding': /^rows\.\d+\.td\.\d+\.pad$/, 'header-ink': /^th\.\d+\.ink$/ };
 if (CONTROL && !PERTURBATIONS[CONTROL]) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// Build and serve (as kit-probe does), and open a page with the libraries installed.
+// Build and serve (serve.mjs, as every probe does), and open a page with the libraries installed.
 function build() {
   if (process.env.DIST) return process.env.DIST;
-  const out = mkdtempSync(path.join(os.tmpdir(), 'table-probe-'));
   // ui-next imports the BUILT kit: a probe that read a stale build would compare yesterday's table.
   execFileSync('pnpm', ['--filter', '@omniviewdev/kit', 'run', 'build'], { cwd: repo, stdio: 'pipe' });
-  execFileSync('pnpm', ['exec', 'vite', 'build'], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next', OMNIVIEW_BUILD_OUTPUT_DIRECTORY: out }, stdio: 'pipe' });
-  return out;
-}
-
-function serve(dist) {
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
-  const server = http.createServer((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://x');
-    const file = path.join(dist, url.pathname === '/' ? 'index.html' : url.pathname);
-    try {
-      if (!file.startsWith(dist)) throw new Error('outside');
-      response.setHeader('content-type', types[path.extname(file)] ?? 'application/octet-stream');
-      response.end(readFileSync(file));
-    } catch {
-      response.statusCode = 404;
-      response.end('not found');
-    }
-  });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}/` })));
+  return buildUiNext();
 }
 
 /** The names of the tokens (a role is a token whose value is a colour) and the ids of the nine themes, from the kit's generated files. */
@@ -462,14 +426,12 @@ async function load(context, url, errors) {
   });
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-example="DataTableParity/LinePlain"]');
-  await normalizeFont(page, { rootVar: '--ov-font-ui' });
   await page.evaluate(installRecordLib);
   await page.evaluate(installKitLib);
   await page.addStyleTag({ content: STAGE_CSS });
   if (CONTROL) await page.addStyleTag({ content: PERTURBATIONS[CONTROL] });
-  // The table measures its text in the font it was drawn in when it mounted and again when fonts arrive; the font was set after the load.
-  await page.evaluate(() => document.fonts.dispatchEvent(new Event('loadingdone')));
-  await settle(page);
+  // The real fonts: the table measures its text once they are loaded (it listens for the end of the load), and the probe waits for them here.
+  await awaitFonts(page);
   return page;
 }
 
@@ -584,11 +546,22 @@ const isSortButton = (n) => n.t === 'button' && n.a?.role !== 'checkbox';
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Comparing one record of the kit with the mock's.
+/** The kit's piece of a cell by the name its fixture gave it; the two halves of a middle-cut name are the first and the second child of the cut box. */
+function kitPart(kitCell, part) {
+  if (part !== 'head' && part !== 'tail') return kitCell.k?.find((n) => n.part === part);
+  const at = kitCell.k?.findIndex((n) => n.part === 'cut') ?? -1;
+  if (at < 0) return undefined;
+  const depth = kitCell.k[at].d + 1;
+  const halves = [];
+  for (let i = at + 1; i < kitCell.k.length && kitCell.k[i].d >= depth; i += 1) if (kitCell.k[i].d === depth) halves.push(kitCell.k[i]);
+  return halves[part === 'head' ? 0 : 1];
+}
+
 function compareParts(p, mockCell, kitCell) {
   for (const [part, isPart] of Object.entries(MOCK_PART)) {
     const m = mockCell.k?.find(isPart);
     if (!m) continue;
-    const k = kitCell.k?.find((n) => n.part === part);
+    const k = kitPart(kitCell, part);
     if (!k) { L.eq(`${p}.${part}`, 'present', 'missing'); continue; }
     rect(`${p}.${part}.r`, m.r, k.r);
     styles(`${p}.${part}`, m.s, k.s, PART_KEYS[part]);
@@ -596,6 +569,9 @@ function compareParts(p, mockCell, kitCell) {
     if (m.xr && k.xr && m.x === k.x) L.num(`${p}.${part}.text.w`, m.xr[1], k.xr[1], TOL.w);
   }
 }
+
+/** What a header cell draws as text: its own text and that of what it holds, except a box of 1 px or less (a visually hidden word has no ink). */
+const inkOf = (record) => [record, ...(record.k ?? [])].filter((n) => n.x && !(n.r[2] <= 1.5 && n.r[3] <= 1.5)).map((n) => n.x).join(' ');
 
 function compareCell(p, m, k, { kids, sameText }) {
   if (!k) { L.eq(p, 'present', 'missing'); return; }
@@ -623,6 +599,7 @@ function compareHeader(mock, kit) {
     styles(p, m.s, k.s, CELL_KEYS);
     L.eq(`${p}.col`, m.col, k.col);
     L.eq(`${p}.aria-sort`, m.a?.['aria-sort'], k.a?.['aria-sort']);
+    L.eq(`${p}.ink`, inkOf(m), inkOf(k));
     L.eq(`${p}.scope`, m.a?.scope, k.a?.scope);
     if (m.x !== undefined) {
       L.eq(`${p}.text`, m.x, k.x);
@@ -730,7 +707,9 @@ function compareMarks(kit) {
 
 function compareCase(spec, mock, kit) {
   compareHeader(mock, kit);
-  L.eq('colWidths', mock.colWidths.map(Math.round), kit.colWidths.map(Math.round));
+  // The columns, each within the tolerance of a width (the planner gives whole pixels, the mock's table fractions of them).
+  L.eq('colWidths.count', mock.colWidths.length, kit.colWidths.length);
+  mock.colWidths.forEach((width, j) => L.num(`colWidths.${j}`, width, kit.colWidths[j], TOL.w));
   compareRows(spec, mock, kit);
   L.eq('counts.rowcount', mock.counts.rows + 1, Number(kit.counts.rowcount));
   if (mock.counts.rows <= 24) L.eq('counts.mounted', mock.counts.rows, kit.counts.mounted);
@@ -1004,7 +983,7 @@ async function main() {
   const started = Date.now();
   try {
     for (const engineName of engineNames) {
-      const browser = await ENGINES[engineName].launch();
+      const browser = await launch(engineName);
       for (const viewportName of viewportNames) {
         const run = `${engineName} ${viewportName}`;
         const context = await browser.newContext({ viewport: VIEWPORTS[viewportName] });

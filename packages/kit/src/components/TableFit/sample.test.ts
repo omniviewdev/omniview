@@ -1,8 +1,10 @@
 // The measurement behind the planner (ruling R9): never all the content. Measuring every string costs 104 to 291 ms for 60,000 strings in
 // WebKit against a budget of 8 ms for the whole plan (plan 3.3 item 5; RT1 4.6), so a column's natural width is read from a sample: the
-// first 100 rows, the last 100 and the rows in view, once per change of data or columns.
+// first 100 rows, the last 100, the rows in view and the rows that hold the longest strings of each column, once per change of data or
+// columns. The longest strings are there because a rare long value (a path, an image reference, a selector) sits in neither end of the
+// table: without them the long-tailed set of the table bench was fitted 27 to 37 px short on three of seven text columns (B5).
 import { describe, expect, it } from 'vitest';
-import { createTextMeasurer, measureSample, sampleIndexes, SAMPLE_HEAD, SAMPLE_TAIL, type SampledColumn, type TextMeasurer } from './sample';
+import { createTextMeasurer, longestIndexes, measureSample, sampleIndexes, SAMPLE_HEAD, SAMPLE_LONGEST, SAMPLE_TAIL, type SampledColumn, type TextMeasurer } from './sample';
 
 describe('which rows are measured', () => {
   it('is nothing for no rows', () => {
@@ -88,6 +90,71 @@ describe('measuring a sample', () => {
     const sample = measureSample(rows, [0, 1, 2], [{ id: 'age', text: () => '' }], measure);
     expect(calls).toHaveLength(0);
     expect(sample.get('age')).toEqual({ textWidth: 0, tailWidth: 0 });
+  });
+});
+
+describe('the rows that hold the longest strings', () => {
+  // Seven thousand short names, with a handful of long ones in the middle: the shape of a table whose values are mostly short and
+  // sometimes a path.
+  const long = new Map<number, string>([[3100, 'x'.repeat(90)], [3200, 'y'.repeat(80)], [4400, 'z'.repeat(70)]]);
+  const rows: Row[] = Array.from({ length: 7000 }, (_, index) => ({ name: long.get(index) ?? `job-${index % 50}`, group: `g-${index % 7}` }));
+  const flat: Array<SampledColumn<Row>> = [{ id: 'name', text: (row) => row.name }];
+
+  it('finds a rare long value that is in neither end of the table, which the head, the tail and the window miss', () => {
+    const { measure } = counting();
+    const missed = measureSample(rows, sampleIndexes(rows.length, { first: 10, last: 40 }), flat, measure);
+    expect(missed.get('name')?.textWidth).toBeLessThan(90 * 7);
+    const found = measureSample(rows, sampleIndexes(rows.length, { first: 10, last: 40 }), flat, measure, longestIndexes(rows, flat));
+    expect(found.get('name')?.textWidth).toBe(90 * 7);
+  });
+
+  it('lists, for each column, the rows of its longest strings, longest first, and no more than the bound', () => {
+    const found = longestIndexes(rows, flat);
+    expect(found.get('name')?.slice(0, 3)).toEqual([3100, 3200, 4400]);
+    expect(found.get('name')?.length).toBeLessThanOrEqual(SAMPLE_LONGEST);
+    expect(SAMPLE_LONGEST).toBe(16);
+    expect(longestIndexes(rows, flat, 2).get('name')).toEqual([3100, 3200]);
+  });
+
+  it('keeps distinct strings: a longest value that occurs in many rows takes one place, so the next longest is not pushed out', () => {
+    const copies: Row[] = Array.from({ length: 1000 }, (_, index) => ({ name: index % 2 === 0 ? 'p'.repeat(60) : index === 501 ? 'q'.repeat(59) : 'r', group: '' }));
+    const found = longestIndexes(copies, flat, 4).get('name') ?? [];
+    // 500 rows hold the longest string, one holds the second longest: both are in the list.
+    expect(found).toContain(501);
+    expect(found.filter((index) => index % 2 === 0)).toHaveLength(1);
+  });
+
+  it('ranks every run of a cell on its own, so a long second line is found though the first lines are short', () => {
+    const stacked: Array<SampledColumn<Row>> = [{ id: 'name', text: (row) => [{ text: row.name }, { text: row.group, font: 'small' }] }];
+    const two: Row[] = Array.from({ length: 3000 }, (_, index) => ({ name: `n-${index % 10}`, group: index === 2222 ? 'g'.repeat(50) : `g-${index % 7}` }));
+    expect(longestIndexes(two, stacked, 3).get('name')).toContain(2222);
+  });
+
+  it('adds the rows whose kept end is the longest, for a column that cuts its names in the middle', () => {
+    const kept: Array<SampledColumn<Row>> = [{ id: 'name', text: (row) => row.name, tail: (row) => (row.name.length === 70 ? 12 : 6) }];
+    const found = longestIndexes(rows, kept, 2).get('name') ?? [];
+    expect(found).toContain(4400);
+  });
+
+  it('has nothing for a column with no text, and nothing for no rows', () => {
+    expect(longestIndexes(rows, [{ id: 'age', text: () => '' }]).get('age')).toEqual([]);
+    expect(longestIndexes([], flat).get('name')).toEqual([]);
+  });
+
+  it('measures a bounded number of strings however many rows there are, and each distinct string once', () => {
+    const { measure, calls } = counting();
+    const unique: Row[] = Array.from({ length: 20_000 }, (_, index) => ({ name: `name-${String(index).padStart(6, '0')}${'x'.repeat(index % 40)}`, group: '' }));
+    measureSample(unique, sampleIndexes(unique.length, { first: 9000, last: 9030 }), flat, measure, longestIndexes(unique, flat));
+    expect(calls.length).toBeLessThanOrEqual(SAMPLE_HEAD + SAMPLE_TAIL + 31 + SAMPLE_LONGEST);
+  });
+
+  it('reads the text of each row once and calls no measurer, so the pass over the rows is cheap', () => {
+    let reads = 0;
+    const counted: Array<SampledColumn<Row>> = [{ id: 'name', text: (row) => {
+      reads += 1; return row.name; 
+    } }];
+    longestIndexes(rows, counted);
+    expect(reads).toBe(rows.length);
   });
 });
 

@@ -16,6 +16,8 @@
  *                                              the same, `ActionMenuScope`)
  *   the trigger leaving the document           closes it and moves focus to the nearest focusable ancestor of the trigger, the table region
  *                                              (a virtual row left the window, or its record was deleted), else to the body
+ *   focus dropped on the body                  while it is open (the focused item was removed, or the popup was moved, in an engine that
+ *                                              sends no blur for either) puts focus back on the popup, so Escape and Tab still reach it
  *
  * Focus goes back to the trigger only when it is in the menu or nowhere: a user who moved on keeps what they chose.
  */
@@ -149,6 +151,15 @@ export function createRowMenu<TRow>(): RowMenuHandle<TRow> {
     const observer = new MutationObserver(() => {
       if (!anchor.isConnected) {
         close();
+        return;
+      }
+
+      // An engine that sends no blur when the focused node leaves the page (WebKit) leaves focus on the body while the menu is open: no
+      // key reaches the menu, and Escape and Tab would close nothing. Focus goes back to the menu, where the person is. A blur that was sent
+      // (Chromium's) already closed the menu or moved focus to another control, and then there is nothing here to take back.
+      const active = doc.activeElement;
+      if (active === null || active === doc.body) {
+        doc.getElementById(id)?.focus({ preventScroll: true });
       }
     });
 

@@ -13,7 +13,7 @@
 import { fitInputs } from '../../../packages/kit/src/components/TableFit/fitColumns';
 import { planFit } from '../../../packages/kit/src/components/TableFit/planFit';
 import {
-  createTextMeasurer, measureSample, mergeSamples, sampleIndexes,
+  createTextMeasurer, longestIndexes, measureSample, mergeSamples, sampleIndexes,
   type ColumnSample, type FitFont, type SampledColumn,
 } from '../../../packages/kit/src/components/TableFit/sample';
 import type { FitColumn } from '../../../packages/kit/src/components/TableFit/useTableFit';
@@ -64,16 +64,23 @@ const summary = (values: number[]) => {
   return { n: sorted.length, p50: at(0.5), p95: at(0.95), max: sorted.at(-1) ?? 0, min: sorted[0] ?? 0 };
 };
 
-/** The plan from the sampled rows. Returns the times of its three steps in ms. */
-function plan(rows: readonly Row[], columns: Array<FitColumn<Row>>, measure: ReturnType<typeof makeMeasurer>, window: { first: number; last: number }, available: number) {
+/**
+ * The plan from the sampled rows, as the table makes it: the rows that hold each flexible column's longest strings (a pass over the rows, found
+ * with a data change and kept while a window moves: pass `longest` to reuse it), the first and last rows and the window, measured; the inputs;
+ * the plan. Returns the times of its steps in ms.
+ */
+function plan(rows: readonly Row[], columns: Array<FitColumn<Row>>, measure: ReturnType<typeof makeMeasurer>, window: { first: number; last: number }, available: number, longest?: Map<string, number[]>) {
+  const flexible = columns.filter((column) => column.kind !== 'fixed');
   const t0 = now();
-  const samples = measureSample(rows, sampleIndexes(rows.length, window), sampled, measure);
+  const found = longest ?? longestIndexes(rows, flexible);
+  const tl = now();
+  const samples = measureSample(rows, sampleIndexes(rows.length, window), flexible, measure, found);
   const t1 = now();
   const inputs = fitInputs(columns, samples, measure);
   const t2 = now();
   const result = planFit(inputs, available);
   const t3 = now();
-  return { samples, inputs, result, sampleMs: t1 - t0, inputsMs: t2 - t1, planMs: t3 - t2, totalMs: t3 - t0 };
+  return { samples, inputs, result, longest: found, longestMs: tl - t0, sampleMs: t1 - tl, inputsMs: t2 - t1, planMs: t3 - t2, totalMs: t3 - t0 };
 }
 
 /** The engine's own measure of every cell: the widest text and kept end per column, after the same rounding up the canvas measurer does. */
@@ -170,17 +177,25 @@ async function run(name: string) {
   // --- plan time ---
   const cold: number[] = [];
   const coldSample: number[] = [];
+  const coldLongest: number[] = [];
   const warm: number[] = [];
   for (let rep = 0; rep < 30; rep += 1) {
     const result = plan(rows, COLUMNS, makeMeasurer(), { first: 0, last: 40 }, widthsAt[0] ?? 1117);
     cold.push(result.totalMs);
     coldSample.push(result.sampleMs);
+    coldLongest.push(result.longestMs);
   }
 
   const warmMeasurer = makeMeasurer();
-  plan(rows, COLUMNS, warmMeasurer, { first: 0, last: 40 }, 1117);
+  const warmFirst = plan(rows, COLUMNS, warmMeasurer, { first: 0, last: 40 }, 1117);
   for (let rep = 0; rep < 30; rep += 1) {
-    warm.push(plan(rows, COLUMNS, warmMeasurer, { first: 100 + rep * 90, last: 140 + rep * 90 }, 1117).totalMs);
+    warm.push(plan(rows, COLUMNS, warmMeasurer, { first: 100 + rep * 90, last: 140 + rep * 90 }, 1117, warmFirst.longest).totalMs);
+  }
+
+  // A data change with a warm measurer: the pass over the rows again, and the sample.
+  const dataChange: number[] = [];
+  for (let rep = 0; rep < 30; rep += 1) {
+    dataChange.push(plan(rows, COLUMNS, warmMeasurer, { first: 100 + rep * 90, last: 140 + rep * 90 }, 1117).totalMs);
   }
 
   // --- the sample against the oracle ---
@@ -228,7 +243,7 @@ async function run(name: string) {
   let changes = 0;
   const changedAt: number[] = [];
   for (let start = 0; start < rows.length; start += 40) {
-    const window = measureSample(rows, sampleIndexes(rows.length, { first: start, last: start + 40 }), sampled, measure);
+    const window = measureSample(rows, sampleIndexes(rows.length, { first: start, last: start + 40 }), COLUMNS.filter((column) => column.kind !== 'fixed'), measure, first.longest);
     merged = mergeSamples(merged, window);
     const widths = planFit(fitInputs(COLUMNS, merged, measure), 1117).widths.join(',');
     if (widths !== previous) {
@@ -242,7 +257,7 @@ async function run(name: string) {
     dataset: name,
     rows: rows.length,
     columns: COLUMNS.length,
-    planMs: { cold: summary(cold), coldSample: summary(coldSample), warm: summary(warm) },
+    planMs: { cold: summary(cold), coldSample: summary(coldSample), coldLongest: summary(coldLongest), warm: summary(warm), dataChange: summary(dataChange) },
     sampleVsOracle: columns,
     plans,
     growth: { changes, changedAt, windows: Math.ceil(rows.length / 40) },

@@ -1,11 +1,13 @@
 name: UI next kit probes
 
-# Slice 1a, PR 1a.4d (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and Chromium at
-# 1440 x 900 and 1030 x 720, against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json, measured from
-# the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs; the design lab is private and is never needed here).
-# Three probes, each fails the job on a difference: kit-probe (parity with the mock, tokens, counts, keyboard, accessibility with axe-core),
-# fonts-probe (the fonts are delivered, used and the page does not shift) and tooltip-probe (the one tooltip host: listeners, cost, delay,
-# Escape layering, placement, motion).
+# Slice 1a, PRs 1a.4d and 1a.3c (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and
+# Chromium at 1440 x 900 and 1030 x 720, against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json for the
+# parts and mock-table.json for the table, measured from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs,
+# which writes where each came from into the file; the design lab is private and is never needed here).
+# Four probes, each fails the job on a difference: kit-probe (parity with the mock, tokens, counts, keyboard, accessibility with axe-core),
+# table-probe (the table: header, rows, selection column, sort, hover, selected and focus states, the fit, the nine themes), fonts-probe (the
+# fonts are delivered, used and the page does not shift) and tooltip-probe (the one tooltip host: listeners, cost, delay, Escape layering,
+# placement, motion).
 #
 # NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
 # request blocks the merge. The lead makes it required in the branch protection settings once it has been green for a while.
@@ -104,6 +106,9 @@ jobs:
 
       - name: Probe the parts against the pinned mock reference
         run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/kit-probe.json" node packages/kit/probes/kit-probe.mjs
+
+      - name: Probe the table against the pinned mock reference
+        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/table-probe.json" node packages/kit/probes/table-probe.mjs
 
       - name: Probe the fonts and the layout shift
         run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/fonts-probe.json" node packages/kit/probes/fonts-probe.mjs

@@ -2,6 +2,8 @@
 //
 //   1. Serve the mock as mock-measure.mjs says (a CommonJS copy of its server.js with `root` set to the mock directory, run from /tmp).
 //   2. MOCK_URL=http://127.0.0.1:<port>/ node packages/kit/probes/mock-table-measure.mjs      (about 4 minutes)
+//      or, for the pinned reference of CI, node packages/kit/probes/generate-reference.mjs --lab <design-lab checkout>, which serves the
+//      mock from `git archive` of the tag, runs this and mock-measure.mjs, and writes the provenance into both files.
 //
 // A. The Pods list of connection prod-eu (89 Pods), opened as appendix B of docs/ui-next/slices/1a-pods-list.md says, on a freshly loaded
 //    page for every rendering: wide column set and narrow set (the Columns picker reaches the set the viewport does not show by
@@ -11,7 +13,9 @@
 // C. Cell kinds: number and mono cells and clipped text with its tooltip attribute (cell-text), the middle-ellipsis name of a Pod
 //    (cell-identity: .pmid, Shell.panel.longName) and the middle-ellipsis identifier (cell-identifier: .resource-identifier-text,
 //    prepareIdentifiers), the identity column held at 268 px.
-// Engines WebKit and Chromium, viewports 1440 x 900 and 1030 x 720, the default theme, the font normalized as mock-measure.mjs does.
+// Engines WebKit and Chromium, viewports 1440 x 900 and 1030 x 720, the default theme. The fonts are the real ones on both sides, as in
+// mock-measure.mjs (the mock's own Inter and JetBrains Mono; the kit delivers the same advances); Chromium runs with --font-render-hinting=none
+// (probe-lib.mjs `launch`), so a reference made on macOS holds on the Linux runner.
 //
 // Output mock-table.json, at most 150 KB: { meta, styles, colorTokens, checks, cases: { <id>: { <viewport>: <entry> } } }.
 //   styles        every computed-style summary once, by id (a content hash); a node's `s` is such an id
@@ -34,7 +38,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENGINES, VIEWPORTS, normalizeFont, setContext, sleep, settle, measure, buttonStates, installRecordLib } from './probe-lib.mjs';
+import { ENGINES, VIEWPORTS, awaitFonts, launch, setContext, sleep, settle, measure, buttonStates, installRecordLib } from './probe-lib.mjs';
 
 const URL = process.env.MOCK_URL ?? 'http://127.0.0.1:49231/';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -263,8 +267,10 @@ function fixtureCells(kind) {
     { label: 'Ready', num: true, fn: (r) => `<span class="mono">${r.ready}</span>` },
     { label: 'Restarts', num: true, k: 'n' },
     { label: 'Total', num: true, k: 'big' },
-    { label: 'Image', fit: 'flex', fn: (r) => `<span class="cell-clip"${H.tip(r.image)}>${r.image}</span>` },
-    { label: 'Note', fit: 'flex', fn: (r) => `<span${H.tip(r.note)}>${r.note}</span>` },
+    // `text`: the image is a clip slot (`.cell-clip`), which caps what its column asks for at 240 px in the mock's measure (`--cell-max`, base.css
+    // 1271). `text-plain`: the same cells as plain text, which is what the kit's table is given (it has no clip slot): the column asks for its text.
+    { label: 'Image', fit: 'flex', fn: (r) => (kind === 'text-plain' ? r.image : `<span class="cell-clip"${H.tip(r.image)}>${r.image}</span>`) },
+    { label: 'Note', fit: 'flex', fn: (r) => (kind === 'text-plain' ? r.note : `<span${H.tip(r.note)}>${r.note}</span>`) },
   ];
   return H.table(cols, rows, { row: () => 'probe:open', label: 'Cells' });
 }
@@ -372,7 +378,7 @@ async function loadMock(browser, viewport) {
   await sleep(3000);
   const ok = await page.evaluate(() => typeof window.H === 'object' && typeof fitTables === 'function' && typeof prepareIdentifiers === 'function');
   if (!ok) throw new Error('mock did not expose H, fitTables and prepareIdentifiers');
-  await normalizeFont(page, { rootVar: '--int-font-ui' });
+  await awaitFonts(page);
   await page.evaluate(installRecordLib);
   await page.evaluate(installLib);
   return { page, context, errors };
@@ -538,6 +544,7 @@ function caseList() {
   list.push({ id: 'cell-identity', kind: 'stage', density: 'comfortable', fixture: fixtureCells, arg: 'identity', states: null, rows: [0, 1, 2, 3], walkRows: 'all', hold: 268 });
   list.push({ id: 'cell-identifier', kind: 'stage', density: 'comfortable', fixture: fixtureCells, arg: 'identifier', states: null, rows: [0, 1, 2, 3], walkRows: 'all', hold: 268 });
   list.push({ id: 'cell-text', kind: 'stage', density: 'comfortable', fixture: fixtureCells, arg: 'text', states: null, rows: [0, 1, 2], walkRows: 'all' });
+  list.push({ id: 'cell-text-plain', kind: 'stage', density: 'comfortable', fixture: fixtureCells, arg: 'text-plain', states: null, rows: [0, 1, 2], walkRows: 'all' });
   return list.filter((c) => !only || only.test(c.id));
 }
 
@@ -547,7 +554,7 @@ async function measureAll() {
   const errorsSeen = {};
   const tokens = {};
   for (const engineName of engineFilter) {
-    const browser = await ENGINES[engineName].launch();
+    const browser = await launch(engineName);
     for (const vp of viewportFilter) {
       const t = Date.now();
       // One page per (engine, viewport, density) for B and C: they render into the stage and do not navigate.
@@ -761,13 +768,14 @@ async function main() {
       measuredAt: new Date().toISOString(),
       engines: engineFilter,
       viewports: viewportFilter,
-      font: 'Helvetica, Arial, sans-serif',
+      font: "the mock's own Inter 3.019 Regular and SemiBold and JetBrains Mono 2.304 Regular; no font is normalized on either side",
       theme: 'default (no data-theme attribute)',
       notes: [
-        'Font normalized by setting --int-font-ui on <html> after load, before any route or fixture: widths follow Helvetica, not Inter (the plan\'s 282 / 157 / 72 are Inter widths). --int-font-code is not changed: mono cells use the mock\'s bundled Int UI Mono.',
+        'Fonts: the mock\'s own, on both sides: the page is measured once its fonts are loaded (probe-lib awaitFonts) and nothing is normalized, so the fixed widths of the fit (a ready count, a status, an age) are the Inter widths the plan names (59, 157, 72, 59). Chromium runs with --font-render-hinting=none (probe-lib launch), so the widths hold on Linux as on macOS.',
         'Pods: a freshly loaded page per rendering; 89 rows are asserted. The wide set (CPU and Memory) is what the mock shows at 1440 and is measured there only; the narrow set is reached at 1440 by unticking CPU and Memory in Columns and is the default at 1030. Ticking them at 1030 appends them after Age, which is not the order of the wide set.',
         'Stage (B and C): fixed full-screen div #probe-stage, padding 40px, background var(--int-bg-island), the wrapper as H.table writes it; the mock\'s own fitTables and prepareIdentifiers run once after the markup is set.',
         'cell-identity and cell-identifier: the identity column is held at 268 px by giving the table wrapper a width (record.held); it is the first column there, so its leading padding is 12px, not the 10px behind a selection cell.',
+        'cell-text and cell-text-plain: the same table; in cell-text the Image and Note cells are clip slots (`.cell-clip`, which caps what its column asks for at 240 px in the mock\'s measure: base.css 1271), in cell-text-plain they are plain text, which is what the kit\'s table is given (it has no clip slot): its columns ask for their text. The probe compares cell-text-plain.',
         'states: the computed style of the row (st.row), every cell (st.td), the selection control (st.command) and its mark (st.mark); m = the pseudo-classes in effect. selectedFocused: a control of the table has keyboard focus (:focus-within on .tablewrap); selectedBlurred: nothing focused; selectedHover: pointer on a selected row.',
         'sticky: the scroll region scrolled by 300 px (clamped; scrollTop is what applied), then restored; th is the second header cell.',
         'sort: the th and the aria the mock writes, and the button in rest, hover and focus (probe-lib measure and summarize: size [w, h], icon [left, top, w, h, colour], label [left, width, text]).',

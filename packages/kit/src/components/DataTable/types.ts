@@ -31,6 +31,12 @@ export type DataTableColumn<TRow> = {
   readonly id: string;
   /** One noun or short noun phrase (13 H1). It is also the accessible name of the column. */
   readonly header: string;
+  /**
+   * The header names the column for assistive technology and draws nothing: a column of commands (an inspect button, a row menu's
+   * trigger) has no word to show, and a word cut by a narrow column is worse than none. A column that can be sorted always shows its word:
+   * its button is the header, so this has no effect there.
+   */
+  readonly hideHeader?: boolean | undefined;
   readonly fit: DataTableFit;
   /** The width of a `fixed` column's cell in px, its padding included: the mock's fitted widths (a ready count 59, a status 157). */
   readonly width?: number | undefined;
