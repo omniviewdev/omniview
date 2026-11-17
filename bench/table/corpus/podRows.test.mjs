@@ -17,7 +17,7 @@ const corpusDirectory = process.env.TABLE_CORPUS_DIR
   ?? [join(process.env.TMPDIR ?? '/tmp', 'ui1a3-table'), '/tmp/ui1a3-table'].find((directory) => existsSync(directory))
   ?? '/tmp/ui1a3-table';
 
-// Where the data layer and kubectl differ ON PURPOSE (data layer: ui-next/k8s/golden.test.ts, DOCUMENTED, status file 1a.2, E13):
+// Where the data layer and kubectl differ ON PURPOSE (data layer: golden.test.ts of the Kubernetes plugin's `ui/src/pods/data/`, DOCUMENTED, status file 1a.2, E13):
 // it counts regular containers only, and a missing restart count is a dash, not 0. Keyed by namespace/name.
 const DOCUMENTED = {
   'states/sidecar': { ready: '1/1' }, // kubectl 2/2: it counts the native sidecar, a restartable init container

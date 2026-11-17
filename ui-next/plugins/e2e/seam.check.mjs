@@ -2,7 +2,7 @@
 // (ui-next/plugins/fixture/build.mjs), in WebKit and Chromium. What it proves (docs/ui-next/slices/n19-plugin-seam.md, 1.4):
 //
 //   a  a bundle built by its own Vite config is fetched from `/_/plugins/<id>/assets/entry.js`, linked to the host's React and kit, and contributes a sidebar
-//      entry and a page to the shell; the window opens it with no route (no URL parameter beyond the screen selector)
+//      entry and a page to the shell; the window opens it with no route (no URL parameter and no hash: the default screen is the plugins')
 //   b  ONE React and ONE kit: the bundle's imports are the registry's instances, and `useTheme()` in the plugin reads the host's provider
 //   c  the negative control: the same plugin with its own copy of the kit fails that read, and the check sees it fail
 //   d  a page that throws is contained: the frame, the sidebar and the other pages stay; Retry tries again
@@ -80,9 +80,9 @@ async function startHost(work, port) {
   throw new Error(`the host did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
 }
 
-/** The page's state as a person reads it: the tab, the tree, the notice, the rows. */
+/** The window as the native app opens it: `/`, no `?screen=`, no URL parameter at all; a hash only where a check names a page or a connection. */
 async function open(page, base, hash = '') {
-  await page.goto(`${base}/?screen=plugins${hash}`, { waitUntil: 'load' });
+  await page.goto(`${base}/${hash}`, { waitUntil: 'load' });
 }
 
 async function checkHealthy(page, base, engine) {

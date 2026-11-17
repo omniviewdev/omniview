@@ -1,11 +1,12 @@
-// The shell with invented registrations, for the probe (shell-probe.mjs): cases the one real screen cannot show. It is a second HTML entry that
-// the probe builds on its own; `vite build` of the channel never reaches it, because that build has ui-next/index.html as its only input.
+// The shell with invented registrations, for the probe (shell-probe.mjs): the frame with every region, which is the subject of the probe's comparison with the mock, and the
+// cases no real screen shows. It is a second HTML entry that the probe builds on its own; `vite build` of the channel never reaches it, because that build has ui-next/index.html as its only input.
 //
-//   ?case=full      every region, a count on the entry, an empty page: the empty frame, and the count's geometry
+//   ?case=full      every region, a count on the entry, an empty page: the frame the mock's reference screen is compared with (every target of targets.mjs), and the count's geometry
 //   ?case=bare      no rail, sidebar or scope lane: the frame with only what every screen has
 //   ?case=long      text longer than its room in the tab, the tree, the lane and the path
 //   ?case=deep      a tree of three levels and enough rows to scroll
 //   ?case=scroll    a page taller than the island
+//   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import { ThemeProvider } from '@omniviewdev/kit';
@@ -69,6 +70,8 @@ const cases: Record<string, { registration: ShellRegistration; page: () => React
     page: () => <p>{words}</p>,
   },
   deep: { registration: deep, page: () => <p>A page.</p> },
+  // The registration a probe injects as `window.__registration` before the page runs (the words of the mock's reference screen, which the probe owns): this file names none.
+  injected: { registration: (Reflect.get(window, '__registration') as ShellRegistration | undefined) ?? full, page: () => <></> },
   scroll: {
     registration: full,
     page: () => (

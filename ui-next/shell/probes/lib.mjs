@@ -51,14 +51,12 @@ export async function readSide(page, side) {
 
 /**
  * The differences between a reference reading (the mock) and the shell's, as strings, and the largest rectangle difference in px.
- * `kind` is 'page' for the shell's real page and 'fixture' for the fixture, whose one comparable difference is the count the real page lacks:
- * on the fixture only the targets that say `only: 'fixture'` are compared. `stylesOnly` skips rectangles (the themes change colours only).
+ * `stylesOnly` skips rectangles (the themes change colours only).
  */
-export function compare(reference, got, { kind, tolerance = 1, stylesOnly = false } = {}) {
+export function compare(reference, got, { tolerance = 1, stylesOnly = false } = {}) {
   const problems = [];
   let worst = 0;
-  const applies = (item) => (kind === 'fixture' ? item.only === 'fixture' : item.only === undefined || item.only === kind);
-  for (const target of TARGETS.filter(applies)) {
+  for (const target of TARGETS) {
     if (stylesOnly) break;
     const mock = measured(reference, target);
     const shell = measured(got, target);
@@ -77,7 +75,7 @@ export function compare(reference, got, { kind, tolerance = 1, stylesOnly = fals
       if (delta > tolerance) problems.push(`${target.name}.${key}: mock ${mock[key]}${target.adjust?.[key] ? ` (${target.adjust[key] > 0 ? '+' : ''}${target.adjust[key]} known)` : ''} shell ${shell[key]} (off by ${delta})`);
     }
   }
-  for (const entry of STYLES.filter(applies)) {
+  for (const entry of STYLES) {
     const mock = reference[entry.name]?.style;
     const shell = got[entry.name]?.style;
     if (mock === undefined || shell === undefined) continue;

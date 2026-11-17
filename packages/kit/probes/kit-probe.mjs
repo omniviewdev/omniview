@@ -485,17 +485,17 @@ async function ellipsisName(page, where) {
 
 // ---------------------------------------------------------------------------------------------------------------------------
 const dist = buildUiNext();
-const { server, url } = await serve(dist);
+const { server, partsUrl } = await serve(dist);
 try {
   for (const engineName of engineNames) {
     const browser = await launch(engineName);
     for (const viewportName of viewportNames) {
       const viewport = VIEWPORTS[viewportName];
       const where = `${engineName} ${viewportName}`;
-      const { page, context, errors } = await open(browser, url, viewport);
+      const { page, context, errors } = await open(browser, partsUrl, viewport);
       report.parity[where] = { buttons: await parity(page, where), icons: await icons(page, where) };
       await countsAndRootWrites(page, where);
-      await keyboard(browser, url, viewport, engineName, where);
+      await keyboard(browser, partsUrl, viewport, engineName, where);
       await a11y(page, engineName, where);
       await ellipsisName(page, where);
       if (SHOTS) {
@@ -506,7 +506,7 @@ try {
       }
 
       report.themes[where] = { states: viewportName === viewportNames[0] ? await themes(page, where) : 0 };
-      await busy(browser, url, viewport, where);
+      await busy(browser, partsUrl, viewport, where);
       if (errors.length) fail(where, `page errors: ${errors.join(' | ')}`);
       await context.close();
     }

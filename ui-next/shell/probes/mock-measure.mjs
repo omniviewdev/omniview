@@ -5,15 +5,16 @@
 //      (mock tree c8e44a445bdbec07ad81d5ec036dd26cc0a8bef0).
 //   2. MOCK_URL=http://127.0.0.1:<port>/ node ui-next/shell/probes/mock-measure.mjs
 //
-// The route is the plan's appendix B (see MOCK_OPEN in targets.mjs), opened in a freshly loaded page (resizing a page that had rendered
+// The route is the plan's appendix B (see MOCK_OPEN in packages/kit/probes/mock-screen.mjs), opened in a freshly loaded page (resizing a page that had rendered
 // once left the table blank). The font is normalized on both sides (Inter is not delivered; a missing font changes text widths, which are not
 // what is compared). Per engine, viewport and context the page is read with targets.mjs and the result is written to mock-shell.json.
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENGINES, VIEWPORTS, normalizeFont, setContext, sleep } from '../../../packages/kit/probes/probe-lib.mjs';
+import { MOCK_OPEN } from '../../../packages/kit/probes/mock-screen.mjs';
 import { readSide, readStates } from './lib.mjs';
-import { CONTEXTS, MOCK_OPEN, THEME_MAP } from './targets.mjs';
+import { CONTEXTS, THEME_MAP } from './targets.mjs';
 
 const URL = process.env.MOCK_URL ?? 'http://127.0.0.1:49455/';
 const here = path.dirname(fileURLToPath(import.meta.url));

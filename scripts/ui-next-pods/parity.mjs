@@ -1,11 +1,13 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
-import { chipTexts, diffNames, fixtureGaps, isAgreement, ParityError, parseKubectlTable, quickFilterCounts } from './oracle.mjs';
+import { converge } from './agreement.mjs';
+import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
 const run = promisify(execFile);
 
-// The page's side of the contract: the only place that knows the list page's markup (the data view and its parts, `ui-next/page/` and the kit). It reads
+// The page's side of the contract: the only place that knows the list page's markup (the data view and its parts, `ui-next/page/` and the kit) and the test ids the
+// Kubernetes plugin's cells carry (`pod-name`, `pod-namespace`: the plugin's `ui/src/pods/cells.tsx`). It reads
 //   state     the body of the view (`data-ov-state` on its root): ready | loading | empty | no-match | error; null before the page is mounted
 //   message   what a body without rows says: the alert of a failure, the busy status of a load, the status line of an empty list
 //   count     the footer's count, as printed: `25 Pods` once the whole set is here, `25 Pods loaded` while it is arriving, `3 of 25 Pods` when filtered
@@ -68,9 +70,10 @@ export async function launchBrowser() {
 // fixture to be mounted at once. A reading that holds fewer rows than the table says it has is reported, not compared.
 const WINDOW = { width: 1440, height: 4000 };
 
+// The window as the native app opens it: `/`, no `?screen=`, no hash, no connection. What it shows is the plugin's page, named by the plugin's contribution.
 export async function openPods(browser, baseURL) {
   const page = await browser.newPage({ viewport: WINDOW });
-  await page.goto(new URL('/?screen=pods', baseURL).href);
+  await page.goto(new URL('/', baseURL).href);
   return page;
 }
 
@@ -85,57 +88,31 @@ export async function settle(page, done, timeoutMs) {
   return read;
 }
 
-// Where the page differs from the oracle, as readable lines; empty when it agrees: the same Pods, the same count (the whole set, not "loaded"), the
-// same quick-filter counts, and a body that is the rows.
-function disagreements(read, oracle, expected) {
-  const problems = [];
-  if (read.state !== 'ready') {
-    problems.push(`the page is ${read.status}`);
-    return problems;
-  }
-  const diff = diffNames(read.names, oracle);
-  if (!isAgreement(diff)) {
-    problems.push(`the page lists ${String(read.names.length)} Pods, kubectl lists ${String(oracle.length)} (missing ${String(diff.missing.length)}, extra ${String(diff.extra.length)}, duplicated ${String(diff.duplicated.length)})`);
-  }
-  if (read.rowCount !== read.names.length) {
-    problems.push(`the table holds ${String(read.rowCount)} rows and ${String(read.names.length)} are mounted: the window is too small to read it whole`);
-  }
-  if (read.count !== expected.count) {
-    problems.push(`the footer says ${JSON.stringify(read.count)}, kubectl lists ${expected.count}`);
-  }
-  if (JSON.stringify(read.filters) !== JSON.stringify(expected.filters)) {
-    problems.push(`the quick filters read ${JSON.stringify(read.filters)}, kubectl says ${JSON.stringify(expected.filters)}`);
-  }
-  return problems;
-}
-
-// The check: the cluster holds the fixture, and the page at `?screen=pods` lists exactly the Pods `kubectl get pods -A` lists, counts them as it does in
-// its footer, and counts its quick filters from kubectl's own STATUS words (plan 1a.6 exit test).
-// Throws ParityError('FIXTURE_MISSING') when the cluster is empty of the fixture, ParityError('PAGE_MISMATCH') when the page disagrees.
+// The check: the cluster holds the fixture, and the window the host opens with no URL parameter and no hash (the first page a loaded plugin contributes: here the
+// Kubernetes plugin's, from its own bundle) lists exactly the Pods `kubectl get pods -A` lists, counts them as it does in its footer, and counts its quick filters
+// from kubectl's own STATUS words (plan 1a.6 exit test). The page and kubectl are never read at the same instant, so kubectl is read before and after every reading of
+// the page, and a Pod kubectl itself changed in between may read either way on the page: nothing else may (agreement.mjs).
+// Throws ParityError('FIXTURE_MISSING') when the cluster is empty of the fixture, ParityError('PAGE_MISMATCH') when the page does not agree before the deadline.
 export async function checkParity({ browser, baseURL, kubeconfig, timeoutMs = 30_000 }) {
-  const rows = await oracleRows(kubeconfig);
-  const oracle = rows.map((row) => row.name);
+  const oracle = (await oracleRows(kubeconfig)).map((row) => row.name);
   const gaps = fixtureGaps(oracle);
   if (gaps.length > 0) {
     throw new ParityError('FIXTURE_MISSING', `the cluster lacks the fixture: ${gaps.join('; ')}`, { gaps, oracle });
   }
-  const expected = { count: `${String(oracle.length)} Pods`, filters: chipTexts(quickFilterCounts(rows)) };
 
   const page = await openPods(browser, baseURL);
   try {
-    const read = await settle(page, (current) => disagreements(current, oracle, expected).length === 0, timeoutMs);
-    const problems = disagreements(read, oracle, expected);
-    if (problems.length > 0) {
-      throw new ParityError('PAGE_MISMATCH', `${problems.join('; ')}; page status ${JSON.stringify(read.status)}`, {
-        diff: diffNames(read.names, oracle),
-        status: read.status,
-        pageNames: read.names,
-        oracle,
-        read,
-        expected,
-      });
+    const result = await converge({ kubectl: () => oracleRows(kubeconfig), readPage: () => readPage(page), timeoutMs });
+    if (!result.agreed) {
+      const names = result.after.map((row) => row.name);
+      const changed = result.changing.length > 0 ? `; kubectl changed ${result.changing.join(', ')} between its two reads of the last comparison, so that Pod may read either way` : '';
+      throw new ParityError(
+        'PAGE_MISMATCH',
+        `${result.problems.join('; ')}; page status ${JSON.stringify(result.read.status)}; ${String(result.attempt)} comparisons in ${String(timeoutMs / 1000)} s, each with kubectl read before and after the page${changed}`,
+        { diff: diffNames(result.read.names, names), status: result.read.status, pageNames: result.read.names, oracle: names, read: result.read, attempts: result.attempt },
+      );
     }
-    return { oracle, status: read.status, read, expected };
+    return { oracle: result.matched.names, status: result.read.status, read: result.read, expected: { count: result.matched.count, filters: result.matched.filters } };
   } finally {
     await page.close();
   }

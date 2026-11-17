@@ -1,8 +1,9 @@
-// Probes the shell frame on the real `ui-next` page and on the fixture, in WebKit and Chromium at 1440 x 900 and 1030 x 720.
+// Probes the shell frame on the fixture (fixture.tsx: the real `Shell` around invented, neutral registrations), in WebKit and Chromium at 1440 x 900 and 1030 x 720.
+// The shell is plugin-agnostic and so is its probe: the mock's reference screen is named once, in packages/kit/probes/mock-screen.mjs.
 //
-//   node ui-next/shell/probes/shell-probe.mjs           builds ui-next (OMNIVIEW_UI=next) and the fixture into temp dirs, serves them, probes both
+//   node ui-next/shell/probes/shell-probe.mjs           builds the fixture (OMNIVIEW_UI=next) into a temp dir, serves it, probes it
 //
-//   DIST=<dir> FIXTURE_DIST=<dir>   probe existing builds instead of building
+//   FIXTURE_DIST=<dir>         probe an existing fixture build instead of building
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   (defaults: both of each)
 //   AXE=<path to axe.min.js>   also run axe-core over every case (a dev dependency is the lead's call: `npm i axe-core` in a temp dir)
 //   SHOTS=<dir>                write a screenshot per engine and viewport
@@ -25,8 +26,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENGINES, VIEWPORTS, normalizeFont, setContext } from '../../../packages/kit/probes/probe-lib.mjs';
+import { MOCK_REGISTRATION } from '../../../packages/kit/probes/mock-screen.mjs';
 import { compare, compareStates, readSide, readStates } from './lib.mjs';
-import { CONTEXTS, SHELL_PATH, THEME_MAP } from './targets.mjs';
+import { CONTEXTS, THEME_MAP } from './targets.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
@@ -43,13 +45,14 @@ const fail = (where, what) => failures.push(`${where}: ${what}`);
 
 // ---------------------------------------------------------------------------------------------------------------------------
 function build() {
-  const out = process.env.DIST ?? mkdtempSync(path.join(os.tmpdir(), 'shell-probe-app-'));
   const fixture = process.env.FIXTURE_DIST ?? mkdtempSync(path.join(os.tmpdir(), 'shell-probe-fixture-'));
-  const env = { ...process.env, OMNIVIEW_UI: 'next', OMNIVIEW_BUILD_OUTPUT_DIRECTORY: out };
-  if (!process.env.DIST) execFileSync('pnpm', ['exec', 'vite', 'build'], { cwd: repo, env, stdio: 'pipe' });
+  const env = { ...process.env, OMNIVIEW_UI: 'next' };
   if (!process.env.FIXTURE_DIST) execFileSync('node', [path.join(here, 'build-fixture.mjs'), fixture], { cwd: repo, env, stdio: 'pipe' });
-  return { app: out, fixture };
+  return fixture;
 }
+
+/** The frame with every region, in the words of the mock's reference screen (`?case=injected`: `open` injects them): the shell's one subject, compared with the mock. */
+const full = (origins) => `${origins.fixture}/shell/probes/fixture.html?case=injected`;
 
 function serve(dist) {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
@@ -110,6 +113,7 @@ async function open(browser, url, viewport, { init } = {}) {
     if (response.status() >= 400 && !response.url().endsWith('/favicon.ico') && !response.url().includes('/wails/')) errors.push(`${response.status()} ${response.url()}`);
   });
   if (init) await page.addInitScript(init);
+  if (url.includes('case=injected')) await page.addInitScript((value) => { window.__registration = value; }, MOCK_REGISTRATION);
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForSelector('[data-shell-part="window"]');
   return { page, context, errors };
@@ -125,34 +129,25 @@ const normalized = async (page, context = 'default') => {
 async function parity(browser, engine, viewportName, viewport, origins) {
   for (const contextName of Object.keys(CONTEXTS)) {
     const where = `${engine} ${viewportName} ${contextName}`;
-    const { page, context, errors } = await open(browser, `${origins.app}${SHELL_PATH}`, viewport);
+    const { page, context, errors } = await open(browser, full(origins), viewport);
     await normalized(page, contextName);
     const got = await readSide(page, 'shell');
-    const result = compare(reference.data[engine][viewportName][contextName], got, { kind: 'page' });
+    const result = compare(reference.data[engine][viewportName][contextName], got);
     report.parity[where] = { worst: result.worst, problems: result.problems.length, errors };
     for (const problem of result.problems) fail(`parity ${where}`, problem);
     for (const error of errors) fail(`errors ${where}`, error);
     if (SHOTS && contextName === 'default') await page.screenshot({ path: path.join(SHOTS, `shell-${engine}-${viewportName}.png`) });
     await context.close();
   }
-
-  // The count of an entry: the one part the real page does not have yet.
-  const where = `${engine} ${viewportName} fixture`;
-  const { page, context } = await open(browser, `${origins.fixture}/shell/probes/fixture.html?case=full`, viewport);
-  await normalized(page);
-  const result = compare(reference.data[engine][viewportName].default, await readSide(page, 'shell'), { kind: 'fixture' });
-  report.parity[where] = { worst: result.worst, problems: result.problems.length };
-  for (const problem of result.problems) fail(`parity ${where}`, problem);
-  await context.close();
 }
 
 async function themes(browser, engine, origins) {
-  const { page, context } = await open(browser, `${origins.app}${SHELL_PATH}`, VIEWPORTS['1440x900']);
+  const { page, context } = await open(browser, full(origins), VIEWPORTS['1440x900']);
   await normalizeFont(page, { rootVar: '--ov-font-ui' });
   for (const themeId of Object.keys(THEME_MAP)) {
     await page.evaluate((id) => document.documentElement.setAttribute('data-ov-theme', id), themeId);
     await sleep(150);
-    const result = compare(reference.themes[engine][themeId], await readSide(page, 'shell'), { kind: 'page', stylesOnly: true });
+    const result = compare(reference.themes[engine][themeId], await readSide(page, 'shell'), { stylesOnly: true });
     report.themes[`${engine} ${themeId}`] = result.problems.length;
     for (const problem of result.problems) fail(`theme ${engine} ${themeId}`, problem);
   }
@@ -160,7 +155,7 @@ async function themes(browser, engine, origins) {
 }
 
 async function states(browser, engine, origins) {
-  const { page, context } = await open(browser, `${origins.app}${SHELL_PATH}`, VIEWPORTS['1440x900']);
+  const { page, context } = await open(browser, full(origins), VIEWPORTS['1440x900']);
   await normalizeFont(page, { rootVar: '--ov-font-ui' });
   const got = await readStates(page, 'shell');
   report.states[engine] = got;
@@ -170,30 +165,28 @@ async function states(browser, engine, origins) {
 
 async function load(browser, engine, viewportName, viewport, origins) {
   const where = `${engine} ${viewportName}`;
-  for (const [label, url] of [['page', `${origins.app}${SHELL_PATH}`], ['empty frame', `${origins.fixture}/shell/probes/fixture.html?case=full`]]) {
-    const { page, context } = await open(browser, url, viewport, { init: SAMPLER });
-    await page.waitForTimeout(3000);
-    const result = await page.evaluate(() => {
-      const state = window.__probe;
-      const count = (selector) => (document.querySelector(selector)?.querySelectorAll('*').length ?? 0) + 1;
-      const window_ = document.querySelector('[data-shell-part="window"]');
-      return {
-        frames: state.frames,
-        layoutShift: state.layoutShift,
-        shiftSources: state.shiftSources,
-        moves: state.moves,
-        firstFrames: [...new Set(state.first.values())],
-        nodes: { root: (document.getElementById('root')?.querySelectorAll('*').length ?? 0), window: window_ ? window_.querySelectorAll('*').length + 1 : 0, topRow: count('[data-shell-region="topRow"]'), rail: count('[data-shell-part="rail"]'), sidebar: count('[data-shell-region="sidebar"]'), island: count('[data-shell-region="island"]'), lane: count('[data-shell-part="lane"]'), page: count('[data-shell-part="page"]'), statusBar: count('[data-shell-region="statusBar"]') },
-        scrolls: { x: document.documentElement.scrollWidth > innerWidth, y: document.documentElement.scrollHeight > innerHeight },
-      };
-    });
-    report.load[`${where} ${label}`] = result;
-    if (result.moves.length > 0) fail(`load ${where} ${label}`, `${result.moves.length} regions moved after their first frame: ${JSON.stringify(result.moves.slice(0, 3))}`);
-    if (result.layoutShift !== null && result.layoutShift > 0) fail(`load ${where} ${label}`, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
-    if (result.firstFrames.length !== 1) fail(`load ${where} ${label}`, `the frame was not complete in its first frame: parts first seen at frames ${result.firstFrames.join(', ')}`);
-    if (result.scrolls.x || result.scrolls.y) fail(`load ${where} ${label}`, 'the document scrolls');
-    await context.close();
-  }
+  const { page, context } = await open(browser, full(origins), viewport, { init: SAMPLER });
+  await page.waitForTimeout(3000);
+  const result = await page.evaluate(() => {
+    const state = window.__probe;
+    const count = (selector) => (document.querySelector(selector)?.querySelectorAll('*').length ?? 0) + 1;
+    const window_ = document.querySelector('[data-shell-part="window"]');
+    return {
+      frames: state.frames,
+      layoutShift: state.layoutShift,
+      shiftSources: state.shiftSources,
+      moves: state.moves,
+      firstFrames: [...new Set(state.first.values())],
+      nodes: { root: (document.getElementById('root')?.querySelectorAll('*').length ?? 0), window: window_ ? window_.querySelectorAll('*').length + 1 : 0, topRow: count('[data-shell-region="topRow"]'), rail: count('[data-shell-part="rail"]'), sidebar: count('[data-shell-region="sidebar"]'), island: count('[data-shell-region="island"]'), lane: count('[data-shell-part="lane"]'), page: count('[data-shell-part="page"]'), statusBar: count('[data-shell-region="statusBar"]') },
+      scrolls: { x: document.documentElement.scrollWidth > innerWidth, y: document.documentElement.scrollHeight > innerHeight },
+    };
+  });
+  report.load[`${where} frame`] = result;
+  if (result.moves.length > 0) fail(`load ${where}`, `${result.moves.length} regions moved after their first frame: ${JSON.stringify(result.moves.slice(0, 3))}`);
+  if (result.layoutShift !== null && result.layoutShift > 0) fail(`load ${where}`, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
+  if (result.firstFrames.length !== 1) fail(`load ${where}`, `the frame was not complete in its first frame: parts first seen at frames ${result.firstFrames.join(', ')}`);
+  if (result.scrolls.x || result.scrolls.y) fail(`load ${where}`, 'the document scrolls');
+  await context.close();
 }
 
 /** Real key presses, in the engine. The Tab key in WebKit on macOS skips buttons (Alt+Tab reaches them), so tab order is read from the DOM. */
@@ -323,7 +316,7 @@ async function variants(browser, engine, origins) {
 }
 
 async function a11y(browser, engine, origins, axe) {
-  for (const [label, url] of [['page', `${origins.app}${SHELL_PATH}`], ...['full', 'bare', 'long', 'deep', 'scroll'].map((name) => [name, `${origins.fixture}/shell/probes/fixture.html?case=${name}`])]) {
+  for (const [label, url] of ['injected', 'full', 'bare', 'long', 'deep', 'scroll'].map((name) => [name, `${origins.fixture}/shell/probes/fixture.html?case=${name}`])) {
     for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
       const { page, context } = await open(browser, url, viewport);
       await page.addScriptTag({ content: axe });
@@ -340,9 +333,8 @@ async function a11y(browser, engine, origins, axe) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-const built = build();
-const [app, fixture] = await Promise.all([serve(built.app), serve(built.fixture)]);
-const origins = { app: app.origin, fixture: fixture.origin };
+const fixture = await serve(build());
+const origins = { fixture: fixture.origin };
 const axe = process.env.AXE ? readFileSync(process.env.AXE, 'utf8') : null;
 
 for (const engineName of engineNames) {
@@ -361,7 +353,6 @@ for (const engineName of engineNames) {
   console.log(engineName, 'done');
 }
 
-app.server.close();
 fixture.server.close();
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({ parity: report.parity, nodes: Object.fromEntries(Object.entries(report.load).map(([key, value]) => [key, value.nodes])), notes: report.notes.slice(0, 10) }, null, 1));
