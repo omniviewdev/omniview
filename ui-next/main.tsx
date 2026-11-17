@@ -8,10 +8,8 @@ import { App } from './App';
 import { createQueryClient } from './queryClient';
 import { Shell } from './shell';
 // SCAFFOLDING(N19): begin
-// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): the one mount point of the Pods slice scaffolding; removed with ui-next/k8s/ (tracker N19)
-import { PodsSkeleton } from './pods/PodsSkeleton';
-// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): the screen's registration for the shell frame, plain data; removed with ui-next/pods/ (tracker N19)
-import { podsShellRegistration } from './pods/shellRegistration';
+// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): the one mount point of the Pods slice scaffolding (the page, and its registration for the shell frame); removed with ui-next/k8s/ and ui-next/pods/ (tracker N19)
+import { PodsSkeleton, podsShellRegistration } from './pods';
 
 // `?screen=pods` opens the slice-1a skeleton (the slice plan): the live Pod names from a connection, in the shell frame (PR 1a.5).
 // `?connection=<id>` names the connection the frame shows in its scope lane and path. It stays until the real Pods list replaces it.
