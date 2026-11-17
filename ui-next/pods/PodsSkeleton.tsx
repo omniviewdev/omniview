@@ -16,7 +16,8 @@ const POD_TYPE = 'k8s:/pods';
 
 type PodsProps = { readonly connectionID: string };
 
-// The read chain the old screens use, unchanged: catalog -> resolved target -> collection source view.
+// The read chain the old Pods table uses, with the same arguments: catalog -> resolved target -> collection source view,
+// followed live only when the type advertises `sourceUpdates` (K8S ui/src/components/shared/table/ResourceTable/index.tsx:188-207).
 // A connection is never started by a read, so the skeleton starts it once when it is found disconnected.
 function Pods({ connectionID }: PodsProps) {
   const route = useMemo(() => ({ connection: connectionID }), [connectionID]);
@@ -32,9 +33,10 @@ function Pods({ connectionID }: PodsProps) {
   const podType = resourceTypes.data?.find((type) => type.type === POD_TYPE);
   const target = useResolvedResourceTarget({ pluginID: PLUGIN_ID, route, type: POD_TYPE, enabled: podType !== undefined });
   const request = target.data
-    ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 500 } }
+    ? { targetId: target.data.targetId, request: { target: target.data.target, pageSize: 256 } }
     : undefined;
-  const { resources, isLive } = useResources({ pluginID: PLUGIN_ID, request, collection: true, live: true });
+  const live = podType?.capabilities.some((capability) => capability.operation === 'sourceUpdates') ?? false;
+  const { resources, isLive } = useResources({ pluginID: PLUGIN_ID, request, collection: true, live });
   const rows = podNames(resources.data?.records ?? []);
 
   return (
