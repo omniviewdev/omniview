@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { formatAge } from './fields';
 import { podRow } from './row';
@@ -7,14 +8,14 @@ import { hostRecord } from './testing';
 // The oracle is kubectl: each fixture row is one response of the API server (kube-apiserver v1.35.0 on kind v0.30.0), the Pod object
 // and the cells the server printed for it, taken together (fixtures/pods-table.json). `kubectl get pods -A` prints these cells.
 
-interface Capture {
+type Capture = {
   readonly label: string;
   readonly serverDate: string;
   readonly columns: readonly string[];
   readonly rows: ReadonlyArray<{ readonly cells: readonly string[]; readonly object: { readonly metadata: { readonly name: string; readonly namespace: string } } }>;
-}
+};
 
-const golden = JSON.parse(readFileSync(new URL('./fixtures/pods-table.json', import.meta.url), 'utf8')) as { captures: readonly Capture[] };
+const golden = JSON.parse(readFileSync(path.join(import.meta.dirname, 'fixtures/pods-table.json'), 'utf8')) as { captures: readonly Capture[] };
 
 // Where the plan and kubectl differ ON PURPOSE (status file 1a.2, E13): the plan counts regular containers only and shows a missing
 // restart count as a dash. Each entry says what this layer shows; everything else must equal kubectl.
@@ -29,7 +30,7 @@ const UNIT_SECONDS: Readonly<Record<string, number>> = { y: 365 * 86400, d: 8640
 
 /** What kubectl's AGE says, in seconds: "6m12s" is 372, "3d5h" is 277200. */
 function kubectlSeconds(age: string): number {
-  return [...age.matchAll(/(\d+)([ydhms])/g)].reduce((sum, [, count, unit]) => sum + Number(count) * (UNIT_SECONDS[unit!] ?? 0), 0);
+  return [...age.matchAll(/(\d+)([ydhms])/g)].reduce((sum, [, count, unit]) => sum + Number(count) * (UNIT_SECONDS[unit] ?? 0), 0);
 }
 
 /** The seconds our one-unit age stands for: "8m" is any time from 480 s up to, but not including, 540 s. */
@@ -43,7 +44,7 @@ for (const capture of golden.captures) {
   describe(`kubectl, ${capture.label}`, () => {
     const now = Date.parse(capture.serverDate);
     const columns = capture.columns;
-    const cell = (cells: readonly string[], name: string) => cells[columns.indexOf(name)]!;
+    const cell = (cells: readonly string[], name: string) => cells[columns.indexOf(name)];
 
     for (const { cells, object } of capture.rows) {
       const id = `${object.metadata.namespace}/${object.metadata.name}`;

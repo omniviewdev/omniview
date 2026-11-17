@@ -6,7 +6,7 @@ import { hostRecord } from './testing';
 // Sorting as the mock does it (MOCK k8s-resources.js:387-421): the column's kind picks the comparison, a missing value is always last
 // whatever the direction, and a tie is broken by the host key, ascending.
 
-interface Shape {
+type Shape = {
   readonly name: string;
   readonly ready?: [number, number];
   readonly word?: string;
@@ -14,7 +14,7 @@ interface Shape {
   readonly created?: string;
   readonly node?: string;
   readonly ip?: string;
-}
+};
 
 function make(key: string, shape: Shape): PodRow {
   const containers = shape.ready ? Array.from({ length: shape.ready[1] }, (_, index) => ({ name: `c${index}` })) : undefined;

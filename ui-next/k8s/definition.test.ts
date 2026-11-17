@@ -43,13 +43,13 @@ describe('the definition', () => {
   it('gives each column the width, fit, alignment and sort of the mock', () => {
     const by = Object.fromEntries(podDefinition.columns.map((column) => [column.id, column]));
 
-    expect(by['name']).toMatchObject({ fit: 'id', width: 160, align: 'left', sort: 'text', required: true });
-    expect(by['ready']).toMatchObject({ fit: 'fixed', width: 59, align: 'right', sort: 'ratio' });
-    expect(by['status']).toMatchObject({ fit: 'fixed', width: 157, align: 'left', sort: 'text' });
-    expect(by['restarts']).toMatchObject({ fit: 'fixed', width: 72, align: 'right', sort: 'number' });
-    expect(by['age']).toMatchObject({ fit: 'fixed', width: 59, align: 'left', sort: 'time' });
-    expect(by['node']).toMatchObject({ fit: 'flex', width: 72, sort: 'text' });
-    expect(by['ip']).toMatchObject({ fit: 'fixed', width: 113, sort: 'text' });
+    expect(by.name).toMatchObject({ fit: 'id', width: 160, align: 'left', sort: 'text', required: true });
+    expect(by.ready).toMatchObject({ fit: 'fixed', width: 59, align: 'right', sort: 'ratio' });
+    expect(by.status).toMatchObject({ fit: 'fixed', width: 157, align: 'left', sort: 'text' });
+    expect(by.restarts).toMatchObject({ fit: 'fixed', width: 72, align: 'right', sort: 'number' });
+    expect(by.age).toMatchObject({ fit: 'fixed', width: 59, align: 'left', sort: 'time' });
+    expect(by.node).toMatchObject({ fit: 'flex', width: 72, sort: 'text' });
+    expect(by.ip).toMatchObject({ fit: 'fixed', width: 113, sort: 'text' });
   });
 
   it('has one display function for each column', () => {
@@ -81,7 +81,7 @@ describe('the list rules', () => {
   });
 
   describe('quick filters: Running is the word, Pending and Failed are roles, Completed is two words', () => {
-    const withStatus = (phase: string, containerState?: object) =>
+    const withStatus = (phase: string, containerState?: Record<string, unknown>) =>
       row({ metadata: { name: 'x' }, spec: { containers: [{ name: 'a' }] }, status: { phase, ...(containerState ? { containerStatuses: [{ name: 'a', state: containerState }] } : {}) } });
     const matching = (target: PodRow) => list.quickFilters.filter((filter) => filter.test(target)).map((filter) => filter.id);
 
@@ -106,8 +106,8 @@ describe('the list rules', () => {
     const [facet] = list.facets;
 
     expect(facet).toMatchObject({ id: 'node', label: 'Node', all: 'All nodes' });
-    expect(facet!.value(running)).toBe('node-1');
-    expect(facet!.value(bare)).toBeUndefined();
+    expect(facet.value(running)).toBe('node-1');
+    expect(facet.value(bare)).toBeUndefined();
   });
 });
 

@@ -47,7 +47,7 @@ describe('podStatusWord: init containers', () => {
   });
 
   it('names the failure of an init container: its reason, else its signal, else its exit code', () => {
-    const failed = (terminated: object) => pod({ phase: 'Pending', initContainerStatuses: [{ name: 'a', state: { terminated } }] }, { initContainers: [{ name: 'a' }] });
+    const failed = (terminated: Record<string, unknown>) => pod({ phase: 'Pending', initContainerStatuses: [{ name: 'a', state: { terminated } }] }, { initContainers: [{ name: 'a' }] });
 
     expect(podStatusWord(failed({ exitCode: 3, reason: 'Error' }))).toBe('Init:Error');
     expect(podStatusWord(failed({ exitCode: 137, signal: 9 }))).toBe('Init:Signal:9');
@@ -96,7 +96,7 @@ describe('podStatusWord: containers', () => {
   });
 
   it('names how a container stopped: its reason, else its signal, else its exit code', () => {
-    const stopped = (terminated: object) => pod({ phase: 'Failed', containerStatuses: [{ name: 'app', state: { terminated } }] });
+    const stopped = (terminated: Record<string, unknown>) => pod({ phase: 'Failed', containerStatuses: [{ name: 'app', state: { terminated } }] });
 
     expect(podStatusWord(stopped({ exitCode: 0, reason: 'Completed' }))).toBe('Completed');
     expect(podStatusWord(stopped({ exitCode: 1, reason: 'Error' }))).toBe('Error');
@@ -118,7 +118,7 @@ describe('podStatusWord: containers', () => {
   });
 
   it('turns Completed back into Running when a container still runs and the Pod is Ready', () => {
-    const mixed = (conditions: object[]) => pod({
+    const mixed = (conditions: Array<Record<string, unknown>>) => pod({
       phase: 'Running',
       conditions,
       containerStatuses: [{ name: 'quick', state: { terminated: { exitCode: 0, reason: 'Completed' } } }, running],
