@@ -1,0 +1,53 @@
+/* What a Pods row puts in its cells, drawn the way the design mock draws them (its `.namecell`, `.cell2` and mono rules), from kit atoms. Plugin
+   CSS: layer ov.plugin, below the kit's components, so a part's own rule always wins over this file. */
+@layer ov.plugin {
+  /* A tile and a name over a second line. */
+  .identity {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  .identity > :first-child {
+    flex: none;
+  }
+
+  /* The two lines: the name and its namespace. Each clips on its own, as the mock's `.fx .cell2 > *` does. */
+  .lines {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    position: relative;
+    gap: 0;
+    min-width: 0;
+  }
+
+  .lines > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The name as assistive technology reads it: whole, once. It takes no room and is never drawn. */
+  .name {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .second {
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* A count in the code face, as the mock draws Ready and Restarts. */
+  .mono {
+    font-family: var(--ov-font-code);
+  }
+}

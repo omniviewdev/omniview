@@ -547,8 +547,17 @@ describe('the PageHeader stylesheet', () => {
     });
 
     it('is the third cell of a row that has no identity line, between the title and the commands', () => {
-      expect(rule('.row[data-ov-slot-row] > .slot')).toMatchObject({ 'grid-row': '1', 'grid-column': '-3 / -2', 'align-self': 'start', 'justify-self': 'end', 'margin-inline-start': '0' });
+      expect(rule('.row[data-ov-slot-row] > .slot')).toMatchObject({ 'grid-row': '1', 'grid-column': '-3 / -2', 'align-self': 'start', 'justify-self': 'end' });
       expect(rule('.row[data-ov-slot-row] > .slot[data-ov-open]')).toMatchObject({ 'inline-size': 'min(var(--_op-size), 50cqi)', 'min-inline-size': '0' });
+    });
+
+    it('takes no room beside the title at rest: the row has no column gap in this mode, and the 12 px are the slot\'s own margin (measured: a zero-width track still paid a gap to each neighbour, 12 px of the title)', () => {
+      // 12 px between the title and the commands at rest, as a header with no slot has; 12 px on each side of the presenter while it shows.
+      expect(rule('.row[data-ov-slot-row]')['column-gap']).toBe('0');
+      expect(rule('.row[data-ov-slot-row] > .slot')['margin-inline']).toBe('var(--ov-spacing-12) 0');
+      expect(rule('.row[data-ov-slot-row] > .slot[data-ov-open]')['margin-inline-end']).toBe('var(--ov-spacing-12)');
+      // The tile keeps its own 12 px before the title: it was the row's column gap.
+      expect(rule('.row[data-ov-slot-row] > [data-ov-header-tile]')['margin-inline-end']).toBe('var(--ov-spacing-12)');
     });
 
     it('takes the place of the facts and the reason below 1000 px of page width, while it shows, and fills the rest of the line', () => {

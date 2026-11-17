@@ -49,13 +49,14 @@ if (mode === 'control-fixture-absent') {
     const error = await failure({ timeoutMs: 15_000 });
     assert.equal(error.code, 'PAGE_MISMATCH', error.message);
     assert.deepEqual(error.detail.pageNames, [], 'with the plugin absent the page lists no Pods');
-    assert.match(error.detail.status ?? '', /No connections|Loading connections/, 'the page must be stopped at the connection');
+    assert.match(error.detail.status ?? '', /No connections|Loading/, 'the page must be stopped at the connection');
   });
 } else {
-  test('the page and kubectl agree on the Pods of every namespace', async () => {
-    const { oracle, status } = await checkParity({ browser, baseURL, kubeconfig });
-    assert.match(status ?? '', /connected/, 'the connection is up');
-    assert.match(status ?? '', new RegExp(`\\b${String(oracle.length)} pods\\b`), 'the page counts the same Pods');
+  test('the page and kubectl agree on the Pods of every namespace, on their count and on the quick filters', async () => {
+    const { oracle, read, expected } = await checkParity({ browser, baseURL, kubeconfig });
+    assert.equal(read.state, 'ready', 'the connection is up and the page lists the Pods');
+    assert.equal(read.count, `${String(oracle.length)} Pods`, 'the footer counts the same Pods, the whole set');
+    assert.deepEqual(read.filters, expected.filters, 'the quick filters count what kubectl says');
   });
 
   // The runtime's live feed, end to end: a Pod created and deleted with kubectl appears and disappears without a reload.
@@ -70,10 +71,12 @@ if (mode === 'control-fixture-absent') {
       await kubectl(kubeconfig, ['run', 'live-probe', '-n', 'checkout', '--image=busybox:1.37.0', '--restart=Never', '--', 'sleep', '3600']);
       const appeared = await settle(page, (read) => read.names.includes(probe), 20_000);
       assert.ok(appeared.names.includes(probe), `the created Pod did not appear; page status ${JSON.stringify(appeared.status)}`);
+      assert.equal(appeared.count, `${String(listed.length + 1)} Pods`, 'the footer follows the created Pod');
 
       await kubectl(kubeconfig, ['delete', 'pod', 'live-probe', '-n', 'checkout', '--grace-period=0', '--force', '--wait=false']);
       const gone = await settle(page, (read) => !read.names.includes(probe), 20_000);
       assert.ok(!gone.names.includes(probe), 'the deleted Pod is still listed');
+      assert.equal(gone.count, `${String(listed.length)} Pods`, 'the footer follows the deleted Pod');
       assert.ok(isAgreement(diffNames(gone.names, initial.names)), 'the list is back to the initial Pods');
     } finally {
       await kubectl(kubeconfig, ['delete', 'pod', 'live-probe', '-n', 'checkout', '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']).catch(() => undefined);

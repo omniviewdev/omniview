@@ -86,8 +86,12 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
+  /* An operation slot in the title row has no column gap to pay: a track of no width still paid 12 px to each neighbour, so a title with Refresh alone was
+     12 px short of the same title with no slot (measured against the mock's list header, 1065 against 1077). The 12 px are the slot's own margin instead
+     (below), and the tile's. */
   .row[data-ov-slot-row] {
     grid-template-columns: minmax(0, 1fr) auto auto;
+    column-gap: 0;
   }
 
   .row[data-ov-tile][data-ov-slot-row] {
@@ -105,6 +109,10 @@
     grid-row: 1;
     align-self: start;
     margin-block-start: var(--ov-spacing-4);
+  }
+
+  .row[data-ov-slot-row] > [data-ov-header-tile] {
+    margin-inline-end: var(--ov-spacing-12);
   }
 
   /* The title: 18/24 semibold with 2 px above and below, one line, an ellipsis (the full name is the tip's while it is cut). */
@@ -270,17 +278,20 @@
     overflow: visible;
   }
 
+  /* At rest the slot is a box of no width with 12 px before it: the one gap between the title and the commands. While an operation shows it has 12 px on
+     each side, so the presenter is 12 px from the title and from the commands, and the title is as short as it was with the row's column gap. */
   .row[data-ov-slot-row] > .slot {
     grid-row: 1;
     grid-column: -3 / -2;
     align-self: start;
     justify-self: end;
-    margin-inline-start: 0;
+    margin-inline: var(--ov-spacing-12) 0;
   }
 
   .row[data-ov-slot-row] > .slot[data-ov-open] {
     inline-size: min(var(--_op-size), 50cqi);
     min-inline-size: 0;
+    margin-inline-end: var(--ov-spacing-12);
   }
 
   /* Below 1000 px of page width the line has no room for the facts and a presenter together (a failure sentence of two lines and its Retry need about

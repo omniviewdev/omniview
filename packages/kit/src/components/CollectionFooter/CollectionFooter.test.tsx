@@ -123,12 +123,12 @@ describe('CollectionFooter', () => {
     it('draws a trailing cluster only when there is something ambient to say', () => {
       const { container, rerender } = render(footer());
       expect(container.querySelector('[data-ov-cluster="end"]')).toBeNull();
-      rerender(footer({ refreshing: true }));
+      rerender(footer({ hiddenColumns: { names: ['Node'] } }));
       expect(container.querySelector('[data-ov-cluster="end"]')).not.toBeNull();
     });
 
     it('is not a landmark, has no heading and carries no title', () => {
-      const { container } = render(footer({ selected: 2, refreshing: true, hiddenColumns: { names: ['Node'] } }));
+      const { container } = render(footer({ selected: 2, hiddenColumns: { names: ['Node'] } }));
       for (const role of ['contentinfo', 'banner', 'navigation', 'heading', 'region']) {
         expect(screen.queryByRole(role), role).toBeNull();
       }
@@ -139,17 +139,6 @@ describe('CollectionFooter', () => {
     it('passes data attributes through, and nothing else', () => {
       const { container } = render(footer({ 'data-testid': 'lane' }));
       expect(container.firstElementChild?.getAttribute('data-testid')).toBe('lane');
-    });
-  });
-
-  describe('Refreshing (design 14 P2: a reason is also written where the user reads the page)', () => {
-    it('says "Refreshing…" in the trailing cluster as a quiet status with the loader glyph, and nothing when it is not refreshing', () => {
-      const { rerender } = render(footer({ refreshing: true }));
-      const item = screen.getByText('Refreshing…');
-      expect(item.closest('[role="status"]')).not.toBeNull();
-      expect(item.parentElement?.querySelector('svg')?.getAttribute('data-ov-glyph')).toBe('loader');
-      rerender(footer({ refreshing: false }));
-      expect(screen.queryByText('Refreshing…')).toBeNull();
     });
   });
 
@@ -200,7 +189,7 @@ describe('the examples of CollectionFooter', () => {
 
   it('has an example for every wording of the count and for each ambient item', () => {
     expect(entries.map(([name]) => name).sort()).toEqual(
-      ['Default', 'Estimated', 'Filtered', 'HiddenColumns', 'Loaded', 'LoadedAndFiltered', 'Refreshing', 'Selected'].sort(),
+      ['Default', 'Estimated', 'Filtered', 'HiddenColumns', 'Loaded', 'LoadedAndFiltered', 'Selected'].sort(),
     );
   });
 
@@ -251,11 +240,6 @@ describe('the CollectionFooter stylesheet', () => {
     const declared = new Set(cssRules(css).flatMap((entry) => Object.values(entry.declarations)));
     expect(declared.has('600')).toBe(false);
     expect(declared.has('bold')).toBe(false);
-  });
-
-  it('spins the refreshing loader, and holds it still under reduced motion', () => {
-    expect(css).toMatch(/@keyframes\s+\w+\s*\{/);
-    expect(declarationsOf(css, '.refreshing > svg', 'prefers-reduced-motion')).toMatchObject({ animation: 'none' });
   });
 
   it('uses only tokens for colour and type, and no hex colour', () => {

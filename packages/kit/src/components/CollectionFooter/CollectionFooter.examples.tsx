@@ -20,9 +20,6 @@ export const Estimated = () => <CollectionFooter shown={120} total={{ kind: 'est
 /** The selection follows the count in the same cluster, 12 px apart. */
 export const Selected = () => <CollectionFooter shown={89} total={{ kind: 'exact', value: 89 }} noun="item" plural="items" selected={3} />;
 
-/** A refresh runs on rows that stay on screen: the quiet status at the end of the lane, which is where the Refresh command's reason is written. */
-export const Refreshing = () => <CollectionFooter shown={89} total={{ kind: 'exact', value: 89 }} noun="item" plural="items" refreshing />;
-
 /** The width dropped two columns the person did not choose: one muted note, and its tip names them. */
 export const HiddenColumns = () => (
   <CollectionFooter shown={89} total={{ kind: 'exact', value: 89 }} noun="item" plural="items" hiddenColumns={{ names: ['Node', 'Address'] }} />

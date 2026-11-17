@@ -1,0 +1,12 @@
+/* The page's own rules, host composition: layer ov.shell, above the kit's parts. */
+@layer ov.shell {
+  /* The page's polite announcements: in the page and read, never drawn. It takes no room and holds no focus. */
+  .live {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

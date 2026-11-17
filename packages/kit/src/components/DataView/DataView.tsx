@@ -7,14 +7,14 @@ import styles from './DataView.module.css';
 import { EmptyBody, ErrorBody, LoadingBody } from './states';
 
 /**
- * What the body of the view shows (plan 1.4). The header, the strip, the toolbar and the footer stay in every state: a state changes the result
- * body, not the input frame around it (design 12 section 5).
+ * What the body of the view shows (plan 1.4). The header, the strip, the toolbar and the footer stay in every state but one: a state changes the result
+ * body, not the input frame around it (design 12 section 5). The exception is the failure that leaves no rows, which has no count to carry and draws no footer.
  *
  * - `ready`: the rows.
  * - `loading`: the first load: a skeleton with the final column count, after 250 ms.
  * - `empty`: nothing to list: the table's header and one line, "No <label>".
  * - `no-match`: a search or a filter hid every item: the header, one line, "No <label> match", and the count says how many there were.
- * - `error`: a failure that left no rows: one notice in place of them, with one Retry when `onRetry` is given.
+ * - `error`: a failure that left no rows: one notice in place of them, with one Retry when `onRetry` is given. No footer: the mock draws none, and the pane keeps the 12 px a footer-less pane keeps at its bottom.
  *
  * The full family of collection states (refreshing, stale, partial, failure beside rows) is step 1a.8.
  */
@@ -36,7 +36,7 @@ export type DataViewProps<TRow> = {
   readonly toolbar?: ReactNode;
   /** The table: everything `DataTable` takes but its name, which is `label`. */
   readonly table: Omit<DataTableProps<TRow>, 'label'>;
-  /** The footer: the collection's one count, and nothing else unless it has something ambient to say. */
+  /** The footer: the collection's one count, and nothing else unless it has something ambient to say. Not drawn while `state` is a failure with no rows. */
   readonly footer: CollectionFooterProps;
   /** What the body shows. Ready when absent. */
   readonly state?: DataViewState | undefined;
@@ -73,16 +73,18 @@ function TableOf<TRow>({ label, table, rows }: TableOfProps<TRow>) {
  * One collection workspace (design 12 section 5; the mock's `H.dataView`): the page's header, the quick filters, the toolbar, the table and the footer
  * in one pane. The header and the footer are as tall as they are, the body takes what is left and holds the one named scroll region, the table's, so
  * the footer stays at the bottom edge of the pane whatever the rows and the state. The states are props: the frame around the body never changes with
- * them. Props are closed: no `className`, no `style`; `data-*` passes through.
+ * them, save that a failure with no rows draws no footer and leaves the pane 12 px short of its parent's bottom. Props are closed: no `className`, no
+ * `style`; `data-*` passes through.
  */
 export function DataView<TRow>({ label, header, quickFilters, toolbar, table, footer, state = { kind: 'ready' }, ...rest }: DataViewProps<TRow>) {
   const hasHeader = header !== undefined || quickFilters !== undefined || toolbar !== undefined;
   // The skeleton and the notice have no table to be the region, so the body is it; in every other state the table is.
   const region = state.kind === 'loading' || state.kind === 'error';
+  const footless = state.kind === 'error';
   const columns = table.columns.length + (table.selection === undefined ? 0 : 1);
 
   return (
-    <div {...dataAttributes(rest)} className={styles.root} data-ov-state={state.kind}>
+    <div {...dataAttributes(rest)} className={styles.root} data-ov-state={state.kind} data-ov-footless={footless ? '' : undefined}>
       {hasHeader ? (
         <div className={styles.header} data-ov-part="header">
           {header === undefined ? null : (
@@ -113,16 +115,17 @@ export function DataView<TRow>({ label, header, quickFilters, toolbar, table, fo
           </div>
         ) : null}
       </div>
-      <CollectionFooter
-        data-ov-part="footer"
-        shown={footer.shown}
-        total={footer.total}
-        noun={footer.noun}
-        plural={footer.plural}
-        selected={footer.selected}
-        refreshing={footer.refreshing}
-        hiddenColumns={footer.hiddenColumns}
-      />
+      {footless ? null : (
+        <CollectionFooter
+          data-ov-part="footer"
+          shown={footer.shown}
+          total={footer.total}
+          noun={footer.noun}
+          plural={footer.plural}
+          selected={footer.selected}
+          hiddenColumns={footer.hiddenColumns}
+        />
+      )}
     </div>
   );
 }
