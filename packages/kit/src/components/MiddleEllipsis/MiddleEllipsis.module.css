@@ -2,7 +2,10 @@
   /* A name in two halves (design 13 COL4): the head gives way with an ellipsis, the tail stays whole. The root is the clipping box. A
      hidden copy of the whole name, from the name itself, gives the root the scroll width of the full name, so "is it cut" is one
      comparison of the root's scroll width with its width, made by whoever wants to know when they want to know. The halves take no
-     pointer, so a hover lands on the root, which holds the whole name. The type is the context's: nothing here sets one. */
+     pointer, so a hover lands on the root, which holds the whole name. The halves hold no text (a flex row of two text boxes is read as two
+     words and copied with a line break): each draws its half from its attribute, and the name itself is real text in `.name`, which takes
+     no room and is never drawn, so assistive technology, a copy and a find meet it once and whole. The type is the context's: nothing
+     here sets one. */
   .root[data-ov-shape='split'] {
     position: relative;
     display: flex;
@@ -41,6 +44,22 @@
   .tail {
     flex: 0 0 auto;
     white-space: pre;
+    pointer-events: none;
+  }
+
+  .head::before,
+  .tail::before {
+    content: attr(data-ov-text);
+  }
+
+  /* The name as assistive technology reads it and a selection copies it: whole, once. Out of the flow, 1 px, clipped. */
+  .name {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
     pointer-events: none;
   }
 }

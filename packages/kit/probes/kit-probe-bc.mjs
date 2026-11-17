@@ -518,7 +518,7 @@ async function themes(page, where, engineName) {
 const EXPECT_COUNT = {
   'Chip/Static': 1, 'Chip/WithCount': 2, 'Chip/Toggle': 3, 'Chip/Removable': 5,
   'Status/Running': 3, 'Status/Failed': 4, 'MissingValue/NotApplicable': 1, 'KindTile/Blue': 3,
-  'MiddleEllipsis/Short': 1, 'MiddleEllipsis/GeneratedName': 3, 'QuickFilters/Default': 16,
+  'MiddleEllipsis/Short': 1, 'MiddleEllipsis/GeneratedName': 4, 'QuickFilters/Default': 16,
 };
 const partSelector = (part) => `[data-example^="${part}/"]`;
 

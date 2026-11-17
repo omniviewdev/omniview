@@ -51,18 +51,19 @@ describe('IdentityCell: the tile, the name, and the namespace under it', () => {
     expect(screen.queryByTestId('pod-namespace')).toBeNull();
   });
 
-  it('reads the name once and whole: the drawn halves are hidden from assistive technology, whose copy is not cut', () => {
+  it('draws the name with the kit part alone: the part reads and copies the cut name once and whole, so the cell adds no hidden copy of it', () => {
     const name = 'checkout-payment-gateway-7d8c6f49b-f8q4m';
-    render(<IdentityCell row={row({ name, nameTail: 11 })} />);
-    expect(screen.getByTestId('pod-name').closest('[aria-hidden="true"]')).not.toBeNull();
-    expect(screen.getByTestId('pod-name-text')).toHaveTextContent(name);
-    expect(screen.getByTestId('pod-name-text').closest('[aria-hidden="true"]')).toBeNull();
+    const { container } = render(<IdentityCell row={row({ name, nameTail: 11 })} />);
+    expect(screen.getByTestId('pod-name')).toHaveTextContent(name);
+    expect(container.textContent).toBe(`${name}checkout`);
+    expect(screen.getByTestId('pod-name').parentElement?.hasAttribute('aria-hidden')).toBe(false);
+    expect(screen.queryByTestId('pod-name-text')).toBeNull();
   });
 
-  it('is the same few elements for any row: the cell, the tile with its glyph, the lines, the drawn name in its wrapper, the name for assistive technology, and the namespace', () => {
+  it('is the same few elements for any row: the cell, the tile with its glyph, the lines, the name, and the namespace', () => {
     const { container } = render(<IdentityCell row={row()} />);
-    // div.identity > span.tile > svg > path, div.lines > span[aria-hidden] > span (name), span (name) and small (namespace)
-    expect(container.querySelectorAll('*').length).toBe(9);
+    // div.identity > span.tile > svg > path, div.lines > span (name) and small (namespace)
+    expect(container.querySelectorAll('*').length).toBe(7);
   });
 });
 
