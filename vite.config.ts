@@ -92,14 +92,14 @@ export default defineConfig({
   optimizeDeps: selectedRoots ? {
     exclude: ['@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors',
       '@omniviewdev/providers', '@omniviewdev/runtime', '@omniviewdev/runtime/api',
-      '@omniviewdev/runtime/models', '@omniviewdev/runtime/runtime'],
+      '@omniviewdev/runtime/models', '@omniviewdev/runtime/runtime', '@omniviewdev/runtime/ui/v1'],
     // Exclusion keeps linked code live but also stops transitive scanning.
     // Scan its real entries so all third-party imports are discovered together.
     entries: [
       'index.html',
       ...['base-ui', 'ai-ui', 'editors', 'providers'].map(name =>
         fileURLToPath(import.meta.resolve(`@omniviewdev/${name}`))),
-      ...['index', 'api', 'models', 'runtime'].map(name =>
+      ...['index', 'api', 'models', 'runtime', 'ui/v1'].map(name =>
         path.resolve(__dirname, `packages/omniviewdev-runtime/src/${name}.ts`)),
     ],
     // Linked UI stays live; its nested CommonJS shim still needs ESM interop.
@@ -171,6 +171,7 @@ export default defineConfig({
       '@omniviewdev/runtime/api': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/api.ts'),
       '@omniviewdev/runtime/models': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/models.ts'),
       '@omniviewdev/runtime/runtime': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/runtime.ts'),
+      '@omniviewdev/runtime/ui/v1': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/ui/v1.ts'),
       '@omniviewdev/runtime': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/index.ts'),
     },
   },

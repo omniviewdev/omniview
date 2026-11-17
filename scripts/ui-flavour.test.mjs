@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { checkStylesheet, declaredLayerOrder, HOST_FONT_URL } from '../packages/kit/scripts/stylesheet.ts';
+import { oldUiModules } from '../packages/omniviewdev-runtime/scripts/ui-v1-graph.ts';
 
 // OMNIVIEW_UI chooses the frontend a build ships (see vite.config.ts). Stable and nightly build `current`,
 // so their output must hold nothing from ui-next/; only the feature-ui-next channel builds `next`.
@@ -29,6 +30,13 @@ function build(ui, outputDirectory) {
     encoding: 'utf8',
     env: { ...process.env, OMNIVIEW_UI: ui, OMNIVIEW_BUILD_OUTPUT_DIRECTORY: outputDirectory },
   });
+}
+
+// What the `next` bundle holds, module by module (scripts/ui-next-bundle.mjs builds it and prints the chunks with their module ids, here with `/` separators).
+function bundleOf(...args) {
+  const run = spawnSync(process.execPath, [path.join(root, 'scripts/ui-next-bundle.mjs'), ...args], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  return JSON.parse(run.stdout).chunks.map(chunk => ({ ...chunk, modules: chunk.modules.map(id => id.split('\\').join('/')) }));
 }
 
 test('the stable build output holds nothing from ui-next', async () => {
@@ -72,6 +80,27 @@ test('OMNIVIEW_UI=next builds ui-next alone as the entry and replaces the output
   } finally {
     await rm(output, { recursive: true, force: true });
   }
+});
+
+// The new shell does not carry the previous UI libraries (strategy R3, R4). The runtime is the one place they could come back in: its main barrel imports
+// `@omniviewdev/base-ui` and the router, and the shared list serves the runtime to plugins by a dynamic import, which keeps everything it names. The list
+// serves the curated entry (`ui/v1`), whose graph holds none of them (`packages/omniviewdev-runtime/scripts/check-ui-v1.ts` checks its source, its
+// declarations and its scripts); this checks what the host's bundle then holds, and the next test is the control that it can fail.
+test('the next build holds no module of the previous UI libraries, with the runtime shared through its curated entry', () => {
+  const modules = bundleOf().flatMap(chunk => chunk.modules);
+  assert.ok(modules.some(id => id.endsWith('/packages/omniviewdev-runtime/src/ui/v1.ts')), 'the curated runtime entry is in the build (the shared list serves it)');
+  assert.ok(modules.some(id => id.endsWith('/packages/omniviewdev-runtime/src/hooks/resource/useResources.ts')), 'and the hooks the Pods scaffolding reads through it');
+  assert.deepEqual(oldUiModules(modules), []);
+});
+
+test('the guard goes red when the runtime is shared as its whole barrel', () => {
+  const chunks = bundleOf('--probe', 'barrel');
+  const old = chunks.map(chunk => ({ file: chunk.file, bytes: chunk.bytes, old: oldUiModules(chunk.modules) })).filter(chunk => chunk.old.length > 0);
+  const modules = old.flatMap(chunk => chunk.old);
+  assert.ok(modules.some(id => id.includes('/node_modules/@omniviewdev/base-ui/')), 'the barrel brings the previous UI library');
+  assert.ok(modules.some(id => id.includes('/node_modules/react-router/')), 'and the router');
+  // The chunk that holds them is the 1.88 MB one the design measured (docs/ui-next/slices/n19-plugin-seam.md, 1.2).
+  assert.ok(old.some(chunk => chunk.bytes > 1_000_000), `their chunk is over 1 MB (${JSON.stringify(old.map(chunk => [chunk.file, chunk.bytes]))})`);
 });
 
 test('an unknown OMNIVIEW_UI fails the build instead of picking a frontend', async () => {

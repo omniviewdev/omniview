@@ -1,4 +1,4 @@
-import { useConnectionReadiness, useResolvedResourceTarget, useResourceTypes, useResources } from '@omniviewdev/runtime';
+import { useConnectionReadiness, useResolvedResourceTarget, useResourceTypes, useResources } from '@omniviewdev/runtime/ui/v1';
 import { useCallback, useMemo } from 'react';
 import { podDefinition } from './definition';
 import { podRows, type PodRow } from './row';

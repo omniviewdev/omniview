@@ -7,7 +7,7 @@ import { Events } from '@wailsio/runtime';
 import React from 'react';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
-type UseConnectionsOptions = {
+export type UseConnectionsOptions = {
   /**
    * The name of the plugin we're interacting with
    */

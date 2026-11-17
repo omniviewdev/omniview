@@ -1,4 +1,4 @@
-import { ErrorTypes, isCancelledError, parseAppError, type ConnectionReadinessPhase, type HostSourceStatus } from '@omniviewdev/runtime';
+import { ErrorTypes, isCancelledError, parseAppError, type ConnectionReadinessPhase, type HostSourceStatus } from '@omniviewdev/runtime/ui/v1';
 
 // What the Pods list says about the connection and the read, mapped from what the runtime hooks return (docs/ui-next/status/1a.2.md
 // has the capture from the real host). The runtime reports a connection through `useConnectionReadiness`, and a read through the

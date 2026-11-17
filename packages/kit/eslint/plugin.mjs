@@ -7,7 +7,7 @@
  * and there is no passthrough (strategy R7).
  */
 import path from 'node:path';
-import { PLUGIN_CODE, classify, isPluginCode, repoRelative } from './scaffolding.mjs';
+import { PLUGIN_CODE, PLUGIN_SURFACE, classify, isPluginCode, repoRelative } from './scaffolding.mjs';
 
 const STATIC_NODE_TYPES = ['Literal'];
 
@@ -210,15 +210,18 @@ function pluginViolation(specifier, resolved) {
   if (specifier.startsWith('.')) return resolved !== undefined && isPluginCode(resolved) ? undefined : 'pluginToHost';
   if (specifier.startsWith('/') || specifier === '@' || specifier.startsWith('@/')) return 'pluginToHost';
   if (specifier.startsWith('@wailsio/') || HOST_ALIAS_PATTERN.test(specifier)) return 'pluginToHost';
-  if (specifier === '@omniviewdev/runtime' || specifier === '@omniviewdev/kit' || specifier === '@omniviewdev/kit/styles.css') return undefined;
-  if (specifier.startsWith('@omniviewdev/runtime/') || specifier.startsWith('@omniviewdev/kit/')) return 'pluginToHost';
+  if (PLUGIN_SURFACE.includes(specifier)) return undefined;
+  // Every other module of this repository's packages is the host's: the runtime's main barrel and raw entries, a later contract of it, the kit's
+  // stylesheet and internals, the previous UI libraries, the providers, the Vite plugin.
+  if (specifier.startsWith('@omniviewdev/')) return 'pluginToHost';
   return undefined;
 }
 
 /**
  * Keeps the host and the kit plugin-agnostic (decision A13). Host and kit files may not import plugin scaffolding
- * (`ui-next/k8s`, `ui-next/pods`); scaffolding may import only what a plugin gets: relative files of its own,
- * `@omniviewdev/runtime` (main entry), `@omniviewdev/kit` and its stylesheet, and third-party packages.
+ * (`ui-next/k8s`, `ui-next/pods`); scaffolding may import only what a plugin gets: relative files of its own, the shared
+ * list a plugin's bundle leaves external (`PLUGIN_SURFACE`: React, `@omniviewdev/kit`, and the runtime's curated entry
+ * `@omniviewdev/runtime/ui/v1`, never its main barrel) and third-party packages.
  * The only escape is `// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): <reason>`.
  */
 export const scaffoldBoundary = {
@@ -229,7 +232,7 @@ export const scaffoldBoundary = {
       hostToPlugin:
         'The host and the kit are plugin-agnostic (decision A13). "{{specifier}}" is plugin code: ui-next/k8s/ is temporary plugin scaffolding, and only the single marked mount point (ui-next/main.tsx, SCAFFOLDING(N19)) may reference it.',
       pluginToHost:
-        'Plugin code gets only the public surface (decision A13): its own files, "@omniviewdev/runtime" (main entry), "@omniviewdev/kit", "@omniviewdev/kit/styles.css" and third-party packages. "{{specifier}}" is host internals, the old shell, an alias into it, a raw RPC entry or a Wails binding.',
+        `Plugin code gets only the public surface (decision A13): its own files, ${PLUGIN_SURFACE.map((name) => `"${name}"`).join(', ')} and third-party packages. "{{specifier}}" is host internals, the old shell, an alias into it, another package of this repository (the runtime's main entry holds the previous UI library, and the kit's stylesheet is the host's), a raw RPC entry or a Wails binding.`,
     },
     schema: [],
   },

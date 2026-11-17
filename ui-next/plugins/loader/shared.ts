@@ -30,6 +30,8 @@ export const SHARED_V1: Readonly<Record<SharedSpecifierV1, Loader>> = {
   'react/compiler-runtime': async () => import('react/compiler-runtime'),
   'react/jsx-dev-runtime': jsxDevRuntime,
   '@omniviewdev/kit': async () => import('@omniviewdev/kit'),
+  // The curated entry, never the runtime's barrel: a dynamic import of the barrel would put the previous UI library into this build (specifiers.ts).
+  '@omniviewdev/runtime/ui/v1': async () => import('@omniviewdev/runtime/ui/v1'),
 };
 
 /** The id a shared name has in the SystemJS registry. A URL-shaped id keeps it from being read as a bare specifier. */

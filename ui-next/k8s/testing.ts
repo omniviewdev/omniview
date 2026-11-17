@@ -1,4 +1,4 @@
-import { jsonToValue, type HostRecord } from '@omniviewdev/runtime';
+import { jsonToValue, type HostRecord } from '@omniviewdev/runtime/ui/v1';
 
 // Test support only: nothing in the data layer imports this file.
 

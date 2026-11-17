@@ -1,4 +1,4 @@
-import { ActivityProvider, useConnections } from '@omniviewdev/runtime';
+import { useConnections } from '@omniviewdev/runtime/ui/v1';
 import { useEffect, type ReactNode } from 'react';
 import { usePods, type PodRow } from '../k8s';
 import { podsListDefinition } from './listDefinition';
@@ -64,11 +64,10 @@ function Connection({ connection, children }: PodsPageProps): ReactNode {
   );
 }
 
-/** The QueryClient is the host's: `ui-next/main.tsx` mounts the one the shell owns (docs/ui-next/optimisations.md RTM-14, MNR-D8). */
+/**
+ * The providers the hooks read are the host's, as for any plugin: the QueryClient (docs/ui-next/optimisations.md RTM-14, MNR-D8) and the theme above the
+ * screen, the activity provider beside it. `ui-next/main.tsx` mounts them for this screen as `PluginHostScreen` does for a contributed page.
+ */
 export function PodsPage({ connection, children }: PodsPageProps) {
-  return (
-    <ActivityProvider>
-      <Connection connection={connection}>{children}</Connection>
-    </ActivityProvider>
-  );
+  return <Connection connection={connection}>{children}</Connection>;
 }
