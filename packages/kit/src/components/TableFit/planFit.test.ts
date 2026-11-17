@@ -1,7 +1,7 @@
 // The fit planner is pure: columns with their widths in, one width per column out. Its rules are the mock's (design chapter 13, T3 to T7,
-// `fitSolve` and `fitPin` in the mock's core.js); the numbers below are the mock's own for its Pods composition, measured in
-// docs/ui-next/slices/1a-pods-list.md 1.1: the identity column takes the remainder (678 at 1440 wide, 268 at 1030 wide, 282 with the two
-// metric columns), and clips down to its floor before the table scrolls.
+// `fitSolve` and `fitPin` in the mock's core.js); the numbers below are the mock's own for the first list the new UI builds, measured in
+// docs/ui-next/slices/ (the slice 1a plan, 1.1): the identity column takes the remainder (678 at 1440 wide, 268 at 1030 wide, 282 with the
+// two metric columns), and clips down to its floor before the table scrolls.
 import { describe, expect, it } from 'vitest';
 import { planFit, type FitInput } from './planFit';
 
