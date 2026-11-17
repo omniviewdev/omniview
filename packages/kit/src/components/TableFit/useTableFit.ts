@@ -1,7 +1,17 @@
 import { useLayoutEffect, useMemo, useState, type RefObject } from 'react';
 import { fitInputs, type FitColumnDeclaration } from './fitColumns';
 import { planFit, type FitPlan } from './planFit';
-import { createTextMeasurer, measureSample, mergeSamples, sampleIndexes, type ColumnSample, type FitFont, type SampledColumn, type TextMeasurer } from './sample';
+import {
+  createTextMeasurer,
+  longestIndexes,
+  measureSample,
+  mergeSamples,
+  sampleIndexes,
+  type ColumnSample,
+  type FitFont,
+  type SampledColumn,
+  type TextMeasurer,
+} from './sample';
 
 /** A column as the table hands it to the fit: what it declares and how to read its text. */
 export type FitColumn<TRow> = FitColumnDeclaration & Omit<SampledColumn<TRow>, 'id'>;
@@ -59,56 +69,86 @@ function sameSamples(a: ReadonlyMap<string, ColumnSample> | undefined, b: Readon
   return true;
 }
 
-// The widest sample each list of columns has had: a width only grows while the user scrolls (a column does not shrink and grow again as rows
-// come into view). It is keyed by the list of columns, so a new list measures again from nothing, and the merge only ever takes a maximum,
-// so reading it twice in a render (strict mode, a render that is thrown away) gives the same answer.
-const widest = new WeakMap<readonly unknown[], ReadonlyMap<string, ColumnSample>>();
+// The widest sample each list of columns has had with ONE measurer: a width only grows while the user scrolls (a column does not shrink and
+// grow again as rows come into view). It is keyed by the list of columns, so a new list measures again from nothing, and by the measurer,
+// because the widths of another measurer are not widths of this text: before the first layout the table measures with an estimate (seven
+// pixels a character, wider than most faces), then with the canvas in the face it is drawn in, and again when the fonts have loaded or the
+// text size changed. A width of the estimate that stayed as the widest ever seen left the columns too wide for good. The merge only ever
+// takes a maximum, so reading it twice in a render (strict mode, a render that is thrown away) gives the same answer.
+const widest = new WeakMap<readonly unknown[], { readonly measure: TextMeasurer; readonly samples: ReadonlyMap<string, ColumnSample> }>();
 
-function grow(columns: readonly unknown[], fresh: ReadonlyMap<string, ColumnSample>): ReadonlyMap<string, ColumnSample> {
-  const before = widest.get(columns);
+function grow(columns: readonly unknown[], measure: TextMeasurer, fresh: ReadonlyMap<string, ColumnSample>): ReadonlyMap<string, ColumnSample> {
+  const remembered = widest.get(columns);
+  const before = remembered?.measure === measure ? remembered.samples : undefined;
   const next = mergeSamples(before, fresh);
-  if (sameSamples(before, next) && before !== undefined) {
+  if (before !== undefined && sameSamples(before, next)) {
     return before;
   }
 
-  widest.set(columns, next);
+  widest.set(columns, { measure, samples: next });
   return next;
 }
 
 /**
  * The column widths of a table (R9): declared widths for the fixed columns, a SAMPLED measurement for the flexible ones, one plan for the
- * container's width. The sample is measured when the rows, the window or the columns change and a width only grows from one
- * measurement to the next. The plan is arithmetic over those numbers and runs for every change of container width.
+ * container's width. The sample is the first and the last rows, the rows in view and the rows that hold the longest strings of each column
+ * (found once for the rows, wherever they are, not for every window). It is measured when the rows, the window or the columns change, and
+ * a width only grows from one measurement to the next with the same measurer. The plan is arithmetic over those numbers and runs for every
+ * change of container width.
  */
 export function useTableFit<TRow>({ columns, rows, window, available, scope, epoch }: TableFitOptions<TRow>): FitPlan {
   const [measure, setMeasure] = useState<TextMeasurer>(() => estimate);
 
   useLayoutEffect(() => {
     const element = scope.current;
-    const context = element === null ? null : canvasContext(element);
-    if (element === null || context === null) {
+    const first = element === null ? null : canvasContext(element);
+    // A page without a canvas (a test) keeps the estimate and has no faces to wait for.
+    if (element === null || first === null) {
       return undefined;
     }
 
-    const read = () => {
-      setMeasure(() => createTextMeasurer(fontsOf(element), context));
+    // A canvas keeps the face it resolved when its font was set, so a face that arrived since is only seen by a canvas that sets its font
+    // again: every later reading makes a new one (a canvas is cheap beside the sample it measures).
+    let live = true;
+    const read = (context: CanvasRenderingContext2D | null) => {
+      if (context !== null) {
+        setMeasure(() => createTextMeasurer(fontsOf(element), context));
+      }
     };
 
-    read();
-    // Fonts arrive after the first paint: a face that was not loaded measured as its fallback.
+    read(first);
+    // A face that was not loaded measured as its fallback, and layout asks for a face only after the first paint, so the measure is made
+    // again when the faces are in. `ready` is what says so in every engine: a face that layout asks for starts a load (`loading`), and
+    // WebKit never sends `loadingdone` for it, so a table that waited for that event stayed in the fallback's widths for good.
     const fonts = element.ownerDocument.fonts as FontFaceSet | undefined;
-    fonts?.addEventListener('loadingdone', read);
+    const whenLoaded = () => {
+      void fonts?.ready.then(() => {
+        if (live) {
+          read(canvasContext(element));
+        }
+      });
+    };
+
+    if (fonts?.status === 'loading') {
+      whenLoaded();
+    }
+
+    fonts?.addEventListener('loading', whenLoaded);
     return () => {
-      fonts?.removeEventListener('loadingdone', read);
+      live = false;
+      fonts?.removeEventListener('loading', whenLoaded);
     };
   }, [scope, epoch]);
 
+  // Only the flexible columns are measured: a fixed column has the width it declares.
+  const flexible = useMemo(() => columns.filter((column) => column.kind !== 'fixed'), [columns]);
+  const longest = useMemo(() => longestIndexes(rows, flexible), [rows, flexible]);
   const first = window?.first;
   const last = window?.last;
   const samples = useMemo(() => {
     const visible = first === undefined || last === undefined ? undefined : { first, last };
-    return grow(columns, measureSample(rows, sampleIndexes(rows.length, visible), columns, measure));
-  }, [rows, columns, first, last, measure]);
+    return grow(columns, measure, measureSample(rows, sampleIndexes(rows.length, visible), flexible, measure, longest));
+  }, [rows, columns, flexible, longest, first, last, measure]);
   const inputs = useMemo(() => fitInputs(columns, samples, measure), [columns, samples, measure]);
   return useMemo(() => planFit(inputs, available), [inputs, available]);
 }

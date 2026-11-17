@@ -237,7 +237,15 @@ async function cycle(page, where, example, trigger, mode, expectation) {
   const open = await read(page);
   const label = `${where} ${expectation.name} ${mode}`;
   check(label, open.roots === 1, `${open.roots} popup roots while open (1 expected)`);
-  const added = open.listeners.filter((key) => !before.listeners.includes(key));
+  // A multiset difference: other parts of the page hold listeners of the same kind (the tip host listens for `resize` on the window, so a
+  // plain "not in the list before" would not see the menu's own), and what the menu adds is counted, not looked up.
+  const added = [];
+  const remaining = [...before.listeners];
+  for (const key of open.listeners) {
+    const at = remaining.indexOf(key);
+    if (at < 0) added.push(key);
+    else remaining.splice(at, 1);
+  }
   check(label, JSON.stringify(added) === JSON.stringify(OPEN_LISTENERS), `listeners added while open: ${JSON.stringify(added)}`);
   check(label, open.listeners.length === before.listeners.length + OPEN_LISTENERS.length, `live listeners ${before.listeners.length} -> ${open.listeners.length}`);
   check(label, open.observers.created === before.observers.created + 1 && open.observers.live === before.observers.live + 1, `observers ${JSON.stringify(before.observers)} -> ${JSON.stringify(open.observers)}`);
@@ -336,6 +344,8 @@ async function clipping(page, where, example, trigger) {
 async function keys(page, where) {
   const label = `${where} keys`;
   const log = {};
+  // Every step leaves the page as it found it: a menu still open here was left by an earlier step, and the keys below would be judged on it.
+  check(label, (await read(page)).roots === 0, 'a menu was left open by an earlier step');
   const focus = async () => (await read(page)).focus;
   const example = 'RowMenu/DisabledAndDestructive';
   const all = await triggersOf(page, example);
@@ -381,6 +391,18 @@ async function keys(page, where) {
   check(label, tabbed.roots === 0 && tabbed.listeners.length === opened.listeners.length - OPEN_LISTENERS.length, `after Tab: ${tabbed.roots} roots, listeners ${JSON.stringify(tabbed.listeners)}`);
   check(label, tabbed.focus !== 'body' && !tabbed.focus.startsWith('item:') && tabbed.focus !== 'popup', `focus after Tab is ${tabbed.focus}`);
   log.afterTab = tabbed.focus;
+  // From a menu a pointer opened (no item is active), Tab and Shift+Tab close it too, and focus goes on from the trigger.
+  for (const combo of ['Tab', 'Shift+Tab']) {
+    await locator.click();
+    await settle(page);
+    const before = await read(page);
+    check(label, before.roots === 1 && before.focus === 'popup', `before ${combo} from a pointer's menu: ${before.roots} roots, focus ${before.focus}`);
+    await page.keyboard.press(combo);
+    await settle(page);
+    const after = await read(page);
+    check(label, after.roots === 0 && after.listeners.length === before.listeners.length - OPEN_LISTENERS.length && after.focus !== 'popup' && !after.focus.startsWith('item:'), `after ${combo} from a pointer's menu: ${after.roots} roots, focus ${after.focus}`);
+    log[`after${combo.replace('+', '')}FromPointer`] = after.focus;
+  }
   // A selection: the item runs after the menu has closed, and focus is on the trigger.
   await locator.focus();
   await page.keyboard.press('ArrowDown');
@@ -471,6 +493,27 @@ async function closers(page, where) {
   const gone = await read(page);
   check(label, gone.roots === 0 && gone.focus === 'div[region]' && JSON.stringify(gone.listeners) === JSON.stringify(baseline.listeners), `after its row was removed: ${gone.roots} roots, focus ${gone.focus}`);
   report.rowRemoved = { roots: gone.roots, focus: gone.focus };
+  // Focus lost without a blur: the popup is moved in the document while it has focus. An engine that sends a blur (Chromium) closes the menu; one that
+  // sends none (WebKit) leaves focus on the body, and the menu then has to take it back, or no key reaches it and Escape and Tab close nothing. Never
+  // open with focus elsewhere; and Escape closes it.
+  const last = await positionsOf(page, example);
+  await triggerLocator(page, example, last.middle.index).click();
+  await page.evaluate(() => {
+    const popup = document.querySelector('[role="menu"]');
+    const home = popup.parentElement;
+    const next = popup.nextSibling;
+    document.body.append(popup);
+    home.insertBefore(popup, next);
+    popup.showPopover?.();
+  });
+  await settle(page);
+  const dropped = await read(page);
+  check(label, dropped.roots === 0 || dropped.focus === 'popup', `after the popup was moved while it had focus: ${dropped.roots} roots, focus ${dropped.focus}`);
+  await page.keyboard.press('Escape');
+  await settle(page);
+  const escaped = await read(page);
+  check(label, escaped.roots === 0 && JSON.stringify(escaped.listeners) === JSON.stringify(baseline.listeners), `Escape after the popup was moved left ${escaped.roots} roots, listeners ${JSON.stringify(escaped.listeners)}`);
+  report.focusDropped = { rootsAfterMove: dropped.roots, focusAfterMove: dropped.focus, rootsAfterEscape: escaped.roots };
   return report;
 }
 

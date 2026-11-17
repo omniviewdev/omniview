@@ -1,10 +1,12 @@
 // The fixtures of the table parity probe (packages/kit/probes/table-probe.mjs): the data and the columns of the design mock's own list
 // tables (`mock-table-measure.mjs`: the `line-*` cases, the two-line list, `cell-identity` and `cell-identifier`), written as a consumer
-// writes them. Their column widths are the widths the mock's own fit measured in the probe's normalized font (Helvetica); the probe gives
+// writes them. Their column widths are the widths the mock's own fit measured, in its own fonts (Inter: the widths the plan names for its first list); the probe gives
 // each table the container width the mock's table had. The names here are the mock's in what the widths follow (the end of a name that
 // is cut, the length of a name that clips), not in what they name. The `data-part` attributes name the pieces of a cell the probe
-// compares with the mock's (a tile, a cut name, a value and its command): the probe finds a piece by that name, not by its class.
-import { DataTable, Icon, IconButton, Stack, Text, type DataTableColumn, type DataTableSort, type IconName } from '@omniviewdev/kit';
+// compares with the mock's (a tile, a cut name, a value and its command): the probe finds a piece by that name, not by its class. The
+// tile, the middle-cut name and the state are the kit's own parts (`KindTile`, `MiddleEllipsis`, `Status`), so the table is compared with
+// the cells it will hold.
+import { DataTable, IconButton, KindTile, MiddleEllipsis, Status, type DataTableColumn, type DataTableSort, type StatusRole } from '@omniviewdev/kit';
 import { useState } from 'react';
 import styles from './DataTable.parity.module.css';
 
@@ -12,61 +14,55 @@ type Service = {
   readonly key: string;
   readonly name: string;
   readonly state: string;
-  readonly glyph: IconName;
+  readonly role: StatusRole;
   readonly requests: number;
   readonly requestsText: string;
   readonly age: string;
 };
 
 // The mock's `line` fixture: twelve services, in the order it lists them (which is name order).
-const service = (name: string, state: string, glyph: IconName, requests: number, age: string): Service => ({
+const service = (name: string, state: string, role: StatusRole, requests: number, age: string): Service => ({
   key: name,
   name,
   state,
-  glyph,
+  role,
   requests,
   requestsText: requests.toLocaleString('en-US'),
   age,
 });
 const SERVICES: readonly Service[] = [
-  service('api-gateway', 'Running', 'status-success', 12, '3d'),
-  service('auth-service', 'Running', 'status-success', 1204, '17h'),
-  service('billing-worker', 'Pending', 'status-warning', 87, '5m'),
-  service('cache-primary', 'Running', 'status-success', 309, '12d'),
-  service('cart-api', 'Failed', 'status-error', 5, '2h'),
-  service('checkout-web', 'Running', 'status-success', 48_112, '45s'),
-  service('edge-proxy', 'Degraded', 'status-warning', 730, '9d'),
-  service('ingest-queue', 'Running', 'status-success', 2016, '1d'),
-  service('mailer', 'Stopped', 'status-info', 64, '6d'),
-  service('search-index', 'Running', 'status-success', 9, '21h'),
-  service('session-store', 'Running', 'status-success', 418, '33m'),
-  service('web-frontend', 'Unknown', 'status-info', 1000, '8d'),
+  service('api-gateway', 'Running', 'healthy', 12, '3d'),
+  service('auth-service', 'Running', 'healthy', 1204, '17h'),
+  service('billing-worker', 'Pending', 'progress', 87, '5m'),
+  service('cache-primary', 'Running', 'healthy', 309, '12d'),
+  service('cart-api', 'Failed', 'error', 5, '2h'),
+  service('checkout-web', 'Running', 'healthy', 48_112, '45s'),
+  service('edge-proxy', 'Degraded', 'attention', 730, '9d'),
+  service('ingest-queue', 'Running', 'healthy', 2016, '1d'),
+  service('mailer', 'Stopped', 'stopped', 64, '6d'),
+  service('search-index', 'Running', 'healthy', 9, '21h'),
+  service('session-store', 'Running', 'healthy', 418, '33m'),
+  service('web-frontend', 'Unknown', 'info', 1000, '8d'),
 ];
 const getServiceKey = (row: Service) => row.key;
 
-function State({ row }: { readonly row: Service }) {
-  return (
-    <Stack direction="row" gap={4} align="center">
-      <Icon name={row.glyph} />
-      <Text>{row.state}</Text>
-    </Stack>
-  );
-}
+const State = ({ row }: { readonly row: Service }) => <Status role={row.role}>{row.state}</Status>;
 
 const nameColumn: DataTableColumn<Service> = { id: 'name', header: 'Name', fit: 'id', sortKey: (row) => row.name, text: (row) => row.name, cell: (row) => row.name };
-const stateColumn: DataTableColumn<Service> = { id: 'state', header: 'Status', fit: 'fixed', width: 98, sortKey: (row) => row.state, cell: (row) => <State row={row} /> };
-const requestsColumn: DataTableColumn<Service> = { id: 'requests', header: 'Requests', fit: 'fixed', width: 75, align: 'end', sortKey: (row) => row.requests, sortKind: 'number', cell: (row) => row.requestsText };
-const ageColumn: DataTableColumn<Service> = { id: 'age', header: 'Age', fit: 'fixed', width: 48, cell: (row) => row.age };
+const stateColumn: DataTableColumn<Service> = { id: 'state', header: 'Status', fit: 'fixed', width: 101, sortKey: (row) => row.state, cell: (row) => <State row={row} /> };
+const requestsColumn: DataTableColumn<Service> = { id: 'requests', header: 'Requests', fit: 'fixed', width: 78, align: 'end', sortKey: (row) => row.requests, sortKind: 'number', cell: (row) => row.requestsText };
+const ageColumn: DataTableColumn<Service> = { id: 'age', header: 'Age', fit: 'fixed', width: 50, cell: (row) => row.age };
 const lineColumns: ReadonlyArray<DataTableColumn<Service>> = [nameColumn, stateColumn, requestsColumn, ageColumn];
 const inspectColumn: DataTableColumn<Service> = {
   id: 'inspect',
   header: 'Inspect',
   fit: 'fixed',
   width: 46,
+  hideHeader: true,
   cell: (row) => <IconButton icon="search" label={`Inspect ${row.name}`} variant="ghost" size="row" data-part="command" />,
 };
-// With a command after it the age is not the last column: it has no 12 px edge to pay for, and the mock's fit measured it at 46.
-const inspectColumns: ReadonlyArray<DataTableColumn<Service>> = [nameColumn, stateColumn, requestsColumn, { ...ageColumn, width: 46 }, inspectColumn];
+// With a command after it the age is not the last column: it has no 12 px edge to pay for, and the mock's fit measured it at 48.
+const inspectColumns: ReadonlyArray<DataTableColumn<Service>> = [nameColumn, stateColumn, requestsColumn, { ...ageColumn, width: 48 }, inspectColumn];
 const NAME_ASCENDING: DataTableSort = { column: 'name', direction: 'ascending' };
 
 /** One-line rows: a sorted name column that takes what is left, a status, a count and an age; a click on a row does something. */
@@ -134,7 +130,7 @@ type Workload = {
   readonly group: string;
   readonly ready: string;
   readonly state: string;
-  readonly glyph: IconName;
+  readonly role: StatusRole;
   readonly restarts: number;
   readonly age: string;
   readonly seconds: number;
@@ -143,13 +139,11 @@ type Workload = {
 /** The tail the mock keeps by default: a third of the name, 6 to 12 characters; a name of 12 or fewer is not cut. */
 const tailOf = (name: string) => (name.length > 12 ? Math.min(name.length - 1, Math.min(12, Math.max(6, Math.floor(name.length / 3)))) : 0);
 
-function CutName({ name, tail }: { readonly name: string; readonly tail: number }) {
-  return tail === 0 || name.length <= 12 ? (
-    <span>{name}</span>
-  ) : (
-    <span className={styles.cut} data-part="cut">
-      <span className={styles.head} data-part="head">{name.slice(0, -tail)}</span>
-      <span className={styles.tail} data-part="tail">{name.slice(-tail)}</span>
+/** The name of a workload: a link, so in the link colour, cut in the middle when it does not fit (the kit's part keeps its end whole). */
+function Name({ name, tail }: { readonly name: string; readonly tail: number }) {
+  return (
+    <span className={styles.name} data-part="name">
+      <MiddleEllipsis tail={tail === 0 ? undefined : tail} data-part="cut">{name}</MiddleEllipsis>
     </span>
   );
 }
@@ -157,32 +151,31 @@ function CutName({ name, tail }: { readonly name: string; readonly tail: number 
 function Identity({ row }: { readonly row: Workload }) {
   return (
     <div className={styles.identity} data-part="identity">
-      <span className={styles.tile} data-part="tile" aria-hidden="true">
-        <Icon name="box" />
-      </span>
+      <KindTile icon="box" tone="blue" data-part="tile" />
       <div className={styles.lines} data-part="lines">
-        <CutName name={row.name} tail={row.tail} />
+        <Name name={row.name} tail={row.tail} />
         <small className={styles.group} data-part="group">{row.group}</small>
       </div>
     </div>
   );
 }
 
-const STATES: ReadonlyArray<readonly [string, IconName]> = [
-  ['Running', 'status-success'],
-  ['Running', 'status-success'],
-  ['Pending', 'status-warning'],
-  ['Running', 'status-success'],
-  ['Failed', 'status-error'],
-  ['Running', 'status-success'],
+// The mock's two-line list draws a running item with the play glyph (the role `running`) and the line fixture a healthy one with the check.
+const STATES: ReadonlyArray<readonly [string, StatusRole]> = [
+  ['Running', 'running'],
+  ['Running', 'running'],
+  ['Pending', 'progress'],
+  ['Running', 'running'],
+  ['Failed', 'error'],
+  ['Running', 'running'],
 ];
 const GROUPS = ['checkout', 'monitoring', 'storage', 'ingress', 'batch'];
 const AGES: ReadonlyArray<readonly [string, number]> = [['17d', 1_468_800], ['3h', 10_800], ['45s', 45], ['9d', 777_600], ['2m', 120], ['1d', 86_400], ['6d', 518_400], ['21h', 75_600]];
 
 const workload = (name: string, tail: number, group: string, index: number): Workload => {
-  const [state, glyph] = STATES[index % STATES.length] ?? ['Running', 'status-success'];
+  const [state, role] = STATES[index % STATES.length] ?? ['Running', 'running'];
   const [age, seconds] = AGES[index % AGES.length] ?? ['1d', 86_400];
-  return { key: `${group}/${name}`, name, tail, group, ready: index % 7 === 0 ? '0/1' : '2/2', state, glyph, restarts: index % 11 === 0 ? 3 : 0, age, seconds };
+  return { key: `${group}/${name}`, name, tail, group, ready: index % 7 === 0 ? '0/1' : '2/2', state, role, restarts: index % 11 === 0 ? 3 : 0, age, seconds };
 };
 
 /** 89 two-line workloads: the first is the one a sorted list opens with (it keeps two characters whole), the rest are spread over the groups. */
@@ -208,28 +201,24 @@ const inspectWorkload = (width: number): DataTableColumn<Workload> => ({
   header: 'Inspect',
   fit: 'fixed',
   width,
+  hideHeader: true,
   cell: (row) => <IconButton icon="search" label={`Inspect ${row.name}`} variant="ghost" size="row" data-part="command" />,
 });
 // The widths the mock's fit measured for this list: the inspect column is 46 px at comfortable density and 44 at compact (a 24 and a 22 px
 // target between the cell insets), so the compact density has a list of its own.
 const workloadColumns = (inspectWidth: number): ReadonlyArray<DataTableColumn<Workload>> => [
   nameOfWorkload,
-  { id: 'ready', header: 'Ready', fit: 'fixed', width: 58, align: 'end', sortKey: (row) => row.ready, cell: (row) => <span className={styles.mono}>{row.ready}</span> },
+  { id: 'ready', header: 'Ready', fit: 'fixed', width: 59, align: 'end', sortKey: (row) => row.ready, cell: (row) => <span className={styles.mono}>{row.ready}</span> },
   {
     id: 'state',
     header: 'Status',
     fit: 'fixed',
-    width: 150,
+    width: 157,
     sortKey: (row) => row.state,
-    cell: (row) => (
-      <Stack direction="row" gap={4} align="center">
-        <Icon name={row.glyph} />
-        <Text>{row.state}</Text>
-      </Stack>
-    ),
+    cell: (row) => <Status role={row.role}>{row.state}</Status>,
   },
-  { id: 'restarts', header: 'Restarts', fit: 'fixed', width: 69, align: 'end', sortKey: (row) => row.restarts, sortKind: 'number', cell: (row) => <span className={styles.mono}>{row.restarts}</span> },
-  { id: 'age', header: 'Age', fit: 'fixed', width: 58, sortKey: (row) => row.seconds, sortKind: 'number', cell: (row) => row.age },
+  { id: 'restarts', header: 'Restarts', fit: 'fixed', width: 72, align: 'end', sortKey: (row) => row.restarts, sortKind: 'number', cell: (row) => <span className={styles.mono}>{row.restarts}</span> },
+  { id: 'age', header: 'Age', fit: 'fixed', width: 59, sortKey: (row) => row.seconds, sortKind: 'number', cell: (row) => row.age },
   inspectWorkload(inspectWidth),
 ];
 const COMFORTABLE_COLUMNS = workloadColumns(46);
@@ -293,8 +282,8 @@ const held = (row: Workload): Workload => ({ ...row, ready: '2/2', age: '17d' })
 const NAMED: readonly Workload[] = NAMES.map(([name, group], index) => held(workload(name, tailOf(name), group, index)));
 const heldColumns = (first: DataTableColumn<Workload>): ReadonlyArray<DataTableColumn<Workload>> => [
   first,
-  { id: 'ready', header: 'Ready', fit: 'fixed', width: 58, align: 'end', cell: (row) => <span className={styles.mono}>{row.ready}</span> },
-  { id: 'age', header: 'Age', fit: 'fixed', width: 46, cell: (row) => row.age },
+  { id: 'ready', header: 'Ready', fit: 'fixed', width: 59, align: 'end', cell: (row) => <span className={styles.mono}>{row.ready}</span> },
+  { id: 'age', header: 'Age', fit: 'fixed', width: 47, cell: (row) => row.age },
 ];
 const identityColumns = heldColumns({ ...nameOfWorkload, sortKey: undefined });
 
@@ -344,8 +333,8 @@ const getContainerKey = (row: Container) => row.name;
 const containerColumns: ReadonlyArray<DataTableColumn<Container>> = [
   { id: 'name', header: 'Name', fit: 'id', text: (row) => row.name, cell: (row) => row.name },
   { id: 'ready', header: 'Ready', fit: 'fixed', width: 59, align: 'end', cell: (row) => <span className={styles.mono}>{row.ready}</span> },
-  { id: 'restarts', header: 'Restarts', fit: 'fixed', width: 69, align: 'end', cell: (row) => row.restarts },
-  { id: 'total', header: 'Total', fit: 'fixed', width: 78, align: 'end', cell: (row) => row.total },
+  { id: 'restarts', header: 'Restarts', fit: 'fixed', width: 72, align: 'end', cell: (row) => row.restarts },
+  { id: 'total', header: 'Total', fit: 'fixed', width: 87, align: 'end', cell: (row) => row.total },
   { id: 'image', header: 'Image', fit: 'flex', text: (row) => row.image, cell: (row) => row.image },
   { id: 'note', header: 'Note', fit: 'flex', text: (row) => row.note, cell: (row) => row.note },
 ];

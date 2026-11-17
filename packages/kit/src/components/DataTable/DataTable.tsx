@@ -31,17 +31,21 @@ function nextDirection(sort: DataTableSort | undefined, column: string): DataTab
 /** The declared columns, in the form the fit takes; the selection column leads the table when there is one. */
 function fitColumns<TRow>(columns: ReadonlyArray<DataTableColumn<TRow>>, hasSelection: boolean, sortable: boolean): Array<FitColumn<SortedRow<TRow>>> {
   // The fit samples the sorted rows (the rows in view are rows of the sorted order); a column reads its text from the caller's row.
-  const declared: Array<FitColumn<SortedRow<TRow>>> = columns.map((column) => ({
-    id: column.id,
-    kind: column.fit,
-    header: column.header,
-    sortable: sortable && column.sortKey !== undefined,
-    width: column.width,
-    lead: column.lead,
-    trail: column.trail,
-    text: (item) => column.text?.(item.original) ?? '',
-    tail: column.keepEnd === undefined ? undefined : (item) => column.keepEnd?.(item.original) ?? 0,
-  }));
+  const declared: Array<FitColumn<SortedRow<TRow>>> = columns.map((column) => {
+    const sorts = sortable && column.sortKey !== undefined;
+    return {
+      id: column.id,
+      kind: column.fit,
+      // A hidden word takes no room: the planner keeps a column no narrower than its header text, and a word that is not drawn is not text.
+      header: column.hideHeader === true && !sorts ? '' : column.header,
+      sortable: sorts,
+      width: column.width,
+      lead: column.lead,
+      trail: column.trail,
+      text: (item: SortedRow<TRow>) => column.text?.(item.original) ?? '',
+      tail: column.keepEnd === undefined ? undefined : (item: SortedRow<TRow>) => column.keepEnd?.(item.original) ?? 0,
+    };
+  });
   return hasSelection ? [{ id: 'selection', kind: 'fixed', header: '', sortable: false, width: 46, utility: true, text: () => '' }, ...declared] : declared;
 }
 

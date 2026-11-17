@@ -40,7 +40,10 @@ function SelectAll({ state, label, onToggle }: AllProps) {
   );
 }
 
-/** The header row, sticky to the top of the region: one cell a column, a native button in each sortable one, the sort state in `aria-sort`. */
+/**
+ * The header row, sticky to the top of the region: one cell a column, a native button in each sortable one, the sort state in `aria-sort`.
+ * A column that has `hideHeader` and cannot be sorted names itself in a visually hidden word: no ink, and the name stays for assistive technology.
+ */
 export function TableHeader<TRow>({ columns, selection, sort, onSort, pins }: HeaderProps<TRow>) {
   const shift = selection === undefined ? 0 : 1;
   return (
@@ -84,6 +87,10 @@ export function TableHeader<TRow>({ columns, selection, sort, onSort, pins }: He
                   {column.header}
                   {direction === undefined ? null : <Icon name={direction === 'ascending' ? 'arrow-up' : 'arrow-down'} size={12} />}
                 </button>
+              ) : column.hideHeader === true ? (
+                <span className={styles.hidden} data-ov-hidden="">
+                  {column.header}
+                </span>
               ) : (
                 column.header
               )}

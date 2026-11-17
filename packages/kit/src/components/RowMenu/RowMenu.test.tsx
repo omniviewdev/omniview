@@ -636,6 +636,97 @@ describe('closing', () => {
     expect(focused()).toBe(button);
   });
 
+  it('closes when its own trigger is pressed again in an engine that does not focus a button on the press but moves focus to the table region (WebKit): the press leaves focus where it is, and the click closes the menu', () => {
+    // WebKit gives a button no focus on a mouse press, and takes focus to the nearest focusable ancestor, which here is the table's region:
+    // that is a focus move away from the menu, and the menu (which closes on a focus move to another control) closed on the press, so that
+    // the click that follows opened it again. A press on the trigger is the trigger's own: it must not move focus at all.
+    const { handle } = setup();
+    const button = trigger('web-1');
+    pointerClick(button);
+    fireEvent.pointerDown(button);
+    const moved = fireEvent.mouseDown(button);
+    if (moved) {
+      act(() => {
+        screen.getByRole('region').focus();
+      });
+    }
+
+    expect(handle.getSnapshot().open).toBe(true);
+    expect(focused()).toBe(menu());
+    pointerClick(button);
+    expect(handle.getSnapshot().open).toBe(false);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(focused()).toBe(button);
+  });
+
+  it('does not take focus on a press of a trigger, closed or open: the menu that opens takes it, and what it gives back is the trigger', () => {
+    setup();
+    const button = trigger('web-2');
+    expect(fireEvent.mouseDown(button)).toBe(false);
+    pointerClick(button);
+    expect(focused()).toBe(menu());
+    expect(fireEvent.mouseDown(button)).toBe(false);
+  });
+
+  it('closes on Tab and Shift+Tab from a menu a pointer opened, where no item is active', () => {
+    setup();
+    for (const init of [{}, { shiftKey: true }]) {
+      const button = trigger('web-2');
+      pointerClick(button);
+      expect(focused()).toBe(menu());
+      expect(press(menu(), 'Tab', init)).toBe(true);
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(focused()).toBe(button);
+    }
+  });
+
+  it('stays in reach of the keyboard when the item that has focus goes away without a blur (an engine that sends none when a focused node is removed, WebKit): focus goes to the menu, and Escape and Tab still close it', async () => {
+    for (const key of ['Escape', 'Tab']) {
+      const handle = createRowMenu<Job>();
+      const full = itemsFor([]);
+      const fewer = (row: Job) => full(row).filter((entry) => entry.id !== 'inspect');
+      const view = render(<Table handle={handle} items={full} />);
+      const button = trigger('web-1');
+      press(button, 'ArrowDown');
+      expect(labelOfFocused()).toBe('Inspect');
+      // The engine drops focus on the body when the focused node is removed, and tells no one.
+      await mutate(() => {
+        view.rerender(<Table handle={handle} items={fewer} />);
+      });
+      expect(handle.getSnapshot().open).toBe(true);
+      expect(focused()).toBe(menu());
+      press(menu(), key);
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(focused()).toBe(button);
+      view.unmount();
+    }
+  });
+
+  it('leaves focus alone when it is on the trigger or on another control while the menu is open, and only takes it back from the body', async () => {
+    const handle = createRowMenu<Job>();
+    const view = render(
+      <>
+        <Table handle={handle} items={itemsFor([])} />
+        <input aria-label="Filter" />
+      </>,
+    );
+    pointerClick(trigger('web-1'));
+    const input = screen.getByRole('textbox', { name: 'Filter' });
+    // Focus on another control closed the menu already (a blur to a control); a change of the page now does not reopen or refocus anything.
+    act(() => {
+      input.focus();
+    });
+    await mutate(() => {
+      view.rerender(
+        <>
+          <Table handle={handle} items={itemsFor([])} jobs={[WEB_1, WEB_2]} />
+          <input aria-label="Filter" />
+        </>,
+      );
+    });
+    expect(focused()).toBe(input);
+  });
+
   it('closes when its own trigger is pressed again, and keeps focus on it', () => {
     setup();
     const button = trigger('web-1');
