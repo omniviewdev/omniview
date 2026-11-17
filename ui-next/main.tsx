@@ -7,22 +7,33 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ListPage } from './page';
 import { TooltipStress } from './parts/TooltipStress';
+import { PluginHostScreen } from './plugins';
 import { createQueryClient } from './queryClient';
 import { Shell } from './shell';
 // SCAFFOLDING(N19): begin
 // eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): the one mount point of the Pods slice scaffolding (its data and its page definition, for the host's shell frame and list page); removed with ui-next/k8s/ and ui-next/pods/ (tracker N19)
 import { PodsPage } from './pods';
-
 // `?screen=pods` opens the Pods list of slice 1a (the slice plan): the live Pods of a connection, in the shell frame (PR 1a.5), on the list page (PR 1a.6).
 // `?connection=<id>` names the connection the frame shows in its scope lane and path.
+// SCAFFOLDING(N19): end
+
+// The new tree has no navigation of its own yet, so `?screen=` picks the screen. `plugins` is the real one: the pages the installed plugins contribute, opened
+// by the plugin's own route (a native window cannot take a parameter; docs/ui-next/slices/n19-plugin-seam.md, 2.3). It becomes the default screen at the flip.
 const params = new URLSearchParams(window.location.search);
 const screen = params.get('screen');
-// SCAFFOLDING(N19): end
 
 // The host owns the one QueryClient; no screen builds its own (docs/ui-next/optimisations.md RTM-14, MNR-D8).
 const queryClient = createQueryClient();
 
 function Screen() {
+  if (screen === 'plugins') {
+    return (
+      <ThemeProvider>
+        <PluginHostScreen />
+      </ThemeProvider>
+    );
+  }
+
   // SCAFFOLDING(N19): begin
   if (screen === 'pods') {
     // The screen hands the host plain data: how it sits in the frame, what the page lists, and the rows with their state. This is where those shapes meet the

@@ -1,0 +1,169 @@
+// Builds the fixture plugin the way a plugin's own repository builds its UI, and writes it as an installed plugin directory (`plugin.yaml`, `assets/`).
+//
+//   node ui-next/plugins/fixture/build.mjs <plugins-directory>
+//
+// It is a separate Vite build with its own config, outside the host's bundle: SystemJS output, `assets/entry.js`, the React Compiler (every first-party
+// plugin compiles with it, so the bundle imports `react/compiler-runtime`), unhashed chunk names and the CSS folded into the entry, as the five plugin
+// repositories do (docs/ui-next/slices/n19-plugin-seam.md, 1.2). What differs is the list of externals: exactly the host's shared list for contract v1
+// (`../loader/specifiers.ts`, read here by Node), and a build that imports anything else fails, so a bundle cannot quietly carry its own React.
+//
+// Four plugins come out of it, one per thing the host must handle:
+//   fixture-a-ok       the healthy plugin: React and the kit are the host's
+//   fixture-b-dup      the negative control: the same plugin with its OWN copy of the kit, whose `useTheme` has no provider and throws
+//   fixture-c-old      a bundle of the old shell: it imports the old UI library, which the new shell does not serve, and must be refused unrun
+//   fixture-d-missing  a plugin whose `assets/` holds no bundle
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import react from '@vitejs/plugin-react';
+import { build } from 'vite';
+import { readDependencies } from '../loader/preflight.ts';
+import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const OLD_ENTRY = 'virtual:fixture-old-entry';
+
+// What an old-shell bundle does: it imports the old UI library and acts the moment it is evaluated. The check reads the global to prove the host refused it first.
+const OLD_SOURCE = `import { Button } from '@omniviewdev/base-ui';
+window.__fixtureOldBundleRan = true;
+export const plugin = { Button };
+`;
+
+export const PLUGINS = {
+  'fixture-a-ok': { variant: 'ok', name: 'Seam Fixture' },
+  'fixture-b-dup': { variant: 'duplicate', name: 'Seam Fixture Copy' },
+  'fixture-c-old': { variant: 'old', name: 'Seam Fixture Old' },
+  'fixture-d-missing': { variant: 'missing', name: 'Seam Fixture Missing' },
+};
+
+const bareName = (source) => (source.startsWith('@') ? source.split('/').slice(0, 2).join('/') : source.split('/')[0]);
+
+/** A build of a plugin imports its own files, the shared list and what it bundles on purpose: nothing from the host's tree, nothing else from node_modules. */
+function sealed(allowedBundled) {
+  return {
+    name: 'fixture-sealed',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (importer === undefined || source.startsWith('\0') || source.startsWith('virtual:')) {
+        return null;
+      }
+
+      if (source.startsWith('.') || path.isAbsolute(source)) {
+        const target = path.resolve(path.dirname(importer), source);
+        if (importer.startsWith(here + path.sep) && !target.startsWith(here + path.sep)) {
+          this.error(`"${source}" in ${importer} leaves the plugin's own files`);
+        }
+
+        return null;
+      }
+
+      if (!SHARED_SPECIFIERS_V1.includes(source) && !allowedBundled.includes(bareName(source)) && !allowedBundled.includes(source)) {
+        this.error(`"${source}" is neither on the shared list nor bundled on purpose`);
+      }
+
+      return null;
+    },
+  };
+}
+
+/** The plugin's CSS, folded into its entry inside the kit's plugin layer (below the kit's components, so it can never beat a kit part). */
+function foldCssIntoLayer(id) {
+  return {
+    name: 'fixture-fold-css-into-layer',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const sheets = Object.values(bundle).filter((file) => file.type === 'asset' && file.fileName.endsWith('.css'));
+      if (sheets.length === 0) {
+        return;
+      }
+
+      const css = sheets.map((file) => String(file.source)).join('\n');
+      for (const sheet of sheets) {
+        delete bundle[sheet.fileName];
+      }
+
+      const entry = Object.values(bundle).find((file) => file.type === 'chunk' && file.isEntry);
+      if (entry?.type !== 'chunk') {
+        return;
+      }
+
+      const layered = `@layer ov.plugin {\n${css}\n}`;
+      entry.code +=
+        `\n;(function(){var id=${JSON.stringify(id)};var old=document.querySelector('style[data-omniview-plugin-css="'+id+'"]');if(old)old.remove();` +
+        `var s=document.createElement('style');s.setAttribute('data-omniview-plugin-css',id);s.textContent=${JSON.stringify(layered)};document.head.appendChild(s);})();\n`;
+    },
+  };
+}
+
+function virtualOldEntry() {
+  return {
+    name: 'fixture-old-entry',
+    resolveId: (source) => (source === OLD_ENTRY ? OLD_ENTRY : null),
+    load: (id) => (id === OLD_ENTRY ? OLD_SOURCE : null),
+  };
+}
+
+async function buildBundle(id, variant, directory) {
+  const old = variant === 'old';
+  const bundled = variant === 'duplicate' ? ['@omniviewdev/kit'] : [];
+  const external = old ? [...SHARED_SPECIFIERS_V1, '@omniviewdev/base-ui'] : SHARED_SPECIFIERS_V1.filter((specifier) => !bundled.includes(specifier));
+  await build({
+    root: here,
+    configFile: false,
+    logLevel: 'warn',
+    plugins: [
+      virtualOldEntry(),
+      react({ babel: { plugins: [['babel-plugin-react-compiler', { target: '19' }]] } }),
+      sealed(old ? ['@omniviewdev/base-ui'] : bundled),
+      foldCssIntoLayer(id),
+    ],
+    build: {
+      outDir: directory,
+      emptyOutDir: false,
+      cssCodeSplit: false,
+      sourcemap: false,
+      rollupOptions: {
+        input: old ? OLD_ENTRY : path.join(here, 'src/entry.tsx'),
+        external,
+        output: { entryFileNames: 'assets/entry.js', chunkFileNames: 'assets/[name].js', assetFileNames: 'assets/[name].[ext]', format: 'system' },
+        preserveEntrySignatures: 'exports-only',
+      },
+    },
+  });
+  return readDependencies(await readFile(path.join(directory, 'assets/entry.js'), 'utf8')) ?? [];
+}
+
+function manifest(id, name) {
+  return [`id: ${id}`, 'version: 0.0.1', `name: ${name}`, 'description: Fixture plugin of the new UI seam', 'license: Apache-2.0', 'author:', '  name: Omniview', 'capabilities:', '  - ui', ''].join('\n');
+}
+
+/** Builds one plugin into `<root>/<id>/` and answers the dependencies its bundle declares (empty when it has none). */
+export async function writePlugin(root, id) {
+  const { variant, name } = PLUGINS[id];
+  const directory = path.join(root, id);
+  await rm(directory, { recursive: true, force: true });
+  await mkdir(path.join(directory, 'assets'), { recursive: true });
+  await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name));
+  return { id, directory, dependencies: variant === 'missing' ? [] : await buildBundle(id, variant, directory) };
+}
+
+export async function writeAll(root) {
+  const written = [];
+  for (const id of Object.keys(PLUGINS)) {
+    written.push(await writePlugin(root, id));
+  }
+
+  return written;
+}
+
+if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const root = process.argv[2];
+  if (root === undefined) {
+    throw new Error('Usage: node ui-next/plugins/fixture/build.mjs <plugins-directory>');
+  }
+
+  for (const { id, directory, dependencies } of await writeAll(path.resolve(root))) {
+    console.log(`${id}: ${directory} imports [${dependencies.join(', ')}]`);
+  }
+}

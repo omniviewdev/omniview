@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { BundleTimeoutError, ContractError, IncompatibleBundleError, classify } from './failure';
+
+// Each thing that can go wrong between the host and a plugin's bundle is one of five kinds, and the page says the same sentence for a kind whatever
+// the words of the loader's own error were. SystemJS's messages are quoted as it writes them (systemjs 6.15: errors 3, 7 and 8).
+
+describe('classify', () => {
+  it('a bundle the host refused before it ran is incompatible, and the log names what it needed', () => {
+    const failure = classify(new IncompatibleBundleError(['@omniviewdev/base-ui', 'react-router']));
+
+    expect(failure.kind).toBe('incompatible');
+    expect(failure.message).toBe('This plugin was built for another version of the app. Update it.');
+    expect(failure.detail).toContain('@omniviewdev/base-ui, react-router');
+  });
+
+  it('a name SystemJS cannot resolve is incompatible too', () => {
+    const failure = classify(new Error('(SystemJS Error#8 https://github.com/systemjs/systemjs/blob/main/docs/errors.md#8) Unable to resolve bare specifier \'@omniviewdev/editors\' from http://localhost/_/plugins/x/assets/entry.js'));
+
+    expect(failure.kind).toBe('incompatible');
+    expect(failure.detail).toBe('It imports @omniviewdev/editors, which this version does not serve');
+  });
+
+  it('a file the host could not serve is missing', () => {
+    const status = classify(new Error('(SystemJS Error#7 https://github.com/systemjs/systemjs/blob/main/docs/errors.md#7) 400 Bad Request, loading http://localhost/_/plugins/x/assets/entry.js'));
+    const script = classify(new Error('(SystemJS Error#3 https://github.com/systemjs/systemjs/blob/main/docs/errors.md#3) Error loading http://localhost/_/plugins/x/assets/entry.js'));
+    const network = classify(new TypeError('Failed to fetch'));
+
+    expect([status.kind, script.kind, network.kind]).toEqual(['missing', 'missing', 'missing']);
+  });
+
+  it('a bundle that threw when it ran is broken, and only the first line of its text reaches the log', () => {
+    const failure = classify(new Error('boom\n    at entry.js:1:1\n    at somewhere'));
+
+    expect(failure).toEqual({ kind: 'broken', message: 'The plugin\'s interface failed to start.', detail: 'boom' });
+  });
+
+  it('a value that is not an error is broken, with its text', () => {
+    expect(classify('plain string')).toMatchObject({ kind: 'broken', detail: 'plain string' });
+  });
+
+  it('a late bundle is a timeout', () => {
+    expect(classify(new BundleTimeoutError(30_000))).toMatchObject({ kind: 'timeout', detail: 'The bundle did not finish loading in 30000 ms' });
+  });
+
+  it('a contribution the host does not understand is a contract failure carrying its problems', () => {
+    expect(classify(new ContractError(['home "x" is not one of the pages', 'sidebar needs a label and a title']))).toMatchObject({
+      kind: 'contract',
+      detail: 'home "x" is not one of the pages; sidebar needs a label and a title',
+    });
+  });
+
+  it('never puts the plugin\'s own words in the sentence a person reads', () => {
+    const failure = classify(new Error('SECRET token=abc123 leaked in a stack'));
+
+    expect(failure.message).not.toContain('abc123');
+    expect(failure.message).toBe('The plugin\'s interface failed to start.');
+  });
+});

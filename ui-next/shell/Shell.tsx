@@ -12,6 +12,11 @@ export type ShellProps = {
   readonly registration: ShellRegistration;
   /** The page, hosted in the island. */
   readonly children: ReactNode;
+  /**
+   * An entry of the sidebar's tree was chosen (a click, Enter or Space on an entry, not a group): its id. The registration stays plain data, so what
+   * the entry opens is the host's to decide, and the page it opens registers again with that entry as `current`.
+   */
+  readonly onChoose?: ((id: string) => void) | undefined;
 };
 
 /**
@@ -20,7 +25,7 @@ export type ShellProps = {
  * with names, in reading order; F6 and Escape move between them. Every region is drawn from the registration in the first commit and
  * sized by CSS alone, so nothing measures and nothing shifts. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, children }: ShellProps) {
+export function Shell({ registration, children, onChoose }: ShellProps) {
   const { plugin, tab, path, rail, sidebar, scope, layout = 'document' } = registration;
   const ids = useId();
   const tabId = `${ids}-tab`;
@@ -33,7 +38,7 @@ export function Shell({ registration, children }: ShellProps) {
       <TopRow title={tab.title} icon={tab.icon} tabId={tabId} panelId={panelId} />
       <div className={styles.frame} data-shell-part="frame" data-rail={rail === undefined ? undefined : ''} data-sidebar={sidebar === undefined ? undefined : ''}>
         {rail === undefined ? null : <div className={styles.rail} data-shell-part="rail" aria-hidden="true" />}
-        {sidebar === undefined ? null : <Sidebar sidebar={sidebar} />}
+        {sidebar === undefined ? null : <Sidebar sidebar={sidebar} onChoose={onChoose} />}
         <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
           {scope === undefined || scope.length === 0 ? null : <ScopeLane label={`${plugin.name} scope`} faces={scope} />}
           {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text

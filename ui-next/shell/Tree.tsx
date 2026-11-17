@@ -11,6 +11,8 @@ type TreeProps = {
   readonly open: readonly string[] | undefined;
   readonly current: string | undefined;
   readonly accent: ShellAccent | undefined;
+  /** An entry (not a group) was chosen, by click, Enter or Space: its id. What it opens is the host's to decide. */
+  readonly onChoose: ((id: string) => void) | undefined;
 };
 
 type RowProps = {
@@ -27,11 +29,12 @@ type RowProps = {
   readonly isStop: boolean;
   readonly onToggle: (id: string) => void;
   readonly onFocusRow: (id: string) => void;
+  readonly onChoose: ((id: string) => void) | undefined;
 };
 
 // A row is named by its text, the label and the count (WCAG 2.5.3: the name contains the visible text). The space between them is a text
 // node, not layout: it is ignored by the grid and it keeps the name "Label 89" wherever the name is computed without CSS.
-function Row({ id, label, icon, count, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow }: RowProps) {
+function Row({ id, label, icon, count, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow, onChoose }: RowProps) {
   return (
     <li
       role="treeitem"
@@ -51,6 +54,8 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       onClick={() => {
         if (expandable) {
           onToggle(id);
+        } else {
+          onChoose?.(id);
         }
       }}
     >
@@ -82,9 +87,10 @@ type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | u
 /**
  * The tree view of a sidebar: a roving tab stop on the current entry, the WAI-ARIA tree view keys (core/tree.ts holds every rule), and a
  * click on a group to open or close it. What a user opened or closed lives here and survives the screen registering again.
- * Choosing an entry does nothing yet: with one tab and no navigation, the entry on screen is the current page. Kit part it should become: Tree.
+ * Choosing an entry (a click, Enter or Space) tells the host which one; the tree does not move the current entry itself: the host registers the page
+ * it opened, and that entry becomes current. Kit part it should become: Tree.
  */
-export function Tree({ label, nodes, open, current, accent }: TreeProps) {
+export function Tree({ label, nodes, open, current, accent, onChoose }: TreeProps) {
   const [state, setState] = useState<TreeState>(() => ({ open: revealed(nodes, open ?? [], current), stop: undefined }));
   const rows = visibleRows(nodes, state.open);
   const stop = stopOf(rows, state.stop, current);
@@ -109,6 +115,10 @@ export function Tree({ label, nodes, open, current, accent }: TreeProps) {
 
     event.preventDefault();
     setState({ open: result.open, stop: result.stop });
+    if (result.activate !== undefined) {
+      onChoose?.(result.activate);
+    }
+
     if (result.stop !== undefined && result.stop !== stop) {
       const row = [...event.currentTarget.children].find((child) => child instanceof HTMLElement && child.dataset.id === result.stop);
       if (row instanceof HTMLElement) {
@@ -135,6 +145,7 @@ export function Tree({ label, nodes, open, current, accent }: TreeProps) {
           isStop={row.id === stop}
           onToggle={onToggle}
           onFocusRow={onFocusRow}
+          onChoose={onChoose}
         />
       ))}
     </ul>
