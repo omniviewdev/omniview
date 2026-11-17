@@ -45,6 +45,7 @@ The binding constraint is review and decision throughput of two people, not agen
 | A6 | Safety fixes now (about 6 days): consent calls out of what plugin code can reach; MCP token not returned to JavaScript; the two fatal state-file loads recoverable. |
 | A7 | Scope: Kubernetes, Flux and Proxmox migrate before the flip; AWS and Containers are rebuilt after it; the marketplace web UI is out. |
 | A8 | Minimum macOS version 15.0. |
+| A9 | Licensing follows Grafana's model (2026-11-16, after batch A; settles the "confirm with the SDK licence" part of A5): the IDE stays AGPL-3.0-only, and everything a plugin links against is Apache-2.0 (`packages/kit`, `packages/omniviewdev-runtime`, `packages/omniviewdev-vite-plugin`), listed in a root `LICENSING.md`. The plugin SDK relicense (AGPL-3.0 to Apache-2.0, separate repo) is for the owner and the second contributor, not an agent task. Done before the first npm publish of the kit (tracker row N16). |
 
 ## Owner answers on the channel (2026-11-16)
 

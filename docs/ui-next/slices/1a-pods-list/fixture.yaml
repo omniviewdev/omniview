@@ -1,0 +1,122 @@
+# Pod fixture for slice 1a (docs/ui-next/slices/1a-pods-list.md, "What ran"): the states a Pods list must show, on one kind node.
+# Applied to an empty kind cluster it gives, besides kube-system: Running (1/1 and 2/2), Completed, Error (Failed phase),
+# ErrImagePull, Pending (unschedulable) and a crash-looping Pod with restarts. Images: busybox:1.37.0 from Docker Hub.
+apiVersion: v1
+kind: Namespace
+metadata: {name: checkout}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: monitoring}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: batch}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cart-api, namespace: checkout, labels: {app: cart-api}}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: cart-api}}
+  template:
+    metadata: {labels: {app: cart-api}}
+    spec:
+      containers:
+        - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+        - {name: proxy, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: payment-gateway, namespace: checkout, labels: {app: payment-gateway}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: payment-gateway}}
+  template:
+    metadata: {labels: {app: payment-gateway}}
+    spec:
+      containers:
+        - {name: app, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: cart-cache, namespace: checkout}
+spec:
+  serviceName: cart-cache
+  replicas: 2
+  selector: {matchLabels: {app: cart-cache}}
+  template:
+    metadata: {labels: {app: cart-cache}}
+    spec:
+      containers:
+        - {name: cache, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: node-agent, namespace: monitoring}
+spec:
+  selector: {matchLabels: {app: node-agent}}
+  template:
+    metadata: {labels: {app: node-agent}}
+    spec:
+      containers:
+        - {name: agent, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: alertmanager, namespace: monitoring}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: alertmanager}}
+  template:
+    metadata: {labels: {app: alertmanager}}
+    spec:
+      containers:
+        - {name: alertmanager, image: busybox:1.37.0, command: [sh, -c, "sleep 100000"]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: nightly-report, namespace: batch}
+spec:
+  completions: 3
+  parallelism: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - {name: report, image: busybox:1.37.0, command: [sh, -c, "echo done"]}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: broken-migration, namespace: batch}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - {name: migrate, image: busybox:1.37.0, command: [sh, -c, "exit 1"]}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: bad-image, namespace: checkout}
+spec:
+  containers:
+    - {name: app, image: registry.invalid/does-not-exist:1}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: unschedulable, namespace: checkout}
+spec:
+  containers:
+    - name: app
+      image: busybox:1.37.0
+      command: [sh, -c, "sleep 100000"]
+      resources: {requests: {cpu: "512"}}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: crashloop, namespace: checkout}
+spec:
+  containers:
+    - {name: app, image: busybox:1.37.0, command: [sh, -c, "exit 2"]}
