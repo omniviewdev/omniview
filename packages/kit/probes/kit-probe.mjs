@@ -10,7 +10,7 @@
 //   REPORT=<file>  write the full report as JSON
 //
 // What it checks, per engine and viewport:
-//   parity      every case of PARITY against the mock's reference (mock-atoms.json, made by mock-measure.mjs): rectangles within 1 px,
+//   parity      every case of PARITY against the mock's reference (mock-reference.json, made by generate-reference.mjs): rectangles within 1 px,
 //               colours, border, padding, font, gap, cursor and focus ring exactly, in the states rest, hover, active and focus
 //   tokens      in each of the nine themes, the colours a state paints are the roles of the token table, read from the theme itself
 //   counts      DOM elements per instance, and no write to <html> or <body> while the pointer and the keyboard visit every part
@@ -24,11 +24,13 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENGINES, VIEWPORTS, STATES, deviations, measure, normalizeFont, setContext, summarize } from './probe-lib.mjs';
+import { createRequire } from 'node:module';
+import { ENGINES, VIEWPORTS, STATES, awaitFonts, deviations, launch, measure, setContext, summarize } from './probe-lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
-const reference = JSON.parse(readFileSync(path.join(here, 'mock-atoms.json'), 'utf8'));
+const reference = JSON.parse(readFileSync(path.join(here, 'mock-reference.json'), 'utf8'));
+const AXE = process.env.AXE ?? createRequire(import.meta.url).resolve('axe-core/axe.min.js');
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
 const SHOTS = process.env.SHOTS;
@@ -151,7 +153,7 @@ const target = (example) => (example.startsWith('Icon/') ? `[data-example="${exa
 
 // ---- parity -------------------------------------------------------------------------------------------------------------------
 async function parity(page, where) {
-  await normalizeFont(page, { rootVar: '--ov-font-ui' });
+  await awaitFonts(page);
   const rows = [];
   for (const [id, spec] of Object.entries(PARITY)) {
     const mock = reference.cases[id];
@@ -161,7 +163,7 @@ async function parity(page, where) {
       for (const state of STATES) {
         const want = mock?.[contextName]?.[state];
         if (want === undefined) {
-          fail(where, `${id}/${contextName}/${state}: no reference in mock-atoms.json`);
+          fail(where, `${id}/${contextName}/${state}: no reference in mock-reference.json`);
           continue;
         }
 
@@ -329,17 +331,33 @@ async function keyboard(browser, url, viewport, engineName, where) {
   await page.waitForSelector('[data-example="Button/Secondary"]');
   // Safari and Playwright's WebKit on macOS leave buttons out of the Tab order unless the system asks for it; Alt+Tab reaches them.
   const key = engineName === 'webkit' ? 'Alt+Tab' : 'Tab';
-  const names = await page.evaluate(() => [...document.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent?.replace(/\s+/g, ' ').trim() ?? ''));
+  // The walk covers the parts with this probe's keyboard contract: every button is one Tab stop, in document order (the frame's buttons, Button,
+  // IconButton, and the TooltipHost examples). The other parts have their own keyboard model (a DataTable's header buttons and grid, a RovingGroup's
+  // one stop, a virtual list that grows as Tab scrolls it, ...), tested with the part: their examples are made `inert` here, so Tab skips them.
+  const COUNTED = '^(Button|IconButton|TooltipHost)/';
+  const { names, stops } = await page.evaluate((counted) => {
+    const isCounted = (b) => { const example = b.closest('[data-example]'); return !example || new RegExp(counted).test(example.getAttribute('data-example') ?? ''); };
+    for (const example of document.querySelectorAll('[data-example]')) {
+      if (!new RegExp(counted).test(example.getAttribute('data-example') ?? '')) example.setAttribute('inert', '');
+    }
+
+    return {
+      names: [...document.querySelectorAll('button')].filter(isCounted).map((b) => b.getAttribute('aria-label') ?? b.textContent?.replace(/\s+/g, ' ').trim() ?? ''),
+      stops: document.querySelectorAll('button, a[href], input, select, textarea, [tabindex]').length,
+    };
+  }, COUNTED);
   await page.mouse.move(1, 1);
   // Walk until the first button; every following Tab must land on the next button in document order.
   await page.keyboard.press(key);
   const seen = [];
-  for (let i = 0; i < names.length + 4 && seen.length < names.length; i += 1) {
-    const info = await page.evaluate(() => {
+  for (let i = 0; i < stops + 4 && seen.length < names.length; i += 1) {
+    const info = await page.evaluate((counted) => {
+      const isCounted = (b) => { const example = b.closest('[data-example]'); return !example || new RegExp(counted).test(example.getAttribute('data-example') ?? ''); };
       const a = document.activeElement;
-      if (!a || a.tagName !== 'BUTTON') return null;
-      return { index: [...document.querySelectorAll('button')].indexOf(a), name: a.getAttribute('aria-label') ?? a.textContent?.replace(/\s+/g, ' ').trim(), disabled: a.getAttribute('aria-disabled') === 'true', native: a.disabled, focusVisible: a.matches(':focus-visible') };
-    });
+      if (!a || a.tagName !== 'BUTTON' || !isCounted(a)) return null;
+      const all = [...document.querySelectorAll('button')].filter(isCounted);
+      return { index: all.indexOf(a), name: a.getAttribute('aria-label') ?? a.textContent?.replace(/\s+/g, ' ').trim(), disabled: a.getAttribute('aria-disabled') === 'true', native: a.disabled, focusVisible: a.matches(':focus-visible') };
+    }, COUNTED);
     if (info) seen.push(info);
     if (seen.length < names.length) await page.keyboard.press(key);
   }
@@ -451,8 +469,8 @@ async function a11y(page, engineName, where) {
     await cdp.detach();
   }
 
-  if (process.env.AXE) {
-    await page.addScriptTag({ path: process.env.AXE });
+  if (process.env.NO_AXE === undefined) {
+    await page.addScriptTag({ path: AXE });
     const result = await page.evaluate(async () => {
        
       const axeResult = await axe.run({ include: [['[data-example]']] }, { resultTypes: ['violations'] });
@@ -468,7 +486,7 @@ const dist = await build();
 const { server, url } = await serve(dist);
 try {
   for (const engineName of engineNames) {
-    const browser = await ENGINES[engineName].launch();
+    const browser = await launch(engineName);
     for (const viewportName of viewportNames) {
       const viewport = VIEWPORTS[viewportName];
       const where = `${engineName} ${viewportName}`;

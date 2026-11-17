@@ -1,0 +1,37 @@
+/*
+ * The faces the type tokens name: `--ov-font-ui` is 'Int UI Inter' (Regular 400 and SemiBold 600) and `--ov-font-code` is
+ * 'Int UI Mono' (JetBrains Mono Regular), the design mock's own faces under its own aliases (mock base.css, @font-face).
+ *
+ * Each file is a subset (scripts/subset-fonts.ts, fonts/manifest.json): the characters of the unicode-range below. A character
+ * outside it comes from the next family of the stack, so a name in another script still shows. `swap` keeps text visible while a face
+ * loads; the host preloads the two Inter files in its HTML so they are in hand before the first paint (docs/ui-next/status/1a.4d.md).
+ * `font-feature-settings` is not set here: `--ov-font-features` (contextual alternates off) is applied by base.css and by each part.
+ *
+ * These are not layered: an @font-face rule belongs to no cascade layer (scripts/check-dist.ts allows it outside one).
+ */
+@font-face {
+  font-family: 'Int UI Inter';
+  src: url('../../fonts/Inter-Regular.latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0100-017F, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2190-2195, U+21B5, U+21C4, U+21E7, U+2212, U+2215, U+221E, U+2248, U+2260, U+2264-2265, U+22EF, U+2303, U+2318, U+2325, U+25B2, U+25B6, U+25BC, U+25C0, U+2605, U+2713, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Int UI Inter';
+  src: url('../../fonts/Inter-SemiBold.latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0100-017F, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2190-2195, U+21B5, U+21C4, U+21E7, U+2212, U+2215, U+221E, U+2248, U+2260, U+2264-2265, U+22EF, U+2303, U+2318, U+2325, U+25B2, U+25B6, U+25BC, U+25C0, U+2605, U+2713, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Int UI Mono';
+  src: url('../../fonts/JetBrainsMono-Regular.latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0100-017F, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2190-2195, U+21B5, U+21C4, U+21E7, U+2212, U+2215, U+221E, U+2248, U+2260, U+2264-2265, U+22EF, U+2303, U+2318, U+2325, U+25B2, U+25B6, U+25BC, U+25C0, U+2605, U+2713, U+FEFF, U+FFFD;
+}

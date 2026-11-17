@@ -60,5 +60,12 @@ export default {
       files: ['../../ui-next/global.css'],
       rules: { 'selector-disallowed-list': null },
     },
+    {
+      // The font faces are declared by their descriptors in one stylesheet: the two families the type tokens name, the two weights.
+      files: ['src/styles/fonts.css'],
+      rules: {
+        'declaration-property-value-allowed-list': { 'font-family': ["/^'Int UI (?:Inter|Mono)'$/"], 'font-weight': ['400', '600'] },
+      },
+    },
   ],
 };

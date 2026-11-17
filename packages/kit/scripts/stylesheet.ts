@@ -1,5 +1,5 @@
 import postcss, { AtRule } from 'postcss';
-import type { ChildNode, Container, Document } from 'postcss';
+import type { ChildNode, Container, Document, Root } from 'postcss';
 
 /** The node as an `@layer` at-rule, or undefined when it is anything else. */
 function asLayer(node: ChildNode | Container | Document | undefined): AtRule | undefined {
@@ -46,12 +46,18 @@ function layerStatementNames(node: ChildNode | undefined): string[] | undefined 
 
 const UNLAYERED_ALLOWED = ['font-face', 'keyframes', 'charset'];
 
+/** Where a font file of the built stylesheet is: in `fonts/` beside it, a WOFF2 file (scripts/kitFonts.ts). */
+const FONT_URL = /^\.\/fonts\/[^/]+\.woff2$/;
+
+/** Where a font file is in the HOST's build: the host's bundler takes the kit's files into `assets/`, hashed, and rewrites the URL (scripts/ui-flavour.test.mjs). */
+export const HOST_FONT_URL = /^\/assets\/[^/]+\.woff2$/;
+
 /**
  * What the built stylesheet must satisfy, as a list of violations (empty when it holds):
  * the layer order is the first rule and appears once; every other rule sits in a declared layer; a token is defined only in
- * `ov.tokens`; every token read is defined; no `!important`.
+ * `ov.tokens`; every token read is defined; no `!important`; every font is a WOFF2 file at `fontUrl` (the kit's own: beside the stylesheet).
  */
-export function checkStylesheet(css: string, layerOrder: readonly string[]): string[] {
+export function checkStylesheet(css: string, layerOrder: readonly string[], fontUrl: RegExp = FONT_URL): string[] {
   const violations: string[] = [];
   const root = postcss.parse(css);
   const top = root.nodes.filter((node) => node.type !== 'comment');
@@ -96,7 +102,36 @@ export function checkStylesheet(css: string, layerOrder: readonly string[]): str
       }
     }
   });
+  for (const source of fontSources(root)) {
+    if (source.startsWith('data:')) {
+      violations.push('a font inlined as a data URI: font files ship beside the stylesheet (scripts/kitFonts.ts)');
+    } else if (!fontUrl.test(source)) {
+      violations.push(`a font source must be ${fontUrl === FONT_URL ? './fonts/<file>.woff2' : String(fontUrl)}, found ${source}`);
+    }
+  }
+
   return [...new Set(violations)];
+}
+
+/** The URLs of the `src` of every `@font-face` of a stylesheet, as written. */
+function fontSources(root: Root): string[] {
+  const sources: string[] = [];
+  root.walkAtRules('font-face', (rule) => {
+    rule.walkDecls('src', (decl) => {
+      for (const [, , url] of decl.value.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/g)) {
+        sources.push(url ?? '');
+      }
+    });
+  });
+  return sources;
+}
+
+/** The font files a built stylesheet refers to, by name and once each: they must exist beside it, in `fonts/`. */
+export function fontFiles(css: string): string[] {
+  const names = fontSources(postcss.parse(css))
+    .filter((source) => FONT_URL.test(source))
+    .map((source) => source.slice('./fonts/'.length));
+  return [...new Set(names)].sort();
 }
 
 /** The `--ov-*` custom properties a stylesheet defines. */

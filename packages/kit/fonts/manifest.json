@@ -1,0 +1,58 @@
+{
+  "from": {
+    "repository": "omniviewdev/design-lab",
+    "tag": "spec-baseline-2026-11-16",
+    "commit": "108d7049536e52d8d2f48c9a9b8d8cd94886fe81",
+    "mockTree": "c8e44a445bdbec07ad81d5ec036dd26cc0a8bef0"
+  },
+  "tool": {
+    "fonttools": "4.68.0",
+    "brotli": "1.2.1",
+    "uharfbuzz": "0.57.0",
+    "command": "pyftsubset <source> --unicodes=<unicodeRange> --layout-features=* --name-IDs=* --notdef-outline --flavor=woff2"
+  },
+  "faces": [
+    {
+      "family": "Int UI Inter",
+      "weight": 400,
+      "file": "Inter-Regular.latin.woff2",
+      "license": "Inter-OFL.txt",
+      "sha256": "2b1b150937b43696a9cfd0ed3e320ca61167de0548d489466759f05285605814",
+      "bytes": 32320,
+      "unicodeRange": "U+0020-007E, U+00A0-00FF, U+0100-017F, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2190-2195, U+21B5, U+21C4, U+21E7, U+2212, U+2215, U+221E, U+2248, U+2260, U+2264-2265, U+22EF, U+2303, U+2318, U+2325, U+25B2, U+25B6, U+25BC, U+25C0, U+2605, U+2713, U+FEFF, U+FFFD",
+      "source": {
+        "file": "app/OmniviewNativeLab/frontend/mock/assets/fonts/inter/Inter-Regular.otf",
+        "sha256": "a7e791e8f5a0fb02b65663f7fca73e1d1ca9543f772ad480cbd76f4e3fe3f8cc",
+        "version": "Version 3.019;git-0a5106e0b"
+      }
+    },
+    {
+      "family": "Int UI Inter",
+      "weight": 600,
+      "file": "Inter-SemiBold.latin.woff2",
+      "license": "Inter-OFL.txt",
+      "sha256": "24aa6b3d2d94518e54a39d3e7b5c2dcc42e0eda6db56d919728c0bd8d08dd1fb",
+      "bytes": 34532,
+      "unicodeRange": "U+0020-007E, U+00A0-00FF, U+0100-017F, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2190-2195, U+21B5, U+21C4, U+21E7, U+2212, U+2215, U+221E, U+2248, U+2260, U+2264-2265, U+22EF, U+2303, U+2318, U+2325, U+25B2, U+25B6, U+25BC, U+25C0, U+2605, U+2713, U+FEFF, U+FFFD",
+      "source": {
+        "file": "app/OmniviewNativeLab/frontend/mock/assets/fonts/inter/Inter-SemiBold.otf",
+        "sha256": "8c1990b6012254ea2b487161697d107357dd0ee55811cfd91c8c11227bbef457",
+        "version": "Version 3.019;git-0a5106e0b"
+      }
+    },
+    {
+      "family": "Int UI Mono",
+      "weight": 400,
+      "file": "JetBrainsMono-Regular.latin.woff2",
+      "license": "JetBrainsMono-OFL.txt",
+      "sha256": "930b718f34724c734ad3773300016333f2d525f5e5c217fd5a8a98c23c192e96",
+      "bytes": 40756,
+      "unicodeRange": "U+0020-007E, U+00A0-00FF, U+0100-017F, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2190-2195, U+21B5, U+21C4, U+21E7, U+2212, U+2215, U+221E, U+2248, U+2260, U+2264-2265, U+22EF, U+2303, U+2318, U+2325, U+25B2, U+25B6, U+25BC, U+25C0, U+2605, U+2713, U+FEFF, U+FFFD",
+      "source": {
+        "file": "app/OmniviewNativeLab/frontend/mock/assets/fonts/mono/JetBrainsMono-Regular.ttf",
+        "sha256": "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
+        "version": "Version 2.304; ttfautohint (v1.8.4.7-5d5b)"
+      }
+    }
+  ]
+}

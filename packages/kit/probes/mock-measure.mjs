@@ -7,13 +7,13 @@
 //
 // Every case is rendered by the mock's own helpers (H.btn, H.ibtn, H.icon) into a neutral stage, in WebKit and Chromium at 1440 x 900
 // and 1030 x 720, in the states rest, hover, active and focus (each checked with matches()), under the contexts the case lists. The
-// font is normalized on both sides (a missing Inter changes text widths, which are not what is compared). Writes mock-atoms.json,
-// the reduced reference the kit probe reads, and, with RAW=<dir>, the full measurements and a screenshot grid per engine.
+// fonts are the real ones on both sides (the mock's own Inter and JetBrains Mono; the kit delivers the same advances). Writes
+// mock-reference.json, the reduced reference the kit probe reads, and, with RAW=<dir>, the full measurements and a screenshot grid per engine.
 // The mock does not depend on the engine or the viewport for these controls: the run fails if its own numbers say otherwise.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENGINES, VIEWPORTS, STATES, measure, normalizeFont, setContext, sleep, summarize } from './probe-lib.mjs';
+import { ENGINES, VIEWPORTS, STATES, awaitFonts, launch, measure, setContext, sleep, summarize } from './probe-lib.mjs';
 
 const URL = process.env.MOCK_URL ?? 'http://127.0.0.1:49231/';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -111,7 +111,7 @@ const cleanCase = (id) => ({ ...CASES[id] });
 
 async function measureFixtures(engineName, browser, viewportName, viewport, record) {
   const { page, context, errors } = await loadMock(browser, viewport);
-  await normalizeFont(page, { rootVar: '--int-font-ui' });
+  await awaitFonts(page);
   for (const id of Object.keys(CASES)) {
     if (only && !only.test(id)) continue;
     const c = cleanCase(id);
@@ -134,7 +134,7 @@ async function measureFixtures(engineName, browser, viewportName, viewport, reco
 
 async function measureInContext(browser, viewport) {
   const { page, context } = await loadMock(browser, viewport);
-  await normalizeFont(page, { rootVar: '--int-font-ui' });
+  await awaitFonts(page);
   await page.evaluate(() => {
     const scope = K8s.connections.defaultScope('prod-eu');
     Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/pods' }, scope), scope }, { how: 'here' });
@@ -163,7 +163,7 @@ async function measureInContext(browser, viewport) {
 
 async function gridShot(engineName, browser) {
   const { page, context } = await loadMock(browser, VIEWPORTS['1440x900']);
-  await normalizeFont(page, { rootVar: '--int-font-ui' });
+  await awaitFonts(page);
   await page.evaluate(async ({ ids, cases, stageCss }) => {
     const stage = document.createElement('div');
     stage.id = 'probe-stage';
@@ -207,7 +207,7 @@ const pageErrors = {};
 const summaryLines = [];
 
 for (const engineName of engineFilter) {
-  const browser = await ENGINES[engineName].launch();
+  const browser = await launch(engineName);
   for (const vp of viewportFilter) {
     const t = Date.now();
     pageErrors[`${engineName}/${vp}`] = await measureFixtures(engineName, browser, vp, VIEWPORTS[vp], record);
@@ -244,7 +244,7 @@ for (const [id, entry] of Object.entries(record.cases)) {
   }
   reduced.cases[id] = out;
 }
-const file = writeOut ? path.join(here, 'mock-atoms.json') : path.join(OUT, 'mock-atoms.partial.json');
+const file = writeOut ? path.join(here, 'mock-reference.json') : path.join(OUT, 'mock-reference.partial.json');
 writeFileSync(file, JSON.stringify(reduced));
 if (independence.length) {
   console.log(`THE MOCK DEPENDS ON THE ENGINE OR THE VIEWPORT:\n  ${independence.join('\n  ')}`);

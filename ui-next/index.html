@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Omniview ui-next</title>
+    <!-- The three faces of the first paint (Inter Regular and SemiBold; JetBrains Mono, which the page headers, tables and identifiers draw),
+         fetched at the start of the page: Vite gives these links and the kit's @font-face rules one hashed URL, so each file loads once.
+         `crossorigin` is required (a font is a CORS fetch; without it the file loads twice). A face that is not preloaded is only asked for
+         once the first layout uses it, and its swap moves text after the first frame. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../packages/kit/dist/fonts/Inter-Regular.latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../packages/kit/dist/fonts/Inter-SemiBold.latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../packages/kit/dist/fonts/JetBrainsMono-Regular.latin.woff2" />
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,120 @@
+name: UI next kit probes
+
+# Slice 1a, PR 1a.4d (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and Chromium at
+# 1440 x 900 and 1030 x 720, against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json, measured from
+# the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs; the design lab is private and is never needed here).
+# Three probes, each fails the job on a difference: kit-probe (parity with the mock, tokens, counts, keyboard, accessibility with axe-core),
+# fonts-probe (the fonts are delivered, used and the page does not shift) and tooltip-probe (the one tooltip host: listeners, cost, delay,
+# Escape layering, placement, motion).
+#
+# NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
+# request blocks the merge. The lead makes it required in the branch protection settings once it has been green for a while.
+
+on:
+  pull_request:
+    paths:
+      - "packages/kit/**"
+      - "ui-next/**"
+      - "packages/omniviewdev-runtime/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/ui-next-kit-probes.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/kit/**"
+      - "ui-next/**"
+      - "packages/omniviewdev-runtime/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/ui-next-kit-probes.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ui-next-kit-probes-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "26.13.0"
+  OMNIVIEW_UI: next
+
+jobs:
+  probes:
+    name: Kit probes
+    # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
+    # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the workspace packages (the kit among them)
+        run: |
+          task packages
+          # `task packages` rewrites this tracked shim (docs/ui-next/AGENTS.md, Commands); it is not part of the change under test.
+          git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+
+      - name: Cache the browsers
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.64.1-chromium-webkit
+
+      - name: Install the browsers
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      # The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
+      - name: Build ui-next once, for all three probes
+        run: |
+          echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
+          OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
+
+      - name: Probe the parts against the pinned mock reference
+        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/kit-probe.json" node packages/kit/probes/kit-probe.mjs
+
+      - name: Probe the fonts and the layout shift
+        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/fonts-probe.json" node packages/kit/probes/fonts-probe.mjs
+
+      - name: Probe the tooltip host
+        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/tooltip-probe.json" node packages/kit/probes/tooltip-probe.mjs
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kit-probe-reports
+          path: ${{ runner.temp }}/*-probe.json
+          if-no-files-found: ignore

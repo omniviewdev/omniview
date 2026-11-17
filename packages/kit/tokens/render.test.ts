@@ -55,4 +55,11 @@ describe('the generated token files', () => {
     expect(css).toContain('[data-ov-density=\'compact\']');
     expect(css).toContain('--ov-row-height: 22px;');
   });
+
+  it('carry the tooltip\'s shadow, the one elevation a part draws so far, the same in every theme', async () => {
+    const css = await generated('src/generated/tokens.css');
+    expect(css).toContain('--ov-shadow-tooltip: 0 2px 8px #0006;');
+    expect(css.match(/--ov-shadow-tooltip:/g)).toHaveLength(1);
+    expect(TOKEN_NAMES).toContain('--ov-shadow-tooltip');
+  });
 });

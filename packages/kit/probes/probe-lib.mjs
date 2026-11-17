@@ -1,9 +1,10 @@
 // Page-agnostic measurement library for the kit's controls and icons: the same functions measure the design mock and the kit.
 //
 //   measure(page, locator)   rect, computed style, DOM element count and parts of one element in the states rest, hover, active and focus
-//   summarize(record)        the compact, comparable form of one measurement: what mock-atoms.json stores
+//   summarize(record)        the compact, comparable form of one measurement: what mock-reference.json stores
 //   deviations(ref, got, o)  where a kit measurement differs from the mock's
-//   normalizeFont, setContext  put both pages in one font, text size and density
+//   normalizeFont          put a page in one font, for the probes whose references were measured that way (the table and shell probes)
+//   awaitFonts, setContext   wait for the real fonts of a page; set text size and density
 //
 // A probe needs Playwright's browsers (`pnpm exec playwright install webkit chromium`). They are run by hand, not by CI: see
 // mock-measure.mjs (the reference) and kit-probe.mjs (the parts), and the part's status file for the last run.
@@ -12,6 +13,15 @@ import { createRequire } from 'node:module';
 const pw = createRequire(import.meta.url)('playwright');
 
 export const ENGINES = { webkit: pw.webkit, chromium: pw.chromium };
+
+/**
+ * Launch an engine for a probe. Headless Chromium on Linux hints glyphs and rounds every advance to a whole pixel (a 26-character
+ * sample is 189 px against 187.27 px in WebKit, and on macOS); `--font-render-hinting=none` gives it the linear advances the other two
+ * engines use, so one set of reference widths holds on every platform the probes run on (measured: Linux and macOS agree to 1/64 px).
+ */
+export function launch(engineName) {
+  return ENGINES[engineName].launch(engineName === 'chromium' ? { args: ['--font-render-hinting=none'] } : {});
+}
 export const VIEWPORTS = { '1440x900': { width: 1440, height: 900 }, '1030x720': { width: 1030, height: 720 } };
 export const STATES = ['rest', 'hover', 'active', 'focus'];
 
@@ -210,9 +220,18 @@ export async function measure(page, locator, { states = STATES, away = AWAY } = 
   return out;
 }
 
-/** Deterministic UI font: sets the root custom property that holds the UI font stack. */
+/**
+ * Deterministic UI font: sets the root custom property that holds the UI font stack. For the probes whose references were measured in this
+ * normalized font (the table and shell probes); the atoms and the fonts keep their real fonts (`awaitFonts`).
+ */
 export async function normalizeFont(page, { rootVar }) {
   await page.evaluate((v) => document.documentElement.style.setProperty(v, 'Helvetica, Arial, sans-serif'), rootVar);
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await settle(page);
+}
+
+/** The pages keep their real fonts (the mock's own Inter, the kit's subset of it with the same advances): wait until they are loaded and the layout is still. */
+export async function awaitFonts(page) {
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await settle(page);
 }

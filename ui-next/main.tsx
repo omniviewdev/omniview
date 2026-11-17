@@ -1,10 +1,11 @@
 // The kit's stylesheet first: it declares the cascade layer order that every later stylesheet sits in.
 import '@omniviewdev/kit/styles.css';
 import './global.css';
-import { ThemeProvider } from '@omniviewdev/kit';
+import { ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { TooltipStress } from './parts/TooltipStress';
 import { createQueryClient } from './queryClient';
 import { Shell } from './shell';
 // SCAFFOLDING(N19): begin
@@ -34,11 +35,22 @@ function Screen() {
   }
   // SCAFFOLDING(N19): end
 
+  if (screen === 'tooltip-stress') {
+    // The tooltip's stress page (docs/ui-next/status/1a.4d.md): `n` triggers, with a tip each unless `mode=plain`.
+    return (
+      <ThemeProvider>
+        <TooltipStress count={Number(params.get('n') ?? '1000')} withTips={params.get('mode') !== 'plain'} />
+      </ThemeProvider>
+    );
+  }
+
   return <App />;
 }
 
+// The one tooltip of the window, mounted once beside every screen (the kit's TooltipHost listens on the document for every `tip`).
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>
     <Screen />
+    <TooltipHost />
   </QueryClientProvider>,
 );

@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { checkStylesheet, declaredLayerOrder } from '../packages/kit/scripts/stylesheet.ts';
+import { checkStylesheet, declaredLayerOrder, HOST_FONT_URL } from '../packages/kit/scripts/stylesheet.ts';
 
 // OMNIVIEW_UI chooses the frontend a build ships (see vite.config.ts). Stable and nightly build `current`,
 // so their output must hold nothing from ui-next/; only the feature-ui-next channel builds `next`.
@@ -63,10 +63,12 @@ test('OMNIVIEW_UI=next builds ui-next alone as the entry and replaces the output
     const styles = files.filter(file => file.endsWith('.css'));
     assert.equal(styles.length, 1, 'the entry loads one stylesheet');
     const layers = await readFile(path.join(root, 'packages/kit/src/styles/layers.css'), 'utf8');
+    // The host's bundler takes the kit's font files into assets/ under hashed names; the stylesheet's `url()` follows them there.
     assert.deepEqual(
-      checkStylesheet(await readFile(path.join(output, styles[0]), 'utf8'), declaredLayerOrder(layers)),
+      checkStylesheet(await readFile(path.join(output, styles[0]), 'utf8'), declaredLayerOrder(layers), HOST_FONT_URL),
       [],
     );
+    assert.ok(files.filter(file => /^assets\/[^/]+\.woff2$/.test(file)).length >= 3, 'the three font files sit in assets/');
   } finally {
     await rm(output, { recursive: true, force: true });
   }
