@@ -4,7 +4,7 @@
 // selection column pinned to the start, sorting by Name. Same rows and plain text cells as the candidates; rows are one line (30 px) because
 // that is what ships, so the identity's namespace is a column of its own.
 import '@omniviewdev/base-ui/styles.css';
-import { DataTable, useDataTable, type DataTableColumnDef, type DataTableFeatureFlags } from '@omniviewdev/base-ui';
+import { Checkbox, DataTable, useDataTable, type DataTableColumnDef, type DataTableFeatureFlags } from '@omniviewdev/base-ui';
 import { compactAge } from '@omniviewdev/kit';
 import { useState } from 'react';
 import type { Probe, Row } from '../harness';
@@ -21,7 +21,8 @@ const text = (value: unknown) => (typeof value === 'string' || typeof value === 
 
 // The columns keep their identity: a table input must (register T-32).
 const columns: Array<DataTableColumnDef<Row>> = [
-  { id: 'select', header: '', size: 44, enableSorting: false, meta: CELL_META, cell: () => <input type="checkbox" aria-label="Select row" /> },
+  // The host's select cell is the library's Checkbox (the page the matrix measured had a native one here, which the UI policy audit refuses).
+  { id: 'select', header: '', size: 44, enableSorting: false, meta: CELL_META, cell: () => <Checkbox aria-label="Select row" /> },
   { id: 'name', header: 'Name', size: 340, accessorFn: (row) => row.name, meta: CELL_META, cell: (info) => text(info.getValue()) },
   { id: 'namespace', header: 'Namespace', size: 180, accessorFn: (row) => row.namespace, meta: CELL_META, cell: (info) => text(info.getValue()) },
   { id: 'ready', header: 'Ready', size: 80, accessorFn: (row) => (row.ready === undefined ? '' : `${row.ready.ready}/${row.ready.total}`), meta: CELL_META, cell: (info) => text(info.getValue()) },
