@@ -5,15 +5,16 @@ import { ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { ListPage } from './page';
 import { TooltipStress } from './parts/TooltipStress';
 import { createQueryClient } from './queryClient';
 import { Shell } from './shell';
 // SCAFFOLDING(N19): begin
-// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): the one mount point of the Pods slice scaffolding (the page, and its registration for the shell frame); removed with ui-next/k8s/ and ui-next/pods/ (tracker N19)
-import { PodsSkeleton, podsShellRegistration } from './pods';
+// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): the one mount point of the Pods slice scaffolding (its data and its page definition, for the host's shell frame and list page); removed with ui-next/k8s/ and ui-next/pods/ (tracker N19)
+import { PodsPage } from './pods';
 
-// `?screen=pods` opens the slice-1a skeleton (the slice plan): the live Pod names from a connection, in the shell frame (PR 1a.5).
-// `?connection=<id>` names the connection the frame shows in its scope lane and path. It stays until the real Pods list replaces it.
+// `?screen=pods` opens the Pods list of slice 1a (the slice plan): the live Pods of a connection, in the shell frame (PR 1a.5), on the list page (PR 1a.6).
+// `?connection=<id>` names the connection the frame shows in its scope lane and path.
 const params = new URLSearchParams(window.location.search);
 const screen = params.get('screen');
 // SCAFFOLDING(N19): end
@@ -24,12 +25,17 @@ const queryClient = createQueryClient();
 function Screen() {
   // SCAFFOLDING(N19): begin
   if (screen === 'pods') {
-    // The registration is plain data from the screen's own directory; this is where its shape meets the shell's, and the type checker holds them together.
+    // The screen hands the host plain data: how it sits in the frame, what the page lists, and the rows with their state. This is where those shapes meet the
+    // shell's and the list page's, and the type checker holds them together.
     return (
       <ThemeProvider>
-        <Shell registration={podsShellRegistration(params.get('connection') ?? undefined)}>
-          <PodsSkeleton />
-        </Shell>
+        <PodsPage connection={params.get('connection') ?? undefined}>
+          {({ registration, definition, source }) => (
+            <Shell registration={registration}>
+              <ListPage definition={definition} source={source} />
+            </Shell>
+          )}
+        </PodsPage>
       </ThemeProvider>
     );
   }

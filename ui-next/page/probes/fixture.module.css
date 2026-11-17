@@ -1,0 +1,53 @@
+/* The probe fixture's own rules (fixture.tsx): the cells of an invented item, and the block under a page header that stands alone. Not product code; host
+   composition, layer ov.shell, as the page's own rules are. */
+@layer ov.shell {
+  /* A tile and a name over a second line. */
+  .identity {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  .identity > :first-child {
+    flex: none;
+  }
+
+  /* The two lines: the name and its group. Each clips on its own. */
+  .lines {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+  }
+
+  .lines > * {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .second {
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* A count in the code face. */
+  .mono {
+    font-family: var(--ov-font-code);
+  }
+
+  /* A header that stands alone, as the mock's header section draws it: the 12 px under it are the container's, and the block that follows is 8 px of something
+     drawn, so that a header that moves, or a block that is pushed, shows in the numbers. */
+  .top {
+    padding-block-end: var(--ov-spacing-12);
+  }
+
+  .next {
+    block-size: 8px;
+    background-color: var(--ov-bg-inline);
+  }
+}

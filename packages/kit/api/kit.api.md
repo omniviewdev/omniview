@@ -79,7 +79,6 @@ export type CollectionFooterProps = {
     readonly noun: string;
     readonly plural: string;
     readonly selected?: number | undefined;
-    readonly refreshing?: boolean | undefined;
     readonly hiddenColumns?: {
         readonly names: readonly string[];
     } | undefined;

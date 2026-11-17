@@ -33,6 +33,78 @@ export function parseKubectlPods(output) {
     .sort();
 }
 
+// `kubectl get pods -A --no-headers`, the printer's own table (NAMESPACE NAME READY STATUS RESTARTS AGE) -> one row per Pod, sorted by `namespace/name`.
+// RESTARTS may read `15 (3m ago)`: only the four leading columns are read, and none of them holds a space.
+export function parseKubectlTable(output) {
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [namespace, name, ready, status] = line.split(/\s+/);
+      if (namespace === undefined || name === undefined || ready === undefined || status === undefined || !/^\d+\/\d+$/.test(ready)) {
+        throw new Error(`unexpected kubectl line: ${JSON.stringify(line)}`);
+      }
+      return { name: `${namespace}/${name}`, ready, status };
+    })
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+// The page's quick filters by the plan's rule (docs/ui-next/slices/1a-pods-list.md 1.3), applied to kubectl's own STATUS words: Running is the word,
+// Pending is the role `progress`, Failed is the role `error`, Completed is two words. This is the oracle's own table, not the page's: the two agree
+// only when the page's table does. `other` is in All and in no filter.
+const FILTER_WORDS = {
+  running: ['Running'],
+  completed: ['Completed', 'Succeeded'],
+  pending: ['Pending', 'ContainerCreating', 'PodInitializing', 'Terminating'],
+  failed: [
+    'CrashLoopBackOff', 'Error', 'Failed', 'ImagePullBackOff', 'ErrImagePull', 'ErrImageNeverPull', 'OOMKilled', 'Evicted', 'NotReady',
+    'CreateContainerConfigError', 'CreateContainerError', 'RunContainerError', 'InvalidImageName', 'ContainerCannotRun', 'DeadlineExceeded',
+  ],
+  other: ['Unknown', 'Terminated'],
+};
+
+function classify(word) {
+  for (const [filter, words] of Object.entries(FILTER_WORDS)) {
+    if (words.includes(word)) {
+      return filter;
+    }
+  }
+  return undefined;
+}
+
+// A word the oracle does not know stops the check: a guessed filter would let the page and the oracle agree on a wrong count.
+export function quickFilterOf(status) {
+  const known = classify(status);
+  if (known !== undefined) {
+    return known;
+  }
+  if (/^Init:\d+\/\d+$/.test(status)) {
+    return 'pending';
+  }
+  if (status.startsWith('Init:')) {
+    // An init container's failure takes the role of what follows `Init:`, and one the table has no word for is an error.
+    return classify(status.slice('Init:'.length)) ?? 'failed';
+  }
+  throw new Error(`cannot classify the STATUS word ${JSON.stringify(status)}: read what the page's status table says and add it here`);
+}
+
+export function quickFilterCounts(rows) {
+  const counts = { all: rows.length, running: 0, pending: 0, failed: 0, completed: 0 };
+  for (const row of rows) {
+    const filter = quickFilterOf(row.status);
+    if (filter !== 'other') {
+      counts[filter] += 1;
+    }
+  }
+  return counts;
+}
+
+// The strip's chips as the page prints them, in its order: the label and the count.
+export function chipTexts(counts) {
+  return [`All ${String(counts.all)}`, `Running ${String(counts.running)}`, `Pending ${String(counts.pending)}`, `Failed ${String(counts.failed)}`, `Completed ${String(counts.completed)}`];
+}
+
 // The fixture entries the Pod names do not satisfy, as readable lines; empty when the fixture is fully present.
 export function fixtureGaps(names) {
   const gaps = [];

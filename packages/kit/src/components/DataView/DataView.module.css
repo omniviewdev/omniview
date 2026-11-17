@@ -17,6 +17,12 @@
     line-height: var(--ov-lh-16);
   }
 
+  /* Without a footer the pane stops 12 px short of its parent's bottom: the mock's content keeps `padding-block-end: 12px` unless a footer is the pane's last
+     lane (core.css `[data-layout='pane'] > .content:has(.data-view__footer)`), and the shell's pane gives none, so the inset is the pane's own. */
+  .root[data-ov-footless] {
+    height: calc(100% - var(--ov-spacing-12));
+  }
+
   .header {
     min-width: 0;
   }

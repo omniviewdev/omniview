@@ -271,10 +271,19 @@ describe('DataView, a failure with no rows (design 15 5.8, 17 K18)', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
-  it('says it once: the footer holds no second Retry and no failure word', () => {
-    failed(vi.fn());
+  it('says it once and draws no footer: a failure that leaves no rows has no count to carry (the mock draws none)', () => {
+    const { container } = render(view({ state: { kind: 'error', message: 'The server did not answer.', onRetry: vi.fn() } }));
     expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
-    expect(within(screen.getByRole('status')).queryByRole('button')).toBeNull();
+    expect(container.querySelector('[data-ov-part="footer"]')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect([...root(container).children].map((child) => child.getAttribute('data-ov-part'))).toEqual(['header', 'body']);
+  });
+
+  it('marks the pane footless, so its bottom inset (12 px) is its own: the shell gives a pane none', () => {
+    const { container, rerender } = render(view({ state: { kind: 'error' } }));
+    expect(root(container).hasAttribute('data-ov-footless')).toBe(true);
+    rerender(view());
+    expect(root(container).hasAttribute('data-ov-footless')).toBe(false);
   });
 
   it('keeps the header, the strip and the toolbar, so the way back is where it was', () => {
@@ -302,7 +311,7 @@ describe('the examples of DataView', () => {
       const { container } = render(<Example />);
       expect(screen.getAllByRole('region').length).toBe(1);
       expect(container.querySelector('[title]')).toBeNull();
-      expect(container.querySelector('[data-ov-part="footer"]')).not.toBeNull();
+      expect(container.querySelector('[data-ov-part="footer"]') === null).toBe(name === 'Failure' || name === 'FailureWithoutRetry');
     });
   }
 });
@@ -327,6 +336,10 @@ describe('the DataView stylesheet', () => {
       'min-height': '0',
       'box-sizing': 'border-box',
     });
+  });
+
+  it('is 12 px shorter without a footer: the inset a footer-less pane keeps at the bottom (the mock\'s `padding-block-end` of its content)', () => {
+    expect(rule('.root[data-ov-footless]')).toMatchObject({ height: 'calc(100% - var(--ov-spacing-12))' });
   });
 
   it('owns the gaps between the header, the strip, the toolbar and the table: 12, 8 and 8 px', () => {
