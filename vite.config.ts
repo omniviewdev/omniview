@@ -68,7 +68,7 @@ export default defineConfig({
     outDir: uiNextRoot ? path.resolve(__dirname, buildOutputDirectory) : buildOutputDirectory,
     // Outside its root Vite leaves outDir alone; stale stable chunks must not ship in a channel build.
     emptyOutDir: uiNextRoot ? true : undefined,
-    minify: false,
+    minify: 'esbuild',
     sourcemap: false,
   },
   server: {
