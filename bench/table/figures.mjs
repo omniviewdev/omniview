@@ -11,7 +11,8 @@ export const percent = (value) => (value === null || value === undefined ? null 
 
 export function readTrials(directory) {
   const full = path.join(here, 'results', directory);
-  if (!existsSync(full)) {
+  // A run writes meta.json last: a cell without it is still running (or was cut short) and is not read.
+  if (!existsSync(full) || !existsSync(path.join(full, 'meta.json'))) {
     return [];
   }
 
