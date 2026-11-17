@@ -1,0 +1,24 @@
+// N12A LOCAL ONLY (never committed): an on-screen console, so the native window can be observed without a Web Inspector.
+const lines: string[] = [];
+const box = document.createElement('pre');
+box.id = 'n12a-debug';
+box.style.cssText = 'position:fixed;right:4px;bottom:24px;max-width:46vw;max-height:40vh;overflow:hidden;margin:0;padding:4px 6px;font:10px/12px monospace;color:#0f0;background:rgba(0,0,0,.85);z-index:2147483647;pointer-events:none;white-space:pre-wrap;';
+const push = (kind: string, args: unknown[]) => {
+  lines.push(`${new Date().toISOString().slice(14, 23)} ${kind} ${args.map((a) => (a instanceof Error ? a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ').slice(0, 300)}`);
+  while (lines.length > 18) lines.shift();
+  box.textContent = lines.join('\n');
+};
+for (const kind of ['error', 'warn'] as const) {
+  const original = console[kind].bind(console);
+  console[kind] = (...args: unknown[]) => { push(kind, args); original(...args); };
+}
+window.addEventListener('error', (e) => push('onerror', [e.message, `${e.filename}:${e.lineno}`]));
+window.addEventListener('unhandledrejection', (e) => push('rejection', [String(e.reason)]));
+document.addEventListener('focusin', (e) => {
+  const t = e.target as HTMLElement;
+  push('focus', [`${t.tagName.toLowerCase()} role=${t.getAttribute('role')} aria=${t.getAttribute('aria-label')} text=${(t.textContent ?? '').slice(0, 24)}`]);
+});
+window.addEventListener('DOMContentLoaded', () => document.body.appendChild(box));
+const fonts = () => { const out: string[] = []; document.fonts.forEach((f) => out.push(`${f.family}/${f.weight}:${f.status}`)); push('fonts', out); };
+window.addEventListener('load', () => { setTimeout(fonts, 1500); push('ua', [navigator.userAgent.slice(-60), `dpr=${window.devicePixelRatio}`, `inner=${innerWidth}x${innerHeight}`]); });
+window.addEventListener('resize', () => push('resize', [`${innerWidth}x${innerHeight}`]));
