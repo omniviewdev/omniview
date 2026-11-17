@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import tsParser from '@typescript-eslint/parser';
 import { ESLint } from 'eslint';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 // The wiring of the guards on files of the two trees: which globs each rule covers, and what stays exempt.
@@ -166,5 +167,43 @@ describe('the examples entry is for the parts page, the workshop and the kit tes
 
   it('tests may import examples', async () => {
     expect(await rulesFired("import * as all from './Button.examples'; export { all };", 'packages/kit/src/components/Button/Button.test.tsx')).toEqual([]);
+  });
+});
+
+describe('the host and the kit are plugin-agnostic (decision A13)', () => {
+  const boundary = async (code, file) => (await rulesFired(code, file)).filter((id) => id === 'kit/scaffold-boundary').length;
+
+  it('a kit file cannot import plugin scaffolding', async () => {
+    expect(await boundary("import x from '../../../ui-next/k8s/x'; export { x };", 'packages/kit/src/Probe.tsx')).toBe(1);
+    expect(await boundary("import x from '../../../ui-next/k8s/x'; export { x };", 'packages/kit/src/Probe.test.tsx')).toBe(1);
+  });
+
+  it('a shell file cannot import plugin scaffolding, tests included', async () => {
+    const code = "import { a } from '../k8s/usePods'; import { b } from '../pods/Page'; export { a, b };";
+    expect(await boundary(code, 'ui-next/shell/Probe.tsx')).toBe(2);
+    expect(await boundary(code, 'ui-next/shell/Probe.test.tsx')).toBe(2);
+  });
+
+  it('plugin code cannot reach the host', async () => {
+    const specifiers = ['../shell/Frame', '../../ui/utils/x', '@/utils/y', '@omniviewdev/runtime/api', '@omniviewdev/runtime/runtime', '@omniviewdev/kit/dist/x', '@wailsio/runtime'];
+    const code = specifiers.map((specifier, index) => `import x${index} from '${specifier}';`).join('\n');
+    expect(await boundary(code, 'ui-next/k8s/a.ts')).toBe(specifiers.length);
+    expect(await boundary(code, 'ui-next/k8s/a.test.ts')).toBe(specifiers.length);
+    expect(await boundary(code, 'ui-next/pods/a.tsx')).toBe(specifiers.length);
+  });
+
+  it('plugin code may use its own files and the public surface', async () => {
+    const own = ['./b', './sub/c', '@omniviewdev/runtime', '@omniviewdev/kit', '@omniviewdev/kit/styles.css', 'react', 'vitest'];
+    expect(await boundary(own.map((specifier, index) => `import x${index} from '${specifier}';`).join('\n'), 'ui-next/k8s/a.ts')).toBe(0);
+    expect(await boundary("import { b } from '../b'; import { Page } from '../../pods/Page';", 'ui-next/k8s/sub/d.ts')).toBe(0);
+    expect(await boundary("import { usePods } from '../k8s/usePods';", 'ui-next/pods/Page.tsx')).toBe(0);
+  });
+
+  it('the one mount point is ui-next/main.tsx, marked, and the rule stays active on its other lines', async () => {
+    const text = readFileSync(path.join(root, 'ui-next/main.tsx'), 'utf8');
+    expect(await boundary(text, 'ui-next/main.tsx')).toBe(0);
+    const bare = text.split('\n').filter((line) => !line.includes('eslint-disable-next-line kit/scaffold-boundary'));
+    expect(bare.length).toBe(text.split('\n').length - 1);
+    expect(await boundary(bare.join('\n'), 'ui-next/main.tsx')).toBe(1);
   });
 });

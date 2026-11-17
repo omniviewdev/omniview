@@ -66,6 +66,13 @@ const tests = ['**/*.test.*', '**/*.spec.*'];
 
 module.exports = [
   {
+    // Plugin-agnostic host and kit (decision A13): tests included. A custom rule, not `no-restricted-imports`, because a later
+    // block that sets `no-restricted-imports` for the same files replaces the options of an earlier one.
+    files: ['packages/kit/**/*.{ts,tsx,mjs,cjs}', 'ui-next/**/*.{ts,tsx}'],
+    plugins: { kit },
+    rules: { 'kit/scaffold-boundary': 'error' },
+  },
+  {
     files: ['packages/kit/{src,tokens,scripts}/**/*.{ts,tsx}', 'ui-next/**/*.{ts,tsx}'],
     ignores: tests,
     plugins: { kit },
