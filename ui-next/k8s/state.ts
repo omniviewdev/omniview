@@ -98,7 +98,8 @@ export function readPodsState(reads: PodsReads): { readonly state: PodsState; re
       break;
   }
 
-  const failure = podsFailure(reads.catalog.error) ?? podsFailure(reads.target.error) ?? podsFailure(reads.read.error ?? sourceError(reads.read.source));
+  const failure
+    = podsFailure(reads.catalog.error) ?? podsFailure(reads.target.error) ?? podsFailure(reads.read.error) ?? podsFailure(sourceError(reads.read.source));
   if (failure !== undefined) {
     return reads.rows > 0 ? { state: { kind: 'loaded' }, failure } : { state: { kind: failure.kind, message: failure.message }, ...WHOLE };
   }
