@@ -19,6 +19,7 @@ const registration: ShellRegistration = {
     ],
     open: ['group'],
     current: 'widgets',
+    accent: 'blue',
   },
   scope: [
     { label: 'Connection', icon: 'server', text: 'north' },
@@ -94,6 +95,13 @@ describe('regions are landmarks with names', () => {
   });
 });
 
+describe('the page region', () => {
+  it('is a tab stop of its own, so a page of text can be scrolled from the keyboard (the tabs pattern; axe scrollable-region-focusable)', () => {
+    renderShell();
+    expect(screen.getByRole('tabpanel')).toHaveProperty('tabIndex', 0);
+  });
+});
+
 describe('the one tab', () => {
   it('is a selected tab in a named tablist, and has no close and no new-tab control yet', () => {
     renderShell();
@@ -111,7 +119,8 @@ describe('the sidebar tree', () => {
     const tree = screen.getByRole('tree', { name: 'Acme items' });
     const items = within(tree).getAllByRole('treeitem');
 
-    expect(items.map((item) => item.getAttribute('aria-label') ?? item.textContent)).toEqual(['Group', 'Widgets, 89', 'Gadgets', 'Other']);
+    expect(items.map((item) => item.textContent)).toEqual(['Group', 'Widgets89', 'Gadgets', 'Other']);
+    expect(items.filter((item) => item.hasAttribute('aria-label'))).toEqual([]);
     expect(items[0]).toHaveAttribute('aria-level', '1');
     expect(items[0]).toHaveAttribute('aria-expanded', 'true');
     expect(items[1]).toHaveAttribute('aria-level', '2');
@@ -130,7 +139,7 @@ describe('the sidebar tree', () => {
 
   it('opens the groups above the current entry even when the registration did not ask', () => {
     renderShell({ ...registration, sidebar: { ...(registration.sidebar!), open: [] } });
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toBeInTheDocument();
   });
 
   it('has one tab stop, on the current entry, and Tab reaches it after the tab and before the page', async () => {
@@ -138,12 +147,14 @@ describe('the sidebar tree', () => {
     renderShell();
     const stops = screen.getAllByRole('treeitem').filter((item) => item.getAttribute('tabindex') === '0');
     expect(stops).toHaveLength(1);
-    expect(stops[0]).toHaveAccessibleName('Widgets, 89');
+    expect(stops[0]).toHaveAccessibleName('Widgets 89');
 
     await user.tab();
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toHaveFocus();
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('tabpanel', { name: 'Widgets' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('button', { name: 'Inside the page' })).toHaveFocus();
   });
@@ -151,12 +162,12 @@ describe('the sidebar tree', () => {
   it('moves the stop with the arrow keys, Home and End, and the stop follows the focus', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Widgets, 89' }).focus();
+    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
 
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveFocus();
     expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveAttribute('tabindex', '-1');
 
     await user.keyboard('{End}');
     expect(screen.getByRole('treeitem', { name: 'Other' })).toHaveFocus();
@@ -174,11 +185,11 @@ describe('the sidebar tree', () => {
 
     await user.keyboard('{ArrowLeft}');
     expect(group()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('treeitem', { name: 'Widgets, 89' })).toBeNull();
+    expect(screen.queryByRole('treeitem', { name: 'Widgets 89' })).toBeNull();
 
     await user.keyboard('{ArrowRight}');
     expect(group()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toBeInTheDocument();
 
     await user.keyboard('{Enter}');
     expect(group()).toHaveAttribute('aria-expanded', 'false');
@@ -192,18 +203,18 @@ describe('the sidebar tree', () => {
   it('goes from an entry to its parent with ArrowLeft, and into a group with ArrowRight', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Widgets, 89' }).focus();
+    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
 
     await user.keyboard('{ArrowLeft}');
     expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveFocus();
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toHaveFocus();
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveFocus();
   });
 
   it('leaves the keys it does not own to the browser, and Enter on an entry changes nothing', async () => {
     const user = userEvent.setup();
     renderShell();
-    const entry = screen.getByRole('treeitem', { name: 'Widgets, 89' });
+    const entry = screen.getByRole('treeitem', { name: 'Widgets 89' });
     entry.focus();
     const keydown = vi.fn((event: KeyboardEvent) => event.defaultPrevented);
     document.addEventListener('keydown', keydown);
@@ -221,7 +232,7 @@ describe('the sidebar tree', () => {
     const { rerender } = renderShell();
     screen.getByRole('treeitem', { name: 'Group' }).focus();
     await user.keyboard('{ArrowLeft}');
-    expect(screen.queryByRole('treeitem', { name: 'Widgets, 89' })).toBeNull();
+    expect(screen.queryByRole('treeitem', { name: 'Widgets 89' })).toBeNull();
 
     const sidebar = registration.sidebar!;
     const nodes = [{ ...sidebar.nodes[0], children: [{ id: 'widgets', label: 'Widgets', icon: 'box' as const, count: 90 }, ...(sidebar.nodes[0].children ?? []).slice(1)] }, ...sidebar.nodes.slice(1)];
@@ -229,7 +240,15 @@ describe('the sidebar tree', () => {
     expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveAttribute('aria-expanded', 'false');
 
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 90' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Widgets 90' })).toBeInTheDocument();
+  });
+
+  it('tints the glyphs with the accent the registration names, and draws none without one', () => {
+    renderShell();
+    expect(screen.getByRole('tree')).toHaveAttribute('data-accent', 'blue');
+    cleanup();
+    renderShell({ ...registration, sidebar: { ...registration.sidebar!, accent: undefined } });
+    expect(screen.getByRole('tree')).not.toHaveAttribute('data-accent');
   });
 });
 
@@ -270,7 +289,7 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
     screen.getByRole('tab', { name: 'Widgets' }).focus();
 
     await user.keyboard('{F6}');
-    expect(screen.getByRole('treeitem', { name: 'Widgets, 89' })).toHaveFocus();
+    expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveFocus();
     await user.keyboard('{F6}');
     expect(screen.getByRole('main')).toHaveFocus();
     await user.keyboard('{F6}');
@@ -319,7 +338,7 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
   it('returns the focus to the page with Escape from another region, and leaves Escape alone in the page', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Widgets, 89' }).focus();
+    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
     await user.keyboard('{Escape}');
     expect(screen.getByRole('main')).toHaveFocus();
 
@@ -335,7 +354,7 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
 
   it('does not take an Escape that something else already took', () => {
     renderShell();
-    const entry = screen.getByRole('treeitem', { name: 'Widgets, 89' });
+    const entry = screen.getByRole('treeitem', { name: 'Widgets 89' });
     entry.focus();
     entry.addEventListener('keydown', (event) => {
       event.preventDefault();
