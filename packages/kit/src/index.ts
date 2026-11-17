@@ -40,3 +40,17 @@ export type {
 } from './components/DataTable';
 export { ageTip, compactAge, useAge } from './table/age';
 export type { AgeFormatter, AgeLabel } from './table/age';
+export { Chip } from './components/Chip';
+export type { ChipProps, ChipTone } from './components/Chip';
+export { RovingGroup } from './components/RovingGroup';
+export type { RovingGroupKind, RovingGroupProps } from './components/RovingGroup';
+export { QuickFilters } from './components/QuickFilters';
+export type { QuickFilter, QuickFiltersProps } from './components/QuickFilters';
+export { Status } from './components/Status';
+export type { StatusProps, StatusRole } from './components/Status';
+export { MissingValue } from './components/MissingValue';
+export type { MissingValueProps } from './components/MissingValue';
+export { KindTile } from './components/KindTile';
+export type { KindTileProps, KindTileSize, KindTileTone } from './components/KindTile';
+export { MiddleEllipsis } from './components/MiddleEllipsis';
+export type { MiddleEllipsisProps } from './components/MiddleEllipsis';

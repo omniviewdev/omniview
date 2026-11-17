@@ -1,0 +1,9 @@
+@layer ov.components {
+  /* The dash of the design (13 D7, V7): the muted role. It takes the size, line height and weight of the cell it sits in, so it never
+     moves a row; only the face and its features are pinned. */
+  .root {
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+  }
+}

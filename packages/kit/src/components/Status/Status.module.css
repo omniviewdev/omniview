@@ -1,0 +1,28 @@
+@layer ov.components {
+  /* A state (design 13 S1, A2): the glyph, 4 px, the word. The glyph sits at the start of the box, so glyphs share one left axis
+     whatever the length of the word; the word is 13/16 regular in the plain text colour, because severity colours the glyph and never
+     the word. A status is a fixed column: it never wraps and never shrinks. */
+  .root {
+    display: inline-flex;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    vertical-align: middle;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  /* The glyph takes the icon role; the glyphs that pin a paint of their own (the status colours, the play glyph) keep it. */
+  .root > svg {
+    color: var(--ov-icon);
+  }
+}

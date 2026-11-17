@@ -13,6 +13,13 @@ import * as buttonExamples from './components/Button/Button.examples';
 import * as iconButtonExamples from './components/IconButton/IconButton.examples';
 import * as iconExamples from './components/Icon/Icon.examples';
 import * as dataTableExamples from './components/DataTable/DataTable.examples';
+import * as chipExamples from './components/Chip/Chip.examples';
+import * as rovingGroupExamples from './components/RovingGroup/RovingGroup.examples';
+import * as quickFiltersExamples from './components/QuickFilters/QuickFilters.examples';
+import * as statusExamples from './components/Status/Status.examples';
+import * as missingValueExamples from './components/MissingValue/MissingValue.examples';
+import * as kindTileExamples from './components/KindTile/KindTile.examples';
+import * as middleEllipsisExamples from './components/MiddleEllipsis/MiddleEllipsis.examples';
 
 /** One example: a component without props that renders one state of a part. Its name is its title, its JSDoc its description. */
 export type Example = () => ReactElement;
@@ -24,4 +31,16 @@ export type ExampleSet = Readonly<Record<string, Example>>;
 export type PartExamples = Readonly<Record<string, ExampleSet>>;
 
 /** The examples of every part. Dev and docs only: the parts page, the kit tests and the workshop render and read this. */
-export const examples: PartExamples = { Icon: iconExamples, Button: buttonExamples, IconButton: iconButtonExamples, DataTable: dataTableExamples };
+export const examples: PartExamples = {
+  Icon: iconExamples,
+  Button: buttonExamples,
+  IconButton: iconButtonExamples,
+  DataTable: dataTableExamples,
+  Chip: chipExamples,
+  RovingGroup: rovingGroupExamples,
+  QuickFilters: quickFiltersExamples,
+  Status: statusExamples,
+  MissingValue: missingValueExamples,
+  KindTile: kindTileExamples,
+  MiddleEllipsis: middleEllipsisExamples,
+};

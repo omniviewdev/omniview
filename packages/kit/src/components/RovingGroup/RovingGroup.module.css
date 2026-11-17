@@ -1,0 +1,73 @@
+@layer ov.components {
+  /* A group has no box of its own: it lays its items out (a row or a column, a step of the spacing scale between them, optionally wrapping)
+     and paints nothing. The focus ring and the paint are the items'. */
+  .root {
+    display: flex;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .root[data-ov-roving='row'] {
+    flex-direction: row;
+  }
+
+  .root[data-ov-roving='column'] {
+    flex-direction: column;
+  }
+
+  .root[data-ov-wrap='true'] {
+    flex-wrap: wrap;
+  }
+
+  .root[data-ov-gap='2'] {
+    gap: var(--ov-spacing-2);
+  }
+
+  .root[data-ov-gap='4'] {
+    gap: var(--ov-spacing-4);
+  }
+
+  .root[data-ov-gap='6'] {
+    gap: var(--ov-spacing-6);
+  }
+
+  .root[data-ov-gap='8'] {
+    gap: var(--ov-spacing-8);
+  }
+
+  .root[data-ov-gap='12'] {
+    gap: var(--ov-spacing-12);
+  }
+
+  .root[data-ov-gap='16'] {
+    gap: var(--ov-spacing-16);
+  }
+
+  .root[data-ov-gap='20'] {
+    gap: var(--ov-spacing-20);
+  }
+
+  .root[data-ov-gap='24'] {
+    gap: var(--ov-spacing-24);
+  }
+
+  .root[data-ov-align='start'] {
+    align-items: flex-start;
+  }
+
+  .root[data-ov-align='center'] {
+    align-items: center;
+  }
+
+  .root[data-ov-align='end'] {
+    align-items: flex-end;
+  }
+
+  .root[data-ov-align='stretch'] {
+    align-items: stretch;
+  }
+
+  .root[data-ov-align='baseline'] {
+    align-items: baseline;
+  }
+}
