@@ -1,6 +1,9 @@
 // The measurement driver of row 1a.2, as it ran (an `eval` cell of the omp agent: `browser` and `Bun` are its globals; not a repo script).
 // It drives the scratch probe pages Probe.tsx.txt (raw hooks, ?screen=measure), States.tsx.txt (?screen=states) and Integration.tsx.txt
 // (the real usePods, ?screen=integration) served by the real Go host. Results of each batch are in raw/.
+// Known defects, found in review after the results were recorded (the code below is unchanged, so it is still the code that produced them):
+//  - coldStart() does not wait for the old host to exit; startHost() can answer from the old process. Use `kill(); await hostProc.exited` (with a SIGKILL after a bounded wait) before startHost().
+//  - The comparison of `__int.dump()` with the Table response (compared, mismatches, dashRestarts in raw/integration-5025.json) was an ad hoc cell that is not kept here.
 const fs = require('node:fs');
 const os = require('node:os');
 const HOST_ROOT = '<worktree with the probes>'; // contains bin/Omniview-server built with OMNIVIEW_UI=next task build:server

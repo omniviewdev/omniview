@@ -1,5 +1,5 @@
 /*
- * The glyph registry: every icon the kit can draw, as data. There is no icon library, no namespace import and no lookup by an
+ * The glyph registry: every icon the kit can draw, as data. There is no icon library, no wildcard import and no lookup by an
  * arbitrary string: `IconName` is a closed union and a new glyph is a reviewed change to this file (its bytes are budgeted in
  * docs/ui-next/status/1a.4a.md).
  *

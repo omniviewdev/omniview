@@ -1,0 +1,56 @@
+/* The scope lane (ch16 S10): 40 px above the page's scroll owner, 28 px faces 8 px apart after a 12 px inset. A face keeps the mock's box (an inside
+   1 px border and 12 px padding, a 16 px glyph, a 4 px gap, 28 px at least and taller with the text size) so its text sits where the mock puts it;
+   it has no chevron, because it opens nothing yet. */
+@layer ov.shell {
+  .lane {
+    display: flex;
+    flex: 0 0 40px;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 40px;
+    padding-inline: var(--ov-spacing-12);
+    overflow: hidden;
+  }
+
+  .face {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 28px;
+    padding-block: var(--ov-spacing-4);
+    padding-inline: var(--ov-spacing-12);
+    border: 1px solid transparent;
+    border-radius: var(--ov-radius-control);
+    white-space: nowrap;
+  }
+
+  .glyph {
+    display: grid;
+    flex: 0 0 16px;
+    place-items: center;
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--ov-icon);
+  }
+
+  .value {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* What the value is, read before it by assistive technology and never drawn. */
+  .what {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

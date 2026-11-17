@@ -86,10 +86,10 @@ describe('Button', () => {
     });
 
     it('gives its reason as its description, and the reason never becomes part of its name', () => {
-      render(<Button disabledReason="Choose a namespace first">Delete</Button>);
-      const button = screen.getByRole('button', { name: 'Delete', description: 'Choose a namespace first' });
+      render(<Button disabledReason="Choose a project first">Delete</Button>);
+      const button = screen.getByRole('button', { name: 'Delete', description: 'Choose a project first' });
       const reason = button.querySelector('[hidden]');
-      expect(reason?.textContent).toBe('Choose a namespace first');
+      expect(reason?.textContent).toBe('Choose a project first');
       expect(button.getAttribute('aria-describedby')).toBe(reason?.getAttribute('id'));
       expect(button.hasAttribute('title')).toBe(false);
     });

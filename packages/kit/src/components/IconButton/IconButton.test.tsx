@@ -10,11 +10,11 @@ const click = (element: HTMLElement) => {
 
 describe('IconButton', () => {
   it('is a native button named by its label, which is required and never taken from the glyph', () => {
-    render(<IconButton icon="refresh" label="Refresh Pods" />);
-    const button = screen.getByRole('button', { name: 'Refresh Pods' });
+    render(<IconButton icon="refresh" label="Refresh items" />);
+    const button = screen.getByRole('button', { name: 'Refresh items' });
     expect(button.tagName).toBe('BUTTON');
     expect(button.getAttribute('type')).toBe('button');
-    expect(button.getAttribute('aria-label')).toBe('Refresh Pods');
+    expect(button.getAttribute('aria-label')).toBe('Refresh items');
     expect(button.textContent).toBe('');
     expect(button).toHaveProperty('dataset.ovShape', 'icon');
     expect(button).toHaveProperty('dataset.ovVariant', 'secondary');
@@ -44,8 +44,8 @@ describe('IconButton', () => {
 
   it('stays focusable and does nothing for a reason, which is its description', () => {
     const onClick = vi.fn();
-    render(<IconButton icon="refresh" label="Refresh Pods" disabledReason="Refreshing" onClick={onClick} />);
-    const button = screen.getByRole('button', { name: 'Refresh Pods', description: 'Refreshing' });
+    render(<IconButton icon="refresh" label="Refresh items" disabledReason="Refreshing" onClick={onClick} />);
+    const button = screen.getByRole('button', { name: 'Refresh items', description: 'Refreshing' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(button.hasAttribute('disabled')).toBe(false);
     button.focus();
@@ -155,15 +155,15 @@ describe('IconButton', () => {
 
 type Row = { readonly name: string; readonly description?: string; readonly disabled?: true; readonly busy?: true; readonly icon: string };
 const MATRIX: Readonly<Record<string, Row>> = {
-  Secondary: { name: 'Refresh Pods', icon: 'refresh' },
-  Ghost: { name: 'Refresh Pods', icon: 'refresh' },
-  Primary: { name: 'Refresh Pods', icon: 'refresh' },
+  Secondary: { name: 'Refresh items', icon: 'refresh' },
+  Ghost: { name: 'Refresh items', icon: 'refresh' },
+  Primary: { name: 'Refresh items', icon: 'refresh' },
   Danger: { name: 'Clear selection', icon: 'close' },
   GhostDanger: { name: 'Clear selection', icon: 'close' },
-  SecondaryDisabled: { name: 'Refresh Pods', description: 'Refreshing', disabled: true, icon: 'refresh' },
-  GhostDisabled: { name: 'Refresh Pods', description: 'Refreshing', disabled: true, icon: 'refresh' },
-  DisabledWithVisibleReason: { name: 'Refresh Pods', description: 'Refreshing', disabled: true, icon: 'refresh' },
-  Busy: { name: 'Refresh Pods', busy: true, icon: 'refresh' },
+  SecondaryDisabled: { name: 'Refresh items', description: 'Refreshing', disabled: true, icon: 'refresh' },
+  GhostDisabled: { name: 'Refresh items', description: 'Refreshing', disabled: true, icon: 'refresh' },
+  DisabledWithVisibleReason: { name: 'Refresh items', description: 'Refreshing', disabled: true, icon: 'refresh' },
+  Busy: { name: 'Refresh items', busy: true, icon: 'refresh' },
   Row: { name: 'Copy name', icon: 'copy' },
   RowGhost: { name: 'Copy name', icon: 'copy' },
 };

@@ -1,0 +1,24 @@
+/* The plugin sidebar (ch16 §B R6; ch12 SB1): an island with a 41 px header above the one scrolling tree. 244 px wide, set by the frame's track. */
+@layer ov.shell {
+  .sidebar {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-bg-island);
+  }
+
+  .header {
+    display: flex;
+    flex: 0 0 41px;
+    align-items: center;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 41px;
+    padding-inline: var(--ov-spacing-12) var(--ov-spacing-8);
+    overflow: hidden;
+  }
+}

@@ -81,6 +81,8 @@ tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
     ...['./b', './sub/c', '@omniviewdev/runtime', '@omniviewdev/kit', '@omniviewdev/kit/styles.css', 'react', 'vitest', '@tanstack/react-query', '@testing-library/react'].map(
       (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts') }),
     ),
+    // a package whose scope only starts like an alias is not one
+    { code: "import x from '@hookstate/core'; import y from '@utilities/z'; export { x, y };", filename: at('ui-next/k8s/a.ts') },
     { code: "import { P } from '../b'; import { Page } from '../../pods/Page'; export { P, Page };", filename: at('ui-next/k8s/sub/d.ts') },
     { code: "import { usePods } from '../k8s/usePods'; export { usePods };", filename: at('ui-next/pods/Page.tsx') },
     { code: "export * from './b'; export { y } from '../pods/y'; import('./lazy'); require('./cjs');", filename: at('ui-next/k8s/a.ts') },
@@ -91,6 +93,9 @@ tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
     { code: "import { x } from '../ui-next/k8s/x';", filename: at('ui/Probe.tsx') },
     // a computed dynamic import cannot be resolved
     { code: 'import(name); require(name);', filename: at('ui-next/App.tsx') },
+    { code: 'import(`./pods/${name}`); require(`./k8s/${name}`);', filename: at('ui-next/App.tsx') },
+    // a template literal without substitutions is as static as a string
+    { code: 'const a = import(`./lazy`);', filename: at('ui-next/k8s/a.ts') },
   ],
   invalid: [
     { code: "import x from '../../../ui-next/k8s/x'; export { x };", filename: at('packages/kit/src/Probe.tsx'), errors: hostToPlugin },
@@ -101,6 +106,8 @@ tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
     { code: "export * from './pods/Page';", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
     { code: "const a = import('./pods/Page');", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
     { code: "const a = require('./k8s/usePods');", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
+    { code: 'const a = import(`./pods/Page`);', filename: at('ui-next/App.tsx'), errors: hostToPlugin },
+    { code: 'const a = require(`./k8s/usePods`);', filename: at('ui-next/App.tsx'), errors: hostToPlugin },
     { code: "import { a } from '../k8s/usePods';", filename: at('ui-next/shell/Probe.test.tsx'), errors: hostToPlugin },
     { code: "import { a } from 'somewhere/ui-next/k8s/usePods';", filename: at('packages/kit/src/Probe.tsx'), errors: hostToPlugin },
     { code: "import { a } from '/abs/ui-next/pods/Page';", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
@@ -113,5 +120,12 @@ tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
     { code: "export * from '@/x';", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
     { code: "const a = import('@omniviewdev/runtime/api');", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
     { code: "const a = require('@wailsio/runtime');", filename: at('ui-next/k8s/a.ts'), errors: pluginToHost },
+    { code: 'const a = import(`@/utils/y`);', filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
+    // every alias of vite.config.ts into ui/ (a bare alias too)
+    ...['@components/x', '@hooks/x', '@layouts/x', '@pages/x', '@theme/x', '@types/x', '@utils/x', '@hooks'].map((specifier) => ({
+      code: `import x from '${specifier}'; export { x };`,
+      filename: at('ui-next/k8s/a.ts'),
+      errors: pluginToHost,
+    })),
   ],
 });

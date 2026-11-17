@@ -45,6 +45,19 @@ export type ButtonTone = 'neutral' | 'danger';
 // @public
 export type ButtonVariant = 'secondary' | 'primary' | 'ghost';
 
+// @public
+export function Chip(input: ChipProps): JSX.Element;
+
+// Warning: (ae-forgotten-export) The symbol "StaticChip" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "ToggleChip" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "RemovableChip" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type ChipProps = StaticChip | ToggleChip | RemovableChip;
+
+// @public
+export type ChipTone = 'success' | 'warning' | 'error' | 'info' | 'muted';
+
 // @public (undocumented)
 export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 'bg-inline' | 'bg-popup' | 'bg-feedback' | 'fg' | 'fg-muted' | 'fg-secondary' | 'fg-disabled' | 'fg-editor' | 'fg-over-accent' | 'fg-on-data' | 'icon' | 'icon-disabled' | 'icon-active' | 'border-subtle' | 'border-popup' | 'border-control' | 'border-disabled' | 'border-raised' | 'accent' | 'link' | 'selection-active' | 'selection-inactive' | 'tab-bg' | 'tab-border' | 'tab-inactive-bg' | 'tab-inactive-border' | 'segment-bg' | 'segment-border' | 'segment-focused-bg' | 'hover-row' | 'hover-toolbar' | 'pressed' | 'success-fg' | 'warning-fg' | 'error-fg' | 'info-bg' | 'info-border' | 'warning-bg' | 'warning-border' | 'error-bg' | 'error-border' | 'success-bg' | 'success-border' | 'error-control' | 'error-control-inactive' | 'warning-control' | 'warning-control-inactive' | 'progress-track' | 'chart-purple' | 'chart-teal' | 'syntax-keyword' | 'syntax-string' | 'syntax-number' | 'syntax-comment' | 'syntax-function' | 'syntax-key' | 'syntax-type' | 'syntax-variable' | 'syntax-annotation' | 'syntax-operator' | 'icon-info' | 'icon-success' | 'icon-warning' | 'icon-warning-mark' | 'icon-error' | 'icon-chevron' | 'icon-help' | 'brand-orange' | 'brand-green' | 'brand-blue' | 'brand-purple' | 'brand-pink' | 'brand-red' | 'brand-teal';
 
@@ -169,8 +182,78 @@ export type IconProps = {
 // @public
 export type IconSize = 12 | 16;
 
+// @public
+export function KindTile(input: KindTileProps): JSX.Element;
+
+// @public (undocumented)
+export type KindTileProps = {
+    readonly icon: IconName;
+    readonly tone?: KindTileTone | undefined;
+    readonly size?: KindTileSize | undefined;
+} & DataAttributes;
+
+// @public
+export type KindTileSize = 16 | 20;
+
+// @public
+export type KindTileTone = 'neutral' | 'orange' | 'green' | 'blue' | 'purple' | 'pink' | 'red' | 'teal';
+
+// @public
+export function MiddleEllipsis(input: MiddleEllipsisProps): JSX.Element;
+
+// @public (undocumented)
+export type MiddleEllipsisProps = {
+    readonly children: string;
+    readonly tail?: number | undefined;
+} & DataAttributes;
+
+// @public
+export function MissingValue(input: MissingValueProps): JSX.Element;
+
+// @public (undocumented)
+export type MissingValueProps = {
+    readonly name?: string | undefined;
+    readonly reason?: string | undefined;
+} & DataAttributes;
+
+// @public
+export type QuickFilter = {
+    readonly id: string;
+    readonly label: string;
+    readonly count?: number | undefined;
+    readonly tone?: ChipTone | undefined;
+};
+
+// @public
+export function QuickFilters(input: QuickFiltersProps): JSX.Element;
+
+// @public (undocumented)
+export type QuickFiltersProps = {
+    readonly label: string;
+    readonly total?: number | undefined;
+    readonly filters: readonly QuickFilter[];
+    readonly selected: string | null;
+    readonly onSelect: (id: string | null) => void;
+} & DataAttributes;
+
 // @public (undocumented)
 export type RadiusRole = 'mark' | 'control' | 'tab' | 'popup' | 'island';
+
+// @public
+export function RovingGroup(input: RovingGroupProps): JSX.Element;
+
+// @public
+export type RovingGroupKind = 'row' | 'column';
+
+// @public (undocumented)
+export type RovingGroupProps = {
+    readonly label: string;
+    readonly kind?: RovingGroupKind | undefined;
+    readonly gap?: SpacingStep | undefined;
+    readonly wrap?: boolean | undefined;
+    readonly align?: StackAlign | undefined;
+    readonly children?: ReactNode;
+} & DataAttributes;
 
 // @public
 export function RowMenu<TRow>(input: RowMenuProps<TRow>): ReactElement | null;
@@ -252,6 +335,19 @@ export type StackProps = {
     readonly justify?: StackJustify;
     readonly children?: ReactNode;
 } & DataAttributes;
+
+// @public
+export function Status(input: StatusProps): string | JSX.Element;
+
+// Warning: (ae-forgotten-export) The symbol "StatusWord" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "StaticRole" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "ProgressRole" needs to be exported by the entry point index.d.ts
+//
+// @public (undocumented)
+export type StatusProps = StatusWord & (StaticRole | ProgressRole);
+
+// @public
+export type StatusRole = 'healthy' | 'running' | 'progress' | 'attention' | 'error' | 'stopped' | 'info';
 
 // @public
 function Text_2(input: TextProps): JSX.Element;

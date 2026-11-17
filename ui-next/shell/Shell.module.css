@@ -1,0 +1,87 @@
+/* The window and the plugin frame (ch16 §B R1, R4 to R7, S10). Host composition, so every rule sits in ov.shell, above the kit's parts.
+   The shell's own metrics are the exceptions to the closed scales that the chapter names: the 40 px top row, the 5 px gutters (S98), the
+   40 px rail, the 244 px sidebar and the 32 px status bar; they are track sizes, not spacing. */
+@layer ov.shell {
+  /* Columns: a 5 px gutter, the frame, a 5 px gutter. Rows: the top row, the frame, a 5 px gutter (the panel's handle sits there later), the status bar. */
+  .window {
+    display: grid;
+    grid-template-columns: 5px minmax(0, 1fr) 5px;
+    grid-template-rows: 40px minmax(0, 1fr) 5px 32px;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100vh;
+    /* A window never scrolls: `clip`, unlike `hidden`, makes it no scroll container, so a focus() cannot shift the whole window. */
+    overflow: clip;
+    background-color: var(--ov-bg-window);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The frame's columns: rail, sidebar, the gutter after it, the page island. A region the registration does not declare has no track, and no gutter. */
+  .frame {
+    --_rail: 0px;
+    --_sidebar: 0px;
+    --_gutter: 0px;
+    grid-column: 2;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: var(--_rail) var(--_sidebar) var(--_gutter) minmax(0, 1fr);
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .frame[data-rail] {
+    --_rail: 40px;
+  }
+
+  .frame[data-sidebar] {
+    --_sidebar: 244px;
+    --_gutter: 5px;
+  }
+
+  .rail {
+    grid-column: 1;
+  }
+
+  /* The page island: the scope lane above the page's scroll owner, so the lane never scrolls away (S10). It is focusable by script only: F6 and Escape land on it. */
+  .island {
+    grid-column: 4;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-bg-island);
+  }
+
+  /* The mock draws no ring on the island (frame__island:focus-visible { outline: 0 }): the page inside is what the focus is for. */
+  .island:focus-visible {
+    outline: 0;
+  }
+
+  /* The page's scroll owner (S15): an explicit one, so a scrollbar lane never appears and disappears under the content. */
+  .page {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow-x: auto;
+    overflow-y: scroll;
+    scrollbar-gutter: auto;
+    overscroll-behavior: contain;
+  }
+
+  .page:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* The page's own inset: its content starts 12 px inside the island (the mock's `.content`). */
+  .content {
+    box-sizing: border-box;
+    min-inline-size: 0;
+    padding: var(--ov-spacing-12);
+  }
+}

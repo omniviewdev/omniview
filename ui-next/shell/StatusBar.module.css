@@ -1,0 +1,54 @@
+/* The status bar (ch16 §F R10; S90): one 32 px row on the window plane, 12/16 muted text, 12 px of padding, no top border. Slice 1a draws the
+   path only: the panel toggle, the status items and the bell have no function to carry yet. */
+@layer ov.shell {
+  .statusBar {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 32px;
+    padding-inline: var(--ov-spacing-12);
+    background-color: var(--ov-bg-window);
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .path {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  .crumbs {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    white-space: nowrap;
+  }
+
+  /* A crumb and the chevron after it. Only the text gives way: it is clipped with an ellipsis, the chevron keeps its 12 px. */
+  .crumb {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+  }
+
+  .text {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

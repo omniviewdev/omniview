@@ -57,7 +57,7 @@ describe('the parts page', () => {
   it('keeps a reasoned-disabled example focusable and described', () => {
     const { container } = renderPage();
     const example = container.querySelector<HTMLElement>('[data-example="IconButton/DisabledWithVisibleReason"]')!;
-    const button = within(example).getByRole('button', { name: 'Refresh Pods', description: 'Refreshing' });
+    const button = within(example).getByRole('button', { name: 'Refresh items', description: 'Refreshing' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
     button.focus();
     expect(document.activeElement).toBe(button);

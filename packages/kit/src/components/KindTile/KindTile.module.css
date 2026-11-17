@@ -1,0 +1,53 @@
+@layer ov.components {
+  /* A glyph in a square: no edge, no fill, the control radius. The glyph is ink, so it takes the colour of the tile; the tone sets it. */
+  .root {
+    --_tone: var(--ov-icon);
+
+    display: inline-flex;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    color: var(--_tone);
+  }
+
+  .root[data-ov-size='20'] {
+    width: 20px;
+    height: 20px;
+  }
+
+  .root[data-ov-size='16'] {
+    width: 16px;
+    height: 16px;
+  }
+
+  .root[data-ov-tone='orange'] {
+    --_tone: var(--ov-brand-orange);
+  }
+
+  .root[data-ov-tone='green'] {
+    --_tone: var(--ov-brand-green);
+  }
+
+  .root[data-ov-tone='blue'] {
+    --_tone: var(--ov-brand-blue);
+  }
+
+  .root[data-ov-tone='purple'] {
+    --_tone: var(--ov-brand-purple);
+  }
+
+  .root[data-ov-tone='pink'] {
+    --_tone: var(--ov-brand-pink);
+  }
+
+  .root[data-ov-tone='red'] {
+    --_tone: var(--ov-brand-red);
+  }
+
+  .root[data-ov-tone='teal'] {
+    --_tone: var(--ov-brand-teal);
+  }
+}

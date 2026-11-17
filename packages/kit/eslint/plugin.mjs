@@ -186,23 +186,30 @@ export const noRestyle = {
 
 const PLUGIN_PATH_PATTERN = new RegExp(`(?:^|/)(?:${PLUGIN_CODE.map((dir) => dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:/|$)`);
 
-/** Specifier of an import, re-export, dynamic import of a literal, or require('literal'); with the node to report on. */
+/** The text of a string literal, or of a template literal with no substitutions; undefined for anything computed. */
+function staticString(node) {
+  if (node?.type === 'Literal' && typeof node.value === 'string') return node.value;
+  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0].value.cooked ?? undefined;
+  return undefined;
+}
+
+/** Specifier of an import, re-export, dynamic import of a static string, or require of one; with the node to report on. */
 function moduleSpecifier(node) {
-  if (node.type === 'ImportExpression') return node.source.type === 'Literal' && typeof node.source.value === 'string' ? node.source.value : undefined;
+  if (node.type === 'ImportExpression') return staticString(node.source);
   if (node.type === 'CallExpression') {
-    const [first] = node.arguments;
-    return node.callee.type === 'Identifier' && node.callee.name === 'require' && first?.type === 'Literal' && typeof first.value === 'string'
-      ? first.value
-      : undefined;
+    return node.callee.type === 'Identifier' && node.callee.name === 'require' ? staticString(node.arguments[0]) : undefined;
   }
   return typeof node.source?.value === 'string' ? node.source.value : undefined;
 }
+
+/** The aliases of vite.config.ts and tsconfig.app.json into `ui/` (the old shell), besides `@/`. */
+const HOST_ALIAS_PATTERN = /^@(?:components|hooks|layouts|pages|theme|types|utils)(?:\/|$)/;
 
 /** Why a plugin-code file may not import `specifier` (a messageId), or undefined when it is on the public surface. */
 function pluginViolation(specifier, resolved) {
   if (specifier.startsWith('.')) return resolved !== undefined && isPluginCode(resolved) ? undefined : 'pluginToHost';
   if (specifier.startsWith('/') || specifier === '@' || specifier.startsWith('@/')) return 'pluginToHost';
-  if (specifier.startsWith('@wailsio/')) return 'pluginToHost';
+  if (specifier.startsWith('@wailsio/') || HOST_ALIAS_PATTERN.test(specifier)) return 'pluginToHost';
   if (specifier === '@omniviewdev/runtime' || specifier === '@omniviewdev/kit' || specifier === '@omniviewdev/kit/styles.css') return undefined;
   if (specifier.startsWith('@omniviewdev/runtime/') || specifier.startsWith('@omniviewdev/kit/')) return 'pluginToHost';
   return undefined;

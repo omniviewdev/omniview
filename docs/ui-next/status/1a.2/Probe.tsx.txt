@@ -10,6 +10,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 
 // SCRATCH, never committed: measures how the Pods list acquires its rows (docs/ui-next/status/1a.2.md, E10).
+// Known defects, found in review after the results were recorded (the code below is unchanged, so it is still the code that produced them):
+//  - blockedMs: the heartbeat ignores gaps once `acq.done` is set, so a stall of the final collection update is not counted; sample the open interval before setting `acq.done`.
+//  - keyCheck compares sets: it proves the first page's keys are keys of the collection, not that each object keeps its own key. Match by `addressKey`, then compare `key`.
 // mode=collection  C0: the collection only (the first row waits for the complete snapshot)
 // mode=page        B:  a first explicit page (pageSize 256) beside the collection
 // mode=deferred    B2: the first page first, the collection starts when the page has painted
