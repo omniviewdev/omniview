@@ -236,7 +236,7 @@
     cursor: pointer;
   }
 
-  .table[data-ov-activatable] .row:hover > .cell {
+  .table[data-ov-activatable] .row:not([data-ov-selected]):hover > .cell {
     background-image: linear-gradient(var(--ov-hover-row), var(--ov-hover-row));
   }
 
