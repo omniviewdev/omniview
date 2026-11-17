@@ -2,7 +2,7 @@
 
 The build plan for tracker row N11, written under row N11b on 2026-11-16 against host `origin/main` 146c0b03, the Kubernetes plugin `origin/main` 524d123 (0.21.2) and the design lab tag `spec-baseline-2026-11-16` (mock tree `c8e44a44…`). Ruling R8 applies: build through the screen, consumer first. The stop rule: the Pods list on real data by week 3–4, re-plan at week 6 (week 1 starts 2026-11-16). The skeleton in section 2.6 lands with this plan and is the proof of the data seam.
 
-**Evidence key.** `[path:line]` = read in this repo. `K8S path:line` = the plugin at 524d123. `MOCK path:line` = `app/OmniviewNativeLab/frontend/mock/` of the design lab at the tag; `chNN` = the spec chapter `MOCK research/int-ui/NN-*.md`, rule ids as written there (`ch13 T3` is chapter 13, rule T3). `RT1`, `RT2`, `P1`, `P2` and `F06`, `F07` are the background notes under `~/Notes/omniview/ui-migration/` (red-team reviews, proposals, findings). `[ran: …]` = I ran it; commands are in appendix A. `[INFERENCE]` = reasoning, not run. **UNVERIFIED** = not verified. Mock numbers were measured in headless WebKit on the design lab's copy of the mock (the screenshots are of that copy). Sizes are my scale: `S` under 1 day, `M` 1 to 3 days, `L` 3 to 6 days of agent work including its tests.
+**Evidence key.** `[path:line]` = read in this repo. `K8S path:line` = the plugin at 524d123. `MOCK path:line` = `app/OmniviewNativeLab/frontend/mock/` of the design lab at the tag; `chNN` = the spec chapter `MOCK research/int-ui/NN-*.md`, rule ids as written there (`ch13 T3` is chapter 13, rule T3). `RT1`, `RT2`, `P1`, `P2` and `F06`, `F07` are the private background notes (red-team reviews, proposals, findings). `[ran: …]` = I ran it; commands are in appendix A. `[INFERENCE]` = reasoning, not run. **UNVERIFIED** = not verified. Mock numbers were measured in headless WebKit on a design-lab checkout whose mock tree is the tagged one (appendix B). Sizes are my scale: `S` under 1 day, `M` 1 to 3 days, `L` 3 to 6 days of agent work including its tests.
 
 ## 0. Decisions at a glance
 
@@ -22,15 +22,7 @@ The build plan for tracker row N11, written under row N11b on 2026-11-16 against
 
 ### 1.1 The screen
 
-The reference is the mock's Pods list (`MOCK k8s-resources.js`, the composition of `shell/page-kit-list`), connection `prod-eu`, 89 Pods, default theme. Four screenshots, all 1:1 pixels of the mock (originals as PNG outside the repository, hashes in appendix B):
-
-![Mock, 1440 x 900, wide column set (CPU and Memory shown)](1a-pods-list/mock-pods-1440x900.webp)
-
-![Mock, 1440 x 900, the same list with CPU and Memory hidden: the 1a reference for a cluster without a metrics source](1a-pods-list/mock-pods-1440x900-narrow.webp)
-
-![Mock, 1030 x 720, narrow column set](1a-pods-list/mock-pods-1030x720.webp)
-
-![Mock, 1440 x 900, two rows selected: the selection bar](1a-pods-list/mock-pods-1440x900-narrow-selected.webp)
+The reference is the mock's Pods list (`MOCK k8s-resources.js`, the composition of `shell/page-kit-list`), connection `prod-eu`, 89 Pods, default theme. The design lab is private and this repository is public, so the renderings are not here: appendix B gives the tag, the mock tree hash, the route and the viewport that reproduce each of the four (wide set at 1440 x 900; the same without CPU and Memory, which is the 1a reference for a cluster with no metrics source; two rows selected, which shows the selection bar; the narrow set at 1030 x 720). The rectangles below are measured from them.
 
 Anatomy, in DOM order, with measured rectangles `x, y, w, h` in CSS px [ran: appendix A.8]. "Owner" says whether it is the shell, a page composition, or a kit part.
 
@@ -257,7 +249,7 @@ Shell, not kit (built beside, in `ui-next/shell/`, from kit parts): the window f
 
 ### 3.2 Acceptance common to every part
 
-1. **Parity.** Rectangles of the part within 1 px for fixed sizes (28 px controls, 25 px header, 40 px rows) and within 2 px for flexible ones, against the table in 1.1, at **1440 x 900 and 1030 x 720**, in WebKit and Chromium. Visual diff against the screenshots as advisory until the tolerance is calibrated (RT1 4.7), then blocking part by part.
+1. **Parity.** Rectangles of the part within 1 px for fixed sizes (28 px controls, 25 px header, 40 px rows) and within 2 px for flexible ones, against the table in 1.1, at **1440 x 900 and 1030 x 720**, in WebKit and Chromium. Visual diff against the reference renderings (appendix B) as advisory until the tolerance is calibrated (RT1 4.7), then blocking part by part.
 2. **Keyboard.** Every control reachable and operable by keyboard; Escape ownership as the part's rules say; rows are never Tab stops (ch15 L2).
 3. **Accessible names.** Every control, group and region has a name from its own markup (ch15 L3), no `title` attribute (L4); axe-core reports no serious or critical issue in both engines.
 4. **Exact counts** (asserted in tests, not read from a profile): mounted DOM nodes at rest at most 3,000 on the 5,000-row corpus; elements per row at most 40 (`tr` included); no write to `<html>` or `<body>` `style` and no custom-property write at run time (the existing lint and a `MutationObserver` assertion); listeners O(1) in rows.
@@ -340,7 +332,7 @@ Each PR is one reviewable step against `main` with its own exit test; a kit part
 | 1a.7 | **The Pods list on real data (milestone M1)**: cells, sort, live updates, plain states | parity probes at both viewports; budgets B1–B7 on the real page; the CI check green on the kind job; keyboard and a11y matrix; the owner's native pass scheduled | integration | 1a.2, 1a.3, 1a.4c, 1a.4d, 1a.6 | end of W3, no later than W4 |
 | 1a.8 | States and selection: `CollectionState` family, `Checkbox.Command`, `SelectionBar` | the state matrix of 1.4; selection rules of ch15 §5.4 | page | 1a.7 | W4–5 |
 | 1a.9 | Facets and Columns chooser, hidden columns | parity; chooser keyboard and a11y | page | 1a.7 | W5–6 |
-| 1a.10 | CPU and Memory, current-only, with `metrics-server` in the dev cluster; the wide set at 1006 px | the wide screenshot's rectangles; counts; at most 6 elements per metric cell | page | 1a.7 | W5–6 |
+| 1a.10 | CPU and Memory, current-only, with `metrics-server` in the dev cluster; the wide set at 1006 px | the rectangles of the wide rendering; counts; at most 6 elements per metric cell | page | 1a.7 | W5–6 |
 | 1a.11 | WKWebView pass: row cost on the real table, defects triaged (row N12) | numbers against B1–B7; the owner's defect list | owner and lead | 1a.7 | W4 |
 
 ### 4.2 Parallel work, one owner per file
@@ -480,23 +472,30 @@ The server port is fixed at 34115 (`main.go:83`); the e2e harness overrides it w
 
 **A.10 Checks.** `pnpm test ui-next` (13), `pnpm exec tsc -p tsconfig.app.json --noEmit` and `-p tsconfig.test.json`, `pnpm exec eslint ui-next --report-unused-disable-directives`, `pnpm lint:ui-policy`, `node --test scripts/react-compiler.test.mjs scripts/ui-flavour.test.mjs` with `OMNIVIEW_STABLE_DIST` pointing at a stable build. Stable output: `OMNIVIEW_BUILD_OUTPUT_DIRECTORY=… pnpm exec vite build` in a worktree of origin/main and in this one, `diff -r`.
 
-## Appendix B. Reference screenshots
+## Appendix B. Reproducing the reference renderings
 
-The files in `1a-pods-list/` are WebP at quality 88 of the originals; the originals are PNG in `~/Notes/omniview/ui-migration/status/N11b-assets/` (outside the repository).
+Source: private repository `omniviewdev/design-lab`, tag `spec-baseline-2026-11-16` (commit `108d7049536e52d8d2f48c9a9b8d8cd94886fe81`), mock tree `c8e44a445bdbec07ad81d5ec036dd26cc0a8bef0` (`app/OmniviewNativeLab/frontend/mock`). The measurements in 1.1 were taken on a local checkout whose mock tree has that same hash [ran: `git rev-parse HEAD:app/OmniviewNativeLab/frontend/mock`].
 
-| File | Page | PNG sha-256 |
-|---|---|---|
-| `mock-pods-1440x900.webp` | wide set, no selection | `c22003d43e7e72e44a858cfb6de08d8788205a67cd2703d742dcb982aaee6c49` |
-| `mock-pods-1440x900-narrow.webp` | CPU and Memory hidden | `71b363a3c78ed5d5990e09e9bfd3896b9c0431a9f596db02a23e8ed6f95ff31d` |
-| `mock-pods-1440x900-narrow-selected.webp` | two rows selected | `14b790c023d6321cb7fa61e9df30c2d278c4ec9754146c71ca331487ecd04b28` |
-| `mock-pods-1030x720.webp` | narrow set | `beb1731d48ffaf1cd1e99f91a049754a38a0c08a88697ec08afbcbde146f2c59` |
+Serve the mock (`node server.js` from the mock directory; the parent `package.json` has `"type": "module"`, so run a CommonJS copy, A.8), open `http://127.0.0.1:<port>/` in a freshly loaded page at the viewport below, and run this in the page's console. Wait about 3.5 s and do not move the pointer. Reload the page for each rendering: resizing a page that had rendered once left the table body blank in one capture.
+
+```js
+const scope = K8s.connections.defaultScope('prod-eu');
+Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/pods' }, scope), scope }, { how: 'here' });
+```
+
+| Rendering | Viewport | After opening the route | sha-256 of the PNG capture |
+|---|---|---|---|
+| wide set | 1440 x 900 | nothing | `c22003d43e7e72e44a858cfb6de08d8788205a67cd2703d742dcb982aaee6c49` |
+| CPU and Memory hidden | 1440 x 900 | Columns, untick CPU and Memory, Escape | `71b363a3c78ed5d5990e09e9bfd3896b9c0431a9f596db02a23e8ed6f95ff31d` |
+| two rows selected | 1440 x 900 | as the row above, then tick the checkboxes of the first two rows | `14b790c023d6321cb7fa61e9df30c2d278c4ec9754146c71ca331487ecd04b28` |
+| narrow set | 1030 x 720 | nothing | `beb1731d48ffaf1cd1e99f91a049754a38a0c08a88697ec08afbcbde146f2c59` |
 
 ## Appendix C. Questions for the lead and the owner
 
 1. E10: complete collection (the old table, 2.7 s to the first row at 5,000 Pods) or bounded pages with Load more (ch17 K23 B3), and whether a progressive runtime hook is wanted.
 2. E2: current-only CPU and Memory, or hold the columns until an external history source exists.
 3. The tier cuts of 1.2, above all: no tab Close and New, no identity link, selection in tier B.
-4. The screenshots: they are of the private design lab's mock and this repository is public. They are in this PR; remove the four WebP files if the design is not to be public yet.
+4. The reference renderings live in the private design lab. Goldens are vendored into the host by content hash after the errata pass (R15, N10); until then parity is checked against the rectangles in 1.1 and a rendering reproduced by appendix B.
 5. Whether the plugin-stream prerequisites (2.1) start now in parallel, and who owns them.
 6. Where Inter is delivered from and under which licence file (the lab holds `Inter Font License.txt`).
 7. The CI cluster job's owner, and whether a Docker-capable runner is allowed for it.
