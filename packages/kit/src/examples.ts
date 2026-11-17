@@ -7,30 +7,13 @@
 //
 // This is NOT the root entry and never part of it: the root entry is the plugin-facing API and plugins load it as a singleton
 // at run time. Only `ui-next/parts/**`, the kit's tests and the workshop may import this entry (lint: eslint/config.cjs), and it
-// is never listed among the plugin shared modules. Adding a part means adding one line here.
+// is never listed among the plugin shared modules. This file holds the types only; the registry itself, `generated/examples.ts`, is
+// generated from the `<Part>.examples.tsx` files (scripts/registry.ts), so adding a part never edits a shared file.
 // An examples file that has a CSS Module of its own (DataTable.parity.module.css) puts its rules in this entry's graph: the layer order
 // statement still has to be the first rule of the stylesheet, so this entry imports it first, as entry.ts does.
 import './styles/layers.css';
 import type { ReactElement } from 'react';
-import * as buttonExamples from './components/Button/Button.examples';
-import * as iconButtonExamples from './components/IconButton/IconButton.examples';
-import * as iconExamples from './components/Icon/Icon.examples';
-import * as dataTableExamples from './components/DataTable/DataTable.examples';
-import * as dataTableParityExamples from './components/DataTable/DataTable.parity.examples';
-import * as rowMenuExamples from './components/RowMenu/RowMenu.examples';
-import * as chipExamples from './components/Chip/Chip.examples';
-import * as rovingGroupExamples from './components/RovingGroup/RovingGroup.examples';
-import * as quickFiltersExamples from './components/QuickFilters/QuickFilters.examples';
-import * as statusExamples from './components/Status/Status.examples';
-import * as missingValueExamples from './components/MissingValue/MissingValue.examples';
-import * as kindTileExamples from './components/KindTile/KindTile.examples';
-import * as middleEllipsisExamples from './components/MiddleEllipsis/MiddleEllipsis.examples';
-import * as collectionFooterExamples from './components/CollectionFooter/CollectionFooter.examples';
-import * as searchFieldExamples from './components/SearchField/SearchField.examples';
-import * as workspaceToolbarExamples from './components/WorkspaceToolbar/WorkspaceToolbar.examples';
-import * as pageHeaderExamples from './components/PageHeader/PageHeader.examples';
-import * as dataViewExamples from './components/DataView/DataView.examples';
-import * as tooltipExamples from './components/TooltipHost/TooltipHost.examples';
+import { partExamples } from './generated/examples';
 
 /** One example: a component without props that renders one state of a part. Its name is its title, its JSDoc its description. */
 export type Example = () => ReactElement;
@@ -42,24 +25,4 @@ export type ExampleSet = Readonly<Record<string, Example>>;
 export type PartExamples = Readonly<Record<string, ExampleSet>>;
 
 /** The examples of every part. Dev and docs only: the parts page, the kit tests and the workshop render and read this. */
-export const examples: PartExamples = {
-  Icon: iconExamples,
-  Button: buttonExamples,
-  IconButton: iconButtonExamples,
-  DataTable: dataTableExamples,
-  DataTableParity: dataTableParityExamples,
-  RowMenu: rowMenuExamples,
-  Chip: chipExamples,
-  RovingGroup: rovingGroupExamples,
-  QuickFilters: quickFiltersExamples,
-  Status: statusExamples,
-  MissingValue: missingValueExamples,
-  KindTile: kindTileExamples,
-  MiddleEllipsis: middleEllipsisExamples,
-  CollectionFooter: collectionFooterExamples,
-  SearchField: searchFieldExamples,
-  WorkspaceToolbar: workspaceToolbarExamples,
-  PageHeader: pageHeaderExamples,
-  DataView: dataViewExamples,
-  TooltipHost: tooltipExamples,
-};
+export const examples: PartExamples = partExamples;
