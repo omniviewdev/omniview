@@ -9,6 +9,18 @@ import type { MouseEvent as MouseEvent_2 } from 'react';
 import { ReactNode } from 'react';
 
 // @public
+export type AgeFormatter = (date: Date, now: number) => AgeLabel;
+
+// @public
+export type AgeLabel = {
+    readonly text: string;
+    readonly changesAt: number;
+};
+
+// @public
+export function ageTip(date: Date, now: number): string;
+
+// @public
 export function Button(input: ButtonProps): JSX.Element;
 
 // @public (undocumented)
@@ -36,7 +48,74 @@ export type ButtonVariant = 'secondary' | 'primary' | 'ghost';
 export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 'bg-inline' | 'bg-popup' | 'bg-feedback' | 'fg' | 'fg-muted' | 'fg-secondary' | 'fg-disabled' | 'fg-editor' | 'fg-over-accent' | 'fg-on-data' | 'icon' | 'icon-disabled' | 'icon-active' | 'border-subtle' | 'border-popup' | 'border-control' | 'border-disabled' | 'border-raised' | 'accent' | 'link' | 'selection-active' | 'selection-inactive' | 'tab-bg' | 'tab-border' | 'tab-inactive-bg' | 'tab-inactive-border' | 'segment-bg' | 'segment-border' | 'segment-focused-bg' | 'hover-row' | 'hover-toolbar' | 'pressed' | 'success-fg' | 'warning-fg' | 'error-fg' | 'info-bg' | 'info-border' | 'warning-bg' | 'warning-border' | 'error-bg' | 'error-border' | 'success-bg' | 'success-border' | 'error-control' | 'error-control-inactive' | 'warning-control' | 'warning-control-inactive' | 'progress-track' | 'chart-purple' | 'chart-teal' | 'syntax-keyword' | 'syntax-string' | 'syntax-number' | 'syntax-comment' | 'syntax-function' | 'syntax-key' | 'syntax-type' | 'syntax-variable' | 'syntax-annotation' | 'syntax-operator' | 'icon-info' | 'icon-success' | 'icon-warning' | 'icon-warning-mark' | 'icon-error' | 'icon-chevron' | 'icon-help' | 'brand-orange' | 'brand-green' | 'brand-blue' | 'brand-purple' | 'brand-pink' | 'brand-red' | 'brand-teal';
 
 // @public
+export const compactAge: AgeFormatter;
+
+// @public
 export type DataAttributes = Readonly<Record<`data-${string}`, string | number | boolean | undefined>>;
+
+// @public
+export function DataTable<TRow>(input: DataTableProps<TRow>): JSX.Element;
+
+// @public
+export type DataTableAlign = 'start' | 'end';
+
+// @public
+export type DataTableColumn<TRow> = {
+    readonly id: string;
+    readonly header: string;
+    readonly fit: DataTableFit;
+    readonly width?: number | undefined;
+    readonly align?: DataTableAlign | undefined;
+    readonly lead?: number | undefined;
+    readonly trail?: number | undefined;
+    readonly cell: (row: TRow) => ReactNode;
+    readonly sortKey?: ((row: TRow) => string | number | undefined) | undefined;
+    readonly sortKind?: DataTableSortKind | undefined;
+    readonly text?: ((row: TRow) => string | readonly TextRun[]) | undefined;
+    readonly keepEnd?: ((row: TRow) => number) | undefined;
+};
+
+// @public (undocumented)
+export type DataTableDirection = 'ascending' | 'descending';
+
+// @public
+export type DataTableFit = 'fixed' | 'flex' | 'id';
+
+// @public (undocumented)
+export type DataTableProps<TRow> = {
+    readonly label: string;
+    readonly rows: readonly TRow[];
+    readonly getRowKey: (row: TRow) => string;
+    readonly columns: ReadonlyArray<DataTableColumn<TRow>>;
+    readonly lines?: 1 | 2 | undefined;
+    readonly sort?: DataTableSort | undefined;
+    readonly onSortChange?: ((sort: DataTableSort) => void) | undefined;
+    readonly selection?: DataTableSelection<TRow> | undefined;
+    readonly onRowActivate?: ((row: TRow, event: MouseEvent_2<HTMLElement>) => void) | undefined;
+    readonly rowsAreImmutable?: boolean | undefined;
+    readonly maxHeight?: number | undefined;
+} & DataAttributes;
+
+// @public
+export type DataTableSelection<TRow> = {
+    readonly selected: ReadonlySet<string>;
+    readonly onToggle: (row: TRow) => void;
+    readonly label: (row: TRow) => string;
+    readonly all?: {
+        readonly state: boolean | 'mixed';
+        readonly label: string;
+        readonly onToggle: () => void;
+    } | undefined;
+};
+
+// @public
+export type DataTableSort = {
+    readonly column: string;
+    readonly direction: DataTableDirection;
+};
+
+// @public
+export type DataTableSortKind = 'text' | 'number';
 
 // @public (undocumented)
 export const DEFAULT_DENSITY: Density;
@@ -132,6 +211,12 @@ export type TextProps = {
     readonly children?: ReactNode;
 } & DataAttributes;
 
+// @public
+export type TextRun = {
+    readonly text: string;
+    readonly font?: FitFont | undefined;
+};
+
 // @public (undocumented)
 export type TextSize = '80' | '90' | '100' | '110' | '125';
 
@@ -215,8 +300,15 @@ export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features'
 // @public
 export function tokenVar<Name extends TokenName>(name: Name): `var(${Name})`;
 
+// @public
+export function useAge(value: string | number | Date | null | undefined, formatter: AgeFormatter): string;
+
 // @public (undocumented)
 export function useTheme(): ThemeState;
+
+// Warnings were encountered during analysis:
+//
+// dist/components/TableFit/sample.d.ts:12:5 - (ae-forgotten-export) The symbol "FitFont" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -26,3 +26,17 @@ export type {
   ThemeSummary,
   TokenName,
 } from './generated/tokenNames';
+export { DataTable } from './components/DataTable';
+export type {
+  DataTableAlign,
+  DataTableColumn,
+  DataTableDirection,
+  DataTableFit,
+  DataTableProps,
+  DataTableSelection,
+  DataTableSort,
+  DataTableSortKind,
+  TextRun,
+} from './components/DataTable';
+export { ageTip, compactAge, useAge } from './table/age';
+export type { AgeFormatter, AgeLabel } from './table/age';
