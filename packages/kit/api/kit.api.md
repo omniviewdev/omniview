@@ -28,6 +28,21 @@ export const DENSITIES: readonly ["comfortable", "compact"];
 // @public (undocumented)
 export type Density = 'comfortable' | 'compact';
 
+// @public
+export function Icon(input: IconProps): JSX.Element;
+
+// @public
+export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+
+// @public (undocumented)
+export type IconProps = {
+    readonly name: IconName;
+    readonly size?: IconSize | undefined;
+} & DataAttributes;
+
+// @public
+export type IconSize = 12 | 16;
+
 // @public (undocumented)
 export type RadiusRole = 'mark' | 'control' | 'tab' | 'popup' | 'island';
 

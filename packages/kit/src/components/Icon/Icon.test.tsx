@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as examples from './Icon.examples';
 import { GLYPHS, type IconName } from './glyphs';
-import { Icon } from './Icon';
+import { Icon, type IconProps } from './Icon';
 
 const names = Object.keys(GLYPHS) as IconName[];
 
@@ -89,29 +89,32 @@ describe('Icon', () => {
   });
 
   it('has closed props: a glyph of the registry, a size of the scale, no className, no style', () => {
-    render(<Icon name="refresh" />);
+    // Types only: a glyph that is not in the registry has nothing to draw, so these are never rendered.
+    const accepted: IconProps[] = [{ name: 'refresh' }, { name: 'refresh', size: 12 }, { name: 'refresh', 'data-testid': 'probe' }];
     // @ts-expect-error a name outside the registry
-    render(<Icon name="rocket" />);
+    const unknownName: IconProps = { name: 'rocket' };
     // @ts-expect-error a size outside the scale
-    render(<Icon name="refresh" size={20} />);
+    const unknownSize: IconProps = { name: 'refresh', size: 20 };
     // @ts-expect-error className is not a prop of a kit part
-    render(<Icon name="refresh" className="x" />);
+    const withClass: IconProps = { name: 'refresh', className: 'x' };
     // @ts-expect-error style is not a prop of a kit part
-    render(<Icon name="refresh" style={{ color: 'red' }} />);
+    const withStyle: IconProps = { name: 'refresh', style: { color: 'red' } };
     // @ts-expect-error a glyph needs a name
-    render(<Icon />);
+    const nameless: IconProps = {};
+    expect([accepted, unknownName, unknownSize, withClass, withStyle, nameless]).toHaveLength(6);
   });
 
   it('writes nothing to the document root', () => {
     const root = document.documentElement;
-    const before = root.outerHTML;
+    const before = root.getAttribute('style');
     const records: MutationRecord[] = [];
     const observer = new MutationObserver((list) => records.push(...list));
-    observer.observe(root, { attributes: true, subtree: false });
+    observer.observe(root, { attributes: true });
     render(<Icon name="refresh" />);
     observer.disconnect();
     expect(records).toEqual([]);
-    expect(root.outerHTML).toBe(before);
+    expect(root.getAttribute('style')).toBe(before);
+    expect([...root.style].filter((property) => property.startsWith('--'))).toEqual([]);
   });
 
   it('has a stylesheet rule for each size, each role a glyph paints with, and no pointer events', async () => {

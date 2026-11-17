@@ -1,0 +1,50 @@
+@layer ov.components {
+  /* A glyph is decorative and never the pointer's target: the control or the text around it is. Its colour is the text colour of its
+     context (ink is currentColor); a control that wants the icon role sets `color` on the svg, as Button does. */
+  .root {
+    display: inline-block;
+    flex-shrink: 0;
+    vertical-align: middle;
+    pointer-events: none;
+  }
+
+  .root[data-ov-size='12'] {
+    width: 12px;
+    height: 12px;
+  }
+
+  .root[data-ov-size='16'] {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* The paints the artwork pins to a theme role: the chevron grey and the status colours (design 11 palette policy). A literal
+     colour of the artwork is a presentation attribute; ink is currentColor. */
+  .root path[data-ov-fill='success'] {
+    fill: var(--ov-icon-success);
+  }
+
+  .root path[data-ov-fill='error'] {
+    fill: var(--ov-icon-error);
+  }
+
+  .root path[data-ov-fill='info'] {
+    fill: var(--ov-icon-info);
+  }
+
+  .root path[data-ov-fill='warning'] {
+    fill: var(--ov-icon-warning);
+  }
+
+  .root path[data-ov-fill='warning-mark'] {
+    fill: var(--ov-icon-warning-mark);
+  }
+
+  .root path[data-ov-stroke='chevron'] {
+    stroke: var(--ov-icon-chevron);
+  }
+
+  .root path[data-ov-stroke='success'] {
+    stroke: var(--ov-icon-success);
+  }
+}
