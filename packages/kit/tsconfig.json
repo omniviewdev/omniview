@@ -22,7 +22,8 @@
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "@omniviewdev/kit": ["./src/index.ts"] }
   },
   "include": ["src", "tokens", "scripts", "vite.config.ts"]
 }

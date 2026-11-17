@@ -16,6 +16,17 @@ describe('ui-next App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Omniview ui-next' })).toBeInTheDocument();
   });
 
+  it('draws its three controls with the kit Button and shows the parts examples under them', () => {
+    render(<App />);
+
+    for (const name of ['Next theme', 'Next density', 'Next text size']) {
+      expect(screen.getByRole('button', { name })).toHaveProperty('dataset.ovVariant', 'secondary');
+    }
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Parts' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Button' })).toBeInTheDocument();
+  });
+
   it('applies the default theme, density and text size to the document through the kit', () => {
     render(<App />);
 

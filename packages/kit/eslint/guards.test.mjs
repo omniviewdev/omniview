@@ -110,7 +110,7 @@ describe('a kit part is closed', () => {
   });
 });
 
-describe('the kit knows nothing of the host, and the host uses the kit by its two entries', () => {
+describe('the kit knows nothing of the host, and the host uses the kit by its entries', () => {
   it('the kit cannot import the runtime, the backend bindings or the host trees', async () => {
     for (const specifier of ['@omniviewdev/runtime', '@omniviewdev/runtime/api', '@wailsio/runtime']) {
       expect(await rulesFired(`import * as host from '${specifier}'; export { host };`, 'packages/kit/src/Probe.tsx'), specifier).toContain(
@@ -122,5 +122,49 @@ describe('the kit knows nothing of the host, and the host uses the kit by its tw
   it('ui-next cannot reach into the kit', async () => {
     expect(await rulesFired("import { tokenVar } from '@omniviewdev/kit/src/theme/tokenVar'; export { tokenVar };", 'ui-next/Probe.tsx')).toContain('no-restricted-imports');
     expect(await rulesFired("import { tokenVar } from '../packages/kit/src/theme/tokenVar'; export { tokenVar };", 'ui-next/Probe.tsx')).toContain('no-restricted-imports');
+  });
+});
+
+describe('the examples entry is for the parts page, the workshop and the kit tests, and for nothing else', () => {
+  const examples = "import { examples } from '@omniviewdev/kit/examples'; export { examples };";
+
+  it('the parts page may import it', async () => {
+    expect(await rulesFired(examples, 'ui-next/parts/PartsPage.tsx')).toEqual([]);
+    expect(await rulesFired(examples, 'ui-next/parts/nested/Probe.tsx')).toEqual([]);
+  });
+
+  it('no other file of ui-next may import it', async () => {
+    for (const file of ['ui-next/Probe.tsx', 'ui-next/App.tsx', 'ui-next/pods/Probe.tsx', 'ui-next/k8s/Probe.ts', 'ui-next/shell/Probe.tsx']) {
+      expect(await rulesFired(examples, file), file).toContain('no-restricted-imports');
+    }
+  });
+
+  it('the parts page still cannot reach into the kit or use the previous libraries', async () => {
+    expect(await rulesFired("import { tokenVar } from '@omniviewdev/kit/src/theme/tokenVar'; export { tokenVar };", 'ui-next/parts/Probe.tsx')).toContain('no-restricted-imports');
+    expect(await rulesFired("import * as old from '@omniviewdev/base-ui'; export { old };", 'ui-next/parts/Probe.tsx')).toContain('no-restricted-imports');
+  });
+
+  it('no product code of the kit may import an examples file or the entry', async () => {
+    for (const code of [
+      "import { Primary } from './Button.examples'; export { Primary };",
+      "import * as all from './components/Button/Button.examples'; export { all };",
+      "import { examples } from './examples'; export { examples };",
+      "import { examples } from '@omniviewdev/kit/examples'; export { examples };",
+    ]) {
+      for (const file of ['packages/kit/src/components/Button/Button.tsx', 'packages/kit/src/index.ts', 'packages/kit/src/shared/Probe.ts']) {
+        expect(await rulesFired(code, file), `${code} in ${file}`).toContain('no-restricted-imports');
+      }
+    }
+  });
+
+  it('the entry file collects the examples files, and an examples file is a consumer of the kit', async () => {
+    expect(await rulesFired("import * as buttons from './components/Button/Button.examples'; export const examples = { buttons };", 'packages/kit/src/examples.ts')).toEqual([]);
+    expect(await rulesFired("import { Button } from '@omniviewdev/kit'; export const Primary = () => <Button>Create</Button>;", 'packages/kit/src/components/Button/Button.examples.tsx')).toEqual([]);
+    expect(await rulesFired("import { Button } from '@omniviewdev/kit'; export const A = () => <Button className=\"x\">a</Button>;", 'packages/kit/src/components/Button/Button.examples.tsx')).toContain('kit/no-restyle');
+    expect(await rulesFired("import * as old from '@omniviewdev/base-ui'; export { old };", 'packages/kit/src/components/Button/Button.examples.tsx')).toContain('no-restricted-imports');
+  });
+
+  it('tests may import examples', async () => {
+    expect(await rulesFired("import * as all from './Button.examples'; export { all };", 'packages/kit/src/components/Button/Button.test.tsx')).toEqual([]);
   });
 });

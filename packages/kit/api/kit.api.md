@@ -5,7 +5,32 @@
 ```ts
 
 import { JSX } from 'react';
+import type { MouseEvent as MouseEvent_2 } from 'react';
 import { ReactNode } from 'react';
+
+// @public
+export function Button(input: ButtonProps): JSX.Element;
+
+// @public (undocumented)
+export type ButtonProps = {
+    readonly children: string;
+    readonly variant?: ButtonVariant | undefined;
+    readonly tone?: ButtonTone | undefined;
+    readonly size?: ButtonSize | undefined;
+    readonly icon?: IconName | undefined;
+    readonly busy?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+    readonly onClick?: ((event: MouseEvent_2<HTMLButtonElement>) => void) | undefined;
+} & DataAttributes;
+
+// @public
+export type ButtonSize = 'standard' | 'compact' | 'row';
+
+// @public
+export type ButtonTone = 'neutral' | 'danger';
+
+// @public
+export type ButtonVariant = 'secondary' | 'primary' | 'ghost';
 
 // @public (undocumented)
 export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 'bg-inline' | 'bg-popup' | 'bg-feedback' | 'fg' | 'fg-muted' | 'fg-secondary' | 'fg-disabled' | 'fg-editor' | 'fg-over-accent' | 'fg-on-data' | 'icon' | 'icon-disabled' | 'icon-active' | 'border-subtle' | 'border-popup' | 'border-control' | 'border-disabled' | 'border-raised' | 'accent' | 'link' | 'selection-active' | 'selection-inactive' | 'tab-bg' | 'tab-border' | 'tab-inactive-bg' | 'tab-inactive-border' | 'segment-bg' | 'segment-border' | 'segment-focused-bg' | 'hover-row' | 'hover-toolbar' | 'pressed' | 'success-fg' | 'warning-fg' | 'error-fg' | 'info-bg' | 'info-border' | 'warning-bg' | 'warning-border' | 'error-bg' | 'error-border' | 'success-bg' | 'success-border' | 'error-control' | 'error-control-inactive' | 'warning-control' | 'warning-control-inactive' | 'progress-track' | 'chart-purple' | 'chart-teal' | 'syntax-keyword' | 'syntax-string' | 'syntax-number' | 'syntax-comment' | 'syntax-function' | 'syntax-key' | 'syntax-type' | 'syntax-variable' | 'syntax-annotation' | 'syntax-operator' | 'icon-info' | 'icon-success' | 'icon-warning' | 'icon-warning-mark' | 'icon-error' | 'icon-chevron' | 'icon-help' | 'brand-orange' | 'brand-green' | 'brand-blue' | 'brand-purple' | 'brand-pink' | 'brand-red' | 'brand-teal';
@@ -27,6 +52,39 @@ export const DENSITIES: readonly ["comfortable", "compact"];
 
 // @public (undocumented)
 export type Density = 'comfortable' | 'compact';
+
+// @public
+export function Icon(input: IconProps): JSX.Element;
+
+// @public
+export function IconButton(input: IconButtonProps): JSX.Element;
+
+// @public (undocumented)
+export type IconButtonProps = {
+    readonly icon: IconName;
+    readonly label: string;
+    readonly variant?: ButtonVariant | undefined;
+    readonly tone?: ButtonTone | undefined;
+    readonly size?: IconButtonSize | undefined;
+    readonly busy?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+    readonly onClick?: ((event: MouseEvent_2<HTMLButtonElement>) => void) | undefined;
+} & DataAttributes;
+
+// @public
+export type IconButtonSize = 'standard' | 'row';
+
+// @public
+export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+
+// @public (undocumented)
+export type IconProps = {
+    readonly name: IconName;
+    readonly size?: IconSize | undefined;
+} & DataAttributes;
+
+// @public
+export type IconSize = 12 | 16;
 
 // @public (undocumented)
 export type RadiusRole = 'mark' | 'control' | 'tab' | 'popup' | 'island';

@@ -16,7 +16,7 @@ Progress is counted in slices that run on real data in the real host (first: the
 
 | Path | What |
 |---|---|
-| `ui-next/` | New shell: `index.html`, `main.tsx`, `App.tsx` (a themed frame built from the kit), `global.css` (the host's document reset, layer `ov.reset`), `App.module.css` (the frame, layer `ov.shell`). |
+| `ui-next/` | New shell: `index.html`, `main.tsx`, `App.tsx` (a themed frame built from the kit), `global.css` (the host's document reset, layer `ov.reset`), `App.module.css` (the frame, layer `ov.shell`), `parts/PartsPage.tsx` (every kit part in every state it has an example for, mounted on the frame). |
 | `packages/kit/` | New library `@omniviewdev/kit` (row N11a): token manifest and generator, nine themes, theme provider, `Text` and `Stack`, the guards, the API report. See "The kit" below. |
 | `ui/` | Old shell. Fixes only after the calibration gate. Never imported from the new tree. |
 | `docs/ui-next/` | `AGENTS.md` (this file), `TRACKER.md` (rows, PRs, log: source of truth), `decisions.md` (R1–R20, owner decisions), `channels.md` (release-channel guide), `status/` (one file per in-flight row), `baseline/` (numbers, rows N8 and N12). |
@@ -40,8 +40,9 @@ OMNIVIEW_UI=next OMNIVIEW_BUILD_OUTPUT_DIRECTORY=/tmp/ui-next-dist pnpm exec vit
 # the kit (packages/kit); ui-next consumes its dist/, so rebuild it after a change
 pnpm --filter @omniviewdev/kit run build                # generate, vite build, declarations, dist check (1 s); `OMNIVIEW_UI=next task common:build:frontend` runs it itself
 pnpm --filter @omniviewdev/kit run generate             # after editing tokens/manifest.ts or tokens/themes.ts; commit src/generated/*
-pnpm --filter @omniviewdev/kit run api:update           # after changing src/index.ts; commit api/kit.api.md
+pnpm --filter @omniviewdev/kit run api:update           # after changing src/index.ts or src/examples.ts; commit api/kit.api.md and api/kit-examples.api.md
 pnpm --filter @omniviewdev/kit run verify               # generate:check, tsc, stylelint, tests, build, API report (3 s)
+node packages/kit/probes/kit-probe.mjs                  # the parts against the mock in WebKit and Chromium at both viewports (builds ui-next, serves it; needs Playwright browsers; run by hand, CI does not)
 
 # run the new tree
 OMNIVIEW_UI=next pnpm dev                   # Vite only: http://127.0.0.1:9245/ (strict port); no Go host, no Wails runtime, no plugins
@@ -90,6 +91,7 @@ Not verified: `OMNIVIEW_UI=next task dev` (the managed dev workspace, `docs/deve
 - **Tokens.** One manifest (`packages/kit/tokens/manifest.ts`, `themes.ts`: 78 colour roles x 9 themes, the closed scales) generates `src/generated/tokens.css` and `tokenNames.ts`; both are committed and CI fails when they are stale. Names: colours `--ov-<mock role>` (`--int-bg-island` is `--ov-bg-island`), spacing `--ov-spacing-<px>` (never `--ov-space-N`: the old library used that with other values), radii `--ov-radius-<role>`, type `--ov-fs-N` and `--ov-lh-N`. TypeScript refers to a token only through `tokenVar('--ov-…')`, which type-checks the name. Theme ids are the nine the host persists (`high-contrast-dark`, not the mock's `hc-dark`).
 - **Layers**, declared once in `src/styles/layers.css`: `ov.tokens, ov.reset, ov.base, ov.plugin, ov.components, ov.shell`. Kit parts write `ov.components`; the host entry writes `ov.reset` and `ov.shell`; plugin CSS belongs in `ov.plugin`, below the components. Every rule sits in a layer; `scripts/check-dist.ts` fails the kit build otherwise.
 - **A part** has closed props: variants and typed layout props become `data-ov-*` attributes that its CSS Module reads, `data-*` is the only pass-through, no `className`, no `style`. The public surface is `src/index.ts`; its report is `api/kit.api.md` (CI fails when they differ).
+- **Examples (interim rule).** Every new kit part ships with a typed example file, `<Part>.examples.tsx`: named examples covering its states, each a component without props written as a consumer writes it (imports from `@omniviewdev/kit`, never a relative path). `src/examples.ts` collects them (one line per part) and the build emits them as a separate entry, `@omniviewdev/kit/examples`: development and documentation only. It is never in the root entry or its API report (the root entry is the plugin-facing API, shared with plugins as a singleton at run time), it is on no plugin shared-module list, and only `ui-next/parts/**`, the kit's tests and the future workshop may import it (a lint rule, proven by a probe in `packages/kit/eslint/guards.test.mjs`; its own report is `api/kit-examples.api.md`). The `ui-next` parts page renders every example of the entry, the part's tests use them (its a11y matrix has one row per example), and the workshop and docs site (tracker row N20) are generated from these files.
 - **Guards**, each with negative-control tests: ESLint rules in `packages/kit/eslint` (wired in `eslint.config.cjs`: no static inline `style`, closed props, no old UI library, no `setProperty` or root style write, tokens named through `tokenVar`), stylelint in `packages/kit/stylelint.config.mjs` (closed scales, no hex, an undefined token is an error), the dist check, the API report. Change a rule together with its test.
 - **Not built yet:** font delivery (the frame uses the system font), a first-paint theme script, motion, shadows, z-index, a watch loop for the kit.
 

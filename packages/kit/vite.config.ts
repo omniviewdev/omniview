@@ -23,14 +23,17 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     lib: {
-      entry: path.join(root, 'src/entry.ts'),
+      // Two scripts and one stylesheet. `index` is the plugin-facing API; `examples` is for the parts page, the tests and the
+      // workshop and is never shared with plugins (see src/examples.ts).
+      entry: { index: path.join(root, 'src/entry.ts'), examples: path.join(root, 'src/examples.ts') },
       formats: ['es'],
-      fileName: 'index',
+      fileName: (_format, name) => `${name}.js`,
       cssFileName: 'styles',
     },
     rolldownOptions: {
-      // React is the host's: a plugin and the host must render with one copy.
-      external: ['react', 'react/jsx-runtime', 'react/compiler-runtime'],
+      // React is the host's: a plugin and the host must render with one copy. The examples are written as a consumer writes
+      // them, from "@omniviewdev/kit", and stay external so they render the same parts as the root entry.
+      external: ['react', 'react/jsx-runtime', 'react/compiler-runtime', '@omniviewdev/kit'],
     },
     // The host minifies; the package stays readable and diffable. No source maps ship (strategy P2 D2.2).
     minify: false,
@@ -38,6 +41,8 @@ export default defineConfig({
     sourcemap: false,
   },
   test: {
+    // The examples import the kit by its public name; under test that name is the source entry.
+    alias: { '@omniviewdev/kit': path.join(root, 'src/index.ts') },
     fsModuleCachePath: testCaches.fsModuleCachePath,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
