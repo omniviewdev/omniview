@@ -1,0 +1,331 @@
+@layer ov.components {
+  /* The page header (design 12 PH1 to PH3; the mock's `.page-header`): a breadcrumb, the title row, and the identity line, 8 px apart, with no margin of its
+     own (the view that holds it owns the 12 px under it). It is its own container: where the commands sit and how wide the operation slot is are
+     decided by the width of the page the header fills, not by the window. Measured on the mock: breadcrumb 16, 8, title 28, 4, identity line 28. */
+  .root {
+    display: grid;
+    box-sizing: border-box;
+    gap: var(--ov-spacing-8);
+    container-type: inline-size;
+    min-width: 0;
+    margin: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The breadcrumb: the back path, 12/16 muted, 16 px high. A link is a native button in the link colour. */
+  .crumbs {
+    min-width: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .crumbList {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .crumb > svg {
+    flex: none;
+  }
+
+  .crumbLink {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ov-link);
+    cursor: pointer;
+    font: inherit;
+    letter-spacing: normal;
+    text-align: start;
+  }
+
+  .crumbLink:hover {
+    text-decoration: underline;
+  }
+
+  .crumbLink:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  /* The title row: [tile] title [commands]. The tile, when there is one, is the first column; an operation slot with no identity line to live in is a column of
+     its own, no wide at rest, between the title and the commands. */
+  .row {
+    --_op-size: 360px;
+
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: var(--ov-spacing-12);
+    row-gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .row[data-ov-tile] {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .row[data-ov-slot-row] {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .row[data-ov-tile][data-ov-slot-row] {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  @container (width >= 1000px) {
+    .row {
+      --_op-size: 480px;
+    }
+  }
+
+  .row > [data-ov-header-tile] {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    margin-block-start: var(--ov-spacing-4);
+  }
+
+  /* The title: 18/24 semibold with 2 px above and below, one line, an ellipsis (the full name is the tip's while it is cut). */
+  .title {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    margin: 0;
+    padding-block: var(--ov-spacing-2);
+    overflow: hidden;
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-18);
+    font-weight: 600;
+    line-height: var(--ov-lh-24);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .row[data-ov-tile] .title {
+    grid-column: 2;
+  }
+
+  .subtitle {
+    color: var(--ov-fg-muted);
+    font-size: inherit;
+    font-weight: 400;
+  }
+
+  /* The identity line is ONE 28 px line, whatever it holds: it never wraps, so a state that gets wider, a reason or an operation that appears moves
+     nothing below it. What does not fit ends in an ellipsis. */
+  .meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* A line with no state chip, no Copy button and no operation slot (a flow's step line) is plain text: 16 px. */
+  .meta[data-ov-line='plain'] {
+    min-height: var(--ov-lh-16);
+  }
+
+  .row[data-ov-tile] .meta {
+    grid-column: 2 / -1;
+  }
+
+  /* The lifecycle state, first (PH3): the glyph and the word of its role, in the 24 px chip of the mock's header variant. */
+  .state {
+    display: inline-flex;
+    flex: none;
+    box-sizing: border-box;
+    align-items: center;
+    min-height: 24px;
+    padding: var(--ov-spacing-2) var(--ov-spacing-6);
+    border: 1px solid var(--ov-border-subtle);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The facts keep their size; only the last one gives way (its text ends in an ellipsis, a Copy button beside it stays whole). A separator belongs to
+     the fact it leads, so it is never left behind. */
+  .facts {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    min-width: 0;
+    overflow: clip;
+    overflow-clip-margin: 4px;
+  }
+
+  .fact {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .fact:last-child {
+    flex: 0 1 auto;
+  }
+
+  .fact + .fact::before {
+    content: '·';
+    content: '·' / '';
+    margin-inline: var(--ov-spacing-8) var(--ov-spacing-4);
+    color: var(--ov-fg-secondary);
+  }
+
+  .fact[data-ov-mono] {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .factText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .note {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The first reason a command cannot be used, written where it is read (14 P2): at the end of the line, giving way before the facts do. */
+  .reason {
+    flex: 0 4 auto;
+    min-width: 0;
+    margin-inline-start: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The commands: primary, secondaries, danger, utility, overflow, 8 px apart, at the end of the title row. They wrap before they overflow. */
+  .commands {
+    grid-column: -2 / -1;
+    grid-row: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  /* The operation slot is the last cell of the last line of the header (the identity line, else the title row) and takes no room at rest: no width and
+     no line of its own, so a header with no operation shows no gap. While an operation shows it is 360 px wide, 480 px from 1000 px of page width, at the
+     trailing edge of the line, and the line stays one 28 px line: starting, finishing, failing, retrying or clearing an operation moves nothing below. */
+  .slot {
+    flex: 0 0 0px;
+    inline-size: 0;
+    min-inline-size: 0;
+    min-block-size: var(--ov-control-height);
+    margin-inline-start: auto;
+    overflow: hidden;
+  }
+
+  .reason + .slot {
+    margin-inline-start: 0;
+  }
+
+  .slot[data-ov-open] {
+    flex: 0 1 var(--_op-size);
+    inline-size: auto;
+    min-inline-size: min(240px, 100%);
+    overflow: visible;
+  }
+
+  .row[data-ov-slot-row] > .slot {
+    grid-row: 1;
+    grid-column: -3 / -2;
+    align-self: start;
+    justify-self: end;
+    margin-inline-start: 0;
+  }
+
+  .row[data-ov-slot-row] > .slot[data-ov-open] {
+    inline-size: min(var(--_op-size), 50cqi);
+    min-inline-size: 0;
+  }
+
+  /* Below 1000 px of page width the line has no room for the facts and a presenter together (a failure sentence of two lines and its Retry need about
+     490 px, and the facts keep what is left): while an operation shows, it takes the place of the facts and the reason (the state chip stays) and fills
+     the rest of the line, so its sentence has room to read; when it is gone the facts are back. The line is the same 28 px either way. */
+  @container (width < 1000px) {
+    .meta[data-ov-op] > .facts,
+    .meta[data-ov-op] > .reason {
+      display: none;
+    }
+
+    .meta > .slot[data-ov-open] {
+      flex: 1 1 0px;
+      min-inline-size: 0;
+      margin-inline-start: 0;
+    }
+  }
+
+  /* Below 800 px of page width a lane of four or more controls drops under the identity line and starts at the page edge (a long title keeps its room). A
+     lane and a title that fit one row of 700 px (`beside`, decided from the labels) stay together down to 700 px, so a short name at 707 px (a 1030 px
+     window) keeps its commands beside it. A short lane (three controls at most) stays on the title row until 520 px. */
+  @container (width < 800px) {
+    .root[data-ov-lane='default'] .commands {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      justify-content: flex-start;
+      margin-block-start: var(--ov-spacing-4);
+    }
+  }
+
+  @container (width < 700px) {
+    .root[data-ov-lane='beside'] .commands {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      justify-content: flex-start;
+      margin-block-start: var(--ov-spacing-4);
+    }
+  }
+
+  @container (width < 520px) {
+    .root[data-ov-lane='short'] .commands {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      justify-content: flex-start;
+      margin-block-start: var(--ov-spacing-4);
+    }
+  }
+}

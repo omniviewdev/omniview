@@ -1,0 +1,35 @@
+/* The pane an example of the view stands in. The view fills its parent, so each example gives it the room a page would: a fixed height here, the
+   island's in the application. This is a consumer's own CSS Module, which is how a consumer lays a part out (the kit's parts have no `className`). */
+@layer ov.plugin {
+  .pane {
+    box-sizing: border-box;
+    width: 100%;
+    height: 480px;
+    min-width: 0;
+    padding: var(--ov-spacing-12) var(--ov-spacing-12) 0;
+    background-color: var(--ov-bg-island);
+  }
+
+  .cell {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  .lines {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .group {
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

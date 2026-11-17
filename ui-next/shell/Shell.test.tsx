@@ -100,6 +100,26 @@ describe('the page region', () => {
     renderShell();
     expect(screen.getByRole('tabpanel')).toHaveProperty('tabIndex', 0);
   });
+
+  it('is the document layout unless the registration says otherwise', () => {
+    renderShell();
+    const panel = screen.getByRole('tabpanel');
+    expect(panel).toHaveAttribute('data-layout', 'document');
+    expect(panel.firstElementChild).toHaveAttribute('data-layout', 'document');
+  });
+
+  it('is a bounded pane when the page owns its scrolling (a collection view): the shell scrolls nothing, so the page has no tab stop of its own', () => {
+    renderShell({ ...registration, layout: 'pane' });
+    const panel = screen.getByRole('tabpanel');
+    expect(panel).toHaveAttribute('data-layout', 'pane');
+    expect(panel.firstElementChild).toHaveAttribute('data-layout', 'pane');
+    expect(panel).not.toHaveAttribute('tabindex');
+  });
+
+  it('still hosts the page, whatever its layout', () => {
+    renderShell({ ...registration, layout: 'pane' });
+    expect(within(screen.getByRole('tabpanel', { name: 'Widgets' })).getByRole('button', { name: 'Inside the page' })).toBeInTheDocument();
+  });
 });
 
 describe('the one tab', () => {

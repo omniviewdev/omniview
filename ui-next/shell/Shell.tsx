@@ -21,7 +21,7 @@ export type ShellProps = {
  * sized by CSS alone, so nothing measures and nothing shifts. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
 export function Shell({ registration, children }: ShellProps) {
-  const { plugin, tab, path, rail, sidebar, scope } = registration;
+  const { plugin, tab, path, rail, sidebar, scope, layout = 'document' } = registration;
   const ids = useId();
   const tabId = `${ids}-tab`;
   const panelId = `${ids}-panel`;
@@ -36,9 +36,12 @@ export function Shell({ registration, children }: ShellProps) {
         {sidebar === undefined ? null : <Sidebar sidebar={sidebar} />}
         <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
           {scope === undefined || scope.length === 0 ? null : <ScopeLane label={`${plugin.name} scope`} faces={scope} />}
-          {/* A tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text scrolls from the keyboard. */}
-          <div id={panelId} className={styles.page} role="tabpanel" tabIndex={0} aria-labelledby={tabId} data-shell-part="page">
-            <div className={styles.content}>{children}</div>
+          {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text
+              scrolls from the keyboard. A pane scrolls nothing here: its own region is the stop. */}
+          <div id={panelId} className={styles.page} role="tabpanel" tabIndex={layout === 'pane' ? undefined : 0} aria-labelledby={tabId} data-shell-part="page" data-layout={layout}>
+            <div className={styles.content} data-layout={layout}>
+              {children}
+            </div>
           </div>
         </main>
       </div>

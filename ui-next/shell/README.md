@@ -36,7 +36,7 @@ Every region is a landmark with a name, in reading order. `F6` and `Shift+F6` vi
 | Sidebar | `nav` | `sidebar.label` | the tree's tab stop | 45, 40, 244 x 823 |
 | Page island | `main` | `<plugin> workspace` | the island | 294, 40, 1141 x 823 |
 | Scope lane | `div role=group` | `<plugin> scope` | no (Shift+Tab from the page) | 294, 40, 1141 x 40 |
-| Page | `div role=tabpanel`, the page's scroll owner, a tab stop | the tab | | 294, 80, 1141 x 783 |
+| Page | `div role=tabpanel`; the page's scroll owner and a tab stop in the `document` layout, a bounded pane that scrolls nothing in the `pane` layout | the tab | | 294, 80, 1141 x 783 |
 | Status bar | `footer` | Status bar | no (a path of text) | 0, 868, 1440 x 32 |
 
 The window is a grid (5 px gutters; the top row 40, the frame, a 5 px gutter where the panel's handle will sit, the status bar 32). Every region is drawn in the first commit and sized by CSS alone: nothing measures, nothing is positioned by script.
@@ -51,7 +51,7 @@ The window is a grid (5 px gutters; the top row 40, the frame, a 5 px gutter whe
 2. **The top row keeps its leading 156 px**: the safe area (84, for the OS window controls; a browser draws an inert stand-in), then the room Back and Forward take later (64 and an 8 px gap). The tab sits at 156 as in the mock. The stand-in dots are drawn in every build; the native pass decides how the real controls replace them (the mock hides them with `data-native`).
 3. **The scope faces are text, with no chevron**: a chevron promises a menu, and the menus are tier C. A face keeps the mock's box, so glyph and label sit where the mock's do; its width is 16 px less (the chevron and its 4 px gap).
 4. **Choosing a tree entry does nothing**: with one tab and no navigation, the entry on screen is the current page. A group opens and closes.
-5. **The page's scroll owner is the `document` layout only** (ch16 S15, the mock's `#mainscroll`): a vertical scrollbar lane is always there. A page that owns its scrolling (the mock's `data-layout="pane"`, which `DataView` needs) arrives with the first such page, because its bottom inset depends on the footer it draws.
+5. **The page's scroll owner is the `document` layout by default** (ch16 S15, the mock's `#mainscroll`): a vertical scrollbar lane is always there. A page that owns its scrolling declares `layout: 'pane'` in its registration (the mock's `data-layout="pane"`; step 1a.6, for the collection view): the shell scrolls nothing, the content fills the island under the scope lane, its bottom inset is the page's own (a collection's footer is the last lane of the pane, ch13 G2) and the page region has no tab stop, because the pane's own scroll region is the stop. The pane is probed with the first collection page (`ui-next/page/`, not built yet: `docs/ui-next/status/1a.6.md`).
 6. **The page region is a tab stop** (the tabs pattern, and axe's `scrollable-region-focusable`): a page of text scrolls from the keyboard. The mock's `#mainscroll` has `tabindex="-1"`, which axe fails for a page of text. The extra stop is the cost for a page that has its own focusable content.
 7. **No focus ring on the island**, as in the mock (`.frame__island:focus-visible { outline: 0 }`). F6 and Escape land on it, so a keyboard user sees no ring there; the mock's choice is kept until the errata pass says otherwise.
 8. **A tree row is named by its text** ("Entry 89"), not by the mock's `aria-label` ("Entry, 89"), which fails axe's `label-content-name-mismatch` (WCAG 2.5.3).

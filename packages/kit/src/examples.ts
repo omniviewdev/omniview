@@ -25,6 +25,11 @@ import * as statusExamples from './components/Status/Status.examples';
 import * as missingValueExamples from './components/MissingValue/MissingValue.examples';
 import * as kindTileExamples from './components/KindTile/KindTile.examples';
 import * as middleEllipsisExamples from './components/MiddleEllipsis/MiddleEllipsis.examples';
+import * as collectionFooterExamples from './components/CollectionFooter/CollectionFooter.examples';
+import * as searchFieldExamples from './components/SearchField/SearchField.examples';
+import * as workspaceToolbarExamples from './components/WorkspaceToolbar/WorkspaceToolbar.examples';
+import * as pageHeaderExamples from './components/PageHeader/PageHeader.examples';
+import * as dataViewExamples from './components/DataView/DataView.examples';
 
 /** One example: a component without props that renders one state of a part. Its name is its title, its JSDoc its description. */
 export type Example = () => ReactElement;
@@ -50,4 +55,9 @@ export const examples: PartExamples = {
   MissingValue: missingValueExamples,
   KindTile: kindTileExamples,
   MiddleEllipsis: middleEllipsisExamples,
+  CollectionFooter: collectionFooterExamples,
+  SearchField: searchFieldExamples,
+  WorkspaceToolbar: workspaceToolbarExamples,
+  PageHeader: pageHeaderExamples,
+  DataView: dataViewExamples,
 };

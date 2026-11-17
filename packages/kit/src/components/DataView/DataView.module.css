@@ -1,0 +1,179 @@
+@layer ov.components {
+  /* One collection workspace (the mock's `.data-view`, design 12 section 5): the header and the footer are as tall as they are, the body takes what is
+     left. It fills its parent and shrinks inside it, so the footer is the last lane of the pane and the one scroll region is the body's table. */
+  .root {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    box-sizing: border-box;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .header {
+    min-width: 0;
+  }
+
+  /* The gaps are the view's: 12 px under the page header, 8 px under the strip, 8 px under the toolbar, as the mock's header, strip and toolbar own them. A
+     part that is not given leaves no band. */
+  .top {
+    min-width: 0;
+    padding-block-end: var(--ov-spacing-12);
+  }
+
+  .filters {
+    min-width: 0;
+    padding-block-end: var(--ov-spacing-8);
+  }
+
+  .toolbar {
+    min-width: 0;
+    padding-block-end: var(--ov-spacing-8);
+  }
+
+  /* The body holds the table, whose own region scrolls. A skeleton or a notice has no region of its own, so the body is it, and scrolls. */
+  .body {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .body[role='region'] {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .body[role='region']:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* The table's header stays over one line that says why there are no rows: the header as tall as it is, the line under it. */
+  .tableState {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* The first-load skeleton: static bars that hold the layout of what loads (no shimmer, no pulse). It appears 250 ms after it mounts, so a fast read never
+     flashes one, and at once when the person asked for less motion. */
+  .skeleton {
+    min-width: 0;
+    visibility: hidden;
+    animation: reveal 0s linear 250ms forwards;
+  }
+
+  @keyframes reveal {
+    to {
+      visibility: visible;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      visibility: visible;
+      animation: none;
+    }
+  }
+
+  .skeletonRow {
+    display: grid;
+    grid-template-columns: repeat(var(--_cols, 1), minmax(0, 1fr));
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    min-height: var(--ov-row-height);
+    padding-inline: var(--ov-spacing-12);
+  }
+
+  .skeletonRow[data-ov-head] {
+    min-height: var(--ov-table-header-height);
+    border-bottom: 1px solid var(--ov-border-subtle);
+  }
+
+  .skeletonRow > span {
+    display: block;
+    width: var(--_w, 60%);
+    height: 8px;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-progress-track);
+  }
+
+  /* The empty line (the mock's empty block): a centred column, at least 96 px high, muted, with the title in the plain colour. */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    align-self: start;
+    justify-content: center;
+    gap: var(--ov-spacing-8);
+    min-height: 96px;
+    padding: var(--ov-spacing-24) var(--ov-spacing-12);
+    color: var(--ov-fg-muted);
+    text-align: center;
+    white-space: normal;
+  }
+
+  .empty > b {
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+  }
+
+  .empty > span {
+    max-width: 64ch;
+  }
+
+  /* A failure with no rows: one notice, at the centre of a column at least 160 px high. */
+  .failure {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 160px;
+  }
+
+  .notice {
+    display: flex;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    margin: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border: 1px solid var(--ov-error-border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-error-bg);
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  .notice > svg {
+    flex: none;
+  }
+
+  .noticeBody {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+
+  .noticeBody > b {
+    font-weight: 600;
+  }
+
+  .noticeAction {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin-inline-start: auto;
+  }
+}

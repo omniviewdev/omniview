@@ -1,0 +1,77 @@
+@layer ov.components {
+  /* The footer of a collection (design 13 G1 to G5): one flex lane of 12/16 muted tabular text. Its block padding is 8 px above and below the
+     16 px line (the lane's minimum height, 33 px, is the 1 px separator and 32 px), and its inline inset is 12 px, owned once here, so the text
+     starts on the table's first-cell rail. It is the last lane of its pane: the pane adds nothing beneath it. */
+  .root {
+    display: flex;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+    min-height: 33px;
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-12);
+    border-top: 1px solid var(--ov-border-subtle);
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  /* A cluster is a run of items 12 px apart, not a dot between them (G4). The trailing one sits at the end of the lane. */
+  .cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+  }
+
+  .cluster[data-ov-cluster='end'] {
+    margin-inline-start: auto;
+  }
+
+  .count {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .note {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The quiet status of a refresh: the loader and the word, in the lane's own type. */
+  .refreshing {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .refreshing > svg {
+    flex: none;
+    color: var(--ov-icon);
+    animation: spin 1.2s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .refreshing > svg {
+      animation: none;
+    }
+  }
+}

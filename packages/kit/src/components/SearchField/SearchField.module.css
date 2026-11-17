@@ -1,0 +1,138 @@
+@layer ov.components {
+  /* The field of a toolbar (the mock's `.search`): a box that takes what the lane gives it, 220 px to start with and never under 160 px, with its
+     glyph, its clear button and its count lane drawn inside it. The lane's width grows with the text size, so the widest result still fits. */
+  .root {
+    --_lane: calc(100px * var(--ov-text-scale));
+
+    position: relative;
+    flex: 1 1 220px;
+    min-width: min(160px, 100%);
+  }
+
+  /* The search glyph: inside the start of the field, in the icon role, out of the pointer's way. */
+  .root > svg {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 9px;
+    transform: translateY(-50%);
+    color: var(--ov-icon);
+    pointer-events: none;
+  }
+
+  /* The field of the mock's `input`: the control height and edge, the inline fill, 13/16 type. The text starts after the glyph (9 px inset,
+     16 px glyph, 4 px gap) and stops before the clear button (24 px, 2 px from the edge, 2 px of air), which is reserved whether or not the
+     button is drawn, so the text never reflows when it appears. */
+  .input {
+    --_border: var(--ov-border-control);
+
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the glyph's room is the control text inset 9 px, the 16 px glyph and the 4 px gap: outside the spacing scale (design 12 section 1) */
+    padding-inline-start: 29px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the room of the 24 px clear button and its 2 px edge and air: outside the spacing scale */
+    padding-inline-end: 28px;
+    padding-block: var(--ov-spacing-4);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    appearance: none;
+  }
+
+  .input::-webkit-search-decoration,
+  .input::-webkit-search-cancel-button {
+    appearance: none;
+  }
+
+  .input::placeholder {
+    color: var(--ov-fg-muted);
+    opacity: 1;
+  }
+
+  /* The count lane takes the end of the field: the text stops where the lane starts. */
+  .root[data-ov-counted='true'] .input {
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the clear button's room, 4 px of air and the lane: a width, not a step of the spacing scale */
+    padding-inline-end: calc(28px + 4px + var(--_lane));
+  }
+
+  .input:focus-visible {
+    border-color: var(--ov-bg-island);
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 0;
+  }
+
+  .input[aria-invalid='true'] {
+    --_border: var(--ov-error-control-inactive);
+  }
+
+  .input[aria-invalid='true']:focus-visible {
+    outline-color: var(--ov-error-control);
+  }
+
+  /* The lane: a fixed width at the trailing end, inside the clear button's room, so a count that changes or goes moves nothing. */
+  .lane {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 28px;
+    box-sizing: border-box;
+    width: var(--_lane);
+    height: var(--ov-lh-16);
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-12);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--ov-lh-16);
+    text-align: end;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .input[aria-invalid='true'] ~ .lane {
+    color: var(--ov-error-fg);
+  }
+
+  /* The clear button: a 24 px square inside the end of the field, in the icon role. It is drawn only while the field holds text. */
+  .clear {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 2px;
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    width: var(--ov-row-target);
+    height: var(--ov-row-target);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-icon);
+    cursor: pointer;
+    transform: translateY(-50%);
+  }
+
+  .clear:hover {
+    background-color: var(--ov-hover-toolbar);
+    color: var(--ov-fg);
+  }
+
+  .clear:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 0;
+  }
+}
