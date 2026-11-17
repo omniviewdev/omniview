@@ -7,8 +7,7 @@ import {
   useResourceTypes,
   useResources,
 } from '@omniviewdev/runtime';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { podNames } from './podNames';
 
 const PLUGIN_ID = 'kubernetes';
@@ -67,15 +66,13 @@ function Connected() {
   return <Pods key={connection.id} connectionID={connection.id} />;
 }
 
+// The QueryClient is the host's: `ui-next/main.tsx` mounts the one the shell owns (docs/ui-next/optimisations.md RTM-14, MNR-D8).
 export function PodsSkeleton() {
-  const [client] = useState(() => new QueryClient());
   return (
-    <QueryClientProvider client={client}>
-      <ActivityProvider>
-        <Stack pad={24}>
-          <Connected />
-        </Stack>
-      </ActivityProvider>
-    </QueryClientProvider>
+    <ActivityProvider>
+      <Stack pad={24}>
+        <Connected />
+      </Stack>
+    </ActivityProvider>
   );
 }
