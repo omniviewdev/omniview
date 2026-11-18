@@ -1,5 +1,5 @@
 import { Text, useTheme } from '@omniviewdev/kit';
-import { useConnections } from '@omniviewdev/runtime/ui/v1';
+import { useConnections, useResource } from '@omniviewdev/runtime/ui/v1';
 import { useEffect, useState } from 'react';
 import type { ContributionV1, SidebarNodeV1 } from '../../contract/v1';
 import { itemPage } from './detail';
@@ -55,4 +55,4 @@ export const contributionV1 = {
 } satisfies ContributionV1;
 
 /** The shared modules as this bundle received them: the check compares them with the host's. */
-export const imports = { useState, Text, useTheme, useConnections };
+export const imports = { useState, Text, useTheme, useConnections, useResource };

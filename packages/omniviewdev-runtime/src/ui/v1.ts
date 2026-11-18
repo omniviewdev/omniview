@@ -11,8 +11,14 @@
 //      source or in declarations: `scripts/check-ui-v1.ts` proves it on the module graph and on `dist/`, and the host's `next` build is checked
 //      the same way (`scripts/ui-flavour.test.mjs`).
 //   3. A later contract is `./v2` beside this file; this one keeps its meaning (the export name is the version).
+//   4. What this version may grow (the rule of `ui-next/plugins/contract/v1.ts` for the contribution, applied to the names here). A new name or type is
+//      MINOR and stays in `./v1`: nothing that exists is removed, renamed or given another meaning, and a bundle built before it runs unchanged
+//      (`useResource` was added this way). A name removed or renamed, a parameter that becomes required, a result member that changes meaning, or
+//      a hook that becomes live where it was one-shot, is `./v2`. The loader admits a bundle by its import specifiers, not by the names it takes from
+//      them, so a host older than a name serves the entry without it: a plugin that uses a newer name is built against the host that has it (on the
+//      feature channel host and plugin update together).
 //
-// The VALUES are the data layer the first plugin (the Pods list) reads through: ten functions and constants. No component, no router, no raw RPC.
+// The VALUES are the data layer the first plugins (the Pods list and its detail page) read through: eleven functions and constants. No component, no router, no raw RPC.
 // The TYPES are the closure of their signatures: every type a hook's parameters or results mention is exported here, so the API report holds the
 // whole shape a plugin compiles against and a change to any of them shows in its diff (the build fails on a type that is mentioned and not exported).
 
@@ -32,11 +38,15 @@ export type {
 // The catalog, the resolved target and the records of a collection.
 export { useResourceTypes } from '../hooks/resource/useResourceTypes';
 export { useResolvedResourceTarget } from '../hooks/resource/useResolvedResourceTarget';
+// `useResource` is read-only here (a wrapper of the main entry's, which also returns a write function); `Get` is one read, not a live view.
+export { useResource } from './useResource';
+export type { UseResourceOptions, UseResourceResult } from './useResource';
 export { useResources } from '../hooks/resource/useResources';
 export type { AcquiredResourcePage, UseResourcesOptions } from '../hooks/resource/useResources';
 export type {
   AuthorityDisclosure,
   HostEnumerateRequest,
+  HostGetRequest,
   HostRecord,
   HostSourcePage,
   HostSourceStatus,
@@ -52,6 +62,7 @@ export type {
   Coverage,
   Dimension,
   EnumerateRequest,
+  GetRequest,
   NativeAuthorityHint,
   NativeQueryDescriptor,
   Operation,

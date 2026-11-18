@@ -51,6 +51,7 @@ describe('registered in SystemJS', () => {
     expect(Object.keys(served).sort()).toEqual(Object.keys(runtime).sort());
     expect(served.useResources).toBe(runtime.useResources);
     expect(served.useConnections).toBe(runtime.useConnections);
+    expect(served.useResource).toBe(runtime.useResource);
     expect(served.parseAppError).toBe(runtime.parseAppError);
   });
 

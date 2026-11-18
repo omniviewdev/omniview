@@ -12,6 +12,7 @@ const VALUES = [
   'useConnectionReadiness',
   'useConnections',
   'useResolvedResourceTarget',
+  'useResource',
   'useResourceTypes',
   'useResources',
   'valueToJSON',
@@ -23,7 +24,7 @@ describe('@omniviewdev/runtime/ui/v1', () => {
   });
 
   it('serves the main entry\'s own functions, not copies: the host mounts the providers they read once', () => {
-    for (const name of VALUES) {
+    for (const name of VALUES.filter((value) => value !== 'useResource')) {
       expect(curated[name], name).toBe(main[name]);
     }
   });
