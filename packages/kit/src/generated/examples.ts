@@ -9,7 +9,10 @@ import * as dataTableParityModule from '../components/DataTable/DataTable.parity
 import * as dataViewModule from '../components/DataView/DataView.examples';
 import * as iconModule from '../components/Icon/Icon.examples';
 import * as iconButtonModule from '../components/IconButton/IconButton.examples';
+import * as keyValueModule from '../components/KeyValue/KeyValue.examples';
 import * as kindTileModule from '../components/KindTile/KindTile.examples';
+import * as linkModule from '../components/Link/Link.examples';
+import * as listRowsModule from '../components/ListRows/ListRows.examples';
 import * as middleEllipsisModule from '../components/MiddleEllipsis/MiddleEllipsis.examples';
 import * as missingValueModule from '../components/MissingValue/MissingValue.examples';
 import * as pageHeaderModule from '../components/PageHeader/PageHeader.examples';
@@ -17,7 +20,11 @@ import * as quickFiltersModule from '../components/QuickFilters/QuickFilters.exa
 import * as rovingGroupModule from '../components/RovingGroup/RovingGroup.examples';
 import * as rowMenuModule from '../components/RowMenu/RowMenu.examples';
 import * as searchFieldModule from '../components/SearchField/SearchField.examples';
+import * as sectionCardModule from '../components/SectionCard/SectionCard.examples';
 import * as statusModule from '../components/Status/Status.examples';
+import * as statusSummaryModule from '../components/StatusSummary/StatusSummary.examples';
+import * as tabsModule from '../components/Tabs/Tabs.examples';
+import * as tagListModule from '../components/TagList/TagList.examples';
 import * as tooltipHostModule from '../components/TooltipHost/TooltipHost.examples';
 import * as workspaceToolbarModule from '../components/WorkspaceToolbar/WorkspaceToolbar.examples';
 
@@ -31,7 +38,10 @@ export const partExamples = {
   DataView: dataViewModule,
   Icon: iconModule,
   IconButton: iconButtonModule,
+  KeyValue: keyValueModule,
   KindTile: kindTileModule,
+  Link: linkModule,
+  ListRows: listRowsModule,
   MiddleEllipsis: middleEllipsisModule,
   MissingValue: missingValueModule,
   PageHeader: pageHeaderModule,
@@ -39,7 +49,11 @@ export const partExamples = {
   RovingGroup: rovingGroupModule,
   RowMenu: rowMenuModule,
   SearchField: searchFieldModule,
+  SectionCard: sectionCardModule,
   Status: statusModule,
+  StatusSummary: statusSummaryModule,
+  Tabs: tabsModule,
+  TagList: tagListModule,
   TooltipHost: tooltipHostModule,
   WorkspaceToolbar: workspaceToolbarModule,
 };

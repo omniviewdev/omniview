@@ -1,0 +1,110 @@
+@layer ov.components {
+  /* The key-value list of the mock (`.kv--kit`, design 12 KV1): a grid of rows, 24 px apart in the column and 24 px between columns; each
+     row is a label track (96, 130 or 160 px) and the value, 16 px after it. The root is the size container, so the columns step down with
+     the width of the part itself and not the window's; the grid is a descendant of it, because a container cannot restyle itself. */
+  .root {
+    --_label: 130px;
+
+    box-sizing: border-box;
+    container-type: inline-size;
+    min-width: 0;
+    margin: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .root[data-ov-label-width='96'] {
+    --_label: 96px;
+  }
+
+  .root[data-ov-label-width='130'] {
+    --_label: 130px;
+  }
+
+  .root[data-ov-label-width='160'] {
+    --_label: 160px;
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 var(--ov-spacing-24);
+    margin: 0;
+    padding: 0;
+  }
+
+  .root[data-ov-columns='2'] .list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .root[data-ov-columns='3'] .list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* One baseline: the 12 px label moves down 1 px to meet the 13 px value, so the row gives that pixel back at the bottom and stays 24 px
+     (22 px compact: the density token is the row's padding). */
+  .row {
+    display: grid;
+    box-sizing: border-box;
+    grid-template-columns: minmax(0, var(--_label)) minmax(0, 1fr);
+    column-gap: var(--ov-spacing-16);
+    align-items: baseline;
+    min-width: 0;
+    min-height: var(--ov-row-height);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact); the bottom gives back the pixel of the baseline shift */
+    padding-block: var(--ov-row-pad) calc(var(--ov-row-pad) - 1px);
+  }
+
+  .row[data-ov-wide='true'] {
+    grid-column: 1 / -1;
+  }
+
+  .label {
+    min-width: 0;
+    margin: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  .value {
+    min-width: 0;
+    margin: 0;
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  /* An identifier or a selector: the code face, 12/16, without ligatures. */
+  .code {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    font-variant-ligatures: none;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* A status is a box whose own baseline comes from its glyph, so it is top aligned in the line: its word then sits on the line's baseline. */
+  .value > [data-ov-role] {
+    vertical-align: top;
+  }
+
+  @container (width < 900px) {
+    .root[data-ov-columns='3'] .list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container (width < 640px) {
+    .root[data-ov-columns='2'] .list,
+    .root[data-ov-columns='3'] .list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

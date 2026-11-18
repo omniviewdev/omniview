@@ -1,0 +1,104 @@
+@layer ov.components {
+  /* A set of rows with shared tracks (the mock's `.listrows` and `.listrow`): the list is a grid whose columns every row shares, so the glyph,
+     text and meta cells start at the same x in each row. The columns are a 4 px edge, the glyph (only when some row has one), the text (at
+     least 64 px, the rest of the line), the meta (only when some row has one, up to a third of the line), and a 4 px edge; with the 8 px column
+     gap the edges give the 12 px inset of the row. Each row is a subgrid over those columns, 4 px above and below (the density token), 24 px at
+     the least. The lines are numbered, not named: the stylesheet is a CSS Module and its grid line names would be scoped. The private
+     properties hold the number of each cell's line. */
+  .root {
+    --_icon: 2;
+    --_text: 2;
+    --_meta: 3;
+
+    display: grid;
+    box-sizing: border-box;
+    grid-template-columns: 4px minmax(64px, 1fr) 4px;
+    column-gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    list-style: none;
+  }
+
+  .root[data-ov-icon='true'] {
+    --_text: 3;
+    --_meta: 4;
+
+    grid-template-columns: 4px auto minmax(64px, 1fr) 4px;
+  }
+
+  .root[data-ov-meta='true'] {
+    grid-template-columns: 4px minmax(64px, 1fr) fit-content(33%) 4px;
+  }
+
+  .root[data-ov-icon='true'][data-ov-meta='true'] {
+    grid-template-columns: 4px auto minmax(64px, 1fr) fit-content(33%) 4px;
+  }
+
+  .row {
+    display: grid;
+    box-sizing: border-box;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    min-width: 0;
+    min-height: var(--ov-row-height);
+    margin: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact) */
+    padding: var(--ov-row-pad) 0;
+  }
+
+  /* A glyph: the icon role, centred in its own track. */
+  .icon {
+    display: flex;
+    grid-column: var(--_icon);
+    align-items: center;
+    justify-content: center;
+    color: var(--ov-icon);
+  }
+
+  /* The text: a title over its detail, each one line, clipped with an ellipsis. */
+  .text {
+    display: flex;
+    flex-direction: column;
+    grid-column: var(--_text);
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .title,
+  .detail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail {
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The trailing value: muted, at the end of its track, clipped to it. */
+  .meta {
+    display: flex;
+    grid-column: var(--_meta);
+    align-items: center;
+    justify-self: end;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+  }
+}

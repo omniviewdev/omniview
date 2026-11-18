@@ -2,6 +2,7 @@ import { Button, DataView, PageHeader, SearchField, WorkspaceToolbar, type PageH
 import { useState, type MouseEvent } from 'react';
 import type { ListPageDefinition, ListSource } from './definition';
 import styles from './ListPage.module.css';
+import { refreshReason } from './refresh';
 import { useRefreshFeedback } from './useRefreshFeedback';
 import { useSearchDraft } from './useSearchDraft';
 import { deriveListView, normalizeSearch } from './view';
@@ -10,15 +11,6 @@ export type ListPageProps<TRow> = {
   readonly definition: ListPageDefinition<TRow>;
   readonly source: ListSource<TRow>;
 };
-
-/** Why the Refresh command cannot be used now: the word written where the person reads the page (ch14 P2), or nothing. */
-function refreshReason(busy: boolean, loading: boolean): string | undefined {
-  if (busy) {
-    return 'Refreshing';
-  }
-
-  return loading ? 'Loading' : undefined;
-}
 
 /**
  * The list page of a collection (slice 1a plan 1.1, 3.1): the page header with its Refresh command and its operation slot, the quick

@@ -1,0 +1,44 @@
+/* The detail page's own rules, host composition: layer ov.shell, above the kit's parts. The geometry is the mock's: 12 px under the page header (its margin), the strip's own 40 px
+   row, and the Overview's `.readable-pair`, two columns that wrap by the page's own width (680 px and 300 px basis, 12 px apart), never by the viewport's. */
+@layer ov.shell {
+  .top {
+    min-width: 0;
+    padding-block-end: var(--ov-spacing-12);
+  }
+
+  /* The Overview with an aside: a main column that takes two shares and an aside that takes one, side by side from 992 px of page width (680 + 12 + 300) and stacked below it. */
+  .pair {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+    margin-block-end: var(--ov-spacing-12);
+  }
+
+  .main {
+    flex: 2 1 680px;
+    min-width: min(100%, 680px);
+  }
+
+  .aside {
+    flex: 1 1 300px;
+    min-width: min(100%, 300px);
+  }
+
+  /* No aside: the main column alone, the page's whole width. */
+  .single {
+    min-width: 0;
+    margin-block-end: var(--ov-spacing-12);
+  }
+
+  /* The page's polite announcements: in the page and read, never drawn. It takes no room and holds no focus. */
+  .live {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

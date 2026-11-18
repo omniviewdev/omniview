@@ -1,0 +1,43 @@
+@layer ov.components {
+  /* The mock's `a, .link` (base.css): the link colour, no underline at rest, an underline on hover, and the ring of every control
+     (2 px, offset 2 px). The type is the context's: a link sits in a sentence, a cell or a row. */
+  .root {
+    color: var(--ov-link);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .root:hover {
+    text-decoration: underline;
+  }
+
+  .root:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  /* An identifier: the mock's `.mono`, the code face at the interface's 13/18 (a heading keeps its own size). */
+  .root[data-ov-mono='true'] {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-13);
+    font-variant-ligatures: none;
+    line-height: var(--ov-lh-18);
+  }
+
+  h1 .root[data-ov-mono='true'],
+  h2 .root[data-ov-mono='true'],
+  h3 .root[data-ov-mono='true'],
+  h4 .root[data-ov-mono='true'] {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  /* A name that clips (a `MiddleEllipsis` inside): the anchor is a box that takes the width its line gives it, so the child has a width to
+     clip to, and the link is no wider than its name. Plain text stays inline and wraps with its sentence. */
+  .root:has(> [data-ov-clip]) {
+    display: inline-block;
+    min-width: 0;
+    max-width: 100%;
+    vertical-align: bottom;
+  }
+}

@@ -1,0 +1,58 @@
+@layer ov.components {
+  /* The mock's `.status-summary` (shell-page-kit.css): one flex line that wraps, 4 px between wrapped lines and 8 px between parts, 24 px
+     high at least, 13/16 in the plain text colour. */
+  .root {
+    display: flex;
+    flex-wrap: wrap;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--ov-spacing-4) var(--ov-spacing-8);
+    min-width: 0;
+    min-height: 24px;
+    margin: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* A status is a fixed column of its own (it never wraps or shrinks); the item that holds it is one box with it. */
+  .item[data-ov-kind='status'] {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  .item b {
+    font-weight: 600;
+  }
+
+  /* A tone is a state colour on the text: the words still say the state. */
+  .item[data-ov-tone='success'] {
+    color: var(--ov-success-fg);
+  }
+
+  .item[data-ov-tone='warning'] {
+    color: var(--ov-warning-fg);
+  }
+
+  .item[data-ov-tone='error'] {
+    color: var(--ov-error-fg);
+  }
+
+  .item[data-ov-tone='info'] {
+    color: var(--ov-link);
+  }
+
+  .item[data-ov-tone='muted'] {
+    color: var(--ov-fg-muted);
+  }
+
+  .separator {
+    color: var(--ov-fg-muted);
+  }
+}

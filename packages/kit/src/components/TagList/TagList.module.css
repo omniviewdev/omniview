@@ -1,0 +1,116 @@
+@layer ov.components {
+  /* The tags of a section (the mock's `.chips` and `.tag`, design 13 OVW1: labels and annotations are one chip anatomy): chips wrap in
+     rows, 8 px apart, and the "Show all" control sits 12 px under them. A chip is the key (muted, on the inline fill) and the value
+     (the plain colour), each 2 px by 6 px, in the code face at 12/16, inside a 1 px subtle edge with the control radius. */
+  .root {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+    margin: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  /* A chip never wraps and never takes more than the line. It gives way in a fixed order: the value is clamped first (it shrinks, the key
+     does not), and only a key wider than the whole line is cut, by its own middle ellipsis, so its end stays. */
+  .tag {
+    display: inline-flex;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    overflow: clip;
+    border: 1px solid var(--ov-border-subtle);
+    border-radius: var(--ov-radius-control);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    font-variant-ligatures: none;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .key,
+  .value {
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--ov-spacing-2) var(--ov-spacing-6);
+    overflow: hidden;
+    font-style: normal;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The key keeps its width: the value gives way first. */
+  .key {
+    flex: 0 0 auto;
+    max-width: 100%;
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg-muted);
+  }
+
+  .value {
+    flex: 0 1 auto;
+    color: var(--ov-fg);
+  }
+
+  /* A tag with no value shows its key alone, in the plain colour on no fill: the key is then the whole chip. */
+  .key[data-ov-lone='true'] {
+    flex: 0 1 auto;
+    background-color: transparent;
+    color: var(--ov-fg);
+  }
+
+  /* "Show all N" / "Show fewer": a link-looking native button. Its box is the row height, so it is a 24 px target, and the text sits
+     at the start of the line. */
+  .toggle {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    min-height: var(--ov-row-height);
+    margin: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact) */
+    padding: var(--ov-row-pad) 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background: transparent;
+    color: var(--ov-link);
+    cursor: pointer;
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .toggle:hover {
+    background: transparent;
+    text-decoration: underline;
+  }
+
+  .toggle:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+}

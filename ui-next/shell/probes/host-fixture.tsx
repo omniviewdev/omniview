@@ -167,7 +167,7 @@ function Screen() {
     <PluginHost
       plugins={store}
       inventory={inventory}
-      link={{ plugin: params.get('plugin') ?? undefined, page: params.get('page') ?? undefined, connection: params.get('connection') ?? undefined }}
+      link={{ plugin: params.get('plugin') ?? undefined, page: params.get('page') ?? undefined, connection: params.get('connection') ?? undefined, params: {} }}
       onRetry={() => undefined}
       onRetryInventory={() => undefined}
     />

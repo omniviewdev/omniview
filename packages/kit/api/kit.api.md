@@ -223,6 +223,19 @@ export const DENSITIES: readonly ["comfortable", "compact"];
 export type Density = 'comfortable' | 'compact';
 
 // @public
+export function EmptyBody(input: {
+    readonly title: string;
+    readonly hint?: string | undefined;
+}): JSX.Element;
+
+// @public
+export function ErrorBody(input: {
+    readonly title: string;
+    readonly message?: string | undefined;
+    readonly onRetry?: (() => void) | undefined;
+}): JSX.Element;
+
+// @public
 export function Icon(input: IconProps): JSX.Element;
 
 // @public
@@ -259,6 +272,25 @@ export type IconSize = 12 | 16 | 20;
 export const isIconName: (name: string) => name is IconName;
 
 // @public
+export function KeyValue(input: KeyValueProps): JSX.Element | null;
+
+// @public (undocumented)
+export type KeyValueProps = {
+    readonly rows: readonly KeyValueRow[];
+    readonly columns?: 1 | 2 | 3 | undefined;
+    readonly labelWidth?: 96 | 130 | 160 | undefined;
+} & DataAttributes;
+
+// @public (undocumented)
+export type KeyValueRow = {
+    readonly id?: string | undefined;
+    readonly label: string;
+    readonly value?: ReactNode;
+    readonly mono?: boolean | undefined;
+    readonly wide?: boolean | undefined;
+};
+
+// @public
 export function KindTile(input: KindTileProps): JSX.Element;
 
 // @public (undocumented)
@@ -273,6 +305,71 @@ export type KindTileSize = 16 | 20;
 
 // @public
 export type KindTileTone = 'neutral' | 'orange' | 'green' | 'blue' | 'purple' | 'pink' | 'red' | 'teal';
+
+// @public
+export function Link(input: LinkProps): ReactElement;
+
+// @public
+export type LinkActivation = {
+    readonly type: string;
+    readonly button: number;
+    readonly metaKey: boolean;
+    readonly ctrlKey: boolean;
+    readonly shiftKey: boolean;
+    readonly altKey: boolean;
+};
+
+// @public (undocumented)
+export type LinkHandler = {
+    readonly hrefOf: (target: LinkTarget) => string;
+    readonly onOpen: (target: LinkTarget, activation: LinkActivation) => void;
+};
+
+// @public (undocumented)
+export type LinkProps = {
+    readonly to: LinkTarget;
+    readonly children: ReactNode;
+    readonly mono?: boolean | undefined;
+} & DataAttributes;
+
+// @public
+export function LinkProvider(input: LinkProviderProps): ReactElement;
+
+// @public (undocumented)
+export type LinkProviderProps = {
+    readonly handler: LinkHandler;
+    readonly children: ReactNode;
+};
+
+// @public
+export type LinkTarget = {
+    readonly page: string;
+    readonly params?: Readonly<Record<string, string>> | undefined;
+};
+
+// @public (undocumented)
+export type ListRow = {
+    readonly id: string;
+    readonly title: ReactNode;
+    readonly detail?: ReactNode;
+    readonly meta?: ReactNode;
+    readonly icon?: ReactNode;
+};
+
+// @public
+export function ListRows(input: ListRowsProps): JSX.Element | null;
+
+// @public (undocumented)
+export type ListRowsProps = {
+    readonly label: string;
+    readonly rows: readonly ListRow[];
+} & DataAttributes;
+
+// @public
+export function LoadingBody(input: {
+    readonly label: string;
+    readonly columns: number;
+}): JSX.Element;
 
 // @public
 export function MiddleEllipsis(input: MiddleEllipsisProps): JSX.Element;
@@ -494,6 +591,19 @@ export type SearchFieldProps = {
     readonly invalid?: boolean | undefined;
 } & DataAttributes;
 
+// @public
+export function SectionCard(input: SectionCardProps): JSX.Element;
+
+// @public (undocumented)
+export type SectionCardProps = {
+    readonly title: string;
+    readonly level?: 2 | 3 | 4 | undefined;
+    readonly meta?: string | undefined;
+    readonly actions?: ReactNode;
+    readonly pad?: boolean | undefined;
+    readonly children?: ReactNode;
+} & DataAttributes;
+
 // @public (undocumented)
 export type SpacingStep = 2 | 4 | 6 | 8 | 12 | 16 | 20 | 24;
 
@@ -531,6 +641,87 @@ export type StatusProps = StatusWord & (StaticRole | ProgressRole);
 
 // @public
 export type StatusRole = 'healthy' | 'running' | 'progress' | 'attention' | 'error' | 'stopped' | 'info';
+
+// @public
+export function StatusSummary(input: StatusSummaryProps): ReactElement | null;
+
+// @public (undocumented)
+export type StatusSummaryItem =
+/** A `Status`: the glyph of its role and the platform's word. `queued` goes only with the role `progress`. */
+    {
+    readonly status: {
+        readonly role: StatusRole;
+        readonly label: string;
+        readonly queued?: boolean | undefined;
+    };
+}
+/** A bold value and what it counts: "3/3 ready". */
+| {
+    readonly value: string;
+    readonly label?: string | undefined;
+    readonly tone?: StatusSummaryTone | undefined;
+}
+/** A plain fact: "up to date". */
+| {
+    readonly text: string;
+    readonly tone?: StatusSummaryTone | undefined;
+};
+
+// @public (undocumented)
+export type StatusSummaryProps = {
+    readonly label: string;
+    readonly items: readonly StatusSummaryItem[];
+} & DataAttributes;
+
+// @public
+export type StatusSummaryTone = 'success' | 'warning' | 'error' | 'info' | 'muted';
+
+// @public
+export function TabPanel(input: TabPanelProps): ReactElement;
+
+// @public (undocumented)
+export type TabPanelProps = {
+    readonly id: string;
+    readonly selected: string;
+    readonly children?: ReactNode;
+} & DataAttributes;
+
+// @public
+export function Tabs(input: TabsProps): ReactElement | null;
+
+// @public (undocumented)
+export type TabsItem = {
+    readonly id: string;
+    readonly label: string;
+    readonly icon?: IconName | undefined;
+    readonly count?: number | undefined;
+};
+
+// @public (undocumented)
+export type TabsProps = {
+    readonly label: string;
+    readonly tabs: readonly TabsItem[];
+    readonly selected: string;
+    readonly onSelect: (id: string) => void;
+    readonly id: string;
+} & DataAttributes;
+
+// @public (undocumented)
+export type TagItem = {
+    readonly key: string;
+    readonly value?: string | undefined;
+};
+
+// @public
+export function TagList(input: TagListProps): JSX.Element | null;
+
+// @public (undocumented)
+export type TagListProps = {
+    readonly label: string;
+    readonly items: readonly TagItem[];
+    readonly visible?: number | undefined;
+    readonly defaultExpanded?: boolean | undefined;
+} & DataAttributes;
 
 // @public
 function Text_2(input: TextProps): JSX.Element;

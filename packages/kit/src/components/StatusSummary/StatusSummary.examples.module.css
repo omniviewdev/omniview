@@ -1,0 +1,7 @@
+/* The box the wrapping example sits in: 260 px, narrower than its line. */
+@layer ov.components {
+  .narrow {
+    width: 260px;
+    max-width: 100%;
+  }
+}

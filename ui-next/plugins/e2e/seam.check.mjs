@@ -120,9 +120,9 @@ async function checkHealthy(page, base, engine) {
   await open(page, base);
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
   await page.getByRole('treeitem', { name: 'Items', selected: true }).waitFor();
-  for (const name of ['alpha', 'beta', 'gamma']) await page.getByText(name, { exact: true }).waitFor();
+  for (const name of ['orders-api', 'ledger-sync', 'ghost-service', 'vault-keeper', 'flaky-gateway']) await page.getByRole('link', { name }).waitFor();
   // The sidebar's hook answers 150 ms after it mounts: the skeleton gives way to the entries with their count.
-  await page.getByRole('treeitem', { name: 'Items 3' }).waitFor();
+  await page.getByRole('treeitem', { name: 'Items 5' }).waitFor();
   await page.getByRole('navigation', { name: 'Seam Fixture navigation' }).waitFor();
   await page.getByRole('main', { name: 'Seam Fixture workspace' }).waitFor();
   assert.equal(await page.evaluate(() => location.hash), '', `${engine}: the window opened with no hash`);
@@ -176,8 +176,39 @@ async function checkHealthy(page, base, engine) {
   await page.getByRole('button', { name: 'Retry' }).click();
   await page.getByRole('alert').waitFor();
   await page.getByRole('treeitem', { name: 'Items' }).click();
-  await page.getByText('alpha', { exact: true }).waitFor();
+  await page.getByText('orders-api', { exact: true }).waitFor();
   assert.equal(await page.getByRole('alert').count(), 0, `${engine}: another page of the same plugin draws`);
+
+  // f. a list row opens its detail page (the contract's detail kind, with the object's identity in the route): a plain click is smart open and navigates this tab, the tab is called
+  // `{name} · {Kind}`, the page loads and is ready, a command reports to the plugin's callback, and the back path leads to the list.
+  await page.getByRole('link', { name: 'orders-api' }).click();
+  await page.getByRole('tab', { name: /orders-api · Item/ }).waitFor();
+  await page.getByRole('heading', { level: 1, name: 'orders-api' }).waitFor();
+  await page.getByRole('heading', { level: 2, name: 'Details' }).waitFor({ timeout: 10_000 });
+  assert.equal(await page.getByRole('heading', { name: 'Budget' }).count(), 0, `${engine}: a section with nothing to say is not drawn`);
+  assert.equal(await page.getByRole('tab').filter({ hasText: 'Item' }).count(), 1, `${engine}: a plain click navigated the tab on screen`);
+  await page.getByText('2 desired · 2 ready · 2 up to date').waitFor();
+  await page.getByRole('button', { name: 'Scale' }).click();
+  await page.getByText('3 desired · 3 ready · 3 up to date').waitFor();
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button', { name: 'Items' }).click();
+  await page.getByRole('link', { name: 'ghost-service' }).waitFor();
+  // Command (Control elsewhere) opens a background tab; each data state has its own words, and a Retry that is the plugin's.
+  const key = (await page.evaluate(() => navigator.platform.includes('Mac'))) ? 'Meta' : 'Control';
+  for (const name of ['ghost-service', 'vault-keeper', 'flaky-gateway']) await page.getByRole('link', { name }).click({ modifiers: [key] });
+  assert.equal(await page.getByRole('tab').filter({ hasText: '· Item' }).count(), 3, `${engine}: three background tabs beside the list`);
+  const states = [['ghost-service', /ghost-service was not found/], ['vault-keeper', /Access to vault-keeper is denied/], ['flaky-gateway', /Couldn't load flaky-gateway/]];
+  for (const [name, words] of states) {
+    await page.getByRole('tab', { name: new RegExp(`${name} · Item`) }).click();
+    await page.getByRole('heading', { level: 1, name }).waitFor();
+    await page.getByText(words).waitFor({ timeout: 10_000 });
+  }
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await page.getByRole('heading', { level: 2, name: 'Details' }).waitFor({ timeout: 10_000 });
+  // Smart open re-activates: the link of an object that has a tab shows that tab and makes no twin.
+  await page.getByRole('tab', { name: /^Items/ }).click();
+  await page.getByRole('link', { name: 'vault-keeper' }).click();
+  assert.equal(await page.getByRole('tab').filter({ hasText: '· Item' }).count(), 3, `${engine}: smart open showed the tab that had the object`);
+  await page.getByRole('heading', { level: 1, name: 'vault-keeper' }).waitFor();
 
   const unexpected = errors.filter((entry) => !entry.includes('[plugins] fixture-a-ok page crash failed to render') && !entry.includes('crashed on purpose'));
   assert.deepEqual(unexpected, [], `${engine}: the healthy flow wrote no console error`);
@@ -213,7 +244,7 @@ async function checkRefusals(page, base, engine) {
 
   // and the healthy plugin is still there after all of it.
   await go(OK);
-  await page.getByText('alpha', { exact: true }).waitFor();
+  await page.getByText('orders-api', { exact: true }).waitFor();
 }
 
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));

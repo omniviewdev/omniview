@@ -68,14 +68,71 @@ function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set
   });
 }
 
+/** A detail page: the page of one object. */
+const isDetail = (page: unknown): boolean => isRecord(page) && page.kind === 'detail';
+
+/** What a detail page's static definition must say: the words and the identity the host draws its heading, its tab and its strip from, before any data is read. */
+function checkDetailDefinition(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
+  if (!isText(definition.kind)) {
+    problems.push(`${at}.kind is not a non-empty string`);
+  }
+
+  const tile = definition.tile;
+  if (!isRecord(tile) || !isText(tile.icon)) {
+    problems.push(`${at}.tile needs an icon`);
+  }
+
+  const identity = definition.identity;
+  if (!isRecord(identity) || !isText(identity.name)) {
+    problems.push(`${at}.identity needs a name: the route parameter that holds it`);
+  } else if (identity.facets !== undefined && !(Array.isArray(identity.facets) && identity.facets.every(isText))) {
+    problems.push(`${at}.identity.facets is not a list of parameter names`);
+  }
+
+  const list = definition.list;
+  if (list !== undefined && !(isRecord(list) && isText(list.page) && isText(list.label))) {
+    problems.push(`${at}.list needs a page and a label`);
+  }
+
+  const tabs = definition.tabs;
+  if (!Array.isArray(tabs) || tabs.length === 0) {
+    problems.push(`${at}.tabs is not a list with a tab in it`);
+    return;
+  }
+
+  const seen = new Set<string>();
+  tabs.forEach((tab: unknown, index) => {
+    if (!isRecord(tab) || !isText(tab.id) || !isText(tab.label)) {
+      problems.push(`${at}.tabs[${String(index)}] needs an id and a label`);
+    } else if (seen.has(tab.id)) {
+      problems.push(`${at}.tabs[${String(index)}].id "${tab.id}" is used twice`);
+    } else {
+      seen.add(tab.id);
+    }
+  });
+}
+
+/** A detail page's list is a list page of this contribution: its crumb and its sidebar entry would lead nowhere otherwise. */
+function checkListOf(page: unknown, pages: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
+  if (!isDetail(page) || !isRecord(page) || !isRecord(page.definition) || !isRecord(page.definition.list)) {
+    return;
+  }
+
+  const target = page.definition.list.page;
+  const listed = typeof target === 'string' && Object.hasOwn(pages, target) ? pages[target] : undefined;
+  if (isText(target) && !(isRecord(listed) && listed.kind === 'list')) {
+    problems.push(`${at}.definition.list.page "${target}" is not a list page of this contribution`);
+  }
+}
+
 function checkPage(page: unknown, at: string, problems: Problems): void {
   if (!isRecord(page)) {
     problems.push(`${at} is not an object`);
     return;
   }
 
-  if (page.kind !== 'list') {
-    problems.push(`${at}.kind is "${String(page.kind)}", and this version draws "list" pages`);
+  if (page.kind !== 'list' && page.kind !== 'detail') {
+    problems.push(`${at}.kind is "${String(page.kind)}", and this version draws "list" and "detail" pages`);
   }
 
   if (!isFunction(page.usePage)) {
@@ -85,6 +142,11 @@ function checkPage(page: unknown, at: string, problems: Problems): void {
   const definition = page.definition;
   if (!isRecord(definition)) {
     problems.push(`${at}.definition is not an object`);
+    return;
+  }
+
+  if (page.kind === 'detail') {
+    checkDetailDefinition(definition, `${at}.definition`, problems);
     return;
   }
 
@@ -145,6 +207,7 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
   } else {
     for (const [id, page] of Object.entries(pages)) {
       checkPage(page, `pages.${id}`, problems);
+      checkListOf(page, pages, `pages.${id}`, problems);
       if (id === '$home') {
         // The sentinel the host's route completion reads as "the plugin's home page" (`HOME_PAGE`): a page with this id could not be reached.
         problems.push('pages.$home is reserved for the home page of the plugin');
@@ -154,11 +217,15 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
     for (const leaf of leaves) {
       if (!Object.hasOwn(pages, leaf)) {
         problems.push(`the sidebar entry "${leaf}" opens no page`);
+      } else if (isDetail(pages[leaf])) {
+        problems.push(`the sidebar entry "${leaf}" opens a detail page, which needs an object`);
       }
     }
 
     if (typeof value.home !== 'string' || !Object.hasOwn(pages, value.home)) {
       problems.push(`home "${String(value.home)}" is not one of the pages`);
+    } else if (isDetail(pages[value.home])) {
+      problems.push(`home "${value.home}" is a detail page, which needs an object: the window could not open it`);
     }
   }
 
@@ -195,11 +262,11 @@ export function admitOrThrow(exports: unknown): ContributionV1 {
   return admission.contribution;
 }
 
-/** The nodes a hook answered that open a page of this contribution: a dynamic entry that opens nothing would be a stub. */
+/** The nodes a hook answered that open a page of this contribution: a dynamic entry that opens nothing would be a stub, and a detail page opens nothing without an object. */
 export function openable(nodes: readonly SidebarNodeV1[], pages: Readonly<Record<string, unknown>>): readonly SidebarNodeV1[] {
   const keep = (node: SidebarNodeV1): SidebarNodeV1 | undefined => {
     if (node.children === undefined) {
-      return Object.hasOwn(pages, node.id) ? node : undefined;
+      return Object.hasOwn(pages, node.id) && !isDetail(pages[node.id]) ? node : undefined;
     }
 
     const children = node.children.map(keep).filter((child): child is SidebarNodeV1 => child !== undefined);

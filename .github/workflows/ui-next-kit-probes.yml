@@ -47,7 +47,8 @@ jobs:
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 30 minutes held 29 of them on the last run (the browsers' cold install alone took 20), so the detail probe's minutes needed room of their own.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,6 +125,11 @@ jobs:
 
       - name: Probe the tab strip, the page host and the load against the pinned mock reference
         run: REPORT="$RUNNER_TEMP/strip-probe.json" node ui-next/shell/probes/strip-probe.mjs
+
+      # The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
+      # with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
+      - name: Probe the detail page against the pinned mock reference
+        run: node ui-next/page/probes/detail-probe.mjs
 
       - name: Keep the reports
         if: always()

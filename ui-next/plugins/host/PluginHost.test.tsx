@@ -28,7 +28,7 @@ const failed = (kind: 'missing' | 'incompatible', id = 'broken'): PluginEntry =>
   failure: { kind, message: kind === 'missing' ? 'The plugin\'s interface could not be read.' : 'This plugin was built for another version of the app. Update it.', detail: 'SECRET detail for the log' },
 });
 
-const link = (plugin: string, page?: string, connection?: string): HostRoute => ({ plugin, page, connection });
+const link = (plugin: string, page?: string, connection?: string): HostRoute => ({ plugin, page, connection, params: {} });
 const nav = (nodes: readonly SidebarNodeV1[]) => ({ label: 'Acme navigation', title: 'Acme', nodes });
 
 /** The plugins the host reads: the entries now, and `set` to change them, which tells the host as the plugin store does. */
@@ -235,7 +235,24 @@ describe('a ready plugin', () => {
 
     mount([ready(contribution, 'acme-installed')], { link: link('acme-installed', undefined, 'north') });
 
-    expect(seen.at(-1)).toEqual({ plugin: 'acme-installed', route: { page: 'widgets', connection: 'north' } });
+    expect(seen.at(-1)).toEqual({ plugin: 'acme-installed', route: { page: 'widgets', connection: 'north', params: {} } });
+  });
+
+  it('tells a list page\'s hook no parameters, whatever the address adds: they are the identity of an object, and a list has none', () => {
+    const seen: ContextV1[] = [];
+    const contribution = acme({
+      pages: {
+        widgets: widgetPage('Widgets', (context) => {
+          seen.push(context);
+          return answering(WIDGETS)(context);
+        }),
+      },
+      sidebar: nav([{ id: 'widgets', label: 'Widgets', icon: 'box' }]),
+    });
+
+    mount([ready(contribution)], { link: { ...link('acme', 'widgets', 'north'), params: { name: 'alpha' } } });
+
+    expect(seen.at(-1)?.route).toEqual({ page: 'widgets', connection: 'north', params: {} });
   });
 
   it('runs the page\'s hook in the host\'s React: a hook the plugin uses has state', async () => {
