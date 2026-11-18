@@ -1,0 +1,4 @@
+import Cocoa
+import ApplicationServices
+print("screenCapture preflight:", CGPreflightScreenCaptureAccess())
+print("AX trusted:", AXIsProcessTrusted())
