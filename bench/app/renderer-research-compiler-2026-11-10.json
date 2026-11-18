@@ -1,0 +1,5102 @@
+{
+  "date": "2026-11-10",
+  "kind": "scratch-compiler-analysis-not-production-build-or-performance-benchmark",
+  "compiler": "babel-plugin-react-compiler@1.0.0",
+  "method": {
+    "configFile": false,
+    "babelrc": false,
+    "target": "19",
+    "mode": "infer (default)",
+    "parser": "TypeScript and JSX as appropriate",
+    "excludes": [
+      "tests",
+      "specs",
+      "stories",
+      "declarations",
+      "bindings",
+      "node_modules",
+      "dist"
+    ],
+    "denominator": "CompileSuccess plus distinct file/function-line CompileError locations; excludes unattempted functions",
+    "limitations": [
+      "Scratch Babel pipeline, not actual Vite producer pipeline",
+      "CompileSuccess is not proof of emitted/applied caching or runtime benefit",
+      "Error location deduplication uses function start line",
+      "Previously built artifacts can lag source"
+    ]
+  },
+  "roots": {
+    "host:ui": {
+      "files": 383,
+      "compileSuccess": 294,
+      "compileSkipDirectives": 0,
+      "memoSlots": 6362,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 28,
+      "diagnostics": {
+        "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta": 3,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause": 25,
+        "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch": 6,
+        "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s": 1,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause": 5,
+        "Error|PreserveManualMemo|Existing memoization could not be preserved": 1,
+        "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got CallExpression key in ObjectExpressio": 1,
+        "Warning|IncompatibleLibrary|Use of incompatible library": 2
+      },
+      "filesWithCompilerEvents": {
+        "omniview/ui/App.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/aws/horizontal/AWSHorizontalColorWhite.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/docker/horizontal/DockerHorizontal.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/gcp/horizontal/GCPHorizontal.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/kubernetes/KubernetesColorWhiteBG.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/kubernetes/horizontal/KubernetesHorizontalColorWhite.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/horizontal/TerraformHorizontalBlack.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/horizontal/TerraformHorizontalColorBlack.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/horizontal/TerraformHorizontalColorWhite.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/horizontal/TerraformHorizontalWhite.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/vertical/TerraformVerticalBlack.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/vertical/TerraformVerticalColorBlack.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/vertical/TerraformVerticalColorWhite.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/assets/logos/terraform/vertical/TerraformVerticalWhite.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/backgrounds/GradientBackground.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/base/HintTooltip.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/displays/CodeEditor.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/components/displays/Footer/AppStatusFooter.tsx": {
+          "s": 11,
+          "errs": []
+        },
+        "omniview/ui/components/displays/Footer/ConnectionStatusIndicator.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/components/displays/Footer/InstanceIndicator.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/components/displays/Footer/parts.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "omniview/ui/components/displays/RightDrawer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/displays/RightDrawerActions.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/components/errors/ErrorFallback.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "omniview/ui/components/icons/Icon.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/inputs/SearchInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/selects/NamespaceSelect.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/ColumnFilter.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/DebouncedInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/EnumerableResourceTable.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 47,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "omniview/ui/components/tables/Resources/ResourceLookup.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/ResourceTableContainer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/actions/ActionMenu.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/actions/ActionMenuListItem.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/actions/DeleteAction.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/actions/ExecAction.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/BadgesCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/ChipCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/CustomTableCell.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/ResourceLinkCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/SelectBoxHeader.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/SelectBoxRow.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/cells/TextCell.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/tables/Resources/useColumnVisibilityPreference.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/components/util/PrimaryLoading.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/contexts/ConfirmationModalContext.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/activities/ActionParameterFields.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/activities/ActivityActionSurfaces.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 62,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 62,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/builtinplugins/grafana/ConnectionSettings.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/builtinplugins/grafana/DatasourceSelector.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/builtinplugins/grafana/Mappings.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 17,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/builtinplugins/grafana/SampleResource.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/builtinplugins/grafana/SchemaFieldPicker.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/builtinplugins/grafana/Settings.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/builtinplugins/grafana/ValidationContext.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/command-search/GlobalCommandSearch.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "omniview/ui/features/command-search/SearchProviderContexts.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/command-search/useGlobalCommandSearch.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 54,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "omniview/ui/features/connectionState/ConnectionStateDialog.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/features/connectionState/ConnectionStateProvider.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/features/connections/ConnectionDetails.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 67,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/connections/ConnectionProfiles.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 9,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/connections/ResourceBrowser.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/features/devtools/components/PluginDevOverlay.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/devtools/useDevServers.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/Captures.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 27,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/diagnostics/ComparisonSummary.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/MetricGrid.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/Operations.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/Overview.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/Pipeline.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/Plugins.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/diagnostics/useDiagnostics.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/extensions/diagnostics/ExtensionDiagnosticsBridge.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "omniview/ui/features/extensions/diagnostics/useExtensionDiagnostics.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/extensions/theme/ThemeContributionBridge.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/instance/InstanceContext.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/instance/developmentStatus.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 85,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/features/logger/useLogger.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/components/ExtensionPointRenderer.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/components/PluginLoadErrorPage.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 12,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            },
+            {
+              "fn": 12,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "omniview/ui/features/plugins/components/PluginNotFoundPage.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/components/PluginRenderer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/components/PluginRouteStatus.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/components/PluginSurfaceBoundary.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/components/QuarantinedContributionFallback.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/react/PluginServiceProvider.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/react/normalizePluginRoutes.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/plugins/react/usePluginRoutes.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 29,
+              "k": "Error|PreserveManualMemo|Existing memoization could not be preserved"
+            }
+          ]
+        },
+        "omniview/ui/features/plugins/react/usePluginService.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/profiling/HostProfilingIndicator.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/profiling/PluginProfilingRows.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/profiling/ProcessInventoryRows.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/profiling/UIInspectionRow.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/profiling/useHostProfilingStatus.ts": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/features/resource-drawer/LinkedResourceDrawer.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/features/resource-drawer/unavailableDrawer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/router/components/ErrorBoundary.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/settings-editors/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/telemetry/hooks.ts": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/windows/SettingsWindowShell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/windows/WindowTabDragProvider.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/windows/delivery.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/windows/windows.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/WorkspaceProvider.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/activePageNavigation.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/components/PageTabMenus.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/components/PageTabStrip.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/components/PaneView.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/components/SplitDropZone.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/components/TabPages.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/components/WorkspacePanes.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/newTab/NewTabLauncher.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/newTab/newTabPlugins.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/pagePresentation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/pageRoutes.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/features/workspace/testing/RouterBoundPageNavigation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/header/area.ts": {
+          "s": 6,
+          "errs": []
+        },
+        "omniview/ui/hooks/header/main.ts": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/hooks/homepage/useHomepageCardSettings.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/mcp/useMcpRelay.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/plugin/useDevServer.ts": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/hooks/plugin/useInstalledPlugins.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/plugin/usePluginManager.ts": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 204,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "omniview/ui/hooks/resource/useResourceDefinition.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/settings/useSettingsForm.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 23,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/hooks/useBottomDrawer.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/useDevMode.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/useRightDrawer.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/useScript.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/hooks/useWindow.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/BottomDrawer/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Container/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/HeaderContextArea.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/HeaderItemsArea.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/HeaderSearchArea.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/HeaderTabsArea.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/components/HeaderIconButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/components/HeaderIconLink.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/areas/components/HeaderIconMenu.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/Header/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/main/WorkspaceShell.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/panel/PanelWindowShell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/sidenav/Main/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/sidenav/Root/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/sidenav/SideDrawer/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/sidenav/SideNav/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/layouts/core/sidenav/SidePane/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/dashboard/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/developer-tools/ExtensionInspector.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 86,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "omniview/ui/pages/developer-tools/Performance.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/home/HomepageCard.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/pages/home/HomepageCardConfigPopover.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/home/HomepageEmptyState.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/home/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/DevModeSection.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/InstalledPlugins.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/PluginDetails.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/PluginFilterPopover.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/PluginListItem.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/PluginUpdateButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/PluginsNav.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/StarRating.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/UninstallPluginModal.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 13,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/pages/plugins/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/sections/PluginChangelog.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/plugins/sections/PluginChangelogCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/settings/AiToolsSettingsPage.tsx": {
+          "s": 4,
+          "errs": [
+            {
+              "fn": 89,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/pages/settings/CoreSettingsPage.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/pages/settings/NativeTerminalApplicationSetting.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/settings/PluginSettingsPage.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/pages/settings/SettingsEntries.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 37,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got CallExpression key in ObjectExpressio"
+            }
+          ]
+        },
+        "omniview/ui/pages/settings/SettingsEntry.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 45,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "omniview/ui/pages/settings/SettingsFormShell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/settings/SettingsNav.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/pages/settings/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/ui/pages/welcome.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/DrawerTabPanels.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/DevBuildViewer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/EditorDebugPanel/index.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/FilterSelect.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 23,
+              "k": "Warning|IncompatibleLibrary|Use of incompatible library"
+            }
+          ]
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/JumpToTime.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/LogEntry.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/LogViewerToolbar.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogBuffer.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogDataSource.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogSearch.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogSources.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogStream.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/LogViewer/index.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 33,
+              "k": "Warning|IncompatibleLibrary|Use of incompatible library"
+            }
+          ]
+        },
+        "omniview/ui/providers/BottomDrawer/containers/PluginLogViewer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/containers/Terminal.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 71,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "omniview/ui/providers/BottomDrawer/containers/TerminalError.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 21,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/providers/BottomDrawer/provider.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/tabs.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/BottomDrawer/windowContext.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/McpConfirmationProvider.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 32,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/providers/RightDrawerProvider.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/providers/WindowProvider.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/providers/monaco/useSchemaRegistration.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/store/header/sections/area.ts": {
+          "s": 6,
+          "errs": []
+        },
+        "omniview/ui/theme/AppThemeController.tsx": {
+          "s": 3,
+          "errs": [
+            {
+              "fn": 127,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "omniview/ui/theme/AppearanceThemeSetting.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/theme/UIZoomController.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/ui/utils/ageClock.ts": {
+          "s": 1,
+          "errs": []
+        }
+      }
+    },
+    "host:packages": {
+      "files": 174,
+      "compileSuccess": 75,
+      "compileSkipDirectives": 0,
+      "memoSlots": 1339,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 10,
+      "diagnostics": {
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause": 2,
+        "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch": 7,
+        "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta": 2,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.": 1,
+        "Error|Invariant|Expected all references to a variable to be consistently local or context references": 1,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause": 2
+      },
+      "filesWithCompilerEvents": {
+        "omniview/packages/omniviewdev-providers/lib/portforward/hooks.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/activity/ActivityCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/activity/ActivityProvider.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/activity/ActivitySurfaces.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/activity/NotificationCenter.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 8,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/activity/context.ts": {
+          "s": 5,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/connection/ConnectionBoundary.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/context/plugins/PluginContextProvider.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/context/plugins/usePluginContext.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/context/settings/SettingsContext.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/context/windows/WindowActionsContext.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/extensions/connection-settings.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/extensions/provider.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useConnection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useConnectionMetadata.ts": {
+          "s": 3,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useConnectionProfiles.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useConnectionReadiness.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useConnectionStatus.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 66,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas."
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useConnections.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/connection/useScopeValues.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/data/usePluginData.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 38,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/drawer/useBottomDrawer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/drawer/useRightDrawer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/exec/useExecSession.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 33,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/exec/useNativeExec.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/logs/useLogSession.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useMetricObservation.ts": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 335,
+              "k": "Error|Invariant|Expected all references to a variable to be consistently local or context references"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useMetricProviders.ts": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useMetricSourcePresentation.ts": {
+          "s": 4,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useMetricStream.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 52,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useMetricViewPreferences.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useMetricViewSourceSelection.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 21,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 21,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 21,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useResourceMetrics.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/metric/useTableMetricObservation.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/modal/useConfirmationModal.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/networker/usePortForwardSessions.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/networker/useResourcePortForwarder.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useActiveSyncs.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useConnectionGeneration.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useConnectionQueryGuard.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 10,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useDependencyTree.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useEditorSchemas.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useRefetchOnGraphChange.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useRelatedResources.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResolvedResourceTarget.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResource.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceActions.ts": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceAreaComponent.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceCatalog.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceGraph.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceGroups.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceMutations.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceSearch.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceType.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResourceTypes.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useResources.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useSchemaFields.ts": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/resource/useSourceStates.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 11,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/settings/useScopedSettings.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/settings/useSettings.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/hooks/useResolvedPluginId.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/resourceIcons.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/router/Link.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/packages/omniviewdev-runtime/src/router/usePluginRouter.tsx": {
+          "s": 1,
+          "errs": []
+        }
+      }
+    },
+    "host:bench": {
+      "files": 23,
+      "compileSuccess": 3,
+      "compileSkipDirectives": 0,
+      "memoSlots": 22,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 0,
+      "diagnostics": {},
+      "filesWithCompilerEvents": {
+        "omniview/bench/app/page/profiler.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "omniview/bench/render/harness/providers.tsx": {
+          "s": 2,
+          "errs": []
+        }
+      }
+    },
+    "base-ui:src": {
+      "files": 408,
+      "compileSuccess": 577,
+      "compileSkipDirectives": 0,
+      "memoSlots": 12815,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 20,
+      "diagnostics": {
+        "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `BinaryExpression` cannot be s": 1,
+        "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `JSXElement` cannot be safely ": 1,
+        "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule": 5,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause": 1,
+        "Error|Refs|Cannot access refs during render": 15,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause": 5,
+        "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta": 1,
+        "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global": 2
+      },
+      "filesWithCompilerEvents": {
+        "ui/packages/base-ui/src/components/accordion/Accordion.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/action-list/ActionList.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/alert-dialog/AlertDialog.tsx": {
+          "s": 8,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/app-shell/AppShell.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/aspect-ratio/AspectRatio.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 9,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `BinaryExpression` cannot be s"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/autocomplete/Autocomplete.tsx": {
+          "s": 12,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/avatar/Avatar.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/avatar-group/AvatarGroup.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/badge/Badge.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/banner/Banner.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/basic-list/BasicList.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/box/Box.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/breadcrumbs/Breadcrumbs.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 77,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `JSXElement` cannot be safely "
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/button/Button.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/button-group/ButtonGroup.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/card/Card.tsx": {
+          "s": 18,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/checkbox/Checkbox.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/checkbox-group/CheckboxGroup.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/chip/Chip.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/clipboard-text/ClipboardText.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/code-block/CodeBlock.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/collapsible/Collapsible.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/combobox/Combobox.tsx": {
+          "s": 16,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/command-list/CommandList.tsx": {
+          "s": 15,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/command-list/context/CommandListContext.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/command-list/hooks/useCommandListFocus.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/command-list/hooks/useCommandListItem.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/command-list/hooks/useCommandListState.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/command-list/hooks/useCommandListStore.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/confirm-button/ConfirmButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/container/Container.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/context-menu/ContextMenu.tsx": {
+          "s": 15,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTable.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableBody.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableColumnVisibility.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableContainer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableEmpty.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableExpansionToggle.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableFooter.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableHeader.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableLoading.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTablePagination.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableToolbar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/DataTableVirtualBody.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/MemoizedBody.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/MemoizedRow.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/context/DataTableContext.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/hooks/useColumnDnd.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/hooks/useColumnSizeVars.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 14,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/data-table/hooks/useDataTable.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/data-table/hooks/useDataTablePersistence.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 16,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/data-table/hooks/useTableFocusRecovery.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/date-field/DateField.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/date-field/useDateField.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 98,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/date-picker/Calendar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/date-picker/DatePicker.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/date-range-picker/DateRangePicker.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/date-time-picker/DateTimePicker.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/description-list/DescriptionList.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/dialog/Dialog.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/dock-layout/DockLayout.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/drawer/Drawer.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/drawer/useDrawerResize.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editable-list/EditableList.tsx": {
+          "s": 7,
+          "errs": [
+            {
+              "fn": 67,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/DetachGhostTab.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabCloseButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabGroupChip.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabItem.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabScrollButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabScrollShadow.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabs.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 102,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 102,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 102,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 102,
+              "k": "Error|Refs|Cannot access refs during render"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabsSegment.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/EditorTabsViewport.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            },
+            {
+              "fn": 12,
+              "k": "Error|Refs|Cannot access refs during render"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/context/EditorTabsContext.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/context/TabDragBroker.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/hooks/usePrefersReducedMotion.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/hooks/useTabAttach.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/hooks/useTabDetach.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/hooks/useTabReorder.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/editor-tabs/hooks/useTabScroll.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/empty-state/EmptyState.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/file-explorer/FileExplorer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/file-explorer/FilePreview.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/file-explorer/FileTree.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/file-explorer/useFileSystem.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/file-table/FileTable.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/file-table/FileTableContext.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/filter-bar/FilterBar.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/find-bar/FindBar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/form-field/FormField.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/grid/Grid.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/icon-button/IconButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/icon-picker/IconPicker.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/icon-picker/imageSources.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/image/Image.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/image-list/ImageList.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/input/Input.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/keyed-search/KeyedSearch.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 46,
+              "k": "Error|Refs|Cannot access refs during render"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/list/List.tsx": {
+          "s": 13,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/context/ListContext.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useControllableState.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useListFocus.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useListItem.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useListState.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useListStore.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useListVirtualizer.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/list/hooks/useTypeahead.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/menu/Menu.tsx": {
+          "s": 15,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/meter/Meter.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/multi-select/MultiSelect.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/nav-list/NavList.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/nav-list/hooks/useCollapsibleGroup.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/number-input/NumberInput.tsx": {
+          "s": 9,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/pagination/Pagination.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/pagination/usePaginationRange.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/popover/Popover.tsx": {
+          "s": 12,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/progress/Progress.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/query-authoring/QueryAuthoring.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 62,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/query-authoring/QueryBuilder.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 336,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/query-authoring/QueryInput.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 49,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/query-authoring/QueryValueInput.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/query-authoring/QueryVariables.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/radio/Radio.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/radio-group/RadioGroup.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resizable-split-pane/ResizableSplitPane.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 80,
+              "k": "Error|Refs|Cannot access refs during render"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/resource-inspector-controls/InspectorEvidence.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-inspector-controls/QueryExplainPanel.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-inspector-controls/RelationshipPreview.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-inspector-controls/RelationshipRuleEditor.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-inspector-controls/ResourceIndexManager.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-inspector-controls/useInspectorAction.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 5,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/ExploreWorkspace.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/ResourceGroupingControls.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/ResourceResultNavigation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/ResourceScopePicker.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/ResourceSearchResults.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/SavedResourceManager.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/resource-workspace-controls/useWorkspaceAction.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 5,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/row-list/RowList.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/scroll-area/ScrollArea.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/search-input/SearchInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/search-input/SearchTrigger.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/segmented-control/SegmentedControl.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/select/Select.tsx": {
+          "s": 17,
+          "errs": [
+            {
+              "fn": 97,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/selectable-list/SelectableList.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/separator/Separator.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sheet/Sheet.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/shortcut-summary/ShortcutSummary.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/RailFlyout.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/RailNavigation.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/SidebarNavigation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/SidebarRoot.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/SidebarSlots.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/SidebarTriggers.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/context.ts": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/icons.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sidebar/shortcut.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/skeleton/Skeleton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/slider/Slider.tsx": {
+          "s": 8,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sortable-table/SortableHeader.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/sortable-table/useSortableTable.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/spinner/Spinner.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/split-button/SplitButton.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/stack/Stack.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/stat-row/StatRow.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/status-bar/StatusBar.tsx": {
+          "s": 8,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/status-dot/StatusDot.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/stepper/Stepper.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 69,
+              "k": "Error|Refs|Cannot access refs during render"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/switch/Switch.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/table/Table.tsx": {
+          "s": 9,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tabs/Tabs.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tag-input/TagInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/text-area/TextArea.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/text-field/TextField.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/time-picker/TimeColumns.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/time-picker/TimePicker.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/timeline/Timeline.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/toast/Toast.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 205,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global"
+            },
+            {
+              "fn": 205,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/toggle-button/ToggleButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/toggle-button-group/ToggleButtonGroup.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/toolbar/Toolbar.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tooltip/Tooltip.tsx": {
+          "s": 9,
+          "errs": [
+            {
+              "fn": 91,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/base-ui/src/components/tree-list/TreeList.tsx": {
+          "s": 22,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/TreeListReorder.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/context/TreeContext.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/hooks/useTreeFlattener.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/hooks/useTreeFocus.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/hooks/useTreeItem.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/hooks/useTreeOrder.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/hooks/useTreeState.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/tree-list/hooks/useTreeStore.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/typography/Hotkey.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/typography/Link.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/visualization/ViewLayout.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/visualization/Visualization.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/components/visualization/VisualizationBindingEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/hooks/useDebouncedCallback.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/hooks/useDebouncedValue.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/CapacityBar.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/Gauge.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/Heatmap.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/Histogram.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/MetricCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/MetricDetails.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/MetricDisplayPicker.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/MetricLegend.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/MetricPanel.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/MetricValue.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/PodReference.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/RankedBars.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/SloSummary.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/SmallMultiples.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/Sparkline.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/StackedTimeSeriesChart.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/StateTimeline.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/TimeRangeControl.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/TimeSeriesChart.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/metrics/references.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/system/useVirtualizerSnapshot.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/test/render.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/theme/ThemeProvider.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/theme/ThemeSwitcher.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/theme/useTheme.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/base-ui/src/theme/useThemeList.ts": {
+          "s": 1,
+          "errs": []
+        }
+      }
+    },
+    "ai-ui:src": {
+      "files": 58,
+      "compileSuccess": 62,
+      "compileSkipDirectives": 0,
+      "memoSlots": 1339,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 4,
+      "diagnostics": {
+        "Warning|IncompatibleLibrary|Use of incompatible library": 1,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause": 3,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle for-await loops": 3
+      },
+      "filesWithCompilerEvents": {
+        "ui/packages/ai-ui/src/components/agent/AgentControls.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/agent/AgentStatusItem.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/agent/AgentTaskList.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/artifact/AIArtifact.tsx": {
+          "s": 8,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/branching/AIBranch.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIAttachment.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIContextIndicator.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIConversationHeader.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIErrorMessage.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIFollowUp.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIMessageActions.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIMessageEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIMessageGroup.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIModelSelector.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/AIRetryButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/ChatAvatar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/ChatBubble.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/ChatInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/chat/ChatMessageList.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 37,
+              "k": "Warning|IncompatibleLibrary|Use of incompatible library"
+            }
+          ]
+        },
+        "ui/packages/ai-ui/src/components/chat/ChatSuggestions.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AICodeBlock.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AICostIndicator.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AIImageGeneration.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AIInferenceStats.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AIInlineCitation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AIMarkdown.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 113,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 113,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle for-await loops"
+            }
+          ]
+        },
+        "ui/packages/ai-ui/src/components/content/AISources.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/content/AITokenUsage.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/domain/AIActionConfirmation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/domain/AICommandSuggestion.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/permissions/PermissionRequest.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/reasoning/BrainIcon.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/reasoning/ChainOfThought.tsx": {
+          "s": 10,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/reasoning/ThinkingBlock.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 79,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 79,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle for-await loops"
+            }
+          ]
+        },
+        "ui/packages/ai-ui/src/components/step-divider/AIStepDivider.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/streaming/AIStopButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/streaming/StreamingText.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 18,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 18,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle for-await loops"
+            }
+          ]
+        },
+        "ui/packages/ai-ui/src/components/streaming/TypingIndicator.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/tool-calls/ToolCall.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/tool-calls/ToolCallList.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/components/tool-calls/ToolResult.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "ui/packages/ai-ui/src/test/render.tsx": {
+          "s": 1,
+          "errs": []
+        }
+      }
+    },
+    "editors:src": {
+      "files": 39,
+      "compileSuccess": 6,
+      "compileSkipDirectives": 0,
+      "memoSlots": 104,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 6,
+      "diagnostics": {
+        "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global": 1,
+        "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule": 3,
+        "Hint|Todo|Unexpected terminal kind `optional` for logical test block": 1,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions": 7
+      },
+      "filesWithCompilerEvents": {
+        "ui/packages/editors/src/components/cel-query-editor/CelQueryEditor.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 32,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global"
+            }
+          ]
+        },
+        "ui/packages/editors/src/components/code-editor/CodeEditor.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 257,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/editors/src/components/command-palette/CommandPalette.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 96,
+              "k": "Hint|Todo|Unexpected terminal kind `optional` for logical test block"
+            }
+          ]
+        },
+        "ui/packages/editors/src/components/diff-viewer/DiffViewer.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 29,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/editors/src/components/markdown-preview/MarkdownPreview.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "ui/packages/editors/src/components/object-inspector/ObjectInspector.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 237,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "ui/packages/editors/src/components/terminal/Terminal.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            },
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            },
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            },
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            },
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            },
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            },
+            {
+              "fn": 290,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle Import expressions"
+            }
+          ]
+        },
+        "ui/packages/editors/src/themes/useEditorTheme.ts": {
+          "s": 1,
+          "errs": []
+        }
+      }
+    },
+    "k8s:ui/src": {
+      "files": 757,
+      "compileSuccess": 835,
+      "compileSkipDirectives": 0,
+      "memoSlots": 19979,
+      "parseFailures": 0,
+      "distinctErrorFunctions": 58,
+      "diagnostics": {
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause": 19,
+        "Error|PreserveManualMemo|Existing memoization could not be preserved": 3,
+        "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta": 6,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions": 31,
+        "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule": 2,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle get functions in ObjectExpression": 3,
+        "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause": 1,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle ||= operators in AssignmentExpression": 3,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression": 5,
+        "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas.": 4,
+        "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global": 1,
+        "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got CallExpression key in ObjectExpressio": 2,
+        "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch": 10,
+        "Hint|Todo|Unexpected terminal kind `optional` for logical test block": 1,
+        "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s": 5,
+        "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `CallExpression` cannot be saf": 1,
+        "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got TemplateLiteral key in ObjectExpressi": 1,
+        "Warning|IncompatibleLibrary|Use of incompatible library": 1
+      },
+      "filesWithCompilerEvents": {
+        "kubernetes/ui/src/components/connections/AvatarEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ClusterCardTitle.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ClusterConnectionBoundary.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ClusterConnectionDetails.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ClusterHub.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ClusterOrganization.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ClustersToolbar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/CompactClusterCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ConnectionCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ConnectionContextMenu.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 51,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/connections/ConnectionGroup.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ConnectionGroupHeader.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ConnectionListItem.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ConnectionStatusBadge.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ConnectionTable.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 306,
+              "k": "Error|PreserveManualMemo|Existing memoization could not be preserved"
+            },
+            {
+              "fn": 306,
+              "k": "Error|PreserveManualMemo|Existing memoization could not be preserved"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/connections/ConnectionTableItem.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/DeleteConfirmationModal.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/EmptyState.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ExplorerSidebar.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/FavoriteButton.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/FilterChips.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/FolderDialog.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 73,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 73,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/connections/GroupBrowser.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/GroupBySelector.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/HubClusterRow.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/HubSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/PreferenceMigrationGate.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ProviderIcon.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/QuickConnectGrid.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/RowHandler.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/RuleBuilder.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/SimpleSelect.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/SortBySelector.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/TagInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/connections/ViewModeToggle.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/ChartSidebar/ChartOverviewTab.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/ChartSidebar/ChartReadmeTab.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/ChartSidebar/ChartValuesTab.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/ChartSidebar/ChartVersionsTab.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/ChartSidebar/MetaEntry.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/ChartSidebar/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/charts/InstallChartDialog.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 60,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/helm/charts/Table.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/releases/ReleaseSidebar.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 182,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 190,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 190,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 190,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 190,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/helm/releases/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/releases/UpgradeDialog.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 40,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/helm/repos/RepoSidebar.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/repos/Table/RepoActions.tsx": {
+          "s": 3,
+          "errs": [
+            {
+              "fn": 169,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/helm/repos/Table/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/helm/repos/Table/useRepoColumns.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/homepage/ConnectedClusterCard.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/homepage/KubernetesHomepageCard.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/KubernetesSearchActionContext.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 199,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle get functions in ObjectExpression"
+            },
+            {
+              "fn": 199,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle get functions in ObjectExpression"
+            },
+            {
+              "fn": 199,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle get functions in ObjectExpression"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/actions/ScaleModal.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/actions/create/CreateResourceButton.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 23,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 23,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement without a catch clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/actions/create/CreateResourceModal.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 30,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/ConfigMapForm.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 11,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/CronJobRunReview.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/DataConfirmation.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/IngressForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/PersistentVolumeClaimForm.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 12,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/ResourceFormFields.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/ResourceManifestEditor.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ||= operators in AssignmentExpression"
+            },
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression"
+            },
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ||= operators in AssignmentExpression"
+            },
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ||= operators in AssignmentExpression"
+            },
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 57,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/ResourceRequestLauncher.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 18,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/SecretForm.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 10,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/ServiceForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/WorkloadForm.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 52,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas."
+            },
+            {
+              "fn": 52,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas."
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/editor-controls/ControlsFixture.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/editor-controls/KeyValueFields.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/editor-controls/choices.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/editor-controls/fields.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/editor-controls/references.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 15,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Support UpdateExpression where argument is a global"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/editor-controls/validity.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/EndpointsForm.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 11,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 11,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/InspectionForms.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/LimitRangeForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/NamespaceForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/PersistentVolumeForm.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 6,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/ResourceQuotaForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/ServiceAccountForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/WorkloadFields.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-265/fields.tsx": {
+          "s": 8,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-266/OwnerInspection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-266/WorkloadEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-267/BatchForm.tsx": {
+          "s": 3,
+          "errs": [
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 20,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-268/HorizontalPodAutoscalerEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-269/PodDisruptionBudgetForm.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-270/IPAddressForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-270/IngressClassForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-270/NetworkPolicyForm.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-270/Selector.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-270/ServiceCIDRForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-270/fields.tsx": {
+          "s": 5,
+          "errs": [
+            {
+              "fn": 19,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got CallExpression key in ObjectExpressio"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-271/EndpointSliceForm.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 18,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas."
+            },
+            {
+              "fn": 18,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas."
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-272/CSIDriverForm.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 14,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 51,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 51,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 51,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 51,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-272/InspectionForms.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-272/StorageClassForm.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-272/StorageFields.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-272/VolumeAttributesClassForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-272/storageState.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-273/RbacBindingForm.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-273/RbacRoleForm.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-273/shared.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-274/PriorityClassForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-274/WorkloadForm.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-274/formState.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-274/useSchedulingForm.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-275/SelfSubjectReviewForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-275/TokenRequestForm.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-275/TokenReviewForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-275/fields.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-276/AuthorizationReviewForm.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-277/CertificateSigningRequestForm.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-277/ClusterTrustBundleForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-277/PodCertificateRequestForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-277/fields.tsx": {
+          "s": 4,
+          "errs": [
+            {
+              "fn": 50,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-278/AdmissionFields.tsx": {
+          "s": 13,
+          "errs": [
+            {
+              "fn": 43,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-278/BindingEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-278/PolicyEditor.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-278/WebhookEditor.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-279/CustomResourceDefinitionEditor.tsx": {
+          "s": 9,
+          "errs": [
+            {
+              "fn": 142,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 142,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 178,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 202,
+              "k": "Hint|Todo|Unexpected terminal kind `optional` for logical test block"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-280/APIServiceForm.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 15,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-281/LeaseCandidateEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-281/LeaseEditor.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-282/RuntimeClassForm.tsx": {
+          "s": 3,
+          "errs": [
+            {
+              "fn": 88,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-283/ClaimsForm.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-283/DeviceClassForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-283/DeviceTaintRuleForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-283/ResourceSliceForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-283/shared.tsx": {
+          "s": 10,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-284/FlowSchemaForm.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-284/PriorityLevelForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-284/fields.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-285/EventInspector.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-286/StorageVersionInspector.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-287/StorageVersionMigrationForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-287/TargetDiscovery.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 16,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-288/AdmissionReviewInspector.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-289/APIGroupDiscoveryForm.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-290/ImageReviewInspector.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-291/MetricsInspector.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-291/NodeMetricsInspector.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-291/PodMetricsInspector.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-292/CustomMetricsForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-293/ExternalMetricQuery.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-294/GatewayForms.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-295/ExperimentalGatewayForm.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 6,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s"
+            },
+            {
+              "fn": 6,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 6,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 6,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-296/ControllerActions.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 11,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-296/Forms.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-296/StructuredFields.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-297/inspectors.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-298/Editors.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-299/policies.tsx": {
+          "s": 10,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-300/TelemetryEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-301/WasmPluginForm.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-302/CiliumForm.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-303/CalicoEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-304/BackingInspector.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-305/CalicoOperatorEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-306/NetworkPolicyEditor.tsx": {
+          "s": 11,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-307/MonitoringForm.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-308/ArgoEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-309/SourceEditors.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `CallExpression` cannot be saf"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-310/KustomizationEditor.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 13,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-311/HelmReleaseForm.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s"
+            },
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            },
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-312/NotificationForms.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-313/FluxImageForms.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-314/ArtifactGeneratorForm.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got CallExpression key in ObjectExpressio"
+            },
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Expected Identifier, got TemplateLiteral key in ObjectExpressi"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-315/KedaEditor.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 6,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-316/CloudEventEditor.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-317/forms.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-318/ExternalSecretsEditor.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::node.lowerReorderableExpression) Expression type `MemberExpression` cannot be s"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-319/GeneratorForm.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-320/Forms.tsx": {
+          "s": 11,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-321/Activation.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 24,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-321/forms.tsx": {
+          "s": 11,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-322/Operations.tsx": {
+          "s": 7,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-323/ProtectionForm.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-324/VeleroForms.tsx": {
+          "s": 11,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-325/SnapshotEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-326/forms.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-327/forms.tsx": {
+          "s": 9,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-328/PolicyEditor.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-329/EphemeralReportInspector.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-330/PolicyReport.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-331/StrimziForms.tsx": {
+          "s": 4,
+          "errs": [
+            {
+              "fn": 29,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-332/StrimziPodSetEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/providers/issue-333/Forms.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 7,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle BigIntLiteral expressions"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/resourceEditorServices.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/resourceEditors.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/useCatalogEditorContext.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 32,
+              "k": "Error|PreserveManualMemo|Existing memoization could not be preserved"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/useEditorEvidence.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/useManifestMode.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/manifest/useManualEndpointsAdmission.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/ConfigMapSidebar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/CronJob/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Endpoint/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Ingress/RuleTable.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Ingress/index.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Job/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Namespace/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Node/NodeImagesSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Node/NodeResourcesSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Node/NodeStatusSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Node/NodeSystemSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Node/NodeTopologySection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/NodeSidebar.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/PersistentVolumeClaimSidebar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/PersistentVolumeSidebar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/ContainerEnvironmentSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/ContainerPortsSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/ContainerProbesSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/ContainerResourcesSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/ContainerStatusSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/ContainerVolumesSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/InfoRow.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerSlice/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerStatusCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/ContainerStatuses.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/PodConfigSection.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/PodContainersSection.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/PodMetricsSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/PodStatusSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/PodVolumesSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/PortDetailsCard.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/Pod/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/RelatedResourcesView.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/ResourceEventsView.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/ResourceGraphView.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/ResourceNavTree.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/SecretSidebar.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/SidebarWatchBadge.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/resourceGraphLayout.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/shared/SectionEntry.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/sidebar/shared/SectionHeading.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicy/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicy/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicyBinding/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicyBinding/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/ValidatingWebhookConfiguration/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/admissionregistrationv1/ValidatingWebhookConfiguration/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/DaemonSet/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/DaemonSet/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/Deployment/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/Deployment/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/ReplicaSet/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/ReplicaSet/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/StatefulSet/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/appsv1/StatefulSet/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/autoscalingv1/HorizontalPodAutoscaler/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/autoscalingv1/HorizontalPodAutoscaler/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/batchv1/CronJob/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/batchv1/CronJob/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/batchv1/Job/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/batchv1/Job/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/coordinationv1/Lease/Table.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ComponentStatus/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ComponentStatus/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ConfigMap/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ConfigMap/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Endpoints/Sidebar/EndpointSubsetsSection.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Endpoints/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Endpoints/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Event/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/LimitRange/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/LimitRange/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Namespace/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Namespace/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Node/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/PersistentVolume/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/PersistentVolume/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/PersistentVolumeClaim/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/PersistentVolumeClaim/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Pod/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Pod/cells/ContainerPhaseCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Pod/cells/ContainerStatusCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Pod/cells/ResourceLinkCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Pod/useColumnVisibility.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ReplicationController/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ReplicationController/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ResourceQuota/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ResourceQuota/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Secret/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Service/Sidebar/ServicePortsSection.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Service/Sidebar/ServiceStatusSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Service/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/Service/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ServiceAccount/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/corev1/ServiceAccount/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/default/Table.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 19,
+              "k": "Error|Suppression|React Compiler has skipped optimizing this component because one or more React ESLint rule"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/kubernetes/table/discoveryv1/EndpointSlice/Sidebar/EndpointSliceInfoSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/discoveryv1/EndpointSlice/Sidebar/SliceEndpointsSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/discoveryv1/EndpointSlice/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/discoveryv1/EndpointSlice/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/flowcontrolv1/FlowSchema/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/flowcontrolv1/FlowSchema/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/flowcontrolv1/PriorityLevelConfiguration/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/Ingress/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/IngressClass/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/IngressClass/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/NetworkPolicy/Sidebar/NetworkPolicyRulesSection.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/NetworkPolicy/Sidebar/PolicyOverviewSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/NetworkPolicy/Sidebar/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/networkingv1/NetworkPolicy/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/nodev1/RuntimeClass/Sidebar/RuntimeClassHandlerSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/nodev1/RuntimeClass/Sidebar/RuntimeClassSchedulingSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/nodev1/RuntimeClass/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/nodev1/RuntimeClass/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/policyv1/PodDisruptionBudget/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/policyv1/PodDisruptionBudget/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/ClusterRole/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/ClusterRole/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/ClusterRoleBinding/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/ClusterRoleBinding/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/Role/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/Role/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/RoleBinding/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/rbacv1/RoleBinding/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/schedulingv1/PriorityClass/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/TableMetrics.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/ActionsCell.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/AgeCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/ChipList.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/ConditionsCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/CopyableCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/NamespaceCell.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/cells/SelectCell.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/columns/selectColumn.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/shared/headers/SelectHeader.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/CSIDriver/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/CSIDriver/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/CSINode/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/CSINode/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/CSIStorageCapacity/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/StorageClass/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/StorageClass/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/VolumeAttachment/Sidebar/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/kubernetes/table/storagev1/VolumeAttachment/Table.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/settings/MetricsTabContent.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 132,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/settings/NodeShellTabContent.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/Card.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/CodeEditor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/CollectionStatus.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/ConditionChip.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/ConnectionEnvironment.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/ConnectionMetadataValue.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/DetailsCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/ExpandableSections.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/Icon.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/JobStatusSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/KVCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/LabeledEntry.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/LimitRangeItemSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/MatchResourcesSection.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/MetricSourcePicker.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/NamedAvatar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/NamespaceSelect.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/ObjectMetaSection.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/QuotaUsageTable.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/RBACRulesSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/ResourceLinkChip.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 67,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/shared/ResourceMetricPanels.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/SearchInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/SectionHeader.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/SidebarSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/SimpleTooltip.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/SyncProgressDialog.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/WebhookSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/WorkloadPortsCard.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/WorkloadStatusSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/charts/DonutChart.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/charts/MetricsPanel.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/charts/TimeRangePicker.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/charts/TimeSeriesChart.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/drawer/DrawerActionsBridge.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/editor/Editor.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/navmenu/NavMenu.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/sidebar/GenericResourceSidebar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/sidebar/pages/editor/BaseEditorPage.tsx": {
+          "s": 2,
+          "errs": [
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/shared/sidebar/pages/metrics/ResourceMetricsPage/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/sidebar/pages/overview/BaseOverviewPage.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/sidebar/pages/overview/sections/MetadataSection.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/ResourceTable/ResourceTableErrorState.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/ResourceTable/ResourceTableToolbar.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/ResourceTable/filterOptions.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/ResourceTable/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/TableActionsContext.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/TableActionsScope.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/TableDrawerContext.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/shared/table/useRowSelectionCleanup.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/tables/ColumnFilter/ColumnPicker.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/tables/ColumnFilter/index.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/tables/ColumnFilter/useDynamicResourceColumns.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression"
+            },
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression"
+            },
+            {
+              "fn": 25,
+              "k": "Hint|Todo|(BuildHIR::lowerExpression) Handle ??= operators in AssignmentExpression"
+            }
+          ]
+        },
+        "kubernetes/ui/src/components/tables/DebouncedInput.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/tables/NamespaceSelect.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/components/tables/ResourceFilterSelect.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/features/debug/DebugLaunchDialog.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 32,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 32,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 32,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 32,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            }
+          ]
+        },
+        "kubernetes/ui/src/features/debug/DebugPreferencesDialog.tsx": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            },
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+            },
+            {
+              "fn": 28,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/features/debug/DebugSessionsSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/features/debug/useDebugActions.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/features/debug/useDebugPreferences.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 18,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/hooks/useClusterAction.ts": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 19,
+              "k": "Hint|Todo|(BuildHIR::lowerStatement) Handle TryStatement with a finalizer ('finally') clause"
+            }
+          ]
+        },
+        "kubernetes/ui/src/hooks/useClusterPreferences.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useConnectionGrouping.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useConnectionNamespaces.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useDocumentVisibility.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useHubSections.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useKubernetesResources.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useLegacyColumnMigration.ts": {
+          "s": 0,
+          "errs": [
+            {
+              "fn": 22,
+              "k": "Hint|Todo|Support value blocks (conditional, logical, optional chaining, etc) within a try/catch sta"
+            }
+          ]
+        },
+        "kubernetes/ui/src/hooks/useResourceEvents.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useSidebarLayout.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useSidebarOrder.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useStableRef.ts": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/hooks/useStoredState.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/layouts/resource/Main.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/layouts/resource/Root.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/layouts/resource/SideDrawer.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/layouts/resource/SideNav.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/layouts/resource/SidePane.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/ClusterInfoSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/ConnectionSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/IdentitySection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/InfoRow.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/SectionWrapper.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/TagsSection.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterEditPage/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterResourcesPage.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClusterResourcesRoute.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/ClustersPage.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/benchmarks/BenchmarkDashboard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/benchmarks/components/ClusterOverviewCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/benchmarks/components/ScorecardChart.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/benchmarks/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/extension/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/metrics/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/EventsTable.tsx": {
+          "s": 1,
+          "errs": [
+            {
+              "fn": 302,
+              "k": "Warning|IncompatibleLibrary|Use of incompatible library"
+            }
+          ]
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/components/ClusterHealthBanner.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/components/ClusterInfoCard.tsx": {
+          "s": 3,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/components/ClusterMetricsSection.tsx": {
+          "s": 4,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/components/ClusterResourceGauges.tsx": {
+          "s": 5,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/components/WorkloadStatCards.tsx": {
+          "s": 6,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/components/WorkloadSummaryCard.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/dashboard/overview/index.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/pages/extension/index.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/search/provider.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/stories/components/DynamicIcon.tsx": {
+          "s": 1,
+          "errs": []
+        },
+        "kubernetes/ui/src/stories/containers/SidebarContainer.tsx": {
+          "s": 2,
+          "errs": []
+        },
+        "kubernetes/ui/src/utils/ageClock.ts": {
+          "s": 1,
+          "errs": []
+        }
+      }
+    }
+  }
+}
