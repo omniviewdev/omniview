@@ -1,0 +1,106 @@
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DetailPageDefinition, DetailSource, DetailState, DetailView } from './detailDefinition';
+import { DetailPage } from './DetailPage';
+import { FELT_MS } from './useRefreshFeedback';
+
+// The page is plugin-agnostic, so the tests are too: an invented widget in an invented bay. What is under test is what the page does with a source that says a read failed while the
+// object is on screen: it keeps the object, and says so where the page's other acknowledgements go, the header's operation slot.
+
+const definition: DetailPageDefinition = {
+  kind: 'Widget',
+  tile: { icon: 'box' },
+  identity: { name: 'name' },
+  tabs: [{ id: 'overview', label: 'Overview' }],
+};
+
+const params = { name: 'lathe-4' };
+
+const view: DetailView = {
+  state: { role: 'running', label: 'Running' },
+  tabs: { overview: { kind: 'overview', sections: [{ id: 'details', kind: 'kv', title: 'Details', rows: [{ label: 'Bay', value: 'north' }] }] } },
+};
+
+const source = (state: DetailState, shown: DetailView | undefined = view, over: Partial<DetailSource> = {}): DetailSource => ({
+  state,
+  view: shown,
+  refreshing: false,
+  refresh: async () => undefined,
+  ...over,
+});
+
+const page = (given: DetailSource) => <DetailPage definition={definition} params={params} source={given} />;
+
+const REPORT = 'Couldn\'t refresh lathe-4: The read timed out.';
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+describe('a read that fails after the object was shown', () => {
+  it('keeps what was shown and says so in the header\'s slot, with the plugin\'s Retry', () => {
+    const retry = vi.fn();
+    render(page(source({ kind: 'failed', message: 'The read timed out.', retry })));
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Details' })).toBeInTheDocument();
+    expect(screen.getByText(REPORT)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no Retry when asking again cannot help, and still says it', () => {
+    render(page(source({ kind: 'failed', message: 'The read timed out.' })));
+
+    expect(screen.getByText(REPORT)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says nothing while the object is read', () => {
+    render(page(source({ kind: 'ready' })));
+
+    expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+  });
+
+  it('is put away with Dismiss, stays away for the same failure, and comes back for another one, and for the same words after a good read', () => {
+    const { rerender } = render(page(source({ kind: 'failed', message: 'The read timed out.' })));
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss/ }));
+    expect(screen.queryByText(REPORT)).toBeNull();
+
+    rerender(page(source({ kind: 'failed', message: 'The read timed out.' })));
+    expect(screen.queryByText(REPORT)).toBeNull();
+
+    rerender(page(source({ kind: 'failed', message: 'The host refused it.' })));
+    expect(screen.getByText('Couldn\'t refresh lathe-4: The host refused it.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss/ }));
+    rerender(page(source({ kind: 'ready' })));
+    rerender(page(source({ kind: 'failed', message: 'The host refused it.' })));
+    expect(screen.getByText('Couldn\'t refresh lathe-4: The host refused it.')).toBeInTheDocument();
+  });
+});
+
+describe('the user\'s own Refresh', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it('is followed by the failure it ended in, and is not called an update', async () => {
+    const read = Promise.withResolvers<void>();
+    const refresh = async () => read.promise;
+    const { rerender } = render(page(source({ kind: 'ready' }, view, { refresh })));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh lathe-4' }));
+    expect(screen.getByText('Refreshing…')).toBeInTheDocument();
+
+    // The read fails while it runs: the plugin keeps the object and says the read failed.
+    rerender(page(source({ kind: 'failed', message: 'The read timed out.' }, view, { refresh })));
+    await act(async () => {
+      read.resolve();
+      await vi.advanceTimersByTimeAsync(FELT_MS);
+    });
+
+    expect(screen.queryByText('Updated')).toBeNull();
+    expect(screen.queryByText('Refreshing…')).toBeNull();
+    expect(screen.getByText(REPORT)).toBeInTheDocument();
+  });
+});

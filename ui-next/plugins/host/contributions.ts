@@ -1,3 +1,4 @@
+import { facetsOf, nameOf, titleOf, type DetailPageDefinition } from '../../page';
 import type { Contributions, Description, Route, RouteInput } from '../../shell';
 import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
 import type { PluginEntry } from './pluginStore';
@@ -22,6 +23,10 @@ export function connectionOf(route: Route): string | undefined {
   const { connection } = route.params;
   return typeof connection === 'string' ? connection : undefined;
 }
+
+/** The route's parameters a page's hook is told besides the connection (`RouteV1.params`): the ones that are text. For a detail page they are the object's identity. */
+export const textParamsOf = (route: Route): Readonly<Record<string, string>> =>
+  Object.fromEntries(Object.entries(route.params).flatMap(([name, value]) => (name !== 'connection' && typeof value === 'string' ? [[name, value] as const] : [])));
 
 /** What the host reads of its plugins: the entries now, and a way to hear that they changed. `PluginStore` is one. */
 export type PluginSource = {
@@ -53,6 +58,29 @@ function glyphOf(nodes: readonly SidebarNodeV1[], page: string): string | undefi
 const homeOf = (entry: PluginEntry): RouteInput => ({ plugin: entry.id, contribution: entry.phase === 'ready' ? entry.contribution.home : HOME_PAGE });
 
 /**
+ * What a detail route says about its tab (design 16 TI1, DM1, S61): the title `{name} · {Kind}`, the kind's glyph, the plugin's qualifiers (the parameters the definition lists: a group
+ * first) with the connection after them, and the path `Plugin › connection › list › name`, whose list crumb leads back to the list. It reads the route and the definition and nothing else.
+ */
+export function describeDetail(pluginName: string, route: Route, definition: DetailPageDefinition): Description {
+  const connection = connectionOf(route);
+  const name = nameOf(definition, route.params);
+  const { list } = definition;
+  return {
+    title: titleOf(definition, route.params),
+    icon: definition.tile.icon,
+    pluginName,
+    path: [
+      pluginName,
+      ...(connection === undefined ? [] : [connection]),
+      ...(list === undefined ? [] : [{ label: list.label, route: { plugin: route.plugin, contribution: list.page, params: { connection } } }]),
+      name === '' ? definition.kind : name,
+    ],
+    scope: connection === undefined ? undefined : { id: connection, label: connection },
+    facets: [...facetsOf(definition, route.params), ...(connection === undefined ? [] : [connection])],
+  };
+}
+
+/**
  * The model's `Contributions`, over the host's plugins. `describe` gives a tab its title, glyph and path from the page's own contribution (what its hook published, else the page's
  * definition and its sidebar entry), its scope from the connection its route names, and says the plugin's name so a tab that reads like another is told from it. `availability` opens a
  * plugin that is loading or failed to a page that says so (ch16 S65: degraded) and refuses one the host does not have. `complete` fills in the connection of the tab a destination is
@@ -75,8 +103,14 @@ export function createContributions({ plugins, frames, holdHome }: Contributions
 
       const { contribution } = entry;
       const page = Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home;
+      const found = contribution.pages[page];
+      if (found?.kind === 'detail') {
+        // An object's face is the route's and the definition's alone: it is the same before the page's hook has run, in every state of the data, and in a tab that was never shown.
+        return describeDetail(contribution.plugin.name, route, found.definition);
+      }
+
       const frame = frames.get(routeKey(route));
-      const title = frame?.tab.title ?? contribution.pages[page]?.definition.title ?? entry.name;
+      const title = frame?.tab.title ?? found?.definition.title ?? entry.name;
       return {
         title,
         icon: frame?.tab.icon ?? glyphOf(contribution.sidebar.nodes, page) ?? 'box',

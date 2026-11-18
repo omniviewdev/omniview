@@ -1,0 +1,7 @@
+/* The box the narrow example sits in: the width of a page's aside, 342 px. */
+@layer ov.components {
+  .narrow {
+    width: 342px;
+    max-width: 100%;
+  }
+}

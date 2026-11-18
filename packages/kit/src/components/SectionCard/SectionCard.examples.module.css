@@ -1,0 +1,13 @@
+/* The boxes the examples sit in: the width of a page's aside (342 px), and the plain table of the flush body. */
+@layer ov.components {
+  .narrow {
+    width: 342px;
+    max-width: 100%;
+  }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: start;
+  }
+}

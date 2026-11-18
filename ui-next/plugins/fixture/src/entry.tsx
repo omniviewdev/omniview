@@ -2,6 +2,7 @@ import { Text, useTheme } from '@omniviewdev/kit';
 import { useConnections } from '@omniviewdev/runtime/ui/v1';
 import { useEffect, useState } from 'react';
 import type { ContributionV1, SidebarNodeV1 } from '../../contract/v1';
+import { itemPage } from './detail';
 import { crashPage, itemsPage } from './pages';
 
 // A plugin's new-UI bundle, as small as one can be and still be the real thing: it exports `contributionV1` and nothing else is the host's business
@@ -25,7 +26,7 @@ const WITH_COUNTS: readonly SidebarNodeV1[] = [
     label: 'Things',
     icon: 'layers',
     children: [
-      { id: 'items', label: 'Items', icon: 'box', count: 3 },
+      { id: 'items', label: 'Items', icon: 'box', count: 5 },
       { id: 'crash', label: 'Crash', icon: 'status-error' },
     ],
   },
@@ -49,7 +50,7 @@ export const contributionV1 = {
   plugin: { name: 'Seam Fixture', accent: 'teal' },
   rail: true,
   sidebar: { label: 'Seam Fixture navigation', title: 'Fixture', nodes: SKELETON, useNodes: useCounts },
-  pages: { items: itemsPage, crash: crashPage },
+  pages: { items: itemsPage, item: itemPage, crash: crashPage },
   home: 'items',
 } satisfies ContributionV1;
 

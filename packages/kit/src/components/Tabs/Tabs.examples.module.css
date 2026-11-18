@@ -1,0 +1,7 @@
+/* The box the narrow example sits in: 240 px, narrower than its tabs, so the strip scrolls. */
+@layer ov.components {
+  .narrow {
+    width: 240px;
+    max-width: 100%;
+  }
+}

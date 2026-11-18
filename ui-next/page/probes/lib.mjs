@@ -6,6 +6,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveNode } from '../../../packages/kit/probes/mock-detail-measure.mjs';
 import { expandEntry } from '../../../packages/kit/probes/mock-page-measure.mjs';
 import { normalizeFont, settle } from '../../../packages/kit/probes/probe-lib.mjs';
 
@@ -13,6 +14,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const round2 = (value) => Math.round(value * 100) / 100;
+
+/** The design mock's detail page (packages/kit/probes/mock-detail.json, made by mock-detail-measure.mjs): `node(section, engine, viewport, name)` is `{ r: [x, y, w, h], x? }` or null. */
+const DETAIL = JSON.parse(readFileSync(path.join(repo, 'packages/kit/probes/mock-detail.json'), 'utf8'));
+export const MOCK_DETAIL = { node: (section, engine, viewport, name) => resolveNode(DETAIL, section, engine, viewport, name) };
 
 /* ------------------------------------------------------------------------------------------------------------------------------ */
 /* The mock's reference.                                                                                                            */

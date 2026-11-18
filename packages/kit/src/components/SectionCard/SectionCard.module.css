@@ -1,0 +1,80 @@
+@layer ov.components {
+  /* A section of a page (the mock's `.card`, `.cardtitle`, `.pad`): no box, no fill. The heading lane is 28 px at the least with a 6 px
+     inset above and below the 16 px title line and a 1 px rule under it (29 px with a one-line title); the title is 13/16 at weight 600, the
+     meta 12/16 muted after it, and the commands trail at the end, 8 px apart. A `row` size command has margin of its own in the mock; here
+     the group takes that padding back, so the lane keeps its height in both densities. */
+  .root {
+    box-sizing: border-box;
+    min-width: 0;
+    margin: 0;
+    background: transparent;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .lane {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    min-height: 28px;
+    padding: var(--ov-spacing-6) 0;
+    border-bottom: 1px solid var(--ov-border-subtle);
+  }
+
+  /* The title and its fragment stay together; the commands trail. */
+  .lead {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  .heading {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meta {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token, not a step of the spacing scale */
+    margin-block: calc(-1 * var(--ov-row-pad));
+  }
+
+  .body {
+    min-width: 0;
+  }
+
+  .body[data-ov-pad='true'] {
+    padding: var(--ov-spacing-12) 0;
+  }
+}

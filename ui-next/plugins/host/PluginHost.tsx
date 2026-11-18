@@ -1,14 +1,16 @@
+import { LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
 import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { ListPage } from '../../page';
+import { DetailPage, ListPage } from '../../page';
 import { createTabsStore, dispositionOf, platformOf, Shell, type Contributions, type ModifierEvent, type PageTab, type Route, type ShellRegistration, type ShellSidebar, type TabsStore } from '../../shell';
 import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, SidebarNodeV1 } from '../contract/v1';
 import { ContributionBoundary } from './ContributionBoundary';
-import { connectionOf, createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
+import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
+import { createLinkHandler } from './links';
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
-import type { HostRoute } from './route';
+import { NO_PARAMS, type HostRoute } from './route';
 
 // The host of contributed pages: given what each installed plugin's interface came to (`PluginStore`), it drives the shell's tab model with them. A tab is a route in a plugin; the model asks
 // the host what a route is called (`contributions.ts`) and the host draws each mounted tab's page, the list page for the plugin's contribution, or the kit's collection state where there
@@ -103,11 +105,16 @@ function registrationOf({ entries, inventory, waiting, route, frame, nodes }: Fr
   }
 
   const { contribution } = entry;
+  const pageId = Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home;
+  const page = contribution.pages[pageId];
+  const detail = page?.kind === 'detail' ? page : undefined;
   return {
     plugin: { name: contribution.plugin.name },
     rail: contribution.rail,
-    layout: 'pane',
-    sidebar: sidebarOf(contribution, nodes ?? contribution.sidebar.nodes, Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home),
+    // A detail page is a document: the page scrolls, header and body together (ch16 S15). A list owns its own scrolling.
+    layout: detail === undefined ? 'pane' : 'document',
+    // The entry that stays selected while an object is open is the list it belongs to.
+    sidebar: sidebarOf(contribution, nodes ?? contribution.sidebar.nodes, detail?.definition.list?.page ?? pageId),
     scope: frame?.scope,
   };
 }
@@ -135,12 +142,13 @@ type ListProps = {
 /** The page's own component: its data hook runs here, in its tab's own subtree, and what the hook says about the frame is published for the frame and the tab to read. */
 function ListContribution({ entry, route, page: pageId, frames }: ListProps) {
   const page = entry.contribution.pages[pageId];
-  if (page === undefined) {
-    throw new Error(`The plugin has no page "${pageId}"`);
+  if (page?.kind !== 'list') {
+    throw new Error(`The plugin has no list page "${pageId}"`);
   }
 
   const connection = connectionOf(route);
-  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection } }), [entry.id, pageId, connection]);
+  // A list page's route has no parameters of its own (`RouteV1.params`): what an address adds to one is not an identity the page reads, so its hook is told none.
+  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS } }), [entry.id, pageId, connection]);
   const { frame, source } = page.usePage(context);
   // Before the first paint, so the scope lane and the tab's words are there with the page; a frame equal to the one held changes nothing.
   useLayoutEffect(() => {
@@ -150,15 +158,70 @@ function ListContribution({ entry, route, page: pageId, frames }: ListProps) {
   return <ListPage definition={page.definition} source={source} />;
 }
 
+type DetailProps = {
+  readonly entry: PluginEntry & { readonly phase: 'ready' };
+  readonly route: Route;
+  readonly page: string;
+  readonly frames: Published<FrameV1>;
+  readonly tabs: TabsStore;
+};
+
+/**
+ * The detail page's own component, as the list's: its data hook runs here with the route's parameters, and the scope lane's faces it answers are published for the frame to read. The tab's
+ * title, glyph and path are not the hook's: they are the route's and the definition's (`describeDetail`), the same before this component has run. The back path above the heading is
+ * the same path, its parents links that open in place.
+ */
+function DetailContribution({ entry, route, page: pageId, frames, tabs }: DetailProps) {
+  const page = entry.contribution.pages[pageId];
+  if (page?.kind !== 'detail') {
+    throw new Error(`The plugin has no detail page "${pageId}"`);
+  }
+
+  const connection = connectionOf(route);
+  const params = useMemo(() => textParamsOf(route), [route]);
+  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params } }), [entry.id, pageId, connection, params]);
+  const { scope, source } = page.usePage(context);
+  const { definition } = page;
+  const pluginName = entry.contribution.plugin.name;
+  const face = useMemo(() => describeDetail(pluginName, route, definition), [pluginName, route, definition]);
+  // Before the first paint, so the scope lane is there with the page; a frame equal to the one held changes nothing.
+  useLayoutEffect(() => {
+    frames.publish(routeKey(route), { tab: { title: face.title, icon: definition.tile.icon }, path: (face.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)), scope });
+  }, [frames, route, face, definition.tile.icon, scope]);
+
+  const crumbs = (face.path ?? []).map((crumb): PageHeaderCrumb => {
+    if (typeof crumb === 'string') {
+      return { label: crumb };
+    }
+
+    const { route: parent } = crumb;
+    return {
+      label: crumb.label,
+      onSelect:
+        parent === undefined
+          ? undefined
+          : () => {
+            tabs.open({ route: parent }, { how: 'smart', source: 'crumb' });
+          },
+    };
+  });
+  return <DetailPage definition={definition} params={route.params} source={source} path={crumbs} />;
+}
+
 type HostPageProps = {
   readonly entries: readonly PluginEntry[];
   readonly route: Route;
   readonly frames: Published<FrameV1>;
+  readonly tabs: TabsStore;
+  readonly platform: 'mac' | 'other';
   readonly onRetry: (id: string) => void;
 };
 
-/** One tab's page: the plugin's, in its own boundary, or the state the plugin is in. */
-function HostPage({ entries, route, frames, onRetry }: HostPageProps) {
+/** One tab's page: the plugin's, in its own boundary and with its links, or the state the plugin is in. */
+function HostPage({ entries, route, frames, tabs, platform, onRetry }: HostPageProps) {
+  // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
+  const connection = connectionOf(route);
+  const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
   const entry = entries.find((candidate) => candidate.id === route.plugin);
   if (entry === undefined) {
     return <PlaceholderPage title={route.plugin} state={{ kind: 'failed', message: 'This plugin is not installed, or is turned off.' }} />;
@@ -185,15 +248,22 @@ function HostPage({ entries, route, frames, onRetry }: HostPageProps) {
 
   const { contribution } = entry;
   const page = Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home;
-  const title = contribution.pages[page]?.definition.title ?? entry.name;
+  const found = contribution.pages[page];
+  const title = found === undefined ? entry.name : found.kind === 'detail' ? found.definition.kind : found.definition.title;
   return (
-    <ContributionBoundary
-      name={`${entry.id} page ${page}`}
-      resetKey={page}
-      fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
-    >
-      <ListContribution entry={entry} route={route} page={page} frames={frames} />
-    </ContributionBoundary>
+    <LinkProvider handler={handler}>
+      <ContributionBoundary
+        name={`${entry.id} page ${page}`}
+        resetKey={page}
+        fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
+      >
+        {found?.kind === 'detail' ? (
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} tabs={tabs} />
+        ) : (
+          <ListContribution entry={entry} route={route} page={page} frames={frames} />
+        )}
+      </ContributionBoundary>
+    </LinkProvider>
   );
 }
 
@@ -208,7 +278,7 @@ type NodesProps = {
 function NodesSource({ plugin, route, useNodes, nodes }: NodesProps) {
   const page = route.contribution;
   const connection = connectionOf(route);
-  const answer = useNodes(useMemo<ContextV1>(() => ({ plugin, route: { page, connection } }), [plugin, page, connection]));
+  const answer = useNodes(useMemo<ContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS } }), [plugin, page, connection]));
   useLayoutEffect(() => {
     nodes.publish(plugin, answer ?? null);
   }, [nodes, plugin, answer]);
@@ -232,7 +302,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   // A link at load waits for its plugin, so the window does not open its home page over it; each distinct link opens once. Where it stands is the host's (an external store), not state of
   // this component: opening it is the effect's whole job.
   const { tabs, frames, nodes, opened } = host;
-  const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection]);
+  const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection, link.params]);
   const waiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
   const known = link.plugin !== undefined && entries.some((entry) => entry.id === link.plugin);
   // Whether the screen has had its turn since the inventory came in: its effect hands the plugins to the store after this component's, so a link looked at in the commit the inventory
@@ -258,10 +328,10 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
     opened.publish('link', linkKey);
     host.release();
-    tabs.open({ route: { plugin: link.plugin, contribution: link.page ?? HOME_PAGE, params: { connection: link.connection } } }, { how: 'smart', source: 'link' });
+    tabs.open({ route: { plugin: link.plugin, contribution: link.page ?? HOME_PAGE, params: { ...link.params, connection: link.connection } } }, { how: 'smart', source: 'link' });
     // The window opens its home page when the link opened nothing.
     tabs.refresh();
-  }, [host, tabs, opened, link.plugin, link.page, link.connection, linkKey, known, inventory, settled]);
+  }, [host, tabs, opened, link.plugin, link.page, link.connection, link.params, linkKey, known, inventory, settled]);
 
   const route = useSyncExternalStore(tabs.subscribe, () => activeRoute(tabs));
   const entry = route === undefined ? undefined : entries.find((candidate) => candidate.id === route.plugin);
@@ -297,7 +367,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
       <Shell
         registration={registrationOf({ entries, inventory, waiting, route, frame, nodes: published })}
         tabs={tabs}
-        renderPage={(tab: PageTab) => <HostPage entries={entries} route={tab.location.route} frames={frames} onRetry={onRetry} />}
+        renderPage={(tab: PageTab) => <HostPage entries={entries} route={tab.location.route} frames={frames} tabs={tabs} platform={platform} onRetry={onRetry} />}
         empty={emptyOf({ entries, inventory, onRetryInventory })}
         onChoose={choose}
         onNewTab={newTab}

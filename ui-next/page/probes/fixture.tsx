@@ -35,9 +35,10 @@ import { createRoot } from 'react-dom/client';
 import { ListPage, type ListPageDefinition, type ListSource } from '..';
 import type { ShellRegistration } from '../../shell';
 import { StaticShell, staticTabs } from '../../shell/testing';
+import { DetailCase } from './detailCase';
 import styles from './fixture.module.css';
-
 const noop = () => undefined;
+
 
 /* ------------------------------------------------------------------------------------------------------------------------------ */
 /* The items.                                                                                                                       */
@@ -443,10 +444,23 @@ function HeaderCase() {
 
 const name = new URLSearchParams(window.location.search).get('case') ?? 'list';
 const config = LIST_CASES[name];
-if (name !== 'header' && config === undefined) {
+if (name !== 'header' && name !== 'detail' && config === undefined) {
   throw new Error(`Unknown case "${name}"`);
 }
 
+/** The detail case lets the probe bring the object in (`window.__fixture.ready()`), as the list's `transition` case does. */
+const expose = (ready: () => void): void => {
+  window.__fixture = { counts, release: noop, ready, header: noop, operation: noop };
+};
+
 createRoot(document.getElementById('root')!).render(
-  <ThemeProvider>{config === undefined ? <HeaderCase /> : <ListCase config={config} definition={definitionOf(config.words)} rows={itemsOf(config.count)} />}</ThemeProvider>,
+  <ThemeProvider>
+    {name === 'detail' ? (
+      <DetailCase start={new URLSearchParams(window.location.search).get('state') === 'loading' ? 'loading' : 'ready'} expose={expose} />
+    ) : config === undefined ? (
+      <HeaderCase />
+    ) : (
+      <ListCase config={config} definition={definitionOf(config.words)} rows={itemsOf(config.count)} />
+    )}
+  </ThemeProvider>,
 );

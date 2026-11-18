@@ -5,3 +5,9 @@
   padding-inline: var(--ov-spacing-4);
   outline: 1px dotted currentcolor;
 }
+
+/* A run of code in a cell: the code face at the table's size. */
+.mono {
+  font-family: var(--ov-font-code);
+  font-size: var(--ov-fs-12);
+}
