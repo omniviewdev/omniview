@@ -2,7 +2,7 @@
 
 How the new shell shows the pages the installed plugins contribute. It is **host code and plugin-agnostic**: no plugin word appears in this directory (the vocabulary guard scans it, tests and comments included; the fixture plugin is the one exemption, because a plugin is not the host), and no plugin's code is in this repository: a real plugin reaches the host as an installed bundle, and CI runs one through this seam from outside this tree. The design, the evidence and the sequence of steps are in `docs/ui-next/slices/n19-plugin-seam.md`; this page is the map.
 
-**The default screen.** The native window loads `/` and cannot take a parameter, so nothing in the URL decides what it shows: it opens the first page a loaded plugin contributes (the first plugin by id that is ready, chosen once every plugin has settled; the plugin's `home` names the page), and shows the kit's empty state under the name "Plugins" when no plugin contributes. A browser can say more in the hash, `#/<plugin>/<page>?connection=<id>`.
+**The default screen.** The native window loads `/` and cannot take a parameter, so nothing in the URL decides what it shows: it opens the first page a loaded plugin contributes as a tab (the first plugin by id that is ready, chosen once every plugin has settled; the plugin's `home` names the page), and shows the kit's empty state under the name "Plugins" when no plugin contributes. While a plugin loads the shell draws its frame with the regions reserved, so nothing moves when it arrives. A browser can say more in the hash, `#/<plugin>/<page>?connection=<id>`: a deep link at load, and a hash typed later; each opens a tab through the tab model. The window never writes the hash.
 
 | Path | What |
 |---|---|
@@ -13,8 +13,11 @@ How the new shell shows the pages the installed plugins contribute. It is **host
 | `loader/importBundle.ts` | Fetches and links a plugin's `assets/entry.js`; refuses a bundle that imports what the host does not serve, before it runs (`preflight.ts`); `clearBundle` |
 | `loader/failure.ts` | The five kinds of load failure and the sentence for each |
 | `host/pluginStore.ts` | What each installed plugin's interface came to: loading, ready, failed; a bounded pool of loads |
-| `host/PluginHost.tsx` | The shell and the list page for a contribution, with one error boundary per contribution; the kit's collection state where there is no page |
-| `host/PluginHostScreen.tsx` | The window's default screen (`main.tsx` mounts it for every URL but `?screen=parts` and `?screen=tooltip-stress`): inventory, store, route, providers |
+| `host/PluginHost.tsx` | The shell's tab model over the plugins: the page of each mounted tab (the list page for a contribution, with one error boundary per page; the kit's collection state where there is no page), the registration of the tab on screen, the sidebar's data hook, what a sidebar entry and `+` open |
+| `host/contributions.ts` | The tab model's `Contributions` over the loaded plugins: what a route is called (title, glyph, path, scope), whether it opens, the connection a sidebar entry inherits, the home page. `HOME_PAGE` stands for a plugin's first page before it has loaded |
+| `host/published.ts` | What a mounted page or sidebar says about the frame around it (its tab, path and scope; the sidebar's entries), kept where the frame and the model can read it |
+| `host/PlaceholderPage.tsx` | The page the host draws when it has no page of a plugin: loading, did not load, or the page failed |
+| `host/PluginHostScreen.tsx` | The window's default screen (`main.tsx` mounts it for every URL but `?screen=parts` and `?screen=tooltip-stress`): inventory, store, the address, providers |
 | `fixture/` | A tiny plugin built **outside the host's bundle** by its own Vite config: `build.mjs` writes four installed plugin directories (healthy, a copy with its own kit, an old-shell bundle, no bundle) |
 | `e2e/seam.check.mjs` | The real Go host in server mode loading the four fixture plugins, in WebKit and Chromium |
 

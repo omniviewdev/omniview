@@ -1,8 +1,9 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 
-// Where the window is, as the host names it: which plugin, which of its pages, and the scope the user chose. The window opens with no URL (the
-// native window loads `/` and cannot take a parameter), so every part is optional: an absent plugin is the first one that has a page, an absent page is
-// the plugin's `home`. A browser can say more, in the hash (`#/<plugin>/<page>?connection=<id>`), which is also what makes a check of one page repeatable.
+// What the page's address asks for, as the host names it: which plugin, which of its pages, and the connection the user chose. The window opens with no URL (the native window loads `/`
+// and cannot take a parameter), so every part is optional: an absent plugin is no request, an absent page is the plugin's `home`. A browser can say more, in the hash
+// (`#/<plugin>/<page>?connection=<id>`): a deep link at load, which is also what makes a check of one page repeatable, and a hash typed later. It is a request from outside, read and never written:
+// where the window is, is the tabs' (each has its own history), and a hash that echoed one of them would name one place of many.
 
 export type HostRoute = {
   readonly plugin: string | undefined;
@@ -24,21 +25,11 @@ const decode = (part: string | undefined): string | undefined => {
   }
 };
 
-/** `#/seam/items?connection=north` as a route. Anything it cannot read is absent, never an error: a stale link opens the default. */
+/** `#/seam/items?connection=north` as a request. Anything it cannot read is absent, never an error: a stale link opens the default. */
 export function parseRoute(hash: string): HostRoute {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
   const [plugin, page] = path.split('/').filter((part) => part !== '');
   return { plugin: decode(plugin), page: decode(page), connection: decode(new URLSearchParams(query).get('connection') ?? undefined) };
-}
-
-export function formatRoute(route: HostRoute): string {
-  if (route.plugin === undefined) {
-    return '';
-  }
-
-  const path = [route.plugin, ...(route.page === undefined ? [] : [route.page])].map(encodeURIComponent).join('/');
-  const query = route.connection === undefined ? '' : `?connection=${encodeURIComponent(route.connection)}`;
-  return `#/${path}${query}`;
 }
 
 function subscribe(listener: () => void): () => void {
@@ -50,11 +41,7 @@ function subscribe(listener: () => void): () => void {
 
 const read = (): string => window.location.hash;
 
-/** The route in the hash, and the way to change it. A change is a history entry, so Back returns to the page before. */
-export function useHashRoute(): readonly [HostRoute, (route: HostRoute) => void] {
-  const hash = useSyncExternalStore(subscribe, read);
-  const navigate = useCallback((route: HostRoute) => {
-    window.location.hash = formatRoute(route);
-  }, []);
-  return [parseRoute(hash), navigate];
+/** What the hash names now. It changes when the hash does, and the host opens a tab for each distinct request. */
+export function useHashLink(): HostRoute {
+  return parseRoute(useSyncExternalStore(subscribe, read));
 }

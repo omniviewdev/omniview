@@ -23,13 +23,16 @@ describe('Icon', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('draws at 16 unless it is told 12, on the artboard of its glyph', () => {
+  it('draws at 16 unless it is told 12 or 20, on the artboard of its glyph', () => {
     const { container, rerender } = render(<Icon name="refresh" />);
     expect(container.querySelector('svg')).toHaveProperty('dataset.ovSize', '16');
     expect(container.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
     rerender(<Icon name="box" size={12} />);
     expect(container.querySelector('svg')).toHaveProperty('dataset.ovSize', '12');
     expect(container.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 24 24');
+    rerender(<Icon name="plus" size={20} />);
+    expect(container.querySelector('svg')).toHaveProperty('dataset.ovSize', '20');
+    expect(container.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
   });
 
   it('names the glyph it draws, for the stylesheet and for tests', () => {
@@ -90,11 +93,11 @@ describe('Icon', () => {
 
   it('has closed props: a glyph of the registry, a size of the scale, no className, no style', () => {
     // Types only: a glyph that is not in the registry has nothing to draw, so these are never rendered.
-    const accepted: IconProps[] = [{ name: 'refresh' }, { name: 'refresh', size: 12 }, { name: 'refresh', 'data-testid': 'probe' }];
+    const accepted: IconProps[] = [{ name: 'refresh' }, { name: 'refresh', size: 12 }, { name: 'refresh', size: 20 }, { name: 'refresh', 'data-testid': 'probe' }];
     // @ts-expect-error a name outside the registry
     const unknownName: IconProps = { name: 'rocket' };
     // @ts-expect-error a size outside the scale
-    const unknownSize: IconProps = { name: 'refresh', size: 20 };
+    const unknownSize: IconProps = { name: 'refresh', size: 24 };
     // @ts-expect-error className is not a prop of a kit part
     const withClass: IconProps = { name: 'refresh', className: 'x' };
     // @ts-expect-error style is not a prop of a kit part
@@ -119,7 +122,7 @@ describe('Icon', () => {
 
   it('has a stylesheet rule for each size, each role a glyph paints with, and no pointer events', async () => {
     const css = await readFile(path.join(import.meta.dirname, 'Icon.module.css'), 'utf8');
-    for (const size of ['12', '16']) {
+    for (const size of ['12', '16', '20']) {
       expect(css).toContain(`[data-ov-size='${size}']`);
     }
 

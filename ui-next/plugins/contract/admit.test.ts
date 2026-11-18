@@ -117,6 +117,10 @@ describe('admit', () => {
 
     expect(!admission.ok && admission.problems).toHaveLength(8);
   });
+
+  it('refuses a page keyed $home, the id the host reads as the plugin\'s home page: such a page could not be opened', () => {
+    expect(problemsOf(contribution({ pages: { widgets: page(), $home: page() } }))).toEqual(['pages.$home is reserved for the home page of the plugin']);
+  });
 });
 
 describe('admitOrThrow', () => {

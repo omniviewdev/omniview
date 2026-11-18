@@ -33,7 +33,8 @@ import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { ListPage, type ListPageDefinition, type ListSource } from '..';
-import { Shell, type ShellRegistration } from '../../shell';
+import type { ShellRegistration } from '../../shell';
+import { StaticShell, staticTabs } from '../../shell/testing';
 import styles from './fixture.module.css';
 
 const noop = () => undefined;
@@ -213,10 +214,11 @@ const pressed = (kind: string) => {
 /* The shell around the page.                                                                                                       */
 /* ------------------------------------------------------------------------------------------------------------------------------ */
 
+// The shell's one tab: the real tab model with an invented plugin behind it (shell/testing.tsx).
+const tabs = staticTabs([{ title: 'Items', icon: 'box', path: ['Acme', 'north', 'Items'] }]);
+
 const registration = (layout: 'pane' | 'document'): ShellRegistration => ({
   plugin: { name: 'Acme' },
-  tab: { title: 'Items', icon: 'box' },
-  path: ['Acme', 'north', 'Items'],
   rail: true,
   layout,
   sidebar: {
@@ -314,9 +316,9 @@ function ListCase({ config, definition, rows }: ListCaseProps) {
   };
 
   return (
-    <Shell registration={registration('pane')}>
+    <StaticShell registration={registration('pane')} tabs={tabs}>
       <ListPage definition={definition} source={source} />
-    </Shell>
+    </StaticShell>
   );
 }
 
@@ -428,12 +430,12 @@ function HeaderCase() {
   const operation = spec === undefined || spec === null ? spec : recordOf(spec, dismiss);
 
   return (
-    <Shell registration={registration('document')}>
+    <StaticShell registration={registration('document')} tabs={tabs}>
       <div className={styles.top}>
         <PageHeader {...props} operation={operation} />
       </div>
       <div className={styles.next} data-fixture="next" />
-    </Shell>
+    </StaticShell>
   );
 }
 

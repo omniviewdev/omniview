@@ -2,8 +2,8 @@ import { dataAttributes, type DataAttributes } from '../../shared/dataAttributes
 import { GLYPHS, type GlyphPaint, type IconName } from './glyphs';
 import styles from './Icon.module.css';
 
-/** The sizes of the closed icon scale, in pixels: 16 is the glyph beside text, 12 the one inside a header, a path or a chevron. */
-export type IconSize = 12 | 16;
+/** The sizes of the closed icon scale, in pixels: 16 is the glyph beside text, 12 the one inside a header, a path or a chevron, 20 the one in a toolbar button's face. */
+export type IconSize = 12 | 16 | 20;
 
 export type IconProps = {
   /** The glyph, from the registry. There is no other way to draw an icon. */

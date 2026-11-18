@@ -244,7 +244,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'arrow-down' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+export type IconName = 'arrow-down' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'plus' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
 
 // @public (undocumented)
 export type IconProps = {
@@ -253,7 +253,10 @@ export type IconProps = {
 } & DataAttributes;
 
 // @public
-export type IconSize = 12 | 16;
+export type IconSize = 12 | 16 | 20;
+
+// @public
+export const isIconName: (name: string) => name is IconName;
 
 // @public
 export function KindTile(input: KindTileProps): JSX.Element;

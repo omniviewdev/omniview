@@ -1,5 +1,6 @@
-/* The top row (ch16 §B R2, R3; S4 to S6): 40 px on the window plane. Leading: the safe area for the OS window controls (84), the navigation
-   group (64) and a drag gap (8), 156 px in all; then the tab strip; then the free space, which is the drag lane. */
+/* The top row (ch16 §B R2, R3; S4 to S6): 40 px on the window plane. Leading: the safe area for the OS window controls (84), Back and Forward (64) and a drag gap (8), 156 px in all; then the
+   strip and the free space after it, which is the drag lane (48 px at least); then the room of the window actions (138). The strip's budget is the window's width minus 374: the
+   chapter's arithmetic, so a face has the width the mock gives it at every count of tabs. */
 @layer ov.shell {
   /* The Wails runtime reads --wails-draggable from the computed style to find the regions that move the window (S5): the row is one,
      and every control in it is not. A name outside the private `--_` scale, so the rule that closes custom properties is off for these lines. */
@@ -13,15 +14,6 @@
     min-inline-size: 0;
     block-size: 40px;
     background-color: var(--ov-bg-window);
-  }
-
-  .strip {
-    --wails-draggable: no-drag;
-    display: flex;
-    flex: 0 1 auto;
-    align-items: center;
-    min-inline-size: 0;
-    block-size: 28px;
   }
   /* stylelint-enable property-disallowed-list */
 
@@ -50,62 +42,33 @@
     background-color: var(--ov-border-control);
   }
 
-  /* Back and Forward (30 + 4 + 30) and the 8 px drag gap, 72 px. Not built in slice 1a (no history): the tab keeps its place at 156. */
-  .reserved {
-    flex: 0 0 72px;
+  /* The drag gap after Back and Forward. */
+  .gap {
+    flex: 0 0 8px;
     align-self: stretch;
+    inline-size: 8px;
   }
 
+  /* A track is the strip and the free space after it. */
+  .tracks {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    align-self: stretch;
+    min-inline-size: 0;
+  }
+
+  /* The empty space after the strip is the drag lane, with a floor of 48 px: the scroller shrinks and the lane does not (S5). */
   .dragLane {
     flex: 1 0 48px;
     align-self: stretch;
     min-inline-size: 48px;
   }
 
-  /* The face: 28 px, an inside 1 px border, radius 6, 8 px inline padding (the border and 7), a 16 px lead and a 4 px gap. A tab is 208 px at most. */
-  .tab {
-    display: flex;
-    flex: 0 1 208px;
-    align-items: center;
-    gap: var(--ov-spacing-4);
-    box-sizing: border-box;
-    inline-size: 208px;
-    min-inline-size: 96px;
-    max-inline-size: 208px;
-    block-size: 28px;
-    margin: 0;
-    padding-block: 0;
-    padding-inline: var(--ov-spacing-8);
-    border: 0;
-    border-radius: var(--ov-radius-tab);
-    background-color: var(--ov-tab-bg);
-    box-shadow: inset 0 0 0 1px var(--ov-tab-border);
-    color: var(--ov-fg);
-    font: inherit;
-    text-align: start;
-    white-space: nowrap;
-    cursor: default;
-  }
-
-  /* The mock rings the button inside its face, 1 px in from the face's edge: the face is the button here, so the ring sits 3 px in, not 2. */
-  .tab:focus-visible {
-    outline: 2px solid var(--ov-accent);
-    outline-offset: -3px;
-  }
-
-  .glyph {
-    display: grid;
-    flex: 0 0 16px;
-    place-items: center;
-    inline-size: 16px;
-    block-size: 16px;
-    color: var(--ov-icon);
-  }
-
-  .title {
-    flex: 1 1 0;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  /* The window actions (All tabs, Search, Settings) are not built, and their 138 px (S4) are kept, empty, so the strip has the room the mock gives it. */
+  .actions {
+    flex: 0 0 138px;
+    align-self: stretch;
+    inline-size: 138px;
   }
 }

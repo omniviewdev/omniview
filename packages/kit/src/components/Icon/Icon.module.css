@@ -18,6 +18,11 @@
     height: 16px;
   }
 
+  .root[data-ov-size='20'] {
+    width: 20px;
+    height: 20px;
+  }
+
   /* The paints the artwork pins to a theme role: the chevron grey and the status colours (design 11 palette policy). A literal
      colour of the artwork is a presentation attribute; ink is currentColor. */
   .root path[data-ov-fill='success'] {

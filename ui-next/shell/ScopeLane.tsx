@@ -3,7 +3,8 @@ import type { ShellScopeFace } from './registration';
 import styles from './ScopeLane.module.css';
 
 type ScopeLaneProps = {
-  readonly label: string;
+  /** Names the lane. Absent while the plugin's frame is on its way: the lane is there, empty, at its rectangle, and no assistive technology reads it. */
+  readonly label: string | undefined;
   readonly faces: readonly ShellScopeFace[];
 };
 
@@ -13,7 +14,7 @@ type ScopeLaneProps = {
  */
 export function ScopeLane({ label, faces }: ScopeLaneProps) {
   return (
-    <div className={styles.lane} role="group" aria-label={label} data-shell-part="lane">
+    <div className={styles.lane} role={label === undefined ? undefined : 'group'} aria-label={label} aria-hidden={label === undefined ? 'true' : undefined} data-shell-part="lane">
       {faces.map((face) => (
         <span key={face.label} className={styles.face} data-shell-part="scopeFace">
           <span className={styles.glyph}>

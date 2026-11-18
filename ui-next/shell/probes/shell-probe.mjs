@@ -1,11 +1,12 @@
-// Probes the shell frame on the fixture (fixture.tsx: the real `Shell` around invented, neutral registrations), in WebKit and Chromium at 1440 x 900 and 1030 x 720.
+// Probes the shell frame on the fixture (fixture.tsx: the real `Shell` around invented, neutral registrations and invented tabs), in WebKit and Chromium at 1440 x 900 and 1030 x 720
+// (the reference of the frame is measured there; the tab strip's own probe, strip-probe.mjs, runs at 1440 x 900 and 1280 x 800).
 // The shell is plugin-agnostic and so is its probe: the mock's reference screen is named once, in packages/kit/probes/mock-screen.mjs.
 //
 //   node ui-next/shell/probes/shell-probe.mjs           builds the fixture (OMNIVIEW_UI=next) into a temp dir, serves it, probes it
 //
-//   FIXTURE_DIST=<dir>         probe an existing fixture build instead of building
+//   FIXTURE_DIST=<dir>         probe an existing fixture build instead of building       FONT_DELAY_MS=40   hold every font file back, as a runner does (packages/kit/probes/serve.mjs)
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   (defaults: both of each)
-//   AXE=<path to axe.min.js>   also run axe-core over every case (a dev dependency is the lead's call: `npm i axe-core` in a temp dir)
+//   AXE=<path to axe.min.js>   also run axe-core over every case (default: the kit's own axe-core)
 //   SHOTS=<dir>                write a screenshot per engine and viewport
 //   REPORT=<file>              write the full report as JSON
 //
@@ -19,105 +20,27 @@
 //               the smallest window (960 x 640)
 //   a11y        axe-core, when AXE is given, on every case
 // Exit code 1 when anything outside KNOWN differs.
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import http from 'node:http';
-import os from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENGINES, VIEWPORTS, normalizeFont, setContext } from '../../../packages/kit/probes/probe-lib.mjs';
-import { MOCK_REGISTRATION } from '../../../packages/kit/probes/mock-screen.mjs';
+import { ENGINES, VIEWPORTS, launch, normalizeFont, setContext } from '../../../packages/kit/probes/probe-lib.mjs';
+import { AXE, buildFixtures, open, SAMPLER, serveFixtures, sleep } from './harness.mjs';
 import { compare, compareStates, readSide, readStates } from './lib.mjs';
 import { CONTEXTS, THEME_MAP } from './targets.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repo = path.resolve(here, '../../..');
 const reference = JSON.parse(readFileSync(path.join(here, 'mock-shell.json'), 'utf8'));
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const failures = [];
 const report = { parity: {}, themes: {}, states: {}, load: {}, keyboard: {}, variants: {}, a11y: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 
-// ---------------------------------------------------------------------------------------------------------------------------
-function build() {
-  const fixture = process.env.FIXTURE_DIST ?? mkdtempSync(path.join(os.tmpdir(), 'shell-probe-fixture-'));
-  const env = { ...process.env, OMNIVIEW_UI: 'next' };
-  if (!process.env.FIXTURE_DIST) execFileSync('node', [path.join(here, 'build-fixture.mjs'), fixture], { cwd: repo, env, stdio: 'pipe' });
-  return fixture;
-}
-
 /** The frame with every region, in the words of the mock's reference screen (`?case=injected`: `open` injects them): the shell's one subject, compared with the mock. */
 const full = (origins) => `${origins.fixture}/shell/probes/fixture.html?case=injected`;
-
-function serve(dist) {
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
-  const server = http.createServer((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://x');
-    const file = path.join(dist, url.pathname === '/' ? 'index.html' : url.pathname);
-    try {
-      if (!file.startsWith(dist)) throw new Error('outside');
-      response.setHeader('content-type', types[path.extname(file)] ?? 'application/octet-stream');
-      response.end(readFileSync(file));
-    } catch {
-      response.statusCode = 404;
-      response.end('not found');
-    }
-  });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, origin: `http://127.0.0.1:${server.address().port}` })));
-}
-
-// The sampler: from the first animation frame, the rectangle of every region and part at every frame. Installed before the page's own scripts.
-const SAMPLER = `
-(() => {
-  const state = (window.__probe = { frames: 0, first: new Map(), moves: [], layoutShift: null, shiftSources: [] });
-  try {
-    state.layoutShift = 0;
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.hadRecentInput) continue;
-        state.layoutShift += entry.value;
-        for (const source of entry.sources ?? []) state.shiftSources.push(source.node?.nodeName ?? '?');
-      }
-    }).observe({ type: 'layout-shift', buffered: true });
-  } catch {
-    state.layoutShift = null;
-  }
-  const nameOf = (el) => el.getAttribute('data-shell-part') ?? el.getAttribute('data-shell-region') ?? el.getAttribute('role') ?? el.tagName;
-  const last = new Map();
-  const tick = () => {
-    state.frames += 1;
-    for (const el of document.querySelectorAll('[data-shell-part], [data-shell-region], [role=tab], [role=tree], [role=treeitem]')) {
-      const box = el.getBoundingClientRect();
-      const now = [box.x, box.y, box.width, box.height].map((n) => Math.round(n * 100) / 100).join(',');
-      if (!last.has(el)) { last.set(el, now); state.first.set(nameOf(el) + '#' + state.first.size, state.frames); }
-      else if (last.get(el) !== now) { state.moves.push({ part: nameOf(el), frame: state.frames, from: last.get(el), to: now }); last.set(el, now); }
-    }
-    if (state.frames < 240) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-})();
-`;
-
-async function open(browser, url, viewport, { init } = {}) {
-  const context = await browser.newContext({ viewport });
-  const page = await context.newPage();
-  const errors = [];
-  page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)));
-  page.on('response', (response) => {
-    // The Go host serves /wails/*; the static server of this probe does not, and the screen does not need it for its frame.
-    if (response.status() >= 400 && !response.url().endsWith('/favicon.ico') && !response.url().includes('/wails/')) errors.push(`${response.status()} ${response.url()}`);
-  });
-  if (init) await page.addInitScript(init);
-  if (url.includes('case=injected')) await page.addInitScript((value) => { window.__registration = value; }, MOCK_REGISTRATION);
-  await page.goto(url, { waitUntil: 'load' });
-  await page.waitForSelector('[data-shell-part="window"]');
-  return { page, context, errors };
-}
 
 const normalized = async (page, context = 'default') => {
   await normalizeFont(page, { rootVar: '--ov-font-ui' });
@@ -176,7 +99,7 @@ async function load(browser, engine, viewportName, viewport, origins) {
       layoutShift: state.layoutShift,
       shiftSources: state.shiftSources,
       moves: state.moves,
-      firstFrames: [...new Set(state.first.values())],
+      firstFrames: [...new Set(Object.values(state.first))],
       nodes: { root: (document.getElementById('root')?.querySelectorAll('*').length ?? 0), window: window_ ? window_.querySelectorAll('*').length + 1 : 0, topRow: count('[data-shell-region="topRow"]'), rail: count('[data-shell-part="rail"]'), sidebar: count('[data-shell-region="sidebar"]'), island: count('[data-shell-region="island"]'), lane: count('[data-shell-part="lane"]'), page: count('[data-shell-part="page"]'), statusBar: count('[data-shell-region="statusBar"]') },
       scrolls: { x: document.documentElement.scrollWidth > innerWidth, y: document.documentElement.scrollHeight > innerHeight },
     };
@@ -218,7 +141,8 @@ async function keyboard(browser, engine, origins) {
   report.keyboard[engine] = { steps, tree: names, tabOrder: order };
   const wanted = ['F6: tab', 'F6: treeitem-2', 'F6: main', 'F6: tab', 'Shift+F6: main', 'Shift+F6: treeitem-2', 'Escape from the tree: main', 'Escape in the page: main', 'Shift+F6 after Escape: treeitem-2'];
   for (const [index, step] of wanted.entries()) if (steps[index] !== step) fail(`keyboard ${engine}`, `step ${index + 1}: wanted "${step}", got "${steps[index]}"`);
-  if (order.join() !== 'tab,treeitem,tabpanel') fail(`keyboard ${engine}`, `tab order is ${order.join()}, wanted tab,treeitem,tabpanel`);
+  // Back and Forward are controls that cannot act yet (aria-disabled, never natively disabled), so they are stops, then the tab: the strip's one stop; its close control is not a stop (Delete closes).
+  if (order.join() !== 'button,button,tab,treeitem,tabpanel') fail(`keyboard ${engine}`, `tab order is ${order.join()}, wanted button,button,tab,treeitem,tabpanel`);
   await context.close();
 }
 
@@ -257,7 +181,7 @@ async function variants(browser, engine, origins) {
     const chevrons = [...document.querySelectorAll('[data-shell-region="statusBar"] nav svg')].map((el) => Math.round(el.getBoundingClientRect().width));
     return {
       tabWidth: tab.getBoundingClientRect().width,
-      tabTitleClipped: clipped(tab.querySelector('span:last-child')),
+      tabTitleClipped: clipped(tab.querySelector('[data-ov-variant]').parentElement),
       treeLabelsClipped: [...document.querySelectorAll('[role=treeitem] > :nth-child(2)')].map(clipped),
       faceClipped: [...document.querySelectorAll('[data-shell-part="scopeFace"] span:last-child')].map(clipped),
       chevrons,
@@ -333,12 +257,12 @@ async function a11y(browser, engine, origins, axe) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-const fixture = await serve(build());
+const fixture = await serveFixtures(buildFixtures());
 const origins = { fixture: fixture.origin };
-const axe = process.env.AXE ? readFileSync(process.env.AXE, 'utf8') : null;
+const axe = readFileSync(AXE, 'utf8');
 
 for (const engineName of engineNames) {
-  const browser = await ENGINES[engineName].launch();
+  const browser = await launch(engineName);
   for (const viewportName of viewportNames) {
     await parity(browser, engineName, viewportName, VIEWPORTS[viewportName], origins);
     await load(browser, engineName, viewportName, VIEWPORTS[viewportName], origins);

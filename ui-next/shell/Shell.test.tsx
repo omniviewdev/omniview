@@ -1,14 +1,14 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createTabsStore, type TabsStore } from './core/tabs';
 import type { ShellRegistration } from './registration';
 import { Shell } from './Shell';
+import { staticTabs } from './testing';
 
 // The shell is plugin-agnostic, so the tests are too: an invented plugin, an invented tree, none of a real screen's words.
 const registration: ShellRegistration = {
   plugin: { name: 'Acme' },
-  tab: { title: 'Widgets', icon: 'box' },
-  path: ['Acme', 'north', 'Widgets'],
   rail: true,
   sidebar: {
     label: 'Acme items',
@@ -27,7 +27,34 @@ const registration: ShellRegistration = {
   ],
 };
 
-const renderShell = (value: ShellRegistration = registration) => render(<Shell registration={value}><button type="button">Inside the page</button></Shell>);
+// What the tab on screen is called and where it sits (its title, glyph and path) is the tab model's, not the registration's: one tab, Widgets, of the invented plugin.
+const widgets = { title: 'Widgets', icon: 'box', path: ['Acme', 'north', 'Widgets'] } as const;
+const page = <button type="button">Inside the page</button>;
+
+type Extras = { readonly tabs?: TabsStore; readonly onChoose?: (id: string, event: unknown) => void; readonly onNewTab?: () => void };
+
+const shellOf = (value: ShellRegistration, tabs: TabsStore, extras: Extras = {}) => (
+  <Shell registration={value} tabs={tabs} renderPage={() => page} empty={null} onChoose={extras.onChoose} onNewTab={extras.onNewTab} />
+);
+
+/** The shell over the real tab model; `again` hands it another registration, keeping the tabs and the state under them. */
+function renderShell(value: ShellRegistration = registration, extras: Extras = {}) {
+  const tabs = extras.tabs ?? staticTabs([widgets]);
+  const view = render(shellOf(value, tabs, extras));
+  return {
+    ...view,
+    tabs,
+    again: (next: ShellRegistration) => {
+      view.rerender(shellOf(next, tabs, extras));
+    },
+  };
+}
+
+/** A shell whose model has no tab and no page to open: the host's own words are in the page region. */
+function renderEmpty(onNewTab?: () => void) {
+  const tabs = createTabsStore({ contributions: { describe: () => undefined } });
+  return render(<Shell registration={{ plugin: { name: 'Acme' } }} tabs={tabs} renderPage={() => page} empty={<p>Nothing open</p>} onNewTab={onNewTab} />);
+}
 
 afterEach(() => {
   cleanup();
@@ -45,7 +72,7 @@ describe('regions are landmarks with names', () => {
   });
 
   it('draws only the regions the registration declares, and none of the plugin\'s words are the shell\'s', () => {
-    const { container } = renderShell({ plugin: { name: 'Other' }, tab: { title: 'Home', icon: 'box' }, path: ['Home'] });
+    const { container } = renderShell({ plugin: { name: 'Other' } });
 
     expect(screen.queryByRole('tree')).toBeNull();
     expect(screen.queryByRole('group', { name: /scope/i })).toBeNull();
@@ -122,14 +149,28 @@ describe('the page region', () => {
   });
 });
 
-describe('the one tab', () => {
-  it('is a selected tab in a named tablist, and has no close and no new-tab control yet', () => {
+describe('the tabs and the top row', () => {
+  it('is one selected tab in a named tablist, Back and Forward (its close control is for the pointer and hidden from assistive technology), and no new-tab control until the host gives one', () => {
     renderShell();
     const list = screen.getByRole('tablist', { name: 'Open tabs' });
 
     expect(within(list).getAllByRole('tab')).toHaveLength(1);
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveProperty('tabIndex', 0);
-    expect(within(screen.getByRole('banner')).queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(screen.getByRole('banner')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Back', 'Forward']);
+    expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull();
+  });
+
+  it('draws the new-tab control after the tabs once the host gives one', () => {
+    renderShell(registration, { onNewTab: vi.fn() });
+    expect(within(screen.getByRole('banner')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Back', 'Forward', 'New tab']);
+  });
+
+  it('draws the tabs the model has, in the order of the strip, with the one on screen selected', () => {
+    renderShell(registration, { tabs: staticTabs([widgets, { title: 'Gadgets', icon: 'box', path: ['Acme', 'Gadgets'] }], 1) });
+
+    expect(screen.getAllByRole('tab').map((tab) => [tab.getAttribute('aria-label'), tab.getAttribute('aria-selected')])).toEqual([['Widgets', 'false'], ['Gadgets', 'true']]);
+    expect(screen.getByRole('tabpanel', { name: 'Gadgets' })).toBeInTheDocument();
   });
 });
 
@@ -196,15 +237,22 @@ describe('the sidebar tree', () => {
     expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toBeInTheDocument();
   });
 
-  it('has one tab stop, on the current entry, and Tab reaches it after the tab and before the page', async () => {
+  it('has one tab stop, on the current entry, and Tab reaches it after the strip and before the page', async () => {
     const user = userEvent.setup();
-    renderShell();
+    renderShell(registration, { onNewTab: vi.fn() });
     const stops = screen.getAllByRole('treeitem').filter((item) => item.getAttribute('tabindex') === '0');
     expect(stops).toHaveLength(1);
     expect(stops[0]).toHaveAccessibleName('Widgets 89');
 
+    // Back, Forward (focusable, though they say there is nowhere to go), the tab, the new-tab control, the tree, the page. The close control is not a stop of its own.
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Forward' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'New tab' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveFocus();
     await user.tab();
@@ -284,18 +332,15 @@ describe('the sidebar tree', () => {
   it('tells the host which entry was chosen, by a click, Enter or Space, and never for a group', async () => {
     const user = userEvent.setup();
     const onChoose = vi.fn();
-    render(
-      <Shell registration={registration} onChoose={onChoose}>
-        <button type="button">Inside the page</button>
-      </Shell>,
-    );
+    renderShell(registration, { onChoose });
 
+    // A click hands over the click, whose modifiers pick where the page opens; a key opens the plain way.
     await user.click(screen.getByRole('treeitem', { name: 'Gadgets' }));
-    expect(onChoose).toHaveBeenLastCalledWith('gadgets');
+    expect(onChoose).toHaveBeenLastCalledWith('gadgets', expect.objectContaining({ type: 'click', ctrlKey: false, metaKey: false }));
 
     screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
     await user.keyboard('{Enter}');
-    expect(onChoose).toHaveBeenLastCalledWith('widgets');
+    expect(onChoose).toHaveBeenLastCalledWith('widgets', undefined);
     await user.keyboard(' ');
     expect(onChoose).toHaveBeenCalledTimes(3);
 
@@ -306,34 +351,26 @@ describe('the sidebar tree', () => {
 
   it('leaves the current entry to the host: choosing one selects nothing until the screen registers the page it opened', async () => {
     const user = userEvent.setup();
-    const { rerender } = render(
-      <Shell registration={registration} onChoose={vi.fn()}>
-        <button type="button">Inside the page</button>
-      </Shell>,
-    );
+    const { again } = renderShell(registration, { onChoose: vi.fn() });
 
     await user.click(screen.getByRole('treeitem', { name: 'Gadgets' }));
     expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('treeitem', { name: 'Widgets 89' })).toHaveAttribute('aria-selected', 'true');
 
-    rerender(
-      <Shell registration={{ ...registration, sidebar: { ...registration.sidebar!, current: 'gadgets' } }} onChoose={vi.fn()}>
-        <button type="button">Inside the page</button>
-      </Shell>,
-    );
+    again({ ...registration, sidebar: { ...registration.sidebar!, current: 'gadgets' } });
     expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('keeps what the user opened and closed when the screen registers again with a new count', async () => {
     const user = userEvent.setup();
-    const { rerender } = renderShell();
+    const { again } = renderShell();
     screen.getByRole('treeitem', { name: 'Group' }).focus();
     await user.keyboard('{ArrowLeft}');
     expect(screen.queryByRole('treeitem', { name: 'Widgets 89' })).toBeNull();
 
     const sidebar = registration.sidebar!;
     const nodes = [{ ...sidebar.nodes[0], children: [{ id: 'widgets', label: 'Widgets', icon: 'box' as const, count: 90 }, ...(sidebar.nodes[0].children ?? []).slice(1)] }, ...sidebar.nodes.slice(1)];
-    rerender(<Shell registration={{ ...registration, sidebar: { ...sidebar, nodes } }}><button type="button">Inside the page</button></Shell>);
+    again({ ...registration, sidebar: { ...sidebar, nodes } });
     expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveAttribute('aria-expanded', 'false');
 
     await user.keyboard('{ArrowRight}');
@@ -360,7 +397,7 @@ describe('the scope lane and the path', () => {
     expect(within(lane).queryAllByRole('menuitem')).toHaveLength(0);
   });
 
-  it('lists the path root first, with the last crumb as the current page, as text', () => {
+  it('lists the path of the tab on screen, root first, with the last crumb as the current page, as text', () => {
     renderShell();
     const path = screen.getByRole('navigation', { name: 'Current resource' });
     const crumbs = within(path).getAllByRole('listitem');
@@ -371,11 +408,75 @@ describe('the scope lane and the path', () => {
     expect(path.closest('footer')).toBe(screen.getByRole('contentinfo'));
   });
 
-  it('shows a different path when the screen registers a different one', () => {
-    const { rerender } = renderShell();
-    rerender(<Shell registration={{ ...registration, path: ['Acme', 'south'] }}><span>x</span></Shell>);
+  it('follows the tab on screen: a tab switch shows the path of the other tab', () => {
+    const { tabs } = renderShell(registration, { tabs: staticTabs([widgets, { title: 'Gadgets', icon: 'box', path: ['Acme', 'south', 'Gadgets'] }]) });
+    const crumbs = () => within(screen.getByRole('navigation', { name: 'Current resource' })).getAllByRole('listitem').map((crumb) => crumb.textContent);
+    expect(crumbs()).toEqual(['Acme', 'north', 'Widgets']);
 
-    expect(within(screen.getByRole('navigation', { name: 'Current resource' })).getAllByRole('listitem').map((crumb) => crumb.textContent)).toEqual(['Acme', 'south']);
+    act(() => {
+      tabs.activate(tabs.getSnapshot().order[1]);
+    });
+    expect(crumbs()).toEqual(['Acme', 'south', 'Gadgets']);
+  });
+
+  it('has no crumbs, and no tab to read them from, while the model has none', () => {
+    renderEmpty();
+
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.getByRole('navigation', { name: 'Current resource' })).toBeInTheDocument();
+  });
+});
+
+describe('no tab on screen', () => {
+  it('shows what the host says in the page region, which is no tabpanel, with no tablist and no new-tab control even when the host gave one', () => {
+    renderEmpty(vi.fn());
+
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('tabpanel')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull();
+    expect(screen.getByText('Nothing open')).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: 'Acme workspace' })).toContainElement(screen.getByText('Nothing open'));
+  });
+});
+
+describe('a frame that is pending', () => {
+  it('reserves the rail, the sidebar and the scope lane at their rectangles, empty and out of the reading order', () => {
+    const { container } = renderShell({ plugin: { name: 'Acme' }, pending: true });
+
+    expect(container.querySelector('[data-shell-part="rail"]')).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelector('[data-shell-part="frame"]')).toHaveAttribute('data-rail');
+    expect(container.querySelector('[data-shell-part="frame"]')).toHaveAttribute('data-sidebar');
+    const sidebar = screen.getByRole('navigation', { name: 'Loading navigation' });
+    expect(sidebar).toHaveAttribute('aria-busy', 'true');
+    expect(within(sidebar).queryByRole('tree')).toBeNull();
+    expect(within(sidebar).queryByRole('heading')).toBeNull();
+    const lane = container.querySelector('[data-shell-part="lane"]');
+    expect(lane).toHaveAttribute('aria-hidden', 'true');
+    expect(lane).not.toHaveAttribute('role');
+    expect(lane).toBeEmptyDOMElement();
+    expect(screen.queryByRole('group', { name: /scope/i })).toBeNull();
+  });
+
+  it('is the same sidebar element the registered one lands in, so nothing moves when the frame registers', () => {
+    const { again } = renderShell({ plugin: { name: 'Acme' }, pending: true });
+    const sidebar = document.querySelector('[data-shell-region="sidebar"]');
+    const lane = document.querySelector('[data-shell-part="lane"]');
+
+    again(registration);
+
+    expect(document.querySelector('[data-shell-region="sidebar"]')).toBe(sidebar);
+    expect(document.querySelector('[data-shell-part="lane"]')).toBe(lane);
+    expect(screen.getByRole('navigation', { name: 'Acme items' })).not.toHaveAttribute('aria-busy');
+    expect(screen.getByRole('tree', { name: 'Acme items' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Acme scope' })).toBeInTheDocument();
+  });
+
+  it('draws the regions the registration declares beside the ones it reserves', () => {
+    renderShell({ ...registration, pending: true });
+
+    expect(screen.getByRole('tree', { name: 'Acme items' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Acme scope' })).toBeInTheDocument();
   });
 });
 
@@ -410,7 +511,7 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
     render(
       <>
         <button type="button">Outside</button>
-        <Shell registration={registration}><button type="button">Inside the page</button></Shell>
+        {shellOf(registration, staticTabs([widgets]))}
       </>,
     );
     screen.getByRole('button', { name: 'Inside the page' }).focus();

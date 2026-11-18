@@ -21,6 +21,8 @@
 /** The name of a glyph in the registry: the only icons the kit draws. A new glyph is a new line here and in `GLYPHS`. */
 export type IconName =
   | 'arrow-down'
+  | 'arrow-left'
+  | 'arrow-right'
   | 'arrow-up'
   | 'box'
   | 'check'
@@ -37,6 +39,7 @@ export type IconName =
   | 'loader'
   | 'loader-circle'
   | 'play'
+  | 'plus'
   | 'refresh'
   | 'search'
   | 'search-x'
@@ -71,6 +74,10 @@ export type Glyph = { readonly box: 16 | 24; readonly layers: readonly [GlyphLay
 export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   /* Int UI general/down_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowDown. */
   'arrow-down': { box: 16, layers: [{ d: 'M12.354 9.654C12.549 9.458 12.549 9.142 12.354 8.946 12.158 8.751 11.842 8.751 11.646 8.946L8.5 12.093 8.5 2.5C8.5 2.224 8.276 2 8 2 7.724 2 7.5 2.224 7.5 2.5L7.5 12.093 4.354 8.946C4.158 8.751 3.842 8.751 3.646 8.946 3.451 9.142 3.451 9.458 3.646 9.654L7.646 13.654 8 14.007 8.354 13.654 12.354 9.654Z', fill: 'ink', evenodd: true }] },
+  /* Int UI general/left_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowLeft. */
+  'arrow-left': { box: 16, layers: [{ d: 'M6.346 3.646C6.542 3.451 6.858 3.451 7.053 3.646 7.249 3.842 7.249 4.158 7.053 4.354L3.904 7.504 13.504 7.504C13.78 7.504 14.004 7.727 14.004 8.004 14.004 8.28 13.78 8.504 13.504 8.504L3.911 8.504 7.054 11.646C7.249 11.842 7.249 12.158 7.054 12.354 6.858 12.549 6.542 12.549 6.346 12.354L2.346 8.354 1.993 8 2.346 7.646 6.346 3.646Z', fill: 'ink', evenodd: true }] },
+  /* Int UI general/right_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowRight. */
+  'arrow-right': { box: 16, layers: [{ d: 'M9.654 12.354C9.458 12.549 9.142 12.549 8.946 12.354 8.751 12.158 8.751 11.842 8.946 11.646L12.089 8.504 2.496 8.504C2.22 8.504 1.996 8.28 1.996 8.004 1.996 7.727 2.22 7.504 2.496 7.504L12.096 7.504 8.946 4.354C8.751 4.158 8.751 3.842 8.946 3.646 9.142 3.451 9.458 3.451 9.654 3.646L13.654 7.646 14.007 8 13.654 8.354 9.654 12.354Z', fill: 'ink', evenodd: true }] },
   /* Int UI general/up_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowUp. */
   'arrow-up': { box: 16, layers: [{ d: 'M12.354 6.346C12.549 6.542 12.549 6.858 12.354 7.054 12.158 7.249 11.842 7.249 11.646 7.054L8.5 3.907 8.5 13.507C8.5 13.783 8.276 14.007 8 14.007 7.724 14.007 7.5 13.783 7.5 13.507L7.5 3.907 4.354 7.054C4.158 7.249 3.842 7.249 3.646 7.054 3.451 6.858 3.451 6.542 3.646 6.346L7.646 2.346 8 1.993 8.354 2.346 12.354 6.346Z', fill: 'ink', evenodd: true }] },
   /* Lucide box (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuBox. */
@@ -103,6 +110,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   'loader-circle': { box: 24, layers: [{ d: 'M21 12a9 9 0 1 1-6.219-8.56', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI run/run_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlay. */
   play: { box: 16, layers: [{ d: 'M13.5 7.134C14.167 7.519 14.167 8.481 13.5 8.866L4.5 14.062C3.833 14.447 3 13.966 3 13.196L3 2.804C3 2.034 3.833 1.553 4.5 1.938L13.5 7.134Z', fill: '#253627', stroke: 'success' }] },
+  /* Int UI general/add_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlus. */
+  plus: { box: 16, layers: [{ d: 'M7.5 1C7.776 1 8 1.224 8 1.5V7H13.5C13.776 7 14 7.224 14 7.5C14 7.776 13.776 8 13.5 8H8V13.5C8 13.776 7.776 14 7.5 14C7.224 14 7 13.776 7 13.5V8H1.5C1.224 8 1 7.776 1 7.5C1 7.224 1.224 7 1.5 7H7V1.5C7 1.224 7.224 1 7.5 1Z', fill: 'ink', evenodd: true }] },
   /* Int UI general/refresh_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuRefreshCw, LuRefreshCcw. */
   refresh: { box: 16, layers: [{ d: 'M2.5 9V8C2.5 4.962 4.962 2.5 8 2.5 9.107 2.5 10.137 2.827 11 3.389M5 12.611C5.863 13.173 6.893 13.5 8 13.5 11.038 13.5 13.5 11.038 13.5 8V7M.5 7.5L2.5 9.5 4.5 7.5M11.5 8.5L13.5 6.5 15.5 8.5', stroke: 'ink', cap: 'round' }] },
   /* Int UI general/search_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuSearch. */
@@ -144,3 +153,6 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
     ],
   },
 };
+
+/** Whether a string is a glyph of the registry: a name that came from outside (a plugin's contribution) is checked with it before it is drawn. */
+export const isIconName = (name: string): name is IconName => Object.hasOwn(GLYPHS, name);
