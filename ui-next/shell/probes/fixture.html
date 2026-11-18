@@ -4,6 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shell fixture</title>
+    <!-- The same three preloaded faces as ui-next/index.html: the probe's load check is about the shell's frame, and a face that is only asked for once the first
+         layout uses it swaps after the first frame and moves the text (the window's own page does not have that). -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../packages/kit/dist/fonts/Inter-Regular.latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../packages/kit/dist/fonts/Inter-SemiBold.latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../packages/kit/dist/fonts/JetBrainsMono-Regular.latin.woff2" />
   </head>
   <body>
     <div id="root"></div>

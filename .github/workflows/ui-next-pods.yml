@@ -1,9 +1,20 @@
 name: UI next Pods cluster check
 
-# Slice 1a, PR 1a.1 (docs/ui-next/slices/1a-pods-list.md, 2.2 and 4.1): the new tree's `?screen=pods` page, served by the real Go host built
-# with OMNIVIEW_UI=next, must agree with `kubectl get pods -A` on a real kind cluster that holds the plan's fixture, with the Kubernetes
-# plugin built from a pinned commit. The job also runs two negative controls (a cluster without the fixture, a host without the plugin);
-# each must make the same check fail, so a check that has gone blind turns this job red.
+# The seam, end to end (docs/ui-next/slices/n19-plugin-seam.md, N19d): the new shell, served by the real Go host built with OMNIVIEW_UI=next and opened the way the native
+# window opens it (no URL parameter, no hash), must show the same Pods as `kubectl get pods -A` on a real kind cluster that holds the plan's fixture. The host holds no
+# Pods code: the list is the Kubernetes plugin's own, from the bundle of its `feature/ui-next` branch (decision A16: on that branch the plugin's `ui/` is the new UI),
+# built here from a PINNED commit with the plugin's own packaging script and installed as its archive lays it out (plugin.yaml, bin/plugin, assets/).
+# The job also runs three negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
+#   a cluster without the fixture, a host without the plugin, and the plugin installed without its bundle (`assets/` empty).
+#
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: c69eb69e4b78ea86cd222c9e82e7c65b9e68e480, the merge commit of PR #262
+# (N19c, 2026-11-17). To bump it, in a pull request of this repository that changes nothing else about the check:
+#   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next`, or the merge commit of the plugin pull request you want;
+#   2. put it in KUBERNETES_PLUGIN_REF, check the plugin out at it and run `node scripts/ui-next-pods/pin.mjs <that checkout>`: it fails when the plugin's list of shared
+#      names (`ui/vendor/shared-specifiers.json`) is not this host's `SHARED_SPECIFIERS_V1`, or when the host commit the plugin vendored from (`ui/vendor/HOST_COMMIT`) is not
+#      in this host's history. The step "Check the pin" runs the same script, and one more that the commit is on the branch;
+#   3. the job is green: the pinned plugin renders the Pods of the cluster as kubectl lists them, and each control turns the job red.
+# A plugin commit that was vendored from a newer host (the plugin's `hack/vendor-host.sh`) needs this host to contain that commit first.
 #
 # NOT a required check yet (R-11: a cluster job may be slow or flaky). The lead makes it required in the branch protection settings only
 # after it has been green for a while on `main` and on pull requests. It is path-filtered, so it cannot be required as it is: a required
@@ -15,6 +26,7 @@ on:
       - "ui-next/**"
       - "packages/kit/**"
       - "packages/omniviewdev-runtime/**"
+      - "scripts/ui-next-pods/**"
       - ".github/workflows/ui-next-pods.yml"
       - "*.go"
       - "backend/**"
@@ -29,6 +41,7 @@ on:
       - "ui-next/**"
       - "packages/kit/**"
       - "packages/omniviewdev-runtime/**"
+      - "scripts/ui-next-pods/**"
       - ".github/workflows/ui-next-pods.yml"
       - "*.go"
       - "backend/**"
@@ -58,11 +71,12 @@ env:
   KIND_NODE_IMAGE: kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661
   KUBECTL_VERSION: v1.35.0
   KUBECTL_SHA256: a2e984a18a0c063279d692533031c1eff93a262afcc0afdc517375432d060989
-  # The Kubernetes plugin at the commit the plan was written against (0.21.2, origin/main 524d123 of 2026-11-16). Bump it deliberately.
+  # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
-  KUBERNETES_PLUGIN_REF: 524d1232a499cf868eb028af61912499736a37a5
-  # The host in the mode the skeleton used: browser server mode, OMNIVIEW_UI=next, channel feature-ui-next, a private HOME.
-  OMNIVIEW_UI: next
+  KUBERNETES_PLUGIN_BRANCH: feature/ui-next
+  KUBERNETES_PLUGIN_REF: c69eb69e4b78ea86cd222c9e82e7c65b9e68e480
+  # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
+  # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
   KUBECONFIG_PATH: ${{ github.workspace }}/.ui-next-pods/kubeconfig
 
@@ -71,11 +85,13 @@ jobs:
     name: Pods cluster check
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest.
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
+      # The whole history: "Check the pin" asks whether the host commit the plugin vendored from is one of this checkout's ancestors.
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout the Kubernetes plugin at the pin
@@ -124,12 +140,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Oracle contracts (no cluster)
-        run: node --test ui-next/e2e/oracle.test.mjs
+      # What the page may differ from kubectl by (scripts/ui-next-pods/agreement.mjs): a Pod kubectl changed between its two reads may read either way, nothing else may.
+      - name: Oracle and agreement contracts (no cluster)
+        run: node --test scripts/ui-next-pods/oracle.test.mjs scripts/ui-next-pods/agreement.test.mjs
 
-      # The script test of ui-next/e2e/host.sh (PR #520).
+      # The script test of scripts/ui-next-pods/host.sh (PR #520): it also proves the plugin directory is installed whole, assets/ included.
       - name: Host script contracts (no cluster)
-        run: node --test ui-next/e2e/host.test.mjs
+        run: node --test scripts/ui-next-pods/host.test.mjs
+
+      - name: Pin contracts (no cluster)
+        run: node --test scripts/ui-next-pods/pin.test.mjs
+
+      # Before anything is built: the pin is a commit of the plugin's branch, its list of shared names is this host's, and the host it was vendored from is in this history.
+      - name: Check the pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/$KUBERNETES_PLUGIN_REPOSITORY/compare/$KUBERNETES_PLUGIN_REF...$KUBERNETES_PLUGIN_BRANCH" --jq .status)"
+          case "$status" in
+            identical|ahead) echo "$KUBERNETES_PLUGIN_REF is a commit of $KUBERNETES_PLUGIN_BRANCH ($status)" ;;
+            *) echo "::error::$KUBERNETES_PLUGIN_REF is not a commit of $KUBERNETES_PLUGIN_REPOSITORY $KUBERNETES_PLUGIN_BRANCH (compare says: $status)"; exit 1 ;;
+          esac
+          node scripts/ui-next-pods/pin.mjs omniview-plugin-kubernetes HEAD
 
       - name: Install pinned kind and kubectl
         run: |
@@ -168,29 +201,38 @@ jobs:
       # and checked by "Bindings freshness", so this step runs its other two stages: the frontend build and the server binary. The server
       # binary is built without cgo: the plain runner has no GTK or WebKitGTK, and server mode serves a browser, not a native window.
       - name: Build the host (OMNIVIEW_UI=next, server mode)
+        env:
+          OMNIVIEW_UI: next
         run: |
           set -euo pipefail
           PRODUCTION=true pnpm run build
           HOST_MODFILE="$(task --silent host:prepare)"
           CGO_ENABLED=0 go build -tags production,server -trimpath -buildvcs=false -ldflags="-w -s" -modfile="$HOST_MODFILE" -o bin/Omniview-server .
 
+      # The plugin's own packaging: its UI (`pnpm install --frozen-lockfile && pnpm run build` in ui/, which writes ui/dist/assets/entry.js and fails on any import the host does
+      # not share) and its binary, one archive with plugin.yaml, bin/plugin and assets/ at its root, the layout the app installs. Extracted, that is the directory host.sh installs.
       - name: Build the Kubernetes plugin from the pin
         working-directory: omniview-plugin-kubernetes
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$KUBERNETES_PLUGIN_REF"
           version="$(sed -n 's/^version: //p' plugin.yaml | head -n 1)"
-          mkdir -p "$OMNIVIEW_E2E_WORK/plugin/bin"
-          CGO_ENABLED=0 go build -trimpath \
-            -ldflags="-s -w -X github.com/omniview/kubernetes/pkg/pluginid.ID=kubernetes -X github.com/omniview/kubernetes/pkg/pluginid.Version=${version}" \
-            -o "$OMNIVIEW_E2E_WORK/plugin/bin/plugin" ./pkg
-          cp plugin.yaml "$OMNIVIEW_E2E_WORK/plugin/plugin.yaml"
+          hack/package.sh "$version" linux_amd64
+          mkdir -p "$OMNIVIEW_E2E_WORK/plugin"
+          tar -xzf dist/kubernetes-linux_amd64.tar.gz -C "$OMNIVIEW_E2E_WORK/plugin"
+          test -x "$OMNIVIEW_E2E_WORK/plugin/bin/plugin"
+          test -s "$OMNIVIEW_E2E_WORK/plugin/assets/entry.js"
+          # The control's plugin: the same archive with an empty assets/, so the host has the plugin's binary and no interface to load.
+          cp -R "$OMNIVIEW_E2E_WORK/plugin" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
+          rm -rf "$OMNIVIEW_E2E_WORK/plugin-no-bundle/assets"
+          mkdir "$OMNIVIEW_E2E_WORK/plugin-no-bundle/assets"
+          ls -l "$OMNIVIEW_E2E_WORK/plugin" "$OMNIVIEW_E2E_WORK/plugin/assets"
 
       - name: Install the browser
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Start the host with the plugin
-        run: ui-next/e2e/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+        run: scripts/ui-next-pods/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
 
       # The cluster holds only kind's own Pods here: the check must report that the fixture is missing, not pass on kube-system.
       - name: Negative control, cluster without the fixture
@@ -198,7 +240,7 @@ jobs:
           OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-fixture-absent
-        run: node --test ui-next/e2e/pods-cluster.check.mjs
+        run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Apply the fixture
         run: |
@@ -212,21 +254,32 @@ jobs:
           kubectl get pods -A
 
       - name: Start the host without the plugin
-        run: ui-next/e2e/host.sh start without-plugin 34202 "$KUBECONFIG_PATH" none
+        run: scripts/ui-next-pods/host.sh start without-plugin 34202 "$KUBECONFIG_PATH" none
 
-      # Same check, same cluster, same fixture; the plugin is the only difference. It must stop at the connection.
+      # Same check, same cluster, same fixture; the plugin is the only difference. The window has no plugin to open: it must stop at the host's own empty list of plugins.
       - name: Negative control, host without the Kubernetes plugin
         env:
           OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34202
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-plugin-absent
-        run: node --test ui-next/e2e/pods-cluster.check.mjs
+        run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
+
+      - name: Start the host with the plugin installed without its bundle
+        run: scripts/ui-next-pods/host.sh start without-bundle 34203 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
+
+      # Same check, same cluster, same fixture, the plugin's binary installed: only assets/entry.js is missing. The Pods list is the plugin's bundle, so the page must stop at the plugin.
+      - name: Negative control, the plugin without its bundle
+        env:
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34203
+          OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
+          OMNIVIEW_CHECK_MODE: control-bundle-absent
+        run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Check that the page and kubectl agree
         env:
           OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
-        run: node --test ui-next/e2e/pods-cluster.check.mjs
+        run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Collect diagnostics
         if: failure()
@@ -234,7 +287,7 @@ jobs:
           export KUBECONFIG="$KUBECONFIG_PATH"
           kubectl get pods -A -o wide || true
           kubectl get events -A --sort-by=.lastTimestamp | tail -n 60 || true
-          for name in with-plugin without-plugin; do
+          for name in with-plugin without-plugin without-bundle; do
             echo "::group::host $name log"
             tail -n 120 "$OMNIVIEW_E2E_WORK/$name/host.log" || true
             echo "::endgroup::"
@@ -243,5 +296,6 @@ jobs:
       - name: Stop the hosts
         if: always()
         run: |
-          ui-next/e2e/host.sh stop with-plugin
-          ui-next/e2e/host.sh stop without-plugin
+          scripts/ui-next-pods/host.sh stop with-plugin
+          scripts/ui-next-pods/host.sh stop without-plugin
+          scripts/ui-next-pods/host.sh stop without-bundle

@@ -1,9 +1,10 @@
-// Probes the REAL Pods page (real Go host, real kind cluster) in WebKit and Chromium at 1440 x 900 and 1030 x 720. Read only: kubectl is only
-// ever asked `get pods -A --no-headers`; the page is only read and driven with real key presses and real pointer events.
+// Probes the REAL Pods page (real Go host, the Kubernetes plugin's own bundle, real kind cluster) in WebKit and Chromium at 1440 x 900 and 1030 x 720. Read only:
+// kubectl is only ever asked `get pods -A --no-headers`; the page is only read and driven with real key presses and real pointer events.
 //
-//   node ui-next/e2e/pods-page.probe.mjs                      (run from the worktree root)
+//   node scripts/ui-next-pods/pods-page.probe.mjs             (run from the worktree root)
 //
-//   PAGE_URL=<url>            default http://127.0.0.1:34302/?screen=pods&connection=kind-ov-1a6
+//   PAGE_URL=<url>            default http://127.0.0.1:34302/ (the window as the native app opens it: no parameter, no hash; the plugin picks its first connection.
+//                             `/#/kubernetes/pods?connection=<id>` names one)
 //   KUBECONFIG_PATH=<file>    default /tmp/ov-1a6-env/kubeconfig
 //   AXE=<path to axe.min.js>  default: the first of /tmp/ov-axe, /tmp/axe-core, /tmp/atoms/axe (node_modules/axe-core/axe.min.js) that exists
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   (defaults: both of each)
@@ -22,7 +23,7 @@
 import { writeFileSync } from 'node:fs';
 import { ENGINES, VIEWPORTS, check, classify, findAxe, info, installHelpers, readKube, results, sleep, tally } from './pods-page.probe-lib.mjs';
 
-const PAGE_URL = process.env.PAGE_URL ?? 'http://127.0.0.1:34302/?screen=pods&connection=kind-ov-1a6';
+const PAGE_URL = process.env.PAGE_URL ?? 'http://127.0.0.1:34302/';
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
 const sections = new Set((process.env.SECTIONS ?? 'keyboard,names,axe,counts,shift').split(','));

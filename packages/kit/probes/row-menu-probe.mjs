@@ -75,7 +75,8 @@ function serve(dist) {
       response.end('not found');
     }
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}/` })));
+  // `url` is the page under probe: the kit's parts page, which is `?screen=parts` now that the window's default screen is the plugins'.
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}/?screen=parts` })));
 }
 
 // Runs in every page before its own scripts: what the window and the document hold, and the MutationObservers made.

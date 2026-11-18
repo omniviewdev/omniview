@@ -979,7 +979,7 @@ function summarize() {
 // ---------------------------------------------------------------------------------------------------------------------------
 async function main() {
   const dist = build();
-  const { server, url } = await serve(dist);
+  const { server, partsUrl } = await serve(dist);
   const started = Date.now();
   try {
     for (const engineName of engineNames) {
@@ -988,7 +988,7 @@ async function main() {
         const run = `${engineName} ${viewportName}`;
         const context = await browser.newContext({ viewport: VIEWPORTS[viewportName] });
         const errors = [];
-        let page = await load(context, url, errors);
+        let page = await load(context, partsUrl, errors);
         const resolved = await page.evaluate((names) => window.__kt.roles(names), tokenNames);
         kitRoles = { byName: new Map(Object.entries(resolved)), byColour: new Map() };
         for (const [name, colour] of kitRoles.byName) kitRoles.byColour.set(colour, [...(kitRoles.byColour.get(colour) ?? []), name]);
@@ -1007,7 +1007,7 @@ async function main() {
           if (spec.states?.tick || spec.descend) {
             // A sort and a click on a checkbox change the example's state: the next case starts from a page that has not been touched.
             await page.close();
-            page = await load(context, url, errors);
+            page = await load(context, partsUrl, errors);
           }
         }
         if (viewportName === viewportNames[0] && (!only || only.test('themes'))) {

@@ -1,7 +1,10 @@
 // What every probe needs to look at the real `ui-next` page: a production build of it, and a static server for that build.
 //
 //   const dist = await buildUiNext();        // OMNIVIEW_UI=next vite build into a temp dir (or DIST=<dir>, an existing build)
-//   const { server, url } = await serve(dist);
+//   const { server, url, partsUrl } = await serve(dist);
+//
+// `url` is the root. The window's default screen is the pages the installed plugins contribute (nothing, in a static server); the kit's parts page, which every
+// probe but the tooltip's looks at, is `partsUrl` (`/?screen=parts`), and the tooltip's stress page is `${url}?screen=tooltip-stress`.
 //
 // The page imports the BUILT kit, so build the kit first (`pnpm --filter @omniviewdev/kit run build`, or `task packages`).
 import { execFileSync } from 'node:child_process';
@@ -53,5 +56,10 @@ export function serve(dist) {
       response.end('not found');
     }
   });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, url: `http://127.0.0.1:${server.address().port}/` })));
+  return new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      resolve({ server, url, partsUrl: `${url}?screen=parts` });
+    }),
+  );
 }

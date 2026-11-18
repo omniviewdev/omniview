@@ -1,9 +1,7 @@
 import tsParser from '@typescript-eslint/parser';
 import { RuleTester } from 'eslint';
 import { describe, it } from 'vitest';
-import path from 'node:path';
 import plugin from './plugin.mjs';
-import { REPO_ROOT } from './scaffolding.mjs';
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -68,81 +66,5 @@ tester.run('no-restyle', plugin.rules['no-restyle'], {
       code: 'import { Text as T } from "@omniviewdev/kit"; const a = <T style={{ "--c": c }} />;',
       errors: [{ messageId: 'restyle', data: { name: 'style', component: 'T' } }],
     },
-  ],
-});
-
-const at = (file) => path.join(REPO_ROOT, file);
-const hostToPlugin = [{ messageId: 'hostToPlugin' }];
-const pluginToHost = [{ messageId: 'pluginToHost' }];
-
-tester.run('scaffold-boundary', plugin.rules['scaffold-boundary'], {
-  valid: [
-    // plugin code may use its own files and the shared list a plugin's bundle leaves external (ui-next/plugins/loader/specifiers.ts), and third-party packages
-    ...['./b', './sub/c', '@omniviewdev/kit', '@omniviewdev/runtime/ui/v1', 'react', 'react/jsx-runtime', 'react/compiler-runtime', 'vitest', '@tanstack/react-query', '@testing-library/react'].map(
-      (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts') }),
-    ),
-    { code: "import type { HostRecord } from '@omniviewdev/runtime/ui/v1'; export type { HostRecord };", filename: at('ui-next/k8s/a.ts') },
-    { code: "export { useResources } from '@omniviewdev/runtime/ui/v1'; const a = import('@omniviewdev/runtime/ui/v1');", filename: at('ui-next/pods/a.ts') },
-    // a package whose scope only starts like an alias is not one
-    { code: "import x from '@hookstate/core'; import y from '@utilities/z'; export { x, y };", filename: at('ui-next/k8s/a.ts') },
-    { code: "import { P } from '../b'; import { Page } from '../../pods/Page'; export { P, Page };", filename: at('ui-next/k8s/sub/d.ts') },
-    { code: "import { usePods } from '../k8s/usePods'; export { usePods };", filename: at('ui-next/pods/Page.tsx') },
-    { code: "export * from './b'; export { y } from '../pods/y'; import('./lazy'); require('./cjs');", filename: at('ui-next/k8s/a.ts') },
-    // the host may use anything that is not plugin code
-    { code: "import { Frame } from './shell/Frame'; import '@omniviewdev/kit'; import { x } from './k8sish/x';", filename: at('ui-next/App.tsx') },
-    { code: "import { x } from '../../ui-next/shell/x';", filename: at('packages/kit/src/Probe.tsx') },
-    // other trees are out of scope
-    { code: "import { x } from '../ui-next/k8s/x';", filename: at('ui/Probe.tsx') },
-    // a computed dynamic import cannot be resolved
-    { code: 'import(name); require(name);', filename: at('ui-next/App.tsx') },
-    { code: 'import(`./pods/${name}`); require(`./k8s/${name}`);', filename: at('ui-next/App.tsx') },
-    // a template literal without substitutions is as static as a string
-    { code: 'const a = import(`./lazy`);', filename: at('ui-next/k8s/a.ts') },
-  ],
-  invalid: [
-    { code: "import x from '../../../ui-next/k8s/x'; export { x };", filename: at('packages/kit/src/Probe.tsx'), errors: hostToPlugin },
-    { code: "import { a } from '../k8s/usePods'; export { a };", filename: at('ui-next/shell/Probe.tsx'), errors: hostToPlugin },
-    { code: "import { a } from '../pods/Page'; export { a };", filename: at('ui-next/shell/Probe.tsx'), errors: hostToPlugin },
-    { code: "import { a } from './k8s';", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: "export { a } from './k8s/usePods';", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: "export * from './pods/Page';", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: "const a = import('./pods/Page');", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: "const a = require('./k8s/usePods');", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: 'const a = import(`./pods/Page`);', filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: 'const a = require(`./k8s/usePods`);', filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    { code: "import { a } from '../k8s/usePods';", filename: at('ui-next/shell/Probe.test.tsx'), errors: hostToPlugin },
-    { code: "import { a } from 'somewhere/ui-next/k8s/usePods';", filename: at('packages/kit/src/Probe.tsx'), errors: hostToPlugin },
-    { code: "import { a } from '/abs/ui-next/pods/Page';", filename: at('ui-next/App.tsx'), errors: hostToPlugin },
-    // plugin code may not reach the host
-    ...['../shell/Frame', '../../ui/utils/x', '@/utils/y', '@omniviewdev/runtime/api', '@omniviewdev/runtime/runtime', '@omniviewdev/kit/dist/x', '@omniviewdev/kit/src/x', '@wailsio/runtime', '../App', '../main', '../../packages/kit/src/x', '../k8sish/x'].map(
-      (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts'), errors: pluginToHost }),
-    ),
-    // the runtime comes through its curated entry only: not the main barrel (which holds the previous UI library), not a later contract that is not on the shared list yet
-    // and not a file of it; the kit comes through its root entry only: the stylesheet is the host's, loaded once, and declares the layer order
-    ...['@omniviewdev/runtime', '@omniviewdev/runtime/ui/v1/hooks', '@omniviewdev/runtime/ui/v2', '@omniviewdev/runtime/dist/index.js', '@omniviewdev/kit/styles.css', '@omniviewdev/kit/examples'].map(
-      (specifier) => ({ code: `import x from '${specifier}'; export { x };`, filename: at('ui-next/k8s/a.ts'), errors: pluginToHost }),
-    ),
-    // no other package of this repository is on a plugin's surface
-    ...['@omniviewdev/base-ui', '@omniviewdev/base-ui/metrics', '@omniviewdev/ai-ui', '@omniviewdev/editors', '@omniviewdev/providers', '@omniviewdev/vite-plugin'].map((specifier) => ({
-      code: `import x from '${specifier}'; export { x };`,
-      filename: at('ui-next/pods/a.tsx'),
-      errors: pluginToHost,
-    })),
-    { code: "import type { Connection } from '@omniviewdev/runtime'; export type { Connection };", filename: at('ui-next/k8s/a.ts'), errors: pluginToHost },
-    { code: "export { ActivityProvider } from '@omniviewdev/runtime'; const a = import('@omniviewdev/runtime');", filename: at('ui-next/pods/a.ts'), errors: [{ messageId: 'pluginToHost' }, { messageId: 'pluginToHost' }] },
-    { code: "const a = require('@omniviewdev/kit/styles.css');", filename: at('ui-next/k8s/a.ts'), errors: pluginToHost },
-    { code: "import x from '@omniviewdev/runtime'; export { x };", filename: at('ui-next/k8s/a.test.ts'), errors: pluginToHost },
-    { code: "import x from '../shell/Frame'; export { x };", filename: at('ui-next/k8s/a.test.ts'), errors: pluginToHost },
-    { code: "export { x } from '../shell/Frame';", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
-    { code: "export * from '@/x';", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
-    { code: "const a = import('@omniviewdev/runtime/api');", filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
-    { code: "const a = require('@wailsio/runtime');", filename: at('ui-next/k8s/a.ts'), errors: pluginToHost },
-    { code: 'const a = import(`@/utils/y`);', filename: at('ui-next/pods/a.ts'), errors: pluginToHost },
-    // every alias of vite.config.ts into ui/ (a bare alias too)
-    ...['@components/x', '@hooks/x', '@layouts/x', '@pages/x', '@theme/x', '@types/x', '@utils/x', '@hooks'].map((specifier) => ({
-      code: `import x from '${specifier}'; export { x };`,
-      filename: at('ui-next/k8s/a.ts'),
-      errors: pluginToHost,
-    })),
   ],
 });

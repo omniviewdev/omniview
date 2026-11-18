@@ -150,7 +150,7 @@ async function shiftOf(page) {
 
 async function main() {
   const dist = await buildUiNext();
-  const { server, url } = await serve(dist);
+  const { server, url, partsUrl } = await serve(dist);
   try {
     for (const engineName of engineNames) {
       const browser = await launch(engineName);
@@ -158,7 +158,7 @@ async function main() {
         const viewport = VIEWPORTS[viewportName];
         const where = `${engineName} ${viewportName}`;
 
-        const { context, page, requests, responses } = await load(browser, url, viewport);
+        const { context, page, requests, responses } = await load(browser, partsUrl, viewport);
 
         // ---- delivery
         const faces = await page.evaluate(() => [...document.fonts].map((face) => `${face.family} ${face.weight} ${face.status}`));
@@ -224,7 +224,7 @@ async function main() {
         // milliseconds after the request, which a local server hides. A face that is not preloaded is asked for only once layout uses it, so it
         // arrives after the first frame; with every face preloaded they arrive together, in time.
         if (engineName === 'chromium') {
-          const slow = await load(browser, url, viewport, { delay: 40 });
+          const slow = await load(browser, partsUrl, viewport, { delay: 40 });
           const late = await shiftOf(slow.page);
           report.slowFetch[where] = { cls: late.cls, moved: late.geometry.moved, facesAtFirstFrame: late.facesAtFirstFrame };
           if (late.cls !== 0 || late.geometry.moved !== 0) fail(where, `with every font file 40 ms late: CLS ${late.cls}, ${late.geometry.moved} elements moved after the first frame (${late.geometry.examples.join('; ')}), faces at the first frame ${JSON.stringify(late.facesAtFirstFrame)}`);
@@ -234,7 +234,7 @@ async function main() {
         // ---- what the preload buys (measured, not gated)
         const variants = {};
         for (const [name, options] of [['no preload', { preload: false }], ['fonts 400 ms late', { delay: 400 }], ['no preload, fonts 400 ms late', { preload: false, delay: 400 }]]) {
-          const run = await load(browser, url, viewport, options);
+          const run = await load(browser, partsUrl, viewport, options);
           const result = await shiftOf(run.page);
           variants[name] = { cls: Number(result.cls.toFixed(8)), moved: result.geometry.moved, largestPx: result.geometry.largest, firstFrameAt: result.firstFrameAt, loaded: result.loaded.map((entry) => `${entry.face}@${entry.at}`), facesAtFirstFrame: result.facesAtFirstFrame };
           await run.context.close();

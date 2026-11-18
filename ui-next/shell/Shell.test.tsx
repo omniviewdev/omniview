@@ -133,6 +133,40 @@ describe('the one tab', () => {
   });
 });
 
+describe('the window controls', () => {
+  // The native window's web view carries the bridge the Wails runtime talks to the app through, and a browser does not (core/native.ts).
+  const bridges = {
+    'WKWebView and WebKitGTK': { webkit: { messageHandlers: { external: { postMessage: () => undefined } } } },
+    WebView2: { chrome: { webview: { postMessage: () => undefined } } },
+  };
+
+  afterEach(() => {
+    for (const key of ['webkit', 'chrome']) {
+      Reflect.deleteProperty(window, key);
+    }
+  });
+
+  it('draws three inert stand-in dots in the safe area in a browser, which has no window controls of its own', () => {
+    const { container } = renderShell();
+    const safeArea = container.querySelector('[data-shell-part="safeArea"]');
+
+    expect(safeArea).toHaveAttribute('aria-hidden', 'true');
+    expect(safeArea?.querySelectorAll('[data-shell-part="standIn"] > span')).toHaveLength(3);
+  });
+
+  for (const [name, bridge] of Object.entries(bridges)) {
+    it(`draws none of them in the native window (${name}) and keeps the safe area the real controls draw in`, () => {
+      Object.assign(window, bridge);
+      const { container } = renderShell();
+      const safeArea = container.querySelector('[data-shell-part="safeArea"]');
+
+      expect(safeArea).toBeEmptyDOMElement();
+      expect(container.querySelector('[data-shell-part="standIn"]')).toBeNull();
+      expect(screen.getByRole('tab', { name: 'Widgets' })).toBeInTheDocument();
+    });
+  }
+});
+
 describe('the sidebar tree', () => {
   it('lists the open group and its entries as tree items with levels, sets, the count and the current one selected', () => {
     renderShell();

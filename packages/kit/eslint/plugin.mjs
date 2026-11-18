@@ -6,8 +6,6 @@
  * allowed only as a data parameter: an object of custom properties whose values are computed. A static value is a class,
  * and there is no passthrough (strategy R7).
  */
-import path from 'node:path';
-import { PLUGIN_CODE, PLUGIN_SURFACE, classify, isPluginCode, repoRelative } from './scaffolding.mjs';
 
 const STATIC_NODE_TYPES = ['Literal'];
 
@@ -184,93 +182,11 @@ export const noRestyle = {
   },
 };
 
-const PLUGIN_PATH_PATTERN = new RegExp(`(?:^|/)(?:${PLUGIN_CODE.map((dir) => dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:/|$)`);
-
-/** The text of a string literal, or of a template literal with no substitutions; undefined for anything computed. */
-function staticString(node) {
-  if (node?.type === 'Literal' && typeof node.value === 'string') return node.value;
-  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0].value.cooked ?? undefined;
-  return undefined;
-}
-
-/** Specifier of an import, re-export, dynamic import of a static string, or require of one; with the node to report on. */
-function moduleSpecifier(node) {
-  if (node.type === 'ImportExpression') return staticString(node.source);
-  if (node.type === 'CallExpression') {
-    return node.callee.type === 'Identifier' && node.callee.name === 'require' ? staticString(node.arguments[0]) : undefined;
-  }
-  return typeof node.source?.value === 'string' ? node.source.value : undefined;
-}
-
-/** The aliases of vite.config.ts and tsconfig.app.json into `ui/` (the old shell), besides `@/`. */
-const HOST_ALIAS_PATTERN = /^@(?:components|hooks|layouts|pages|theme|types|utils)(?:\/|$)/;
-
-/** Why a plugin-code file may not import `specifier` (a messageId), or undefined when it is on the public surface. */
-function pluginViolation(specifier, resolved) {
-  if (specifier.startsWith('.')) return resolved !== undefined && isPluginCode(resolved) ? undefined : 'pluginToHost';
-  if (specifier.startsWith('/') || specifier === '@' || specifier.startsWith('@/')) return 'pluginToHost';
-  if (specifier.startsWith('@wailsio/') || HOST_ALIAS_PATTERN.test(specifier)) return 'pluginToHost';
-  if (PLUGIN_SURFACE.includes(specifier)) return undefined;
-  // Every other module of this repository's packages is the host's: the runtime's main barrel and raw entries, a later contract of it, the kit's
-  // stylesheet and internals, the previous UI libraries, the providers, the Vite plugin.
-  if (specifier.startsWith('@omniviewdev/')) return 'pluginToHost';
-  return undefined;
-}
-
-/**
- * Keeps the host and the kit plugin-agnostic (decision A13). Host and kit files may not import plugin scaffolding
- * (`ui-next/k8s`, `ui-next/pods`); scaffolding may import only what a plugin gets: relative files of its own, the shared
- * list a plugin's bundle leaves external (`PLUGIN_SURFACE`: React, `@omniviewdev/kit`, and the runtime's curated entry
- * `@omniviewdev/runtime/ui/v1`, never its main barrel) and third-party packages.
- * The only escape is `// eslint-disable-next-line kit/scaffold-boundary -- SCAFFOLDING(N19): <reason>`.
- */
-export const scaffoldBoundary = {
-  meta: {
-    type: 'problem',
-    docs: { description: 'Keep host and kit plugin-agnostic: no import of plugin scaffolding, and scaffolding imports only the plugin surface' },
-    messages: {
-      hostToPlugin:
-        'The host and the kit are plugin-agnostic (decision A13). "{{specifier}}" is plugin code: ui-next/k8s/ is temporary plugin scaffolding, and only the single marked mount point (ui-next/main.tsx, SCAFFOLDING(N19)) may reference it.',
-      pluginToHost:
-        `Plugin code gets only the public surface (decision A13): its own files, ${PLUGIN_SURFACE.map((name) => `"${name}"`).join(', ')} and third-party packages. "{{specifier}}" is host internals, the old shell, an alias into it, another package of this repository (the runtime's main entry holds the previous UI library, and the kit's stylesheet is the host's), a raw RPC entry or a Wails binding.`,
-    },
-    schema: [],
-  },
-  create(context) {
-    const file = repoRelative(path.resolve(context.filename));
-    const kind = file === undefined ? 'other' : classify(file);
-    if (kind !== 'kit' && kind !== 'shell' && kind !== 'plugin-code') return {};
-    const directory = path.dirname(path.resolve(context.filename));
-
-    function check(node) {
-      const specifier = moduleSpecifier(node);
-      if (specifier === undefined) return;
-      const resolved = specifier.startsWith('.') ? repoRelative(path.resolve(directory, specifier)) : undefined;
-      if (kind === 'plugin-code') {
-        const messageId = pluginViolation(specifier, resolved);
-        if (messageId) context.report({ node, messageId, data: { specifier } });
-        return;
-      }
-      const intoPlugin = resolved !== undefined ? isPluginCode(resolved) : PLUGIN_PATH_PATTERN.test(specifier);
-      if (intoPlugin) context.report({ node, messageId: 'hostToPlugin', data: { specifier } });
-    }
-
-    return {
-      ImportDeclaration: check,
-      ExportNamedDeclaration: check,
-      ExportAllDeclaration: check,
-      ImportExpression: check,
-      CallExpression: check,
-    };
-  },
-};
-
 export default {
   meta: { name: 'omniview-kit' },
   rules: {
     'no-static-style': noStaticStyle,
     'closed-props': closedProps,
     'no-restyle': noRestyle,
-    'scaffold-boundary': scaffoldBoundary,
   },
 };

@@ -2,11 +2,12 @@
 //   { key, name, namespace, nameTail, ready: {ready,total}|undefined, status: {word, role}|undefined,
 //     restarts: number|undefined, createdAt: epoch ms|undefined, node, ip }
 //
-// Every derivation is a plain-JS copy of the data layer, not a second opinion:
-//   ui-next/k8s/row.ts     the row shape and which field comes from where (`podRow`)
-//   ui-next/k8s/pod.ts     the typed reading of an object of unknown shape (`toPod`)
-//   ui-next/k8s/fields.ts  Ready, Restarts, creation time, node, IP, name tail
-//   ui-next/k8s/status.ts  the role table (`stateRole`) and kubectl's STATUS logic (`podStatusWord`)
+// Every derivation is a plain-JS copy of the data layer, not a second opinion. The data layer was `ui-next/k8s/` of this repository; N19c moved it into the Kubernetes
+// plugin (repository omniviewdev/omniview-plugin-kubernetes, branch feature/ui-next, `ui/src/pods/data/`; this repository's last copy is commit 19720e3a):
+//   row.ts     the row shape and which field comes from where (`podRow`)
+//   pod.ts     the typed reading of an object of unknown shape (`toPod`)
+//   fields.ts  Ready, Restarts, creation time, node, IP, name tail
+//   status.ts  the role table (`stateRole`) and kubectl's STATUS logic (`podStatusWord`)
 // at commit dbe3587b (branch ui-next/1a2-data-layer, "the Pod row model", PR 1a.2). When the data layer changes, copy the change here
 // and run podRows.test.mjs against a fresh corpus: the oracle is `kubectl get pods`, not this file.
 

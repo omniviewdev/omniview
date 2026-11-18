@@ -13,9 +13,9 @@ The first page of the new shell (slice 1a plan, PR 1a.6): a collection of rows w
 
 The page is a **pure function of `(definition, source)` and what the person typed**: the source is a prop, never a hook the definition calls, so the page reads no data layer. What the person typed (the search, the chosen filter) is the page's own state; what is listed, in what order, and whether it is all of it, is the source's. The page sorts nothing: the source's order is the list's, and the table's own sorting stays off until the sort state exists (plan 1a.7).
 
-## Where the plugin's scaffolding meets it
+## Where a plugin meets it
 
-The boundary lint (`kit/scaffold-boundary`) forbids the host from importing the scaffolding, except at the one marked mount point in `ui-next/main.tsx`, and forbids the scaffolding from importing the host. So the scaffolding exports plain data (and the hooks that read it), written out in its own types, and the mount point hands it to `ListPage` and `Shell`: **the type checker holds the two shapes together there**, where a drift is a compile error. When the plugin's own stream replaces the scaffolding, the type moves to the surface plugins import.
+A plugin's bundle states its page as plain data: a `definition` and one data hook that returns the page's `source` and its frame (`ListPageV1`, `ui-next/plugins/contract/v1.ts`). The host runs the hook and hands both values to `ListPage` and `Shell` in `ui-next/plugins/host/PluginHost.tsx`: **the type checker holds the two shapes together there**, where a drift is a compile error. The page knows no plugin and imports none; its own probe (`probes/`, run by hand) draws it on a neutral fixture.
 
 ## What it decides (`view.ts`, pure, tested without a browser)
 

@@ -82,6 +82,32 @@ test('OMNIVIEW_UI=next builds ui-next alone as the entry and replaces the output
   }
 });
 
+// The host holds no plugin's code (decision A13): what the Pods list of the Kubernetes plugin is made of is in the plugin's own bundle and in no file of the host's.
+// The six markers are words a minifier keeps: its STATUS words, the test id of its cells, its resource type, the words of its first state and its oracle's name.
+// N19c's proof read them in the `dist/` of a host built with the scaffolding taken out; they stay a guard now that it is gone.
+const PODS_MARKERS = ['CrashLoopBackOff', 'ImagePullBackOff', 'pod-name', 'k8s:/pods', 'No connections', 'kubectl'];
+const podsMarkersIn = content => PODS_MARKERS.filter(word => content.includes(word));
+
+test('the next build holds no Pods code: the list comes from the plugin\'s own bundle', async () => {
+  const output = await mkdtemp(path.join(os.tmpdir(), 'omniview-ui-next-pods-'));
+  try {
+    const built = build('next', output);
+    assert.equal(built.status, 0, built.stdout + built.stderr);
+    const files = (await list(output)).filter(name => /\.(?:html|js|css)$/.test(name));
+    assert.ok(files.length > 0, 'the build has files to read');
+    for (const file of files) {
+      assert.deepEqual(podsMarkersIn(await readFile(path.join(output, file), 'utf8')), [], `${file} holds the Pods list's code`);
+    }
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
+test('the guard for the Pods code can fail: it names every marker it finds', () => {
+  assert.deepEqual(podsMarkersIn('const s = { CrashLoopBackOff: 1 }; find("pod-name"); // run kubectl'), ['CrashLoopBackOff', 'pod-name', 'kubectl']);
+  assert.deepEqual(podsMarkersIn('a host with nothing of a plugin in it'), []);
+});
+
 // The new shell does not carry the previous UI libraries (strategy R3, R4). The runtime is the one place they could come back in: its main barrel imports
 // `@omniviewdev/base-ui` and the router, and the shared list serves the runtime to plugins by a dynamic import, which keeps everything it names. The list
 // serves the curated entry (`ui/v1`), whose graph holds none of them (`packages/omniviewdev-runtime/scripts/check-ui-v1.ts` checks its source, its
@@ -89,7 +115,7 @@ test('OMNIVIEW_UI=next builds ui-next alone as the entry and replaces the output
 test('the next build holds no module of the previous UI libraries, with the runtime shared through its curated entry', () => {
   const modules = bundleOf().flatMap(chunk => chunk.modules);
   assert.ok(modules.some(id => id.endsWith('/packages/omniviewdev-runtime/src/ui/v1.ts')), 'the curated runtime entry is in the build (the shared list serves it)');
-  assert.ok(modules.some(id => id.endsWith('/packages/omniviewdev-runtime/src/hooks/resource/useResources.ts')), 'and the hooks the Pods scaffolding reads through it');
+  assert.ok(modules.some(id => id.endsWith('/packages/omniviewdev-runtime/src/hooks/resource/useResources.ts')), 'and the data hooks a plugin reads through it');
   assert.deepEqual(oldUiModules(modules), []);
 });
 

@@ -9,7 +9,7 @@ The table bench measures the kit's `DataTable` on real Pod rows. This directory 
 | `podRows.test.mjs` | The oracle test: the rows must equal what `kubectl get pods -A --no-headers` prints. |
 | `updates.mjs` | `createUpdates(spec).apply(rows)`: the seeded sparse live-update workload of `bench/render/fixtures/updates.ts`, on rows, pure. |
 | `updates.test.mjs` | Determinism, identity of unchanged rows, the ledger after 100 events. |
-| `pods-table.golden.json` | A copy of `ui-next/k8s/fixtures/pods-table.json` of row 1a.2 (sha-256 `6c341fe2…de9dc1`): two responses of a real kube-apiserver v1.35.0 with each Pod object and the cells the server printed for it. Delete it and point the test at the original once 1a.2 is on this branch. |
+| `pods-table.golden.json` | A copy of the data layer's `pods-table.json` of row 1a.2 (sha-256 `6c341fe2…de9dc1`): two responses of a real kube-apiserver v1.35.0 with each Pod object and the cells the server printed for it. The original was `ui-next/k8s/fixtures/` of this repository and is now `ui/src/pods/data/fixtures/` of the Kubernetes plugin (N19c moved it, with the same bytes), so this copy stays. |
 
 ## What the corpus is
 

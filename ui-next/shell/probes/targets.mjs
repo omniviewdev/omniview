@@ -12,21 +12,10 @@
 //   rel:<name> the rectangle relative to the top left of another target (a part inside a region), and its size
 //   text       (a flag) a run of text: x, width and the vertical centre, not the height (an inline box's height is the engine's content area)
 // `adjust` is a known, exact difference between the two (the shell's scope faces have no chevron: 12 px and a 4 px gap).
-// `only: 'fixture'` is a part the real page does not have yet (the count of an entry): the fixture shows it.
-
-// The one place that names the plugin screen the mock and the shell are both opened on, so the rest of the probe stays plugin-agnostic.
-// SCAFFOLDING(N19): begin
-/** The mock's route to the screen, as the plan's appendix B opens it (connection `prod-eu`). */
-export const MOCK_OPEN = `
-  const scope = K8s.connections.defaultScope('prod-eu');
-  Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/pods' }, scope), scope }, { how: 'here' });
-`;
-/** The shell's page for the same screen, with the connection the lane and the path show. */
-export const SHELL_PATH = '/?screen=pods&connection=prod-eu';
-/** The mock's tree rows: the group and the entry the screen is on. */
-const MOCK_GROUP = '.tree__row[data-key="group:workloads"]';
-const MOCK_ENTRY = '.tree__row[data-key="k8s:/pods"]';
-// SCAFFOLDING(N19): end
+//
+// The mock is opened on its one reference screen, which `packages/kit/probes/mock-screen.mjs` names (the mock's own words stay with the recordings of the mock);
+// the shell is opened on the fixture (fixture.tsx, `?case=full`): the same frame with invented, neutral registrations. The probe names no plugin's screen.
+import { MOCK_ENTRY, MOCK_GROUP } from '../../../packages/kit/probes/mock-screen.mjs';
 
 const topRow = '[data-shell-region="topRow"]';
 const tab = '[role="tab"]';
@@ -56,7 +45,7 @@ export const TARGETS = [
   { name: 'rowEntry', mock: MOCK_ENTRY, shell: entry, cmp: 'x-w-h' },
   { name: 'entryIcon', mock: `${MOCK_ENTRY} > .tree__icon svg`, shell: `${entry} > :nth-child(1) svg`, cmp: 'rel:rowEntry' },
   { name: 'entryLabel', mock: `${MOCK_ENTRY} > .tree__label`, shell: `${entry} > :nth-child(2)`, cmp: 'rel:rowEntry', keys: ['x', 'y', 'h'] },
-  { name: 'entryCount', mock: `${MOCK_ENTRY} > .tree__count`, shell: `${entry} [data-ov-variant="caption"]`, cmp: 'rel:rowEntry', text: true, only: 'fixture' },
+  { name: 'entryCount', mock: `${MOCK_ENTRY} > .tree__count`, shell: `${entry} [data-ov-variant="caption"]`, cmp: 'rel:rowEntry', text: true },
   { name: 'island', mock: '.frame__island', shell: '[data-shell-region="island"]', cmp: 'abs' },
   { name: 'lane', mock: '.frame__lane', shell: '[data-shell-part="lane"]', cmp: 'abs' },
   { name: 'face1', mock: '.frame__lane button:nth-of-type(1)', shell: face(1), cmp: 'abs', adjust: { w: -16 } },
@@ -91,7 +80,7 @@ export const STYLES = [
   { name: 'rowEntry', props: surface },
   { name: 'groupLabel', props: text },
   { name: 'entryLabel', props: text },
-  { name: 'entryCount', props: text, only: 'fixture' },
+  { name: 'entryCount', props: text },
   { name: 'groupIcon', props: ['color'], path: 'stroke' },
   { name: 'island', props: surface },
   { name: 'face1Label', props: text },
