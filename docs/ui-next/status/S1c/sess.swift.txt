@@ -1,0 +1,8 @@
+import Cocoa
+let d = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+for (k,v) in d { print(k, v) }
+print("displays:", CGDisplayIsAsleep(CGMainDisplayID()), CGDisplayIsActive(CGMainDisplayID()), CGDisplayIsOnline(CGMainDisplayID()))
+var n: UInt32 = 0
+var ids = [CGDirectDisplayID](repeating: 0, count: 8)
+CGGetOnlineDisplayList(8, &ids, &n)
+for i in 0..<Int(n) { print(ids[i], CGDisplayBounds(ids[i]), "asleep", CGDisplayIsAsleep(ids[i]), "builtin", CGDisplayIsBuiltin(ids[i])) }
