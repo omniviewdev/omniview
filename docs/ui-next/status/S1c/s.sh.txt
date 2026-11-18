@@ -1,0 +1,7 @@
+#!/bin/bash
+# usage: s.sh <name>  -> screenshot of the window of the current pid + lock state
+A=/Users/joshuapare/Notes/omniview/ui-migration/status/S1c-assets
+PID=$(cat /tmp/s1c/run.pid)
+id=$(/tmp/s1c/winlist $PID | grep onscreen=1 | cut -f1 | head -1)
+L=$(/tmp/s1c/sess | grep -c "ScreenIsLocked 1")
+screencapture -x -o -l $id "$A/$1.png" && echo "$1 locked=$L id=$id $(/tmp/s1c/winlist $PID | grep onscreen=1 | cut -f6)"
