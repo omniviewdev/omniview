@@ -142,12 +142,13 @@ async function checkHealthy(page, base, engine) {
       sameKitText: bundle.imports.Text === kit.Text,
       sameKitUseTheme: bundle.imports.useTheme === kit.useTheme,
       sameRuntimeUseConnections: bundle.imports.useConnections === runtime.useConnections,
+      sameRuntimeUseResource: bundle.imports.useResource === runtime.useResource && typeof runtime.useResource === 'function',
       registered: [...System.entries()].map(([id]) => id).filter((id) => id.startsWith('shared://')),
     };
   }, `${base}/_/plugins/${OK}/assets/entry.js`);
   assert.deepEqual(
     { ...identity, registered: undefined },
-    { bundleLoaded: true, sameReact: true, sameKitText: true, sameKitUseTheme: true, sameRuntimeUseConnections: true, registered: undefined },
+    { bundleLoaded: true, sameReact: true, sameKitText: true, sameKitUseTheme: true, sameRuntimeUseConnections: true, sameRuntimeUseResource: true, registered: undefined },
     `${engine}: the bundle holds the registry's instances`,
   );
 

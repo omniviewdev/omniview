@@ -212,9 +212,27 @@ export const ErrorTypes: {
 };
 
 // @public (undocumented)
+export interface GetRequest {
+    // (undocumented)
+    reference: ResourceReference;
+    // (undocumented)
+    representation: string;
+    // (undocumented)
+    route: AccessRoute;
+}
+
+// @public (undocumented)
 export interface HostEnumerateRequest {
     // (undocumented)
     request: EnumerateRequest;
+    // (undocumented)
+    targetId: string;
+}
+
+// @public (undocumented)
+export interface HostGetRequest {
+    // (undocumented)
+    request: GetRequest;
     // (undocumented)
     targetId: string;
 }
@@ -698,6 +716,22 @@ export function useResolvedResourceTarget(input: ResolveTargetRequest & {
     refetch: (options?: RefetchOptions) => Promise<QueryObserverResult<ResolvedResourceTarget, Error>>;
     fetchStatus: FetchStatus;
 };
+
+// @public
+export const useResource: (input: UseResourceOptions) => UseResourceResult;
+
+// @public (undocumented)
+export interface UseResourceOptions {
+    // (undocumented)
+    enabled?: boolean;
+    pluginID?: string;
+    request?: HostGetRequest;
+}
+
+// @public (undocumented)
+export interface UseResourceResult {
+    resource: UseQueryResult<HostRecord, Error>;
+}
 
 // @public
 export const useResources: (input: UseResourcesOptions) => {
