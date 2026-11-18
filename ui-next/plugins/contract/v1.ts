@@ -1,5 +1,6 @@
+import type { IconName } from '@omniviewdev/kit';
 import type { ListPageDefinition, ListSource } from '../../page';
-import type { ShellAccent, ShellRegistration, ShellTreeNode } from '../../shell';
+import type { ShellAccent, ShellScopeFace, ShellTreeNode } from '../../shell';
 
 // A plugin writes its contribution against this one module: the types of the list page and the shell it fills in come out of it.
 export type { ListPageDefinition, ListQuickFilter, ListQuickFilters, ListSource, ListSourceState } from '../../page';
@@ -32,8 +33,17 @@ export type ContextV1 = {
   readonly route: RouteV1;
 };
 
-/** How a page sits in the frame: the tab, the status bar's path and the scope lane. The page learns these from its data, so its hook returns them. */
-export type FrameV1 = Pick<ShellRegistration, 'tab' | 'path' | 'scope'>;
+/**
+ * How a page sits in the frame: the tab, the status bar's path and the scope lane. The page learns these from its data, so its hook returns them. The host passes them on to the tab model
+ * (the tab's title and glyph, the status bar's crumbs) and to the shell (the lane); a tab is called `{name} · {Kind}` for an object, and a title is at most three words (ch16 S10, S17).
+ */
+export type FrameV1 = {
+  readonly tab: { readonly title: string; readonly icon: IconName };
+  /** Root first; the last crumb is the page. */
+  readonly path: readonly string[];
+  /** At most two faces (ch16 S10). Absent or empty: no lane. */
+  readonly scope?: readonly ShellScopeFace[];
+};
 
 /** What a list page's data hook answers: the frame, and the rows with their state. The host draws both; the page reads no data layer. */
 export type ListPageViewV1<TRow> = {

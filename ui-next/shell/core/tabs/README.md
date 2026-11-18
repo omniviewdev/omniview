@@ -1,6 +1,6 @@
 # `ui-next/shell/core/tabs/`: the tab and open model
 
-The shell's tabs as plain functions over data (design chapter 16 sections C and D, rules TI1, S24 to S30, S50, S60): where a destination opens, what a tab is called, a tab's own history, close and reopen, pinned and preview, which pages stay mounted, and the saved session. Pure TypeScript: no React, no DOM, no other tree (a test reads every source file and fails on a framework import or a browser global). It is **not wired to any component yet**; `types.ts` is the contract and this file is the guide.
+The shell's tabs as plain functions over data (design chapter 16 sections C and D, rules TI1, S24 to S30, S50, S60): where a destination opens, what a tab is called, a tab's own history, close and reopen, pinned and preview, which pages stay mounted, and the saved session. Pure TypeScript: no React, no DOM, no other tree (a test reads every source file and fails on a framework import or a browser global). The shell's strip, page host and status bar read it (`ui-next/shell/tabs/`, status file `docs/ui-next/status/S1b.md`) and the plugin host answers its `Contributions` (`ui-next/plugins/host/contributions.ts`); `types.ts` is the contract and this file is the guide.
 
 ## What a tab is
 

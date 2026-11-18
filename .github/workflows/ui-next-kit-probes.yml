@@ -116,6 +116,15 @@ jobs:
       - name: Probe the tooltip host
         run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/tooltip-probe.json" node packages/kit/probes/tooltip-probe.mjs
 
+      # The shell's probes build their own fixtures (the repository's `vite build` of ui-next/shell/probes/*.html, once for production and once for React's development build, which the
+      # commit counts read), so they do not read PROBE_DIST. The strip probe runs at 1440 x 900 and 1280 x 800 (decision A15); the frame probe at its reference's two viewports until the
+      # probe viewports switch (tracker row N23). Linux Chromium needs the hinting flag the kit probes use, which the probes pass themselves.
+      - name: Probe the shell frame against the pinned mock reference
+        run: REPORT="$RUNNER_TEMP/shell-probe.json" node ui-next/shell/probes/shell-probe.mjs
+
+      - name: Probe the tab strip, the page host and the load against the pinned mock reference
+        run: REPORT="$RUNNER_TEMP/strip-probe.json" node ui-next/shell/probes/strip-probe.mjs
+
       - name: Keep the reports
         if: always()
         uses: actions/upload-artifact@v4

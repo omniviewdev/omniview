@@ -37,3 +37,19 @@ export const MOCK_REGISTRATION = {
     { label: 'Namespaces', icon: 'folder-tree', text: 'All namespaces' },
   ],
 };
+
+/**
+ * A script that opens tabs 2..n through the mock's own tab model, in addition to the one MOCK_OPEN opened: each is a different list page of the mock's
+ * resource definitions (so no tab dedupes), opened with `how: 'new'`. Evaluated in the page; returns the number of tabs it opened.
+ */
+export const MOCK_OPEN_TABS = (count) => `
+  (() => {
+    const scope = K8s.connections.defaultScope('prod-eu');
+    const types = K8s.resourceDefinitions.list().map((definition) => definition.type ?? definition.id ?? definition.logicalType);
+    const wanted = types.slice(1, ${Number(count)});
+    for (const logicalType of wanted) {
+      Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType }, scope), scope }, { how: 'new' });
+    }
+    return wanted.length;
+  })()
+`;

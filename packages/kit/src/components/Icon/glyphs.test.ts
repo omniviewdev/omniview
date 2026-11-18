@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { GLYPHS, type IconName } from './glyphs';
+import { GLYPHS, isIconName, type IconName } from './glyphs';
 
 const names = Object.keys(GLYPHS) as IconName[];
 
 // The glyphs slice 1a draws, from the mock's first list screen (plan 1.2, tiers A and B): command glyphs, the sort arrows, the
 // kind and scope glyphs, the seven status roles' glyphs, the loaders and the no-match glyph; the row menu's trigger adds the ellipsis.
+// Slice 1b adds the tab strip's: the new-tab plus and the back and forward arrows.
 const SLICE_1A = [
-  'arrow-down', 'arrow-up', 'box', 'check', 'chevron-down', 'chevron-right', 'circle-minus', 'clock', 'close', 'columns', 'copy',
-  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
+  'arrow-down', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'check', 'chevron-down', 'chevron-right', 'circle-minus', 'clock', 'close', 'columns', 'copy',
+  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'plus', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
   'status-success', 'status-warning',
 ];
 
 describe('the glyph registry', () => {
-  it('holds the glyphs slice 1a draws, and no other', () => {
+  it('holds the glyphs slices 1a and 1b draw, and no other', () => {
     expect([...names].sort()).toEqual(SLICE_1A);
   });
 
@@ -91,5 +92,15 @@ describe('the glyph registry', () => {
     }
 
     expect(total).toBeLessThanOrEqual(7000);
+  });
+
+  it('guards a name from outside: true for every glyph, false for anything else', () => {
+    for (const name of names) {
+      expect(isIconName(name), name).toBe(true);
+    }
+
+    for (const name of ['', 'constructor', '__proto__', 'unknown-glyph']) {
+      expect(isIconName(name), name).toBe(false);
+    }
   });
 });

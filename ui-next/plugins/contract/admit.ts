@@ -145,6 +145,10 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
   } else {
     for (const [id, page] of Object.entries(pages)) {
       checkPage(page, `pages.${id}`, problems);
+      if (id === '$home') {
+        // The sentinel the host's route completion reads as "the plugin's home page" (`HOME_PAGE`): a page with this id could not be reached.
+        problems.push('pages.$home is reserved for the home page of the plugin');
+      }
     }
 
     for (const leaf of leaves) {

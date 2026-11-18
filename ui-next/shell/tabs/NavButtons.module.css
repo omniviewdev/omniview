@@ -1,0 +1,52 @@
+/* Back and Forward (ch16 S6): a 30 px face with a 20 px glyph, radius 4, 4 px apart, 64 px for the pair. */
+@layer ov.shell {
+  /* The Wails runtime reads --wails-draggable to find the regions that move the window: these controls are not one. A name outside the private `--_` scale, so the rule that closes
+     custom properties is off for this line. */
+  /* stylelint-disable property-disallowed-list */
+  .nav {
+    --wails-draggable: no-drag;
+    display: flex;
+    flex: 0 0 64px;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    inline-size: 64px;
+  }
+  /* stylelint-enable property-disallowed-list */
+
+  .button {
+    display: inline-flex;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    inline-size: 30px;
+    min-inline-size: 30px;
+    block-size: 30px;
+    min-block-size: 30px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-icon);
+    cursor: default;
+  }
+
+  .button:not([aria-disabled='true']):hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .button:not([aria-disabled='true']):active {
+    background-color: var(--ov-pressed);
+  }
+
+  .button:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .button[aria-disabled='true'] {
+    background-color: transparent;
+    color: var(--ov-icon-disabled);
+  }
+}

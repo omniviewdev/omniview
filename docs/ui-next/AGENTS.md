@@ -17,7 +17,7 @@ Progress is counted in slices that run on real data in the real host (first: the
 | Path | What |
 |---|---|
 | `ui-next/` | New shell: `index.html`, `main.tsx`, `App.tsx` (a themed frame built from the kit), `global.css` (the host's document reset, layer `ov.reset`), `App.module.css` (the frame, layer `ov.shell`), `parts/PartsPage.tsx` (every kit part in every state it has an example for, mounted on the frame). |
-| `ui-next/shell/` | The window frame (row 1a.5): `Shell` (top row with one tab, plugin frame, sidebar tree, scope lane, page island, status bar), `core/` (framework-free tree and region rules), `registration.ts` (the seed of the contribution contract), `probes/` (the mock's rectangles against the shell, in both engines; run by hand). Plugin-agnostic: see its `README.md`. |
+| `ui-next/shell/` | The window frame (rows 1a.5, S1a, S1b): `Shell` (top row with Back and Forward and the tab strip, plugin frame, sidebar tree, scope lane, page host with keep-alive, status bar), `core/` (framework-free tree, region, chord and tab-model rules), `tabs/` (the strip and the page host), `registration.ts` (the seed of the contribution contract), `probes/` (the mock's rectangles against the shell, in both engines; CI runs them). Plugin-agnostic: see its `README.md`. |
 | `packages/kit/` | New library `@omniviewdev/kit` (row N11a): token manifest and generator, nine themes, theme provider, `Text` and `Stack`, the guards, the API report. See "The kit" below. |
 | `ui/` | Old shell. Fixes only after the calibration gate. Never imported from the new tree. |
 | `docs/ui-next/` | `AGENTS.md` (this file), `TRACKER.md` (rows, PRs, log: source of truth), `decisions.md` (R1–R20, owner decisions), `channels.md` (release-channel guide), `status/` (one file per in-flight row), `baseline/` (numbers, rows N8 and N12). |
@@ -43,10 +43,13 @@ pnpm --filter @omniviewdev/kit run build                # generate, vite build, 
 pnpm --filter @omniviewdev/kit run generate             # after editing tokens/manifest.ts or tokens/themes.ts; commit src/generated/*
 pnpm --filter @omniviewdev/kit run api:update           # after changing src/index.ts or src/examples.ts; commit api/kit.api.md and api/kit-examples.api.md
 pnpm --filter @omniviewdev/kit run verify               # generate:check, tsc, stylelint, tests, build, API report (3 s)
-node packages/kit/probes/kit-probe.mjs                  # the parts against the mock in WebKit and Chromium at both viewports (builds ui-next, serves it; needs Playwright browsers; run by hand, CI does not)
+node packages/kit/probes/kit-probe.mjs                  # the parts against the mock in WebKit and Chromium at both viewports (builds ui-next, serves it; needs Playwright browsers; CI runs it with the table, fonts and tooltip probes)
+node ui-next/shell/probes/shell-probe.mjs               # the shell frame against the mock (builds its own fixtures; CI runs it)
+node ui-next/shell/probes/strip-probe.mjs               # the tab strip, page host and load at 1440x900 and 1280x800 (CI runs it)
+# FONT_DELAY_MS=40 in front of any probe holds every font file back, as a runner does: run all of them with it before reporting ready
 
 # run the new tree
-OMNIVIEW_UI=next pnpm dev                   # Vite only: http://127.0.0.1:9245/ (strict port); no Go host, no Wails runtime, no plugins
+OMNIVIEW_UI=next pnpm dev                   # Vite only: http://127.0.0.1:9245/ (strict port); no Go host, no Wails runtime, no plugins: the window shows the plugin screen (empty here); the kit's parts page is /?screen=parts
 OMNIVIEW_UI=next task build:server          # frontend, then bin/Omniview-server (30 s): the real Go host
 HOME="$(mktemp -d)" OMNIVIEW_CHANNEL=feature-ui-next bin/Omniview-server   # http://localhost:34115/, state root $HOME/.omniview-feature-ui-next
 
@@ -86,8 +89,13 @@ Not verified: `OMNIVIEW_UI=next task dev` (the managed dev workspace, `docs/deve
 12. **Progress protocol.** Before a row: write `docs/ui-next/status/<row>.md` with goal, worktree path, branch. After every meaningful step: append one dated line (done, next, blocker). On finish: PR URL, exit-test result, what was not verified. A dead session leaves this file as the resume point. Agents never edit `TRACKER.md`; the lead updates it from the status files.
 13. **Pull requests.** One row, one PR, ready for review (not draft), against `main`. Description: what, why (tracker row), how verified, what was not verified. Wait for CI and report the checks. Do not merge: the lead merges green PRs.
 14. **Do not undo existing optimisation.** Before replacing or rewriting any existing table, log viewer, terminal, editor, data hook or startup path, read `docs/ui-next/optimisations.md` and keep or re-express every item on its "must not regress" list; if the file does not cover what you are touching, stop and add it first (tracker row N17).
-15. **The host and the kit are plugin-agnostic.** No plugin-specific code or vocabulary outside a marked scaffolding directory (`ui-next/k8s/`, `ui-next/pods/`: temporary, moved into the Kubernetes plugin and deleted from the host before the calibration gate; decision A13, row N19). `kit/scaffold-boundary` and the vocabulary guard in `packages/kit/eslint` enforce it.
+15. **The host and the kit are plugin-agnostic.** No plugin-specific code or vocabulary anywhere in `ui-next/` (except the fixture plugin) or `packages/kit/` (except the guard and the mock recordings); the vocabulary guard enforces it. The host contains no plugin code: a plugin reaches it as an installed bundle (decision A13; row N19 is closed).
 16. **Automated review.** Before reporting a PR ready, check for automated review comments (CodeRabbit). If it reviewed, read every comment, fix or answer each in the PR, and report how many there were and what you did. If it was rate-limited or skipped, say so and move on.
+17. **Run the same commands CI runs before reporting ready**: the full root `pnpm test` (not a subset), `pnpm lint`, both tsc projects and the kit's (`task check:ui-typecheck`), the kit's `verify`, the kit, table, fonts, tooltip, shell and strip probes with `FONT_DELAY_MS=40`, and the seam check. A step you did not run is the one that fails on the PR.
+18. **Dev tools.** A dev utility you wrote or used (a script, a probe, a recipe, a fixture) is recorded under a "Dev tools" heading in your status file (row N21).
+19. **Every control is a Tab stop** (decision A14): buttons, icon buttons, chips and links are Tab stops whatever the macOS keyboard setting says. Where VS Code and JetBrains agree, follow them.
+20. **Plugins keep the new UI in their `ui/` project on `feature/ui-next`**, with no double pathway (decision A16): no `OMNIVIEW_UI` switch and no sibling directory in the plugin repository.
+21. **Test viewports are 1440 x 900 and 1280 x 800** (decision A15: the native window's minimum). 1030 x 720 is retired; the probes' references move with row N23.
 
 ## The kit
 

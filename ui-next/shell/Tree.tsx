@@ -1,5 +1,6 @@
 import { Icon, Text } from '@omniviewdev/kit';
 import { useState, type KeyboardEvent } from 'react';
+import type { ModifierEvent } from './core/tabs';
 import { press, revealed, stopOf, toggled, visibleRows } from './core/tree';
 import type { ShellAccent, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
@@ -11,8 +12,11 @@ type TreeProps = {
   readonly open: readonly string[] | undefined;
   readonly current: string | undefined;
   readonly accent: ShellAccent | undefined;
-  /** An entry (not a group) was chosen, by click, Enter or Space: its id. What it opens is the host's to decide. */
-  readonly onChoose: ((id: string) => void) | undefined;
+  /**
+   * An entry (not a group) was chosen, by click, Enter or Space: its id, and the click when it was one (its modifiers pick where the page opens, ch16 S64; a key opens the plain way).
+   * What it opens is the host's to decide.
+   */
+  readonly onChoose: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
 };
 
 type RowProps = {
@@ -29,7 +33,7 @@ type RowProps = {
   readonly isStop: boolean;
   readonly onToggle: (id: string) => void;
   readonly onFocusRow: (id: string) => void;
-  readonly onChoose: ((id: string) => void) | undefined;
+  readonly onChoose: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
 };
 
 // A row is named by its text, the label and the count (WCAG 2.5.3: the name contains the visible text). The space between them is a text
@@ -51,11 +55,11 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       onFocus={() => {
         onFocusRow(id);
       }}
-      onClick={() => {
+      onClick={(event) => {
         if (expandable) {
           onToggle(id);
         } else {
-          onChoose?.(id);
+          onChoose?.(id, event);
         }
       }}
     >
@@ -116,7 +120,7 @@ export function Tree({ label, nodes, open, current, accent, onChoose }: TreeProp
     event.preventDefault();
     setState({ open: result.open, stop: result.stop });
     if (result.activate !== undefined) {
-      onChoose?.(result.activate);
+      onChoose?.(result.activate, undefined);
     }
 
     if (result.stop !== undefined && result.stop !== stop) {

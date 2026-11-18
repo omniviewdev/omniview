@@ -18,7 +18,7 @@
 import { MOCK_ENTRY, MOCK_GROUP } from '../../../packages/kit/probes/mock-screen.mjs';
 
 const topRow = '[data-shell-region="topRow"]';
-const tab = '[role="tab"]';
+const tab = '[data-shell-part="tab"]';
 const group = '[role="treeitem"][aria-level="1"]';
 const entry = '[role="treeitem"][aria-level="2"]';
 const face = (n) => `[data-shell-part="scopeFace"]:nth-child(${n})`;
@@ -116,5 +116,5 @@ export const THEME_MAP = {
 export const STATE_TARGETS = [
   { name: 'rowGroup', mock: MOCK_GROUP, shell: group },
   { name: 'rowEntry', mock: MOCK_ENTRY, shell: entry },
-  { name: 'tab', mock: '.tab-item > [role="tab"]', mockFill: '.tab-item', shell: tab },
+  { name: 'tab', mock: '.tab-item > [role="tab"]', mockFill: '.tab-item', shell: `${tab} > [role="tab"]`, shellFill: tab },
 ];

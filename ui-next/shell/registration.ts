@@ -1,9 +1,10 @@
 import type { IconName } from '@omniviewdev/kit';
 
-// What a screen tells the shell about itself: the seed of the contribution contract (decision R11, plan 2.4). Plain data. The shell
+// What the tab on screen tells the shell about its plugin's frame: the seed of the contribution contract (decision R11, plan 2.4). Plain data. The shell
 // reads it and knows nothing of the plugin behind it; a plugin never reaches into the shell's DOM (ch16 S1). Every field is one line
 // of the contribution table of ch16 S10; ui-next/shell/README.md lists the limits S10 sets, which review holds until a contribution
-// API checks them at registration.
+// API checks them at registration. What a tab is called and where it sits (the tab's title and glyph, the status bar's path) is not here: it is the tab model's (core/tabs), which
+// asks the plugin through `Contributions.describe`.
 
 /** A node of the sidebar's tree: an entry, or a group when it has children. */
 export type ShellTreeNode = {
@@ -32,7 +33,7 @@ export type ShellSidebar = {
   readonly accent?: ShellAccent | undefined;
 };
 
-/** One face of the scope lane: the scope the page is read in. Text for now; the menus that change it arrive with their slice. */
+/** One face of the scope lane: the scope the page is read in. Text for now; the menus that change a scope arrive with their slice. */
 export type ShellScopeFace = {
   /** What the value is, for assistive technology: read before the value. */
   readonly label: string;
@@ -44,10 +45,6 @@ export type ShellScopeFace = {
 export type ShellRegistration = {
   /** The plugin the screen belongs to: its name names the frame's landmarks ("<name> workspace", "<name> scope"). */
   readonly plugin: { readonly name: string };
-  /** The page as a tab shows it. A title of at most 3 words (ch16 S10). */
-  readonly tab: { readonly title: string; readonly icon: IconName };
-  /** The status bar's path, root first; the last crumb is the page. Text: a crumb that navigates arrives with navigation. */
-  readonly path: readonly string[];
   /**
    * The plugin's frame has a rail of tools (R5): a 40 px track left of the sidebar. The tools are not part of the contract yet, so a
    * declared rail keeps its track empty and the page lands where the mock puts it (README, "Decisions"). Absent: no rail, no track.
@@ -64,4 +61,10 @@ export type ShellRegistration = {
    * tab stop of its own. The page declares it; a page whose layout depends on its state re-registers.
    */
   readonly layout?: 'document' | 'pane';
+  /**
+   * The plugin's frame is on its way: its interface is loading and the window does not wait for it. The shell draws the regions a plugin's frame has, empty, at the rectangles the
+   * frame will have (the rail's track, the sidebar with no tree, the scope lane), so nothing moves when the frame registers. Whatever else the registration declares is drawn as
+   * declared. A frame that turns out to have fewer regions than that moves the page once, when it registers: the shape of a plugin's frame is not known before it loads.
+   */
+  readonly pending?: true;
 };

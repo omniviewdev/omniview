@@ -167,7 +167,10 @@ async function checkHealthy(page, base, engine) {
   await page.getByRole('treeitem', { name: 'Crash' }).click();
   await page.getByRole('alert').waitFor();
   assert.match(await page.getByRole('alert').innerText(), /Couldn't load Crash[\s\S]*This page failed to display\./);
-  assert.equal(await page.evaluate(() => location.hash), `#/${OK}/crash`);
+  // A sidebar entry opens the page through the tab model: the tab on screen is navigated in place (same plugin), so there is still one tab, and the address is not written (it is an input).
+  await page.getByRole('tab', { name: 'Crash' }).waitFor();
+  assert.equal(await page.getByRole('tab').count(), 1, `${engine}: a sidebar entry navigates the tab on screen in place`);
+  assert.equal(await page.evaluate(() => location.hash), '', `${engine}: the window never writes the address`);
   assert.ok(await page.getByRole('navigation', { name: 'Seam Fixture navigation' }).isVisible(), `${engine}: the sidebar stays beside a failed page`);
   assert.equal(await page.getByText('crashed on purpose').count(), 0, `${engine}: the plugin's own words are not drawn`);
   await page.getByRole('button', { name: 'Retry' }).click();

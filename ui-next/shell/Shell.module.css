@@ -61,43 +61,4 @@
   .island:focus-visible {
     outline: 0;
   }
-
-  /* The page's scroll owner (S15): an explicit one, so a scrollbar lane never appears and disappears under the content. */
-  .page {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    min-block-size: 0;
-    overflow-x: auto;
-    overflow-y: scroll;
-    scrollbar-gutter: auto;
-    overscroll-behavior: contain;
-  }
-
-  .page:focus-visible {
-    outline: 2px solid var(--ov-accent);
-    outline-offset: -2px;
-  }
-
-  /* The page's own inset: its content starts 12 px inside the island (the mock's `.content`). */
-  .content {
-    box-sizing: border-box;
-    min-inline-size: 0;
-    padding: var(--ov-spacing-12);
-  }
-
-  /* The pane layout (ch12 section 5, ch16 S15): the page owns its scrolling, so the shell scrolls nothing. The content fills the island under the
-     scope lane, and its bottom inset is the page's own: a collection's footer is the pane's terminal lane (ch13 G2), so the 12 px would add beneath it. */
-  .page[data-layout='pane'] {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .content[data-layout='pane'] {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-block-size: 0;
-    padding-block-end: 0;
-  }
 }
