@@ -11,8 +11,13 @@
 //      source or in declarations: `scripts/check-ui-v1.ts` proves it on the module graph and on `dist/`, and the host's `next` build is checked
 //      the same way (`scripts/ui-flavour.test.mjs`).
 //   3. A later contract is `./v2` beside this file; this one keeps its meaning (the export name is the version).
+//   4. An addition is MINOR: a new name with the types its signature mentions, and nothing that exists is removed, renamed or given another
+//      meaning (P1b-1 added `openLogStream` on these terms). It lands in this file, the report and the list of names in `v1.test.ts` together. An
+//      older host's entry lacks the name and a plugin that imports it gets `undefined`, so a plugin that needs a newer name says which host
+//      version has it. Anything else is `./v2`.
 //
-// The VALUES are the data layer the first plugin (the Pods list) reads through: ten functions and constants. No component, no router, no raw RPC.
+// The VALUES are the data layer the first plugin (the Pods list) reads through, ten functions and constants, and the log viewer's data contract, one
+// function: `openLogStream`. No component, no router, no raw RPC.
 // The TYPES are the closure of their signatures: every type a hook's parameters or results mention is exported here, so the API report holds the
 // whole shape a plugin compiles against and a change to any of them shows in its diff (the build fails on a type that is mentioned and not exported).
 
@@ -77,3 +82,22 @@ export { jsonToValue, valueToJSON } from '../resource/v2/value';
 export { ErrorTypes } from '../errors/types';
 export type { AppError, AppErrorAction } from '../errors/types';
 export { isCancelledError, parseAppError } from '../errors/parseAppError';
+
+// The log viewer's data contract (P1b-1): opens a log session for a target and returns a framework-free store of its lines and its status, with the
+// bounds, the pause and the drop counts a viewer needs (src/logStream.ts says how it works).
+export { openLogStream } from '../logStream';
+export type {
+  LogBatch,
+  LogLevel,
+  LogLine,
+  LogLineOrigin,
+  LogSourceInfo,
+  LogSourceState,
+  LogStream,
+  LogStreamCause,
+  LogStreamOptions,
+  LogStreamRequest,
+  LogStreamSnapshot,
+  LogStreamState,
+  LogStreamStats,
+} from '../logStream';
