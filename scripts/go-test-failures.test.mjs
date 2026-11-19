@@ -94,6 +94,58 @@ test('lines that are not JSON are ignored and long output is bounded', () => {
   assert.ok(markdown.split('\n').every((row) => row.length < 400));
 });
 
+test('a parent that said something of its own is listed beside its failed subtest', () => {
+  const text = stream(
+    event('run', { Test: 'TestTable' }),
+    event('run', { Test: 'TestTable/bad' }),
+    out('TestTable/bad', '    table_test.go:9: wrong'),
+    event('fail', { Test: 'TestTable/bad' }),
+    out('TestTable', '    --- FAIL: TestTable/bad (0.00s)'),
+    out('TestTable', '    table_test.go:20: cleanup failed'),
+    event('fail', { Test: 'TestTable' }),
+    event('fail'),
+  );
+  const markdown = render(failures(text));
+  assert.match(markdown, /\*\*TestTable\/bad\*\*/);
+  assert.match(markdown, /\*\*TestTable\*\*[^]*table_test\.go:20: cleanup failed/);
+  assert.doesNotMatch(markdown, /--- FAIL/);
+});
+
+test('a panic is named even when another test of the package already failed', () => {
+  const text = stream(
+    out('TestAssert', '    a_test.go:5: not equal'),
+    event('fail', { Test: 'TestAssert' }),
+    event('run', { Test: 'TestBoom' }),
+    out('TestBoom', 'panic: runtime error: index out of range'),
+    event('fail'),
+  );
+  const markdown = render(failures(text));
+  assert.match(markdown, /\*\*TestAssert\*\*/);
+  assert.match(markdown, /\*\*TestBoom\*\* \(the test binary died while it ran\)/);
+  assert.match(markdown, /panic: runtime error: index out of range/);
+});
+
+test('a package that failed to build because of a dependency is named with the dependency\'s compiler output', () => {
+  const dependency = 'github.com/omniviewdev/omniview/internal/dep';
+  const text = stream(
+    JSON.stringify({ ImportPath: dependency, Action: 'build-output', Output: 'dep.go:3:2: undefined: nope\n' }),
+    JSON.stringify({ ImportPath: dependency, Action: 'build-fail' }),
+    event('fail', { FailedBuild: dependency }),
+  );
+  const markdown = render(failures(text));
+  assert.match(markdown, /`internal\/example` failed without a failed test \(`internal\/dep` did not build\)/);
+  assert.match(markdown, /dep\.go:3:2: undefined: nope/);
+});
+
+test('the panic row stays in the excerpt however long the stack after it is', () => {
+  const stack = Array.from({ length: 30 }, (_, i) => out('TestBoom', `main.frame${i}()`));
+  const text = stream(event('run', { Test: 'TestBoom' }), out('TestBoom', 'a log line before the crash'), out('TestBoom', 'panic: boom'), ...stack, event('fail'));
+  const markdown = render(failures(text));
+  assert.match(markdown, /panic: boom/);
+  assert.match(markdown, /main\.frame0\(\)/);
+  assert.doesNotMatch(markdown, /main\.frame20\(\)|a log line before the crash/);
+});
+
 const roots = [];
 after(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });

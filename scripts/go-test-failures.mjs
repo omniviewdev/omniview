@@ -20,9 +20,11 @@ const FRAME = /^(=== (RUN|PAUSE|CONT|NAME)\b|--- (FAIL|PASS|SKIP):|PASS$|FAIL$|e
 /** What a `go test -json` stream says went wrong: failed tests, tests unfinished when a package died, packages that did not build. */
 export function failures(text) {
   const tests = new Map(); // `${package}\0${test}` -> { pkg, test, state, output }
-  const packages = new Map(); // package -> { failed, build }
+  const packages = new Map(); // package -> { failed, failedBuild }
+  const builds = new Map(); // import path -> compiler output
+  const importPath = (name) => name.replace(/ \[.*\]$/, '');
   const pkgOf = (name) => {
-    if (!packages.has(name)) packages.set(name, { failed: false, build: [] });
+    if (!packages.has(name)) packages.set(name, { failed: false, failedBuild: '' });
     return packages.get(name);
   };
   for (const line of text.split('\n')) {
@@ -34,13 +36,18 @@ export function failures(text) {
     }
     if (event === null || typeof event !== 'object') continue;
     if (event.Action === 'build-output' && event.ImportPath) {
-      pkgOf(event.ImportPath.replace(/ \[.*\]$/, '')).build.push(event.Output ?? '');
+      const path = importPath(event.ImportPath);
+      if (!builds.has(path)) builds.set(path, []);
+      builds.get(path).push(event.Output ?? '');
       continue;
     }
     if (!event.Package) continue;
     const pkg = pkgOf(event.Package);
     if (!event.Test) {
-      if (event.Action === 'fail') pkg.failed = true;
+      if (event.Action === 'fail') {
+        pkg.failed = true;
+        if (event.FailedBuild) pkg.failedBuild = importPath(event.FailedBuild);
+      }
       continue;
     }
     const key = `${event.Package}\0${event.Test}`;
@@ -52,15 +59,21 @@ export function failures(text) {
   }
 
   const all = [...tests.values()];
-  const failed = all.filter((test) => test.state === 'failed' && !all.some((other) => other.state === 'failed' && other.pkg === test.pkg && other.test.startsWith(`${test.test}/`)));
-  const died = new Map(); // package -> tests that never finished, when the package failed without a failed test
+  // What a test itself said, without the framework's lines (a subtest's summary is indented under its parent).
+  const own = (test) => test.output.filter((row) => row.trim() !== '' && !FRAME.test(row.trimStart()));
+  const failedChild = (test) => all.some((other) => other.state === 'failed' && other.pkg === test.pkg && other.test.startsWith(`${test.test}/`));
+  // A parent is listed beside its failed subtest only when it said something of its own (a cleanup failure, an error after the subtests).
+  const failed = all.filter((test) => test.state === 'failed' && (!failedChild(test) || own(test).length > 0));
+  const died = new Map(); // package -> the tests that were running when its binary died
   const unbuilt = [];
   for (const [name, pkg] of packages) {
-    if (!pkg.failed || failed.some((test) => test.pkg === name)) continue;
+    if (!pkg.failed) continue;
     const unfinished = all.filter((test) => test.pkg === name && test.state === 'running');
     const culprits = unfinished.filter((test) => test.output.some((row) => /^(panic:|fatal error:)/.test(row)));
-    if (culprits.length > 0 || unfinished.length > 0) died.set(name, culprits.length > 0 ? culprits : unfinished);
-    else unbuilt.push({ pkg: name, output: pkg.build });
+    if (culprits.length > 0) died.set(name, culprits);
+    else if (failed.some((test) => test.pkg === name)) continue;
+    else if (unfinished.length > 0) died.set(name, unfinished);
+    else unbuilt.push({ pkg: name, via: pkg.failedBuild && pkg.failedBuild !== name ? pkg.failedBuild : '', output: builds.get(pkg.failedBuild || name) ?? [] });
   }
   return { failed, died, unbuilt };
 }
@@ -68,7 +81,7 @@ export function failures(text) {
 const short = (pkg) => pkg.replace(MODULE, '');
 
 function block(rows) {
-  const shown = rows.map((row) => row.replace(/\s+$/, '')).filter((row) => row !== '' && !FRAME.test(row)).slice(0, MAX_LINES);
+  const shown = rows.map((row) => row.replace(/\s+$/, '')).filter((row) => row !== '' && !FRAME.test(row.trimStart())).slice(0, MAX_LINES);
   if (shown.length === 0) return '';
   const body = shown.map((row) => `  ${(row.length > MAX_WIDTH ? `${row.slice(0, MAX_WIDTH)}…` : row).replaceAll('```', "'''")}`);
   return `\n  \`\`\`\n${body.join('\n')}\n  \`\`\``;
@@ -79,9 +92,13 @@ export function render({ failed, died, unbuilt }, attempt = '') {
   const entries = [];
   for (const test of failed) entries.push(`- \`${short(test.pkg)}\` **${test.test}**${block(test.output)}`);
   for (const [pkg, tests] of died) {
-    for (const test of tests.slice(0, MAX_LINES)) entries.push(`- \`${short(pkg)}\` **${test.test}** (the test binary died while it ran)${block(test.output.slice(-MAX_LINES * 2))}`);
+    for (const test of tests.slice(0, MAX_LINES)) {
+      // From the panic row on, so that a long stack cannot push the cause out of the excerpt.
+      const at = test.output.findIndex((row) => /^(panic:|fatal error:)/.test(row));
+      entries.push(`- \`${short(pkg)}\` **${test.test}** (the test binary died while it ran)${block(at >= 0 ? test.output.slice(at) : test.output.slice(-MAX_LINES * 2))}`);
+    }
   }
-  for (const { pkg, output } of unbuilt) entries.push(`- \`${short(pkg)}\` failed without a failed test (build or setup)${block(output)}`);
+  for (const { pkg, via, output } of unbuilt) entries.push(`- \`${short(pkg)}\` failed without a failed test (${via ? `\`${short(via)}\` did not build` : 'build or setup'})${block(output)}`);
   if (entries.length === 0) return '';
   const more = entries.length > MAX_ENTRIES ? `\n- … and ${entries.length - MAX_ENTRIES} more; see the log` : '';
   return [
