@@ -136,8 +136,8 @@ func (p *Provider) QueryResources(ctx *types.PluginContext, q metric.ResourceMet
 		}
 		response, err := tr.query(call, q.Source.DatasourceUID, expression, q.StartTime, end, q.Step, q.Shape == "range")
 		if err != nil {
-			if call.Err() != nil {
-				return nil, call.Err()
+			if stop := p.stopped(call); stop != nil {
+				return nil, stop
 			}
 			status := "failed"
 			var httpErr *HTTPError
