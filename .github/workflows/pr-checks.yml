@@ -89,10 +89,20 @@ jobs:
         run: chown "$(id -u):$(id -g)" "$PWD"
 
       - uses: actions/checkout@v4
+        with:
+          # The guard below asks what the pull request changes: HEAD^1 is the base of the merge commit the job is checked out as.
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
           node-version: "26.13.0"
+
+      # First, before any cache or toolchain: the build outputs that live in the tree (scripts/check-tracked-outputs.mjs). A frontend build deletes the tracked dist/.gitkeep and
+      # main.go embeds `all:dist`, so a commit that sweeps the deletion in fails the Go build minutes from now; this fails in a second, with the line that says how to restore it.
+      - name: Check the build outputs in the tree
+        run: |
+          node --test scripts/check-tracked-outputs.test.mjs
+          node scripts/check-tracked-outputs.mjs --base HEAD^1
 
       - name: Setup native pnpm for recovery integration tests
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2

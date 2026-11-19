@@ -7,8 +7,9 @@ name: UI next Pods cluster check
 # The job also runs three negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
 #   a cluster without the fixture, a host without the plugin, and the plugin installed without its bundle (`assets/` empty).
 #
-# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: c69eb69e4b78ea86cd222c9e82e7c65b9e68e480, the merge commit of PR #262
-# (N19c, 2026-11-17). To bump it, in a pull request of this repository that changes nothing else about the check:
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 1f71e90f2807c3dad59182281830ce19ed58ea1f, the squash-merge commit of PR #264
+# (D1c: `name` is a query dimension of every native kind, so the Pod page reads its Pod as one narrowed watch, 2026-11-19; the Pod page and the Pods list's name as a link to it are PR #263,
+# D1b). The check opens that Pod page from the list. To bump it, in a pull request of this repository that changes nothing else about the check:
 #   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next`, or the merge commit of the plugin pull request you want;
 #   2. put it in KUBERNETES_PLUGIN_REF, check the plugin out at it and run `node scripts/ui-next-pods/pin.mjs <that checkout>`: it fails when the plugin's list of shared
 #      names (`ui/vendor/shared-specifiers.json`) is not this host's `SHARED_SPECIFIERS_V1`, or when the host commit the plugin vendored from (`ui/vendor/HOST_COMMIT`) is not
@@ -74,7 +75,7 @@ env:
   # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
   KUBERNETES_PLUGIN_BRANCH: feature/ui-next
-  KUBERNETES_PLUGIN_REF: c69eb69e4b78ea86cd222c9e82e7c65b9e68e480
+  KUBERNETES_PLUGIN_REF: 1f71e90f2807c3dad59182281830ce19ed58ea1f
   # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
   # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
@@ -150,6 +151,10 @@ jobs:
 
       - name: Pin contracts (no cluster)
         run: node --test scripts/ui-next-pods/pin.test.mjs
+
+      # What the Pod detail page must print against `kubectl get pod -o json` (scripts/ui-next-pods/detail.mjs), with its negative controls.
+      - name: Pod detail contracts (no cluster)
+        run: node --test scripts/ui-next-pods/detail.test.mjs
 
       # Before anything is built: the pin is a commit of the plugin's branch, its list of shared names is this host's, and the host it was vendored from is in this history.
       - name: Check the pin

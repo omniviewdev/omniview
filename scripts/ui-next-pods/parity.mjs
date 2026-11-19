@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
+import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
 const run = promisify(execFile);
@@ -116,4 +117,53 @@ export async function checkParity({ browser, baseURL, kubeconfig, timeoutMs = 30
   } finally {
     await page.close();
   }
+}
+
+// The Pod detail page, opened the way a person opens it: the click on the Pod's name in the Pods list (the plugin's list draws the name as a link to the detail page).
+// The Pod is read with `kubectl get pod -o json`; the page's header title and its Details rows (Node, Pod IP, Host IP, QoS class) must print what kubectl says.
+// Polls until the page agrees or the deadline, then throws ParityError('DETAIL_MISMATCH') with the last problems.
+export async function checkDetail({ browser, baseURL, kubeconfig, pod = DETAIL_POD, timeoutMs = 30_000 }) {
+  const oracle = async () => expectedDetail(JSON.parse(await kubectl(kubeconfig, ['get', 'pod', pod.name, '-n', pod.namespace, '-o', 'json'])));
+  const page = await openPods(browser, baseURL);
+  try {
+    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    await link.waitFor({ timeout: timeoutMs });
+    await link.click();
+    const deadline = Date.now() + timeoutMs;
+    let read;
+    let expected;
+    let problems;
+    do {
+      await page.waitForTimeout(100);
+      // Each page reading is bracketed by two reads of the Pod: a Pod replaced in between (a StatefulSet Pod keeps its name and gets a new IP) is read again, it is not a defect of the page.
+      const before = await oracle();
+      read = await readDetail(page);
+      expected = await oracle();
+      if (JSON.stringify(before) !== JSON.stringify(expected)) {
+        problems = ['the Pod changed while the page was read'];
+      } else {
+        problems = read.h1 === null ? ['the detail page is not on screen'] : compareDetail(read, expected);
+      }
+    } while (problems.length > 0 && Date.now() < deadline);
+    if (problems.length > 0) {
+      throw new ParityError('DETAIL_MISMATCH', `${pod.namespace}/${pod.name}: ${problems.join('; ')}`, { problems, read, expected });
+    }
+    return { read, expected };
+  } finally {
+    await page.close();
+  }
+}
+
+// The detail page on screen: the visible page slot's header title and the rows of its Details section, as printed.
+async function readDetail(page) {
+  return page.evaluate(() => {
+    const norm = (text) => (text ?? '').replace(/\s+/g, ' ').trim();
+    const slot = [...document.querySelectorAll('[data-page-slot]')].find((candidate) => candidate.getClientRects().length > 0) ?? document.querySelector('[data-shell-part=page]');
+    const header = slot?.querySelector('[data-detail-part=header]') ?? null;
+    const details = slot?.querySelector('[data-detail-section=details] [data-ov-part=key-value]') ?? null;
+    return {
+      h1: header === null ? null : norm(header.querySelector('h1')?.textContent),
+      kv: [...(details?.querySelectorAll('[data-ov-part=row]') ?? [])].map((row) => [norm(row.querySelector('[data-ov-part=label]')?.textContent), norm(row.querySelector('[data-ov-part=value]')?.textContent)]),
+    };
+  });
 }

@@ -4,7 +4,7 @@
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
-//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change
+//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes")
@@ -14,7 +14,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkParity, kubectl, launchBrowser, openPods, oraclePods, settle } from './parity.mjs';
+import { checkDetail, checkParity, kubectl, launchBrowser, openPods, oraclePods, settle } from './parity.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
 const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
@@ -95,5 +95,12 @@ if (mode === 'control-fixture-absent') {
       await kubectl(kubeconfig, ['delete', 'pod', 'live-probe', '-n', 'checkout', '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']).catch(() => undefined);
       await page.close();
     }
+  });
+
+  // The Pod detail page the list links to (the plugin's `kubernetes/pod` page): opened by the click on the Pod's name, it prints what `kubectl get pod -o json` says
+  // (detail.mjs). Parity mode only: the controls stop before any Pod is listed.
+  test('the Pod detail page, opened from the list, prints the name, node, Pod IP, host IP and QoS class kubectl says', async () => {
+    const { read, expected } = await checkDetail({ browser, baseURL, kubeconfig });
+    assert.equal(read.h1, expected.name);
   });
 }
