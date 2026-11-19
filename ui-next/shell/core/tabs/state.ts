@@ -41,6 +41,7 @@ export function emptyState(keepAlive: KeepAlive): TabsState {
     closed: Object.freeze([]),
     keepAlive,
     serial: 0,
+    started: false,
   });
 }
 
@@ -129,7 +130,7 @@ export function show(state: TabsState, id: TabId): TabsState {
 
   const tabs = cleared ? Object.freeze({ ...state.tabs, [id]: changeTab(tab, { flags: flagsOf({ ...tab.flags, attention: NO_ATTENTION }) }) }) : state.tabs;
   const mounted = enforce([id, ...state.mounted.filter((other) => other !== id)], tabs, state.keepAlive);
-  return patch(state, { tabs, active: id, mounted });
+  return patch(state, { tabs, active: id, mounted, started: true });
 }
 
 /** The state after the policy: used when a flag or the cap changed what may stay mounted. */
@@ -161,8 +162,14 @@ export function checkInvariants(state: TabsState): string[] {
     if (state.active !== null) {
       bad.push('a tab is on screen in an empty strip');
     }
-  } else if (state.active === null || !state.order.includes(state.active)) {
-    bad.push('the tab on screen is not in the strip');
+  } else {
+    if (!state.started) {
+      bad.push('a tab is open in a window that has not started');
+    }
+
+    if (state.active === null || !state.order.includes(state.active)) {
+      bad.push('the tab on screen is not in the strip');
+    }
   }
 
   checkTabs(state, bad);

@@ -1,4 +1,4 @@
-import { ensureHome, findByKey } from './open';
+import { findByKey } from './open';
 import { repairHistory, type Context } from './resolve';
 import { sameRoute } from './route';
 import { closedEntry, freshId, historyOf, makeTab, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
@@ -33,8 +33,11 @@ const without = <T extends Record<string, unknown>>(map: Readonly<Record<string,
   return out;
 };
 
-/** Closes tabs in one step: each goes to the closed list in strip order with the index it had when its turn came, so reopening newest first rebuilds the strip (ch16 S42, S43). */
-function closeTabs(state: TabsState, ctx: Context, ids: readonly TabId[]): Step<CloseResult> {
+/**
+ * Closes tabs in one step: each goes to the closed list in strip order with the index it had when its turn came, so reopening newest first rebuilds the strip (ch16 S42, S43). The last tab
+ * closes like any other and leaves the strip empty: no page opens by itself (decision A17, see `ensureHome`).
+ */
+function closeTabs(state: TabsState, ids: readonly TabId[]): Step<CloseResult> {
   const closing = new Set(ids.filter((id) => state.tabs[id] !== undefined));
   if (closing.size === 0) {
     return unchanged(state);
@@ -56,39 +59,35 @@ function closeTabs(state: TabsState, ctx: Context, ids: readonly TabId[]): Step<
   const neighbour = was !== null && closing.has(was)
     ? (state.order.slice(at + 1).find((id) => !closing.has(id)) ?? state.order.slice(0, at).reverse().find((id) => !closing.has(id)) ?? null)
     : was;
-  let next = patch(state, {
+  const next = patch(state, {
     tabs: Object.freeze(without(state.tabs, closing)),
     order: Object.freeze(survivors),
     mounted: Object.freeze(state.mounted.filter((id) => !closing.has(id))),
     closed: Object.freeze([...records.slice().reverse(), ...state.closed].slice(0, LIMITS.closed)),
     active: neighbour === was ? was : null,
   });
-  if (neighbour !== was && neighbour !== null) {
-    next = show(next, neighbour);
-  }
-
-  next = ensureHome(next, ctx);
-  return { state: next, result: { status: 'done', closed: records.map((entry) => entry.id), active: next.active } };
+  const shown = neighbour !== was && neighbour !== null ? show(next, neighbour) : next;
+  return { state: shown, result: { status: 'done', closed: records.map((entry) => entry.id), active: shown.active } };
 }
 
 /** The unsaved tabs among `ids`, in strip order: what a batch asks about once. */
 const unsavedAmong = (state: TabsState, ids: readonly TabId[]): TabId[] => ids.filter((id) => state.tabs[id]?.flags.unsaved);
 
-function closeGuarded(state: TabsState, ctx: Context, ids: readonly TabId[], guard: Guard): Step<CloseResult> {
+function closeGuarded(state: TabsState, ids: readonly TabId[], guard: Guard): Step<CloseResult> {
   const dirty = unsavedAmong(state, ids);
-  return dirty.length > 0 && guard.confirmed !== true ? { state, result: { status: 'confirm', action: 'close', tabs: dirty } } : closeTabs(state, ctx, ids);
+  return dirty.length > 0 && guard.confirmed !== true ? { state, result: { status: 'confirm', action: 'close', tabs: dirty } } : closeTabs(state, ids);
 }
 
-export function close(state: TabsState, ctx: Context, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
+export function close(state: TabsState, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
   if (id === null || !state.tabs[id]) {
     return refuse(state, 'missing', `There is no tab ${id ?? ''} to close.`);
   }
 
-  return closeGuarded(state, ctx, [id], guard);
+  return closeGuarded(state, [id], guard);
 }
 
 /** Close others, to the right, to the left, all but pinned (ch16 S42): pinned tabs are skipped, and unsaved tabs ask once for the batch. */
-export function closeMany(state: TabsState, ctx: Context, scope: CloseScope, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
+export function closeMany(state: TabsState, scope: CloseScope, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
   const at = id === null ? -1 : state.order.indexOf(id);
   if (id === null || at < 0) {
     return refuse(state, 'missing', 'There is no tab to close the others of.');
@@ -102,13 +101,13 @@ export function closeMany(state: TabsState, ctx: Context, scope: CloseScope, id:
       : scope === 'left'
         ? state.order.slice(0, at).filter(free)
         : state.order.filter(free);
-  return ids.length === 0 ? unchanged(state) : closeGuarded(state, ctx, ids, guard);
+  return ids.length === 0 ? unchanged(state) : closeGuarded(state, ids, guard);
 }
 
 /** Every tab of a plugin: an uninstall closes them, and they are offered under Recently closed (ch16 S136). */
-export function closePlugin(state: TabsState, ctx: Context, plugin: string, guard: Guard = {}): Step<CloseResult> {
+export function closePlugin(state: TabsState, plugin: string, guard: Guard = {}): Step<CloseResult> {
   const ids = state.order.filter((id) => state.tabs[id]?.location.route.plugin === plugin);
-  return ids.length === 0 ? unchanged(state) : closeGuarded(state, ctx, ids, guard);
+  return ids.length === 0 ? unchanged(state) : closeGuarded(state, ids, guard);
 }
 
 const why = (entry: ClosedTab, availability: Extract<Availability, { readonly state: 'unavailable' }>): string =>

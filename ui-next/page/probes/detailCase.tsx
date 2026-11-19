@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { DetailPage, type DetailPageDefinition, type DetailSource, type DetailTableSection, type DetailView } from '..';
 import type { ShellRegistration } from '../../shell';
-import { StaticShell, staticTabs } from '../../shell/testing';
+import { StaticShell, STATIC_RAIL, staticTabs } from '../../shell/testing';
 
 // The detail page with invented data, for the probe (detail-probe.mjs): the real `Shell` in its document layout around the real `DetailPage`, with the structure and the counts of the
 // design mock's page-kit detail composition (the header with its four commands and four facts, five in-page tabs one with a count, the status line, a Details list of eight pairs in
@@ -136,7 +136,7 @@ const handler: LinkHandler = { hrefOf: () => '#', onOpen: noop };
 const tabs = staticTabs([{ title: 'orders-api · Item', icon: 'layers', path: ['Acme', 'north', 'Items', 'orders-api'] }]);
 const registration: ShellRegistration = {
   plugin: { name: 'Acme' },
-  rail: true,
+  rail: STATIC_RAIL,
   layout: 'document',
   sidebar: { label: 'Acme resources', title: 'Resources', nodes: [{ id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'entry', label: 'Items', icon: 'box' }] }], open: ['group'], current: 'entry', accent: 'blue' },
   scope: [

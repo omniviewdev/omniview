@@ -22,7 +22,7 @@ A screen hands the shell plain data, `ShellRegistration` (`registration.ts`), as
 | Field | What it carries | Limit (S10) | Held by |
 |---|---|---|---|
 | `plugin.name` | Names the landmarks: `<name> workspace`, `<name> scope` | | type |
-| `rail` | `true`: the plugin's frame has a rail track (R5). Its tools are not part of the contract yet | at most one | type |
+| `rail` | `{ label, entries, current }`: the window's rail (R5), 40 px, one entry (`id`, `label`, `icon`) for each place whose sidebar the window can show; the entry whose sidebar is shown is `current`. The host orders the entries and is told the choice through `onSelectRail`; the shell selects nothing itself | entries are plugins, in the order they declare (`ui-next/plugins/host/rail.ts`) | type |
 | `sidebar` | `label` (names the navigation and its tree), `title` (the header), `nodes`, `open`, `current`, `accent` | at most one; a node is an entry, or a group when it has `children` | type |
 | `sidebar.nodes[].count` | The 12 px count slot of an entry's row (SB1) | | type |
 | `scope` | The lane's faces: `label` (what it is, read first), `icon`, `text` | at most 2 faces; text at most 24 characters | review |
@@ -47,7 +47,7 @@ Every region is a landmark with a name, in reading order. `F6` and `Shift+F6` vi
 | Back, Forward | `div role=group`, two buttons | Navigation | no (Tab stops) | 84, 5, 30 x 30 and 118, 5 |
 | The strip | `div role=tablist`, `button role=tab` | Open tabs; each tab's title | | 156, 6, 208 x 28 per tab |
 | New tab | `button` | New tab | no (a Tab stop) | 4 px after the last tab |
-| Rail | empty track, `aria-hidden` | | no (nothing in it) | 5, 40, 40 x 823 |
+| Rail | `div role=group` "Plugins" of buttons, one tab stop, arrows move the focus, `aria-current` on the current entry; an empty `aria-hidden` track while the frame is on its way | Plugins | the current entry | 5, 40, 40 x 823; entries 37 x 40 from the track's left edge, a 30 x 30 face, a 20 px glyph |
 | Sidebar | `nav` | `sidebar.label` | the tree's tab stop | 45, 40, 244 x 823 |
 | Page island | `main` | `<plugin> workspace` | the island | 294, 40, 1141 x 823 |
 | Scope lane | `div role=group` | `<plugin> scope` | no (Shift+Tab from the page) | 294, 40, 1141 x 40 |
@@ -62,7 +62,7 @@ The window is a grid (5 px gutters; the top row 40, the frame, a 5 px gutter whe
 
 ## Decisions to confirm
 
-1. **The rail's 40 px track is reserved, empty** (`rail: true`). The mock's rail holds the plugin's tools (tier C), but the island's rectangle and every page rectangle after it assume the track.
+1. **The rail is the window's, one entry for each plugin that contributes** (S2a). The mock's chapter says the host has no rail and a plugin may bring one (S7, A11, L4a); the owner asked for a rail that reaches every plugin, so the 40 px track holds one entry for each plugin and a choice shows that plugin's sidebar. It closes no tab: tabs of several plugins stay open, and activating a tab makes its plugin current. The host's own entries (Home, Plugins, Settings, Developer Tools) have no destination yet and are not drawn; they would lead the rail. The glyph is 20 px in a 30 x 30 face (ch12 section 4, the mock's AWS rail); the mock's rail on its first plugin screen draws 16 px (`H.ibtn small`), one of the disagreements for the errata pass.
 2. **The top row keeps its leading 156 px and its trailing 138 px**: the safe area (84, for the OS window controls), Back and Forward (64) and a gap (8); at the end the room the window actions take later, so the strip has the room the mock gives it. In the native window the real controls draw in the safe area and nothing of the shell does; in a browser the shell draws three inert grey dots of the same size (`core/native.ts`).
 3. **The scope faces are text, with no chevron**: a chevron promises a menu, and the menus are tier C.
 4. **Choosing a tree entry tells the host which one** (`onChoose(id, event)`: a click, Enter or Space on an entry, never a group). The host opens it through the model: a plain click is a smart open (a tab that shows the page is shown; else the tab on screen is navigated when it is the same plugin and scope; else a new tab), Command or Control a background tab. The page that opens registers with that entry as `current`, and only then is it selected.
@@ -92,3 +92,5 @@ The window is a grid (5 px gutters; the top row 40, the frame, a 5 px gutter whe
 ## Probes
 
 `node ui-next/shell/probes/shell-probe.mjs` builds the fixture (the real `Shell` around invented registrations and invented tabs, `probes/fixture.tsx`), serves it, and measures every region against the mock's reference screen in WebKit and Chromium (`mock-shell.json`, made by `mock-measure.mjs`; viewports 1440 x 900 and 1030 x 720 until row N23). `node ui-next/shell/probes/strip-probe.mjs` reads the strip, the page host and the load at 1440 x 900 and 1280 x 800: the strip against `mock-strip.json` (made by `mock-strip-measure.mjs`), the keyboard path with real key presses, axe, exact counts (a tab is 12 DOM nodes; a switch is 3 commits), keep-alive and the switch time on the host fixture (`probes/host-fixture.tsx`: the product's `PluginHost` with invented plugins), and the load with plugins arriving after the first frame. Neither opens a plugin's screen: the shell is plugin-agnostic and so are its probes. CI runs both (workflow "UI next kit probes"); both honour `FONT_DELAY_MS`.
+
+`node ui-next/shell/probes/rail-probe.mjs` reads the rail on the fixture at 1440 x 900 and 1280 x 800 against `mock-rail.json` (made by `mock-rail-measure.mjs` from the mock's two rails, MOCK_OPEN and MOCK_OPEN_RAIL in `packages/kit/probes/mock-screen.mjs`): the track, each entry's 37 x 40 target, 30 x 30 face and 20 px glyph (rectangles within 1 px; the glyph's centre is also the centre of the first screen's 16 px glyph), the tab stop and the tip that opens at once, and the paint, exactly, of the current entry and of another in six states (rest, hover, hover over the current entry, keyboard focus, the current entry focused, the current entry while the sidebar has the focus). Where the tip opens is not compared: the mock opens it to the right of the entry, the kit's tooltip host below it. The strip probe's load cases add two plugins, the second registering 700 ms late and sorting after the first or before it: no region and no entry of the rail moves. CI runs all three; all honour `FONT_DELAY_MS`.

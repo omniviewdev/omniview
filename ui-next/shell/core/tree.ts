@@ -79,6 +79,11 @@ export function revealed<Node extends TreeShape<Node>>(nodes: readonly Node[], o
   return result;
 }
 
+/** Whether an entry or a group with this id is anywhere in the tree. */
+export function hasNode<Node extends TreeShape<Node>>(nodes: readonly Node[], id: string): boolean {
+  return nodes.some((node) => node.id === id || (node.children !== undefined && hasNode(node.children, id)));
+}
+
 /** The open set after opening or closing one group. The set it was given when nothing changes, so a no-op is no new state. */
 export function toggled(open: ReadonlySet<string>, id: string, force?: boolean): ReadonlySet<string> {
   const want = force ?? !open.has(id);

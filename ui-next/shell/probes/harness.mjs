@@ -76,6 +76,17 @@ export const SAMPLER = `
       last[name] = now;
       state.seen[name] = now;
     }
+    // The rail's entries, by their name, as the regions are: an entry that is there and has another rectangle than at the frame before has moved, so a plugin that registers late must not push
+    // the entries already drawn (the entries are in the rail's track, which holds still; the layout-shift observer says so in Chromium only).
+    for (const button of document.querySelectorAll('[data-shell-part="rail"] button')) {
+      const name = 'rail:' + button.getAttribute('aria-label');
+      const box = button.getBoundingClientRect();
+      const now = [box.x, box.y, box.width, box.height].map((n) => Math.round(n * 100) / 100).join(',');
+      if (state.first[name] === undefined) state.first[name] = state.frames;
+      if (last[name] !== undefined && last[name] !== now) state.moves.push({ part: name, frame: state.frames, from: last[name], to: now });
+      last[name] = now;
+      state.seen[name] = now;
+    }
     if (state.frames < (window.__probeFrames ?? 240)) requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);

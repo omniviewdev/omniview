@@ -1,5 +1,6 @@
 import { useId, useRef, type ReactNode } from 'react';
 import type { ModifierEvent, TabsStore } from './core/tabs';
+import { Rail } from './Rail';
 import type { ShellRegistration } from './registration';
 import { ScopeLane } from './ScopeLane';
 import styles from './Shell.module.css';
@@ -25,8 +26,18 @@ export type ShellProps = {
    * does not navigate: the host opens a tab through the model, and the page it shows registers with that entry as `current`, and only then is it selected.
    */
   readonly onChoose?: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
+  /**
+   * An entry of the rail was chosen: its id. As with the tree, the shell does not switch anything itself: the host shows that entry's sidebar by registering it as `current`, and only then
+   * is it selected. Choosing one closes no tab: tabs of several places stay open together.
+   */
+  readonly onSelectRail?: ((id: string) => void) | undefined;
   /** What the strip's new-tab control does. Absent: the strip draws none. */
   readonly onNewTab?: (() => void) | undefined;
+  /**
+   * Closes the window. Command or Control W closes the tab on screen; with no tab on screen there is nothing left for it to close, and on a Mac it asks for this (decision A17: an empty window
+   * is never a trap). Elsewhere it asks for nothing: the main window hides when it closes, and only macOS can bring it back (the Dock icon). Absent where there is no window of the app's own to close, a browser tab: the chord then does nothing.
+   */
+  readonly onCloseWindow?: (() => void) | undefined;
 };
 
 /**
@@ -35,16 +46,16 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onNewTab }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
   const panelId = `${ids}-panel`;
   const root = useRef<HTMLDivElement>(null);
   useRegionKeys(root);
-  useTabChords(tabs);
+  useTabChords(tabs, onCloseWindow);
 
-  const hasRail = rail !== undefined || pending;
+  const hasRail = (rail !== undefined && rail.entries.length > 0) || pending;
   const hasSidebar = sidebar !== undefined || pending;
   const hasLane = (scope !== undefined && scope.length > 0) || pending;
   return (
@@ -52,8 +63,8 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onNewTa
       <div ref={root} className={styles.window} data-shell-part="window">
         <TopRow prefix={prefix} panelId={panelId} onNewTab={onNewTab} />
         <div className={styles.frame} data-shell-part="frame" data-rail={hasRail ? '' : undefined} data-sidebar={hasSidebar ? '' : undefined}>
-          {hasRail ? <div className={styles.rail} data-shell-part="rail" aria-hidden="true" /> : null}
-          {hasSidebar ? <Sidebar sidebar={sidebar} onChoose={onChoose} /> : null}
+          {hasRail ? <Rail rail={rail} onSelect={onSelectRail} /> : null}
+          {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} /> : null}
           <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
             {hasLane ? <ScopeLane label={scope === undefined || scope.length === 0 ? undefined : `${plugin.name} scope`} faces={scope ?? []} /> : null}
             {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text

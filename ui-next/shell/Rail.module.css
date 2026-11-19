@@ -1,0 +1,63 @@
+/* The rail (ch16 R5, ch12 section 4, the mock's `.frame__rail`): a 40 px column, its entries 37 x 40 targets from the track's own left edge, each with a 30 x 30 face 5 px in (5 px above,
+   below and before, 2 px after) and the glyph centred on the face at rail x 20. The face carries the paint, not the target. The track's width is the frame's (Shell.module.css). */
+@layer ov.shell {
+  .rail {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .entry {
+    position: relative;
+    flex: 0 0 40px;
+    box-sizing: border-box;
+    inline-size: 37px;
+    block-size: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    color: var(--ov-icon);
+    cursor: default;
+    outline: none;
+  }
+
+  .face {
+    position: absolute;
+    inset: 5px 2px 5px 5px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--ov-radius-tab);
+  }
+
+  /* A visible focus is distinct from the open state: its ring is on the face, 2 px off it. */
+  .entry:focus-visible .face {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  .entry:hover .face {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  /* The tool that is open: the neutral pressed fill (the mock's `.open`), over the hover. */
+  .entry[aria-current='true'] .face {
+    background-color: var(--ov-pressed);
+  }
+
+  /* An open tool that has the focus, or whose region has it, is selected: the accent fill and the active glyph. The region an entry opens is the sidebar. */
+  .entry[aria-current='true']:focus,
+  [data-shell-part='frame']:has([data-shell-region='sidebar']:focus-within) .entry[aria-current='true'] {
+    color: var(--ov-icon-active);
+  }
+
+  .entry[aria-current='true']:focus .face,
+  [data-shell-part='frame']:has([data-shell-region='sidebar']:focus-within) .entry[aria-current='true'] .face {
+    background-color: var(--ov-accent);
+  }
+}

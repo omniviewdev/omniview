@@ -181,8 +181,23 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
     problems.push(`plugin.accent "${typeof plugin.accent === 'string' ? plugin.accent : typeof plugin.accent}" is not one of the shell's colours`);
   }
 
-  if (value.rail !== undefined && value.rail !== true) {
-    problems.push('rail is neither absent nor true');
+  const rail = value.rail;
+  if (rail !== undefined && rail !== true) {
+    if (!isRecord(rail)) {
+      problems.push('rail is neither absent, true, nor an entry');
+    } else {
+      if (!isText(rail.icon)) {
+        problems.push('rail.icon is not a glyph name');
+      }
+
+      if (rail.label !== undefined && !isText(rail.label)) {
+        problems.push('rail.label is not a non-empty string');
+      }
+
+      if (rail.order !== undefined && !(typeof rail.order === 'number' && Number.isFinite(rail.order))) {
+        problems.push('rail.order is not a finite number');
+      }
+    }
   }
 
   const leaves: string[] = [];

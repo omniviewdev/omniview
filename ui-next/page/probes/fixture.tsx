@@ -34,7 +34,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { ListPage, type ListPageDefinition, type ListSource } from '..';
 import type { ShellRegistration } from '../../shell';
-import { StaticShell, staticTabs } from '../../shell/testing';
+import { StaticShell, STATIC_RAIL, staticTabs } from '../../shell/testing';
 import { DetailCase } from './detailCase';
 import styles from './fixture.module.css';
 const noop = () => undefined;
@@ -220,7 +220,7 @@ const tabs = staticTabs([{ title: 'Items', icon: 'box', path: ['Acme', 'north', 
 
 const registration = (layout: 'pane' | 'document'): ShellRegistration => ({
   plugin: { name: 'Acme' },
-  rail: true,
+  rail: STATIC_RAIL,
   layout,
   sidebar: {
     label: 'Acme resources',

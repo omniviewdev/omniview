@@ -7,6 +7,8 @@
 //   c  the negative control: the same plugin with its own copy of the kit fails that read, and the check sees it fail
 //   d  a page that throws is contained: the frame, the sidebar and the other pages stay; Retry tries again
 //   e  a bundle of the old shell is refused before it runs (the global it sets is never set); a plugin with no bundle is a named state
+//   g  the rail (S2a): one entry for each plugin that contributes (the healthy plugin and its copy; the refused ones have none), in the order each declares; choosing the other entry shows its
+//      sidebar and closes no tab, activating a tab makes its plugin current; closing the last tab leaves the empty window (decision A17), which opens nothing by itself and offers the plugins to open
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers
 import assert from 'node:assert/strict';
@@ -247,6 +249,68 @@ async function checkRefusals(page, base, engine) {
   await page.getByText('orders-api', { exact: true }).waitFor();
 }
 
+/**
+ * g. The rail and the empty window, in a page of their own: `fixture-a-ok` declares the first place and `fixture-b-dup` the second, so they are listed in that order; a page of the second
+ * fails (it has its own copy of the kit), which is how the check knows whose sidebar and whose page it is looking at, the two plugins being built from one source.
+ */
+async function checkRail(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await open(page, base);
+  const chord = `${(await page.evaluate(() => navigator.platform.includes('Mac'))) ? 'Meta' : 'Control'}+KeyW`;
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+
+  // One entry for each plugin that contributes, in the declared order; the window opened on the first, and its entry is the current one.
+  const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
+  assert.deepEqual(await entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: the rail lists the two plugins that contribute, in their declared order`);
+  const current = (name) => page.locator(`[data-shell-part="rail"] [aria-label="${name}"][aria-current="true"]`);
+  await current('Seam Fixture').waitFor();
+  assert.equal(await current('Seam Fixture Copy').count(), 0, `${engine}: one entry is current`);
+
+  // Choosing the other entry shows its sidebar and closes no tab: the page on screen is still the first plugin's.
+  await entries.nth(1).click();
+  await current('Seam Fixture Copy').waitFor();
+  assert.equal(await page.getByRole('tab').count(), 1, `${engine}: choosing an entry closed no tab`);
+  await page.getByRole('link', { name: 'orders-api' }).waitFor();
+  assert.equal(await page.getByRole('treeitem', { selected: true }).count(), 0, `${engine}: the page on screen is not in the sidebar that is shown`);
+
+  // An entry of that sidebar opens its plugin's page in a tab of its own, beside the first (the plugin's groups start closed: its page is not on screen to reveal).
+  await page.getByRole('treeitem', { name: 'Things' }).click();
+  await page.getByRole('treeitem', { name: 'Items' }).click();
+  await page.getByRole('alert').waitFor();
+  assert.match(await page.getByRole('alert').innerText(), /Couldn't load Items[\s\S]*This page failed to display\./, `${engine}: the entry of the second plugin's sidebar opened the second plugin's page`);
+  assert.equal(await page.getByRole('tab').count(), 2, `${engine}: the tabs of both plugins are open`);
+  await current('Seam Fixture Copy').waitFor();
+
+  // Activating a tab makes its plugin current again.
+  await page.getByRole('tab').first().click();
+  await page.getByRole('link', { name: 'orders-api' }).waitFor();
+  await current('Seam Fixture').waitFor();
+  assert.equal(await page.getByRole('tab').count(), 2, `${engine}: activating a tab closed none`);
+
+  // Decision A17: closing the last tab leaves an empty window, and nothing opens a page by itself.
+  await page.keyboard.press(chord);
+  await page.keyboard.press(chord);
+  await page.getByText('No tabs are open.').waitFor();
+  assert.equal(await page.getByRole('tab').count(), 0, `${engine}: no tab is left`);
+  await page.getByRole('heading', { level: 1, name: 'Home' }).waitFor();
+  const home = page.getByRole('region', { name: 'Plugins you can open' });
+  // The plugins that did not load are places to go too: their tab says what happened and offers Retry; the row says so in a word after the name.
+  assert.deepEqual(await home.getByRole('button').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim())), ['Seam Fixture', 'Seam Fixture Copy', 'Seam Fixture MissingDid not load', 'Seam Fixture OldDid not load'], `${engine}: the empty window lists the plugins to open: those that contribute in the order of the rail, then the others by name`);
+  assert.equal(await entries.count(), 2, `${engine}: the rail stays beside the empty window`);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  assert.equal(await page.getByRole('tab').count(), 0, `${engine}: nothing opened a page by itself`);
+  // In a browser tab there is no window of the app's own to close: the close chord has no tab to close and does nothing.
+  await page.keyboard.press(chord);
+  await page.getByText('No tabs are open.').waitFor();
+
+  // A way forward: a plugin of the list opens in a tab.
+  await home.getByRole('button', { name: 'Seam Fixture', exact: true }).click();
+  await page.getByRole('tab', { name: 'Items' }).waitFor();
+  await page.getByRole('link', { name: 'orders-api' }).waitFor();
+  assert.deepEqual(errors, [], `${engine}: the rail and the empty window wrote no page error`);
+}
+
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
 let host;
 try {
@@ -264,7 +328,8 @@ try {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       await checkHealthy(page, host.base, name);
       await checkRefusals(page, host.base, name);
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states`);
+      await checkRail(await browser.newPage({ viewport: { width: 1440, height: 900 } }), host.base, name);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window`);
     } finally {
       await browser.close();
     }

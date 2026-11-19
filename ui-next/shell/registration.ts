@@ -27,8 +27,8 @@ export type ShellSidebar = {
   readonly nodes: readonly ShellTreeNode[];
   /** The groups open at first. Every ancestor of `current` is open as well. */
   readonly open?: readonly string[];
-  /** The entry of the page on screen: selected, and where the tree's tab stop starts. */
-  readonly current?: string;
+  /** The entry of the page on screen: selected, and where the tree's tab stop starts. Absent when the page on screen is not this sidebar's (the rail shows another plugin's sidebar): no entry is selected. */
+  readonly current?: string | undefined;
   /** The colour of the tree's glyphs (the mock's tile colour, one per plugin). Absent: the icon colour of the theme. */
   readonly accent?: ShellAccent | undefined;
 };
@@ -42,14 +42,33 @@ export type ShellScopeFace = {
   readonly text: string;
 };
 
+/** One entry of the window's rail: a place whose sidebar the window can show. The shell knows it by its id, its name and its glyph, and nothing of what stands behind it. */
+export type ShellRailEntry = {
+  /** What the host is told when the entry is chosen. */
+  readonly id: string;
+  /** The entry's accessible name and its tooltip. */
+  readonly label: string;
+  readonly icon: IconName;
+};
+
+/**
+ * The rail (ch16 R5, ch12 section 4): the 40 px column left of the sidebar, one entry for each place the window can show the sidebar of, in the order they are drawn. Choosing an entry
+ * tells the host (`ShellProps.onSelectRail`); the host registers that entry as `current` and the sidebar it hands over with it, and only then is it selected. The rail is one tab stop: the
+ * arrows move the focus and select nothing.
+ */
+export type ShellRail = {
+  /** Names the group of entries. */
+  readonly label: string;
+  readonly entries: readonly ShellRailEntry[];
+  /** The entry whose sidebar is shown, an `id` of `entries`: selected (`aria-current`), and where the tab stop starts. Absent: none is, and the first holds the tab stop. */
+  readonly current?: string | undefined;
+};
+
 export type ShellRegistration = {
   /** The plugin the screen belongs to: its name names the frame's landmarks ("<name> workspace", "<name> scope"). */
   readonly plugin: { readonly name: string };
-  /**
-   * The plugin's frame has a rail of tools (R5): a 40 px track left of the sidebar. The tools are not part of the contract yet, so a
-   * declared rail keeps its track empty and the page lands where the mock puts it (README, "Decisions"). Absent: no rail, no track.
-   */
-  readonly rail?: true;
+  /** The rail: the 40 px column of entries left of the sidebar. Absent, or with no entries: no rail, no track. */
+  readonly rail?: ShellRail;
   /** Absent: no sidebar, no track. */
   readonly sidebar?: ShellSidebar;
   /** The scope lane above the page, at most 2 faces (ch16 S10). Absent or empty: no lane, no 40 px. */

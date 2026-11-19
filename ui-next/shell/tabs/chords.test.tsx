@@ -7,7 +7,7 @@ import { Shell } from '../Shell';
 
 const PAGES = ['one', 'two', 'three', 'four', 'five'] as const;
 
-function mount(platform: string | undefined = undefined, pages: readonly string[] = PAGES) {
+function mount(platform: string | undefined = undefined, pages: readonly string[] = PAGES, onCloseWindow: (() => void) | undefined = undefined) {
   if (platform !== undefined) {
     vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
   }
@@ -15,7 +15,7 @@ function mount(platform: string | undefined = undefined, pages: readonly string[
   const h = boot({ home: false });
   const ids = h.openAll(pages);
   h.store.goto(1);
-  const view = render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={() => <input aria-label="A field" />} empty={null} />);
+  const view = render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={() => <input aria-label="A field" />} empty={null} onCloseWindow={onCloseWindow} />);
   return { h, ids, view };
 }
 
@@ -147,5 +147,69 @@ describe('the binding', () => {
 
     expect(press({ code: 'KeyW', metaKey: true })).toBe(true);
     expect(h.ids()).toHaveLength(5);
+  });
+});
+
+describe('with no tab on screen (decision A17: an empty window is not a trap)', () => {
+  it('closes the window with Command W on a Mac once the last tab is closed: the tab first, the window next', () => {
+    const onCloseWindow = vi.fn();
+    const { h } = mount('MacIntel', ['solo'], onCloseWindow);
+    const chord = { code: 'KeyW', metaKey: true };
+
+    expect(press(chord)).toBe(false);
+    expect(h.ids()).toEqual([]);
+    expect(onCloseWindow).not.toHaveBeenCalled();
+
+    expect(press(chord)).toBe(false);
+    expect(onCloseWindow).toHaveBeenCalledTimes(1);
+    expect(h.ids()).toEqual([]);
+  });
+
+  it('does not close the window on Windows or Linux, where a main window that hides has no way back: the last tab closes, and the chord after it, the web alternate included, does nothing', () => {
+    const chords = [{ code: 'KeyW', ctrlKey: true }, { code: 'KeyW', ctrlKey: true, altKey: true }] as const;
+    for (const platform of ['Win32', 'Linux x86_64']) {
+      const onCloseWindow = vi.fn();
+      const { h } = mount(platform, ['solo'], onCloseWindow);
+
+      press(chords[0]);
+      expect(h.ids()).toEqual([]);
+      for (const chord of chords) {
+        press(chord);
+      }
+
+      expect(onCloseWindow).not.toHaveBeenCalled();
+      expect(h.ids()).toEqual([]);
+      cleanup();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('never closes the window while a tab is open, however many close chords there are for the tabs', () => {
+    const onCloseWindow = vi.fn();
+    mount('MacIntel', ['one', 'two'], onCloseWindow);
+
+    press({ code: 'KeyW', metaKey: true });
+    press({ code: 'KeyW', metaKey: true });
+
+    expect(onCloseWindow).not.toHaveBeenCalled();
+  });
+
+  it('closes it with the web alternate too, and leaves Command Shift W to the app menu', () => {
+    const onCloseWindow = vi.fn();
+    mount('MacIntel', ['solo'], onCloseWindow);
+    press({ code: 'KeyW', ctrlKey: true, altKey: true });
+
+    press({ code: 'KeyW', metaKey: true, shiftKey: true });
+    expect(onCloseWindow).not.toHaveBeenCalled();
+    press({ code: 'KeyW', ctrlKey: true, altKey: true });
+    expect(onCloseWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing where the host has no window to close, a browser tab', () => {
+    const { h } = mount('MacIntel', ['solo']);
+    press({ code: 'KeyW', metaKey: true });
+
+    expect(() => press({ code: 'KeyW', metaKey: true })).not.toThrow();
+    expect(h.ids()).toEqual([]);
   });
 });

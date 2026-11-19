@@ -877,11 +877,12 @@ func main() {
 	audit.verifyServiceTypes(append(registered, windowService)...)
 
 	// Install menus only after their backend window service is ready.
+	// Decision A18: packaged builds drop View > Reload (Cmd+R); a development instance keeps it.
 	menus.SetupAppMenu(app, mainWindow, func() {
 		if _, err := windowService.OpenSettings(""); err != nil {
 			log.Errorw(context.Background(), "failed to open settings", "error", err)
 		}
-	})
+	}, menus.AppMenuOptions{Reload: profile.Descriptor.Kind == "development"})
 	menus.SetupKeyBindings(app)
 	menus.SetupContextMenus(app)
 

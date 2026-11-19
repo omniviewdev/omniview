@@ -183,7 +183,7 @@ export type TabsState = {
   readonly tabs: Readonly<Record<TabId, Tab>>;
   /** The strip, left to right. Pinned tabs lead: the pinned zone is never interleaved (ch16 S38). This is also the order of the All tabs list (ch16 S49). */
   readonly order: readonly TabId[];
-  /** The tab on screen; null only while no page can open (the strip is empty). */
+  /** The tab on screen; null while the strip is empty: before the window's home page opens, or after the user closed the last tab (decision A17). */
   readonly active: TabId | null;
   /**
    * The tabs whose page is mounted, most recently shown first; the tab on screen leads (ch16 S29, S32). A tab enters when it is shown, never before (a tab restored or opened in the
@@ -196,6 +196,12 @@ export type TabsState = {
   readonly keepAlive: KeepAlive;
   /** Counts reveal requests. */
   readonly serial: number;
+  /**
+   * A tab has been on screen in this window. Until then an empty strip opens the window's home page by itself (the start of a window: ch16 S30, `ensureHome`); from then on an empty strip
+   * stays empty, because the user emptied it, and nothing opens a page for them (decision A17: closing the last tab leaves an empty window with a way out, and no page comes back by itself).
+   * Not saved: a window restored from tabs has started, and one restored from none has not.
+   */
+  readonly started: boolean;
 };
 
 export const LIMITS = Object.freeze({

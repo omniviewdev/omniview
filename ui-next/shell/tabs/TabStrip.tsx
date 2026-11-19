@@ -158,7 +158,7 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
           <Tab key={id} id={id} stop={id === stop} active={id === active} prefix={prefix} panelId={panelId} />
         ))}
       </div>
-      {onNewTab === undefined || ids.length === 0 ? null : (
+      {onNewTab === undefined ? null : (
         <button type="button" className={styles.new} aria-label="New tab" {...tip('New tab')} onClick={onNewTab}>
           <Icon name="plus" />
         </button>

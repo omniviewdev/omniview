@@ -1,7 +1,7 @@
 import type { IconName } from '@omniviewdev/kit';
 import { useState, type ReactNode } from 'react';
 import { createTabsStore, type TabsStore } from './core/tabs';
-import type { ShellRegistration } from './registration';
+import type { ShellRail, ShellRegistration } from './registration';
 import { Shell } from './Shell';
 
 // Test and probe support: a shell around tabs that are plain data, with an invented plugin (Acme) behind them, so a test or a probe can draw the frame without a plugin host. Nothing in the
@@ -18,6 +18,17 @@ export type StaticPage = {
 };
 
 const PLUGIN = 'acme';
+
+/** A rail of three invented places, the first of them current: what a fixture registers where the product's frame has a rail. */
+export const STATIC_RAIL: ShellRail = {
+  label: 'Plugins',
+  entries: [
+    { id: 'acme', label: 'Acme', icon: 'box' },
+    { id: 'beta', label: 'Beta', icon: 'layers' },
+    { id: 'gamma', label: 'Gamma', icon: 'server' },
+  ],
+  current: 'acme',
+};
 
 /** A tab model whose tabs are `pages`, in order, with `active` (an index) on screen. The pages are `p0`, `p1`, ... of the plugin `acme`. */
 export function staticTabs(pages: readonly StaticPage[], active = 0): TabsStore {
@@ -43,12 +54,16 @@ type StaticShellProps = {
   readonly tabs?: TabsStore | undefined;
   /** What the strip's new-tab control does. Absent: no control. */
   readonly onNewTab?: (() => void) | undefined;
+  /** What choosing an entry of the rail does. Absent: nothing. */
+  readonly onSelectRail?: ((id: string) => void) | undefined;
+  /** What the close chord does with no tab on screen. Absent: nothing. */
+  readonly onCloseWindow?: (() => void) | undefined;
   /** The page of every tab. */
   readonly children?: ReactNode;
 };
 
 /** The shell with the same page in every tab. */
-export function StaticShell({ registration, tabs, onNewTab, children }: StaticShellProps) {
+export function StaticShell({ registration, tabs, onNewTab, onSelectRail, onCloseWindow, children }: StaticShellProps) {
   const [store] = useState(() => tabs ?? staticTabs([{ title: 'Widgets', icon: 'box', path: ['Acme', 'Widgets'] }]));
-  return <Shell registration={registration} tabs={store} renderPage={() => <>{children}</>} empty={null} onNewTab={onNewTab} />;
+  return <Shell registration={registration} tabs={store} renderPage={() => <>{children}</>} empty={null} onNewTab={onNewTab} onSelectRail={onSelectRail} onCloseWindow={onCloseWindow} />;
 }
