@@ -1,0 +1,8 @@
+#!/bin/bash
+# usage: s.sh <name>  -> screenshot of the window of the current pid, with the lock state
+A=/Users/joshuapare/Notes/omniview/ui-migration/status/S2b-assets
+mkdir -p "$A"
+PID=$(cat /tmp/s2b/run.pid)
+id=$(/tmp/s1c/winlist $PID | grep onscreen=1 | cut -f1 | head -1)
+L=$(/tmp/s2a_sess | grep -c "CGSSessionScreenIsLocked = 1")
+screencapture -x -o -l $id "$A/$1.png" && echo "$1 locked=$L id=$id $(/tmp/s1c/winlist $PID | grep onscreen=1 | cut -f6)"

@@ -28,3 +28,13 @@ func TestMacTitleBarCentresTrafficLightsOnTheTopRow(t *testing.T) {
 	require.True(t, titleBar.HideToolbarSeparator)
 	require.Equal(t, application.MacToolbarStyleUnifiedCompact, titleBar.ToolbarStyle)
 }
+
+// Decision A17 and the VS Code and JetBrains rule: on macOS the red light, Close Window (Cmd+Shift+W) and Cmd+W on the empty window close the
+// window and the app STAYS in the Dock; only Quit (Cmd+Q) exits. The main window hides on close (backend/window/wails.go, attachMainWindow), and
+// AppKit asks the delegate after every window that closes or hides whether the app should end: the answer must be no (docs/ui-next/status/S2b.md,
+// observed natively: with the option on, the process exited on the red light in every build from the Wails v3 migration on).
+func TestMacApplicationStaysRunningWhenTheLastWindowCloses(t *testing.T) {
+	options := macApplicationOptions()
+
+	require.False(t, options.ApplicationShouldTerminateAfterLastWindowClosed, "the main window hides on close: the app must not quit with it")
+}

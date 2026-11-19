@@ -297,7 +297,7 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Server: application.ServerOptions{Host: "localhost", Port: serverModePort},
-		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Mac:    macApplicationOptions(),
 		Linux:  application.LinuxOptions{ProgramName: appName},
 	}
 	// The outer wrapper sees embedded assets and the internal Vite proxy alike.

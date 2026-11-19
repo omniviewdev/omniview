@@ -1,0 +1,46 @@
+import Cocoa
+import CoreGraphics
+let a = CommandLine.arguments
+var gflags = CGEventFlags(rawValue: 0)
+func post(_ t: CGEventType, _ x: Double, _ y: Double, _ b: CGMouseButton = .left) {
+  let e = CGEvent(mouseEventSource: nil, mouseType: t, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: b)
+  e?.flags = gflags
+  e?.post(tap: .cghidEventTap)
+}
+func flags(_ s: String) -> CGEventFlags {
+  var f = CGEventFlags(rawValue: 0)
+  for m in s.split(separator: ",") {
+    switch m { case "shift": f.insert(.maskShift); case "cmd": f.insert(.maskCommand); case "alt": f.insert(.maskAlternate); case "ctrl": f.insert(.maskControl); case "fn": f.insert(.maskSecondaryFn); case "scroll":
+  post(.mouseMoved, d(2), d(3)); usleep(80000)
+  for _ in 0..<Int(a[5])! { let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(a[4])!, wheel2: 0, wheel3: 0); e?.post(tap: .cghidEventTap); usleep(15000) }
+default: break }
+  }
+  return f
+}
+let cmd = a[1]
+func d(_ i: Int) -> Double { Double(a[i])! }
+switch cmd {
+case "move": post(.mouseMoved, d(2), d(3))
+case "rclick": post(.mouseMoved, d(2), d(3)); usleep(80000); post(.rightMouseDown, d(2), d(3), .right); usleep(60000); post(.rightMouseUp, d(2), d(3), .right)
+case "click": if a.count > 4 { gflags = flags(a[4]) }; post(.mouseMoved, d(2), d(3)); usleep(80000); post(.leftMouseDown, d(2), d(3)); usleep(60000); post(.leftMouseUp, d(2), d(3))
+case "drag":
+  post(.mouseMoved, d(2), d(3)); usleep(100000); post(.leftMouseDown, d(2), d(3)); usleep(100000)
+  let n = 20
+  for i in 1...n { let f = Double(i)/Double(n); post(.leftMouseDragged, d(2)+(d(4)-d(2))*f, d(3)+(d(5)-d(3))*f); usleep(20000) }
+  usleep(100000); post(.leftMouseUp, d(4), d(5))
+case "down": post(.mouseMoved, d(2), d(3)); usleep(100000); post(.leftMouseDown, d(2), d(3))
+case "dragto": post(.leftMouseDragged, d(2), d(3))
+case "up": post(.leftMouseUp, d(2), d(3))
+case "key":
+  let code = CGKeyCode(UInt16(a[2])!)
+  let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true)
+  down?.flags = flags(a.count > 3 ? a[3] : "")
+  down?.post(tap: .cghidEventTap); usleep(60000)
+  let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false)
+  up?.flags = flags(a.count > 3 ? a[3] : "")
+  up?.post(tap: .cghidEventTap)
+case "scroll":
+  post(.mouseMoved, d(2), d(3)); usleep(80000)
+  for _ in 0..<Int(a[5])! { let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(a[4])!, wheel2: 0, wheel3: 0); e?.post(tap: .cghidEventTap); usleep(15000) }
+default: break
+}
