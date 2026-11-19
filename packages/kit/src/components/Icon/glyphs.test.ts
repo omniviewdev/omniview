@@ -5,10 +5,10 @@ const names = Object.keys(GLYPHS) as IconName[];
 
 // The glyphs slice 1a draws, from the mock's first list screen (plan 1.2, tiers A and B): command glyphs, the sort arrows, the
 // kind and scope glyphs, the seven status roles' glyphs, the loaders and the no-match glyph; the row menu's trigger adds the ellipsis.
-// Slice 1b adds the tab strip's: the new-tab plus and the back and forward arrows.
+// Slice 1b adds the tab strip's: the new-tab plus and the back and forward arrows. The bottom panel (P1a) adds the status bar's toggle.
 const SLICE_1A = [
   'arrow-down', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'check', 'chevron-down', 'chevron-right', 'circle-minus', 'clock', 'close', 'columns', 'copy',
-  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'play', 'plus', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
+  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'panel-bottom', 'play', 'plus', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
   'status-success', 'status-warning',
 ];
 
@@ -83,7 +83,7 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 7,000)', () => {
+  it('stays within its byte budget (one glyph 800 bytes, the registry 7,200: it was 7,000 until the bottom panel adds its toggle glyph)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -91,7 +91,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(7000);
+    expect(total).toBeLessThanOrEqual(7200);
   });
 
   it('guards a name from outside: true for every glyph, false for anything else', () => {

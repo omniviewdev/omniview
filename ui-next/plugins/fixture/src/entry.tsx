@@ -3,6 +3,7 @@ import { useConnections } from '@omniviewdev/runtime/ui/v1';
 import { useEffect, useState } from 'react';
 import type { ContributionV1, SidebarNodeV1 } from '../../contract/v1';
 import { itemPage } from './detail';
+import { streamsTool } from './panel';
 import { crashPage, itemsPage } from './pages';
 
 // A plugin's new-UI bundle, as small as one can be and still be the real thing: it exports `contributionV1` and nothing else is the host's business
@@ -46,8 +47,8 @@ function useCounts(): readonly SidebarNodeV1[] | undefined {
   return ready ? WITH_COUNTS : undefined;
 }
 
-/** The entry this plugin has in the window's rail, its name and its place: written into the bundle by the build (`build.mjs`, `define`), because the check installs two plugins from this one source. */
-declare const FIXTURE_RAIL: { readonly label: string; readonly order: number };
+/** The entry this plugin has in the window's rail, its name and its place, and the label of its tool in the bottom panel: written into the bundle by the build (`build.mjs`, `define`), because the check installs two plugins from this one source. */
+declare const FIXTURE_RAIL: { readonly label: string; readonly order: number; readonly tool: string };
 
 export const contributionV1 = {
   plugin: { name: 'Seam Fixture', accent: 'teal' },
@@ -55,6 +56,7 @@ export const contributionV1 = {
   sidebar: { label: 'Seam Fixture navigation', title: 'Fixture', nodes: SKELETON, useNodes: useCounts },
   pages: { items: itemsPage, item: itemPage, crash: crashPage },
   home: 'items',
+  panel: { tools: { streams: { ...streamsTool, label: FIXTURE_RAIL.tool } } },
 } satisfies ContributionV1;
 
 /** The shared modules as this bundle received them: the check compares them with the host's. */

@@ -1,5 +1,11 @@
-import { useId, useRef, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
+import { platformOf } from './core/chords';
 import type { ModifierEvent, TabsStore } from './core/tabs';
+import { Panel } from './panel/Panel';
+import { PanelProvider } from './panel/context';
+import type { PanelBindings } from './panel/host';
+import { SessionCards } from './panel/SessionCards';
+import { usePanelChords } from './panel/usePanelChords';
 import { Rail } from './Rail';
 import type { ShellRegistration } from './registration';
 import { ScopeLane } from './ScopeLane';
@@ -38,6 +44,11 @@ export type ShellProps = {
    * is never a trap). Elsewhere it asks for nothing: the main window hides when it closes, and only macOS can bring it back (the Dock icon). Absent where there is no window of the app's own to close, a browser tab: the chord then does nothing.
    */
   readonly onCloseWindow?: (() => void) | undefined;
+  /**
+   * The bottom panel: its model, and what draws the tools' bodies and the sessions' cards, which are the owners' and not the shell's (`panel/host.ts`). Absent: the window has no panel, no
+   * splitter and no toggle, and the grid's panel row is 0 px.
+   */
+  readonly panel?: PanelBindings | undefined;
 };
 
 /**
@@ -46,19 +57,21 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow, panel }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
   const panelId = `${ids}-panel`;
   const root = useRef<HTMLDivElement>(null);
+  const [platform] = useState(() => platformOf(navigator));
   useRegionKeys(root);
+  usePanelChords(panel?.store);
   useTabChords(tabs, onCloseWindow);
 
   const hasRail = (rail !== undefined && rail.entries.length > 0) || pending;
   const hasSidebar = sidebar !== undefined || pending;
   const hasLane = (scope !== undefined && scope.length > 0) || pending;
-  return (
+  const content = (
     <TabsProvider store={tabs}>
       <div ref={root} className={styles.window} data-shell-part="window">
         <TopRow prefix={prefix} panelId={panelId} onNewTab={onNewTab} />
@@ -72,8 +85,17 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelec
             <PageHost renderPage={renderPage} empty={empty} layout={layout} prefix={prefix} panelId={panelId} />
           </main>
         </div>
-        <StatusBar />
+        {panel === undefined ? null : <Panel platform={platform} />}
+        <StatusBar platform={platform} />
       </div>
     </TabsProvider>
+  );
+  return panel === undefined ? (
+    content
+  ) : (
+    <PanelProvider panel={panel}>
+      {content}
+      <SessionCards />
+    </PanelProvider>
   );
 }

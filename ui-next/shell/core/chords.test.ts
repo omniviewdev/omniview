@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chordOf, platformOf, type KeyLike } from './chords';
+import { chordOf, panelChordOf, platformOf, type KeyLike } from './chords';
 
 const key = (code: string, over: Partial<KeyLike> = {}): KeyLike => ({ code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...over });
 
@@ -89,5 +89,57 @@ describe('AltGr', () => {
 
   it('does not stop Control and Option, which is not AltGr', () => {
     expect(chordOf({ ...altGr, getModifierState: () => false }, 'other')).toEqual({ action: 'jump', n: 7 });
+  });
+});
+
+// The panel's chords (ch16 S106, S118): the panel toggles with Command J (Control J elsewhere, Control Option J where a browser keeps the first), and while the focus is in the panel Close session
+// is Command W on a Mac and Control Shift W elsewhere, so Control W stays Close tab (ported from the mock's harness, ShellStore/unit.cjs "host.panel.close-session").
+describe('the panel chords', () => {
+  const at = (code: string, platform: 'mac' | 'other', over: Partial<KeyLike> = {}, inPanel = false) => panelChordOf(key(code, over), platform, inPanel);
+
+  it('toggle with Command J on a Mac and Control J elsewhere, from anywhere', () => {
+    expect(at('KeyJ', 'mac', { metaKey: true })).toEqual({ action: 'toggle' });
+    expect(at('KeyJ', 'other', { ctrlKey: true })).toEqual({ action: 'toggle' });
+    expect(at('KeyJ', 'mac', { metaKey: true }, true)).toEqual({ action: 'toggle' });
+  });
+
+  it('toggle with Control Option J on any platform (the web alternate)', () => {
+    for (const platform of ['mac', 'other'] as const) {
+      expect(at('KeyJ', platform, { ctrlKey: true, altKey: true })).toEqual({ action: 'toggle' });
+    }
+  });
+
+  it('are not the other platform\'s modifier, not Shift (Command Shift J maximizes: not built), not a bare key', () => {
+    expect(at('KeyJ', 'mac', { ctrlKey: true })).toBeUndefined();
+    expect(at('KeyJ', 'other', { metaKey: true })).toBeUndefined();
+    expect(at('KeyJ', 'mac', { metaKey: true, shiftKey: true })).toBeUndefined();
+    expect(at('KeyJ', 'other', { ctrlKey: true, shiftKey: true })).toBeUndefined();
+    expect(at('KeyJ', 'mac', { metaKey: true, altKey: true })).toBeUndefined();
+    expect(at('KeyJ', 'mac')).toBeUndefined();
+  });
+
+  it('close the session with Command W on a Mac, Control Shift W elsewhere, and Control Option W for the web, only while the focus is in the panel', () => {
+    expect(at('KeyW', 'mac', { metaKey: true }, true)).toEqual({ action: 'close-session' });
+    expect(at('KeyW', 'other', { ctrlKey: true, shiftKey: true }, true)).toEqual({ action: 'close-session' });
+    expect(at('KeyW', 'mac', { ctrlKey: true, altKey: true }, true)).toEqual({ action: 'close-session' });
+    expect(at('KeyW', 'other', { ctrlKey: true, altKey: true }, true)).toEqual({ action: 'close-session' });
+    expect(at('KeyW', 'mac', { metaKey: true }, false)).toBeUndefined();
+    expect(at('KeyW', 'other', { ctrlKey: true, shiftKey: true }, false)).toBeUndefined();
+  });
+
+  it('leave Control W elsewhere to Close tab, even in the panel', () => {
+    expect(at('KeyW', 'other', { ctrlKey: true }, true)).toBeUndefined();
+    expect(chordOf(key('KeyW', { ctrlKey: true }), 'other')).toEqual({ action: 'close' });
+  });
+
+  it('are not a key an input method is composing, or that something else already took, or AltGr', () => {
+    expect(at('KeyJ', 'mac', { metaKey: true, isComposing: true })).toBeUndefined();
+    expect(at('KeyJ', 'mac', { metaKey: true, keyCode: 229 })).toBeUndefined();
+    expect(at('KeyJ', 'mac', { metaKey: true, defaultPrevented: true })).toBeUndefined();
+    expect(panelChordOf({ code: 'KeyJ', metaKey: false, ctrlKey: true, altKey: true, shiftKey: false, getModifierState: (name: string) => name === 'AltGraph' }, 'other', false)).toBeUndefined();
+  });
+
+  it('are matched by the physical key', () => {
+    expect(panelChordOf({ ...key('KeyJ', { ctrlKey: true, altKey: true }), ...{ key: '∆' } }, 'mac', false)).toEqual({ action: 'toggle' });
   });
 });

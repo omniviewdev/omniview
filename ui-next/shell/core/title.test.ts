@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitTitle } from './title';
+import { SESSION_RULE, splitTitle } from './title';
 
 describe('splitTitle', () => {
   it('keeps a title of 12 graphemes or fewer whole', () => {
@@ -56,5 +56,39 @@ describe('splitTitle', () => {
   it('counts graphemes, not code units, for the whole-title rule', () => {
     expect(splitTitle('👍'.repeat(12))).toEqual(['👍'.repeat(12), '']);
     expect(splitTitle('👍'.repeat(13))[1]).toBe('👍'.repeat(7));
+  });
+});
+
+describe('splitTitle for a session tab (the mock\'s `splitEnd`, shell-panel.js)', () => {
+  const split = (text: string) => splitTitle(text, SESSION_RULE);
+
+  it('keeps a generated suffix whole: the last hyphen when the tail from it is 12 characters or fewer', () => {
+    expect(split('build-runner-7d8c6f49b-f8q4m')).toEqual(['build-runner-7d8c6f49b', '-f8q4m']);
+    expect(split('abcdefghijklm-abcdefghijk')).toEqual(['abcdefghijklm', '-abcdefghijk']);
+  });
+
+  it('cuts at the midpoint when the tail from the last hyphen is longer than 12', () => {
+    const text = 'abcdefghijklm-abcdefghijkl';
+    expect(split(text)).toEqual([text.slice(0, -10), text.slice(-10)]);
+  });
+
+  it('takes a separator only past the fourth character', () => {
+    expect(split('ab-cdefghijklmnopqrstuvwxyz')).toEqual(['ab-cdefghijklmnop', 'qrstuvwxyz']);
+    expect(split('abcd-efghijklmnopqrstuvwxyz')).toEqual(['abcd-efghijklmnop', 'qrstuvwxyz']);
+    expect(split('abcde-fghijkl')).toEqual(['abcde', '-fghijkl']);
+  });
+
+  it('prefers a slash, then a colon, to a hyphen, as the document tab does', () => {
+    expect(split('widget-store/north/alpha-01')).toEqual(['widget-store/north', '/alpha-01']);
+    expect(split('gadget-controller-one: Gizmo')).toEqual(['gadget-controller-one', ': Gizmo']);
+  });
+
+  it('keeps a short title whole', () => {
+    expect(split('abcdefghijkl')).toEqual(['abcdefghijkl', '']);
+  });
+
+  it('leaves the document tab\'s rule as it was: no hyphen, a separator from the second character', () => {
+    expect(splitTitle('build-runner-7d8c6f49b-f8q4m')).toEqual(['build-runner-7d8c6', 'f49b-f8q4m']);
+    expect(splitTitle('ab/cdefghijklmnopqr')).toEqual(['ab', '/cdefghijklmnopqr']);
   });
 });

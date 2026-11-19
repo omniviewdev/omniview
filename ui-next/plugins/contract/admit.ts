@@ -172,6 +172,90 @@ function checkPage(page: unknown, at: string, problems: Problems): void {
   }
 }
 
+/** A plugin brings at most two tools of its own to the panel (ch16 S114: a plugin-specific tool needs the owner's approval and stays under this limit). */
+const MAX_PLUGIN_TOOLS = 2;
+
+/** What a tool of the plugin's own must say: its words, its glyph, its body, and optionally a place, a card and a way to start a session. */
+function checkPanelTool(tool: unknown, at: string, problems: Problems): void {
+  if (!isRecord(tool)) {
+    problems.push(`${at} is not an object`);
+    return;
+  }
+
+  if (!isText(tool.label)) {
+    problems.push(`${at}.label is not a non-empty string`);
+  }
+
+  if (!isText(tool.icon)) {
+    problems.push(`${at}.icon is not a glyph name`);
+  }
+
+  if (tool.order !== undefined && !(typeof tool.order === 'number' && Number.isFinite(tool.order))) {
+    problems.push(`${at}.order is not a finite number`);
+  }
+
+  if (!isFunction(tool.Body)) {
+    problems.push(`${at}.Body is not a function`);
+  }
+
+  if (tool.card !== undefined && !isFunction(tool.card)) {
+    problems.push(`${at}.card is not a function`);
+  }
+
+  const fresh = tool.newSession;
+  if (fresh !== undefined && !(isRecord(fresh) && isText(fresh.label) && isFunction(fresh.open))) {
+    problems.push(`${at}.newSession needs a label and an open function`);
+  }
+}
+
+/** What a plugin brings to the bottom panel: the shape the host draws it from. Absent is fine: most plugins bring nothing. */
+function checkPanel(panel: unknown, problems: Problems): void {
+  if (panel === undefined) {
+    return;
+  }
+
+  if (!isRecord(panel)) {
+    problems.push('panel is not an object');
+    return;
+  }
+
+  const { tools, sessions } = panel;
+  if (tools !== undefined) {
+    if (!isRecord(tools)) {
+      problems.push('panel.tools is not an object');
+    } else {
+      const ids = Object.keys(tools);
+      if (ids.length > MAX_PLUGIN_TOOLS) {
+        problems.push(`panel.tools has ${String(ids.length)} tools: a plugin brings at most ${String(MAX_PLUGIN_TOOLS)}`);
+      }
+
+      for (const id of ids) {
+        if (id.trim() === '' || id.includes(':')) {
+          // The host makes the id the panel knows a tool by from the plugin's id and this one, joined with a colon.
+          problems.push(`panel.tools.${id} is not a tool id: no colon, not empty`);
+          continue;
+        }
+
+        checkPanelTool(tools[id], `panel.tools.${id}`, problems);
+      }
+    }
+  }
+
+  if (sessions !== undefined) {
+    if (!isRecord(sessions)) {
+      problems.push('panel.sessions is not an object');
+    } else {
+      for (const [id, kind] of Object.entries(sessions)) {
+        if (!isRecord(kind)) {
+          problems.push(`panel.sessions.${id} is not an object`);
+        } else if (kind.card !== undefined && !isFunction(kind.card)) {
+          problems.push(`panel.sessions.${id}.card is not a function`);
+        }
+      }
+    }
+  }
+}
+
 function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
   const problems: Problems = [];
   const plugin = value.plugin;
@@ -199,6 +283,8 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
       }
     }
   }
+
+  checkPanel(value.panel, problems);
 
   const leaves: string[] = [];
   const sidebar = value.sidebar;

@@ -38,6 +38,7 @@ export type IconName =
   | 'layers'
   | 'loader'
   | 'loader-circle'
+  | 'panel-bottom'
   | 'play'
   | 'plus'
   | 'refresh'
@@ -108,6 +109,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   loader: { box: 24, layers: [{ d: 'M12 2v4M16.2 7.8l2.9-2.9M18 12h4M16.2 16.2l2.9 2.9M12 18v4M4.9 19.1l2.9-2.9M2 12h4M4.9 4.9l2.9 2.9', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide loader-circle (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuLoaderCircle. */
   'loader-circle': { box: 24, layers: [{ d: 'M21 12a9 9 0 1 1-6.219-8.56', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide panel-bottom (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPanelBottom. */
+  'panel-bottom': { box: 24, layers: [{ d: 'M5 3H19A2 2 0 0 1 21 5V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3ZM3 15h18', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI run/run_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlay. */
   play: { box: 16, layers: [{ d: 'M13.5 7.134C14.167 7.519 14.167 8.481 13.5 8.866L4.5 14.062C3.833 14.447 3 13.966 3 13.196L3 2.804C3 2.034 3.833 1.553 4.5 1.938L13.5 7.134Z', fill: '#253627', stroke: 'success' }] },
   /* Int UI general/add_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlus. */

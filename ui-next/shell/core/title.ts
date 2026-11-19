@@ -11,22 +11,35 @@ const graphemes = (text: string): string[] => (segmenter === undefined ? Array.f
 const WHOLE = 12;
 /** The longest tail the midpoint rule makes, in graphemes. */
 const MAX_TAIL = 10;
-/** A tail that starts at a separator is at most this long, separator included. */
-const MAX_SEPARATED = 18;
 
 /**
- * The head and the tail of a title. A short title is all head. Otherwise the cut is the last `/` or `:` when the part after it is short enough (the separator stays in the tail), else
- * the title's midpoint, with a tail of at most ten graphemes.
+ * Where a title may be cut at a separator: the separators in the order they are tried, each with the longest tail it may leave (the separator included), and how many characters a title has
+ * before a separator counts (`past`: the separator must come after that many, so a title that starts with one is not cut at it).
  */
-export function splitTitle(text: string): readonly [head: string, tail: string] {
+export type SplitRule = { readonly marks: ReadonlyArray<readonly [mark: string, longest: number]>; readonly past: number };
+
+/** The document tab's: the last `/`, else the last `:`, with a tail of at most 18 characters, the separator after the first character. */
+export const DOCUMENT_RULE: SplitRule = { marks: [['/', 18], [':', 18]], past: 0 };
+
+/**
+ * The session tab's (the mock's `splitEnd`, shell-panel.js): the same separators and a hyphen after them, for a generated suffix (`-f8q4m`) kept whole when the tail from it is 12 characters or
+ * fewer, and a separator only after the fourth character.
+ */
+export const SESSION_RULE: SplitRule = { marks: [['/', 18], [':', 18], ['-', 12]], past: 3 };
+
+/**
+ * The head and the tail of a title. A short title is all head. Otherwise the cut is the last separator of the rule that leaves a short enough tail (the separator stays in the tail), else the
+ * title's midpoint, with a tail of at most ten graphemes.
+ */
+export function splitTitle(text: string, rule: SplitRule = DOCUMENT_RULE): readonly [head: string, tail: string] {
   const parts = graphemes(text);
   if (parts.length <= WHOLE) {
     return [text, ''];
   }
 
-  for (const mark of ['/', ':']) {
+  for (const [mark, longest] of rule.marks) {
     const at = text.lastIndexOf(mark);
-    if (at > 0 && at < text.length - 1 && text.length - at <= MAX_SEPARATED) {
+    if (at > rule.past && at < text.length - 1 && text.length - at <= longest) {
       return [text.slice(0, at), text.slice(at)];
     }
   }

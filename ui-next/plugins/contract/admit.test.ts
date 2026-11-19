@@ -260,3 +260,58 @@ describe('admit: the rail entry (a minor addition to version 1)', () => {
     expect(problemsOf(contribution({ rail }))).toContain(expected);
   });
 });
+
+// The panel (P1a, a minor addition to version 1): tools a plugin brings to the bottom panel, and how the sessions it opens in a tool of the host read. Admission checks the shape the host
+// draws from; what a body or a card does is the boundary's.
+describe('admit: the panel (a minor addition to version 1)', () => {
+  const tool = (patch: Loose = {}): Loose => ({ label: 'Metrics', icon: 'box', order: 30, Body: () => null, ...patch });
+  const withPanel = (panel: unknown) => contribution({ panel });
+
+  it('admits a tool with its words, its glyph, its place and its body; with a card and a way to start a session', () => {
+    for (const panel of [
+      { tools: { metrics: tool() } },
+      { tools: { metrics: tool({ order: undefined }) } },
+      { tools: { metrics: tool({ card: () => undefined, newSession: { label: 'New stream', open: () => undefined } }) } },
+      { tools: { metrics: tool(), other: tool({ label: 'Other' }) } },
+      { sessions: { logs: { card: () => undefined } } },
+      { sessions: { logs: {} } },
+      { tools: { metrics: tool() }, sessions: { logs: { card: () => undefined } } },
+      {},
+      { tools: {} },
+    ]) {
+      expect(problemsOf(withPanel(panel)), JSON.stringify(Object.keys(panel))).toEqual([]);
+    }
+  });
+
+  it('admits a bundle written before the panel, with no panel at all, and hands back its own object', () => {
+    const value = contribution();
+    expect(Object.hasOwn(value, 'panel')).toBe(false);
+    expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
+    expect(admit(exportsOf(withPanel(undefined))).ok).toBe(true);
+  });
+
+  it.each([
+    ['a panel that is not an object', 3, 'panel is not an object'],
+    ['a panel that is a list', [], 'panel is not an object'],
+    ['tools that are a list', { tools: [] }, 'panel.tools is not an object'],
+    ['a tool that is not an object', { tools: { metrics: 3 } }, 'panel.tools.metrics is not an object'],
+    ['a tool with no label', { tools: { metrics: tool({ label: ' ' }) } }, 'panel.tools.metrics.label is not a non-empty string'],
+    ['a tool with no glyph', { tools: { metrics: tool({ icon: undefined }) } }, 'panel.tools.metrics.icon is not a glyph name'],
+    ['a tool whose place is not finite', { tools: { metrics: tool({ order: Number.NaN }) } }, 'panel.tools.metrics.order is not a finite number'],
+    ['a tool with no body', { tools: { metrics: tool({ Body: undefined }) } }, 'panel.tools.metrics.Body is not a function'],
+    ['a tool whose card is not a function', { tools: { metrics: tool({ card: {} }) } }, 'panel.tools.metrics.card is not a function'],
+    ['a tool whose way to start a session has no words', { tools: { metrics: tool({ newSession: { open: () => undefined } }) } }, 'panel.tools.metrics.newSession needs a label and an open function'],
+    ['a tool whose way to start a session cannot open', { tools: { metrics: tool({ newSession: { label: 'New' } }) } }, 'panel.tools.metrics.newSession needs a label and an open function'],
+    ['a tool id with a colon (the host makes the id the panel knows it by, with the plugin before it)', { tools: { 'a:b': tool() } }, 'panel.tools.a:b is not a tool id: no colon, not empty'],
+    ['sessions that are a list', { sessions: [] }, 'panel.sessions is not an object'],
+    ['a session kind that is not an object', { sessions: { logs: 3 } }, 'panel.sessions.logs is not an object'],
+    ['a session card that is not a function', { sessions: { logs: { card: 'x' } } }, 'panel.sessions.logs.card is not a function'],
+  ])('refuses %s', (_name, panel, expected) => {
+    expect(problemsOf(withPanel(panel))).toContain(expected);
+  });
+
+  it('allows a plugin two tools of its own, and refuses a third (ch16 S114: a plugin-specific tool needs the owner\'s approval and stays under the limit of two; the mock\'s harness: "panelTools limit is 2")', () => {
+    expect(problemsOf(withPanel({ tools: { a: tool(), b: tool() } }))).toEqual([]);
+    expect(problemsOf(withPanel({ tools: { a: tool(), b: tool(), c: tool() } }))).toContain('panel.tools has 3 tools: a plugin brings at most 2');
+  });
+});

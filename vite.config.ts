@@ -52,7 +52,7 @@ export default defineConfig({
     fsModuleCachePath: testCaches.fsModuleCachePath,
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./ui/test-setup.ts'],
+    setupFiles: ['./ui/test-setup.ts', './ui-next/test-setup.ts'],
     css: false,
     include: [
       'ui/**/*.{spec,test}.{ts,tsx}',

@@ -1,0 +1,275 @@
+/* The panel's header (ch16 S113; the mock's shell-widgets.css, "tool header", and shell-tabs.css, the face of a tab). 41 px, a 12 px start and 8 px end inset, 8 px between its parts:
+   the tool tabs, a 1 x 16 px separator, the session tabs with the `+`, and the trailing actions. Host composition, so every rule sits in ov.shell. The 41, 28, 26 and 24 px are the
+   chapter's own metrics. */
+@layer ov.shell {
+  .header {
+    display: flex;
+    flex: 0 0 41px;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 41px;
+    min-block-size: 41px;
+    padding-inline: var(--ov-spacing-12) var(--ov-spacing-8);
+    color: var(--ov-fg);
+  }
+
+  /* Both strips scroll sideways only, with no bar. */
+  .toolTabs,
+  .sessionList {
+    position: relative;
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .toolTabs::-webkit-scrollbar,
+  .sessionList::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* A tool tab: a 28 px capsule, radius 6, the selected one filled like a document tab; 12 px to its text, a 16 px glyph and a 4 px gap. */
+  .toolTab {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    min-block-size: 28px;
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-12);
+    border: 1px solid transparent;
+    border-radius: var(--ov-radius-tab);
+    background-color: transparent;
+    color: var(--ov-fg);
+    font: inherit;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .toolTab:not([aria-selected='true']):hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .toolTab[aria-selected='true'] {
+    border-color: var(--ov-tab-border);
+    background-color: var(--ov-tab-bg);
+  }
+
+  .toolTab:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .toolTab > svg {
+    color: var(--ov-icon);
+  }
+
+  .toolLabel {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .separator {
+    flex: 0 0 1px;
+    inline-size: 1px;
+    block-size: 16px;
+    background-color: var(--ov-border-control);
+  }
+
+  /* The session tabs and the `+`: the strip takes what the tool tabs and the actions leave, and a face keeps its width (SCT1: a strip squeezed to a minimum width is illegible), so it scrolls. */
+  .sessions {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 96px;
+  }
+
+  /* A session tab has the anatomy of a closable document tab: a capsule 28 px high (a 1 px border, radius 6), the button inside it 26 px with a 7 px inset, then the close control, which is always laid
+     out so a tab never moves when it is revealed. A tab is as wide as its title up to 208 px, the width of a document tab; past that the head gives way. */
+  .sessionItem {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    box-sizing: border-box;
+    max-inline-size: 208px;
+    min-block-size: 28px;
+    border: 1px solid transparent;
+    border-radius: var(--ov-radius-tab);
+    color: var(--ov-fg);
+    user-select: none;
+  }
+
+  .sessionItem:not([data-selected]):hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .sessionItem[data-selected] {
+    border-color: var(--ov-tab-border);
+    background-color: var(--ov-tab-bg);
+  }
+
+  .sessionTab {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 26px;
+    margin: 0;
+    padding-block: var(--ov-spacing-4);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the face is the capsule's 1 px border and 7 px of padding (the mock's `padding-inline: 7px 0`): the lead sits 8 px in, where a document tab's does; the scale has no 7 */
+    padding-inline: calc(var(--ov-spacing-8) - 1px) 0;
+    border: 0;
+    border-start-start-radius: var(--ov-radius-tab);
+    border-end-start-radius: var(--ov-radius-tab);
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .sessionTab:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* ONE 16 px lead slot: the tool's glyph, or the state while the session is not steady. */
+  .lead {
+    display: grid;
+    flex: 0 0 16px;
+    place-items: center;
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--ov-icon);
+  }
+
+  .lead[data-state='failed'] {
+    color: var(--ov-error-fg);
+  }
+
+  .lead[data-state='starting'] > svg {
+    animation: spin 1.2s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lead[data-state='starting'] > svg {
+      animation: none;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* The name in two parts: an unbroken head with an end ellipsis, and a tail that keeps its end (a generated suffix, the ordinal), then the muted scope, which gives way first. Nothing is measured. */
+  .sessionLabel {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    overflow: hidden;
+    white-space: pre;
+  }
+
+  .sessionTitle {
+    display: flex;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  .sessionHead {
+    flex: 0 1 auto;
+    min-inline-size: min(100%, 3ch);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sessionTail {
+    flex: 0 0 auto;
+  }
+
+  .sessionScope {
+    flex: 0 100000 auto;
+    min-inline-size: 5ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sessionClose {
+    display: grid;
+    flex: 0 0 24px;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 24px;
+    block-size: 24px;
+    margin-block: 0;
+    margin-inline: var(--ov-spacing-4) var(--ov-spacing-2);
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg);
+    opacity: 0;
+    cursor: default;
+  }
+
+  .sessionItem:is([data-selected], :hover, :focus-within) > .sessionClose {
+    opacity: 1;
+  }
+
+  .sessionClose:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .sessionClose:active {
+    background-color: var(--ov-pressed);
+  }
+
+  .add {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  /* The trailing actions show on hover and focus within, their width reserved; the header is the target (ch03 71). */
+  .actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    margin-inline-start: auto;
+  }
+
+  .actions button {
+    opacity: 0;
+  }
+
+  .header:is(:hover, :focus-within) .actions button {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .actions button {
+      opacity: 1;
+    }
+  }
+}

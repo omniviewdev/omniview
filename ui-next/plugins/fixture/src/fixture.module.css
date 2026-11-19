@@ -11,3 +11,14 @@
   font-family: var(--ov-font-code);
   font-size: var(--ov-fs-12);
 }
+
+/* A stream's body in the bottom panel: two lines of text, centred in the room the panel gives it. */
+.stream {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ov-spacing-4);
+  min-inline-size: 0;
+}

@@ -9,6 +9,9 @@
 //   e  a bundle of the old shell is refused before it runs (the global it sets is never set); a plugin with no bundle is a named state
 //   g  the rail (S2a): one entry for each plugin that contributes (the healthy plugin and its copy; the refused ones have none), in the order each declares; choosing the other entry shows its
 //      sidebar and closes no tab, activating a tab makes its plugin current; closing the last tab leaves the empty window (decision A17), which opens nothing by itself and offers the plugins to open
+//   h  the bottom panel (P1a): the tool each plugin that contributes brings, "Streams" and "Streams copy", is drawn by the host's strip over the plugin's own body; the status bar's toggle opens the panel,
+//      the tool's `+` opens its three streams (running, ended, failed), a hidden stream keeps running while another is on screen and while the panel is hidden, and the card of a stream links to its item,
+//      which opens in a tab of the window
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers
 import assert from 'node:assert/strict';
@@ -311,6 +314,59 @@ async function checkRail(page, base, engine) {
   assert.deepEqual(errors, [], `${engine}: the rail and the empty window wrote no page error`);
 }
 
+/**
+ * h. The bottom panel, in a page of its own: each plugin that contributes brings a tool (`fixture-a-ok`: "Streams", the copy: "Streams copy"), which the host draws as a tab of its strip over the plugin's
+ * body, and sessions the plugin opens through the tool's `+`. What is checked is the seam: a tool and its body from a bundle built outside the host, a card the plugin describes, a route the host opens.
+ */
+async function checkPanel(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await open(page, base);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  const toggle = page.getByRole('button', { name: 'Panel', exact: true });
+  const region = page.locator('[data-shell-region="panel"]');
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'false', `${engine}: the panel starts closed`);
+  assert.equal(await region.isVisible(), false, `${engine}: and draws nothing`);
+  await toggle.click();
+  await region.waitFor({ state: 'visible' });
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${engine}: the toggle is pressed once it is open`);
+  // One tool for each plugin that contributes, in the plugin's own words, and the plugin that came first is on screen.
+  const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
+  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Streams', 'Streams copy'], `${engine}: the strip draws the tool of each plugin that contributes`);
+  assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the first is on screen`);
+  await page.getByText('No sessions').waitFor();
+  // The tool's `+` starts a stream; three in turn: running, ended and failed.
+  const add = page.getByRole('button', { name: 'New stream' }).first();
+  for (let opened = 0; opened < 3; opened += 1) await add.click();
+  const sessions = page.getByRole('tablist', { name: 'Streams sessions' }).getByRole('tab');
+  await page.waitForFunction(() => document.querySelectorAll('[data-shell-part="sessionTab"]').length === 3);
+  assert.deepEqual(await sessions.evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))), ['stream-alpha · north-yard', 'stream-beta · north-yard, ended', 'stream-gamma · south-yard, failed'], `${engine}: the three sessions, with the state of each in its name`);
+  assert.equal(await sessions.last().getAttribute('aria-selected'), 'true', `${engine}: the last one opened is on screen`);
+  await page.locator('[data-fixture="stream"][data-visible="true"]').filter({ hasText: 'stream-gamma · failed' }).waitFor();
+  // The plugin's body of the running stream counts lines while it is not on screen: a session body is kept while another is shown, and while the panel is hidden.
+  const lines = () => page.evaluate(() => Number(document.querySelector('[data-fixture="stream"][data-session="stream-alpha"]')?.getAttribute('data-lines') ?? -1));
+  const first = await lines();
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.ok((await lines()) > first, `${engine}: the running stream kept counting while another was on screen (${first} lines)`);
+  assert.equal(await page.locator('[data-fixture="stream"][data-session="stream-alpha"]').evaluate((element) => element.closest('[hidden]') !== null), true, `${engine}: and is not drawn`);
+  // The card the plugin describes: its item as a link, the state in its words and the reason of a failure; its link opens the item's page in a tab, as every link of the window does.
+  await sessions.last().hover();
+  const card = page.locator('[popover]:popover-open');
+  await card.waitFor();
+  assert.match(await card.innerText(), /Stream[\s\S]*Item ghost-service[\s\S]*Source\s+south-yard[\s\S]*State\s+Failed[\s\S]*The source did not answer\. Check the source, then open the stream again\./, `${engine}: the card says what the plugin says`);
+  await card.getByRole('link', { name: 'Item ghost-service' }).click();
+  await page.getByRole('tab', { name: /ghost-service · Item/ }).waitFor();
+  await page.getByRole('heading', { level: 1, name: 'ghost-service' }).waitFor();
+  assert.equal(await region.isVisible(), true, `${engine}: opening an item leaves the panel as it was`);
+  // Hiding the panel draws nothing and unmounts nothing: the running stream goes on.
+  const hiddenAt = await lines();
+  await toggle.click();
+  await region.waitFor({ state: 'hidden' });
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.ok((await lines()) > hiddenAt, `${engine}: the running stream kept counting while the panel was hidden (${hiddenAt} lines)`);
+  assert.deepEqual(errors, [], `${engine}: the panel wrote no page error`);
+}
+
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
 let host;
 try {
@@ -329,7 +385,8 @@ try {
       await checkHealthy(page, host.base, name);
       await checkRefusals(page, host.base, name);
       await checkRail(await browser.newPage({ viewport: { width: 1440, height: 900 } }), host.base, name);
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window`);
+      await checkPanel(await browser.newPage({ viewport: { width: 1440, height: 900 } }), host.base, name);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel`);
     } finally {
       await browser.close();
     }

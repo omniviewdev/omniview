@@ -131,6 +131,21 @@ jobs:
       - name: Probe the rail against the pinned mock reference
         run: REPORT="$RUNNER_TEMP/rail-probe.json" node ui-next/shell/probes/rail-probe.mjs
 
+      # The bottom panel (P1a): the region, the splitter, the tool strip, the session tabs, the session card and the status bar's toggle against the pinned mock reference
+      # (ui-next/shell/probes/mock-panel.json, measured from the mock's own panel by mock-panel-measure.mjs), what opening and resizing the panel move (the frame's height, nothing else), the paint of its parts,
+      # the keyboard path and the splitter's keys with real key presses, axe, what a drag costs (no write at the document root, no commit while the pointer moves), a plugin's tool that registers late, and a
+      # session body that keeps running while it is hidden, at 1440 x 900 and 1280 x 800. It builds its own fixtures, so it does not read PROBE_DIST.
+      - name: Probe the bottom panel against the pinned mock reference
+        run: REPORT="$RUNNER_TEMP/panel-probe.json" node ui-next/shell/probes/panel-probe.mjs
+
+      # The negative controls of that probe: each perturbs one measured value in the page (the region's height, the gap between a session's glyph and its name, the toggle's place, a tool tab's padding, the
+      # sidebar's place when the panel opens, a write at the document root during a drag) and passes only when the probe sees it. A probe that cannot fail proves nothing.
+      - name: Probe that the panel probe sees a panel that is wrong
+        run: |
+          for control in panel-height session-gap toggle tab-padding shift root-write; do
+            NEGATIVE_CONTROL="$control" node ui-next/shell/probes/panel-probe.mjs
+          done
+
       # The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
       # with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
       - name: Probe the detail page against the pinned mock reference

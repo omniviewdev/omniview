@@ -56,10 +56,12 @@ describe('the generated token files', () => {
     expect(css).toContain('--ov-row-height: 22px;');
   });
 
-  it('carry the tooltip\'s shadow, the one elevation a part draws so far, the same in every theme', async () => {
+  it('carry the two elevations a part draws so far, the tooltip\'s and the popup\'s, the same in every theme', async () => {
     const css = await generated('src/generated/tokens.css');
     expect(css).toContain('--ov-shadow-tooltip: 0 2px 8px #0006;');
+    expect(css).toContain('--ov-shadow-popup: 0 8px 24px #00000040;');
     expect(css.match(/--ov-shadow-tooltip:/g)).toHaveLength(1);
-    expect(TOKEN_NAMES).toContain('--ov-shadow-tooltip');
+    expect(css.match(/--ov-shadow-popup:/g)).toHaveLength(1);
+    expect(TOKEN_NAMES.filter((name) => name.startsWith('--ov-shadow-'))).toEqual(['--ov-shadow-tooltip', '--ov-shadow-popup']);
   });
 });

@@ -1,13 +1,31 @@
-import { LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
-import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { ErrorBody, LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
+import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { DetailPage, ListPage } from '../../page';
-import { createTabsStore, dispositionOf, platformOf, Shell, type Contributions, type ModifierEvent, type PageTab, type Route, type ShellRail, type ShellRegistration, type ShellSidebar, type TabsStore } from '../../shell';
+import {
+  createPanelStore,
+  createTabsStore,
+  dispositionOf,
+  platformOf,
+  Shell,
+  type Contributions,
+  type ModifierEvent,
+  type PageTab,
+  type PanelBindings,
+  type PanelSession,
+  type PanelStore,
+  type Route,
+  type ShellRail,
+  type ShellRegistration,
+  type ShellSidebar,
+  type TabsStore,
+} from '../../shell';
 import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, SidebarNodeV1 } from '../contract/v1';
 import { ContributionBoundary } from './ContributionBoundary';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
+import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -40,6 +58,8 @@ export type PluginHostProps = {
   readonly onRetryInventory: () => void;
   /** Closes the window, where the app has one of its own: what Command W does with no tab open, on a Mac. Absent in a browser tab. */
   readonly onCloseWindow?: (() => void) | undefined;
+  /** The window's bottom panel: its model. Default: a new one, which lives as long as the window does. A window that saves its session passes the one it restored. */
+  readonly panel?: PanelStore | undefined;
 };
 
 type Host = {
@@ -48,6 +68,8 @@ type Host = {
   /** The route each plugin was last shown at, by plugin: where its sidebar picks up when the rail shows it while another plugin's tab is on screen. */
   readonly routes: Published<Route>;
   readonly tabs: TabsStore;
+  /** The window's bottom panel. Its tools and sessions come from the plugins that are ready (`panel.ts`). */
+  readonly panel: PanelStore;
   readonly contributions: Contributions;
   /** The request at the address the window last opened, by key: a link opens once, however often the plugins change. */
   readonly opened: Published<string>;
@@ -56,7 +78,7 @@ type Host = {
 };
 
 /** The tab model of a window, over its plugins. It lives as long as the window does. */
-function createHost(plugins: PluginSource, link: HostRoute): Host {
+function createHost(plugins: PluginSource, link: HostRoute, panel: PanelStore | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const hold = { held: link.plugin !== undefined };
@@ -66,6 +88,7 @@ function createHost(plugins: PluginSource, link: HostRoute): Host {
     nodes,
     routes: new Published<Route>(),
     tabs: createTabsStore({ contributions }),
+    panel: panel ?? createPanelStore(),
     contributions,
     opened: new Published<string>(),
     release: () => {
@@ -337,9 +360,27 @@ function NoNodes({ plugin, nodes }: { readonly plugin: string; readonly nodes: P
   return null;
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow }: PluginHostProps) {
+/**
+ * The body of a session of a tool a plugin brought: the plugin's own component, in the tool's own error boundary, so a body that throws loses itself and no other (and no page, no frame). A
+ * session in a tool of the host has no body here: the host's own tools draw their own (none is built yet). The host words the failure; the plugin's words go to the log.
+ */
+function panelBodyOf(entries: readonly PluginEntry[], session: PanelSession, visible: boolean): ReactElement | null {
+  const found = toolOf(entries, session.tool);
+  if (found === undefined) {
+    return null;
+  }
+
+  const { Body } = found.tool;
+  return (
+    <ContributionBoundary name={`${found.plugin} panel ${found.local}`} fallback={(retry) => <ErrorBody title="Couldn't show this session" onRetry={retry} />}>
+      <Body session={sessionV1(session)} visible={visible} />
+    </ContributionBoundary>
+  );
+}
+
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, link));
+  const [host] = useState(() => createHost(plugins, link, given));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin, so the window does not open its home page over it; each distinct link opens once. Where it stands is the host's (an external store), not state of
   // this component: opening it is the effect's whole job.
@@ -446,6 +487,35 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
   };
 
+  // The panel. What each plugin that is ready brings to it is registered in a layout effect, in the commit the plugin turned ready in, so a tool does not arrive a frame after the interface it
+  // belongs to; a plugin that goes away takes its tools and sessions with it in the same transaction (PO1).
+  const { panel } = host;
+  useLayoutEffect(() => {
+    panel.syncPlugins(panelPluginsOf(entries));
+  }, [panel, entries]);
+  const bindings = useMemo<PanelBindings>(
+    () => ({
+      store: panel,
+      renderBody: (session, visible) => panelBodyOf(entries, session, visible),
+      cardOf: (session) => cardOfSession(entries, session),
+      newSessionOf: (toolId) =>
+        newSessionOf(entries, toolId, (input) => {
+          const opened = panel.openSession(input);
+          if (opened.status === 'refused') {
+            console.warn(`[panel] a session was refused: ${opened.message}`);
+          }
+        }),
+      linkOf: (route) => ({
+        href: routeAddressOf(route),
+        open: (activation) => {
+          // The model's answer is not the card's to report: a refusal changes nothing, and the card closes on the click either way.
+          tabs.open({ route }, { how: dispositionOf(activation, { platform }), source: 'panel' });
+        },
+      }),
+    }),
+    [panel, entries, tabs, platform],
+  );
+
   const sidebar = shown?.phase === 'ready' ? shown.contribution.sidebar : undefined;
   return (
     <>
@@ -463,6 +533,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         onSelectRail={setChosen}
         onNewTab={newTab}
         onCloseWindow={onCloseWindow}
+        panel={bindings}
       />
     </>
   );

@@ -29,6 +29,7 @@
     --ov-radius-island: 10px;
     --ov-control-height: 28px;
     --ov-shadow-tooltip: 0 2px 8px #0006;
+    --ov-shadow-popup: 0 8px 24px #00000040;
   }
 
   /* Line heights fall on whole pixels wherever round() exists, so rows stay on the pixel grid at every text size. */
