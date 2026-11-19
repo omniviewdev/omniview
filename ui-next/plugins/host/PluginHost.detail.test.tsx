@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContextV1, DetailPageV1, DetailSource, DetailView, ListPageV1 } from '../contract/v1';
-import { acme, answering, widgetPage, WIDGETS, type Widget } from '../testing';
+import { acme, answering, startedOn, widgetPage, WIDGETS, type Widget } from '../testing';
 import { describeDetail } from './contributions';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
@@ -93,7 +93,7 @@ const entries: readonly PluginEntry[] = [ready()];
 const plugins = { getSnapshot: () => entries, subscribe: () => () => undefined };
 
 function mount(over: Partial<PluginHostProps> = {}) {
-  const props: PluginHostProps = { plugins, inventory: 'ready', link: NO_ROUTE, onRetry: vi.fn(), onRetryInventory: vi.fn(), ...over };
+  const props: PluginHostProps = { plugins, inventory: 'ready', link: NO_ROUTE, onRetry: vi.fn(), onRetryInventory: vi.fn(), session: over.link === undefined ? startedOn(entries) : undefined, ...over };
   return { ...render(<PluginHost {...props} />), user: userEvent.setup() };
 }
 

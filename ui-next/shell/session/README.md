@@ -1,0 +1,38 @@
+# `ui-next/shell/session/`: the window's saved session
+
+What a window keeps across a restart, and how it is read back. Plain TypeScript over the two models (`../core/tabs`, `../core/panel`) and the shell's saver (`../core/saver.ts`): no React, no runtime (the host's binding is handed in), no other tree (`purity.test.ts` reads every source file). Tests first: `document.test.ts`, `session.test.ts`, `window.test.ts`, `lifecycle.test.ts`. The host that uses it is `ui-next/plugins/host/` (`PluginHost`, `PluginHostScreen`); the decisions and the evidence are in `docs/ui-next/status/S3a.md`.
+
+## What is saved
+
+One document, written one burst at a time (the saver: 400 ms after the last change, once for ten changes, nothing for a change that comes back to what was saved):
+
+| Part | What | Who owns it |
+| --- | --- | --- |
+| `version` | `SESSION_VERSION`, first in the document | this module |
+| `tabs` | the tabs in strip order and the one on screen: route, face, key, pinned, preview, a window of ten history entries | the tab model (`serialise`, its own `version` and `migrate`) |
+| `rail` | the plugin whose sidebar the rail shows, as the user chose it, or `null` | this module (`RailChoice`) |
+| `panel` | open, height, the tool, the session of each tool, and the identity of each session | the panel model (`serialise`, its own `version` and `migrate`) |
+
+**Deliberately not saved**, and why: scroll positions, the selection and the search of a page (the model's rule: a page's state is plain data kept for the window's life and never saved; a saved offset would be wrong after the data changed, and would race the page's first load); the open groups of a sidebar's tree; the list of closed tabs (Reopen closed tab) and a tab's unsaved flag and attention cue (they mean "now"); the output and the state of a panel session (a restored session comes back `ended`, and never running: nothing is streaming into it); which pages are mounted (only the tab on screen is, and the others when they are shown); the window's size and place (the host's Go side keeps those for windows other than the main one).
+
+## Where it is kept
+
+In the **host's window service** (`backend/window`, bound as `WindowClient` in `@omniviewdev/runtime/api`): `GetState(name)` returns a window's slots, `SaveState(name, slot, json)` stores one and persists them to `windows.json` in the instance's state root (atomically, `0600`, flushed at shutdown). That is the store the old shell uses for its `pages` and `drawer` slots, so it survives a packaged restart natively, is one set of slots for each window, and is isolated for each channel because the state root is (`feature-ui-next` has its own). The session is the slot `session` (`SESSION_SLOT`); the old shell's slots are not read. `windowStorage` maps the three calls the session needs (`read`, `write`, `keep`) onto it. No Go was added.
+
+Not `localStorage`: it is keyed by the page's origin, which every window of every instance of the app shares, so a key per window and per channel would have to be invented, and the state root's isolation would not apply; it is the web view's to write when it likes ([INFERENCE] a quit may find the last writes still pending), where the window service is the host's own and flushes at shutdown; and it is not in the state root the host backs up and inspects. The old shell keeps no window state there either.
+
+## Loading, restoring, saving
+
+`loadSession(storage)` reads before the window draws and never rejects, so the window always starts. `restore({ contributions })` gives the tab model's and the panel model's states and the rail's choice (a part there is nothing for is `undefined`: the model starts as with no session). `attach({ tabs, panel, rail })` starts the saving and returns the function that stops it after writing what is pending; the page's `pagehide` and `visibilitychange` to hidden write at once (a window that hides when it closes is hidden, not unloaded).
+
+- **No session**: the window is empty (decision A17: it opens no page by itself): the home content, the plugins that can be opened, and the rail and sidebar of the first plugin of the declared order. A window saved with no tab comes back the same way.
+- **A tab whose plugin has not loaded**: restored with the face it was saved with (a `provisional` description, the stand-in the host makes for a loading plugin, never takes a face a tab has), its page the kit's loading state while the list of plugins is on its way, and the plugin's page when it registers. When the list was read and the plugin is not in it, the page says "This plugin is not installed, or is turned off." and the tab stays: the plugin may come back, and the tab is the user's.
+- **A panel session** comes back `ended`, with the panel model's cause, and the panel does not open because sessions were restored (S116: a restored terminal must not cover the page); a panel that held no session comes back as it was.
+- **Quarantine.** A text that is not JSON, not a document, has no whole-number version, was saved by a NEWER version, or has a part (tabs, panel) that cannot be read is kept aside, whole, as the slot `session.invalid.<time>` (a record: the text exactly, when, why) and the window starts empty (a part that can be read is used) with a note on the console. It is never deleted and never overwritten: the record has its own name, and the window then replaces `session` with a session of this version so the next start does not find it again. When it could not be kept aside, nothing is written, ever. A session that is partly damaged is repaired, not discarded: the tabs that cannot be read are dropped alone and a note says what.
+- **A place that cannot be read** (a window that cannot name itself, a service that fails, one that does not answer in `READ_DEADLINE_MS`): the window starts empty, says so, and **saves nothing**: what the place holds is not known, and a write would replace it.
+
+A write that fails is said on the console and left behind; the next change writes the then-current document (writes are one at a time and in order). A change that comes back to what a failed write was meant to save is not written again.
+
+## The version
+
+`SESSION_VERSION` is the wrapper's. A change in the tab or panel model's part is migrated in that part (`MIGRATIONS` of each model); a change of the wrapper (a new field, a renamed one) is a step in `MIGRATIONS` here, which `readSession` applies one version at a time (the tab model's `migrate`, with the steps and the current version injected). `MIGRATIONS` is empty at version 1.

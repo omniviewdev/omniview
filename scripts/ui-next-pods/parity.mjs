@@ -71,10 +71,43 @@ export async function launchBrowser() {
 // fixture to be mounted at once. A reading that holds fewer rows than the table says it has is reported, not compared.
 const WINDOW = { width: 1440, height: 4000 };
 
-// The window as the native app opens it: `/`, no `?screen=`, no hash, no connection. What it shows is the plugin's page, named by the plugin's contribution.
-export async function openPods(browser, baseURL) {
+const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
+
+// Nothing saved for the host's main window: what a first run of the app finds. Since S3a the host keeps the window's session (its tabs, the rail's choice, the panel) in its window service, and every page
+// the check opens is that one window: a page that a case left behind would be restored by the next, so each case starts from a first run. A page that was just closed may still have a write on its way
+// (the saver's quiet time, then the call): it lands first, or it would replace what is forgotten here. (The slot holds JSON, and JSON `null` is no session.)
+async function forgetSession(baseURL) {
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  const response = await fetch(new URL('/wails/runtime', baseURL), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'pods-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `pods-forget-${String(Date.now())}`, methodName: `${WINDOW_SERVICE}.SaveState`, args: ['main', 'session', 'null'] } }),
+  });
+  if (!response.ok) {
+    throw new Error(`the window's saved session could not be forgotten: ${String(response.status)} ${await response.text()}`);
+  }
+}
+
+// The window as the native app opens it for a first run: `/`, no `?screen=`, no hash, no connection, nothing saved. It is the EMPTY window (decision A17, S3a: no page opens by itself): the plugins that can
+// be opened are listed, a plugin that did not load among them, and the rail beside them has an entry for each.
+export async function openWindow(browser, baseURL) {
+  await forgetSession(baseURL);
   const page = await browser.newPage({ viewport: WINDOW });
   await page.goto(new URL('/', baseURL).href);
+  return page;
+}
+
+// The plugin's page, opened the way a person opens it from that window: the plugin's row in the list of plugins that can be opened. It is the same in every mode of the check: a plugin installed without its
+// bundle is in the list too ("Did not load") and its row opens the page that names the failure, and a host without the plugin has no row, so the window stays at its own list of plugins (the page the
+// check reads and finds wanting). What the page shows is the plugin's page, named by the plugin's contribution.
+export async function openPods(browser, baseURL) {
+  const page = await openWindow(browser, baseURL);
+  const row = page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ });
+  try {
+    await row.click({ timeout: 20_000 });
+  } catch {
+    // No row: the host has no such plugin. The window's own screen says so, and that is what the check reads.
+  }
   return page;
 }
 

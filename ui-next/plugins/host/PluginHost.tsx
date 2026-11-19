@@ -3,16 +3,19 @@ import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, ty
 import { DetailPage, ListPage } from '../../page';
 import {
   createPanelStore,
+  createRailChoice,
   createTabsStore,
   dispositionOf,
   platformOf,
   Shell,
   type Contributions,
+  type LoadedSession,
   type ModifierEvent,
   type PageTab,
   type PanelBindings,
   type PanelSession,
   type PanelStore,
+  type RailChoice,
   type Route,
   type ShellRail,
   type ShellRegistration,
@@ -29,7 +32,7 @@ import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1,
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
-import { currentRail, railOf, type RailEntry } from './rail';
+import { currentRail, failedOf, railOf, type RailEntry } from './rail';
 import { NO_PARAMS, type HostRoute } from './route';
 
 // The host of contributed pages: given what each installed plugin's interface came to (`PluginStore`), it drives the shell's tab model with them. A tab is a route in a plugin; the model asks
@@ -58,8 +61,16 @@ export type PluginHostProps = {
   readonly onRetryInventory: () => void;
   /** Closes the window, where the app has one of its own: what Command W does with no tab open, on a Mac. Absent in a browser tab. */
   readonly onCloseWindow?: (() => void) | undefined;
-  /** The window's bottom panel: its model. Default: a new one, which lives as long as the window does. A window that saves its session passes the one it restored. */
+  /**
+   * The window's bottom panel: its model. Default: the host makes one, from the panel the session saved, and it lives as long as the window does. One that is passed is the caller's as it stands:
+   * the session saves it and does not restore into it.
+   */
   readonly panel?: PanelStore | undefined;
+  /**
+   * The window's saved session, read before the window draws (`loadSession`): its tabs, the rail's choice and the panel come back, and it is saved from then on, one burst after each change and when
+   * the window is hidden. Absent: the empty window, which restores nothing and saves nothing. The window opens no page by itself in either case (decision A17); a session is what puts one there.
+   */
+  readonly session?: LoadedSession | undefined;
 };
 
 type Host = {
@@ -70,30 +81,31 @@ type Host = {
   readonly tabs: TabsStore;
   /** The window's bottom panel. Its tools and sessions come from the plugins that are ready (`panel.ts`). */
   readonly panel: PanelStore;
+  /** The plugin the user chose on the rail, as the session saves it. The component's own state is the source; this is what the session listens to. */
+  readonly rail: RailChoice;
   readonly contributions: Contributions;
   /** The request at the address the window last opened, by key: a link opens once, however often the plugins change. */
   readonly opened: Published<string>;
-  /** Lets the window open its home page: the link at load found its plugin. */
-  readonly release: () => void;
 };
 
-/** The tab model of a window, over its plugins. It lives as long as the window does. */
-function createHost(plugins: PluginSource, link: HostRoute, panel: PanelStore | undefined): Host {
+/**
+ * The tab model, the panel and the rail's choice of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has nothing for starts
+ * as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
+ */
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
-  const hold = { held: link.plugin !== undefined };
-  const contributions = createContributions({ plugins, frames, holdHome: () => hold.held });
+  const contributions = createContributions({ plugins, frames });
+  const restored = session?.restore({ contributions });
   return {
     frames,
     nodes,
     routes: new Published<Route>(),
-    tabs: createTabsStore({ contributions }),
-    panel: panel ?? createPanelStore(),
+    tabs: createTabsStore({ contributions, initial: restored?.tabs }),
+    panel: panel ?? createPanelStore({ initial: restored?.panel }),
+    rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    release: () => {
-      hold.held = false;
-    },
   };
 }
 
@@ -103,6 +115,9 @@ function activeRoute(tabs: TabsStore): Route | undefined {
   return state.active === null ? undefined : tabs.selectors.location(state, state.active)?.route;
 }
 
+/** What the rail follows: the tab on screen and its plugin, so the user's choice stands until either changes. Nothing while there is no tab. */
+const followOf = (active: string | null, route: Route | undefined): string | undefined => (active === null || route === undefined ? undefined : `${active}\u0000${route.plugin}`);
+
 /** The sidebar as the shell reads it: the contribution's words, the nodes that open a page, and the page on screen as current, when it is this plugin's. */
 function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[], current: string | undefined): ShellSidebar {
   const { label, title } = contribution.sidebar;
@@ -111,13 +126,19 @@ function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[]
 
 type FrameInputs = {
   readonly entries: readonly PluginEntry[];
-  /** The window is waiting for something before it has a first tab: the inventory, a plugin's interface, or the plugin a link names. */
+  /** The window is waiting for a plugin: the inventory, a plugin's interface, or the plugin a link names. */
   readonly coming: boolean;
+  /** A link at load is waiting for its plugin: a tab is on its way. */
+  readonly waiting: boolean;
+  /** The plugins have not all settled yet, once: the rail and the sidebar are not chosen, and their regions are reserved empty. */
+  readonly held: boolean;
   /** The route of the tab on screen. */
   readonly route: Route | undefined;
   readonly frame: FrameV1 | undefined;
   /** The plugins that contribute, in the order of the rail, and the one whose sidebar shows (none while the window is coming and has no tab: there is nothing to anchor it to yet). */
   readonly rail: readonly RailEntry[];
+  /** The plugins that did not load: entries of the rail after those, with no sidebar. */
+  readonly failed: readonly RailEntry[];
   readonly railPlugin: string | undefined;
   /** What the sidebar's data hook of the plugin on the rail answered: nothing until it does, and the contribution's skeleton stands. */
   readonly nodes: readonly SidebarNodeV1[] | null | undefined;
@@ -127,12 +148,13 @@ type FrameInputs = {
 const pageOf = (contribution: ContributionV1, route: Route): string => (Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home);
 
 /**
- * What the shell draws around the tab on screen. The island, the lane and the landmarks follow the tab on screen: while its plugin is loading (or the window has no tab yet and one is on
- * its way) the frame is pending, its regions reserved, so the plugin's frame lands in the rectangles they hold; a plugin that did not load is drawn bare. The rail and the sidebar follow
- * the rail: every plugin that contributes has an entry, and the sidebar is the current entry's, with the page on screen current in it when it is that plugin's. With no plugin that
- * contributes there is nothing to reserve for and nothing to show: the frame is bare.
+ * What the shell draws around the tab on screen. The island, the lane and the landmarks follow the tab on screen: while its plugin is loading (or a tab is on its way, from a link, or from a
+ * session whose plugin is not known yet) the frame is pending, its regions reserved, so the plugin's frame lands in the rectangles they hold; a plugin that did not load is drawn bare. The rail
+ * and the sidebar follow the rail: every plugin that contributes has an entry, and the sidebar is the current entry's, with the page on screen current in it when it is that plugin's. Until every
+ * plugin has settled once they are held (`held`): reserved empty, chosen when the last plugin has said what it is, so a plugin that registers late moves no entry that is drawn. With no plugin
+ * that contributes there is nothing to reserve for and nothing to show: the frame is bare.
  */
-function registrationOf({ entries, coming, route, frame, rail, railPlugin, nodes }: FrameInputs): ShellRegistration {
+function registrationOf({ entries, coming, waiting, held, route, frame, rail, failed, railPlugin, nodes }: FrameInputs): ShellRegistration {
   const active = route === undefined ? undefined : entries.find((candidate) => candidate.id === route.plugin);
   const loading = entries.find((candidate) => candidate.phase === 'loading');
 
@@ -148,13 +170,21 @@ function registrationOf({ entries, coming, route, frame, rail, railPlugin, nodes
     const current = route?.plugin === shown.id ? (onScreen?.kind === 'detail' ? onScreen.definition.list?.page : pageOf(contribution, route)) : undefined;
     return sidebarOf(contribution, nodes ?? contribution.sidebar.nodes, current);
   })();
-  const railData: ShellRail | undefined = railPlugin === undefined || rail.length === 0 ? undefined : { label: 'Plugins', entries: rail.map(({ id, label, icon }) => ({ id, label, icon })), current: railPlugin };
+  const listed = [...rail, ...failed];
+  const railData: ShellRail | undefined =
+    held || listed.length === 0
+      ? undefined
+      : { label: 'Plugins', entries: listed.map(({ id, label, icon, problem }) => ({ id, label, icon, ...(problem === undefined ? {} : { problem }) })), current: railPlugin };
 
+  // The rail and the sidebar wait for the plugins: their regions are reserved, and no lane is (it is the frame's, and a frame that is known says whether it has one).
+  const holding = held ? { held: true as const } : {};
   if (route === undefined || active === undefined) {
     // No tab, or a tab of a plugin the host does not have (its page says so). With no tab the window is loading, or it is empty: the empty window is a document (the home content), loading is
-    // a collection state (the kit's loading skeleton).
+    // a collection state (the kit's loading skeleton). A tab is on its way when a link waits for its plugin, or when the tab on screen is one whose plugin is not known yet: its frame is pending.
+    // The empty window has no lane, and no tab is coming for it: only its rail and its sidebar are reserved.
     const empty = route === undefined && !coming && entries.length > 0;
-    return { plugin: { name: loading?.name ?? 'Omniview' }, layout: empty ? 'document' : 'pane', ...(coming ? { pending: true as const } : {}), rail: railData, sidebar };
+    const pending = route === undefined ? waiting : coming;
+    return { plugin: { name: loading?.name ?? 'Omniview' }, layout: empty ? 'document' : 'pane', ...(pending ? { pending: true as const } : holding), rail: railData, sidebar };
   }
 
   if (active.phase === 'loading') {
@@ -162,13 +192,14 @@ function registrationOf({ entries, coming, route, frame, rail, railPlugin, nodes
   }
 
   if (active.phase === 'failed') {
-    return { plugin: { name: active.name }, layout: 'pane', rail: railData, sidebar };
+    return { plugin: { name: active.name }, layout: 'pane', rail: railData, sidebar, ...holding };
   }
 
   const { contribution } = active;
   const page = contribution.pages[pageOf(contribution, route)];
   return {
     plugin: { name: contribution.plugin.name },
+    ...holding,
     rail: railData,
     // A detail page is a document: the page scrolls, header and body together (ch16 S15). A list owns its own scrolling.
     layout: page?.kind === 'detail' ? 'document' : 'pane',
@@ -276,20 +307,37 @@ function DetailContribution({ entry, route, page: pageId, frames, tabs }: Detail
 type HostPageProps = {
   readonly entries: readonly PluginEntry[];
   readonly route: Route;
+  /** What the tab was saved with as the plugin's name (a tab restored from a session names a plugin the host may not have yet); empty when it says none. */
+  readonly pluginName: string;
   readonly frames: Published<FrameV1>;
   readonly tabs: TabsStore;
   readonly platform: 'mac' | 'other';
+  readonly inventory: PluginHostProps['inventory'];
   readonly onRetry: (id: string) => void;
+  readonly onRetryInventory: () => void;
 };
 
-/** One tab's page: the plugin's, in its own boundary and with its links, or the state the plugin is in. */
-function HostPage({ entries, route, frames, tabs, platform, onRetry }: HostPageProps) {
+/**
+ * One tab's page: the plugin's, in its own boundary and with its links, or the state the plugin is in. A tab whose plugin the host does not have is pending while the list of plugins is on its
+ * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
+ * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
+ */
+function HostPage({ entries, route, pluginName, frames, tabs, platform, inventory, onRetry, onRetryInventory }: HostPageProps) {
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
   const entry = entries.find((candidate) => candidate.id === route.plugin);
   if (entry === undefined) {
-    return <PlaceholderPage title={route.plugin} state={{ kind: 'failed', message: 'This plugin is not installed, or is turned off.' }} />;
+    const title = pluginName === '' ? route.plugin : pluginName;
+    if (inventory === 'loading') {
+      return <PlaceholderPage title={title} state={{ kind: 'loading' }} />;
+    }
+
+    if (inventory === 'failed') {
+      return <PlaceholderPage title={title} state={{ kind: 'failed', message: 'The list of installed plugins could not be read.', retry: onRetryInventory }} />;
+    }
+
+    return <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This plugin is not installed, or is turned off.' }} />;
   }
 
   if (entry.phase === 'loading') {
@@ -378,12 +426,11 @@ function panelBodyOf(entries: readonly PluginEntry[], session: PanelSession, vis
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, link, given));
+  const [host] = useState(() => createHost(plugins, given, session));
   const [platform] = useState(() => platformOf(navigator));
-  // A link at load waits for its plugin, so the window does not open its home page over it; each distinct link opens once. Where it stands is the host's (an external store), not state of
-  // this component: opening it is the effect's whole job.
+  // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, nodes, routes, opened } = host;
   const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection, link.params]);
   const waiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
@@ -394,9 +441,6 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
   useEffect(() => {
     if (link.plugin === undefined || linkKey === undefined) {
-      // No link, or it was cleared while an unknown one was waited for: nothing holds the window back from opening its home page.
-      host.release();
-      tabs.refresh();
       return;
     }
 
@@ -410,21 +454,25 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
 
     opened.publish('link', linkKey);
-    host.release();
+    // A link to a plugin the host does not have is refused by the model, and the window stays as it is: it opens no page of its own.
     tabs.open({ route: { plugin: link.plugin, contribution: link.page ?? HOME_PAGE, params: { ...link.params, connection: link.connection } } }, { how: 'smart', source: 'link' });
-    // The window opens its home page when the link opened nothing.
-    tabs.refresh();
-  }, [host, tabs, opened, link.plugin, link.page, link.connection, link.params, linkKey, known, inventory, settled]);
+  }, [tabs, opened, link.plugin, link.page, link.connection, link.params, linkKey, known, inventory, settled]);
+
+  // The session is saved from the first commit to the last: the tabs, the panel and the rail's choice, one burst after each change and when the window is hidden. What the session restored is what
+  // the models were made with; this only starts the saving.
+  useEffect(() => session?.attach({ tabs, panel: host.panel, rail: host.rail }), [session, tabs, host]);
 
   const route = useSyncExternalStore(tabs.subscribe, () => activeRoute(tabs));
   const activeId = useSyncExternalStore(tabs.subscribe, () => tabs.getSnapshot().active);
   const rail = railOf(entries);
+  const failed = failedOf(entries);
 
   // The rail's current entry. The user's choice stands until the tab on screen changes: activating another tab, or moving the tab on screen to another plugin, makes that plugin current
-  // (state kept from the render before, the way React keeps a value derived from what changed). With no tab on screen the choice stands as it was.
-  const [chosen, setChosen] = useState<string | undefined>(undefined);
-  const [followed, setFollowed] = useState<string | undefined>(undefined);
-  const follow = activeId === null || route === undefined ? undefined : `${activeId}\u0000${route.plugin}`;
+  // (state kept from the render before, the way React keeps a value derived from what changed). With no tab on screen the choice stands as it was. A window that was saved starts from the
+  // choice it was saved with and from the tab it was saved on, so the first render does not take the choice for a change of tab.
+  const [chosen, setChosen] = useState<string | undefined>(() => host.rail.getSnapshot() ?? undefined);
+  const [followed, setFollowed] = useState<string | undefined>(() => followOf(tabs.getSnapshot().active, activeRoute(tabs)));
+  const follow = followOf(activeId, route);
   if (follow !== followed) {
     setFollowed(follow);
     if (route !== undefined) {
@@ -432,9 +480,22 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
   }
 
-  // Until the window has a tab, or has settled with none, there is nothing to anchor a sidebar to: a plugin chosen by guess would run its hooks and then be replaced by the one the first tab opens.
+  const { rail: choice } = host;
+  useEffect(() => {
+    choice.set(chosen ?? null);
+  }, [choice, chosen]);
+
+  // Until every plugin has settled once, there is nothing to anchor a sidebar to and no rail to list: a plugin chosen by guess would run its hooks and then be replaced, and an entry drawn before
+  // a plugin that registers late and sorts first would be pushed down by it. They wait (`held`), reserved empty, and come all at once; after that a plugin that loads again (a retry) takes
+  // nothing away. State kept from the render before, as the rail's choice is.
   const coming = inventory === 'loading' || entries.some((entry) => entry.phase === 'loading') || waiting;
-  const railPlugin = route === undefined && coming ? undefined : currentRail(rail, chosen, route?.plugin);
+  const [settledOnce, setSettledOnce] = useState(false);
+  if (!settledOnce && !coming) {
+    setSettledOnce(true);
+  }
+
+  const held = !settledOnce;
+  const railPlugin = held ? undefined : currentRail(rail, chosen, route?.plugin);
   const shown = railPlugin === undefined ? undefined : entries.find((candidate) => candidate.id === railPlugin);
 
   // Where each plugin was last shown, so the sidebar of a plugin the rail shows beside another plugin's tab, and what is opened from it, pick up at its connection.
@@ -487,6 +548,16 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
   };
 
+  // A plugin that did not load has no sidebar to show: choosing its entry opens its page, which names what happened and offers the Retry (as its row of the empty window does), and the rail's current
+  // entry and the sidebar stay. Any other entry shows its plugin's sidebar.
+  const selectRail = (id: string): void => {
+    if (entries.some((candidate) => candidate.id === id && candidate.phase === 'failed')) {
+      open(id);
+    } else {
+      setChosen(id);
+    }
+  };
+
   // The panel. What each plugin that is ready brings to it is registered in a layout effect, in the commit the plugin turned ready in, so a tool does not arrive a frame after the interface it
   // belongs to; a plugin that goes away takes its tools and sessions with it in the same transaction (PO1).
   const { panel } = host;
@@ -525,12 +596,24 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         </ContributionBoundary>
       ) : null}
       <Shell
-        registration={registrationOf({ entries, coming, route, frame, rail, railPlugin, nodes: published })}
+        registration={registrationOf({ entries, coming, waiting, held, route, frame, rail, failed, railPlugin, nodes: published })}
         tabs={tabs}
-        renderPage={(tab: PageTab) => <HostPage entries={entries} route={tab.location.route} frames={frames} tabs={tabs} platform={platform} onRetry={onRetry} />}
+        renderPage={(tab: PageTab) => (
+          <HostPage
+            entries={entries}
+            route={tab.location.route}
+            pluginName={tabs.selectors.face(tabs.getSnapshot(), tab.id)?.pluginName ?? ''}
+            frames={frames}
+            tabs={tabs}
+            platform={platform}
+            inventory={inventory}
+            onRetry={onRetry}
+            onRetryInventory={onRetryInventory}
+          />
+        )}
         empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open })}
         onChoose={choose}
-        onSelectRail={setChosen}
+        onSelectRail={selectRail}
         onNewTab={newTab}
         onCloseWindow={onCloseWindow}
         panel={bindings}

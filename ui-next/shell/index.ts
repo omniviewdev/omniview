@@ -10,3 +10,5 @@ export { isNativeWindow } from './core/native';
 export { createPanelStore, restorePanel, createPanelSaver, toolIdOf, HOST as PANEL_HOST } from './core/panel';
 export type { PanelStore, PanelState, PluginTools, Session as PanelSession, SessionInput as PanelSessionInput, SessionState as PanelSessionState, ToolInput as PanelToolInput } from './core/panel';
 export type { PanelBindings, PanelCard, PanelCardAction, PanelLink, PanelNewSession } from './panel/host';
+export { createRailChoice, loadSession, resolveWindowName, windowStorage } from './session';
+export type { LoadedSession, RailChoice, WindowState } from './session';

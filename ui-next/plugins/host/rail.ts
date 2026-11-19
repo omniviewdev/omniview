@@ -19,6 +19,8 @@ export type RailEntry = {
   readonly order: number | undefined;
   /** The colour of the plugin's glyphs, for the places the window lists the plugin by a tile (the empty window). The rail itself draws every glyph in the icon colour. */
   readonly accent: ShellAccent | undefined;
+  /** Only for a plugin that did not load: what the host says of it (the cause, in the host's words), which the entry's tip carries. */
+  readonly problem?: string | undefined;
 };
 
 const entryOf = (entry: PluginEntry & { readonly phase: 'ready' }): RailEntry => {
@@ -52,13 +54,26 @@ export function compareRail(a: RailEntry, b: RailEntry): number {
 }
 
 /**
- * The rail's entries: one for each plugin that contributes (its interface is loaded and was admitted), in the declared order. A plugin that is loading or did not load has none: there is
- * nothing it contributes to show. The host's own entries would lead the list; none has a destination yet (README, "The rail").
+ * The rail's entries for the plugins that contribute: one for each plugin whose interface is loaded and was admitted, in the declared order. A plugin that is loading has none yet, and one that
+ * did not load has an entry of its own kind (`failedOf`, after these): it has nothing to show, but its failure must be found. The host's own entries would lead the list; none has a destination
+ * yet (README, "The rail").
  */
 export function railOf(entries: readonly PluginEntry[]): readonly RailEntry[] {
   return entries
     .filter((entry): entry is PluginEntry & { readonly phase: 'ready' } => entry.phase === 'ready')
     .map(entryOf)
+    .sort(compareRail);
+}
+
+/**
+ * The plugins that did not load, one entry each after the ones that contribute, by name: a plugin the window cannot show must still be there to find (a window with nothing saved opens empty, and
+ * a failure that only a page names would never be seen). The entry says what happened in its name and carries the cause in its tip; it has no sidebar, so it is never the rail's current entry, and
+ * choosing it opens the plugin's page, which names the failure and offers the Retry.
+ */
+export function failedOf(entries: readonly PluginEntry[]): readonly RailEntry[] {
+  return entries
+    .filter((entry): entry is PluginEntry & { readonly phase: 'failed' } => entry.phase === 'failed')
+    .map((entry): RailEntry => ({ id: entry.id, label: `${entry.name}, did not load`, icon: 'status-error', order: undefined, accent: undefined, problem: entry.failure.message }))
     .sort(compareRail);
 }
 
@@ -73,10 +88,4 @@ export function currentRail(rail: readonly RailEntry[], chosen: string | undefin
   }
 
   return has(active) ? active : rail[0]?.id;
-}
-
-/** The plugin the window opens on when nothing says otherwise: the first of the declared order that contributes, else the first plugin there is (its page says why it did not load). */
-export function firstPlugin(entries: readonly PluginEntry[]): PluginEntry | undefined {
-  const first = railOf(entries)[0];
-  return entries.find((entry) => entry.id === first?.id) ?? entries[0];
 }

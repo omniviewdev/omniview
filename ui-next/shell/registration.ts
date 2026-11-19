@@ -49,6 +49,8 @@ export type ShellRailEntry = {
   /** The entry's accessible name and its tooltip. */
   readonly label: string;
   readonly icon: IconName;
+  /** What is wrong with the place, in a sentence of its own (a plugin that did not load): the tip says it under the name, so the problem is found from the rail by hover, by focus and by a screen reader. */
+  readonly problem?: string | undefined;
 };
 
 /**
@@ -86,4 +88,10 @@ export type ShellRegistration = {
    * declared. A frame that turns out to have fewer regions than that moves the page once, when it registers: the shape of a plugin's frame is not known before it loads.
    */
   readonly pending?: true;
+  /**
+   * The window has not chosen what its rail lists and its sidebar shows: it waits until every plugin has settled once, so a plugin that registers late and sorts first moves no entry that is drawn
+   * (a tab restored from a session is on screen long before the last plugin is). The rail's track and the sidebar are drawn empty at their rectangles, as for `pending`; the scope lane is not
+   * reserved, because the page on screen (or the empty window, which has none) says whether it has one.
+   */
+  readonly held?: true;
 };

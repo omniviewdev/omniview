@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContextV1, SidebarNodeV1 } from '../contract/v1';
-import { acme, answering, widgetPage, WIDGETS } from '../testing';
+import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE, type HostRoute } from './route';
@@ -46,7 +46,9 @@ function mount(initial: readonly PluginEntry[] = [ready()], over: Partial<Plugin
   };
   const onRetry = vi.fn<(id: string) => void>();
   const onRetryInventory = vi.fn<() => void>();
-  const props: PluginHostProps = { plugins, inventory: 'ready', link: NO_ROUTE, onRetry, onRetryInventory, ...over };
+  // A window that was opened on a link has no session of its own to start from: the link opens its first tab. Any other starts from a session with one tab (`startedOn`), and `session: undefined`
+  // is the window with none, which is the empty window.
+  const props: PluginHostProps = { plugins, inventory: 'ready', link: NO_ROUTE, onRetry, onRetryInventory, session: over.link === undefined ? startedOn(initial) : undefined, ...over };
   const view = render(<PluginHost {...props} />);
   return {
     ...view,
@@ -85,7 +87,7 @@ afterEach(() => {
 });
 
 describe('a ready plugin', () => {
-  it('opens the plugin\'s home page as a tab: the frame, the sidebar with the page current, and the list', () => {
+  it('draws the page of the tab on screen: the frame, the sidebar with the page current, and the list', () => {
     mount();
 
     expect(faces()).toEqual(['Widgets']);
@@ -137,28 +139,32 @@ describe('a ready plugin', () => {
     expect(faces()).toEqual(['Gadgets']);
   });
 
-  it('opens the first plugin that is ready when the link names none, or one the host does not know', () => {
+  it('opens nothing for a link to a plugin the host does not have: the window stays as it is, and opens no page of its own', () => {
     mount([failed('missing', 'a-broken'), ready(acme(), 'b-acme')], { link: link('nobody') });
 
-    expect(faces()).toEqual(['Widgets']);
-    expect(screen.getByRole('treeitem', { name: 'Widgets', selected: true })).toBeInTheDocument();
+    expect(tabs()).toHaveLength(0);
+    expect(screen.getByText('No tabs are open.')).toBeInTheDocument();
+    expect(screen.queryByText('alpha')).toBeNull();
   });
 
-  it('opens the first plugin that is ready with no link at all', () => {
-    mount([failed('missing', 'a-broken'), ready(acme(), 'b-acme')]);
+  it('opens no page by itself with no link and no session, whichever plugins are ready: the window is empty (decision A17)', () => {
+    mount([failed('missing', 'a-broken'), ready(acme(), 'b-acme')], { session: undefined });
 
-    expect(screen.getByRole('treeitem', { name: 'Widgets', selected: true })).toBeInTheDocument();
+    expect(tabs()).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    expect(screen.queryByText('alpha')).toBeNull();
   });
 
-  it('chooses a default only when every plugin has settled: a plugin that loaded faster does not flash by', () => {
-    const { set } = mount([loading(), ready(acme(), 'b-acme')]);
+  it('stays loading until every plugin has settled, and is then the empty window: a plugin that loaded faster does not flash by', () => {
+    const { set } = mount([loading(), ready(acme(), 'b-acme')], { session: undefined });
 
     expect(screen.getByRole('status', { name: 'Loading Slow plugin' })).toBeInTheDocument();
     expect(tabs()).toHaveLength(0);
     expect(screen.queryByText('alpha')).toBeNull();
 
     set([{ ...failed('missing', 'a-slow') }, ready(acme(), 'b-acme')]);
-    expect(screen.getByText('alpha')).toBeInTheDocument();
+    expect(screen.getByText('No tabs are open.')).toBeInTheDocument();
+    expect(tabs()).toHaveLength(0);
   });
 
   it('shows a plugin a link names as soon as it is ready, whatever the others are doing', () => {
@@ -167,7 +173,7 @@ describe('a ready plugin', () => {
     expect(screen.getByText('alpha')).toBeInTheDocument();
   });
 
-  it('holds the window\'s home back while a link waits for a plugin that is not in the list yet, then opens the link alone', () => {
+  it('waits for the plugin a link names while the list of plugins is on its way, then opens the link alone', () => {
     const { set } = mount([ready(acme(), 'a-first')], { inventory: 'loading', link: link('late', 'gadgets') });
 
     expect(tabs()).toHaveLength(0);
@@ -178,13 +184,15 @@ describe('a ready plugin', () => {
     expect(screen.getByText('gizmo')).toBeInTheDocument();
   });
 
-  it('opens the window\'s home when the link is cleared while it waited for a plugin that never came', () => {
+  it('ends as the empty window when the link is cleared while it waited for a plugin that never came', () => {
     const { again } = mount([ready()], { inventory: 'loading', link: link('late', 'gadgets') });
     expect(tabs()).toHaveLength(0);
+    expect(screen.queryByText('No tabs are open.')).toBeNull();
 
     again({ inventory: 'ready', link: NO_ROUTE });
 
-    expect(faces()).toEqual(['Widgets']);
+    expect(tabs()).toHaveLength(0);
+    expect(screen.getByText('No tabs are open.')).toBeInTheDocument();
   });
 
   it('opens a link whose plugin reaches the store after the commit the inventory arrives in: the screen hands the plugins over in an effect of its own, which runs after the host\'s', () => {
@@ -580,7 +588,7 @@ describe('a page that fails', () => {
 
 describe('a plugin that is not ready', () => {
   it('shows the kit\'s loading state under the plugin\'s name, with no tab yet, while its interface loads', () => {
-    mount([{ id: 'acme', name: 'Acme plugin', phase: 'loading' }]);
+    mount([{ id: 'acme', name: 'Acme plugin', phase: 'loading' }], { session: undefined });
 
     expect(screen.getByRole('status', { name: 'Loading Acme plugin' })).toBeInTheDocument();
     expect(screen.getByRole('main', { name: 'Acme plugin workspace' })).toBeInTheDocument();
@@ -648,10 +656,10 @@ describe('a plugin that is not ready', () => {
     expect(container.querySelector('[data-shell-part="lane"]')).not.toHaveAttribute('aria-hidden');
   });
 
-  it('draws the frame of a plugin that failed bare: there is nothing to reserve for', () => {
+  it('draws the frame of a plugin that failed with no sidebar: there is nothing to show of its own, and its rail entry is the way back to its page', () => {
     const { container } = mount([failed('missing')]);
 
-    expect(container.querySelector('[data-shell-part="rail"]')).toBeNull();
+    expect(container.querySelector('[data-shell-part="rail"]')).not.toHaveAttribute('aria-hidden');
     expect(screen.queryByRole('navigation', { name: /navigation/i })).toBeNull();
   });
 });
@@ -701,13 +709,14 @@ describe('the rail', () => {
     expect(entries()).toEqual(['First plugin', 'Late plugin']);
   });
 
-  it('opens the window on the first plugin of the declared order, with that entry current and its sidebar shown', () => {
-    mount(two());
+  it('has the first plugin of the declared order current while no tab is open, with its sidebar shown', () => {
+    mount(two(), { session: undefined });
 
-    expect(screen.getByRole('main', { name: 'First workspace' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'First plugin' })).toHaveAttribute('aria-current', 'true');
+    // The empty window lists the plugins too, by the same names: the rail is the group of that name.
+    const rail = within(screen.getByRole('group', { name: 'Plugins' }));
+    expect(rail.getByRole('button', { name: 'First plugin' })).toHaveAttribute('aria-current', 'true');
     expect(screen.getByRole('navigation', { name: 'First navigation' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Late plugin' })).not.toHaveAttribute('aria-current');
+    expect(rail.getByRole('button', { name: 'Late plugin' })).not.toHaveAttribute('aria-current');
   });
 
   it('shows the sidebar of the entry that was chosen and closes no tab: the page and its landmarks stay the tab\'s', async () => {
@@ -748,13 +757,36 @@ describe('the rail', () => {
     expect(entries()).toEqual(['Mid plugin', 'Alpha', 'Zed']);
   });
 
-  it('has no entry for a plugin that did not load, and no rail at all when none contributes', () => {
+  it('lists a plugin that did not load after the ones that contribute, named for it, with the cause in its tip: the failure is found from the rail, not only from the page', () => {
     mount([failed('missing', 'a-broken'), ready(plugin('Fine', undefined), 'b-fine')]);
-    expect(entries()).toEqual(['Fine']);
-    cleanup();
 
-    const { container } = mount([failed('missing')]);
-    expect(container.querySelector('[data-shell-part="rail"]')).toBeNull();
+    expect(entries()).toEqual(['Fine', 'Broken plugin, did not load']);
+    expect(within(screen.getByRole('group', { name: 'Plugins' })).getByRole('button', { name: 'Broken plugin, did not load' })).toHaveAttribute('data-ov-tip', 'Broken plugin, did not load\nThe plugin\'s interface could not be read.');
+    // It has no sidebar of its own: the plugin that contributes keeps the rail's current entry and the sidebar.
+    expect(screen.getByRole('button', { name: 'Fine' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('navigation', { name: 'Fine navigation' })).toBeInTheDocument();
+  });
+
+  it('is a rail of its own entry when no plugin contributes and one did not load, with no sidebar and no entry current', () => {
+    const { container } = mount([failed('missing')], { session: undefined });
+
+    expect(entries()).toEqual(['Broken plugin, did not load']);
+    expect(container.querySelector('[data-shell-part="rail"]')).not.toHaveAttribute('aria-hidden');
+    expect(screen.queryByRole('navigation', { name: /navigation/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Broken plugin, did not load', current: true })).toBeNull();
+  });
+
+  it('opens the page of a plugin that did not load from its rail entry, in a tab, naming what happened with a Retry: the sidebar and the current entry stay', async () => {
+    const { user, onRetry } = mount([failed('missing', 'a-broken'), ready(plugin('Fine', undefined), 'b-fine')]);
+    expect(faces()).toEqual(['Widgets']);
+
+    await act(async () => user.click(within(screen.getByRole('group', { name: 'Plugins' })).getByRole('button', { name: 'Broken plugin, did not load' })));
+
+    expect(faces()).toEqual(['Widgets', 'Broken plugin']);
+    expect(screen.getByRole('alert')).toHaveTextContent('Couldn\'t load Broken plugin');
+    expect(screen.getByRole('alert')).toHaveTextContent('The plugin\'s interface could not be read.');
+    await act(async () => user.click(screen.getByRole('button', { name: 'Retry' })));
+    expect(onRetry).toHaveBeenCalledWith('a-broken');
   });
 });
 
@@ -828,7 +860,7 @@ describe('the empty window', () => {
   });
 
   it('is loading, not empty, while a plugin is still on its way', () => {
-    mount([ready(), loading()]);
+    mount([ready(), loading()], { session: undefined });
 
     expect(screen.queryByText('No tabs are open.')).toBeNull();
     expect(screen.getByRole('status', { name: 'Loading Slow plugin' })).toBeInTheDocument();
