@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# K2a: the whole proof on a fresh cluster (docs/ui-next/status/K2a.md, "Dev tools"). Copy this file and k2a-proof.mjs.txt into one directory WITHOUT the `.txt`, then:
+#
+#   HOST=<host checkout> PLUGIN=<plugin checkout> bash redo.sh
+#
+#   HOST     a checkout of omniviewdev/omniview, `pnpm install` done and built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used (WebKit and
+#            Chromium installed), its docs/ui-next/slices/1a-pods-list/fixture.yaml is the cluster's fixture, and its scripts/ui-next-pods/ is the host's own cluster check, run first
+#   PLUGIN   a checkout of omniviewdev/omniview-plugin-kubernetes at the commit under test (feature/ui-next at b8411c72 or later): hack/package.sh builds it and
+#            hack/kinds-capture/extra-states.yaml makes the extra states
+#   WORK     optional: a scratch directory (default: a new one under $TMPDIR); holds the kubeconfig, the extracted plugin and the hosts' state
+#   OUT      optional: where the log, the report JSON and the screenshots go (default: $WORK/out)
+#   PORT     optional: the port of the host of the cluster check (default 34281)
+#
+# Needs docker, kind, kubectl, go, pnpm and node; about three minutes. It reads and writes no kubeconfig but the one it makes in $WORK, and the cluster is deleted at the end, whatever happens.
+# Exit status: 0 when the host's check and every check of the proof pass.
+set -euo pipefail
+
+: "${HOST:?HOST is required: a host checkout with bin/Omniview-server built}"
+: "${PLUGIN:?PLUGIN is required: a plugin checkout}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/k2a-proof.XXXXXX")}"
+OUT="${OUT:-$WORK/out}"
+PORT="${PORT:-34281}"
+NAME="k2a-$$"
+KUBECONFIG_PATH="$WORK/kubeconfig"
+mkdir -p "$WORK" "$OUT"
+test -x "$HOST/bin/Omniview-server" || { echo "missing $HOST/bin/Omniview-server: run OMNIVIEW_UI=next task build:server in $HOST" >&2; exit 1; }
+test -f "$HERE/k2a-proof.mjs" || { echo "missing $HERE/k2a-proof.mjs: copy k2a-proof.mjs.txt next to this file, without the .txt" >&2; exit 1; }
+
+case "$(uname -s)_$(uname -m)" in
+  Darwin_arm64) PLATFORM=darwin_arm64 ;;
+  Darwin_x86_64) PLATFORM=darwin_amd64 ;;
+  Linux_x86_64) PLATFORM=linux_amd64 ;;
+  Linux_aarch64 | Linux_arm64) PLATFORM=linux_arm64 ;;
+  *) echo "no plugin platform for $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+
+cleanup() {
+  OMNIVIEW_E2E_WORK="$WORK/host" "$HOST/scripts/ui-next-pods/host.sh" stop "$NAME-check" >/dev/null 2>&1 || true
+  (unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" 2>&1 | tail -n 1) || true
+}
+trap cleanup EXIT
+
+echo "== cluster $NAME: kind, node v1.35.0 (the image the host's CI pins), the slice fixture and the extra states"
+(unset KUBECONFIG; kind create cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" --wait 240s \
+  --image 'kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661' 2>&1 | tail -n 1)
+export KUBECONFIG="$KUBECONFIG_PATH"
+kubectl apply -f "$HOST/docs/ui-next/slices/1a-pods-list/fixture.yaml" >/dev/null
+kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s | tail -n 1
+kubectl -n checkout rollout status sts/cart-cache --timeout=240s | tail -n 1
+kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s | tail -n 1
+kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s | tail -n 1
+kubectl apply -f "$PLUGIN/hack/kinds-capture/extra-states.yaml" >/dev/null
+# The header of extra-states.yaml: the patch must land on a Deployment whose old replicas are ready, so the first rollout is waited for.
+kubectl -n states rollout status deploy/stuck-rollout deploy/paused --timeout=300s | tail -n 1
+kubectl -n states patch deploy/stuck-rollout --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"registry.invalid/stuck:2"}]'
+kubectl -n states rollout pause deploy/paused
+# Let the states settle: the images that cannot be pulled, the Job with a deadline, the Pods that cannot be placed.
+sleep 75
+echo "objects of the five kinds: $(kubectl get deploy,sts,ds,job -A --no-headers | wc -l | tr -d ' ')"
+
+echo "== the plugin, packaged from $PLUGIN ($PLATFORM)"
+version="$(sed -n 's/^version: //p' "$PLUGIN/plugin.yaml" | head -n 1)"
+(cd "$PLUGIN" && GOTOOLCHAIN="${GOTOOLCHAIN:-local}" hack/package.sh "$version" "$PLATFORM" >"$WORK/package.log" 2>&1) || { tail -n 30 "$WORK/package.log" >&2; exit 1; }
+rm -rf "$WORK/plugin"
+mkdir -p "$WORK/plugin"
+tar -xzf "$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" -C "$WORK/plugin"
+echo "plugin commit $(git -C "$PLUGIN" rev-parse HEAD), assets/entry.js $(wc -c <"$WORK/plugin/assets/entry.js" | tr -d ' ') bytes, sha256 $(node -e 'console.log(require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"))' "$WORK/plugin/assets/entry.js")"
+
+status=0
+echo "== the host's own cluster check, unmodified (Pods parity with kubectl, a Pod created and deleted, the Pod page)"
+export OMNIVIEW_E2E_WORK="$WORK/host"
+"$HOST/scripts/ui-next-pods/host.sh" start "$NAME-check" "$PORT" "$KUBECONFIG_PATH" "$WORK/plugin"
+(cd "$HOST" && OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$PORT" OMNIVIEW_CHECK_KUBECONFIG="$KUBECONFIG_PATH" node --test scripts/ui-next-pods/pods-cluster.check.mjs) >"$OUT/host-pods-check.log" 2>&1 || status=1
+grep -E '^ℹ (tests|pass|fail)' "$OUT/host-pods-check.log" || true
+"$HOST/scripts/ui-next-pods/host.sh" stop "$NAME-check"
+
+echo "== the proof: the five lists against kubectl, the sidebar, a live scale and a live delete, in WebKit and Chromium"
+(cd "$OUT" && OMNIVIEW_HOST_ROOT="$HOST" PLUGIN_ARCHIVE="$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" KUBECONFIG_PATH="$KUBECONFIG_PATH" OUT="$OUT" node "$HERE/k2a-proof.mjs") >"$OUT/k2a-proof-run.log" 2>&1 || status=1
+tail -n 1 "$OUT/k2a-proof-run.log"
+grep -E '^FAIL' "$OUT/k2a-proof-run.log" | cut -c1-300 || true
+echo "log, report and screenshots: $OUT"
+exit "$status"
