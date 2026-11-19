@@ -13,6 +13,9 @@
 //   ?lane=1           whether the pages declare a scope lane (the plugins' frames have one by default); `0`: they declare none
 //   ?panel=1          every plugin brings a tool to the bottom panel (the fixture plugin's `streams`, ../../plugins/fixture/src/panel.tsx, labelled `<Plugin> streams`, in the order the rail has the plugins); `window.__panel` is
 //                     the window's panel model
+//   ?session=one      the session the window starts from (S3a), kept in the page's own session storage so a reload restores what was written: `one` (a tab on `alpha`'s page `widgets`, the default),
+//                     `two` (that tab and one on `beta`'s, which is on screen), `gone` (a tab of a plugin that is never installed), `none` (nothing was saved: the empty window), `bad` (a text that cannot
+//                     be used). `window.__sessionNotes` lists what the session said on the console; a text kept aside is a key `host-fixture-session:session.invalid.<time>` of the session storage
 //
 // `window.__ticks` counts the timer of the page `clock` per plugin: a page that is hidden must not run it. `window.__commits` lists every commit of the tree (React's profiler; the probe builds
 // this entry with the profiling build of React DOM). `window.__host` is the `PluginStore`.
@@ -27,6 +30,7 @@ import { PluginHost } from '../../plugins/host/PluginHost';
 import { PluginStore, type LoaderDeps, type PluginDescriptor } from '../../plugins/host/pluginStore';
 import { WIDGETS, widgetPage, type Widget } from '../../plugins/testing';
 import { createPanelStore } from '../core/panel';
+import { openSession, type SessionStorage } from '../session';
 
 const params = new URLSearchParams(window.location.search);
 const number = (name: string, fallback: number): number => Number(params.get(name) ?? fallback);
@@ -49,6 +53,55 @@ const ORDER: Readonly<Record<string, number>> = FIRST === 'beta' ? { alpha: 20, 
 
 const panelStore = createPanelStore();
 Reflect.set(window, '__panel', panelStore);
+
+// The session the window starts from, in the page's own session storage: a reload of the page restores what the window wrote, as a reload of the app's window restores what its Go side holds.
+const SESSION_KEY = 'host-fixture-session';
+const SESSION = params.get('session') ?? 'one';
+
+/** A tab as a previous run saved it: the route and the face its plugin gives it, so the strip draws it before the plugin has loaded. */
+function savedTab(id: string, plugin: string, page: string, title: string) {
+  const route = { plugin, contribution: page, params: {} };
+  const name = NAMES[plugin] ?? plugin;
+  return {
+    id,
+    route,
+    key: `${plugin}:${page}`,
+    face: { title, icon: 'box', path: [{ label: name }, { label: title }], facets: [], pluginName: name, singleton: false, identity: 'key' },
+    pinned: false,
+    preview: false,
+    history: { entries: [route], index: 0 },
+  };
+}
+
+const savedWindow = (tabs: readonly unknown[], active: string): string => JSON.stringify({ version: 1, tabs: { version: 1, active, tabs }, rail: null, panel: { version: 1 } });
+const PRESETS: Readonly<Record<string, string | undefined>> = {
+  none: undefined,
+  one: savedWindow([savedTab('t1', 'alpha', 'widgets', 'Widgets')], 't1'),
+  two: savedWindow([savedTab('t1', 'alpha', 'widgets', 'Widgets'), savedTab('t2', 'beta', 'widgets', 'Widgets')], 't2'),
+  gone: savedWindow([savedTab('t1', 'ghost', 'items', 'Items')], 't1'),
+  bad: '{"version":1,"tabs":',
+};
+const preset = PRESETS[SESSION];
+if (window.sessionStorage.getItem(SESSION_KEY) === null && preset !== undefined) {
+  window.sessionStorage.setItem(SESSION_KEY, preset);
+}
+
+const place: SessionStorage = {
+  read: async () => window.sessionStorage.getItem(SESSION_KEY) ?? undefined,
+  write: async (text) => {
+    window.sessionStorage.setItem(SESSION_KEY, text);
+  },
+  keep: async (name, text) => {
+    window.sessionStorage.setItem(`${SESSION_KEY}:${name}`, text);
+  },
+};
+const sessionNotes: string[] = [];
+Reflect.set(window, '__sessionNotes', sessionNotes);
+const session = openSession(place, window.sessionStorage.getItem(SESSION_KEY) ?? undefined, {
+  log: (message) => {
+    sessionNotes.push(message);
+  },
+});
 
 const ticks: Record<string, number> = {};
 const commits: Array<{ readonly phase: string; readonly actualDuration: number }> = [];
@@ -188,6 +241,7 @@ function Screen() {
       onRetry={() => undefined}
       onRetryInventory={() => undefined}
       panel={panelStore}
+      session={session}
     />
   );
 }

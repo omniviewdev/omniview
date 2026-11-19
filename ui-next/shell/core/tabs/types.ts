@@ -60,6 +60,12 @@ export type Description = {
   readonly singleton?: boolean | undefined;
   /** The part of the key that says which page this is. Absent: the contribution and its parameters. A plugin leaves out what is not identity (a sub-tab). */
   readonly key?: string | undefined;
+  /**
+   * A stand-in the host made from what it knows (the plugin's name) because the plugin has not said anything yet: it is still loading. It names a tab that has no face of its own (one opened
+   * at the plugin before it loaded), and is never taken for what the plugin says: a tab that already has a face (restored with one, or described by the plugin before) keeps it, as it does when
+   * the plugin says nothing.
+   */
+  readonly provisional?: true | undefined;
 };
 
 /** Whether a destination can be opened (ch16 S65). A degraded one opens, to a recovery page; an unavailable one is refused with its reason. */

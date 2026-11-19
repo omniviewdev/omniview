@@ -466,6 +466,17 @@ describe('no tab on screen', () => {
   });
 });
 
+describe('a rail entry with a problem', () => {
+  it('is named for it and carries the cause in its tip, so the problem is found from the rail by hover, by focus and by a screen reader', () => {
+    const entries = [...STATIC_RAIL.entries, { id: 'broken', label: 'Broken, did not load', icon: 'status-error' as const, problem: 'The interface could not be read.' }];
+    renderShell({ ...registration, rail: { ...STATIC_RAIL, entries } });
+
+    const entry = screen.getByRole('button', { name: 'Broken, did not load' });
+    expect(entry).toHaveAttribute('data-ov-tip', 'Broken, did not load\nThe interface could not be read.');
+    expect(screen.getByRole('button', { name: 'Acme' })).toHaveAttribute('data-ov-tip', 'Acme');
+  });
+});
+
 describe('the rail', () => {
   const stops = () => screen.getAllByRole('button').filter((button) => button.closest('[data-shell-part="rail"]') !== null && button.getAttribute('tabindex') === '0');
 

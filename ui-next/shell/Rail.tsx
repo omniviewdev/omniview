@@ -32,7 +32,7 @@ export function Rail({ rail, onSelect }: RailProps) {
             aria-label={entry.label}
             aria-current={entry.id === rail.current ? 'true' : undefined}
             data-shell-focus={entry.id === focused ? '' : undefined}
-            {...tip(entry.label, { delay: 0 })}
+            {...tip(entry.problem === undefined ? entry.label : `${entry.label}\n${entry.problem}`, { delay: 0 })}
             onClick={() => {
               onSelect?.(entry.id);
             }}

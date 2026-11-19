@@ -58,7 +58,7 @@ export type ShellProps = {
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
 export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow, panel }: ShellProps) {
-  const { plugin, rail, sidebar, scope, layout = 'document', pending = false } = registration;
+  const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
   const panelId = `${ids}-panel`;
@@ -68,8 +68,8 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelec
   usePanelChords(panel?.store);
   useTabChords(tabs, onCloseWindow);
 
-  const hasRail = (rail !== undefined && rail.entries.length > 0) || pending;
-  const hasSidebar = sidebar !== undefined || pending;
+  const hasRail = (rail !== undefined && rail.entries.length > 0) || pending || held;
+  const hasSidebar = sidebar !== undefined || pending || held;
   const hasLane = (scope !== undefined && scope.length > 0) || pending;
   const content = (
     <TabsProvider store={tabs}>

@@ -1,5 +1,6 @@
 // The Pods cluster check (plan docs/ui-next/slices/1a-pods-list.md, PR 1a.1; N19d): the new shell, served by the real Go host from `OMNIVIEW_UI=next` and opened the
-// way the native window opens it (no URL parameter, no hash), against a real kind cluster holding the plan's fixture, with the Kubernetes plugin installed from the
+// way the native window opens it for a first run (no URL parameter, no hash, nothing saved: the window is empty, S3a), the Kubernetes plugin opened from the window's list of plugins as a person
+// opens it, against a real kind cluster holding the plan's fixture, with the Kubernetes plugin installed from the
 // archive of its `feature/ui-next` branch (the plugin's own bundle is the only place the Pods list is written: the host holds no Pods code).
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
@@ -7,14 +8,15 @@
 //   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
-//                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes")
+//                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
+//                                                     window's rail: an entry "Kubernetes, did not load" whose tip says why and whose choice opens the page that names it
 //
 // The controls run the same `checkParity` and pass only when it fails with the expected code, so a check that has gone blind
 // (passing on an empty cluster, a missing plugin or a plugin with no bundle) turns the job red. Run: `node --test scripts/ui-next-pods/pods-cluster.check.mjs`.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkDetail, checkParity, kubectl, launchBrowser, openPods, oraclePods, settle } from './parity.mjs';
+import { checkDetail, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
 const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
@@ -63,6 +65,22 @@ if (mode === 'control-fixture-absent') {
     // The plugin's binary is there and the cluster holds the fixture, so the only thing missing is the plugin's interface: the page names the plugin it could not load.
     assert.equal(error.detail.read.state, 'error', error.message);
     assert.match(error.detail.status ?? '', /Couldn't load Kubernetes/, 'the page must be stopped at the plugin');
+
+    // A window with nothing saved opens empty, so a failure that only a page names would never be seen: the plugin is in the rail too, named for what happened, with the cause in its tip (what a hover or a
+    // focus shows), and choosing its entry opens the page that names the failure. Nothing else of the window is opened first.
+    const page = await openWindow(browser, baseURL);
+    try {
+      const entry = page.getByRole('group', { name: 'Plugins' }).getByRole('button', { name: 'Kubernetes, did not load' });
+      await entry.waitFor({ timeout: 20_000 });
+      assert.match((await entry.getAttribute('data-ov-tip')) ?? '', /^Kubernetes, did not load\n.+/, 'the entry says why in its tip');
+      assert.equal(await page.getByRole('tab').count(), 0, 'the window opened no page by itself');
+      await entry.click();
+      const alert = page.getByRole('alert').filter({ hasText: 'Couldn\'t load Kubernetes' });
+      await alert.first().waitFor({ timeout: 20_000 });
+      assert.equal(await page.getByRole('tab').count(), 1, 'the page the entry opens is a tab of its own');
+    } finally {
+      await page.close();
+    }
   });
 } else {
   test('the page and kubectl agree on the Pods of every namespace, on their count and on the quick filters', async () => {

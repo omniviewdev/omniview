@@ -25,7 +25,7 @@ export type Plugins = {
   readonly restore: (route: Route) => Route | false;
   /** The route a window opens with, or the plugin's own first page. */
   readonly home: (plugin?: string) => Route | undefined;
-  /** The face and key of a route, as the plugin describes it now. */
+  /** The face and key of a route, as the plugin describes it now. `described` is false when the plugin said nothing, or only a stand-in (`Description.provisional`): a tab that has a face keeps it then. */
   readonly look: (route: Route) => { readonly face: Face; readonly key: string; readonly described: boolean };
 };
 
@@ -89,7 +89,7 @@ export function guardContributions(contributions: Contributions, onError: ErrorH
     look: (route) => {
       const description = describe(route);
       const face = faceOf(route, description);
-      return { face, key: keyOf(route, description, face), described: description !== undefined };
+      return { face, key: keyOf(route, description, face), described: description !== undefined && description.provisional !== true };
     },
   };
 }

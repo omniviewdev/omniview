@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkInvariants, createTabsStore, STATE_VERSION } from './index';
-import { boot, cloudPage, doneId, hostPage, makeWorld, stackPage, tabOf, type Harness } from './testing';
+import { boot, cloudPage, dest, doneId, hostPage, makeWorld, stackPage, tabOf, type Harness } from './testing';
 
 // The store: one immutable snapshot, subscribe, and a selector per consumer so that each re-renders for its own slice only (docs/ui-next/optimisations.md HSH-24, MNR-K2).
 
@@ -292,6 +292,29 @@ describe('the plugins changed (the host subscribes the model to them)', () => {
     world.retitle('host', () => 'Elsewhere');
     world.changed();
     expect(h.titles()).toEqual(['Home']);
+  });
+
+  it('names a tab opened at a plugin that is loading by its stand-in, and a stand-in never takes the face of a tab that has one', () => {
+    const world = makeWorld();
+    let phase: 'loading' | 'ready' = 'loading';
+    world.install({
+      id: 'later',
+      name: 'Later',
+      describe: (route) => (phase === 'ready' ? { title: `Real ${route.contribution}`, icon: 'clock' } : { title: 'Later', icon: 'box', provisional: true }),
+    });
+    const h = boot({ home: false, world });
+    const a = h.open(dest('later', 'one'));
+    expect(tab(h, a).face).toMatchObject({ title: 'Later', icon: 'box' });
+    phase = 'ready';
+    world.changed();
+    expect(tab(h, a).face).toMatchObject({ title: 'Real one', icon: 'clock' });
+    // The plugin loads again (a retry, an upgrade): the stand-in leaves the face the tab has, and still names a tab that has none.
+    phase = 'loading';
+    world.changed();
+    expect(tab(h, a).face).toMatchObject({ title: 'Real one', icon: 'clock' });
+    const b = h.open(dest('later', 'two'), { how: 'new' });
+    expect(tab(h, b).face).toMatchObject({ title: 'Later', icon: 'box' });
+    sound(h);
   });
 
   it('does not open it again for a strip the user emptied, however the plugins change afterwards (decision A17)', () => {

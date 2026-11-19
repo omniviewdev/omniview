@@ -12,8 +12,14 @@
 //   h  the bottom panel (P1a): the tool each plugin that contributes brings, "Streams" and "Streams copy", is drawn by the host's strip over the plugin's own body; the status bar's toggle opens the panel,
 //      the tool's `+` opens its three streams (running, ended, failed), a hidden stream keeps running while another is on screen and while the panel is hidden, and the card of a stream links to its item,
 //      which opens in a tab of the window
+//   i  the session (S3a): the window opens EMPTY when nothing was saved (decision A17: no page opens by itself); two tabs of two plugins, the rail on the second and the panel open on the second plugin's tool
+//      at a height the keyboard chose come back after a reload of the page, and after the host's process is stopped and started again (the packaged app's restart, in server mode); a session whose plugin is not
+//      installed keeps its tab and says so; a session of a newer version, and a text that is no session, are kept aside in a slot of their own and never deleted, and the window opens empty. The session lives in
+//      the host's window service (`backend/window`: `GetState` and `SaveState`, persisted to `windows.json` in the state root), the one the packaged app uses
 //
-//   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers
+//   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
+//
+//   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -45,11 +51,15 @@ async function freePort() {
   });
 }
 
-async function startHost(work, port) {
+/** The state root of the host the check starts: what the window service persists (`windows.json`) lives here, and is kept when the host is started again. */
+const stateRoot = (work) => path.join(work, 'home', '.omniview-feature-ui-next');
+
+/** Starts the host. `built` is what the plugins' build wrote: a host that is started again (the restart of scenario i) is given it and builds nothing, over the same state root. */
+async function startHost(work, port, built = undefined) {
   const home = path.join(work, 'home');
-  const plugins = path.join(home, '.omniview-feature-ui-next', 'plugins');
+  const plugins = path.join(stateRoot(work), 'plugins');
   await mkdir(plugins, { recursive: true });
-  const built = await writeAll(plugins);
+  built ??= await writeAll(plugins);
   const logFile = path.join(work, 'host.log');
   // A minimal environment, so nothing ambient (a credential, a config path of the developer's machine) reaches the host or a plugin: only the profile the check built.
   const { PATH, TMPDIR, LANG, USER } = process.env;
@@ -90,6 +100,41 @@ async function open(page, base, hash = '') {
   await page.goto(`${base}/${hash}`, { waitUntil: 'load' });
 }
 
+const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
+
+/** A call of a bound method of the host, by name, as the page's own runtime makes one: the window's slots are read and written through the same service the shell uses. */
+async function callHost(base, method, ...args) {
+  const response = await fetch(`${base}/wails/runtime`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'seam-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `seam-${method}-${Date.now()}`, methodName: `${WINDOW_SERVICE}.${method}`, args } }),
+  });
+  const text = await response.text();
+  assert.equal(response.status, 200, `${method} was answered ${String(response.status)}: ${text}`);
+  return JSON.parse(text);
+}
+
+/**
+ * Nothing saved for the main window: what a first run of the app finds. (The slot holds JSON, and JSON `null` is no session.) A page that was just left may still have a write on its way (the quiet
+ * time of the saver, then the call), and it would replace what is forgotten here: it lands first.
+ */
+async function forgetSession(base) {
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await callHost(base, 'SaveState', 'main', 'session', 'null');
+}
+
+/** A page of a window with nothing saved. A scenario that follows another starts here, so it never restores what the one before left. */
+async function freshPage(browser, base) {
+  await forgetSession(base);
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  return page;
+}
+
+/** The empty window's way forward: the first plugin of the list opens in a tab. Decision A17 and S3a: no page opens by itself, so a check that is about a page opens one as a person does. */
+async function openFirstPlugin(page, name = 'Seam Fixture') {
+  await page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name, exact: true }).click();
+}
+
 async function checkHealthy(page, base, engine) {
   const errors = [];
   const failedRequests = [];
@@ -121,8 +166,13 @@ async function checkHealthy(page, base, engine) {
     );
   });
 
-  // a. no route at all: the first plugin that is ready opens its home page.
+  // a. no route at all and nothing saved: the window is EMPTY (decision A17, S3a: no page opens by itself; a first run has no session), with the plugins that can be opened. A plugin of the list opens its home page.
+  await forgetSession(base);
   await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  assert.equal(await page.getByRole('tab').count(), 0, `${engine}: nothing opened by itself`);
+  await page.getByText('No tabs are open.').waitFor();
+  await openFirstPlugin(page);
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
   await page.getByRole('treeitem', { name: 'Items', selected: true }).waitFor();
   for (const name of ['orders-api', 'ledger-sync', 'ghost-service', 'vault-keeper', 'flaky-gateway']) await page.getByRole('link', { name }).waitFor();
@@ -261,11 +311,19 @@ async function checkRail(page, base, engine) {
   page.on('pageerror', (error) => errors.push(error.message));
   await open(page, base);
   const chord = `${(await page.evaluate(() => navigator.platform.includes('Mac'))) ? 'Meta' : 'Control'}+KeyW`;
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  // With nothing saved the window is empty: the rail lists the plugins that contribute, the first current, before any tab is open.
+  await openFirstPlugin(page);
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
 
   // One entry for each plugin that contributes, in the declared order; the window opened on the first, and its entry is the current one.
   const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
-  assert.deepEqual(await entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: the rail lists the two plugins that contribute, in their declared order`);
+  // The plugins that contribute, in their declared order, then the ones that did not load (the old-shell bundle, the plugin with no bundle), by name, each named for what happened.
+  assert.deepEqual(
+    await entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
+    ['Seam Fixture', 'Seam Fixture Copy', 'Seam Fixture Missing, did not load', 'Seam Fixture Old, did not load'],
+    `${engine}: the rail lists the two plugins that contribute, in their declared order, and then the two that did not load`,
+  );
   const current = (name) => page.locator(`[data-shell-part="rail"] [aria-label="${name}"][aria-current="true"]`);
   await current('Seam Fixture').waitFor();
   assert.equal(await current('Seam Fixture Copy').count(), 0, `${engine}: one entry is current`);
@@ -300,7 +358,7 @@ async function checkRail(page, base, engine) {
   const home = page.getByRole('region', { name: 'Plugins you can open' });
   // The plugins that did not load are places to go too: their tab says what happened and offers Retry; the row says so in a word after the name.
   assert.deepEqual(await home.getByRole('button').evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim())), ['Seam Fixture', 'Seam Fixture Copy', 'Seam Fixture MissingDid not load', 'Seam Fixture OldDid not load'], `${engine}: the empty window lists the plugins to open: those that contribute in the order of the rail, then the others by name`);
-  assert.equal(await entries.count(), 2, `${engine}: the rail stays beside the empty window`);
+  assert.equal(await entries.count(), 4, `${engine}: the rail stays beside the empty window`);
   await new Promise((resolve) => setTimeout(resolve, 1500));
   assert.equal(await page.getByRole('tab').count(), 0, `${engine}: nothing opened a page by itself`);
   // In a browser tab there is no window of the app's own to close: the close chord has no tab to close and does nothing.
@@ -311,6 +369,16 @@ async function checkRail(page, base, engine) {
   await home.getByRole('button', { name: 'Seam Fixture', exact: true }).click();
   await page.getByRole('tab', { name: 'Items' }).waitFor();
   await page.getByRole('link', { name: 'orders-api' }).waitFor();
+
+  // A plugin that did not load is found from the rail, not only from a page (a window with nothing saved opens empty): its entry carries what the host says in its tip, which a hover and a focus show, and
+  // choosing it opens the plugin's page in a tab, naming what happened, while the rail's current entry and its sidebar stay.
+  const missing = entries.and(page.getByRole('button', { name: 'Seam Fixture Missing, did not load' }));
+  assert.match((await missing.getAttribute('data-ov-tip')) ?? '', /^Seam Fixture Missing, did not load\n.*could not be read/, `${engine}: the entry of a plugin with no bundle says why in its tip`);
+  await missing.click();
+  await page.getByRole('alert').waitFor();
+  assert.match(await page.getByRole('alert').innerText(), /Couldn't load Seam Fixture Missing[\s\S]*could not be read/, `${engine}: choosing it opens the page that names the failure`);
+  assert.equal(await page.getByRole('tab').count(), 2, `${engine}: in a tab of its own`);
+  await current('Seam Fixture').waitFor();
   assert.deepEqual(errors, [], `${engine}: the rail and the empty window wrote no page error`);
 }
 
@@ -322,6 +390,8 @@ async function checkPanel(page, base, engine) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
   const toggle = page.getByRole('button', { name: 'Panel', exact: true });
   const region = page.locator('[data-shell-region="panel"]');
@@ -367,10 +437,164 @@ async function checkPanel(page, base, engine) {
   assert.deepEqual(errors, [], `${engine}: the panel wrote no page error`);
 }
 
+/**
+ * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
+ * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
+ * back. Then what is saved is made unusable in the ways that matter, through the window service the shell uses: a tab of a plugin that is not installed (the tab stays, and says so), a session of a
+ * newer version and a text that is no session (kept aside in a slot of their own, whole, and the window opens empty).
+ */
+async function checkSession(browser, getHost, restart, engine) {
+  const errors = [];
+  const notes = [];
+  const watch = (page) => {
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.text().startsWith('[session]')) notes.push(message.text());
+    });
+  };
+  const strip = (page) => page.getByRole('tablist', { name: 'Open tabs' });
+  const toggleOf = (page) => page.getByRole('button', { name: 'Panel', exact: true });
+  const slots = async () => callHost(getHost().base, 'GetState', 'main');
+  const kept = async () => Object.entries(await slots()).filter(([name]) => name.startsWith('session.invalid.'));
+  // The host's window keeps what an earlier run of this check set aside (the other engine's): what is counted is what this one adds.
+  const before = (await kept()).length;
+  const until = async (what, read, done) => {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const value = await read();
+      if (done(value)) return value;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error(`${engine}: ${what} did not come in 15 s (the console said: ${notes.join(' | ') || 'nothing'}; the host holds ${JSON.stringify(await slots()).slice(0, 400)})`);
+  };
+  /** What a person sees of the window: the tabs and the one on screen, the rail's entry and the sidebar, the panel's toggle, tool and height. */
+  const look = async (page) => {
+    const panelOpen = (await toggleOf(page).getAttribute('aria-pressed')) === 'true';
+    return {
+      tabs: await strip(page).getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.textContent?.trim())),
+      active: await strip(page).getByRole('tab', { selected: true }).evaluateAll((tabs) => tabs.map((tab) => tab.textContent?.trim())),
+      rail: await page.locator('[data-shell-part="rail"] [aria-current="true"]').evaluateAll((entries) => entries.map((entry) => entry.getAttribute('aria-label'))),
+      sidebar: await page.locator('[data-shell-region="sidebar"]').getAttribute('aria-label'),
+      panel: panelOpen
+        ? {
+            open: true,
+            tool: await page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab', { selected: true }).innerText(),
+            height: Number(await page.getByRole('separator', { name: 'Resize panel' }).getAttribute('aria-valuenow')),
+          }
+        : { open: false },
+    };
+  };
+
+  // A first run: nothing saved, nothing opens by itself.
+  const page = await freshPage(browser, getHost().base);
+  watch(page);
+  await open(page, getHost().base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  assert.equal(await strip(page).getByRole('tab').count(), 0, `${engine}: a window with nothing saved opens no tab`);
+
+  // Two tabs of two plugins, the second's (a page that fails by design: its bundle has its own copy of the kit, which is how the check knows whose it is) on screen, the rail and the sidebar on the second.
+  await openFirstPlugin(page);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  await page.getByRole('group', { name: 'Plugins' }).getByRole('button').nth(1).click();
+  await page.getByRole('treeitem', { name: 'Things' }).click();
+  await page.getByRole('treeitem', { name: 'Items' }).click();
+  await page.getByRole('alert').waitFor();
+  assert.equal(await strip(page).getByRole('tab').count(), 2, `${engine}: the tabs of both plugins are open`);
+  // The panel: open, on the second plugin's tool, and a height the keyboard chose (Up grows it by 16 px).
+  await toggleOf(page).click();
+  await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
+  const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
+  await tools.nth(1).click();
+  await page.getByRole('separator', { name: 'Resize panel' }).focus();
+  for (let press = 0; press < 3; press += 1) await page.keyboard.press('ArrowUp');
+  const left = await look(page);
+  // Two tabs that read alike are told apart by the model (the plugin's name), so what is checked is the shape: two tabs, the second on screen, the second plugin's entry current, its tool on screen.
+  assert.equal(left.tabs.length, 2, `${engine}: two tabs (${left.tabs.join(' | ')})`);
+  assert.deepEqual(left.active, [left.tabs[1]], `${engine}: the second is on screen`);
+  assert.deepEqual({ rail: left.rail, open: left.panel.open, tool: left.panel.tool }, { rail: ['Seam Fixture Copy'], open: true, tool: 'Streams copy' }, `${engine}: the window as it was left`);
+  const fresh = await page.getByRole('separator', { name: 'Resize panel' }).getAttribute('aria-valuenow');
+  assert.ok(Number(fresh) > 0, `${engine}: the panel has a height (${String(fresh)})`);
+
+  // The host holds it after the quiet moment: the document the window service answers is the session, whole.
+  const held = await until('the saved session', async () => (await slots()).session, (text) => typeof text === 'string' && JSON.parse(text)?.panel?.open === true && JSON.parse(text)?.panel?.height !== null && JSON.parse(text)?.rail !== null);
+  const saved = JSON.parse(held);
+  assert.deepEqual({ version: saved.version, tabs: saved.tabs.tabs.length, active: saved.tabs.active === saved.tabs.tabs[1]?.id, rail: saved.rail, tool: saved.panel.tool }, { version: 1, tabs: 2, active: true, rail: DUP, tool: `${DUP}:streams` }, `${engine}: what the host holds`);
+
+  // A reload of the whole page: the same tabs, the same one on screen, the same rail and sidebar, the same panel at the same height.
+  await page.reload({ waitUntil: 'load' });
+  await strip(page).getByRole('tab').first().waitFor({ timeout: 30_000 });
+  await page.getByRole('alert').waitFor();
+  assert.deepEqual(await look(page), left, `${engine}: a reload brings back what the window was`);
+  // Only the tab on screen has a page: the first is restored, not mounted.
+  assert.equal(await page.getByText('orders-api', { exact: true }).count(), 0, `${engine}: a restored tab that is not on screen has no page`);
+  await strip(page).getByRole('tab').first().click();
+  await page.getByText('orders-api', { exact: true }).waitFor();
+  assert.deepEqual((await look(page)).rail, ['Seam Fixture'], `${engine}: choosing the first tab makes its plugin current again`);
+  await strip(page).getByRole('tab').nth(1).click();
+  await page.getByRole('alert').waitFor();
+
+  // The app's restart: the host is stopped (the window service writes `windows.json` into the state root) and started again over the same state root, and a new page finds the window as it was left.
+  const onDisk = async () => JSON.parse(await readFile(path.join(stateRoot(work), 'windows.json'), 'utf8')).states?.main?.session;
+  await until('the session on disk', onDisk, (text) => typeof text === 'string' && JSON.parse(text)?.tabs?.active === saved.tabs.tabs[1]?.id);
+  await page.close();
+  await restart();
+  const again = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  watch(again);
+  await open(again, getHost().base);
+  await strip(again).getByRole('tab').first().waitFor({ timeout: 30_000 });
+  await again.getByRole('alert').waitFor();
+  assert.deepEqual(await look(again), left, `${engine}: a restart of the host brings back what the window was`);
+
+  // A tab of a plugin that is not installed: it stays, in its place and on screen, and its page says why. (Written through the service the shell uses, as a run with the plugin removed would have left it.)
+  const route = (plugin, contribution) => ({ plugin, contribution, params: {} });
+  const tab = (id, plugin, contribution, title) => ({ id, route: route(plugin, contribution), key: `${plugin}:${contribution}`, face: { title, icon: 'box', path: [], facets: [], pluginName: 'Gone Plugin', singleton: false, identity: 'key' }, pinned: false, preview: false, history: { entries: [route(plugin, contribution)], index: 0 } });
+  const document = (version, tabs, active) => JSON.stringify({ version, tabs: { version: 1, active, tabs }, rail: null, panel: { version: 1 } });
+  // A slot holds JSON: the session is the text of its document.
+  // The page that is open saves its own window a quiet moment after it changes (a plugin that registers describes its tabs again): that lands first, or it would replace what is written here.
+  const write = async (text) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    return callHost(getHost().base, 'SaveState', 'main', 'session', text);
+  };
+  await write(document(1, [tab('a', 'fixture-z-gone', 'items', 'Gone page'), tab('b', OK, 'items', 'Items')], 'a'));
+  await again.reload({ waitUntil: 'load' });
+  await strip(again).getByRole('tab').first().waitFor({ timeout: 30_000 });
+  await again.getByRole('alert').waitFor();
+  assert.match(await again.getByRole('alert').innerText(), /Couldn't load Gone Plugin[\s\S]*This plugin is not installed, or is turned off\./, `${engine}: the page of a tab whose plugin is not installed says so`);
+  assert.deepEqual((await look(again)).tabs, ['Gone page', 'Items'], `${engine}: and the tab stays, with the face it was saved with`);
+  assert.equal((await kept()).length, before, `${engine}: a plugin that is gone is no reason to keep a session aside`);
+
+  // A session of a newer version, and a text that is no session: kept aside whole, in slots of their own that nothing replaces, and the window opens empty, with a note.
+  const newer = document(99, [tab('a', OK, 'items', 'Items')], 'a');
+  const nonsense = '"these are just words"';
+  let count = before;
+  for (const text of [newer, nonsense]) {
+    count += 1;
+    notes.length = 0;
+    await write(text);
+    await again.reload({ waitUntil: 'load' });
+    await again.getByText('No tabs are open.').waitFor({ timeout: 30_000 });
+    assert.equal(await strip(again).getByRole('tab').count(), 0, `${engine}: a session that cannot be used opens an empty window`);
+    const aside = await until('the text kept aside', kept, (entries) => entries.length === count);
+    assert.ok(notes.some((note) => note.includes('kept aside')), `${engine}: the console says so (${notes.join(' | ')})`);
+    // The slot holds the record as a JSON string: the record is JSON text inside it.
+    const record = JSON.parse(JSON.parse(aside.at(-1)[1]));
+    assert.equal(record.text, text, `${engine}: the text is kept exactly as it was`);
+    assert.equal(record.reason, text === newer ? 'foreign-version' : 'unreadable', `${engine}: with its reason`);
+    // What the window holds from now on is a session of this version, not the text that was kept: the next start does not find it again.
+    await until('the session replaced', async () => (await slots()).session, (value) => typeof value === 'string' && JSON.parse(value)?.version === 1 && JSON.parse(value)?.tabs?.tabs?.length === 0);
+  }
+
+  // A reload, a closed page and a host that was stopped cut the calls that are in flight, which an engine reports as a page error ("Load failed", "due to access control checks", "Failed to fetch"):
+  // they are the page's going away, not the session's. Anything else is.
+  const cut = /access control checks|Load failed|Failed to fetch|NetworkError|network connection was lost/i;
+  assert.deepEqual(errors.filter((message) => !cut.test(message)), [], `${engine}: the session wrote no page error`);
+  await again.close();
+}
+
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
 let host;
 try {
-  host = await startHost(work, await freePort());
+  const port = await freePort();
+  host = await startHost(work, port);
   // What the build wrote: the healthy bundle imports only what the host serves, the copy lacks the kit, the old one needs the old library.
   const dependencies = Object.fromEntries(host.built.map(({ id, dependencies: names }) => [id, names]));
   for (const name of dependencies[OK]) assert.ok(SHARED_SPECIFIERS_V1.includes(name), `${OK} imports ${name}, which is not on the shared list`);
@@ -378,15 +602,30 @@ try {
   assert.deepEqual(dependencies[OLD], ['@omniviewdev/base-ui']);
   const bytes = (await readFile(path.join(work, 'home/.omniview-feature-ui-next/plugins', OK, 'assets/entry.js'))).length;
 
-  for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]]) {
+  /** Stops the host, which writes its state root, and starts it again over the same one: what quitting the app and opening it again does to the host. */
+  const restart = async () => {
+    const stopped = host;
+    stopped.child.kill('SIGTERM');
+    await new Promise((resolve) => {
+      if (stopped.child.exitCode !== null) resolve();
+      else stopped.child.once('exit', resolve);
+      setTimeout(resolve, 8000);
+    });
+    host = await startHost(work, port, stopped.built);
+  };
+
+  // ENGINES=webkit (or chromium) runs one engine, for a developer who is chasing one.
+  for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
     const browser = await engine.launch();
     try {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       await checkHealthy(page, host.base, name);
       await checkRefusals(page, host.base, name);
-      await checkRail(await browser.newPage({ viewport: { width: 1440, height: 900 } }), host.base, name);
-      await checkPanel(await browser.newPage({ viewport: { width: 1440, height: 900 } }), host.base, name);
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel`);
+      await page.close();
+      await checkRail(await freshPage(browser, host.base), host.base, name);
+      await checkPanel(await freshPage(browser, host.base), host.base, name);
+      await checkSession(browser, () => host, restart, name);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the session (reload, restart, a plugin that is gone, a session kept aside)`);
     } finally {
       await browser.close();
     }

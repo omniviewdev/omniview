@@ -30,12 +30,10 @@ function world(initial: readonly PluginEntry[]) {
     },
   };
   const frames = new Published<FrameV1>();
-  const hold = { held: false };
-  const contributions = createContributions({ plugins, frames, holdHome: () => hold.held });
+  const contributions = createContributions({ plugins, frames });
   return {
     contributions,
     frames,
-    hold,
     listeners,
     set: (next: readonly PluginEntry[]) => {
       entries = next;
@@ -91,12 +89,15 @@ describe('describe', () => {
     expect(contributions.describe(route('acme', 'widgets'))?.title).toBe('Widgets');
   });
 
-  it('names a plugin that is loading by its name, with the generic glyph', () => {
-    expect(world([loading()]).contributions.describe(route('slow', HOME_PAGE))).toMatchObject({ title: 'Slow plugin', icon: 'box', pluginName: 'Slow plugin', path: ['Slow plugin'] });
+  it('names a plugin that is loading by its name, with the generic glyph, as a stand-in: a tab that already has a face keeps it (S3a: a tab restored from a session)', () => {
+    expect(world([loading()]).contributions.describe(route('slow', HOME_PAGE))).toMatchObject({ title: 'Slow plugin', icon: 'box', pluginName: 'Slow plugin', path: ['Slow plugin'], provisional: true });
   });
 
-  it('names a plugin that failed by its name, with the error glyph', () => {
-    expect(world([failed()]).contributions.describe(route('broken', HOME_PAGE))).toMatchObject({ title: 'Broken plugin', icon: 'status-error', path: ['Broken plugin'] });
+  it('names a plugin that failed by its name, with the error glyph, and means it: the tab says what happened', () => {
+    const description = world([failed()]).contributions.describe(route('broken', HOME_PAGE));
+
+    expect(description).toMatchObject({ title: 'Broken plugin', icon: 'status-error', path: ['Broken plugin'] });
+    expect(description).not.toHaveProperty('provisional');
   });
 
   it('keeps the connection of a plugin that is not ready, so its tab is told from a twin', () => {
@@ -170,28 +171,11 @@ describe('home', () => {
     expect(contributions.home?.('nobody')).toBeUndefined();
   });
 
-  it('is the first ready plugin\'s home for the window once every plugin has settled', () => {
-    expect(world([failed('a-broken'), ready('b-acme'), ready('c-acme')]).contributions.home?.()).toEqual({ plugin: 'b-acme', contribution: 'widgets' });
-  });
-
-  it('is the first plugin that failed when none is ready, so the window shows why', () => {
-    expect(world([failed('a-broken'), failed('b-broken')]).contributions.home?.()).toEqual({ plugin: 'a-broken', contribution: HOME_PAGE });
-  });
-
-  it('waits while any plugin is loading, even when another is ready, and there is none to choose without plugins', () => {
+  it('is none for the window: it opens no page of its own, whatever the plugins are doing (decision A17, S3a)', () => {
+    expect(world([failed('a-broken'), ready('b-acme'), ready('c-acme')]).contributions.home?.()).toBeUndefined();
+    expect(world([failed('a-broken'), failed('b-broken')]).contributions.home?.()).toBeUndefined();
     expect(world([loading('a-slow'), ready('b-acme')]).contributions.home?.()).toBeUndefined();
     expect(world([]).contributions.home?.()).toBeUndefined();
-  });
-
-  it('waits for a link that has not found its plugin (holdHome), and chooses when it lets go', () => {
-    const { contributions, hold } = world([ready()]);
-    hold.held = true;
-    expect(contributions.home?.()).toBeUndefined();
-    // A plugin's own home does not wait: only the window's choice does.
-    expect(contributions.home?.('acme')).toEqual({ plugin: 'acme', contribution: 'widgets' });
-
-    hold.held = false;
-    expect(contributions.home?.()).toEqual({ plugin: 'acme', contribution: 'widgets' });
   });
 });
 

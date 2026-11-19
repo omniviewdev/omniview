@@ -232,6 +232,24 @@ describe('a damaged session is repaired, never discarded (ch16 S32, CO-20)', () 
     sound(h);
   });
 
+  it('keeps the saved face of a tab whose plugin is still loading, which can say only a stand-in (provisional), and takes the plugin\'s own description once it says one', () => {
+    const world = makeWorld();
+    let loaded = false;
+    world.install({ id: 'later', name: 'Later', describe: () => (loaded ? { title: 'Real title', icon: 'clock' } : { title: 'Later', icon: 'box', provisional: true }) });
+    const face = { title: 'Later page', icon: 'clock', path: [], facets: [], pluginName: 'Later', singleton: false, identity: 'key' };
+    const result = restored(doc([saved('a', 'page', { face, key: 'later:page' }, 'later'), saved('b', 'instances')], 'a'), world);
+    const h = boot({ home: false, initial: result.state, world });
+    // The stand-in neither names the tab as it is restored nor takes the face from it while the plugin goes on loading.
+    expect(tab(h, 'a').face).toMatchObject({ title: 'Later page', icon: 'clock', pluginName: 'Later' });
+    expect(tab(h, 'a').location.key).toBe('later:page');
+    world.changed();
+    expect(tab(h, 'a').face).toMatchObject({ title: 'Later page', icon: 'clock' });
+    loaded = true;
+    world.changed();
+    expect(tab(h, 'a').face).toMatchObject({ title: 'Real title', icon: 'clock' });
+    sound(h);
+  });
+
   it('lets a plugin rewrite or drop a saved tab when it comes back (DM1), and one that throws or answers nonsense costs a tab at most', () => {
     const world = makeWorld();
     // A plugin that ignores the types and answers something that is not a route.

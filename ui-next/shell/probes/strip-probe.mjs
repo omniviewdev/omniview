@@ -17,10 +17,11 @@
 //   counts     the DOM nodes of a tab (exact), and the commits one tab switch costs (React development build, React's profiler): exact
 //   keep-alive on the host: a hidden page keeps its scroll offset, its local state and its DOM, holds no timer while it is hidden and takes it up again, tabs past the cap are unmounted, a hidden
 //              page is not drawn; the time of a switch with a list of 500 rows mounted (recorded, never judged)
-//   load       the window the way it opens, with plugins that arrive after the first frame (the inventory, then each interface, then the sidebar's entries, then the page's data, and the first tab):
-//              every region is in the first frame and not one moves for the rest of the load, and the layout-shift observer where the engine has one reads 0; then with two plugins, the second of which
-//              registers 700 ms after the first and sorts after it or before it (S2a): the window opens on the first plugin of the declared order, the rail lists both in that order, and no region and
-//              no entry of the rail moves (0 px). Not covered, and measured at 0.00006 in Chromium: a plugin that registers late, sorting before entries already drawn, with a tab already open (a link at load)
+//   load       the window the way it opens (S3a: from the session the previous run left, the host fixture's `?session=`), with plugins that arrive after the first frame (the inventory, then each interface,
+//              then the sidebar's entries, then the page's data): every region is in the first frame and not one moves for the rest of the load, and the layout-shift observer where the engine has one
+//              reads 0; then with two plugins, the second of which registers 700 ms after the first and sorts after it or before it: the rail and the sidebar wait for every plugin (`held`), so no region
+//              and no entry of the rail moves (0 px), a tab already open included; a session of two tabs, the plugin of the one on screen registering late; the window with no session (the empty window,
+//              with no lane reserved for a tab that is not coming); a tab whose plugin is never installed (it stays and says so); and a text that cannot be used (kept aside, the window empty)
 // Exit code 1 when anything differs.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -482,11 +483,14 @@ const MUST_NOT_MOVE = ['window', 'topRow', 'safeArea', 'frame', 'rail', 'sidebar
 
 /**
  * The window as it opens: nothing but the frame in the first frame, then the plugins arrive. No region moves, and every one is in the first frame. `expected`, for the cases that say what the
- * window ends on (S2a): the rail's entries in the order the plugins declare (the entry of the plugin the window opened on marked with a star) and the sidebar's name. A plugin that registers late
- * moves no entry that is drawn either: the window opens its first tab once every plugin has settled, and the rail's entries come with it.
+ * window ends on (S2a, S3a): the rail's entries in the order the plugins declare (the entry of the plugin that is current marked with a star), the sidebar's name, how many tabs (default 1), whether
+ * the page's rows are drawn (default: when there is a tab), whether the empty window's home is (`home`) and whether the scope lane is one of the regions (`lane`, default true). A plugin that registers
+ * late moves no entry that is drawn either: the rail and the sidebar are chosen once every plugin has settled, and the entries come with them.
  */
 async function load(browser, engine, viewportName, viewport, origin, query, label, expected) {
   const where = `load ${engine} ${viewportName} ${label}`;
+  const want = { tabs: 1, rows: undefined, home: false, lane: true, ...expected };
+  const regions = MUST_NOT_MOVE.filter((name) => want.lane || name !== 'lane');
   const { page, context, errors } = await open(browser, hostUrl(origin, query), viewport, { init: `${SAMPLER}; window.__probeFrames = 150;` });
   await sleep(2800);
   const result = await page.evaluate(() => ({
@@ -494,27 +498,38 @@ async function load(browser, engine, viewportName, viewport, origin, query, labe
     tabs: document.querySelectorAll('[role=tab]').length,
     entries: document.querySelectorAll('[role=treeitem]').length,
     rows: document.querySelectorAll('tbody tr').length,
+    home: document.querySelector('[data-shell-part="home"]') !== null,
+    unavailable: /This plugin is not installed, or is turned off\./.test(document.body.textContent ?? ''),
+    kept: Object.keys(window.sessionStorage).filter((key) => key.includes(':session.invalid.')).length,
+    notes: window.__sessionNotes ?? [],
     rail: [...document.querySelectorAll('[data-shell-part="rail"] button')].map((button) => `${button.getAttribute('aria-label')}${button.getAttribute('aria-current') === 'true' ? '*' : ''}`),
     sidebar: document.querySelector('[data-shell-region="sidebar"]')?.getAttribute('aria-label') ?? null,
   }));
-  report.load[`${engine} ${viewportName} ${label}`] = { frames: result.frames, first: result.first, moves: result.moves, gone: result.gone, layoutShift: result.layoutShift, shiftSources: result.shiftSources, tabs: result.tabs, entries: result.entries, rows: result.rows, rail: result.rail, sidebar: result.sidebar };
-  if (result.tabs !== 1 || result.entries === 0 || result.rows === 0) fail(where, `the load did not finish in the time given: ${result.tabs} tabs, ${result.entries} entries, ${result.rows} rows`);
-  const moved = result.moves.filter((move) => MUST_NOT_MOVE.includes(move.part));
-  if (label !== 'a frame without a lane') {
+  report.load[`${engine} ${viewportName} ${label}`] = { frames: result.frames, first: result.first, moves: result.moves, gone: result.gone, layoutShift: result.layoutShift, shiftSources: result.shiftSources, tabs: result.tabs, entries: result.entries, rows: result.rows, home: result.home, rail: result.rail, sidebar: result.sidebar, notes: result.notes };
+  const rows = want.rows ?? want.tabs > 0;
+  if (result.tabs !== want.tabs || (rows && (result.entries === 0 || result.rows === 0)) || result.home !== want.home) {
+    fail(where, `the load did not end as it should in the time given: ${result.tabs} tabs (wanted ${want.tabs}), ${result.entries} entries, ${result.rows} rows, home ${result.home} (wanted ${want.home})`);
+  }
+  const moved = result.moves.filter((move) => regions.includes(move.part));
+  if (label !== 'a frame without a lane' && label !== 'a saved tab whose plugin is never installed') {
     if (moved.length > 0) fail(where, `${moved.length} regions moved: ${JSON.stringify(moved.slice(0, 4))}`);
-    const late = MUST_NOT_MOVE.filter((name) => result.first[name] !== result.first.window);
+    const late = regions.filter((name) => result.first[name] !== result.first.window);
     if (late.length > 0) fail(where, `regions not in the first frame: ${late.map((name) => `${name} at ${result.first[name]}`).join(', ')}`);
-    if (result.gone.some((gone) => MUST_NOT_MOVE.includes(gone.part))) fail(where, `a region went away: ${JSON.stringify(result.gone)}`);
+    if (result.gone.some((gone) => regions.includes(gone.part))) fail(where, `a region went away: ${JSON.stringify(result.gone)}`);
     if (result.layoutShift !== null && result.layoutShift > 0) fail(where, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
   } else {
-    // A frame that has no scope lane reserved one while it loaded, and gives it back once: the page moves up once. The shape of a plugin's frame is not known before it loads (README).
+    // A frame that has no scope lane reserved one while it loaded, and gives it back once: the page moves up once. The shape of a plugin's frame is not known before it loads (README), and a
+    // plugin that never comes has none.
     report.notes.push(`${where}: ${moved.length} moves (${[...new Set(moved.map((move) => move.part))].join(', ')}), layout shift ${result.layoutShift}`);
   }
   if (expected !== undefined) {
-    if (result.rail.join() !== expected.rail.join()) fail(where, `the rail lists ${result.rail.join(', ')}, wanted ${expected.rail.join(', ')}`);
-    if (result.sidebar !== expected.sidebar) fail(where, `the sidebar is "${result.sidebar}", wanted "${expected.sidebar}"`);
+    if (expected.rail !== undefined && result.rail.join() !== expected.rail.join()) fail(where, `the rail lists ${result.rail.join(', ')}, wanted ${expected.rail.join(', ')}`);
+    if (expected.sidebar !== undefined && result.sidebar !== expected.sidebar) fail(where, `the sidebar is "${result.sidebar}", wanted "${expected.sidebar}"`);
     const pushed = result.moves.filter((move) => move.part.startsWith('rail:'));
-    if (pushed.length > 0) fail(where, `${pushed.length} entries of the rail moved: ${JSON.stringify(pushed.slice(0, 4))}`);
+    if (expected.rail !== undefined && pushed.length > 0) fail(where, `${pushed.length} entries of the rail moved: ${JSON.stringify(pushed.slice(0, 4))}`);
+    if (expected.unavailable !== undefined && result.unavailable !== expected.unavailable) fail(where, `the page says the plugin is not installed: ${result.unavailable}, wanted ${expected.unavailable}`);
+    if (expected.kept !== undefined && result.kept !== expected.kept) fail(where, `${result.kept} texts kept aside, wanted ${expected.kept}`);
+    if (expected.notes !== undefined && result.notes.length !== expected.notes) fail(where, `${result.notes.length} notes on the console, wanted ${expected.notes}`);
   }
   for (const error of errors) fail(`errors ${where}`, error);
   await context.close();
@@ -536,12 +551,21 @@ for (const engineName of engineNames) {
     await counts(browser, engineName, viewportName, viewport, development.origin);
     await keepAlive(browser, engineName, viewportName, viewport, production.origin);
     await switchTimes(browser, engineName, viewportName, viewport, production.origin);
-    await load(browser, engineName, viewportName, viewport, production.origin, '', 'a frame with a lane', { rail: ['Alpha*'], sidebar: 'Alpha navigation' });
-    await load(browser, engineName, viewportName, viewport, production.origin, 'lane=0', 'a frame without a lane');
-    // Two plugins, the second of which registers 700 ms after the first (S2a): the window opens once both have settled, on the first plugin of the declared order, and nothing moves for the late
-    // one, whether it sorts after the first or before it.
-    await load(browser, engineName, viewportName, viewport, production.origin, 'plugins=2&lateMs=700', 'a second plugin that registers late and sorts last', { rail: ['Alpha*', 'Beta'], sidebar: 'Alpha navigation' });
-    await load(browser, engineName, viewportName, viewport, production.origin, 'plugins=2&lateMs=700&first=beta', 'a second plugin that registers late and sorts first', { rail: ['Beta*', 'Alpha'], sidebar: 'Beta navigation' });
+    const here = (query, label, expected) => load(browser, engineName, viewportName, viewport, production.origin, query, label, expected);
+    // A window restored from a session with one tab (the host fixture's default): the tab is in the strip in the first frame, and the plugin loads after it.
+    await here('', 'a frame with a lane', { rail: ['Alpha*'], sidebar: 'Alpha navigation' });
+    await here('lane=0', 'a frame without a lane');
+    // Two plugins, the second of which registers 700 ms after the first: the rail and the sidebar are chosen once both have settled, with the plugin of the tab on screen current, whether the late
+    // one sorts after the first or before it: a tab is open the whole time, and no entry of the rail moves (S2a left this uncovered at 0.00006 in Chromium).
+    await here('plugins=2&lateMs=700', 'a second plugin that registers late and sorts last', { rail: ['Alpha*', 'Beta'], sidebar: 'Alpha navigation' });
+    await here('plugins=2&lateMs=700&first=beta', 'a second plugin that registers late and sorts first', { rail: ['Beta', 'Alpha*'], sidebar: 'Alpha navigation' });
+    // A saved window of two tabs, the plugin of the one on screen the late one: both tabs are in the strip in the first frame, the page is the kit's loading state until it registers.
+    await here('session=two&plugins=2&lateMs=700&first=beta', 'a saved window of two tabs with the plugin of the tab on screen registering late', { tabs: 2, rail: ['Beta*', 'Alpha'], sidebar: 'Beta navigation' });
+    // No session: the empty window, with the home content, and no lane: no tab is coming for one.
+    await here('session=none&plugins=2&lateMs=700&first=beta', 'a window with no session, a plugin registering late and sorting first', { tabs: 0, home: true, lane: false, rail: ['Beta*', 'Alpha'], sidebar: 'Beta navigation' });
+    // A tab whose plugin is never installed stays, and says so once the list of plugins has been read; a text that cannot be used is kept aside and the window is the empty one, with one note.
+    await here('session=gone', 'a saved tab whose plugin is never installed', { rows: false, unavailable: true, rail: ['Alpha*'], sidebar: 'Alpha navigation' });
+    await here('session=bad', 'a saved text that cannot be used', { tabs: 0, home: true, lane: false, kept: 1, notes: 1, rail: ['Alpha*'], sidebar: 'Alpha navigation' });
     console.log(engineName, viewportName, 'done');
   }
   await browser.close();
