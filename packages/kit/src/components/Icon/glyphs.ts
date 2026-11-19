@@ -21,13 +21,17 @@
 /** The name of a glyph in the registry: the only icons the kit draws. A new glyph is a new line here and in `GLYPHS`. */
 export type IconName =
   | 'arrow-down'
+  | 'arrow-down-to-line'
   | 'arrow-left'
   | 'arrow-right'
   | 'arrow-up'
   | 'box'
+  | 'case-sensitive'
   | 'check'
   | 'chevron-down'
   | 'chevron-right'
+  | 'chevron-up'
+  | 'circle'
   | 'circle-minus'
   | 'clock'
   | 'close'
@@ -42,6 +46,7 @@ export type IconName =
   | 'play'
   | 'plus'
   | 'refresh'
+  | 'regex'
   | 'search'
   | 'search-x'
   | 'server'
@@ -75,6 +80,8 @@ export type Glyph = { readonly box: 16 | 24; readonly layers: readonly [GlyphLay
 export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   /* Int UI general/down_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowDown. */
   'arrow-down': { box: 16, layers: [{ d: 'M12.354 9.654C12.549 9.458 12.549 9.142 12.354 8.946 12.158 8.751 11.842 8.751 11.646 8.946L8.5 12.093 8.5 2.5C8.5 2.224 8.276 2 8 2 7.724 2 7.5 2.224 7.5 2.5L7.5 12.093 4.354 8.946C4.158 8.751 3.842 8.751 3.646 8.946 3.451 9.142 3.451 9.458 3.646 9.654L7.646 13.654 8 14.007 8.354 13.654 12.354 9.654Z', fill: 'ink', evenodd: true }] },
+  /* Lucide arrow-down-to-line (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuArrowDownToLine. */
+  'arrow-down-to-line': { box: 24, layers: [{ d: 'M12 17V3M6 11l6 6 6-6M19 21H5', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI general/left_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowLeft. */
   'arrow-left': { box: 16, layers: [{ d: 'M6.346 3.646C6.542 3.451 6.858 3.451 7.053 3.646 7.249 3.842 7.249 4.158 7.053 4.354L3.904 7.504 13.504 7.504C13.78 7.504 14.004 7.727 14.004 8.004 14.004 8.28 13.78 8.504 13.504 8.504L3.911 8.504 7.054 11.646C7.249 11.842 7.249 12.158 7.054 12.354 6.858 12.549 6.542 12.549 6.346 12.354L2.346 8.354 1.993 8 2.346 7.646 6.346 3.646Z', fill: 'ink', evenodd: true }] },
   /* Int UI general/right_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuArrowRight. */
@@ -83,12 +90,18 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   'arrow-up': { box: 16, layers: [{ d: 'M12.354 6.346C12.549 6.542 12.549 6.858 12.354 7.054 12.158 7.249 11.842 7.249 11.646 7.054L8.5 3.907 8.5 13.507C8.5 13.783 8.276 14.007 8 14.007 7.724 14.007 7.5 13.783 7.5 13.507L7.5 3.907 4.354 7.054C4.158 7.249 3.842 7.249 3.646 7.054 3.451 6.858 3.451 6.542 3.646 6.346L7.646 2.346 8 1.993 8.354 2.346 12.354 6.346Z', fill: 'ink', evenodd: true }] },
   /* Lucide box (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuBox. */
   box: { box: 24, layers: [{ d: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16ZM3.3 7l8.7 5 8.7-5M12 22V12', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide case-sensitive (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuCaseSensitive. */
+  'case-sensitive': { box: 24, layers: [{ d: 'M3 15l4-8 4 8M4 13h6M15 12A3 3 0 1 0 21 12A3 3 0 1 0 15 12ZM21 9v6', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI actions/checked_dark.svg. Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuCheck. */
   check: { box: 16, layers: [{ d: 'M2.5 8.25L6 11.75 13.5 4.25', stroke: 'ink', width: 1.5, cap: 'round', join: 'round' }] },
   /* Int UI general/chevronDown_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuChevronDown. */
   'chevron-down': { box: 16, layers: [{ d: 'M11.5 6.25L8 9.75 4.5 6.25', stroke: 'chevron', cap: 'round' }] },
   /* Int UI general/chevronRight_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuChevronRight. */
   'chevron-right': { box: 16, layers: [{ d: 'M6 11.5L9.5 8 6 4.5', stroke: 'chevron', cap: 'round' }] },
+  /* Int UI general/chevronUp_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuChevronUp. */
+  'chevron-up': { box: 16, layers: [{ d: 'M4.5 9.75L8 6.25 11.5 9.75', stroke: 'chevron', cap: 'round' }] },
+  /* Lucide circle (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuCircle. */
+  circle: { box: 24, layers: [{ d: 'M2 12A10 10 0 1 0 22 12A10 10 0 1 0 2 12Z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide circle-minus (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuCircleMinus. */
   'circle-minus': { box: 24, layers: [{ d: 'M2 12A10 10 0 1 0 22 12A10 10 0 1 0 2 12ZM8 12h8', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI general/history_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuClock, LuHistory. */
@@ -117,6 +130,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   plus: { box: 16, layers: [{ d: 'M7.5 1C7.776 1 8 1.224 8 1.5V7H13.5C13.776 7 14 7.224 14 7.5C14 7.776 13.776 8 13.5 8H8V13.5C8 13.776 7.776 14 7.5 14C7.224 14 7 13.776 7 13.5V8H1.5C1.224 8 1 7.776 1 7.5C1 7.224 1.224 7 1.5 7H7V1.5C7 1.224 7.224 1 7.5 1Z', fill: 'ink', evenodd: true }] },
   /* Int UI general/refresh_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuRefreshCw, LuRefreshCcw. */
   refresh: { box: 16, layers: [{ d: 'M2.5 9V8C2.5 4.962 4.962 2.5 8 2.5 9.107 2.5 10.137 2.827 11 3.389M5 12.611C5.863 13.173 6.893 13.5 8 13.5 11.038 13.5 13.5 11.038 13.5 8V7M.5 7.5L2.5 9.5 4.5 7.5M11.5 8.5L13.5 6.5 15.5 8.5', stroke: 'ink', cap: 'round' }] },
+  /* Lucide regex (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuRegex. */
+  regex: { box: 24, layers: [{ d: 'M17 3v10M12.67 5.5l8.66 5M12.67 10.5l8.66-5M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2Z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI general/search_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuSearch. */
   search: { box: 16, layers: [{ d: 'M2.5 7A4.5 4.5 0 1 0 11.5 7A4.5 4.5 0 1 0 2.5 7ZM10.199 10.2L13.499 13.496', stroke: 'ink', cap: 'round' }] },
   /* Lucide search-x (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuSearchX. */

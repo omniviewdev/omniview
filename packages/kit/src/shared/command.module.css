@@ -68,6 +68,17 @@
     --_active: var(--ov-error-control);
   }
 
+  /* Pressed: a toggle (the caller owns `aria-pressed`) fills quietly with the inactive selection and takes the text colour, and hover
+     and press keep that fill. The border is the variant's own. An unavailable toggle is painted by the disabled rules, and the
+     primary variant keeps its accent: a pressed primary says nothing a fill could add. */
+  .root[aria-pressed='true']:not([aria-disabled='true'], [data-ov-variant='primary']) {
+    --_fg: var(--ov-fg);
+    --_icon: currentcolor;
+    --_bg: var(--ov-selection-inactive);
+    --_hover: var(--ov-selection-inactive);
+    --_active: var(--ov-selection-inactive);
+  }
+
   /* Compact: the toolbar and lane command. Same height, a tighter side. */
   .root:where([data-ov-size='compact']) {
     padding-inline: var(--ov-spacing-8);

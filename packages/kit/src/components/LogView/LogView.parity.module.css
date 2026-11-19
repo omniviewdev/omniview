@@ -1,0 +1,10 @@
+/* The box a parity fixture sits in on the parts page: the mock's Logs tool at 1440 x 900 (1390 x 229). The probe pins the example to the size of the tool it is measuring. */
+@layer ov.components {
+  .stage {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 1390px;
+    height: 229px;
+    overflow: hidden;
+  }
+}

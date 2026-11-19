@@ -1,0 +1,12 @@
+/* The box every example sits in: a panel body's height, so the list scrolls and the strip is at the foot (the mock's default panel is 229 px of body). */
+@layer ov.components {
+  .stage {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 960px;
+    height: 280px;
+    overflow: hidden;
+    border: 1px solid var(--ov-border-subtle);
+    border-radius: var(--ov-radius-control);
+  }
+}

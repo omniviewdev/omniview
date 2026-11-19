@@ -6,10 +6,11 @@ const names = Object.keys(GLYPHS) as IconName[];
 // The glyphs slice 1a draws, from the mock's first list screen (plan 1.2, tiers A and B): command glyphs, the sort arrows, the
 // kind and scope glyphs, the seven status roles' glyphs, the loaders and the no-match glyph; the row menu's trigger adds the ellipsis.
 // Slice 1b adds the tab strip's: the new-tab plus and the back and forward arrows. The bottom panel (P1a) adds the status bar's toggle.
+// The log view (P1b2) adds its find bar's case and regex toggles and previous-match chevron, the follow glyph and the neutral debug-level circle.
 const SLICE_1A = [
-  'arrow-down', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'check', 'chevron-down', 'chevron-right', 'circle-minus', 'clock', 'close', 'columns', 'copy',
-  'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'panel-bottom', 'play', 'plus', 'refresh', 'search', 'search-x', 'server', 'status-error', 'status-info',
-  'status-success', 'status-warning',
+  'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle',
+  'circle-minus', 'clock', 'close', 'columns', 'copy', 'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'panel-bottom', 'play', 'plus', 'refresh', 'regex',
+  'search', 'search-x', 'server', 'status-error', 'status-info', 'status-success', 'status-warning',
 ];
 
 describe('the glyph registry', () => {
@@ -83,7 +84,7 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 7,200: it was 7,000 until the bottom panel adds its toggle glyph)', () => {
+  it('stays within its byte budget (one glyph 800 bytes, the registry 7,700: it was 7,000, then 7,200 for the bottom panel toggle, then grew by the log view find bar glyphs)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -91,7 +92,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(7200);
+    expect(total).toBeLessThanOrEqual(7700);
   });
 
   it('guards a name from outside: true for every glyph, false for anything else', () => {

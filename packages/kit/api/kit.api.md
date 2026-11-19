@@ -280,6 +280,7 @@ export type IconButtonProps = {
     readonly tone?: ButtonTone | undefined;
     readonly size?: IconButtonSize | undefined;
     readonly busy?: boolean | undefined;
+    readonly pressed?: boolean | undefined;
     readonly disabledReason?: string | undefined;
     readonly onClick?: ((event: MouseEvent_2<HTMLButtonElement>) => void) | undefined;
 } & DataAttributes;
@@ -288,7 +289,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'arrow-down' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'panel-bottom' | 'play' | 'plus' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+export type IconName = 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'box' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'panel-bottom' | 'play' | 'plus' | 'refresh' | 'regex' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
 
 // @public (undocumented)
 export type IconProps = {
@@ -401,6 +402,70 @@ export function LoadingBody(input: {
     readonly label: string;
     readonly columns: number;
 }): JSX.Element;
+
+// @public
+export type LogFeed = {
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly getSnapshot: () => LogFeedSnapshot;
+    readonly read: (maxLines: number) => LogFeedBatch;
+    readonly stats: () => LogFeedStats;
+    readonly pause: () => void;
+    readonly resume: () => void;
+};
+
+// @public
+export type LogFeedBatch = {
+    readonly lines: readonly LogFeedLine[];
+    readonly dropped: number;
+    readonly held: number;
+};
+
+// @public
+export type LogFeedCause = {
+    readonly stage: 'create' | 'session' | 'source';
+    readonly source?: string | undefined;
+    readonly message: string;
+};
+
+// @public
+export type LogFeedLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+// @public
+export type LogFeedLine = {
+    readonly seq: number;
+    readonly source: string;
+    readonly timestamp: string;
+    readonly text: string;
+    readonly level: LogFeedLevel | undefined;
+};
+
+// @public
+export type LogFeedSnapshot = {
+    readonly state: LogFeedState;
+    readonly paused: boolean;
+    readonly cause: LogFeedCause | undefined;
+};
+
+// @public
+export type LogFeedState = 'starting' | 'streaming' | 'paused' | 'ended' | 'failed';
+
+// @public
+export type LogFeedStats = {
+    readonly received: number;
+    readonly dropped: number;
+    readonly held: number;
+};
+
+// @public
+export function LogView(input: LogViewProps): JSX.Element;
+
+// @public
+export type LogViewProps = {
+    readonly label: string;
+    readonly feed: LogFeed;
+    readonly maxLines?: number | undefined;
+    readonly defaultQuery?: string | undefined;
+} & DataAttributes;
 
 // @public
 export function MiddleEllipsis(input: MiddleEllipsisProps): JSX.Element;
