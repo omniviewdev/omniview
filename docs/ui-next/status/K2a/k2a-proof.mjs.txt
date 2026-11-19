@@ -1,0 +1,516 @@
+#!/usr/bin/env node
+// K2a proof (docs/ui-next/status/K2a.md): the Kubernetes plugin's new UI, built from the plugin checkout under test, lists the five Workloads kinds in the real host, each equal to
+// `kubectl get <kind> -A`, and follows a live change. `redo.sh` (beside this file in docs/ui-next/status/K2a/) runs it on a fresh cluster; this file is `k2a-proof.mjs` without the `.txt`.
+//
+//   OMNIVIEW_HOST_ROOT=<host checkout> PLUGIN_ARCHIVE=<kubernetes-<os>_<arch>.tar.gz> KUBECONFIG_PATH=<kubeconfig> OUT=<directory> node k2a-proof.mjs
+//
+//   OMNIVIEW_HOST_ROOT  a host checkout of origin/main built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used
+//   PLUGIN_ARCHIVE      the archive `hack/package.sh` wrote from the plugin checkout (plugin.yaml, bin/plugin, assets/entry.js): extracted into the channel's state root of a throwaway HOME
+//   KUBECONFIG_PATH     the kind cluster that holds the slice fixture and hack/kinds-capture/extra-states.yaml (the only kubeconfig this script and the host ever read); kubectl is the oracle
+//   OUT                 where the screenshots and the report go
+//   ENGINES             default `webkit,chromium` (the data checks run in each; the screenshots are WebKit)
+//
+// What it asserts, each as a PASS/FAIL line:
+//   A  for each of Pods, Deployments, StatefulSets, DaemonSets and Jobs, in each engine: the page lists exactly the objects of `kubectl get <kind> -A` (the same `namespace/name`), the same numbers
+//      (READY; UP-TO-DATE; DESIRED; COMPLETIONS), the same state word (kubectl's STATUS for a Pod and a Job; for the three kinds that print none, the K61.3 word the counts of kubectl's own cells give),
+//      the same age (inside the span the page's one unit stands for), the footer's count and the quick filters' counts
+//   B  the sidebar lists the five kinds under Workloads in the mock's order, selects the one on screen, and a click on an entry opens its list
+//   C  live: scale a Deployment (cart-api 3 to 5 and back) and the page follows with no reload; delete a Job (broken-migration) and its row leaves, the count and the chips follow; the Job is made again
+//   D  controls: the comparison detects a wrong READY, a missing row, an extra row and a wrong state word (it is run on a deliberately altered oracle)
+//   E  screenshots, WebKit, void theme, 1440x900: Deployments and Jobs (and the other three)
+import { spawn, spawnSync } from 'node:child_process';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const archive = path.resolve(env('PLUGIN_ARCHIVE'));
+const kubeconfig = path.resolve(env('KUBECONFIG_PATH'));
+const out = path.resolve(env('OUT'));
+const engines = env('ENGINES', 'webkit,chromium').split(',');
+
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const results = [];
+function check(scope, name, ok, measured) {
+  const value = measured === undefined ? '' : ` -- ${typeof measured === 'string' ? measured : JSON.stringify(measured)}`;
+  console.log(`${ok ? 'PASS' : 'FAIL'} [${scope}] ${name}${value}`);
+  results.push({ scope, name, ok: Boolean(ok), measured });
+  return ok;
+}
+const info = (scope, name, data) => {
+  console.log(`INFO [${scope}] ${name} -- ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  results.push({ scope, name, info: true, data });
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+    probe.on('error', reject);
+  });
+}
+
+const children = [];
+/** Starts the real Go host in server mode on a throwaway HOME that holds the kubeconfig and the plugin installed by directory. Nothing ambient reaches it. */
+async function startHost(name) {
+  const work = await mkdtemp(path.join(os.tmpdir(), `k2a-${name}-`));
+  const home = path.join(work, 'home');
+  const pluginDir = path.join(home, '.omniview-feature-ui-next', 'plugins', 'kubernetes');
+  await mkdir(path.join(home, '.kube'), { recursive: true });
+  await mkdir(pluginDir, { recursive: true });
+  await cp(kubeconfig, path.join(home, '.kube', 'config'));
+  const untar = spawnSync('tar', ['-xzf', archive, '-C', pluginDir], { encoding: 'utf8' });
+  if (untar.status !== 0) throw new Error(`could not extract ${archive}: ${untar.stderr}`);
+  const port = await freePort();
+  const lines = [];
+  const { PATH, TMPDIR, LANG, USER } = process.env;
+  const child = spawn(path.join(hostRoot, 'bin/Omniview-server'), [], {
+    env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => lines.push(String(chunk)));
+  let exited = false;
+  child.on('exit', () => { exited = true; });
+  children.push({ name, pid: child.pid, child, work, isExited: () => exited });
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (exited) throw new Error(`the host ${name} exited while starting:\n${lines.join('').slice(-2000)}`);
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) {
+        info('host', `${name}: pid ${child.pid}`, { port, home });
+        return { name, base: `http://127.0.0.1:${port}`, pluginDir, lines, work, pid: child.pid };
+      }
+    } catch { /* not listening yet */ }
+    await sleep(500);
+  }
+  throw new Error(`the host ${name} did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
+}
+
+async function stopAll() {
+  for (const { name, pid, child, work, isExited } of children) {
+    if (!isExited()) {
+      child.kill('SIGTERM');
+      for (let i = 0; i < 50 && !isExited(); i += 1) await sleep(200);
+      if (!isExited()) child.kill('SIGKILL');
+    }
+    // The plugin's own process, started by the host from the throwaway profile: found by that profile's path in its command line.
+    const orphans = spawnSync('pgrep', ['-f', work], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).map(Number);
+    for (const orphan of orphans) {
+      try { process.kill(orphan, 'SIGTERM'); } catch { /* gone */ }
+    }
+    info('host', `${name}: stopped pid ${pid}${orphans.length > 0 ? `, and its leftover processes ${orphans.join(', ')}` : ''}`, {});
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The oracle: kubectl's own table, parsed by the column offsets of its header (a cell may be empty: a suspended Job has no DURATION).
+function kubectl(args) {
+  const result = spawnSync('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: 60_000 });
+  if (result.status !== 0) throw new Error(`kubectl ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout;
+}
+
+/** `kubectl get <kind> -A` as { 'namespace/name': { COLUMN: cell } }. */
+function kubectlTable(kind) {
+  const lines = kubectl(['get', kind, '-A']).split('\n').filter((line) => line.trim() !== '');
+  const header = lines[0];
+  const starts = [...header.matchAll(/\S+(?: \S+)*/g)].map((match) => ({ name: match[0], at: match.index }));
+  const rows = new Map();
+  for (const line of lines.slice(1)) {
+    const cells = Object.fromEntries(starts.map((column, index) => [column.name, line.slice(column.at, starts[index + 1]?.at).trim()]));
+    rows.set(`${cells.NAMESPACE}/${cells.NAME}`, cells);
+  }
+  return rows;
+}
+
+/** The Deployments whose rollout is paused: `spec.paused` is in no printed cell. */
+function pausedDeployments() {
+  const lines = kubectl(['get', 'deployments', '-A', '-o', 'jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}={.spec.paused}{"\\n"}{end}']).split('\n');
+  return new Set(lines.filter((line) => line.endsWith('=true')).map((line) => line.slice(0, line.indexOf('='))));
+}
+
+/** The governing Service of each StatefulSet: `spec.serviceName`, in no printed cell. */
+function serviceNames() {
+  const lines = kubectl(['get', 'statefulsets', '-A', '-o', 'jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}={.spec.serviceName}{"\\n"}{end}']).split('\n').filter(Boolean);
+  return new Map(lines.map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
+}
+
+const UNIT = { y: 365 * 86400, d: 86400, h: 3600, m: 60, s: 1 };
+/** kubectl's AGE and DURATION, in seconds: "6m12s" is 372. */
+const kubectlSeconds = (text) => [...text.matchAll(/(\d+)([ydhms])/g)].reduce((sum, [, amount, unit]) => sum + Number(amount) * UNIT[unit], 0);
+/**
+ * The seconds kubectl's text stands for: HumanDuration drops what is below its coarseness (`29m` is 29m00s to 29m59s, `17h` is 17h to 17h59m, `3d5h` is 3d5h to 3d5h59m), so the text is a window that
+ * starts at what it says and is as wide as its smallest unit.
+ */
+function kubectlWindow(text) {
+  const parts = [...text.matchAll(/(\d+)([ydhms])/g)];
+  const lower = parts.reduce((sum, [, amount, unit]) => sum + Number(amount) * UNIT[unit], 0);
+  return [lower, lower + UNIT[parts.at(-1)[2]]];
+}
+
+/** The window of seconds a page's one-unit age ("8m") stands for. */
+function ageWindow(text) {
+  const [, amount, unit] = /^(\d+)([dhms])$/.exec(text) ?? [];
+  return amount === undefined ? undefined : [Number(amount) * UNIT[unit], (Number(amount) + 1) * UNIT[unit]];
+}
+/** The seconds the page's span ("6 min 12 s", "1 h 2 min", "3 d 4 h", "7 s") says. */
+function spanSeconds(text) {
+  const parts = [...text.matchAll(/(\d+)\s*(d|h|min|s)\b/g)];
+  if (parts.length === 0) return undefined;
+  return parts.reduce((sum, [, amount, unit]) => sum + Number(amount) * { d: 86400, h: 3600, min: 60, s: 1 }[unit], 0);
+}
+
+/** K61.3's rule for a Deployment, a StatefulSet or a DaemonSet, over the counts kubectl printed (the oracle's own coding, not the page's). */
+function workloadWord({ paused = false, desired, ready, available, updated }) {
+  if (paused) return 'Paused';
+  if (desired === 0) return 'Scaled to zero';
+  if (available === 0) return 'Unavailable';
+  if (ready < desired) return 'Partially ready';
+  return updated < desired ? 'Progressing' : 'Available';
+}
+
+const ratio = (text) => text.split('/').map(Number);
+
+/** What each kind is: how to read kubectl's row into what the page must say, and the quick filters it must count. */
+const KINDS = {
+  pods: {
+    kubectl: 'pods', plural: 'Pods', one: 'Pod', singular: 'pod', heading: 'Pods', headers: ['Name', 'Ready', 'Status', 'Restarts', 'Age'],
+    filters: { Running: (word) => word === 'Running', Pending: (word) => ['Pending', 'ContainerCreating', 'PodInitializing', 'Terminating'].includes(word) || /^Init:\d+\/\d+$/.test(word), Failed: (word) => ['CrashLoopBackOff', 'Error', 'Failed', 'ImagePullBackOff', 'ErrImagePull', 'ErrImageNeverPull', 'OOMKilled', 'Evicted', 'NotReady', 'CreateContainerConfigError', 'CreateContainerError', 'RunContainerError', 'InvalidImageName', 'ContainerCannotRun', 'DeadlineExceeded'].includes(word) || /^Init:(Error|CrashLoopBackOff)/.test(word), Completed: (word) => ['Completed', 'Succeeded'].includes(word) },
+    // A Pod that was never scheduled has no container status: the page shows a dash where kubectl prints 0 (golden.test.ts of the Pods data layer documents it).
+    expect: (cells) => ({ Ready: cells.READY, Status: cells.STATUS, Restarts: cells.RESTARTS.split(' ')[0], Age: cells.AGE, word: cells.STATUS }),
+  },
+  deployments: {
+    kubectl: 'deployments', plural: 'Deployments', one: 'Deployment', singular: 'deployment', heading: 'Deployments', headers: ['Name', 'Status', 'Ready', 'Up-to-date', 'Age'],
+    filters: { Available: (word) => word === 'Available', Progressing: (word) => word === 'Progressing', 'Partially ready': (word) => word === 'Partially ready', Unavailable: (word) => word === 'Unavailable' },
+    expect: (cells, id, extra) => {
+      const [ready, desired] = ratio(cells.READY);
+      const word = workloadWord({ paused: extra.paused.has(id), desired, ready, available: Number(cells.AVAILABLE), updated: Number(cells['UP-TO-DATE']) });
+      return { Ready: cells.READY, 'Up-to-date': cells['UP-TO-DATE'], Status: word, Age: cells.AGE, word };
+    },
+  },
+  statefulsets: {
+    kubectl: 'statefulsets', plural: 'StatefulSets', one: 'StatefulSet', singular: 'statefulset', heading: 'StatefulSets', headers: ['Name', 'Status', 'Ready', 'Service', 'Age'],
+    filters: { Available: (word) => word === 'Available', Progressing: (word) => word === 'Progressing', 'Partially ready': (word) => word === 'Partially ready', Unavailable: (word) => word === 'Unavailable' },
+    // kubectl prints READY and AGE only: its counts say ready and desired, so available is read as ready (a rollout in progress is not in them).
+    expect: (cells, id, extra) => {
+      const [ready, desired] = ratio(cells.READY);
+      const word = workloadWord({ desired, ready, available: ready, updated: desired });
+      return { Ready: cells.READY, Status: word, Service: extra.services.get(id), Age: cells.AGE, word };
+    },
+  },
+  daemonsets: {
+    kubectl: 'daemonsets', plural: 'DaemonSets', one: 'DaemonSet', singular: 'daemonset', heading: 'DaemonSets', headers: ['Name', 'Status', 'Desired', 'Ready', 'Up-to-date', 'Age'],
+    filters: { Available: (word) => word === 'Available', Progressing: (word) => word === 'Progressing', 'Partially ready': (word) => word === 'Partially ready', Unavailable: (word) => word === 'Unavailable' },
+    expect: (cells) => {
+      const word = workloadWord({ desired: Number(cells.DESIRED), ready: Number(cells.READY), available: Number(cells.AVAILABLE), updated: Number(cells['UP-TO-DATE']) });
+      return { Desired: cells.DESIRED, Ready: cells.READY, 'Up-to-date': cells['UP-TO-DATE'], Status: word, Age: cells.AGE, word };
+    },
+  },
+  jobs: {
+    kubectl: 'jobs', plural: 'Jobs', one: 'Job', singular: 'job', heading: 'Jobs', headers: ['Name', 'Status', 'Completions', 'Duration', 'Age'],
+    filters: { Running: (word) => word === 'Running', Complete: (word) => word === 'Complete', Failed: (word) => word === 'Failed', Suspended: (word) => word === 'Suspended' },
+    expect: (cells) => ({ Status: cells.STATUS, Completions: cells.COMPLETIONS, Duration: cells.DURATION, Age: cells.AGE, word: cells.STATUS }),
+  },
+};
+
+/** The oracle for one kind now: a Map of `namespace/name` to what the page must say. */
+function oracleOf(id) {
+  const kind = KINDS[id];
+  const table = kubectlTable(kind.kubectl);
+  const extra = { paused: id === 'deployments' ? pausedDeployments() : new Set(), services: id === 'statefulsets' ? serviceNames() : new Map() };
+  return new Map([...table].map(([key, cells]) => [key, kind.expect(cells, key, extra)]));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+/** What a person reads off a list page: the headers, one entry per mounted row with its cells by header, the chips, the footer, the state of the body. */
+const readPage = (page, kind) =>
+  page.evaluate((testId) => {
+    const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const root = document.querySelector('[data-ov-state]');
+    const table = root?.querySelector('table') ?? null;
+    const headers = [...(table?.querySelectorAll('thead th') ?? [])].map((th) => text(th));
+    const rows = [...(root?.querySelectorAll('tbody tr') ?? [])].map((row) => {
+      const cells = [...row.children].map((cell) => text(cell));
+      const name = text(row.querySelector(`[data-testid=${testId}-name]`));
+      const namespace = text(row.querySelector(`[data-testid=${testId}-namespace]`));
+      return { key: namespace === '' ? name : `${namespace}/${name}`, cells: Object.fromEntries(headers.map((header, index) => [header, cells[index]])), glyphs: [...row.querySelectorAll('[data-ov-glyph]')].map((glyph) => glyph.getAttribute('data-ov-glyph')) };
+    });
+    return {
+      state: root?.getAttribute('data-ov-state') ?? null,
+      headers,
+      rows,
+      rowCount: table === null ? 0 : Number(table.getAttribute('aria-rowcount')) - 1,
+      count: text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) || null,
+      filters: [...(root?.querySelectorAll('[data-ov-block=filters] button') ?? [])].map((chip) => text(chip)),
+      heading: text(document.querySelector('[data-ov-part=header] h1, h1')),
+    };
+  }, KINDS[kind].singular);
+
+/**
+ * What differs between the page and the oracle, as readable lines (empty: they agree). `slack` is the seconds of age the two reads may be apart.
+ */
+function compare(kindId, read, oracle, slack = 3) {
+  const kind = KINDS[kindId];
+  const problems = [];
+  const shown = new Map(read.rows.map((row) => [row.key, row]));
+  for (const key of oracle.keys()) if (!shown.has(key)) problems.push(`${key}: missing from the page`);
+  for (const key of shown.keys()) if (!oracle.has(key)) problems.push(`${key}: on the page, not in kubectl`);
+  if (read.rowCount !== read.rows.length) problems.push(`the table says ${read.rowCount} rows and mounts ${read.rows.length}`);
+  for (const [key, expected] of oracle) {
+    const row = shown.get(key);
+    if (row === undefined) continue;
+    for (const [header, want] of Object.entries(expected)) {
+      if (header === 'word') continue;
+      const got = row.cells[header];
+      if (header === 'Age') {
+        const window = ageWindow(got ?? '');
+        const printed = kubectlSeconds(want);
+        if (window === undefined || printed < window[0] - slack || printed >= window[1] + slack) problems.push(`${key}: Age page ${got} kubectl ${want}`);
+      } else if (header === 'Duration') {
+        // kubectl prints nothing for a Job that never started; a finished Job's span is exact, a running or failed one counts on, so the two reads may be apart.
+        if (want === '') { if (got !== '—' && got !== '') problems.push(`${key}: Duration page ${got} kubectl (none)`); continue; }
+        const seconds = spanSeconds(got ?? '');
+        const [from, to] = kubectlWindow(want);
+        if (seconds === undefined || seconds < from - slack || seconds >= to + slack) problems.push(`${key}: Duration page ${got} kubectl ${want}`);
+      } else if (header === 'Restarts' && got === '—') {
+        // A Pod that was never scheduled has no container status: a dash where kubectl prints 0 (documented in the Pods data layer's golden test).
+        if (want !== '0') problems.push(`${key}: Restarts page ${got} kubectl ${want}`);
+      } else if (got !== want) {
+        problems.push(`${key}: ${header} page ${JSON.stringify(got)} kubectl ${JSON.stringify(want)}`);
+      }
+    }
+  }
+
+  const words = [...oracle.values()].map((entry) => entry.word);
+  const wantChips = [`All ${words.length}`, ...Object.entries(kind.filters).map(([label, test]) => `${label} ${words.filter(test).length}`)];
+  if (JSON.stringify(read.filters) !== JSON.stringify(wantChips)) problems.push(`quick filters page ${JSON.stringify(read.filters)} kubectl ${JSON.stringify(wantChips)}`);
+  const wantCount = `${words.length} ${words.length === 1 ? kind.one : kind.plural}`;
+  if (read.count !== wantCount) problems.push(`footer page ${JSON.stringify(read.count)} kubectl ${JSON.stringify(wantCount)}`);
+  if (JSON.stringify(read.headers.slice(0, kind.headers.length)) !== JSON.stringify(kind.headers)) problems.push(`headers page ${JSON.stringify(read.headers)} want ${JSON.stringify(kind.headers)}`);
+  return problems;
+}
+
+/** Polls until the page and kubectl agree (kubectl is read before and after each reading of the page, so a change in between is not a defect) or the deadline; returns the last. */
+async function converge(page, kindId, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  for (let attempt = 1; ; attempt += 1) {
+    const before = oracleOf(kindId);
+    const read = await readPage(page, kindId);
+    const after = oracleOf(kindId);
+    const stable = JSON.stringify([...before]) === JSON.stringify([...after]);
+    const problems = read.state !== 'ready' ? [`the page is ${read.state}`] : compare(kindId, read, after);
+    last = { read, oracle: after, problems, attempt, stable };
+    if (problems.length === 0 && stable) return last;
+    if (Date.now() > deadline) return last;
+    await page.waitForTimeout(250);
+  }
+}
+
+const hashOf = (kindId, context) => `#/kubernetes/${kindId}?connection=${encodeURIComponent(context)}`;
+
+async function openList(browser, base, kindId, context, { viewport = { width: 1440, height: 4000 } } = {}) {
+  const page = await browser.newPage({ viewport });
+  const seen = { errors: [] };
+  page.on('pageerror', (error) => seen.errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) seen.errors.push(`console: ${message.text().slice(0, 300)}`);
+  });
+  await page.goto(`${base}/${hashOf(kindId, context)}`, { waitUntil: 'load' });
+  return { page, seen };
+}
+
+async function checkKinds(engineName, engine, host, context) {
+  const browser = await engine.launch();
+  info(engineName, 'browser', `${engineName} ${browser.version()}`);
+  try {
+    for (const kindId of Object.keys(KINDS)) {
+      const scope = `${engineName}/${kindId}`;
+      const { page, seen } = await openList(browser, host.base, kindId, context);
+      const result = await converge(page, kindId);
+      check(scope, `A: the page lists what \`kubectl get ${KINDS[kindId].kubectl} -A\` lists: the same objects, numbers, state words and ages, the footer and the quick filters (${result.read.rows.length} rows)`, result.problems.length === 0, result.problems.length === 0 ? { rows: result.read.rows.length, count: result.read.count, filters: result.read.filters } : result.problems.slice(0, 12));
+      check(scope, 'A: the heading is the kind\'s plural and the tab is the page', result.read.heading === KINDS[kindId].heading, result.read.heading);
+      const states = {};
+      for (const row of result.read.rows) {
+        const word = result.oracle.get(row.key)?.word;
+        if (word !== undefined) states[word] = (states[word] ?? 0) + 1;
+      }
+      info(scope, 'the state words on the page, counted', states);
+      check(scope, 'no page error and no console error', seen.errors.filter((entry) => !/activity session unavailable/.test(entry)).length === 0, seen.errors);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+async function checkSidebar(engine, host, context) {
+  const browser = await engine.launch();
+  try {
+    const { page } = await openList(browser, host.base, 'deployments', context, { viewport: { width: 1440, height: 900 } });
+    await page.getByRole('heading', { name: 'Deployments' }).first().waitFor({ timeout: 60_000 });
+    const tree = page.getByRole('navigation', { name: 'Kubernetes resources' });
+    const items = await tree.getByRole('treeitem').evaluateAll((elements) => elements.map((element) => ({ label: (element.textContent ?? '').replace(/\s+/g, ' ').trim(), selected: element.getAttribute('aria-selected') === 'true' || element.getAttribute('aria-current') === 'page' })));
+    info('sidebar', 'the tree\'s items', items);
+    const labels = items.map((item) => item.label);
+    const at = labels.indexOf('Workloads');
+    check('sidebar', 'B: Workloads holds Pods, Deployments, StatefulSets, DaemonSets and Jobs, in the mock\'s order, and nothing else', JSON.stringify(labels.slice(at + 1, at + 6)) === JSON.stringify(['Pods', 'Deployments', 'StatefulSets', 'DaemonSets', 'Jobs']) && labels.length === at + 6, labels);
+    check('sidebar', 'B: the entry of the page on screen is the selected one', items.filter((item) => item.selected).map((item) => item.label).join() === 'Deployments', items.filter((item) => item.selected));
+    check('sidebar', 'B: an entry has no count (the data layer gives none cheaply)', labels.slice(at + 1).every((label) => !/\d/.test(label)), labels);
+    for (const [label, heading] of [['Jobs', 'Jobs'], ['StatefulSets', 'StatefulSets'], ['DaemonSets', 'DaemonSets'], ['Pods', 'Pods'], ['Deployments', 'Deployments']]) {
+      await tree.getByRole('treeitem', { name: label }).click();
+      await page.getByRole('heading', { name: heading }).first().waitFor({ timeout: 30_000 });
+      const state = await page.evaluate(() => ({
+        tab: document.querySelector('[role=tab][aria-selected=true]')?.textContent?.trim(),
+        tabs: document.querySelectorAll('[role=tab]').length,
+        selected: [...document.querySelectorAll('nav[aria-label="Kubernetes resources"] [role=treeitem][aria-selected=true]')].map((item) => item.textContent.trim()),
+        heading: document.querySelector('h1')?.textContent?.trim(),
+      }));
+      check('sidebar', `B: a click on ${label} opens its list in this tab: the tab, the heading and the selected entry say ${label}`, state.tab === label && state.heading === heading && state.selected.join() === label && state.tabs === 1, state);
+    }
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+}
+
+/** Polls the page for a condition and says how long it took; the page is never reloaded. */
+async function until(page, kindId, done, timeoutMs = 90_000) {
+  const start = Date.now();
+  const seen = [];
+  for (;;) {
+    const read = await readPage(page, kindId);
+    seen.push(read);
+    if (done(read)) return { read, ms: Date.now() - start, seen };
+    if (Date.now() - start > timeoutMs) return { read, ms: Date.now() - start, seen, timedOut: true };
+    await page.waitForTimeout(150);
+  }
+}
+
+async function checkLive(engine, host, context) {
+  const browser = await engine.launch();
+  try {
+    // C1: scale a Deployment; the page follows with no reload.
+    const { page } = await openList(browser, host.base, 'deployments', context);
+    const first = await converge(page, 'deployments');
+    check('live/scale', 'C: before the change, the Deployments list equals kubectl', first.problems.length === 0, first.problems.slice(0, 5));
+    await page.evaluate(() => { window.__k2aMarker = 'loaded-once'; });
+    const row = (read) => read.rows.find((candidate) => candidate.key === 'checkout/cart-api');
+    check('live/scale', 'C: cart-api is 3/3 and Available', row(first.read)?.cells.Ready === '3/3' && row(first.read)?.cells.Status === 'Available', row(first.read)?.cells);
+    kubectl(['scale', 'deployment/cart-api', '-n', 'checkout', '--replicas=5']);
+    const up = await until(page, 'deployments', (read) => row(read)?.cells.Ready === '5/5' && row(read)?.cells['Up-to-date'] === '5' && row(read)?.cells.Status === 'Available');
+    const sequence = [...new Set(up.seen.map((read) => `${row(read)?.cells.Ready} ${row(read)?.cells.Status}`))];
+    check('live/scale', 'C: scaled to 5, the page reaches 5/5, Up-to-date 5, Available with no reload', !up.timedOut, { ms: up.ms, sequenceSeen: sequence });
+    const settled = await converge(page, 'deployments');
+    check('live/scale', 'C: after the change the whole list equals kubectl again', settled.problems.length === 0, settled.problems.slice(0, 5));
+    check('live/scale', 'C: the page was not reloaded (a marker set on the window survived)', (await page.evaluate(() => window.__k2aMarker)) === 'loaded-once');
+    kubectl(['scale', 'deployment/cart-api', '-n', 'checkout', '--replicas=3']);
+    const down = await until(page, 'deployments', (read) => row(read)?.cells.Ready === '3/3' && row(read)?.cells.Status === 'Available');
+    check('live/scale', 'C: scaled back to 3, the page follows', !down.timedOut, { ms: down.ms });
+    await page.close();
+
+    // C2: delete a Job; its row leaves, the count and the chips follow.
+    const jobs = await openList(browser, host.base, 'jobs', context);
+    const before = await converge(jobs.page, 'jobs');
+    check('live/delete', 'C: before the change, the Jobs list equals kubectl', before.problems.length === 0, before.problems.slice(0, 5));
+    await jobs.page.evaluate(() => { window.__k2aMarker = 'loaded-once'; });
+    const at = (read) => read.rows.some((candidate) => candidate.key === 'batch/broken-migration');
+    check('live/delete', 'C: batch/broken-migration is listed, Failed', at(before.read) && before.read.rows.find((candidate) => candidate.key === 'batch/broken-migration').cells.Status === 'Failed');
+    kubectl(['delete', 'job', 'broken-migration', '-n', 'batch', '--wait=true']);
+    const gone = await until(jobs.page, 'jobs', (read) => !at(read));
+    check('live/delete', 'C: the deleted Job\'s row leaves the page with no reload', !gone.timedOut, { ms: gone.ms });
+    const after = await converge(jobs.page, 'jobs');
+    check('live/delete', 'C: the whole list, the footer and the chips equal kubectl after the delete', after.problems.length === 0, after.problems.length === 0 ? { count: after.read.count, filters: after.read.filters } : after.problems.slice(0, 5));
+    check('live/delete', 'C: the page was not reloaded', (await jobs.page.evaluate(() => window.__k2aMarker)) === 'loaded-once');
+    // The Job is made again, as the slice fixture makes it, so the cluster is as it was.
+    const manifest = 'apiVersion: batch/v1\nkind: Job\nmetadata: {name: broken-migration, namespace: batch}\nspec:\n  backoffLimit: 0\n  template:\n    spec:\n      restartPolicy: Never\n      containers:\n        - {name: migrate, image: busybox:1.37.0, command: [sh, -c, "exit 1"]}\n';
+    const create = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'create', '-f', '-'], { input: manifest, encoding: 'utf8' });
+    check('live/delete', 'C: the Job is made again (the cluster is as it was)', create.status === 0, create.stdout.trim() || create.stderr.trim());
+    const back = await until(jobs.page, 'jobs', (read) => at(read) && read.rows.find((candidate) => candidate.key === 'batch/broken-migration').cells.Status === 'Failed');
+    check('live/delete', 'C: the made-again Job appears on the page, and ends Failed', !back.timedOut, { ms: back.ms });
+    await jobs.page.close();
+  } finally {
+    await browser.close();
+  }
+}
+
+function checkControls() {
+  const kindId = 'deployments';
+  const oracle = oracleOf(kindId);
+  const good = {
+    state: 'ready',
+    headers: KINDS[kindId].headers,
+    rows: [...oracle].map(([key, expected]) => ({ key, cells: { Name: key, Status: expected.Status, Ready: expected.Ready, 'Up-to-date': expected['Up-to-date'], Age: expected.Age } })),
+    rowCount: oracle.size,
+    count: `${oracle.size} Deployments`,
+    filters: [`All ${oracle.size}`, ...Object.entries(KINDS[kindId].filters).map(([label, test]) => `${label} ${[...oracle.values()].filter((entry) => test(entry.word)).length}`)],
+  };
+  check('control', 'D: an exact page passes the comparison', compare(kindId, good, oracle).length === 0, compare(kindId, good, oracle));
+  const mutate = (change) => {
+    const clone = structuredClone(good);
+    change(clone);
+    return compare(kindId, clone, oracle);
+  };
+  check('control', 'D: a wrong READY is detected', mutate((page) => { page.rows[0].cells.Ready = '9/9'; }).some((line) => /Ready page/.test(line)));
+  check('control', 'D: a missing row is detected', mutate((page) => { page.rows.pop(); page.rowCount -= 1; }).some((line) => /missing from the page/.test(line)));
+  check('control', 'D: an extra row is detected', mutate((page) => { page.rows.push({ key: 'x/extra', cells: {} }); page.rowCount += 1; }).some((line) => /not in kubectl/.test(line)));
+  check('control', 'D: a wrong state word is detected', mutate((page) => { page.rows[0].cells.Status = 'Unavailable'; }).some((line) => /Status page/.test(line)));
+  check('control', 'D: a wrong quick-filter count is detected', mutate((page) => { page.filters[1] = 'Available 99'; }).some((line) => /quick filters/.test(line)));
+  check('control', 'D: a wrong footer is detected', mutate((page) => { page.count = '3 Deployments'; }).some((line) => /footer/.test(line)));
+  check('control', 'D: an age far from kubectl\'s is detected', mutate((page) => { page.rows[0].cells.Age = '9d'; }).some((line) => /Age page/.test(line)));
+}
+
+async function screenshots(host, context) {
+  const browser = await pw.webkit.launch();
+  try {
+    for (const kindId of ['deployments', 'jobs', 'statefulsets', 'daemonsets', 'pods']) {
+      for (const [width, height] of [[1440, 900]]) {
+        const { page } = await openList(browser, host.base, kindId, context, { viewport: { width, height } });
+        await page.waitForFunction((plural) => new RegExp(`^\\d+ ${plural}$`).test(document.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')?.textContent?.trim() ?? ''), KINDS[kindId].plural.replace(/^StatefulSets$/, 'StatefulSets'), { timeout: 60_000 });
+        await page.waitForTimeout(1500);
+        const theme = await page.evaluate(() => document.documentElement.getAttribute('data-ov-theme'));
+        const file = path.join(out, `plugin-${kindId}-webkit-${theme}-${width}x${height}.png`);
+        await page.screenshot({ path: file });
+        info('screenshot', file, { theme, width, height });
+        await page.close();
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+await mkdir(out, { recursive: true });
+const context = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'config', 'current-context'], { encoding: 'utf8' }).stdout.trim();
+let failed = true;
+try {
+  info('setup', 'host', { root: hostRoot, commit: spawnSync('git', ['-C', hostRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim() });
+  info('setup', 'plugin archive', { archive, bytes: (await readFile(archive)).length });
+  info('setup', 'cluster', { kubeconfig, context, server: spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'version', '-o', 'json'], { encoding: 'utf8' }).stdout.match(/"gitVersion": "(v[^"]+)"/g)?.pop() });
+  checkControls();
+  const host = await startHost('with-plugin');
+  for (const name of engines) await checkKinds(name, pw[name], host, context);
+  await checkSidebar(pw.webkit, host, context);
+  await checkLive(pw.webkit, host, context);
+  await checkLive(pw.chromium, host, context);
+  await screenshots(host, context);
+  await writeFile(path.join(out, 'host-with-plugin.log'), host.lines.join(''));
+  failed = results.some((entry) => entry.ok === false);
+} finally {
+  await stopAll();
+  await writeFile(path.join(out, 'k2a-proof-report.json'), `${JSON.stringify({ at: new Date().toISOString(), engines, results }, null, 2)}\n`);
+}
+
+const total = results.filter((entry) => entry.ok !== undefined).length;
+console.log(`${failed ? 'FAIL' : 'PASS'}: ${results.filter((entry) => entry.ok === true).length} of ${total} checks`);
+process.exit(failed ? 1 : 0);
