@@ -392,6 +392,18 @@ func (p *Provider) begin(ctx context.Context) (context.Context, func(), error) {
 	return call, func() { stop(); cancel(); p.active.Done() }, nil
 }
 
+// stopped reports why a call must end without a result: its caller cancelled
+// it, or the provider is shutting down. Shutdown is read from the lifetime
+// itself because begin hands it to the call context through an AfterFunc
+// goroutine, so call.Err can still be nil after a request has already failed on
+// the connection generation, which the lifetime cancels synchronously.
+func (p *Provider) stopped(call context.Context) error {
+	if err := call.Err(); err != nil {
+		return err
+	}
+	return p.lifetime.Err()
+}
+
 func pluginContext(ctx *types.PluginContext) context.Context {
 	if ctx != nil && ctx.Context != nil {
 		return ctx.Context

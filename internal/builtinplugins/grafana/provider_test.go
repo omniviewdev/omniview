@@ -3,10 +3,12 @@ package grafana
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -283,6 +285,27 @@ func TestDeniedAndShutdownCancellation(t *testing.T) {
 	}
 	if out.Results[0].Status != "denied" || out.Results[0].Value != nil {
 		t.Fatalf("%+v", out)
+	}
+}
+
+// Provider shutdown reaches a call context through an AfterFunc goroutine, but
+// reaches the connection generation, and with it the request, synchronously. A
+// query that fails on the generation before the call context has heard about
+// the shutdown is a cancelled query, not a failed source. One P keeps the
+// AfterFunc goroutine from running until QueryResources returns, so the test
+// can observe only that ordering.
+func TestQueryFailedByShutdownIsCancellationNotSourceFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("query after shutdown reached upstream") }))
+	defer server.Close()
+	p := fixtureProvider(t, server.URL)
+	q := fixtureQuery(p)
+	q.Targets = q.Targets[:1]
+	q.MetricIDs = q.MetricIDs[:1]
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+	p.cancel()
+	out, err := p.QueryResources(&types.PluginContext{Context: context.Background()}, q)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v response=%+v", err, out)
 	}
 }
 

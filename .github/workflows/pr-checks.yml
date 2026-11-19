@@ -104,6 +104,9 @@ jobs:
           node --test scripts/check-tracked-outputs.test.mjs
           node scripts/check-tracked-outputs.mjs --base HEAD^1
 
+      - name: Check the failed-test summary
+        run: node --test scripts/go-test-failures.test.mjs
+
       - name: Setup native pnpm for recovery integration tests
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
@@ -139,8 +142,15 @@ jobs:
       - name: Vet
         run: task check:go-vet GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
+      # The stream is kept for the next step: a failed test is named in the job summary, so that a flake that passes on re-run leaves its name behind.
       - name: Test
-        run: task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+        run: |
+          set -o pipefail
+          task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}" | tee "$RUNNER_TEMP/go-test.jsonl"
+
+      - name: Name the failed Go tests in the job summary
+        if: failure()
+        run: node scripts/go-test-failures.mjs "$RUNNER_TEMP/go-test.jsonl" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Test development control (devcontrol tag)
         run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
