@@ -126,7 +126,7 @@ async function keyboard(browser, engine, origins) {
     steps.push(`${key}: ${await active()}`);
   }
   await page.keyboard.press('Escape');
-  steps.push(`Escape from the tree: ${await active()}`);
+  steps.push(`Escape from the rail: ${await active()}`);
   await page.keyboard.press('Escape');
   steps.push(`Escape in the page: ${await active()}`);
   await page.keyboard.press('Shift+F6');
@@ -139,10 +139,11 @@ async function keyboard(browser, engine, origins) {
   }
   const order = await page.evaluate(() => [...document.querySelectorAll('[tabindex], button, a[href], input')].filter((el) => el.tabIndex >= 0).map((el) => el.getAttribute('role') ?? el.tagName.toLowerCase()));
   report.keyboard[engine] = { steps, tree: names, tabOrder: order };
-  const wanted = ['F6: tab', 'F6: treeitem-2', 'F6: main', 'F6: tab', 'Shift+F6: main', 'Shift+F6: treeitem-2', 'Escape from the tree: main', 'Escape in the page: main', 'Shift+F6 after Escape: treeitem-2'];
+  // The regions in reading order: the top row (the tab on screen), the rail (its current entry), the sidebar (the tree's stop), the page island.
+  const wanted = ['F6: tab', 'F6: button', 'F6: treeitem-2', 'F6: main', 'Shift+F6: treeitem-2', 'Shift+F6: button', 'Escape from the rail: main', 'Escape in the page: main', 'Shift+F6 after Escape: treeitem-2'];
   for (const [index, step] of wanted.entries()) if (steps[index] !== step) fail(`keyboard ${engine}`, `step ${index + 1}: wanted "${step}", got "${steps[index]}"`);
-  // Back and Forward are controls that cannot act yet (aria-disabled, never natively disabled), so they are stops, then the tab: the strip's one stop; its close control is not a stop (Delete closes).
-  if (order.join() !== 'button,button,tab,treeitem,tabpanel') fail(`keyboard ${engine}`, `tab order is ${order.join()}, wanted button,button,tab,treeitem,tabpanel`);
+  // Back and Forward are controls that cannot act yet (aria-disabled, never natively disabled), so they are stops, then the tab: the strip's one stop; its close control is not a stop (Delete closes). The rail is one stop.
+  if (order.join() !== 'button,button,tab,button,treeitem,tabpanel') fail(`keyboard ${engine}`, `tab order is ${order.join()}, wanted button,button,tab,button,treeitem,tabpanel`);
   await context.close();
 }
 

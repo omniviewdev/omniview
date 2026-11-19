@@ -259,11 +259,13 @@ export function replace(state: TabsState, ctx: Context, id: TabId, input: RouteI
 }
 
 /**
- * The window is never left with nothing to show when it can help it: with no tab, the home page opens (ch16 S30). It does nothing when a tab is open, when no home page is
- * offered, and when the plugin that offers it cannot serve it now (a later change of the plugins tries again).
+ * The window opens with something to show when it can: at its start, with no tab, the home page opens (ch16 S30). It does nothing when a tab is open, when no home page is offered, and when
+ * the plugin that offers it cannot serve it now (a later change of the plugins tries again). It does nothing once the window has started, that is once a tab has been on screen: a strip
+ * the user emptied stays empty (decision A17, which amends ch16 S8 and S30: "closing the last tab opens Home"), because a page that comes back by itself is a trap, and the window
+ * has its empty state and a way out.
  */
 export function ensureHome(state: TabsState, ctx: Context): TabsState {
-  if (state.order.length > 0) {
+  if (state.order.length > 0 || state.started) {
     return state;
   }
 

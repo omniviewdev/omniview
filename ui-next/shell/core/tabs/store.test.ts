@@ -278,18 +278,35 @@ describe('the plugins changed (the host subscribes the model to them)', () => {
     sound(h);
   });
 
-  it('opens the home page when the first plugin that can serve it arrives, and stops listening on dispose', () => {
+  it('opens the home page when the first plugin that can serve it arrives, once: the window has started then, and stops listening on dispose', () => {
     const world = makeWorld();
     world.setHome(false);
     const h = boot({ home: false, world });
     expect(h.ids()).toEqual([]);
+    expect(h.state().started).toBe(false);
     world.setHome(true);
     world.changed();
     expect(h.titles()).toEqual(['Home']);
+    expect(h.state().started).toBe(true);
     h.store.dispose();
     world.retitle('host', () => 'Elsewhere');
     world.changed();
     expect(h.titles()).toEqual(['Home']);
+  });
+
+  it('does not open it again for a strip the user emptied, however the plugins change afterwards (decision A17)', () => {
+    const world = makeWorld();
+    const h = boot({ world });
+    expect(h.titles()).toEqual(['Home']);
+    h.store.close(h.current());
+    expect(h.ids()).toEqual([]);
+
+    world.changed();
+    world.retitle('host', () => 'Elsewhere');
+    world.changed();
+
+    expect(h.ids()).toEqual([]);
+    expect(h.state().started).toBe(true);
   });
 });
 

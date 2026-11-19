@@ -15,7 +15,7 @@ import { ThemeProvider, type IconName } from '@omniviewdev/kit';
 import { createRoot } from 'react-dom/client';
 import { Profiler, type ReactNode } from 'react';
 import type { ShellRegistration } from '..';
-import { staticTabs, StaticShell, type StaticPage } from '../testing';
+import { staticTabs, StaticShell, STATIC_RAIL, type StaticPage } from '../testing';
 
 /** What a case registers: the frame, and the words of its one tab. */
 type Described = ShellRegistration & { readonly tab: { readonly title: string; readonly icon: IconName }; readonly path: readonly string[] };
@@ -24,7 +24,7 @@ const full: Described = {
   plugin: { name: 'Acme' },
   tab: { title: 'Entries', icon: 'box' },
   path: ['Acme', 'north', 'Entries'],
-  rail: true,
+  rail: STATIC_RAIL,
   sidebar: {
     label: 'Acme resources',
     title: 'Resources',

@@ -14,6 +14,12 @@ export const MOCK_GROUP = '.tree__row[data-key="group:workloads"]';
 export const MOCK_ENTRY = '.tree__row[data-key="k8s:/pods"]';
 
 /**
+ * The mock's second plugin screen, whose rail is the reference of the rail's glyph (ch12 section 4 and `railHtml()` of the mock's core.js: 20 px glyphs, the open tool marked `open` and
+ * `aria-current`, tips opening to the right at once): its home, opened in a freshly loaded page. The first screen's rail (`MOCK_OPEN`) draws 16 px glyphs at the same centres.
+ */
+export const MOCK_OPEN_RAIL = `Shell.tabs.open({ plugin: 'aws', route: { page: 'home' } }, { how: 'here' });`;
+
+/**
  * What the shell registers for that screen, with the mock's own words: the widths of the reference's text (the tab, the scope faces, the path) are the widths of these words, so
  * the shell can only be compared with the mock when it draws them. The shell probe injects this object into its neutral fixture before the page runs (`window.__registration`,
  * fixture.tsx `?case=injected`): the fixture, the shell and the probe's script name no plugin, and the words stay in this folder.
@@ -22,7 +28,17 @@ export const MOCK_REGISTRATION = {
   plugin: { name: 'Kubernetes' },
   tab: { title: 'Pods', icon: 'box' },
   path: ['Kubernetes', 'prod-eu', 'Pods'],
-  rail: true,
+  // The mock's Kubernetes rail has three tools (shell-kubernetes.js:286: Open Kubernetes, Open connections, Open connection settings). The shell's rail has one entry per plugin; three entries
+  // give the same three targets, one under the other, to compare the stack with.
+  rail: {
+    label: 'Plugins',
+    entries: [
+      { id: 'kubernetes', label: 'Kubernetes', icon: 'layers' },
+      { id: 'aws', label: 'AWS', icon: 'box' },
+      { id: 'flux', label: 'Flux', icon: 'server' },
+    ],
+    current: 'kubernetes',
+  },
   layout: 'pane',
   sidebar: {
     label: 'Kubernetes resources',

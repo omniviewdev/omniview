@@ -1,7 +1,7 @@
 import { Icon, Text } from '@omniviewdev/kit';
 import { useState, type KeyboardEvent } from 'react';
 import type { ModifierEvent } from './core/tabs';
-import { press, revealed, stopOf, toggled, visibleRows } from './core/tree';
+import { hasNode, press, revealed, stopOf, toggled, visibleRows } from './core/tree';
 import type { ShellAccent, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
@@ -96,6 +96,16 @@ type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | u
  */
 export function Tree({ label, nodes, open, current, accent, onChoose }: TreeProps) {
   const [state, setState] = useState<TreeState>(() => ({ open: revealed(nodes, open ?? [], current), stop: undefined }));
+  // The current entry is never hidden: when it is, or becomes, an entry inside a group that is closed (another tab was activated, the plugin's frame registered after the tree did, or the entry only
+  // comes with the nodes the plugin's data hook answers after the page did), its ancestors open, once. What the user opened or closed stays when the same entry registers again.
+  const [shown, setShown] = useState(() => (current !== undefined && hasNode(nodes, current) ? current : undefined));
+  if (current === undefined ? shown !== undefined : shown !== current && hasNode(nodes, current)) {
+    setShown(current);
+    if (current !== undefined) {
+      setState((before) => ({ ...before, open: revealed(nodes, before.open, current) }));
+    }
+  }
+
   const rows = visibleRows(nodes, state.open);
   const stop = stopOf(rows, state.stop, current);
 

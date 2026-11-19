@@ -30,15 +30,55 @@ describe('close (ch16 S30)', () => {
     sound(h);
   });
 
-  it('opens the home page when the last tab closes, and keeps the closed one so it can come back', () => {
+  it('leaves the strip empty when the last tab closes, and keeps the closed one so it can come back (decision A17: no page opens by itself)', () => {
+    const h = boot();
+    const home = h.current();
+    expect(h.store.close(home)).toEqual({ status: 'done', closed: [home], active: null });
+    expect(h.ids()).toEqual([]);
+    expect(h.active()).toBeNull();
+    expect(h.state().mounted).toEqual([]);
+    expect(h.state().closed[0]?.id).toBe(home);
+    sound(h);
+  });
+
+  it('opens no page by itself afterwards: not when the plugins change, not on a refresh, not when a home page becomes available', () => {
+    const h = boot();
+    h.store.close(h.current());
+    const empty = h.state();
+
+    h.store.refresh();
+    h.world.setHome(false);
+    h.world.setHome(true);
+    h.store.refresh();
+    h.store.refresh('host');
+
+    expect(h.ids()).toEqual([]);
+    expect(h.state()).toBe(empty);
+    sound(h);
+  });
+
+  it('still opens a page for the user when they ask: a new tab, or the one they closed', () => {
     const h = boot();
     const home = h.current();
     h.store.close(home);
-    const now = h.current();
-    expect(now).not.toBe(home);
-    expect(tab(h, now).face.title).toBe('Home');
-    expect(h.ids()).toEqual([now]);
-    expect(h.state().closed[0]?.id).toBe(home);
+
+    const a = h.open(cloudPage('instances'));
+    expect(h.ids()).toEqual([a]);
+    h.store.close(a);
+    expect(h.store.reopen()).toMatchObject({ status: 'done', id: a });
+    expect(h.active()).toBe(a);
+    sound(h);
+  });
+
+  it('closes the last tab of several the same way: closing all the others, then the one that is left', () => {
+    const h = boot();
+    const [a] = h.openAll(['instances', 'buckets']);
+    h.store.closeMany('others', a);
+    expect(h.ids()).toEqual([a]);
+    h.store.close(a);
+    expect(h.ids()).toEqual([]);
+    h.store.closePlugin('cloud');
+    expect(h.ids()).toEqual([]);
     sound(h);
   });
 
@@ -232,8 +272,8 @@ describe('close variants (ch16 S42): pinned tabs are skipped, unsaved tabs ask o
     expect(h.active()).toBe(ids[1]);
 
     h.store.close(ids[1]);
-    expect(h.ids()).toHaveLength(1);
-    expect(tab(h, h.current()).face.title).toBe('Home');
+    expect(h.ids()).toEqual([]);
+    expect(h.active()).toBeNull();
     sound(h);
   });
 

@@ -681,3 +681,156 @@ describe('with no plugin to show', () => {
     expect(onRetryInventory).toHaveBeenCalledTimes(1);
   });
 });
+
+// The window's rail (S2a): one entry for each plugin that contributes, in the order the plugins declare, and the sidebar is the sidebar of the plugin the rail has current.
+describe('the rail', () => {
+  /** A plugin with its own words, whose entry says its glyph, its name and its place (`order`, or none). */
+  const plugin = (name: string, order: number | undefined) =>
+    acme({
+      plugin: { name },
+      rail: order === undefined ? true : { icon: 'layers', label: `${name} plugin`, order },
+      sidebar: { label: `${name} navigation`, title: name, nodes: acme().sidebar.nodes },
+    });
+  /** Two plugins whose ids sort the other way round from their declared order. */
+  const two = (): readonly PluginEntry[] => [ready(plugin('Late', 20), 'a-late'), ready(plugin('First', 10), 'b-first')];
+  const entries = () => within(screen.getByRole('group', { name: 'Plugins' })).getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+
+  it('has an entry for each plugin that contributes, in the declared order and not the order of their ids, named by the contribution', () => {
+    mount(two());
+
+    expect(entries()).toEqual(['First plugin', 'Late plugin']);
+  });
+
+  it('opens the window on the first plugin of the declared order, with that entry current and its sidebar shown', () => {
+    mount(two());
+
+    expect(screen.getByRole('main', { name: 'First workspace' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'First plugin' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('navigation', { name: 'First navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Late plugin' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('shows the sidebar of the entry that was chosen and closes no tab: the page and its landmarks stay the tab\'s', async () => {
+    const { user } = mount(two());
+
+    await act(async () => user.click(screen.getByRole('button', { name: 'Late plugin' })));
+
+    expect(screen.getByRole('navigation', { name: 'Late navigation' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'First navigation' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Late plugin' })).toHaveAttribute('aria-current', 'true');
+    expect(faces()).toEqual(['Widgets']);
+    expect(screen.getByRole('main', { name: 'First workspace' })).toBeInTheDocument();
+    // The page on screen is the other plugin's: no entry of this sidebar is selected.
+    expect(screen.queryByRole('treeitem', { selected: true })).toBeNull();
+  });
+
+  it('opens a page of the chosen plugin in a tab of its own, tabs of both plugins stay open, and activating a tab makes its plugin current again', async () => {
+    const { user } = mount(two());
+    await act(async () => user.click(screen.getByRole('button', { name: 'Late plugin' })));
+    // The plugin's tab is not on screen, so there is no page to reveal in its tree: its groups start closed.
+    await act(async () => user.click(entry('Group')));
+    await act(async () => user.click(entry('Gadgets')));
+
+    expect(faces()).toEqual(['Widgets', 'Gadgets']);
+    expect(screen.getByRole('main', { name: 'Late workspace' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Late plugin' })).toHaveAttribute('aria-current', 'true');
+
+    await act(async () => user.click(tabs()[0]));
+    expect(screen.getByRole('main', { name: 'First workspace' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'First plugin' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('navigation', { name: 'First navigation' })).toBeInTheDocument();
+    expect(faces()).toEqual(['Widgets', 'Gadgets']);
+  });
+
+  it('puts a plugin with no declared place after every plugin that has one, by name, however the plugins are listed', () => {
+    mount([ready(plugin('Zed', undefined), 'a-zed'), ready(plugin('Alpha', undefined), 'b-alpha'), ready(plugin('Mid', 5), 'c-mid')]);
+
+    expect(entries()).toEqual(['Mid plugin', 'Alpha', 'Zed']);
+  });
+
+  it('has no entry for a plugin that did not load, and no rail at all when none contributes', () => {
+    mount([failed('missing', 'a-broken'), ready(plugin('Fine', undefined), 'b-fine')]);
+    expect(entries()).toEqual(['Fine']);
+    cleanup();
+
+    const { container } = mount([failed('missing')]);
+    expect(container.querySelector('[data-shell-part="rail"]')).toBeNull();
+  });
+});
+
+// Decision A17: closing the last tab leaves an empty window, with a way forward and a way out, and no page opens by itself.
+describe('the empty window', () => {
+  const closeLastTab = () => {
+    act(() => {
+      fireEvent.keyDown(screen.getByRole('tab'), { key: 'Delete' });
+    });
+  };
+
+  const plugins = () => within(screen.getByRole('region', { name: 'Plugins you can open' }));
+
+  it('says so, lists the plugins that can be opened, keeps the rail and its sidebar, and opens no page by itself', () => {
+    const { set } = mount([ready()]);
+    closeLastTab();
+
+    expect(tabs()).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    expect(screen.getByText('No tabs are open.')).toBeInTheDocument();
+    expect(plugins().getByRole('button', { name: /Acme/ })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Plugins' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Acme navigation' })).toBeInTheDocument();
+    expect(screen.queryByRole('treeitem', { selected: true })).toBeNull();
+
+    // Whatever the plugins do next, nothing opens a page for the user.
+    set([ready()]);
+    set([ready(), ready(acme(), 'other')]);
+    expect(tabs()).toHaveLength(0);
+  });
+
+  it('opens a plugin in a tab from the empty window, by its row, by a sidebar entry and by the new-tab control', async () => {
+    const { user } = mount([ready()]);
+    closeLastTab();
+    await act(async () => user.click(plugins().getByRole('button', { name: /Acme/ })));
+    expect(faces()).toEqual(['Widgets']);
+
+    closeLastTab();
+    await act(async () => user.click(entry('Gadgets')));
+    expect(faces()).toEqual(['Gadgets']);
+
+    closeLastTab();
+    await act(async () => user.click(screen.getByRole('button', { name: 'New tab' })));
+    expect(faces()).toEqual(['Widgets']);
+  });
+
+  it('closes the window with Command W on a Mac, once, and only when no tab is left', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    const onCloseWindow = vi.fn();
+    mount([ready()], { onCloseWindow });
+
+    fireEvent.keyDown(document, { code: 'KeyW', metaKey: true });
+    expect(tabs()).toHaveLength(0);
+    expect(onCloseWindow).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document, { code: 'KeyW', metaKey: true });
+    expect(onCloseWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close the window with Control W on Windows or Linux, where a main window that hides has no way back: the empty window stays', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+    const onCloseWindow = vi.fn();
+    mount([ready()], { onCloseWindow });
+
+    fireEvent.keyDown(document, { code: 'KeyW', ctrlKey: true });
+    fireEvent.keyDown(document, { code: 'KeyW', ctrlKey: true });
+
+    expect(tabs()).toHaveLength(0);
+    expect(onCloseWindow).not.toHaveBeenCalled();
+    expect(screen.getByText('No tabs are open.')).toBeInTheDocument();
+  });
+
+  it('is loading, not empty, while a plugin is still on its way', () => {
+    mount([ready(), loading()]);
+
+    expect(screen.queryByText('No tabs are open.')).toBeNull();
+    expect(screen.getByRole('status', { name: 'Loading Slow plugin' })).toBeInTheDocument();
+  });
+});

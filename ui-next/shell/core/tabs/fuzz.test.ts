@@ -99,6 +99,7 @@ describe('4000 random operations', () => {
       },
     ];
 
+    let emptied = 0;
     for (let i = 0; i < 4000; i += 1) {
       const k = next(operations.length);
       try {
@@ -113,8 +114,18 @@ describe('4000 random operations', () => {
       }
 
       expect(h.state().active === null).toBe(h.ids().length === 0);
+      if (h.ids().length === 0) {
+        emptied += 1;
+      }
+
       if (i % 50 === 0) {
         const again = restoreTabs(JSON.parse(JSON.stringify(h.store.serialise())), { contributions: h.world.contributions, onError: () => undefined });
+        if (h.ids().length === 0) {
+          // A strip the user emptied is saved as nothing, and a window restored from nothing starts as a new one.
+          expect(again).toMatchObject({ ok: false, reason: 'empty' });
+          continue;
+        }
+
         if (!again.ok) {
           throw new Error(`step ${i}: the saved session did not come back: ${again.reason}`);
         }
@@ -125,12 +136,12 @@ describe('4000 random operations', () => {
       }
     }
 
-    expect(h.ids().length).toBeGreaterThanOrEqual(1);
+    expect(emptied).toBeGreaterThan(0);
   });
 });
 
 describe('3000 random operations over singletons and ordinary pages (CO-20)', () => {
-  it('leave one tab per singleton key in the whole app, and a tab on screen', () => {
+  it('leave one tab per singleton key in the whole app, and a tab on screen whenever there is a tab', () => {
     const { next, pick } = generator(7);
     const h = boot();
     const destinations: readonly Destination[] = [
@@ -169,7 +180,7 @@ describe('3000 random operations over singletons and ordinary pages (CO-20)', ()
         throw new Error(`operation ${i} (${op}): ${bad.join('; ')}`);
       }
 
-      expect(h.active()).not.toBeNull();
+      expect(h.active() === null).toBe(h.ids().length === 0);
     }
   });
 });

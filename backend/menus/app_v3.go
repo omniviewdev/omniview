@@ -31,11 +31,29 @@ func init() {
 	application.RegisterEvent[string](EventContextTabCloseOthers)
 }
 
+// AppMenuOptions selects the build-dependent parts of the application menu.
+type AppMenuOptions struct {
+	// Reload adds View > Reload (CmdOrCtrl+R). It reloads the whole window and
+	// so every open tab, which is why it is kept for development instances and
+	// dropped from packaged builds (decision A18). Force Reload stays in both.
+	Reload bool
+}
+
+// windowCloser is the part of a window the Close Window item needs.
+type windowCloser interface {
+	Close()
+}
+
 // SetupAppMenu creates and sets the application menu for Wails v3.
 // It mirrors the v2 menu structure from GetMenus/CreateViewMenu but uses
 // the v3 menu builder API. The menu is shared by every window; reload items
 // act on the focused window and fall back to mainWindow.
-func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow, openSettings func()) {
+func SetupAppMenu(
+	app *application.App,
+	mainWindow *application.WebviewWindow,
+	openSettings func(),
+	options AppMenuOptions,
+) {
 	menu := app.NewMenu()
 	focusedWindow := func() application.Window {
 		if current := app.Window.Current(); current != nil {
@@ -61,6 +79,7 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow, o
 			go openSettings()
 		})
 		appMenu.Prepend(aboutMenu)
+		addCloseWindowMenu(menu, func() windowCloser { return focusedWindow() })
 		menu.AddRole(application.EditMenu)
 		menu.AddRole(application.WindowMenu)
 	}
@@ -71,14 +90,48 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow, o
 		})
 	}
 
-	// View submenu — custom items matching the v2 View menu
+	addViewMenu(menu, app, focusedWindow, options.Reload)
+
+	app.Menu.Set(menu)
+}
+
+// addCloseWindowMenu adds the macOS File submenu, which holds only Close Window.
+// macOS has no other menu item for it: the Window role lacks one, and the page
+// owns Cmd+W (it closes a tab), so the window chord is Cmd+Shift+W.
+func addCloseWindowMenu(menu *application.Menu, focused func() windowCloser) {
+	fileMenu := menu.AddSubmenu("File")
+	fileMenu.Add("Close Window").
+		SetAccelerator("CmdOrCtrl+Shift+W").
+		OnClick(closeFocused(focused))
+}
+
+// closeFocused returns the Close Window click handler. It calls Close on the
+// focused window, so the close goes through the window's close hook: the main
+// window and the Settings window hide and the app keeps running; any other
+// window closes.
+func closeFocused(focused func() windowCloser) func(*application.Context) {
+	return func(_ *application.Context) {
+		focused().Close()
+	}
+}
+
+// addViewMenu adds the View submenu — custom items matching the v2 View menu.
+// Reload is added only when reload is true.
+func addViewMenu(
+	menu *application.Menu,
+	app *application.App,
+	focusedWindow func() application.Window,
+	reload bool,
+) {
 	viewMenu := menu.AddSubmenu("View")
 
-	viewMenu.Add("Reload").
-		SetAccelerator("CmdOrCtrl+R").
-		OnClick(func(_ *application.Context) {
-			focusedWindow().Reload()
-		})
+	if reload {
+		viewMenu.Add("Reload").
+			SetAccelerator("CmdOrCtrl+R").
+			OnClick(func(_ *application.Context) {
+				focusedWindow().Reload()
+			})
+	}
 
 	viewMenu.Add("Force Reload").
 		SetAccelerator("CmdOrCtrl+Shift+F").
@@ -130,6 +183,4 @@ func SetupAppMenu(app *application.App, mainWindow *application.WebviewWindow, o
 		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventSidebarMinimize)
 		})
-
-	app.Menu.Set(menu)
 }

@@ -201,9 +201,9 @@ export function createTabsStore(options: TabsStoreOptions): TabsStore {
     goto: (n) => run(goto(state, n)),
     last: () => run(last(state)),
 
-    close: (id, guard) => run(close(state, ctx, target(id), guard)),
-    closeMany: (scope, id, guard) => run(closeMany(state, ctx, scope, target(id), guard)),
-    closePlugin: (plugin, guard) => run(closePlugin(state, ctx, plugin, guard)),
+    close: (id, guard) => run(close(state, target(id), guard)),
+    closeMany: (scope, id, guard) => run(closeMany(state, scope, target(id), guard)),
+    closePlugin: (plugin, guard) => run(closePlugin(state, plugin, guard)),
     reopen: (reopenOptions) => run(reopen(state, ctx, reopenOptions)),
     canReopen: (reopenOptions) => canReopen(state, ctx, reopenOptions),
     duplicate: (id) => run(duplicate(state, ctx, target(id))),

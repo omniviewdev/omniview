@@ -92,7 +92,7 @@ describe('roles and names', () => {
     }
   });
 
-  it('has a New tab control only when the host gives one and there is at least one tab', () => {
+  it('has a New tab control only when the host gives one, with tabs or with none (an empty window has a way forward, decision A17)', () => {
     const first = mount();
     expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull();
     first.h.store.dispose();
@@ -104,7 +104,8 @@ describe('roles and names', () => {
     cleanup();
 
     mount({ onNewTab: vi.fn(), pages: [] });
-    expect(screen.queryByRole('button', { name: 'New tab' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New tab' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).toBeNull();
   });
 
   it('says what a tab is in words as well as marks: unsaved changes, pinned, preview and needs attention', () => {

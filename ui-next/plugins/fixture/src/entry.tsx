@@ -46,9 +46,12 @@ function useCounts(): readonly SidebarNodeV1[] | undefined {
   return ready ? WITH_COUNTS : undefined;
 }
 
+/** The entry this plugin has in the window's rail, its name and its place: written into the bundle by the build (`build.mjs`, `define`), because the check installs two plugins from this one source. */
+declare const FIXTURE_RAIL: { readonly label: string; readonly order: number };
+
 export const contributionV1 = {
   plugin: { name: 'Seam Fixture', accent: 'teal' },
-  rail: true,
+  rail: { icon: 'layers', label: FIXTURE_RAIL.label, order: FIXTURE_RAIL.order },
   sidebar: { label: 'Seam Fixture navigation', title: 'Fixture', nodes: SKELETON, useNodes: useCounts },
   pages: { items: itemsPage, item: itemPage, crash: crashPage },
   home: 'items',

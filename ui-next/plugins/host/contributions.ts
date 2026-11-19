@@ -3,6 +3,7 @@ import type { Contributions, Description, Route, RouteInput } from '../../shell'
 import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
 import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
+import { firstPlugin } from './rail';
 
 // The tab model's side of the seam (ui-next/shell/core/tabs/README.md, "The seam: Contributions"): what the model asks the plugin host, answered from what the host knows of each
 // installed plugin. The model asks five pure, synchronous questions and never a plugin; each answer here is read from the loaded contributions and from the frames the mounted pages
@@ -84,7 +85,7 @@ export function describeDetail(pluginName: string, route: Route, definition: Det
  * The model's `Contributions`, over the host's plugins. `describe` gives a tab its title, glyph and path from the page's own contribution (what its hook published, else the page's
  * definition and its sidebar entry), its scope from the connection its route names, and says the plugin's name so a tab that reads like another is told from it. `availability` opens a
  * plugin that is loading or failed to a page that says so (ch16 S65: degraded) and refuses one the host does not have. `complete` fills in the connection of the tab a destination is
- * opened from, and turns a page the plugin does not have into its home. `home` is the first plugin that is ready once every plugin has settled.
+ * opened from, and turns a page the plugin does not have into its home. `home` is the first plugin that is ready, in the order the plugins declare for the rail (`firstPlugin`), once every plugin has settled.
  */
 export function createContributions({ plugins, frames, holdHome }: ContributionsDeps): Contributions {
   const entryOf = (plugin: string): PluginEntry | undefined => plugins.getSnapshot().find((entry) => entry.id === plugin);
@@ -143,12 +144,13 @@ export function createContributions({ plugins, frames, holdHome }: Contributions
         return entry === undefined ? undefined : homeOf(entry);
       }
 
-      // The window chooses once every plugin has settled, so a plugin that happens to load faster does not flash by before the one that would be chosen.
+      // The window chooses once every plugin has settled, so a plugin that happens to load faster does not flash by before the one that would be chosen. It chooses by the order the plugins
+      // declare for the rail, not by id: the plugin the window opens on is the one its rail lists first.
       if (holdHome() || list.length === 0 || list.some((entry) => entry.phase === 'loading')) {
         return undefined;
       }
 
-      const first = list.find((entry) => entry.phase === 'ready') ?? list[0];
+      const first = firstPlugin(list);
       return first === undefined ? undefined : homeOf(first);
     },
     subscribe: (listener) => {

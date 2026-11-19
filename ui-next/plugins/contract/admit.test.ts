@@ -69,7 +69,7 @@ describe('admit', () => {
   it.each([
     ['a plugin without a name', contribution({ plugin: { name: ' ' } }), 'plugin.name is not a non-empty string'],
     ['a colour the shell does not have', contribution({ plugin: { name: 'Acme', accent: 'chartreuse' } }), 'plugin.accent "chartreuse" is not one of the shell\'s colours'],
-    ['a rail that is not true', contribution({ rail: 1 }), 'rail is neither absent nor true'],
+    ['a rail that is not an entry', contribution({ rail: 1 }), 'rail is neither absent, true, nor an entry'],
     ['a sidebar without a title', contribution({ sidebar: sidebar({ title: '' }) }), 'sidebar needs a label and a title'],
     ['a sidebar hook that is not a function', contribution({ sidebar: sidebar({ useNodes: 'yes' }) }), 'sidebar.useNodes is not a function'],
     ['a home that is not a page', contribution({ home: 'gadgets' }), 'home "gadgets" is not one of the pages'],
@@ -227,5 +227,36 @@ describe('admit: the detail page (a minor addition to version 1)', () => {
     ];
 
     expect(openable(nodes, { widgets: page(), widget: detailPage() })).toEqual([{ id: 'widgets', label: 'Widgets', icon: 'box' }]);
+  });
+});
+
+// The rail entry (S2a) is the other minor addition to version 1 (the rule is at the head of `v1.ts`). Its first half: what a bundle written before it said, `rail: true` or no rail, is
+// read as before. Its second half: the shape it adds is refused by name when it is wrong. A host without it refuses any bundle that writes an entry, because it reads `rail` only as
+// absent or `true` (`rail is neither absent nor true`, the check this file replaced).
+describe('admit: the rail entry (a minor addition to version 1)', () => {
+  it('admits an entry with a glyph, a name and a place, an entry with a glyph alone, and `true`', () => {
+    for (const rail of [{ icon: 'layers', label: 'Acme tools', order: 20 }, { icon: 'layers' }, true, undefined]) {
+      expect(admit(exportsOf(contribution({ rail }))).ok).toBe(true);
+    }
+  });
+
+  it('admits a bundle written before the entry, with `rail: true` and with no rail, and hands back its own object', () => {
+    const withTrue = contribution();
+    const { rail: _rail, ...without } = contribution();
+
+    expect(admit(exportsOf(withTrue))).toMatchObject({ ok: true, contribution: withTrue });
+    expect(admit(exportsOf(without))).toMatchObject({ ok: true, contribution: without });
+  });
+
+  it.each([
+    ['an entry with no glyph', { label: 'Acme' }, 'rail.icon is not a glyph name'],
+    ['an entry whose glyph is not a name', { icon: 3 }, 'rail.icon is not a glyph name'],
+    ['an entry whose name is blank', { icon: 'layers', label: ' ' }, 'rail.label is not a non-empty string'],
+    ['an entry whose place is not a number', { icon: 'layers', order: 'first' }, 'rail.order is not a finite number'],
+    ['an entry whose place is not finite', { icon: 'layers', order: Number.POSITIVE_INFINITY }, 'rail.order is not a finite number'],
+    ['a rail that is a list', [], 'rail is neither absent, true, nor an entry'],
+    ['a rail that is false', false, 'rail is neither absent, true, nor an entry'],
+  ])('refuses %s', (_name, rail, expected) => {
+    expect(problemsOf(contribution({ rail }))).toContain(expected);
   });
 });

@@ -8,13 +8,15 @@
 //   ?dataMs=200       how long a page's data takes to arrive
 //   ?rows=25          rows in the list page `widgets`
 //   ?plugins=1        how many plugins are installed (`alpha`, `beta`)
+//   ?lateMs=0         how much longer the second plugin's interface takes to load than the first's: it registers late, after the first has (S2a: the window must not move for it)
+//   ?first=alpha      which plugin the rail lists first: `rail.order` 10 for that one and 20 for the other (`beta`: the plugin that registers late sorts first)
 //   ?lane=1           whether the pages declare a scope lane (the plugins' frames have one by default); `0`: they declare none
 //
 // `window.__ticks` counts the timer of the page `clock` per plugin: a page that is hidden must not run it. `window.__commits` lists every commit of the tree (React's profiler; the probe builds
 // this entry with the profiling build of React DOM). `window.__host` is the `PluginStore`.
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { ThemeProvider } from '@omniviewdev/kit';
+import { ThemeProvider, type IconName } from '@omniviewdev/kit';
 import { Profiler, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ContextV1, ContributionV1, ListPageViewV1, PageV1, SidebarNodeV1 } from '../../plugins/contract/v1';
@@ -30,10 +32,15 @@ const NODES_MS = number('nodesMs', 200);
 const DATA_MS = number('dataMs', 200);
 const ROWS = number('rows', 25);
 const PLUGINS = number('plugins', 1);
+const LATE_MS = number('lateMs', 0);
+const FIRST = params.get('first') === 'beta' ? 'beta' : 'alpha';
 const LANE = params.get('lane') !== '0';
 
 const IDS = ['alpha', 'beta'].slice(0, PLUGINS);
 const NAMES: Readonly<Record<string, string>> = { alpha: 'Alpha', beta: 'Beta' };
+const ICONS: Readonly<Record<string, IconName>> = { alpha: 'layers', beta: 'server' };
+/** Where each plugin's entry sits on the rail (`rail.order`, lowest first): the plugin the probe names with `first` leads. */
+const ORDER: Readonly<Record<string, number>> = FIRST === 'beta' ? { alpha: 20, beta: 10 } : { alpha: 10, beta: 20 };
 
 const ticks: Record<string, number> = {};
 const commits: Array<{ readonly phase: string; readonly actualDuration: number }> = [];
@@ -127,7 +134,7 @@ function contribution(plugin: string): ContributionV1 {
   const name = NAMES[plugin] ?? plugin;
   return {
     plugin: { name, accent: plugin === 'alpha' ? 'blue' : 'teal' },
-    rail: true,
+    rail: { icon: ICONS[plugin] ?? 'box', order: ORDER[plugin] },
     sidebar: { label: `${name} navigation`, title: name, nodes: SKELETON, useNodes: useCounts },
     pages: { widgets: listPage(plugin, 'Widgets', many), gadgets: listPage(plugin, 'Gadgets', WIDGETS), clock: clockPage(plugin) },
     home: 'widgets',
@@ -136,7 +143,8 @@ function contribution(plugin: string): ContributionV1 {
 
 const deps: LoaderDeps = {
   importBundle: async (id) => {
-    await new Promise((resolve) => setTimeout(resolve, LOAD_MS));
+    // The second plugin registers `LATE_MS` after the first.
+    await new Promise((resolve) => setTimeout(resolve, LOAD_MS + (id === 'beta' ? LATE_MS : 0)));
     return { contributionV1: contribution(id) };
   },
   clearBundle: () => undefined,

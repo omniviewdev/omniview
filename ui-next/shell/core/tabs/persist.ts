@@ -148,6 +148,7 @@ export function restoreTabs(raw: unknown, options: RestoreOptions): RestoreResul
     closed: Object.freeze([]),
     keepAlive: normaliseKeepAlive(options.keepAlive),
     serial: 0,
+    started: true,
   });
   return { ok: true, state, repaired: problems.length > 0, problems };
 }

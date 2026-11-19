@@ -43,6 +43,11 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // older hooks ignore, no list page changes, and an older host answers a plugin that uses it with its named refusal, where a second export would have made the plugin build and keep
 // a list-only contribution for hosts that, on the feature channel, update together with their plugins.
 //
+// The rail entry (S2a) is minor on the same terms. `rail` grows from `true` to `true | RailV1`, a new optional shape that names the glyph, the name and the place of the plugin's entry in the
+// window's rail. (1) `true` and an absent `rail` are still accepted and read nothing new: the entry gets the host's own glyph and the plugin's name. (2) Every bundle written before it is
+// admitted, and drawn as before but for the entry the window now gives every plugin that contributes (`admit.test.ts` keeps one such bundle). (3) A host without it refuses a bundle that
+// writes an entry, by name: its admission reads `rail` only as absent or `true` (`rail is neither absent nor true`), so the bundle is never drawn without the entry it asked for.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 
@@ -134,11 +139,24 @@ export type SidebarV1 = {
  */
 export type PageV1 = ListPageV1<any> | DetailPageV1;
 
+/**
+ * The plugin's entry in the window's rail, the 40 px column left of the sidebar: one entry for every plugin that contributes, and choosing it shows this plugin's sidebar. The entries are
+ * ordered by `order`, lowest first; a plugin that gives none sits after every plugin that does, by name, so the order never depends on how the host happens to list its plugins.
+ */
+export type RailV1 = {
+  /** The entry's glyph, a name from the kit's registry. A name the host's kit does not have draws the host's own glyph, as a tab's glyph does. */
+  readonly icon: IconName;
+  /** What the entry is called: its accessible name and its tooltip. Absent: the plugin's name. */
+  readonly label?: string | undefined;
+  /** Where the entry sits among the plugins', lowest first. A finite number. */
+  readonly order?: number | undefined;
+};
+
 export type ContributionV1 = {
   /** The plugin as the frame names it ("<name> workspace"), and the colour of the sidebar's glyphs. */
   readonly plugin: { readonly name: string; readonly accent?: ShellAccent | undefined };
-  /** The frame has a rail track (the rail's tools are not part of this contract). */
-  readonly rail?: true | undefined;
+  /** The plugin's entry in the window's rail. `true` or absent: an entry with the host's own glyph and the plugin's name. */
+  readonly rail?: true | RailV1 | undefined;
   readonly sidebar: SidebarV1;
   /** The plugin's pages by id. The id of a sidebar leaf names one of them. */
   readonly pages: Readonly<Record<string, PageV1>>;

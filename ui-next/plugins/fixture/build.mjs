@@ -29,9 +29,11 @@ window.__fixtureOldBundleRan = true;
 export const plugin = { Button };
 `;
 
+// `rail` is what each plugin's entry in the window's rail says (the build writes it into the bundle, `define` below): its name and its place, so the two plugins that contribute can be told
+// apart in the rail and are listed in the order they declare.
 export const PLUGINS = {
-  'fixture-a-ok': { variant: 'ok', name: 'Seam Fixture' },
-  'fixture-b-dup': { variant: 'duplicate', name: 'Seam Fixture Copy' },
+  'fixture-a-ok': { variant: 'ok', name: 'Seam Fixture', rail: { label: 'Seam Fixture', order: 10 } },
+  'fixture-b-dup': { variant: 'duplicate', name: 'Seam Fixture Copy', rail: { label: 'Seam Fixture Copy', order: 20 } },
   'fixture-c-old': { variant: 'old', name: 'Seam Fixture Old' },
   'fixture-d-missing': { variant: 'missing', name: 'Seam Fixture Missing' },
 };
@@ -104,7 +106,7 @@ function virtualOldEntry() {
   };
 }
 
-async function buildBundle(id, variant, directory) {
+async function buildBundle(id, variant, directory, rail) {
   const old = variant === 'old';
   const bundled = variant === 'duplicate' ? ['@omniviewdev/kit'] : [];
   const external = old ? [...SHARED_SPECIFIERS_V1, '@omniviewdev/base-ui'] : SHARED_SPECIFIERS_V1.filter((specifier) => !bundled.includes(specifier));
@@ -112,6 +114,7 @@ async function buildBundle(id, variant, directory) {
     root: here,
     configFile: false,
     logLevel: 'warn',
+    define: { FIXTURE_RAIL: JSON.stringify(rail ?? null) },
     plugins: [
       virtualOldEntry(),
       react({ babel: { plugins: [['babel-plugin-react-compiler', { target: '19' }]] } }),
@@ -140,12 +143,12 @@ function manifest(id, name) {
 
 /** Builds one plugin into `<root>/<id>/` and answers the dependencies its bundle declares (empty when it has none). */
 export async function writePlugin(root, id) {
-  const { variant, name } = PLUGINS[id];
+  const { variant, name, rail } = PLUGINS[id];
   const directory = path.join(root, id);
   await rm(directory, { recursive: true, force: true });
   await mkdir(path.join(directory, 'assets'), { recursive: true });
   await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name));
-  return { id, directory, dependencies: variant === 'missing' ? [] : await buildBundle(id, variant, directory) };
+  return { id, directory, dependencies: variant === 'missing' ? [] : await buildBundle(id, variant, directory, rail) };
 }
 
 export async function writeAll(root) {
