@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>log bench</title>
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1b1d21; }
+      /* The panel's region at 1440 x 900: the mock's tool is 1390 px wide (the window less the 50 px rail); the height is the run's (?height=). */
+      #stage { position: absolute; inset-block-start: 25px; inset-inline-start: 50px; box-sizing: border-box; width: 1390px; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

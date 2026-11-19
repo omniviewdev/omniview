@@ -14,6 +14,8 @@ import * as keyValueModule from '../components/KeyValue/KeyValue.examples';
 import * as kindTileModule from '../components/KindTile/KindTile.examples';
 import * as linkModule from '../components/Link/Link.examples';
 import * as listRowsModule from '../components/ListRows/ListRows.examples';
+import * as logViewModule from '../components/LogView/LogView.examples';
+import * as logViewParityModule from '../components/LogView/LogView.parity.examples';
 import * as middleEllipsisModule from '../components/MiddleEllipsis/MiddleEllipsis.examples';
 import * as missingValueModule from '../components/MissingValue/MissingValue.examples';
 import * as pageHeaderModule from '../components/PageHeader/PageHeader.examples';
@@ -44,6 +46,8 @@ export const partExamples = {
   KindTile: kindTileModule,
   Link: linkModule,
   ListRows: listRowsModule,
+  LogView: logViewModule,
+  LogViewParity: logViewParityModule,
   MiddleEllipsis: middleEllipsisModule,
   MissingValue: missingValueModule,
   PageHeader: pageHeaderModule,

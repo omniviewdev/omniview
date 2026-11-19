@@ -1,4 +1,21 @@
 import { IconButton, Stack, Text } from '@omniviewdev/kit';
+import { useState } from 'react';
+
+// A toggle written the way a consumer writes it: the caller owns the pressed state.
+function StatefulToggle({ initial = false }: { readonly initial?: boolean }) {
+  const [pressed, setPressed] = useState(initial);
+  return (
+    <IconButton
+      icon="case-sensitive"
+      label="Match case"
+      variant="ghost"
+      pressed={pressed}
+      onClick={() => {
+        setPressed(!pressed);
+      }}
+    />
+  );
+}
 
 /** The neutral outlined square: the page header's utility command. */
 export const Secondary = () => <IconButton icon="refresh" label="Refresh items" />;
@@ -34,3 +51,9 @@ export const Busy = () => <IconButton icon="refresh" label="Refresh items" busy 
 export const Row = () => <IconButton icon="copy" label="Copy name" size="row" />;
 
 export const RowGhost = () => <IconButton icon="copy" label="Copy name" variant="ghost" size="row" />;
+
+/** A toggle: `pressed` makes it `aria-pressed`, with one fixed label. It is the quiet square of a find bar; it fills when on. Press it. */
+export const Toggle = () => <StatefulToggle />;
+
+/** On: the quiet fill of the inactive selection, and the same fill under the pointer. */
+export const TogglePressed = () => <StatefulToggle initial />;

@@ -42,6 +42,26 @@ describe('IconButton', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('is a plain command without `pressed`: no aria-pressed attribute at all', () => {
+    render(<IconButton icon="refresh" label="Refresh" />);
+    expect(screen.getByRole('button').hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  it('is a toggle with `pressed`: aria-pressed is "true" or "false", the click still fires and the label stays its name', () => {
+    const onClick = vi.fn();
+    const { rerender } = render(<IconButton icon="case-sensitive" label="Match case" variant="ghost" pressed onClick={onClick} />);
+    const button = screen.getByRole('button', { name: 'Match case' });
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    click(button);
+    expect(onClick).toHaveBeenCalledTimes(1);
+    rerender(<IconButton icon="case-sensitive" label="Match case" variant="ghost" pressed={false} onClick={onClick} />);
+    expect(screen.getByRole('button', { name: 'Match case' })).toBe(button);
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('Match case');
+    click(button);
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
   it('stays focusable and does nothing for a reason, which is its description', () => {
     const onClick = vi.fn();
     render(<IconButton icon="refresh" label="Refresh items" disabledReason="Refreshing" onClick={onClick} />);
@@ -119,7 +139,7 @@ describe('IconButton', () => {
     // Types only: these are never rendered.
     const accepted: IconButtonProps[] = [
       { icon: 'refresh', label: 'Refresh' },
-      { icon: 'refresh', label: 'Refresh', variant: 'ghost', tone: 'danger', size: 'row', busy: true, disabledReason: 'Why', onClick: () => undefined },
+      { icon: 'refresh', label: 'Refresh', variant: 'ghost', tone: 'danger', size: 'row', busy: true, pressed: false, disabledReason: 'Why', onClick: () => undefined },
     ];
     // @ts-expect-error an icon button needs its name: there is no default from the glyph or an action
     const nameless: IconButtonProps = { icon: 'refresh' };
@@ -153,7 +173,7 @@ describe('IconButton', () => {
   });
 });
 
-type Row = { readonly name: string; readonly description?: string; readonly disabled?: true; readonly busy?: true; readonly icon: string };
+type Row = { readonly name: string; readonly description?: string; readonly disabled?: true; readonly busy?: true; readonly pressed?: boolean; readonly icon: string };
 const MATRIX: Readonly<Record<string, Row>> = {
   Secondary: { name: 'Refresh items', icon: 'refresh' },
   Ghost: { name: 'Refresh items', icon: 'refresh' },
@@ -166,6 +186,8 @@ const MATRIX: Readonly<Record<string, Row>> = {
   Busy: { name: 'Refresh items', busy: true, icon: 'refresh' },
   Row: { name: 'Copy name', icon: 'copy' },
   RowGhost: { name: 'Copy name', icon: 'copy' },
+  Toggle: { name: 'Match case', icon: 'case-sensitive', pressed: false },
+  TogglePressed: { name: 'Match case', icon: 'case-sensitive', pressed: true },
 };
 
 describe('IconButton examples: the a11y matrix', () => {
@@ -188,6 +210,7 @@ describe('IconButton examples: the a11y matrix', () => {
       expect(button.textContent).toBe(row.description ?? '');
       expect(button.getAttribute('aria-disabled') === 'true').toBe(row.disabled === true);
       expect(button.getAttribute('aria-busy') === 'true').toBe(row.busy === true);
+      expect(button.getAttribute('aria-pressed')).toBe(row.pressed === undefined ? null : String(row.pressed));
       expect(button.hasAttribute('disabled')).toBe(false);
       expect(button.querySelectorAll('svg')).toHaveLength(1);
       expect(button.querySelector('svg')?.getAttribute('data-ov-glyph')).toBe(row.icon);

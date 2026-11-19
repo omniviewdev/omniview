@@ -1,0 +1,490 @@
+@layer ov.components {
+  /* The log view (the mock's Logs tool body, `.ptool--logs`, design 16 S120): a column of a filter row, the list of lines and a status strip. It fills what it is
+     given and owns its own scrolling, so the container never scrolls. Every rule below is static: a row's paint comes from data attributes, never from
+     per-row style (HLT-3), and a hover is CSS, never state (T-12). */
+  .root {
+    --_row: max(var(--ov-row-height), calc(var(--ov-lh-18) + var(--ov-spacing-4)));
+    --_time: 112px;
+    --_level: 96px;
+
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* ---- the filter row: a find bar and the level filter, one 38 px line with the border (28 px controls, 5 px above and below) ---- */
+  .filters {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-6) var(--ov-spacing-12);
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 39px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the mock's filter row is 5 px above and below its 28 px controls (S120): outside the spacing scale */
+    padding-block: 5px;
+    padding-inline: var(--ov-spacing-12);
+    border-bottom: 1px solid var(--ov-border-subtle);
+  }
+
+  /* One group of 4 px gaps: the field, Match case, Use regular expression, Previous match, Next match (design 16 FBR1). The count is inside the field. */
+  .find {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .field {
+    display: flex;
+    flex: 0 1 280px;
+    min-width: 200px;
+  }
+
+  /* ---- the level quick filter: a segmented radio group (the mock's `.seg`) ---- */
+  .seg {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    box-sizing: border-box;
+    min-height: var(--ov-control-height);
+    max-width: 100%;
+    border-radius: var(--ov-radius-control);
+  }
+
+  .seg > button {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    border: 1px solid var(--ov-border-control);
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .seg > button + button {
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 1 px borders of two neighbours overlap (the mock's `.seg > button + button`): outside the spacing scale */
+    margin-inline-start: -1px;
+  }
+
+  .seg > button:first-child {
+    border-start-start-radius: var(--ov-radius-control);
+    border-end-start-radius: var(--ov-radius-control);
+  }
+
+  .seg > button:last-child {
+    border-start-end-radius: var(--ov-radius-control);
+    border-end-end-radius: var(--ov-radius-control);
+  }
+
+  .seg > button:hover {
+    background-color: var(--ov-hover-row);
+  }
+
+  .seg > button[aria-checked='true'] {
+    z-index: 1;
+    border-color: var(--ov-segment-border);
+    background-color: var(--ov-segment-bg);
+  }
+
+  .seg > button:focus-visible {
+    z-index: 2;
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .seg > button[aria-checked='true']:focus-visible {
+    background-color: var(--ov-segment-focused-bg);
+  }
+
+  /* ---- the list: the one scroller, and the one tab stop (arrows, Page, Home, End) ---- */
+  .main {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .list {
+    position: relative;
+    display: block;
+    flex: 1 1 auto;
+    isolation: isolate;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background-color: var(--ov-bg-island);
+  }
+
+  .list:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* The content is as wide as the viewport, or as the widest mounted row when a line does not fit: a long line scrolls sideways. */
+  .canvas {
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .header {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    height: var(--ov-table-header-height);
+    border-bottom: 1px solid var(--ov-border-subtle);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-muted);
+  }
+
+  /* The rows sit in normal flow in one block that is moved to the window's first row, inside a block as high as all the rows: the count and the first row
+     are the two numbers React writes, once per window, and the row height is the density's (nothing is positioned per row, T-03). */
+  .sizer {
+    position: relative;
+    height: calc(var(--_count, 0) * var(--_row));
+  }
+
+  .window {
+    position: relative;
+    inset-block-start: calc(var(--_start, 0) * var(--_row));
+  }
+
+  .row {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    height: var(--_row);
+    color: var(--ov-fg);
+  }
+
+  .row:hover {
+    background-color: var(--ov-hover-row);
+  }
+
+  /* A warning and an error mark the start of their row with a 2 px edge, as the mock's first cell does. */
+  .row[data-ov-level='warn'] {
+    box-shadow: inset 2px 0 0 var(--ov-warning-fg);
+  }
+
+  .row[data-ov-level='error'] {
+    box-shadow: inset 2px 0 0 var(--ov-error-fg);
+  }
+
+  .row[aria-selected='true'] {
+    background-color: var(--ov-selection-inactive);
+  }
+
+  .list:focus-visible .row[aria-selected='true'] {
+    background-color: var(--ov-selection-active);
+  }
+
+  .row[data-ov-current='true'] {
+    box-shadow: inset 2px 0 0 var(--ov-accent), inset 0 1px 0 var(--ov-accent), inset 0 -1px 0 var(--ov-accent);
+  }
+
+  .time,
+  .level,
+  .text,
+  .head {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .time {
+    flex: 0 0 var(--_time);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset is the one value outside the spacing scale (design 13, tokens/manifest.ts SPACING); the first cell of a row takes the table's 12 px edge (the mock's base.css 1222-1235) */
+    padding-inline: var(--ov-spacing-12) 10px;
+    color: var(--ov-fg-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .level {
+    display: flex;
+    flex: 0 0 var(--_level);
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset (see the clock above) */
+    padding-inline: 10px;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .level > svg {
+    color: var(--ov-icon);
+  }
+
+  .text {
+    flex: 1 0 auto;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset (see the clock above); the last cell of a row takes the table's 12 px edge */
+    padding-inline: 10px var(--ov-spacing-12);
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-18);
+    tab-size: 4;
+    white-space: pre;
+    user-select: text;
+  }
+
+  .head {
+    flex: 0 0 auto;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset (see the clock above): a column head stands over its column */
+    padding-inline: 10px;
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  .head[data-ov-column='time'] {
+    flex-basis: var(--_time);
+    padding-inline-start: var(--ov-spacing-12);
+  }
+
+  .head[data-ov-column='level'] {
+    flex-basis: var(--_level);
+  }
+
+  .head[data-ov-column='message'] {
+    flex: 1 0 auto;
+    padding-inline-end: var(--ov-spacing-12);
+  }
+
+  /* The closed set of hues a coloured span may take, each a role of the theme (the mock's `.plog__a`), and bold. */
+  .text [data-ov-hue='red'] {
+    color: var(--ov-error-fg);
+  }
+
+  .text [data-ov-hue='green'] {
+    color: var(--ov-success-fg);
+  }
+
+  .text [data-ov-hue='amber'] {
+    color: var(--ov-warning-fg);
+  }
+
+  .text [data-ov-hue='blue'] {
+    color: var(--ov-link);
+  }
+
+  .text [data-ov-hue='purple'] {
+    color: var(--ov-chart-purple);
+  }
+
+  .text [data-ov-hue='cyan'] {
+    color: var(--ov-chart-teal);
+  }
+
+  .text [data-ov-hue='gray'] {
+    color: var(--ov-fg-muted);
+  }
+
+  .text [data-ov-bold='true'] {
+    font-weight: 600;
+  }
+
+  /* A search match: the mock's `::highlight(plog-find)`; the matches of the current line take the accent. */
+  .text [data-ov-mark='found'] {
+    background-color: var(--ov-warning-bg);
+    color: var(--ov-fg);
+  }
+
+  .text [data-ov-mark='current'] {
+    background-color: var(--ov-accent);
+    color: var(--ov-fg-over-accent);
+  }
+
+  /* A marker where the feed dropped lines: one row, centred, in the muted type of a status (the mock's `.plog__marker`). */
+  .marker {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ov-spacing-8);
+    height: var(--_row);
+    padding-inline: var(--ov-spacing-12);
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .markerCell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+  }
+
+  .markerCell > svg {
+    color: var(--ov-icon);
+  }
+
+  /* What the list says when it has no row (the mock's `.plog__empty`), and a log that failed before a line came: under the header, over the list, which is empty. */
+  .overlay {
+    position: absolute;
+    inset-block: var(--ov-table-header-height) 0;
+    inset-inline: 0;
+    overflow: auto;
+    pointer-events: none;
+  }
+
+  .overlay > * {
+    pointer-events: auto;
+  }
+
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    padding: var(--ov-spacing-24) var(--ov-spacing-12);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+    text-align: center;
+  }
+
+  /* ---- the failure notice: the mock's `.notice` in its error tone, one row at the foot of the list (RC2) or the whole body of a log with no line ---- */
+  .failure {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border-top: 1px solid var(--ov-border-subtle);
+  }
+
+  .failure[data-ov-body='true'] {
+    width: min(560px, 100%);
+    border-top: 0;
+    padding: var(--ov-spacing-12);
+  }
+
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border: 1px solid var(--ov-error-border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-error-bg);
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  .notice > svg {
+    flex: 0 0 16px;
+  }
+
+  .noticeText {
+    display: -webkit-box;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .failure[data-ov-body='true'] .noticeText {
+    display: block;
+  }
+
+  .noticeText > b {
+    font-weight: 600;
+  }
+
+  /* ---- the status strip: a fixed 28 px lane, so no state moves the list above it (S116) ---- */
+  .strip {
+    display: flex;
+    flex: 0 0 28px;
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    box-sizing: border-box;
+    min-width: 0;
+    height: 28px;
+    padding-inline: var(--ov-spacing-12);
+    border-top: 1px solid var(--ov-border-subtle);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .state {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-6);
+    color: var(--ov-fg);
+  }
+
+  .stat {
+    display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+  }
+
+  .actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+  }
+
+  /* The probe the view reads the row height from: the height a row has at this density and text size, never a guess (the table does the same). */
+  .probe {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    height: var(--_row);
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

@@ -47,8 +47,9 @@ jobs:
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # 30 minutes held 29 of them on the last run (the browsers' cold install alone took 20), so the detail probe's minutes needed room of their own.
-    timeout-minutes: 40
+    # 30 minutes held 29 of them on the last run (the browsers' cold install alone took 20), so the detail probe's minutes needed room of their own. The log probe and its seven controls
+    # (P1b-2) took 2 m 42 s and 1 m 45 s on a runner (run 44604456802: 28 minutes in all, the browsers cached); a cold install on top of that is about 48 minutes (an estimate), so 55 and not 40.
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,6 +145,20 @@ jobs:
         run: |
           for control in panel-height session-gap toggle tab-padding shift root-write; do
             NEGATIVE_CONTROL="$control" node ui-next/shell/probes/panel-probe.mjs
+          done
+
+      # The log view (P1b-2): the kit's LogView staged at the size of the mock's Logs tool against the pinned mock reference (packages/kit/probes/mock-log.json, measured from the mock by
+      # mock-log-measure.mjs): the regions, the header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event
+      # as plain text, and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800. What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.
+      - name: Probe the log view against the pinned mock reference
+        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/log-probe.json" node packages/kit/probes/log-probe.mjs
+
+      # The negative controls of that probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
+      # height, the copy event, the ArrowDown key, an unnamed button) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
+      - name: Probe that the log probe sees a log view that is wrong
+        run: |
+          for control in row-height time-column filter-shift strip-height copy keys axe; do
+            DIST="$PROBE_DIST" NEGATIVE_CONTROL="$control" node packages/kit/probes/log-probe.mjs
           done
 
       # The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready

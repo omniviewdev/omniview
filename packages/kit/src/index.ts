@@ -16,6 +16,7 @@ export * from './components/KeyValue';
 export * from './components/KindTile';
 export * from './components/Link';
 export * from './components/ListRows';
+export * from './components/LogView';
 export * from './components/MiddleEllipsis';
 export * from './components/MissingValue';
 export * from './components/PageHeader';
