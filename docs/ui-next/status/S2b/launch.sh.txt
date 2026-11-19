@@ -1,0 +1,8 @@
+#!/bin/bash
+A=${1:-/tmp/s2b/app/Omniview-S2b.app}
+cd /tmp/s2b
+env -u KUBECONFIG HOME=/tmp/s2b/home nohup $A/Contents/MacOS/Omniview > /tmp/s2b/run.out 2> /tmp/s2b/run.err &
+disown
+sleep 7
+P=$(ps -eo pid,command | grep "$A/Contents/MacOS/Omniview" | grep -v grep | awk '{print $1}' | head -1)
+echo $P > /tmp/s2b/run.pid; echo pid=$P

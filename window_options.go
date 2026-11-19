@@ -25,3 +25,13 @@ func macTitleBar() application.MacTitleBar {
 	titleBar.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
 	return titleBar
 }
+
+// macApplicationOptions is the application-level macOS configuration.
+//
+// ApplicationShouldTerminateAfterLastWindowClosed is false: the main window hides instead of closing (backend/window/wails.go, attachMainWindow),
+// and with the option on AppKit ends the process as soon as that window is hidden, so the red light, Close Window and Cmd+W on an empty window
+// all quit the app. A Mac editor (VS Code, JetBrains) keeps running in the Dock after its window closes; Quit (Cmd+Q) exits, and a Dock click shows
+// the hidden window again (Wails reopens every hidden window when the app is activated with none visible). Decision A17.
+func macApplicationOptions() application.MacOptions {
+	return application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false}
+}

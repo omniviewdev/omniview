@@ -1,0 +1,58 @@
+// S2b native diagnosis overlay: READ-ONLY, never committed. Ctrl+Alt+M toggles a text box of geometry measurements; nothing is written to the page.
+const f = (n: number) => (Math.round(n * 100) / 100).toString();
+const r = (e: Element) => {
+  const b = e.getBoundingClientRect();
+  return `x${f(b.left)} y${f(b.top)} w${f(b.width)} h${f(b.height)} b${f(b.bottom)}`;
+};
+
+function lines(): string[] {
+  const out: string[] = [];
+  const vv = window.visualViewport;
+  out.push(`inner ${window.innerWidth}x${window.innerHeight} outer ${window.outerWidth}x${window.outerHeight} dpr ${window.devicePixelRatio} screen ${screen.width}x${screen.height} avail ${screen.availWidth}x${screen.availHeight}`);
+  out.push(`vv ${vv ? `${f(vv.width)}x${f(vv.height)} s${vv.scale} off${f(vv.offsetLeft)},${f(vv.offsetTop)}` : '-'} docEl client ${document.documentElement.clientWidth}x${document.documentElement.clientHeight} scroll ${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight} body ${r(document.body)}`);
+  out.push(`pointer fine ${matchMedia('(pointer: fine)').matches} hover ${matchMedia('(hover: hover)').matches}`);
+  // sidebar tree and page
+  for (const sel of ['[role="tree"]', '[role="tabpanel"]']) {
+    for (const e of Array.from(document.querySelectorAll<HTMLElement>(sel)).slice(0, 2)) {
+      const cs = getComputedStyle(e);
+      out.push(`${sel} ${r(e)} off${e.offsetWidth}x${e.offsetHeight} client${e.clientWidth}x${e.clientHeight} scroll${e.scrollWidth}x${e.scrollHeight} ovY ${cs.overflowY} gutter ${cs.scrollbarGutter} sbw ${e.offsetWidth - e.clientWidth}`);
+    }
+  }
+  const table = Array.from(document.querySelectorAll('table')).find((t) => (t as HTMLElement).offsetParent !== null);
+  if (table) {
+    let region: HTMLElement | null = table.parentElement;
+    while (region && !['auto', 'scroll'].includes(getComputedStyle(region).overflowY)) region = region.parentElement;
+    if (region) {
+      const rb = region.getBoundingClientRect();
+      out.push(`REGION ${r(region)} client ${region.clientWidth}x${region.clientHeight} scrollH ${region.scrollHeight} scrollTop ${f(region.scrollTop)} sbw ${region.offsetWidth - region.clientWidth} maxScrollTop ${region.scrollHeight - region.clientHeight}`);
+      const probe = region.querySelector<HTMLElement>('div[aria-hidden], div');
+      const trs = Array.from(region.querySelectorAll('tbody tr'));
+      out.push(`tbody rows ${trs.length} first-row h ${trs[0] ? f(trs[0].getBoundingClientRect().height) : '-'} probe ${probe ? r(probe) : '-'}`);
+      const edge = trs.filter((t) => { const b = t.getBoundingClientRect(); return b.bottom > rb.bottom - 1 && b.top < rb.bottom; });
+      out.push(`rows crossing region bottom (${f(rb.bottom)}): ${edge.map((t) => { const b = t.getBoundingClientRect(); return `${(t.textContent ?? '').slice(0, 24)} top${f(b.top)} bot${f(b.bottom)} cut${f(b.bottom - rb.bottom)}`; }).join(' | ') || 'none'}`);
+      const last = trs[trs.length - 1];
+      if (last) out.push(`last row ${(last.textContent ?? '').slice(0, 24)} ${r(last)} gap-to-region-bottom ${f(rb.bottom - last.getBoundingClientRect().bottom)}`);
+      // footer: the element after the region's ancestor chain
+      let n: HTMLElement | null = region;
+      const chain: string[] = [];
+      for (let i = 0; i < 6 && n; i += 1) {
+        const sib = n.nextElementSibling as HTMLElement | null;
+        chain.push(`${n.tagName.toLowerCase()} ${r(n)} ovY ${getComputedStyle(n).overflowY} display ${getComputedStyle(n).display}${sib ? ` | next ${sib.tagName.toLowerCase()} ${r(sib)}` : ''}`);
+        n = n.parentElement;
+      }
+      out.push(...chain.map((c, i) => `chain${i}: ${c}`));
+    }
+  }
+  return out;
+}
+
+let box: HTMLElement | null = null;
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.altKey && e.code === 'KeyM') {
+    if (box) { box.remove(); box = null; return; }
+    box = document.createElement('pre');
+    box.setAttribute('style', 'position:fixed;left:8px;top:60px;right:8px;z-index:2147483647;margin:0;padding:6px;background:#000e;color:#7f7;font:11px/1.25 Menlo,monospace;white-space:pre-wrap;pointer-events:none;border:1px solid #7f7');
+    box.textContent = lines().join('\n');
+    document.body.appendChild(box);
+  }
+});
