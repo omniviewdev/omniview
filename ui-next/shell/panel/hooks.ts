@@ -1,0 +1,77 @@
+import { useSyncExternalStore } from 'react';
+import type { PanelState, Session, SessionId, SessionItem, ToolId, ToolItem } from '../core/panel';
+import { usePanel } from './context';
+
+// What a component of the panel reads of its model. One hook is one slice: the model hands back the same object while its slice is the same (core/panel/README.md), so
+// `useSyncExternalStore` renders the component only when its own slice changed. The toggle reads `open`; a tool tab, its item; a session tab, its item; a body, its own session.
+
+const NONE: readonly SessionId[] = Object.freeze([]);
+
+/** A slice of the model. `select` must return an object that is the same while the slice is, or a primitive: the model's selectors do. */
+export function usePanelSelector<T>(select: (state: PanelState) => T): T {
+  const { store } = usePanel();
+  return useSyncExternalStore(store.subscribe, () => select(store.getSnapshot()));
+}
+
+/** Whether the panel is open: the status bar's toggle and the region. */
+export function useOpen(): boolean {
+  const { store } = usePanel();
+  return usePanelSelector(store.selectors.open);
+}
+
+/** The remembered height: the region's size and the splitter's value. */
+export function useHeight(): number | null {
+  return usePanelSelector((state) => state.height);
+}
+
+/** The visible tools, in order. */
+export function useToolIds(): readonly ToolId[] {
+  const { store } = usePanel();
+  return usePanelSelector(store.selectors.toolIds);
+}
+
+export function useToolItem(id: ToolId): ToolItem | undefined {
+  const { store } = usePanel();
+  return usePanelSelector((state) => store.selectors.toolItem(state, id));
+}
+
+/** The tool on screen. */
+export function useActiveTool(): ToolId | null {
+  const { store } = usePanel();
+  return usePanelSelector(store.selectors.activeTool);
+}
+
+/** The session tabs of a tool, in the order they were opened. */
+export function useSessionIds(tool: ToolId | null): readonly SessionId[] {
+  const { store } = usePanel();
+  return usePanelSelector((state) => (tool === null ? NONE : store.selectors.sessionIds(state, tool)));
+}
+
+export function useSessionItem(id: SessionId): SessionItem | undefined {
+  const { store } = usePanel();
+  return usePanelSelector((state) => store.selectors.sessionItem(state, id));
+}
+
+/** The session on a tool's strip. */
+export function useActiveSession(tool: ToolId | null): SessionId | null {
+  const { store } = usePanel();
+  return usePanelSelector((state) => (tool === null ? null : store.selectors.activeSession(state, tool)));
+}
+
+/** The sessions whose body is mounted. */
+export function useMounted(): readonly SessionId[] {
+  const { store } = usePanel();
+  return usePanelSelector(store.selectors.mounted);
+}
+
+/** Whether this session's body is the one on screen. */
+export function useIsShown(id: SessionId): boolean {
+  const { store } = usePanel();
+  return usePanelSelector((state) => store.selectors.isShown(state, id));
+}
+
+/** The record of one session: what its body and its card read. */
+export function useSession(id: SessionId): Session | undefined {
+  const { store } = usePanel();
+  return usePanelSelector((state) => store.selectors.session(state, id));
+}

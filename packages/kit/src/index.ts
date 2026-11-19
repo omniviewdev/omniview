@@ -9,6 +9,7 @@ export * from './components/Chip';
 export * from './components/CollectionFooter';
 export * from './components/DataTable';
 export * from './components/DataView';
+export * from './components/HoverCard';
 export * from './components/Icon';
 export * from './components/IconButton';
 export * from './components/KeyValue';

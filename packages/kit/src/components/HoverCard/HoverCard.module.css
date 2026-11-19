@@ -1,0 +1,90 @@
+@layer ov.components {
+  /* The one hover card of the window (design 12, "Hover card"; 16 SCD1; the mock's core.css `.detail__card` with shell-panel.css
+     `.psession-card`). A popover in the top layer, so no ancestor clips it and nothing needs a z-index; the host places it with `left`
+     and `top`, so the UA popover rules for inset, margin and size are set aside. Text wraps at 336 px; no scrim, no blur, no arrow, and
+     no transition or animation: nothing moves, so reduced motion has nothing to change. The popup shadow is the one dialogs share. */
+  .root {
+    position: fixed;
+    inset: auto;
+    left: 0;
+    top: 0;
+    width: max-content;
+    height: auto;
+    max-width: min(336px, calc(100vw - 16px));
+    margin: 0;
+    padding: var(--ov-spacing-12);
+    box-sizing: border-box;
+    overflow: visible;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: default;
+    box-shadow: var(--ov-shadow-popup);
+  }
+
+  /* The host limits the HEIGHT OF THE BORDER BOX (max-height, from the room there is), so the root measures by border-box. Open, it is a
+     flex column: the body is the one child (the host draws the content in it) and shrinks into what the padding and border leave, and
+     scrolls, when the host says there is no room for the whole card on either side. `display` is set only while open: the UA hides a
+     closed popover with `display: none`, which an author `display` on the root itself would override. The root never scrolls: that would
+     clip the bridge below, which lies outside its padding box. */
+  .root:popover-open {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* What the card holds is a column of rows 8 px apart (the mock's `.psession-card`). */
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    min-height: 0;
+  }
+
+  .root[data-ov-clamped='true'] > .body {
+    overflow-y: auto;
+  }
+
+  /* The bridge: the gap between the anchor and the card is not empty to the pointer, which can cross it onto the card (the host keeps the
+     card open while it is hovered, and for a grace after the pointer leaves the trigger). It is the gap of placement.ts, 8 px, and the
+     border. A card is placed below its anchor or above it, never beside it. */
+  .root::before {
+    content: '';
+    position: absolute;
+  }
+
+  .root[data-placement='bottom']::before {
+    inset: auto 0 100% 0;
+    height: calc(8px + 1px);
+  }
+
+  .root[data-placement='top']::before {
+    inset: 100% 0 auto 0;
+    height: calc(8px + 1px);
+  }
+
+  /* The live region that says how to reach the card from the keyboard: a sentence for assistive technology that draws nothing (the mock's
+     `.visually-hidden`, base.css 1592). It is empty until the host says something, and empty again when the card closes. */
+  .status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the visually hidden box takes its own pixel back (the mock's rule) */
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}

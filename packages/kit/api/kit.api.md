@@ -236,6 +236,37 @@ export function ErrorBody(input: {
 }): JSX.Element;
 
 // @public
+export function hoverCard(key: string | undefined, options?: {
+    readonly arrow?: 'down';
+}): HoverCardAttributes;
+
+// @public
+export function hoverCardAnchor(): {
+    readonly 'data-ov-card-anchor': '';
+};
+
+// @public
+export type HoverCardAttributes = {
+    readonly 'data-ov-card'?: string;
+    readonly 'data-ov-card-arrow'?: 'down';
+};
+
+// @public
+export type HoverCardContent = {
+    readonly label: string;
+    readonly content: ReactNode;
+    readonly announce?: string | undefined;
+};
+
+// @public
+export function HoverCardHost(input: HoverCardHostProps): ReactElement;
+
+// @public (undocumented)
+export type HoverCardHostProps = {
+    readonly render: (key: string) => HoverCardContent | undefined;
+};
+
+// @public
 export function Icon(input: IconProps): JSX.Element;
 
 // @public
@@ -257,7 +288,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'arrow-down' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'play' | 'plus' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+export type IconName = 'arrow-down' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'box' | 'check' | 'chevron-down' | 'chevron-right' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'panel-bottom' | 'play' | 'plus' | 'refresh' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
 
 // @public (undocumented)
 export type IconProps = {
@@ -839,7 +870,7 @@ export type TipOptions = {
 };
 
 // @public (undocumented)
-export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal';
+export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-shadow-popup' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal';
 
 // @public
 export function tokenVar<Name extends TokenName>(name: Name): `var(${Name})`;

@@ -9,13 +9,17 @@
 //   ?case=scroll    a page taller than the island
 //   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
 //   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); `window.__tabs` is the model, `window.__commits` counts the commits of every render
+//   ?case=panel     the frame `full` and the bottom panel (panel/testing.tsx: the real model over the five tools the mock's host offers, the first of which has a `+`), closed; `window.__panel` is the model
+//                   a probe opens, fills and resizes, and `window.__lines()` reads every stream body's count
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { ThemeProvider, type IconName } from '@omniviewdev/kit';
+import { Button, ThemeProvider, type IconName } from '@omniviewdev/kit';
 import { createRoot } from 'react-dom/client';
 import { Profiler, type ReactNode } from 'react';
 import type { ShellRegistration } from '..';
 import { staticTabs, StaticShell, STATIC_RAIL, type StaticPage } from '../testing';
+import type { ToolInput } from '../core/panel';
+import { StreamBody, staticPanel } from '../panel/testing';
 
 /** What a case registers: the frame, and the words of its one tab. */
 type Described = ShellRegistration & { readonly tab: { readonly title: string; readonly icon: IconName }; readonly path: readonly string[] };
@@ -91,7 +95,17 @@ const cases: Record<string, Case> = {
     ),
   },
   tabs: { described: full, page: () => <p>A page.</p> },
+  panel: { described: full, page: () => <></> },
 };
+
+/** The tools of the mock's host, in its order, under the kit's glyphs (the registry has none for a terminal or a log yet: every glyph is 16 px, which is all a tab's width reads). Names of the host's own tools, no plugin's. */
+const PANEL_TOOLS: readonly ToolInput[] = [
+  { id: 'terminal', label: 'Terminal', icon: 'server', order: 10 },
+  { id: 'logs', label: 'Logs', icon: 'layers', order: 20 },
+  { id: 'ports', label: 'Ports', icon: 'columns', order: 30 },
+  { id: 'problems', label: 'Problems', icon: 'status-warning', order: 40 },
+  { id: 'operations', label: 'Operations', icon: 'clock', order: 50 },
+];
 
 const params = new URLSearchParams(window.location.search);
 const chosen = cases[params.get('case') ?? 'full'] ?? cases.full;
@@ -104,6 +118,44 @@ const count = many ? Math.max(1, Number(params.get('tabs') ?? '5')) : 1;
 const pages: StaticPage[] = many ? Array.from({ length: count }, (_, index) => ({ title: `Page ${String(index + 1)}`, icon: 'box' as const, path: ['Acme', `Page ${String(index + 1)}`] })) : [{ title: tab.title, icon: tab.icon, path }];
 const tabs = staticTabs(pages, many ? Math.min(count, Math.max(1, Number(params.get('active') ?? count))) - 1 : 0);
 Reflect.set(window, '__tabs', tabs);
+
+/** `?case=panel`: the bottom panel over the real model; `+` of the first tool starts `session-01`, `session-02`, ... A terminal's card says what the mock's says of a local shell. */
+let started = 0;
+const panel =
+  params.get('case') === 'panel'
+    ? staticPanel({
+      tools: PANEL_TOOLS,
+      start: {
+        terminal: {
+          label: 'New terminal',
+          open: () => {
+            started += 1;
+            return { title: `session-${String(started).padStart(2, '0')}`, state: 'running' };
+          },
+        },
+      },
+      // A body with one control of its own, as a body that has a toolbar has: the keyboard path goes on into it after the strip. A plugin's body draws its controls with the kit's parts, as every body is
+      // to: a raw native button here took the browser's own colours on the dark surface (Linux WebKit: axe `color-contrast`, serious).
+      renderBody: (session, visible) => (
+        <>
+          <StreamBody session={session} visible={visible} />
+          <Button data-fixture="body-stop">Pause</Button>
+        </>
+      ),
+      // A session called `tall` has more facts than any window has room for: its card is clamped to the room and scrolls (the kit's hover card).
+      cardOf: (session) =>
+        session.tool === 'terminal'
+          ? {
+            kind: 'Shell',
+            facts: session.title === 'tall' ? Array.from({ length: 40 }, (_, index) => [`Fact ${String(index + 1)}`, `Value ${String(index + 1)}`] as const) : [['Target', 'Local shell (zsh)'], ['Details', 'This computer']],
+            state: session.state === 'running' ? { label: 'Connected' } : undefined,
+            actions: session.state === 'running' ? [{ label: 'Stop', onSelect: () => undefined }] : [],
+          }
+          : undefined,
+    })
+    : undefined;
+Reflect.set(window, '__panel', panel?.store);
+Reflect.set(window, '__lines', () => Object.fromEntries([...document.querySelectorAll('[data-fixture="stream"]')].map((el) => [el.getAttribute('data-session'), Number(el.getAttribute('data-lines'))])));
 
 // Every commit of the shell's tree, so a probe can count what a tab switch costs. React's Profiler calls this once per commit that rendered something under it.
 const commits: Array<{ readonly phase: string; readonly actualDuration: number }> = [];
@@ -120,6 +172,7 @@ createRoot(document.getElementById('root')!).render(
       <StaticShell
         registration={registration}
         tabs={tabs}
+        panel={panel}
         onNewTab={
           many
             ? () => {

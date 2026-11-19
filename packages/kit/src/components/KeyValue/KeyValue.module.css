@@ -1,12 +1,12 @@
 @layer ov.components {
   /* The key-value list of the mock (`.kv--kit`, design 12 KV1): a grid of rows, 24 px apart in the column and 24 px between columns; each
-     row is a label track (96, 130 or 160 px) and the value, 16 px after it. The root is the size container, so the columns step down with
-     the width of the part itself and not the window's; the grid is a descendant of it, because a container cannot restyle itself. */
+     row is a label track (96, 130 or 160 px) and the value, 16 px after it. A list of many columns is its own size container (below), so the
+     columns step down with the width of the part itself and not the window's; the grid is a descendant of it, because a container cannot
+     restyle itself. */
   .root {
     --_label: 130px;
 
     box-sizing: border-box;
-    container-type: inline-size;
     min-width: 0;
     margin: 0;
     color: var(--ov-fg);
@@ -17,6 +17,13 @@
     font-weight: 400;
     letter-spacing: normal;
     line-height: var(--ov-lh-16);
+  }
+
+  /* Only a list of many columns is a container: size containment gives a part no width of its own from what it holds, which a one-column list inside a box that is as wide as its content
+     (the session card, `width: max-content`) must keep, as the mock's `.kv` does (its containers are the page and the overlay surfaces). A one-column list has no query to answer. */
+  .root[data-ov-columns='2'],
+  .root[data-ov-columns='3'] {
+    container-type: inline-size;
   }
 
   .root[data-ov-label-width='96'] {

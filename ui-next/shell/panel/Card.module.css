@@ -1,0 +1,46 @@
+/* The content of a session's card (ch16 SCD1; the mock's `.psession-card`): the surface, its placement and its behaviour are the kit's hover card; this places the parts. 12 px inside the
+   surface, 8 px between the parts. Host composition, so every rule sits in ov.shell. */
+@layer ov.shell {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  .head > svg {
+    color: var(--ov-icon);
+  }
+
+  .resource {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  .resourceName {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .since {
+    color: var(--ov-fg-muted);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+  }
+}

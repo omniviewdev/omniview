@@ -1,0 +1,146 @@
+/* The bottom panel (ch16 section H, S98 to S105; the mock's shell.css, "bottom panel", and shell-splitter.css). Host composition, so every rule sits in ov.shell, above the kit's parts. The
+   metrics are the chapter's own and are named where they appear: the 5 px gutter (S98) and its 11 px hit area, the 41 px header (S113), the 120 px minimum and the 312 px the window keeps
+   above (the table of section G). */
+@layer ov.shell {
+  /* The splitter: the 5 px gutter above the panel, a track of the window's grid and a sibling of both regions (S104). At rest nothing is drawn; hover paints the gutter, and a drag or the
+     keyboard's focus draws a 2 px accent line in it. A ::before widens the hit area by 3 px over each neighbouring edge (11 px in all). The panel is below it, so the handle belongs to the
+     panel's top edge: Up grows the panel. */
+  .handle {
+    position: relative;
+    grid-column: 2;
+    grid-row: 3;
+    box-sizing: border-box;
+    background-color: transparent;
+    outline: 0;
+    cursor: row-resize;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .handle::before {
+    content: '';
+    position: absolute;
+    inset-block: -3px;
+    inset-inline: 0;
+  }
+
+  .handle::after {
+    content: '';
+    position: absolute;
+    inset-block-start: calc(50% - 1px);
+    inset-inline: 0;
+    block-size: 2px;
+    pointer-events: none;
+  }
+
+  .handle:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .handle:focus-visible::after {
+    background-color: var(--ov-accent);
+  }
+
+  /* A drag in progress: the window carries the attribute, so the line shows whatever the pointer is over, text selection is off and the cursor stays what it is. Written on the window's element,
+     once at the start and once at the end: never on <html> (S99 writes it there; a root change restyles the page). */
+  :global([data-shell-part='window'][data-resizing]) {
+    cursor: row-resize;
+    user-select: none;
+  }
+
+  :global([data-shell-part='window'][data-resizing]) .handle {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  :global([data-shell-part='window'][data-resizing]) .handle::after {
+    background-color: var(--ov-accent);
+  }
+
+  /* The region: the grid's fourth row, an island of its own on the window plane. Its height is the track's `auto` plus this block size: the default (30% of the window, 240 at least, 400 at most), or
+     the one the user chose (`--_size`, one custom property on this element), within the limits of the window (120 at least, the window minus 312 at most). The same expressions as
+     core/panel/height.ts, which is why `aria-valuenow` is true. A hidden panel is 0 px: the track has nothing in it. A drag writes the inline `block-size` and nothing else. */
+  .panel {
+    --_default: min(400px, max(240px, 30vh));
+
+    position: relative;
+    grid-column: 2;
+    grid-row: 4;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 0;
+    block-size: clamp(120px, var(--_size, var(--_default)), calc(100vh - 312px));
+    overflow: clip;
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-bg-island);
+  }
+
+  .panel[hidden] {
+    display: none;
+  }
+
+  /* The body: where a session's body is drawn, the one tabpanel of the region. It owns no scroll: a body does (the log viewer's list, the terminal's screen). */
+  .body {
+    display: flex;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .body:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* A mounted body that is not on screen is not laid out and not painted. `hidden` is `display: none` from the user agent, restated so that no rule of a plugin's body can undo it. */
+  .slot {
+    display: flex;
+    flex: 1 1 0;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .slot[hidden] {
+    display: none;
+  }
+
+  /* An empty state: a glyph, what is missing, how to get it, the one action. Centred in the body, 12 px of air (the mock's `.panel__empty`). The region is the size container, and the stack in it
+     is what the container query restyles. Under 112 px of room (a panel under 177 px high: the minimum is 120, which leaves 79 px under the header) the stack does not fit as a column, and the
+     mock's `justify-content: center` would cut both ends of it off, the top one out of reach of any scroll: the stack then lies in one row (the glyph, the words and the button side by side), which
+     takes 28 px, and wraps when the panel is narrow. The stack is centred by its `auto` margin while there is room and gives way when there is none, and the region scrolls. */
+  .empty {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding: var(--ov-spacing-12);
+    overflow-x: hidden;
+    overflow-y: auto;
+    container-type: size;
+    color: var(--ov-fg-muted);
+  }
+
+  .emptyStack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    min-inline-size: 0;
+    margin: auto;
+    text-align: center;
+  }
+
+  .emptyStack > p {
+    margin-block: 0;
+  }
+
+  @container (max-height: 111px) {
+    .emptyStack {
+      flex-flow: row wrap;
+      justify-content: center;
+      gap: var(--ov-spacing-8) var(--ov-spacing-12);
+    }
+  }
+}

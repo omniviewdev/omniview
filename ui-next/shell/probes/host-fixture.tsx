@@ -11,6 +11,8 @@
 //   ?lateMs=0         how much longer the second plugin's interface takes to load than the first's: it registers late, after the first has (S2a: the window must not move for it)
 //   ?first=alpha      which plugin the rail lists first: `rail.order` 10 for that one and 20 for the other (`beta`: the plugin that registers late sorts first)
 //   ?lane=1           whether the pages declare a scope lane (the plugins' frames have one by default); `0`: they declare none
+//   ?panel=1          every plugin brings a tool to the bottom panel (the fixture plugin's `streams`, ../../plugins/fixture/src/panel.tsx, labelled `<Plugin> streams`, in the order the rail has the plugins); `window.__panel` is
+//                     the window's panel model
 //
 // `window.__ticks` counts the timer of the page `clock` per plugin: a page that is hidden must not run it. `window.__commits` lists every commit of the tree (React's profiler; the probe builds
 // this entry with the profiling build of React DOM). `window.__host` is the `PluginStore`.
@@ -20,9 +22,11 @@ import { ThemeProvider, type IconName } from '@omniviewdev/kit';
 import { Profiler, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ContextV1, ContributionV1, ListPageViewV1, PageV1, SidebarNodeV1 } from '../../plugins/contract/v1';
+import { streamsTool } from '../../plugins/fixture/src/panel';
 import { PluginHost } from '../../plugins/host/PluginHost';
 import { PluginStore, type LoaderDeps, type PluginDescriptor } from '../../plugins/host/pluginStore';
 import { WIDGETS, widgetPage, type Widget } from '../../plugins/testing';
+import { createPanelStore } from '../core/panel';
 
 const params = new URLSearchParams(window.location.search);
 const number = (name: string, fallback: number): number => Number(params.get(name) ?? fallback);
@@ -35,12 +39,16 @@ const PLUGINS = number('plugins', 1);
 const LATE_MS = number('lateMs', 0);
 const FIRST = params.get('first') === 'beta' ? 'beta' : 'alpha';
 const LANE = params.get('lane') !== '0';
+const PANEL = params.get('panel') === '1';
 
 const IDS = ['alpha', 'beta'].slice(0, PLUGINS);
 const NAMES: Readonly<Record<string, string>> = { alpha: 'Alpha', beta: 'Beta' };
 const ICONS: Readonly<Record<string, IconName>> = { alpha: 'layers', beta: 'server' };
 /** Where each plugin's entry sits on the rail (`rail.order`, lowest first): the plugin the probe names with `first` leads. */
 const ORDER: Readonly<Record<string, number>> = FIRST === 'beta' ? { alpha: 20, beta: 10 } : { alpha: 10, beta: 20 };
+
+const panelStore = createPanelStore();
+Reflect.set(window, '__panel', panelStore);
 
 const ticks: Record<string, number> = {};
 const commits: Array<{ readonly phase: string; readonly actualDuration: number }> = [];
@@ -138,6 +146,7 @@ function contribution(plugin: string): ContributionV1 {
     sidebar: { label: `${name} navigation`, title: name, nodes: SKELETON, useNodes: useCounts },
     pages: { widgets: listPage(plugin, 'Widgets', many), gadgets: listPage(plugin, 'Gadgets', WIDGETS), clock: clockPage(plugin) },
     home: 'widgets',
+    ...(PANEL ? { panel: { tools: { streams: { ...streamsTool, label: `${name} streams`, order: ORDER[plugin] ?? streamsTool.order } } } } : {}),
   };
 }
 
@@ -178,6 +187,7 @@ function Screen() {
       link={{ plugin: params.get('plugin') ?? undefined, page: params.get('page') ?? undefined, connection: params.get('connection') ?? undefined, params: {} }}
       onRetry={() => undefined}
       onRetryInventory={() => undefined}
+      panel={panelStore}
     />
   );
 }

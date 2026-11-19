@@ -1,11 +1,12 @@
-/* The status bar (ch16 §F R10; S90): one 32 px row on the window plane, 12/16 muted text, 12 px of padding, no top border. Slice 1a draws the
-   path only: the panel toggle, the status items and the bell have no function to carry yet. */
+/* The status bar (ch16 §F R10; S90): one 32 px row on the window plane, 12/16 muted text, 12 px of padding and between its parts, no top border. It holds the panel's toggle and the path:
+   the status items and the bell have no function to carry yet. */
 @layer ov.shell {
   .statusBar {
     grid-column: 1 / -1;
-    grid-row: 4;
+    grid-row: 5;
     display: flex;
     align-items: center;
+    gap: var(--ov-spacing-12);
     box-sizing: border-box;
     min-inline-size: 0;
     block-size: 32px;
@@ -50,5 +51,60 @@
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* The status items: the toggle is the only one. */
+  .items {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  /* The panel's toggle (S91): a 24 px target, 4 px above and below and 8 px beside a 16 px glyph, radius 4. Hover is the lighter fill and open the pressed one; the panel being open is a toggle's
+     `aria-pressed`, which keeps the selected fill. */
+  .toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 24px;
+    min-block-size: 24px;
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg-muted);
+    font: inherit;
+    cursor: default;
+  }
+
+  .toggle > svg {
+    color: var(--ov-icon);
+  }
+
+  .toggle:hover {
+    background-color: var(--ov-hover-toolbar);
+    color: var(--ov-fg);
+  }
+
+  .toggle:active {
+    background-color: var(--ov-pressed);
+    color: var(--ov-fg);
+  }
+
+  .toggle[aria-pressed='true'] {
+    background-color: var(--ov-selection-inactive);
+    color: var(--ov-fg);
+  }
+
+  .toggle[aria-pressed='true']:hover {
+    background-color: var(--ov-selection-inactive);
+  }
+
+  .toggle:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
   }
 }

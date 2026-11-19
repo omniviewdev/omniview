@@ -30,10 +30,10 @@ export const plugin = { Button };
 `;
 
 // `rail` is what each plugin's entry in the window's rail says (the build writes it into the bundle, `define` below): its name and its place, so the two plugins that contribute can be told
-// apart in the rail and are listed in the order they declare.
+// apart in the rail and are listed in the order they declare; `tool` is the label of the tool each brings to the bottom panel, so the two are told apart in its strip too.
 export const PLUGINS = {
-  'fixture-a-ok': { variant: 'ok', name: 'Seam Fixture', rail: { label: 'Seam Fixture', order: 10 } },
-  'fixture-b-dup': { variant: 'duplicate', name: 'Seam Fixture Copy', rail: { label: 'Seam Fixture Copy', order: 20 } },
+  'fixture-a-ok': { variant: 'ok', name: 'Seam Fixture', rail: { label: 'Seam Fixture', order: 10, tool: 'Streams' } },
+  'fixture-b-dup': { variant: 'duplicate', name: 'Seam Fixture Copy', rail: { label: 'Seam Fixture Copy', order: 20, tool: 'Streams copy' } },
   'fixture-c-old': { variant: 'old', name: 'Seam Fixture Old' },
   'fixture-d-missing': { variant: 'missing', name: 'Seam Fixture Missing' },
 };

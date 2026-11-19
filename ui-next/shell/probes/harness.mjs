@@ -57,7 +57,8 @@ export const SAMPLER = `
   } catch {
     state.layoutShift = null;
   }
-  const NAMES = ['window', 'topRow', 'safeArea', 'frame', 'rail', 'sidebar', 'sidebarHeader', 'island', 'lane', 'page', 'statusBar', 'actions', 'tabStrip', 'dragLane'];
+  // A probe that watches more parts names them in window.__probeParts before this runs (the panel probe's: the region, its header, the toggle).
+  const NAMES = ['window', 'topRow', 'safeArea', 'frame', 'rail', 'sidebar', 'sidebarHeader', 'island', 'lane', 'page', 'statusBar', 'actions', 'tabStrip', 'dragLane'].concat(window.__probeParts ?? []);
   const find = (name) => document.querySelector('[data-shell-part="' + name + '"], [data-shell-region="' + name + '"]');
   const last = {};
   const tick = () => {

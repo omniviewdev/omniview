@@ -1,12 +1,13 @@
 /* The window and the plugin frame (ch16 §B R1, R4 to R7, S10). Host composition, so every rule sits in ov.shell, above the kit's parts.
    The shell's own metrics are the exceptions to the closed scales that the chapter names: the 40 px top row, the 5 px gutters (S98), the
-   40 px rail, the 244 px sidebar and the 32 px status bar; they are track sizes, not spacing. */
+   40 px rail, the 244 px sidebar and the 32 px status bar; they are track sizes, not spacing. The panel's region (panel/Panel.module.css) is the `auto` track: 0 px while it is hidden. */
 @layer ov.shell {
-  /* Columns: a 5 px gutter, the frame, a 5 px gutter. Rows: the top row, the frame, a 5 px gutter (the panel's handle sits there later), the status bar. */
+  /* Columns: a 5 px gutter, the frame, a 5 px gutter. Rows: the top row, the frame, a 5 px gutter (the panel's handle sits there), the panel (`auto`: its own size, nothing while hidden), the
+     status bar. */
   .window {
     display: grid;
     grid-template-columns: 5px minmax(0, 1fr) 5px;
-    grid-template-rows: 40px minmax(0, 1fr) 5px 32px;
+    grid-template-rows: 40px minmax(0, 1fr) 5px auto 32px;
     box-sizing: border-box;
     inline-size: 100%;
     block-size: 100vh;

@@ -355,13 +355,19 @@ describe('the KeyValue stylesheet', () => {
     }
   });
 
-  it('makes the root the size container the columns answer to, and puts the grid in a descendant', () => {
-    expect(rule('.root')['container-type']).toBe('inline-size');
+  it('makes the root of a list of many columns the size container its columns answer to, and puts the grid in a descendant', () => {
+    expect(rule('.root[data-ov-columns=\'2\']')['container-type']).toBe('inline-size');
+    expect(rule('.root[data-ov-columns=\'3\']')['container-type']).toBe('inline-size');
     expect(rule('.root')['min-width']).toBe('0');
     expect(rule('.list').display).toBe('grid');
     expect(rule('.root').display).toBeUndefined();
     expect(rule('.root')['font-family']).toBe('var(--ov-font-ui)');
     expect(rule('.root')['font-feature-settings']).toBe('var(--ov-font-features)');
+  });
+
+  it('leaves the root of a one-column list no container: containment would take its width from what it holds, and a card as wide as its content (width: max-content) would lose its facts', () => {
+    expect(rule('.root')['container-type']).toBeUndefined();
+    expect(rule('.list')['container-type']).toBeUndefined();
   });
 
   it('is the mock\'s list: one column by default, 24 px between columns and none between rows, no margin', () => {

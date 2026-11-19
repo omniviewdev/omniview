@@ -12,7 +12,7 @@
  * controls, 20 the gap between unrelated groups; 2 is a hairline adjustment inside a component, 24 the largest step.
  *
  * Not carried yet, because no part reads them: motion, z-index, icon sizes, the control insets and the shell geometry, and the shadows
- * other than the tooltip's. Each arrives with the first screen that needs it.
+ * other than the tooltip's and the popup's. Each arrives with the first screen that needs it.
  */
 
 /** The CSS custom property prefix. Every generated token starts with it. */
@@ -129,10 +129,11 @@ export const RADII = { mark: 2, control: 4, tab: 6, popup: 8, island: 10 } as co
 export const CONTROL_HEIGHT = 28;
 
 /**
- * Elevation by owner (`--ov-shadow-<role>`), the same in every theme (research chapter 15, section 3.5). Only the tooltip draws one so
- * far: the mock's `.tooltip` shadow. The popup shadow (`0 8px 24px #00000040`) arrives with the first popup.
+ * Elevation by owner (`--ov-shadow-<role>`), the same in every theme (research chapter 15, section 3.5). Two are drawn so far: the mock's
+ * `.tooltip` shadow, and the restrained popup shadow its hover card shares with dialogs and the palette (`0 8px 24px #00000040`, the mock's
+ * `.detail__card`), first read by the `HoverCardHost`.
  */
-export const SHADOWS = { tooltip: '0 2px 8px #0006' } as const;
+export const SHADOWS = { tooltip: '0 2px 8px #0006', popup: '0 8px 24px #00000040' } as const;
 
 /**
  * The density axis (`data-ov-density`) changes the rows of lists and tables only; controls, icons, chrome and type keep
