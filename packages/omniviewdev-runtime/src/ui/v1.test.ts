@@ -8,6 +8,7 @@ const VALUES = [
   'ErrorTypes',
   'isCancelledError',
   'jsonToValue',
+  'openLogStream',
   'parseAppError',
   'useConnectionReadiness',
   'useConnections',
@@ -17,14 +18,17 @@ const VALUES = [
   'valueToJSON',
 ] as const;
 
+// Names this entry has and the main entry does not: the log stream is a contract of the new shell, not a hook the old shell's providers serve.
+const ONLY_HERE: readonly string[] = ['openLogStream'];
+
 describe('@omniviewdev/runtime/ui/v1', () => {
-  it('exposes exactly the data layer the first plugin reads through', () => {
+  it('exposes exactly the data layer the first plugin reads through, and the log stream', () => {
     expect(Object.keys(curated).sort()).toEqual([...VALUES]);
   });
 
   it('serves the main entry\'s own functions, not copies: the host mounts the providers they read once', () => {
-    for (const name of VALUES) {
-      expect(curated[name], name).toBe(main[name]);
+    for (const name of VALUES.filter((each) => !ONLY_HERE.includes(each))) {
+      expect(curated[name], name).toBe(main[name as keyof typeof main]);
     }
   });
 

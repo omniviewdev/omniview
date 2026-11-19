@@ -14,7 +14,7 @@ const encoder = new TextEncoder();
 const MAX_PENDING_EVENTS = 100;
 
 /** Normalize scalar and emit-argument-array Wails payloads. */
-function decode(data: unknown): unknown {
+export function decodePayload(data: unknown): unknown {
   const value = Array.isArray(data) && data.length === 1 && typeof data[0] === 'string' ? data[0] : data;
   return typeof value === 'string' ? JSON.parse(value) : value;
 }
@@ -43,7 +43,7 @@ export function PrepareSessionEvents(sessionId: string) {
   const disconnect = subscribe(sessionId, {
     onLines(data) {
       try {
-        const batch = decode(data);
+        const batch = decodePayload(data);
         if (!Array.isArray(batch)) return;
         for (const line of batch) {
           const bytes = encoder.encode(JSON.stringify(line)).byteLength;
@@ -60,7 +60,7 @@ export function PrepareSessionEvents(sessionId: string) {
     },
     onEvent(data) {
       try {
-        const event = decode(data);
+        const event = decodePayload(data);
         const entry = { data: event, order: order++ };
         if (event && typeof event === 'object' && 'source_id' in event && event.source_id === ''
           && 'type' in event && typeof event.type === 'number' && Number.isInteger(event.type)

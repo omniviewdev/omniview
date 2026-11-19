@@ -269,6 +269,102 @@ export function isCancelledError(error: unknown): boolean;
 export function jsonToValue(input: unknown): Value;
 
 // @public
+export interface LogBatch {
+    readonly dropped: number;
+    readonly held: number;
+    readonly lines: readonly LogLine[];
+}
+
+// @public
+export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+// @public
+export interface LogLine {
+    readonly level: LogLevel | undefined;
+    readonly origin: LogLineOrigin;
+    readonly seq: number;
+    readonly source: string;
+    readonly text: string;
+    readonly timestamp: string;
+}
+
+// @public
+export type LogLineOrigin = 'current' | 'previous' | 'system';
+
+// @public
+export interface LogSourceInfo {
+    readonly id: string;
+    readonly labels: Readonly<Record<string, string>>;
+    readonly message?: string | undefined;
+    readonly state: LogSourceState;
+}
+
+// @public
+export type LogSourceState = 'connecting' | 'streaming' | 'reconnecting' | 'ended' | 'failed' | 'removed';
+
+// @public
+export interface LogStream {
+    readonly close: () => Promise<void>;
+    readonly getSnapshot: () => LogStreamSnapshot;
+    readonly id: string;
+    readonly pause: () => void;
+    readonly read: (maxLines: number) => LogBatch;
+    readonly resume: () => void;
+    readonly stats: () => LogStreamStats;
+    readonly subscribe: (listener: () => void) => () => void;
+}
+
+// @public
+export interface LogStreamCause {
+    readonly error?: AppError | undefined;
+    readonly message: string;
+    readonly source?: string | undefined;
+    readonly stage: 'create' | 'session' | 'source';
+}
+
+// @public
+export interface LogStreamOptions {
+    readonly maxBufferedChars?: number | undefined;
+    readonly maxBufferedLines?: number | undefined;
+}
+
+// @public
+export interface LogStreamRequest {
+    readonly connection: string;
+    readonly follow?: boolean | undefined;
+    readonly params?: Readonly<Record<string, string>> | undefined;
+    readonly plugin: string;
+    readonly previous?: boolean | undefined;
+    readonly reference?: ResourceReference | undefined;
+    readonly resourceData?: Value | undefined;
+    readonly resourceId: string;
+    readonly resourceKey: string;
+    readonly route?: AccessRoute | undefined;
+    readonly sinceSeconds?: number | undefined;
+    readonly tailLines?: number | undefined;
+    readonly target?: string | undefined;
+}
+
+// @public
+export interface LogStreamSnapshot {
+    readonly cause: LogStreamCause | undefined;
+    readonly id: string;
+    readonly paused: boolean;
+    readonly sources: readonly LogSourceInfo[];
+    readonly state: LogStreamState;
+}
+
+// @public
+export type LogStreamState = 'starting' | 'streaming' | 'paused' | 'ended' | 'failed';
+
+// @public
+export interface LogStreamStats {
+    readonly dropped: number;
+    readonly held: number;
+    readonly received: number;
+}
+
+// @public
 export interface NativeAuthorityHint {
     // (undocumented)
     continuity: 'connectionLocal' | 'stableNative';
@@ -287,6 +383,9 @@ export interface NativeQueryDescriptor {
     // (undocumented)
     language: string;
 }
+
+// @public
+export function openLogStream(request: LogStreamRequest, options?: LogStreamOptions): LogStream;
 
 // @public (undocumented)
 export type Operation = 'enumerate' | 'get' | 'nativeQuery' | 'sourceUpdates' | 'create' | 'mutationUpdate' | 'delete' | 'action';
