@@ -1,13 +1,14 @@
 import { Icon, Link, MiddleEllipsis, Text, type DataTableColumn, type KeyValueRow } from '@omniviewdev/kit';
 import { useEffect, useState } from 'react';
-import type { ContextV1, DetailPageV1, DetailPageViewV1, DetailSection, DetailSource, DetailTableSection, DetailView } from '../../contract/v1';
+import type { ContextV1, DetailPageV1, DetailPageViewV1, DetailSection, DetailSource, DetailTableSection, DetailView, PanelHostV1 } from '../../contract/v1';
 import styles from './fixture.module.css';
 import { modeOf, READ_MS } from './items';
+import { logCommandsOf } from './logs';
 
 // The fixture's detail page: one item, read by a hook that answers the state each item is built to be in (items.ts): loading for ever, not found, denied, an error that a Retry
 // clears, and ready. The page's own words are the plugin's here; the host draws them. A ready item is a whole Overview made of the sections the contract has: a Details list, two tables,
 // a list of recent warnings and a set of labels, and one section that has nothing to say and so is not drawn. Its commands report to callbacks the page can be seen to have heard:
-// Scale changes the replica count in Details, Delete makes the item not found.
+// Scale changes the replica count in Details, Delete makes the item not found, and four commands in the menu open the item's Logs sessions through `ctx.panel` (logs.ts).
 
 type Part = { readonly name: string; readonly source: string; readonly ports: string; readonly needs: string; readonly limits: string };
 
@@ -55,6 +56,7 @@ type Controls = {
   readonly reads: number;
   readonly scale: () => void;
   readonly remove: () => void;
+  readonly panel: PanelHostV1 | undefined;
 };
 
 function sectionsOf(group: string, { replicas, reads }: Controls): readonly DetailSection[] {
@@ -119,7 +121,7 @@ function viewOf(name: string, group: string, controls: Controls): DetailView {
         { id: 'edit', label: 'Edit', onSelect: () => undefined },
       ],
       danger: { id: 'delete', label: 'Delete', onSelect: controls.remove },
-      menu: [{ id: 'copy', label: 'Copy name', onSelect: () => undefined }],
+      menu: [{ id: 'copy', label: 'Copy name', onSelect: () => undefined }, ...logCommandsOf({ name, group }, controls.panel)],
     },
     counts: { parts: PARTS.length },
     tabs: {
@@ -182,6 +184,7 @@ function useItem(context: ContextV1): DetailPageViewV1 {
     remove: () => {
       setDeleted(true);
     },
+    panel: context.panel,
   };
 
   const source = (state: DetailSource['state'], view: DetailView | undefined): DetailSource => ({ state, view, refreshing: false, refresh });

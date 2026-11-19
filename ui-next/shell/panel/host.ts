@@ -29,6 +29,9 @@ export type PanelCard = {
 /** How a session starts from its tool: the label of the `+` and of the empty tool's button, and the start. */
 export type PanelNewSession = { readonly label: string; readonly start: () => void };
 
+/** What a tool with no session says, in its owner's words: what is missing, and how one arrives. */
+export type PanelEmpty = { readonly title: string; readonly hint: string };
+
 /** Where a resource link of a card goes: the address it shows (a real anchor, so the platform can copy it) and what choosing it does, as the tab model decides where it opens. */
 export type PanelLink = { readonly href: string; readonly open: (activation: LinkActivation) => void };
 
@@ -43,6 +46,11 @@ export type PanelBindings = {
   readonly cardOf: (session: Session) => PanelCard | undefined;
   /** How a session starts from a tool; `undefined`: the tool has no `+`. */
   readonly newSessionOf: (tool: ToolId) => PanelNewSession | undefined;
+  /**
+   * What a tool with no session says, when its owner words it (the Logs tool says sessions start from a resource, and has no button: decision A20); `undefined`, or the member absent: the generic words,
+   * and the button that starts a session when `newSessionOf` has one.
+   */
+  readonly emptyOf?: ((tool: ToolId) => PanelEmpty | undefined) | undefined;
   /** Where the resource of a session is: its address, and what opening it does. The shell knows no address grammar and no tab disposition: the host does. */
   readonly linkOf: (route: Route) => PanelLink;
 };

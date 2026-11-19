@@ -1,0 +1,10 @@
+@layer ov.shell {
+  /* The kit's log view is a block-level column that takes the width of the box it is given and the height of it (`height: 100%`), and owns its scrolling. The panel lays a session's body out as an item of a
+     row (`.slot` in ../Panel.module.css), which sizes an item that does not grow to its content: the view stood at the width of its filter row, about half of the panel at 1440 px. This box is that item:
+     it takes all the room the panel gives the body and is the block the view fills. */
+  .log {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+}

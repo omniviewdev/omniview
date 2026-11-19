@@ -9,6 +9,8 @@ export type { Contributions, Description, Destination, Location, ModifierEvent, 
 export { isNativeWindow } from './core/native';
 export { createPanelStore, restorePanel, createPanelSaver, toolIdOf, HOST as PANEL_HOST } from './core/panel';
 export type { PanelStore, PanelState, PluginTools, Session as PanelSession, SessionInput as PanelSessionInput, SessionState as PanelSessionState, ToolInput as PanelToolInput } from './core/panel';
-export type { PanelBindings, PanelCard, PanelCardAction, PanelLink, PanelNewSession } from './panel/host';
+export type { PanelBindings, PanelCard, PanelCardAction, PanelEmpty, PanelLink, PanelNewSession } from './panel/host';
+export { completeLogCard, createLogStreams, LogsBody, logCardOf, LOGS_EMPTY, LOGS_TOOL, LOGS_TOOL_ID } from './panel/logs';
+export type { LogFeedHandle, LogOpened, LogStreams, LogTarget } from './panel/logs';
 export { createRailChoice, loadSession, resolveWindowName, windowStorage } from './session';
 export type { LoadedSession, RailChoice, WindowState } from './session';

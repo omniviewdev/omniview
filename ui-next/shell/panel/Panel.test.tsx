@@ -187,6 +187,35 @@ describe('the session strip', () => {
   });
 });
 
+describe('the empty state of a tool', () => {
+  it('says the generic words, and offers the button that starts a session, when the owner of the tool has a way to start one', () => {
+    mount({ open: true });
+    expect(screen.getByText('No sessions')).toBeInTheDocument();
+    expect(screen.getByText('A session of this tool appears here when you start one.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'New shell' }).length).toBeGreaterThan(0);
+  });
+
+  // Owner decision A20: sessions of the Logs tool start from a resource, never from the panel. Its owner words the empty state itself, says how a session arrives, and has no way to start one:
+  // no button in the body and no `+` in the strip.
+  it('says the words its owner gave it, and has no button and no `+` when the owner offers no way to start a session', async () => {
+    const { user } = mount({ open: true, emptyOf: (tool) => (tool === 'logs' ? { title: 'No log sessions', hint: 'Open logs from a resource to follow them here.' } : undefined) });
+    await user.click(tab('Logs'));
+    expect(screen.getByText('No log sessions')).toBeInTheDocument();
+    expect(screen.getByText('Open logs from a resource to follow them here.')).toBeInTheDocument();
+    expect(screen.queryByText('No sessions')).not.toBeInTheDocument();
+    const deck = region().querySelector<HTMLElement>('[data-shell-part="panelDeck"]');
+    expect(deck).not.toBeNull();
+    expect(within(deck ?? region()).queryAllByRole('button')).toEqual([]);
+    expect(screen.queryByRole('button', { name: /^New / })).not.toBeInTheDocument();
+  });
+
+  it('keeps the generic words for a tool whose owner says nothing', async () => {
+    const { user } = mount({ open: true, emptyOf: (tool) => (tool === 'logs' ? { title: 'No log sessions', hint: 'x' } : undefined) });
+    await user.click(tab('Terminal'));
+    expect(screen.getByText('No sessions')).toBeInTheDocument();
+  });
+});
+
 describe('ids that name nothing but themselves (CodeRabbit, words.ts:18)', () => {
   // `:b` and the Greek capital upsilon with a diaeresis both used to become `_3ab`: two sessions with different ids, one id in the DOM, and the tabs and the bodies pointing at each other.
   it('keep two sessions whose ids once collided apart: their tabs, their bodies and what points at them', () => {

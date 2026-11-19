@@ -228,9 +228,12 @@ async function states(browser, engine, viewportName, viewport, origin) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+/** The window's tabs: the strip's own. The bottom panel has tabs of its own (its tools and its sessions: the host's Logs tool is always there), so `[role=tab]` alone counts them too. Code that runs in the page writes it out. */
+const STRIP_TABS = '[data-shell-part="tabStrip"] [role=tab]';
+
 /** The selected tab and which has the focus, as the strip says it. */
 const SNAPSHOT = () => {
-  const tabs = [...document.querySelectorAll('[role=tab]')];
+  const tabs = [...document.querySelectorAll('[data-shell-part="tabStrip"] [role=tab]')];
   const focused = document.activeElement;
   const panel = document.querySelector('[role=tabpanel]');
   return {
@@ -357,7 +360,7 @@ async function counts(browser, engine, viewportName, viewport, originDev) {
   const commits = () => page.evaluate(() => window.__commits.length);
   const clickTab = async (index) => {
     const before = await commits();
-    await page.locator('[role=tab]').nth(index).click();
+    await page.locator(STRIP_TABS).nth(index).click();
     await sleep(200);
     return (await commits()) - before;
   };
@@ -396,8 +399,8 @@ async function keepAlive(browser, engine, viewportName, viewport, origin) {
   await sleep(300);
   await page.getByRole('treeitem', { name: 'Gadgets' }).click({ modifiers: ['ControlOrMeta'] });
   await page.getByRole('treeitem', { name: 'Clock' }).click({ modifiers: ['ControlOrMeta'] });
-  await page.waitForFunction(() => document.querySelectorAll('[role=tab]').length === 3);
-  const tabs = page.locator('[role=tab]');
+  await page.waitForFunction((selector) => document.querySelectorAll(selector).length === 3, STRIP_TABS);
+  const tabs = page.locator(STRIP_TABS);
   log.tabs = await tabs.evaluateAll((all) => all.map((el) => el.getAttribute('aria-label')));
   // The list as the user left it, before leaving.
   const state0 = await page.evaluate(() => ({ search: document.querySelector('[role=tabpanel] input[type=search], [role=tabpanel] input')?.value ?? null, rows: document.querySelectorAll('[role=region][aria-label="Widgets"] tbody tr').length }));
@@ -453,11 +456,11 @@ async function switchTimes(browser, engine, viewportName, viewport, origin) {
   const { page, context } = await open(browser, hostUrl(origin, 'rows=500&dataMs=50&nodesMs=50&loadMs=50&inventoryMs=20'), viewport);
   await page.waitForSelector('[role=region][aria-label="Widgets"] tbody tr');
   await page.click('[aria-label="New tab"]');
-  await page.waitForFunction(() => document.querySelectorAll('[role=tab]').length === 2);
+  await page.waitForFunction((selector) => document.querySelectorAll(selector).length === 2, STRIP_TABS);
   await page.waitForSelector('[data-page-slot]:not([style*="none"]) [role=region][aria-label="Widgets"] tbody tr');
   await sleep(300);
   const samples = await page.evaluate(async () => {
-    const tabs = [...document.querySelectorAll('[role=tab]')];
+    const tabs = [...document.querySelectorAll('[data-shell-part="tabStrip"] [role=tab]')];
     const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const out = [];
     for (let i = 0; i < 24; i += 1) {
@@ -495,7 +498,7 @@ async function load(browser, engine, viewportName, viewport, origin, query, labe
   await sleep(2800);
   const result = await page.evaluate(() => ({
     ...window.__probe,
-    tabs: document.querySelectorAll('[role=tab]').length,
+    tabs: document.querySelectorAll('[data-shell-part="tabStrip"] [role=tab]').length,
     entries: document.querySelectorAll('[role=treeitem]').length,
     rows: document.querySelectorAll('tbody tr').length,
     home: document.querySelector('[data-shell-part="home"]') !== null,

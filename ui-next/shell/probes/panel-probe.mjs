@@ -1071,36 +1071,37 @@ async function late(browser, engine, viewportName, viewport, origin) {
     await sleep(3300);
     const result = await page.evaluate(() => ({ ...window.__probe, tools: Object.keys(window.__panel.getSnapshot().tools) }));
     report.late[`${where} closed`] = { frames: result.frames, moves: result.moves, layoutShift: result.layoutShift, tools: result.tools };
-    if (result.tools.length !== 2) fail(`${where} closed`, `the model has ${JSON.stringify(result.tools)}, wanted both plugins' tools`);
+    if (result.tools.length !== 3) fail(`${where} closed`, `the model has ${JSON.stringify(result.tools)}, wanted the host's Logs tool and both plugins' tools`);
     const moved = result.moves.filter((move) => [...MUST_NOT_MOVE, ...PANEL_PARTS].includes(move.part));
     if (moved.length > 0) fail(`${where} closed`, `${moved.length} parts moved while a plugin's tool arrived: ${JSON.stringify(moved.slice(0, 4))}`);
     if (result.layoutShift !== null && result.layoutShift > 0) fail(`${where} closed`, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
     await page.getByRole('button', { name: 'Panel', exact: true }).click();
     await sleep(300);
     const tools = await page.evaluate(TOOLS);
-    if (tools.join() !== 'Alpha streams*,Beta streams') fail(`${where} closed`, `the strip draws ${JSON.stringify(tools)} once it is opened, wanted Alpha streams and Beta streams`);
+    if (tools.join() !== 'Logs*,Alpha streams,Beta streams') fail(`${where} closed`, `the strip draws ${JSON.stringify(tools)} once it is opened, wanted the host's Logs tool (first, on screen), Alpha streams and Beta streams`);
     for (const error of errors) fail(`errors ${where} closed`, error);
     await context.close();
   }
-  // b. The user opens the panel before the second plugin is there: its tool joins the strip. Nothing but the strip's own content moves, and the tool that was on screen stays on screen.
+  // b. The user opens the panel before the second plugin is there, on the first plugin's tool (the host's Logs tool is first in the strip and would be on screen otherwise): the second plugin's tool joins the
+  // strip. Nothing but the strip's own content moves, and the tool that was on screen stays on screen.
   for (const [label, query, wantedTools, wantedFirst] of [
-    ['after', 'plugins=2&lateMs=900', 'Alpha streams*,Beta streams', 'Alpha streams'],
-    ['before', 'plugins=2&lateMs=900&first=beta', 'Beta streams,Alpha streams*', 'Alpha streams'],
+    ['after', 'plugins=2&lateMs=900', 'Logs,Alpha streams*,Beta streams', 'Alpha streams'],
+    ['before', 'plugins=2&lateMs=900&first=beta', 'Logs,Beta streams,Alpha streams*', 'Alpha streams'],
   ]) {
     const { page, context, errors } = await open(browser, hostUrl(origin, query), viewport, { init: SAMPLE });
     // The first plugin's tool is there at about 400 ms; the user opens the panel then, and the second plugin arrives 900 ms later.
-    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 1, null, { timeout: 5000 });
-    await page.evaluate(() => window.__panel.show());
+    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 2, null, { timeout: 5000 });
+    await page.evaluate(() => window.__panel.show({ tool: 'alpha:streams' }));
     await sleep(300);
     // What the sampler saw up to here is the panel opening and the window loading: only what comes after is the late tool's.
     const openedAt = await page.evaluate(() => window.__probe.frames);
     const firstTool = await page.evaluate(() => {
-      const tab = document.querySelector('[data-shell-part="panelTools"] [role=tab]');
+      const tab = document.querySelector('[data-shell-part="panelTools"] [role=tab][aria-selected="true"]');
       const box = tab.getBoundingClientRect();
       return { label: tab.textContent.trim(), rect: [box.x, box.y, box.width, box.height] };
     });
     const regions0 = await page.evaluate(REGIONS);
-    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 2, null, { timeout: 8000 });
+    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 3, null, { timeout: 8000 });
     await sleep(600);
     const result = await page.evaluate(() => ({ ...window.__probe }));
     const regions1 = await page.evaluate(REGIONS);

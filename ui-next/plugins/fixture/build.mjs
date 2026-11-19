@@ -40,6 +40,12 @@ export const PLUGINS = {
 
 const bareName = (source) => (source.startsWith('@') ? source.split('/').slice(0, 2).join('/') : source.split('/')[0]);
 
+/**
+ * The one file the fixture takes from outside its own directory: the kit's synthetic feed (`src/logs.ts`), which gives its Logs sessions their lines. No entry of the kit exports it (it is development and
+ * documentation only), so a plugin cannot import it by name; the fixture bundles the file itself, named here by path as the import writes it (no extension). It imports nothing at run time.
+ */
+const SYNTHETIC_FEED = path.resolve(here, '../../../packages/kit/src/components/LogView/syntheticFeed');
+
 /** A build of a plugin imports its own files, the shared list and what it bundles on purpose: nothing from the host's tree, nothing else from node_modules. */
 function sealed(allowedBundled) {
   return {
@@ -52,7 +58,7 @@ function sealed(allowedBundled) {
 
       if (source.startsWith('.') || path.isAbsolute(source)) {
         const target = path.resolve(path.dirname(importer), source);
-        if (importer.startsWith(here + path.sep) && !target.startsWith(here + path.sep)) {
+        if (importer.startsWith(here + path.sep) && !target.startsWith(here + path.sep) && target !== SYNTHETIC_FEED) {
           this.error(`"${source}" in ${importer} leaves the plugin's own files`);
         }
 

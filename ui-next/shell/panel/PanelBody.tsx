@@ -40,12 +40,13 @@ type PanelBodyProps = {
  * place, the empty state: no tool at all, or a tool with no session. A tool with no session shows the button that starts one when its owner says how.
  */
 export function PanelBody({ prefix, id }: PanelBodyProps) {
-  const { newSessionOf } = usePanel();
+  const { newSessionOf, emptyOf } = usePanel();
   const mounted = useMounted();
   const tool = useActiveTool();
   const active = useActiveSession(tool);
   const item = useToolItem(tool ?? '');
   const add = tool === null ? undefined : newSessionOf(tool);
+  const words = tool === null ? undefined : emptyOf?.(tool);
   const labelledBy = active !== null ? sessionTabId(prefix, active) : tool !== null ? toolTabId(prefix, tool) : undefined;
   return (
     <div id={id} className={styles.body} role="tabpanel" aria-labelledby={labelledBy} aria-label={labelledBy === undefined ? 'Panel' : undefined} data-shell-part="panelDeck">
@@ -53,8 +54,8 @@ export function PanelBody({ prefix, id }: PanelBodyProps) {
       {tool !== null && active === null ? (
         <EmptyState
           icon={item !== undefined && isIconName(item.icon) ? item.icon : 'box'}
-          title="No sessions"
-          hint="A session of this tool appears here when you start one."
+          title={words?.title ?? 'No sessions'}
+          hint={words?.hint ?? 'A session of this tool appears here when you start one.'}
           action={add === undefined ? undefined : { label: add.label, onSelect: add.start }}
         />
       ) : null}
