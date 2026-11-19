@@ -54,8 +54,8 @@ func TestLegacyMetricBindingsRetainActualWindowRealm(t *testing.T) {
 				observed := page.Records[0]
 				ctrl := NewController(logging.NewNop(), nil, fixture.resources).(*controller)
 				require.NoError(t, ctrl.ServiceStartup(context.Background(), application.ServiceOptions{}))
-				// ServiceStartup binds the emitter to the Wails application, which a test does not have: the stream's first sample, about 40 ms after
-				// Subscribe, would dereference it while the subscription is still owned. This test asserts who may subscribe and who owns the stream, not events.
+				// ServiceStartup binds the emitter to the Wails application, which a test does not have: the stream's first sample, 0.1 to 0.3 ms after
+				// Subscribe returns, would dereference it if the subscription is still owned. This test asserts who may subscribe and who owns the stream, not events.
 				ctrl.emitter = hostresource.NoopEmitter{}
 				require.NoError(t, ctrl.OnPluginStart(nativeMetricPluginID, config.PluginMeta{}, fixture.backend))
 				t.Cleanup(func() { _ = ctrl.OnPluginStop(nativeMetricPluginID, config.PluginMeta{}) })
