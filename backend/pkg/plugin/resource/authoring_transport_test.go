@@ -109,6 +109,17 @@ func (p *authoringProvider) mock() *mockProvider {
 	}}
 }
 
+// newAuthoringController is a test controller whose completion requests carry no deadline of their own. The product's 250 ms request deadline (P01) is an interactive
+// budget, and a runner under load spends it on a request that takes a millisecond here: TIMEOUT failed these tests on the Windows job in four CI runs. Only
+// TestAuthoringDeadlineAndCancellation is about the deadline; it sets one and proves it against a provider that never answers.
+func newAuthoringController(t *testing.T) *controller {
+	t.Helper()
+	ctrl, _ := newTestControllerWithEmitter(t)
+	ctrl.authoring.policy = resourceauthoring.DefaultPolicy()
+	ctrl.authoring.policy.Deadline = 0
+	return ctrl
+}
+
 type authoringHarness struct {
 	t       *testing.T
 	ctrl    *controller
@@ -118,7 +129,7 @@ type authoringHarness struct {
 
 func newAuthoringHarness(t *testing.T, plugin string, provider resource.Provider) *authoringHarness {
 	t.Helper()
-	ctrl, _ := newTestControllerWithEmitter(t)
+	ctrl := newAuthoringController(t)
 	registerMockPlugin(ctrl, plugin, provider)
 	return &authoringHarness{t: t, ctrl: ctrl, wrapper: &ServiceWrapper{Ctrl: ctrl, Realm: invocation.NewScope(invocation.TrustedUI)}, plugin: plugin}
 }
@@ -505,7 +516,7 @@ func TestActualSDKChildCompletion(t *testing.T) {
 	binary := compileNativeChild(t)
 	provider, _, stop := startNativeChild(t, binary, "read-only")
 	defer stop()
-	ctrl, _ := newTestControllerWithEmitter(t)
+	ctrl := newAuthoringController(t)
 	registerMockPlugin(ctrl, nativeChildPluginID, provider)
 	h := &authoringHarness{t: t, ctrl: ctrl, wrapper: &ServiceWrapper{Ctrl: ctrl, Realm: invocation.NewScope(invocation.TrustedUI)}, plugin: nativeChildPluginID}
 	ctx := testInvocationContext()
