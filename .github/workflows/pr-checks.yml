@@ -141,7 +141,7 @@ jobs:
 
       # The format check needs only Go and Task: it runs before the build, the vet and the tests, so a misformatted file fails in seconds, not after four minutes.
       - name: Install goimports
-        run: go install golang.org/x/tools/cmd/goimports@latest
+        run: go install golang.org/x/tools/cmd/goimports@v0.53.0
 
       - name: Format check
         run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
@@ -166,7 +166,7 @@ jobs:
         run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
   # Go lint is its own job with no `needs`: it starts with the other jobs and a lint failure shows as soon as the lint has run, not after the build, the vet and the tests.
-  # The step is `continue-on-error` as it was inside Go checks: the lint reports and does not block yet. To make it block, delete the `continue-on-error: true` line of the Lint step below.
+  # The Lint step blocks: a finding on a line the PR changes (`--new-from-patch`) fails this job. Reproduce locally: see docs/ui-next/status/N24-L2.md.
   go-lint:
     name: Go lint
     runs-on: ubuntu-24.04
@@ -224,7 +224,6 @@ jobs:
         env:
           GOWORK: "off"
           GOFLAGS: ""
-        continue-on-error: true
 
   bindings-check:
     name: Bindings freshness
