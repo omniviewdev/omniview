@@ -135,3 +135,5 @@ replace cel.dev/cel-go => github.com/omniviewdev/cel-go v0.33.2-0.20261028172556
 
 // Source-session receive controls require the scoped grpc-go fork.
 replace google.golang.org/grpc => github.com/omniviewdev/grpc-go v1.85.1-0.20261107225428-6ba964c95af2
+
+// N24 D1 throwaway proof: a go.mod change, never merged.
