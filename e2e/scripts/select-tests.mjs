@@ -11,17 +11,12 @@ export const groups = {
   tooling: ['tests/integration'],
   contracts: ['tests/fixtures'],
 };
-const prose = new Set([
-  'README.md',
-  'docs/development-cli.md',
-  'docs/plugin-development.md',
-  'docs/roadmap/2026-10-17-product-roadmap.md',
-  'docs/roadmap/2026-10-17-resource-intelligence-baseline.md',
-  'docs/roadmap/2026-10-17-resource-intelligence-contract-readiness.md',
-  'docs/roadmap/2026-10-17-resource-intelligence-work-packages.md',
-  'docs/roadmap/2026-10-23-resource-intelligence-remote-index.md',
-  'docs/roadmap/2026-10-25-global-command-search-acceptance.md',
-]);
+// Prose never reaches the application: nothing in the repository reads Markdown under docs/ or the `.txt` copies of the proof tools at build or test
+// time. Anything not named here stays `full`: another extension (`.mdx`), another directory (a `.md` outside docs/ can be a build or test input:
+// the API reports, changesets, skills, testdata, the vocabulary guard's scan), another type under docs/ (`.yaml` fixtures, `.sh`, `.json`, `.zip`).
+const docsMarkdown = /^docs\/(?:[^/]+\/)*[^/]+\.md$/;
+const proofToolCopies = /^docs\/ui-next\/status\/(?:[^/]+\/)*[^/]+\.txt$/;
+const isProse = path => path === 'README.md' || docsMarkdown.test(path) || proofToolCopies.test(path);
 const specGroups = new Map([
   ['e2e/tests/layout/app-shell.spec.ts', ['layout', 'workspaces']],
   ['e2e/tests/layout/navigation.spec.ts', ['layout', 'workspaces']],
@@ -61,7 +56,7 @@ export function selectChanges({ full: forceFull = false, changes, complete = fal
     if (!entry || !/^(?:[AMDTU]|[RC]\d{1,3})$/.test(entry.status) || !Array.isArray(entry.paths) || entry.paths.length !== (/^[RC]/.test(entry.status) ? 2 : 1)) return full('malformed change data');
     for (const path of entry.paths) {
       if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..')) return full('invalid changed path');
-      if (prose.has(path)) continue;
+      if (isProse(path)) continue;
       let affected = specGroups.get(path);
       if (!affected && path.startsWith('e2e/fixtures/published-consumers/')) affected = ['tooling'];
       if (!affected && (path.startsWith('packages/omniviewdev-vite-plugin/') || path.startsWith('ui/features/plugins/api/'))) affected = ['layout', 'plugins', 'workspaces', 'tooling'];
@@ -71,7 +66,7 @@ export function selectChanges({ full: forceFull = false, changes, complete = fal
     }
   }
   const names = Object.keys(groups).filter(group => selected.has(group));
-  return { kind: names.length ? 'selected' : 'none', groups: names, specs: names.flatMap(group => groups[group]), reasons: [names.length ? 'union of affected groups including dependencies' : 'explicit prose-only allowlist'] };
+  return { kind: names.length ? 'selected' : 'none', groups: names, specs: names.flatMap(group => groups[group]), reasons: [names.length ? 'union of affected groups including dependencies' : 'prose-only change (README.md, Markdown under docs/, .txt under docs/ui-next/status/)'] };
 }
 export function selectFromGit({ root, base, full: forceFull = false, env = toolEnvironment(process.env) }) {
   if (forceFull || !base) return full(forceFull ? 'explicit full override' : 'no base supplied');
