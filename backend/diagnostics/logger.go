@@ -21,6 +21,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 )
 
 const (
@@ -69,6 +70,12 @@ func (b *BackendLogger) ServiceShutdown() error {
 
 // NewBackendLogger creates (and binds) a Zap SugaredLogger writing to `<name>.log`.
 // logDir is the directory where log files are stored (e.g. from appstate.Service.Logs().ResolvePath("")).
+//
+// What reaches the file has been through telemetry.NewRedactingCore. The UI log is
+// written by the frontend: console output of the application and of every plugin UI
+// arrives here as the message and fields of DiagnosticsClient.Log, and a query that
+// failed on a credential prints it. The redaction is by pattern; see the limits
+// there. A log file written before it existed is not rewritten.
 func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, error) {
 	// determine level
 	lvl := zapcore.ErrorLevel
@@ -121,11 +128,11 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 	// 	OutputPaths:   []string{fmt.Sprintf("lumberjack:%s", logFile)},
 	// }
 
-	core := zapcore.NewCore(
+	core := telemetry.NewRedactingCore(zapcore.NewCore(
 		zapcore.NewJSONEncoder(encCfg),
 		writer,
 		lvl,
-	)
+	))
 
 	logger := zap.New(core, zap.AddCaller(), zap.Development())
 	logger.Debug("backend logger file configured", zap.String("name", name), zap.String("level", lvl.String()))

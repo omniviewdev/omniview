@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -158,7 +159,10 @@ func TestNativeLogSessionConsumesRegisteredConnectionAndClosesFile(t *testing.T)
 	t.Run("direct", func(t *testing.T) { testNativeLogConnection(t, true) })
 }
 
-func testNativeLogConnection(t *testing.T, direct bool) {
+// testNativeLogConnection streams the lines of a real file through a plugin's log
+// stream to the controller, and requires them to arrive as they were written. lines
+// are what the file holds; without them, two lines of ordinary text.
+func testNativeLogConnection(t *testing.T, direct bool, lines ...string) { //nolint:cyclop,gocognit,gocyclo // The existing harness, which only takes the lines it streams now; its complexity is not new.
 	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
 	defer cancel()
 	const pluginID = "native-logs-success"
@@ -166,8 +170,11 @@ func testNativeLogConnection(t *testing.T, direct bool) {
 	const fileName = "native.log"
 	root := t.TempDir()
 	decoy := t.TempDir()
-	wantLines := []string{"native first line — 雪", "native second line — café"}
-	require.NoError(t, os.WriteFile(filepath.Join(root, fileName), []byte(wantLines[0]+"\n"+wantLines[1]+"\n"), 0600))
+	wantLines := lines
+	if len(wantLines) == 0 {
+		wantLines = []string{"native first line — 雪", "native second line — café"}
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, fileName), []byte(strings.Join(wantLines, "\n")+"\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(decoy, fileName), []byte("wrong connection: must not be read\n"), 0600))
 	store := &nativeLogFileStore{connection: sdktypes.Connection{ID: connectionID, Name: "Private native log directory", Data: map[string]interface{}{"logRoot": root}}}
 	resourceManager, err := sdkresource.NewController(sdkresource.Config[os.Root]{

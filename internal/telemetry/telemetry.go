@@ -714,6 +714,9 @@ func (c *levelFilterCore) With(fields []zapcore.Field) zapcore.Core {
 //   - consoleCore: human-readable stderr output (dev mode only)
 //   - otelCore: OTel log bridge (when loggerProvider is non-nil)
 //
+// Every core is wrapped by NewRedactingCore, so none of them is given text with
+// the shape of a credential. A core added here has to be wrapped the same way.
+//
 // The returned *zap.AtomicLevel (nil when loggerProvider is nil) controls the
 // OTel core and can be used for hot-toggling the ship level at runtime.
 func buildZapLogger(
@@ -735,13 +738,13 @@ func buildZapLogger(
 		Compress:   false,
 	}
 	fileEncoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	fileCore := zapcore.NewCore(fileEncoder, zapcore.AddSync(fileWriter), zapcore.DebugLevel)
+	fileCore := NewRedactingCore(zapcore.NewCore(fileEncoder, zapcore.AddSync(fileWriter), zapcore.DebugLevel))
 
 	cores := []zapcore.Core{fileCore}
 
 	if isDev {
 		consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
-		consoleCore := zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stderr), zapcore.DebugLevel)
+		consoleCore := NewRedactingCore(zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stderr), zapcore.DebugLevel))
 		cores = append(cores, consoleCore)
 	}
 
@@ -749,7 +752,7 @@ func buildZapLogger(
 	if loggerProvider != nil {
 		lvl := zap.NewAtomicLevelAt(parseShipLevel(shipLevel))
 		atomicLevel = &lvl
-		otelCore := otelzap.NewCore("omniview", otelzap.WithLoggerProvider(loggerProvider))
+		otelCore := NewRedactingCore(otelzap.NewCore("omniview", otelzap.WithLoggerProvider(loggerProvider)))
 		cores = append(cores, &levelFilterCore{
 			Core:  otelCore,
 			level: atomicLevel,

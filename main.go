@@ -473,7 +473,9 @@ func main() {
 	}
 	zapLogger := telemetrySvc.ZapLogger()
 	if zapLogger == nil {
-		zapLogger, _ = zap.NewProduction()
+		// Telemetry did not start, or could not open its log file: log to stderr, with
+		// the same redaction as the logger it would have given.
+		zapLogger, _ = zap.NewProduction(zap.WrapCore(telemetry.NewRedactingCore))
 	}
 	log := logging.New(logging.Config{
 		Name:    "omniview",

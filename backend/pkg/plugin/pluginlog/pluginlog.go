@@ -3,7 +3,7 @@
 //
 // Each plugin process's stderr is captured by hashicorp/go-plugin and
 // forwarded via hclog. This package provides an [io.Writer] per plugin
-// that simultaneously:
+// that redacts credential-shaped text from every line and then simultaneously:
 //   - Persists log lines to a rotated file (e.g., plugin.kubernetes.log)
 //   - Buffers recent entries in a ring buffer for fast historical access
 //   - Invokes an optional callback for real-time UI streaming
@@ -39,6 +39,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/omniviewdev/omniview/internal/devdiag"
 )
 
 // RotationOptions configures log file rotation parameters.
@@ -369,19 +371,30 @@ type Stream struct {
 	mu sync.Mutex
 }
 
-// Write implements [io.Writer]. It receives hclog-formatted output,
+// Write implements [io.Writer]. It receives hclog-formatted output, redacts it,
 // persists it to file, and processes each line into the ring buffer.
+//
+// What a plugin writes to its stderr is text the host did not author: an upstream
+// error that echoes a request header, a debug line that prints a configuration.
+// Every line goes through devdiag.Redact before any of the four places it ends up in
+// sees it: the file, the ring buffer (which the UI reads with GetLogs and SearchLogs),
+// the live event and the shipping sink. A credential that is redacted here is not
+// shown in the log viewer, not found by a search, and not sent to a collector. The
+// redaction is by pattern; text with no recognisable shape is not found.
 //
 // hclog output may contain multiple lines per Write call, so we split
 // on newlines and process each independently.
 func (s *Stream) Write(p []byte) (int, error) {
-	// Always persist the raw bytes to file.
-	n, err := s.file.Write(p)
+	clean := redactLines(p)
+
+	// Always persist to file.
+	n, err := s.file.Write(clean)
+	n = reportedCount(p, n, err)
 
 	// Skip oversized lines without losing later lines in the same write.
-	for len(p) > 0 {
-		line, rest, _ := bytes.Cut(p, []byte{'\n'})
-		p = rest
+	for len(clean) > 0 {
+		line, rest, _ := bytes.Cut(clean, []byte{'\n'})
+		clean = rest
 		line = bytes.TrimSuffix(line, []byte{'\r'})
 		if len(line) == 0 || len(line) >= 64*1024 {
 			continue
@@ -412,6 +425,62 @@ func (s *Stream) Write(p []byte) (int, error) {
 	}
 
 	return n, err
+}
+
+// RedactingWriter returns a writer that redacts each line written to it, as Stream
+// does for the lines it keeps, and writes the result to w. It is for the copies of a
+// plugin's output that do not go through a Stream and are kept all the same: the host's
+// stdout, which a terminal keeps, and the systemd journal for an application started
+// from a Linux desktop, and the log of the development supervisor. Write reports
+// len(p) written when w wrote what it was given, redaction having changed the length.
+func RedactingWriter(w io.Writer) io.Writer {
+	return redactingWriter{w: w}
+}
+
+type redactingWriter struct{ w io.Writer }
+
+func (r redactingWriter) Write(p []byte) (int, error) {
+	n, err := r.w.Write(redactLines(p))
+	return reportedCount(p, n, err), err
+}
+
+// reportedCount is the count a Write of p to a writer that was given the redacted
+// text should report: len(p) when the text was written, since the caller handed over p
+// and a writer that reports another count makes io.MultiWriter fail with a short write,
+// and what was written, at most len(p), when it was not.
+func reportedCount(p []byte, written int, err error) int {
+	if err == nil {
+		return len(p)
+	}
+	return min(written, len(p))
+}
+
+// redactLines returns p with each of its lines redacted by devdiag.Redact, one at a
+// time: a pattern that reached across a newline would take the first word of the
+// next line for the value of a key at the end of this one, and that line would stop
+// being a log line. It returns p itself, uncopied, when no line changes.
+func redactLines(p []byte) []byte {
+	var out []byte // set at the first line that changes
+	for rest := p; len(rest) > 0; {
+		line, tail, newline := bytes.Cut(rest, []byte{'\n'})
+		text := string(line)
+		redacted := devdiag.Redact(text)
+		if out == nil && redacted != text {
+			out = make([]byte, 0, len(p)+len(redacted)-len(text))
+			out = append(out, p[:len(p)-len(rest)]...)
+		}
+		if out != nil {
+			out = append(out, redacted...)
+			if newline {
+				out = append(out, '\n')
+			}
+		}
+		rest = tail
+	}
+	if out == nil {
+		return p
+	}
+	return out
 }
 
 // hclog output format (default): "2024-01-15T10:30:00.000Z [DEBUG] plugin-name: message here"
