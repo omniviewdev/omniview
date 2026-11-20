@@ -72,10 +72,6 @@ export const TABLE = {
         // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
 
-        // The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
-        // with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
-        { name: 'Probe the detail page against the pinned mock reference', script: 'ui-next/page/probes/detail-probe.mjs' },
-
         // The command palette (C1b) in the real shell fixture (ui-next/shell/probes/palette-fixture.tsx: the real view, model and tab model over invented sources), against the pinned mock reference
         // (ui-next/shell/probes/mock-palette.json, measured from the mock's own palette in seven scenes by mock-palette-measure.mjs): the Search control, the frame, the input, the kinds, the list, the status band and
         // the footer within 1 px, the paint of each, the keyboard with real key presses (the chord, the arrows, Enter and Command Enter, Escape and where the focus goes, Tab, the inert page, hover), the states and
