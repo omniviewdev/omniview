@@ -5,16 +5,17 @@
 // It lists the paths the change touches (`git diff --name-only` between <base> and <head>, default `HEAD^1` and `HEAD`: the base of the merge commit a pull request is checked out as, and
 // that commit), puts each in an area, and decides a class for the whole change:
 //
-//   docs    every path is documentation: README.md, Markdown under docs/, the `.txt` copies of the proof tools under docs/ui-next/status/ (the class of the e2e selector, which this one never
-//           exceeds). Nothing builds, tests or reads them. The host jobs and the UI jobs are skipped; the repository guard is not.
+//   docs    every path is documentation: README.md, Markdown under docs/, anything under docs/ui-next/status/ (the proof-tool copies, YAML, JSON, images: evidence that nothing reads, see below). The host jobs, the
+//           Windows build and the UI jobs are skipped; the repository guard is not.
 //   new-ui  every path is the new UI (ui-next/, packages/kit/), its documentation (docs/ui-next/) or its own tooling (NEW_UI_TOOLING below). The stable build, the Go host and the e2e suite never
-//           read them, so the host jobs are skipped; the UI jobs, the kit probes and the Pods cluster check are not.
+//           read them, so the host jobs are skipped; the UI jobs, the Windows build (it runs the kit's build and generate scripts on a shipping platform), the kit probes and the Pods cluster check are not.
 //   all     anything else, and a change with no path: every job runs. A path the script has never seen is "other", and "other" is absorbing.
 //
-// The workflows read two flags, `skip_host` and `skip_ui`, as `needs.changes.outputs.skip_host != 'true'`: a classifier that wrote nothing skips nothing. The jobs are listed in GATED, the jobs
-// that always run in ALWAYS, and scripts/ci/changes-workflows.test.mjs holds both workflows to the two lists. A new job goes in one of them, or that test fails.
+// The workflows read three flags, `skip_host`, `skip_ui` and `skip_windows`, as `needs.changes.outputs.skip_host != 'true'`: a classifier that wrote nothing skips nothing. On a runner the command also writes
+// one `::notice title=Changed paths::class=<class> skip_host=<bool> skip_ui=<bool> skip_windows=<bool>`, which the check run keeps as an annotation: the merge gate reads the class there. The jobs are listed in
+// GATED, the jobs that always run in ALWAYS, and scripts/ci/changes-workflows.test.mjs holds both workflows to the two lists. A new job goes in one of them, or that test fails.
 //
-// WHAT "CANNOT BE REACHED" MEANS. The host jobs (Go checks, Go lint, Windows connection profiles, Bindings freshness, Release packaging contracts, the three build-artifacts, the e2e suite) build
+// WHAT "CANNOT BE REACHED" MEANS. The host jobs (Go checks, Go lint, Windows connection profiles, Bindings freshness, Release packaging contracts, the macOS and Linux build-artifacts, the e2e suite) build
 // the stable frontend from `index.html` and `ui/` (vite.config.ts: OMNIVIEW_UI unset is `current`), the Go module, the Wails bindings and the plugin UIs from the runtime, providers and
 // vite-plugin packages. No file of those imports ui-next/ or the kit, no `go:embed` or Go test opens one, and no `.go` file lives in them; docs/ is read by nothing but the Pods workflow (its
 // fixture, which is not prose). When a path might be read, it is not in a class: add it here only with the search that shows nothing reads it.
@@ -31,10 +32,11 @@ export const CLASSES = ['docs', 'new-ui', 'all'];
 // Areas
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// Documentation is exactly the e2e selector's prose (e2e/scripts/select-tests.mjs: `isProse`), and changes.test.mjs holds it to that. Anything else under docs/ (`.mdx`, `.yaml`, `.json`,
-// `.png`, `.sh`, `.zip`) stays out: a fixture, a recipe or a bench input can be read. Markdown outside docs/ stays out too: the API reports, the vocabulary guard's scan, changesets and skills read it.
+// Documentation is the e2e selector's prose (e2e/scripts/select-tests.mjs: `isProse`, README.md and Markdown under docs/) and everything under docs/ui-next/status/. Nothing reads a path there: the mentions outside docs/ are
+// comments, Markdown, messages and the selector's own classification, and changes.test.mjs searches again on every pull request and fails when one starts to. Anything else under docs/ (`.mdx`, `.yaml`, `.json`, `.png`,
+// `.sh`, `.zip`) stays out: a fixture, a recipe or a bench input can be read. Markdown outside docs/ stays out too: the API reports, the vocabulary guard's scan, changesets and skills read it.
 const DOCS_MARKDOWN = /^docs\/(?:[^/]+\/)*[^/]+\.md$/;
-const PROOF_COPIES = /^docs\/ui-next\/status\/(?:[^/]+\/)*[^/]+\.txt$/;
+const STATUS_EVIDENCE = /^docs\/ui-next\/status\//;
 
 /** The new UI and its documentation. */
 const NEW_UI_ROOTS = ['ui-next/', 'packages/kit/', 'docs/ui-next/'];
@@ -62,7 +64,7 @@ const isPlain = (file) => !/[\u0000-\u001f\u007f\\]/.test(file) && !file.startsW
 /** `docs`, `new-ui` or `other`. A path that is not known to be the first two is `other`, which runs everything. */
 export function pathArea(file) {
   if (typeof file !== 'string' || file === '' || !isPlain(file)) return 'other';
-  if (file === 'README.md' || DOCS_MARKDOWN.test(file) || PROOF_COPIES.test(file)) return 'docs';
+  if (file === 'README.md' || DOCS_MARKDOWN.test(file) || (STATUS_EVIDENCE.test(file) && !GO_INPUT.test(file))) return 'docs';
   if (!LOADED_BY_THE_HOST.has(file) && (NEW_UI_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_FILES.has(file)) && !GO_INPUT.test(file)) return 'new-ui';
   return 'other';
 }
@@ -95,12 +97,12 @@ export function classify(paths) {
     klass = 'new-ui';
     reason = 'every changed path is the new UI or its documentation, which the host jobs never read';
   }
-  return { class: klass, skipHost: klass !== 'all', skipUi: klass === 'docs', counts, deciding, reason };
+  return { class: klass, skipHost: klass !== 'all', skipUi: klass === 'docs', skipWindows: klass === 'docs', counts, deciding, reason };
 }
 
 /** What the workflows read: the class, and the two flags as the strings `true` and `false`. */
 export function outputsOf(result) {
-  return { class: result.class, skip_host: String(result.skipHost), skip_ui: String(result.skipUi) };
+  return { class: result.class, skip_host: String(result.skipHost), skip_ui: String(result.skipUi), skip_windows: String(result.skipWindows) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -110,8 +112,8 @@ export function outputsOf(result) {
 export const WORKFLOW_NAMES = { 'pr.yml': 'PR Validation', 'pr-checks.yml': 'PR Checks' };
 
 /**
- * The jobs a flag skips: `host` is the Go host and what builds or runs it, `ui` the UI jobs (which a documentation-only change skips and a change to the new UI does not). `check` is the name
- * the job's check has (a matrix job has one check per entry; a call of a reusable workflow has its id). Each is `needs: changes` with `if: needs.changes.outputs.skip_<flag> != 'true'`.
+ * The jobs a flag skips: `host` is the Go host and what builds or runs it, `ui` the UI jobs, `windows` the Windows build (a change to the new UI keeps it: it builds the kit and runs its scripts on a shipping platform; only
+ * documentation skips it). `check` is the name the job's check has (a matrix job has one check per entry; a call of a reusable workflow has its id). Each is `needs: changes` with `if: needs.changes.outputs.skip_<flag> != 'true'`.
  */
 export const GATED = [
   { flag: 'host', workflow: 'pr-checks.yml', job: 'release-packaging-checks', check: 'Release packaging contracts' },
@@ -121,6 +123,7 @@ export const GATED = [
   { flag: 'host', workflow: 'pr-checks.yml', job: 'bindings-check', check: 'Bindings freshness' },
   { flag: 'host', workflow: 'pr.yml', job: 'e2e-application', check: 'e2e-application' },
   { flag: 'host', workflow: 'pr.yml', job: 'build-artifacts', check: 'build-artifacts' },
+  { flag: 'windows', workflow: 'pr.yml', job: 'build-artifacts-windows', check: 'build-artifacts (windows/amd64)' },
   { flag: 'ui', workflow: 'pr-checks.yml', job: 'c02-corpus', check: 'C02 error transport corpus' },
   { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-build', check: 'UI build' },
   { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-lint', check: 'UI lint and kit contracts' },
@@ -142,7 +145,7 @@ export const ALWAYS = [
 
 /** The gated jobs a change skips, in the order of the table. */
 export function skippedBy(result) {
-  return GATED.filter((entry) => (entry.flag === 'host' ? result.skipHost : result.skipUi));
+  return GATED.filter((entry) => result[{ host: 'skipHost', ui: 'skipUi', windows: 'skipWindows' }[entry.flag]]);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -240,6 +243,7 @@ export function main(argv = process.argv.slice(2), { env = process.env, out = (v
   const outputs = outputsOf(result);
   out(`changed paths: ${result.counts.docs + result.counts['new-ui'] + result.counts.other} (docs ${result.counts.docs}, new-ui ${result.counts['new-ui']}, other ${result.counts.other})\n`);
   for (const [name, value] of Object.entries(outputs)) out(`${name}=${value}\n`);
+  if (env.GITHUB_ACTIONS === 'true') out(`::notice title=Changed paths::${Object.entries(outputs).map(([name, value]) => `${name}=${value}`).join(' ')}\n`);
   if (result.deciding.length > 0) {
     out('paths that decided it:\n');
     for (const file of result.deciding.slice(0, SHOWN)) out(`  - ${show(file)}\n`);

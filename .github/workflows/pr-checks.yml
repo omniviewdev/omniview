@@ -34,6 +34,7 @@ jobs:
       class: ${{ steps.classify.outputs.class }}
       skip_host: ${{ steps.classify.outputs.skip_host }}
       skip_ui: ${{ steps.classify.outputs.skip_ui }}
+      skip_windows: ${{ steps.classify.outputs.skip_windows }}
     steps:
       # HEAD^1 is the base of the merge commit a pull request is checked out as: two commits are all the script needs.
       - uses: actions/checkout@v4

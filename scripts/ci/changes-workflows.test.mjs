@@ -28,7 +28,7 @@ after(() => {
 const jobOf = (file, id) => workflow[file].jobs[id];
 const stepsOf = (file, id) => jobOf(file, id).steps ?? [];
 const needsOf = (job) => (Array.isArray(job.needs) ? job.needs : job.needs === undefined ? [] : [job.needs]);
-const SKIP = { host: "${{ needs.changes.outputs.skip_host != 'true' }}", ui: "${{ needs.changes.outputs.skip_ui != 'true' }}" };
+const SKIP = { host: "${{ needs.changes.outputs.skip_host != 'true' }}", ui: "${{ needs.changes.outputs.skip_ui != 'true' }}", windows: "${{ needs.changes.outputs.skip_windows != 'true' }}" };
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The table and the workflows agree
@@ -57,7 +57,7 @@ test('NEGATIVE: no job runs only when a flag says "run": the classifier writes s
       const conditions = [job.if, ...(job.steps ?? []).map((step) => step.if)].filter((value) => typeof value === 'string');
       for (const condition of conditions) {
         if (!/needs\.changes\.outputs/.test(condition)) continue;
-        assert.match(condition, /needs\.changes\.outputs\.skip_(host|ui) != 'true'/, `${file}: ${id}: ${condition}`);
+        assert.match(condition, /needs\.changes\.outputs\.skip_(host|ui|windows) != 'true'/, `${file}: ${id}: ${condition}`);
         assert.doesNotMatch(condition, /==/, `${file}: ${id}: ${condition}`);
         assert.doesNotMatch(condition, /outputs\.class/, `${file}: ${id}: a job is gated by a flag, never by the name of a class`);
       }
@@ -73,8 +73,8 @@ test('the classifier is the same job in both workflows: a checkout of two commit
   assert.equal(one['timeout-minutes'], 5);
   assert.equal(one.needs, undefined);
   assert.equal(one.if, undefined, 'the classifier runs on every pull request');
-  assert.deepEqual(Object.keys(one.outputs).sort(), ['class', 'skip_host', 'skip_ui']);
-  for (const name of ['class', 'skip_host', 'skip_ui']) assert.equal(one.outputs[name], `\${{ steps.classify.outputs.${name} }}`);
+  assert.deepEqual(Object.keys(one.outputs).sort(), ['class', 'skip_host', 'skip_ui', 'skip_windows']);
+  for (const name of ['class', 'skip_host', 'skip_ui', 'skip_windows']) assert.equal(one.outputs[name], `\${{ steps.classify.outputs.${name} }}`);
   const [checkout, node, classify] = one.steps;
   assert.equal(checkout.uses, 'actions/checkout@v4');
   assert.equal(checkout.with['fetch-depth'], 2, 'HEAD^1 is the base of the merge commit: two commits are all it needs');
@@ -150,10 +150,48 @@ test('the jobs that were there keep their names, so that no check is renamed by 
     'e2e-application': undefined,
     'e2e-tests': 'e2e-tests',
     'build-artifacts': 'build-artifacts (${{ matrix.platform }})',
+    'build-artifacts-windows': 'build-artifacts (windows/amd64)',
   });
   assert.equal(jobOf('pr.yml', 'e2e-application').uses, './.github/workflows/e2e-runner.yml');
   assert.equal(jobOf('pr.yml', 'e2e-application').with.base, '${{ github.event.pull_request.base.sha }}');
-  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['darwin/arm64', 'linux/amd64', 'windows/amd64']);
+  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['darwin/arm64', 'linux/amd64'], 'Windows is a job of its own: the new UI keeps it while the other two builds are skipped');
+});
+
+// The Windows build is not an entry of the matrix any more, so that the new UI can keep it while the macOS and Linux builds are skipped. Its steps are the matrix job's, and a step changed in one and not the other fails here.
+const MACOS_ONLY = /\n\s*if \[\[ "\$RUNNER_OS" == macOS \]\]; then\n[^\n]*\n\s*fi/;
+const asWindows = (text) => text.replace(MACOS_ONLY, '').replaceAll('${{ matrix.build-tags }}', 'production').replaceAll('${{ matrix.extra-ldflags }}', '-H windowsgui');
+
+test('the Windows build is the matrix job\'s steps for Windows, step by step: the same actions, versions and commands, the Windows flags, no step of its own', () => {
+  const matrix = stepsOf('pr.yml', 'build-artifacts').filter((step) => step.name !== 'Match checkout directory ownership to container user' && step.name !== 'Create macOS .app bundle');
+  const all = stepsOf('pr.yml', 'build-artifacts-windows');
+  const reactCompiler = all.findIndex((step) => step.name === 'Check native Windows React compiler admission');
+  assert.equal(all[reactCompiler - 1]?.name, 'Build workspace packages');
+  assert.equal(all[reactCompiler].run, 'node --test scripts/react-compiler.test.mjs');
+  assert.equal(all[reactCompiler].if, undefined, 'the job is Windows only: the step has no condition');
+  assert.ok(!matrix.some((step) => step.name === 'Check native Windows React compiler admission'), 'and the matrix job, which has no Windows entry, has no such step');
+  const windows = all.filter((step, index) => index !== reactCompiler);
+  assert.deepEqual(windows.map((step) => step.name), matrix.map((step) => step.name), 'the same steps, in the same order, with the macOS and container ones left out');
+  for (const [index, step] of windows.entries()) {
+    const twin = matrix[index];
+    assert.equal(step.uses, twin.uses, step.name);
+    assert.deepEqual(step.with, twin.with, step.name);
+    assert.equal(step.shell, twin.shell, step.name);
+    if (step.run !== undefined) assert.equal(step.run.trim(), asWindows(twin.run).trim(), step.name);
+  }
+  const job = jobOf('pr.yml', 'build-artifacts-windows');
+  assert.equal(job['runs-on'], 'windows-latest');
+  assert.equal(job['timeout-minutes'], 30);
+  assert.equal(job.container, undefined);
+  assert.deepEqual(job.env, { GOWORK: 'off' });
+  assert.match(stepsOf('pr.yml', 'build-artifacts-windows').find((step) => step.name === 'Build Omniview').run, /-ldflags "-w -s -H windowsgui /);
+});
+
+test('the checks that start for the new UI\'s own tooling are the ones that read it: the kit probes for the probe table and its test, the Pods check for its scripts', () => {
+  const paths = (file) => parse(readFileSync(path.join(repo, `.github/workflows/${file}`), 'utf8')).on.pull_request.paths;
+  for (const entry of ['scripts/ci/probe-shards.mjs', 'scripts/ci/probe-shards.test.mjs']) assert.ok(paths('ui-next-kit-probes.yml').includes(entry), `the kit probes workflow does not start for ${entry}`);
+  assert.ok(paths('ui-next-pods.yml').includes('scripts/ui-next-pods/**'), 'the Pods workflow does not start for its scripts');
+  // and the UI jobs, which read the rest of the tooling (scripts/ui-next-bundle.mjs, bench/table, bench/log), are not skipped for the new UI
+  assert.deepEqual(GATED.filter((entry) => entry.flag === 'ui').map((entry) => entry.job).filter((job) => !needsOf(jobOf('pr-checks.yml', job)).includes('changes')), []);
 });
 
 test('the display names of the table are the names of the jobs', () => {

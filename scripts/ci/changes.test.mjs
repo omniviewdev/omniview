@@ -41,6 +41,19 @@ const DOCS = [
   'docs/ui-next/status/summary.txt',
 ];
 
+/** Evidence under docs/ui-next/status/ that the e2e selector does not call prose (images, YAML, JSON, scripts): nothing reads a path there (the tripwire at the end searches), so it is documentation here. */
+const DOCS_EVIDENCE = [
+  'docs/ui-next/status/L2/shot.png',
+  'docs/ui-next/status/1a.2/scale.yaml',
+  'docs/ui-next/status/1a.2/raw/results-N25.json',
+  'docs/ui-next/status/SEC1/sec1-secrets.yaml',
+  'docs/ui-next/status/K2a/proof.mjs',
+  'docs/ui-next/status/E0-1/run.sh',
+  'docs/ui-next/status/x.txt.exe',
+  'docs/ui-next/status/.txt',
+  'docs/ui-next/status/.hidden',
+];
+
 /** The new UI: what the stable build, the Go host and the e2e suite never read. */
 const NEW_UI = [
   'ui-next/App.tsx',
@@ -57,8 +70,6 @@ const NEW_UI = [
   'docs/ui-next/slices/1a-pods-list/fixture.yaml', // applied by the Pods workflow
   'docs/ui-next/baseline/run.sh',
   'docs/ui-next/baseline/raw/pass1/render.json',
-  'docs/ui-next/status/L2/shot.png',
-  'docs/ui-next/status/1a.2/scale.yaml',
 ];
 
 /** The new UI's own tooling: read by a check that stays for a change to the new UI (or by none), and by no host job. Every new probe is a unit in the first two files. */
@@ -227,7 +238,7 @@ test('NEGATIVE: a Markdown-looking path that is not prose is not documentation: 
   for (const file of ['docs/.md', 'docs/x.MD', 'docs/x.md.js', 'docs/x.mdx', 'docs/x.md/y.js', 'docs/notes.txt', 'docs/guide.markdown']) {
     assert.equal(pathArea(file), 'other', file);
   }
-  for (const file of ['docs/ui-next/.md', 'docs/ui-next/x.MD', 'docs/ui-next/x.mdx', 'docs/ui-next/notes.txt', 'docs/ui-next/status.txt', 'docs/ui-next/statuses/x.txt', 'docs/ui-next/status/x.txt.exe', 'docs/ui-next/status/.txt', 'docs/ui-next/status/x.yaml']) {
+  for (const file of ['docs/ui-next/.md', 'docs/ui-next/x.MD', 'docs/ui-next/x.mdx', 'docs/ui-next/notes.txt', 'docs/ui-next/status.txt', 'docs/ui-next/statuses/x.txt']) {
     assert.equal(pathArea(file), 'new-ui', file);
   }
 });
@@ -296,11 +307,11 @@ const classOf = (...paths) => classify(paths.flat()).class;
 test('the three classes, and what each one skips', () => {
   assert.deepEqual(CLASSES, ['docs', 'new-ui', 'all']);
   const docs = classify(['docs/ui-next/status/N24-D1.md']);
-  assert.deepEqual([docs.class, docs.skipHost, docs.skipUi], ['docs', true, true]);
+  assert.deepEqual([docs.class, docs.skipHost, docs.skipUi, docs.skipWindows], ['docs', true, true, true]);
   const newUi = classify(['ui-next/App.tsx']);
-  assert.deepEqual([newUi.class, newUi.skipHost, newUi.skipUi], ['new-ui', true, false]);
+  assert.deepEqual([newUi.class, newUi.skipHost, newUi.skipUi, newUi.skipWindows], ['new-ui', true, false, false]);
   const all = classify(['go.mod']);
-  assert.deepEqual([all.class, all.skipHost, all.skipUi], ['all', false, false]);
+  assert.deepEqual([all.class, all.skipHost, all.skipUi, all.skipWindows], ['all', false, false, false]);
 });
 
 test('a documentation-only change is "docs"', () => {
@@ -342,6 +353,7 @@ test('NEGATIVE: no changed path at all runs everything: there is nothing to prov
   assert.equal(classify([]).class, 'all');
   assert.equal(classify([]).skipHost, false);
   assert.equal(classify([]).skipUi, false);
+  assert.equal(classify([]).skipWindows, false);
   assert.throws(() => classify(undefined), /paths/);
   assert.throws(() => classify('go.mod'), /paths/);
 });
@@ -392,10 +404,10 @@ test('the result names the paths that made it "all", each once, in the order the
 });
 
 test('the outputs a workflow reads: only skip flags, which are the strings "true" and "false", and the class', () => {
-  assert.deepEqual(outputsOf(classify(['docs/ui-next/status/N24-D1.md'])), { class: 'docs', skip_host: 'true', skip_ui: 'true' });
-  assert.deepEqual(outputsOf(classify(['ui-next/App.tsx'])), { class: 'new-ui', skip_host: 'true', skip_ui: 'false' });
-  assert.deepEqual(outputsOf(classify(['go.mod'])), { class: 'all', skip_host: 'false', skip_ui: 'false' });
-  assert.deepEqual(Object.keys(outputsOf(classify([]))).sort(), ['class', 'skip_host', 'skip_ui']);
+  assert.deepEqual(outputsOf(classify(['docs/ui-next/status/N24-D1.md'])), { class: 'docs', skip_host: 'true', skip_ui: 'true', skip_windows: 'true' });
+  assert.deepEqual(outputsOf(classify(['ui-next/App.tsx'])), { class: 'new-ui', skip_host: 'true', skip_ui: 'false', skip_windows: 'false' });
+  assert.deepEqual(outputsOf(classify(['go.mod'])), { class: 'all', skip_host: 'false', skip_ui: 'false', skip_windows: 'false' });
+  assert.deepEqual(Object.keys(outputsOf(classify([]))).sort(), ['class', 'skip_host', 'skip_ui', 'skip_windows']);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -406,7 +418,7 @@ test('the table of gated jobs: two flags, two workflows, each job once, and the 
   assert.ok(GATED.length > 0);
   const seen = new Set();
   for (const entry of GATED) {
-    assert.ok(['host', 'ui'].includes(entry.flag), JSON.stringify(entry));
+    assert.ok(['host', 'ui', 'windows'].includes(entry.flag), JSON.stringify(entry));
     assert.ok(['pr.yml', 'pr-checks.yml'].includes(entry.workflow), JSON.stringify(entry));
     assert.ok(entry.job && entry.check, JSON.stringify(entry));
     const key = `${entry.workflow}:${entry.job}`;
@@ -453,7 +465,7 @@ test('TRIPWIRE: over every file the repository tracks, a file this classifier ca
   for (const file of tracked) {
     const area = pathArea(file);
     counts[area] += 1;
-    if (area === 'docs') assert.equal(selected(file).kind, 'none', `${file} is documentation here and not prose to the e2e selector`);
+    if (area === 'docs' && !file.startsWith('docs/ui-next/status/')) assert.equal(selected(file).kind, 'none', `${file} is documentation here and not prose to the e2e selector`);
     if (area === 'new-ui') assert.doesNotMatch(file, /\.(go|c|h|s|syso)$|(^|\/)go\.(mod|sum|work)$/, `${file} is a Go input in the new UI`);
   }
   assert.ok(counts.docs > 0 && counts['new-ui'] > 0 && counts.other > 0, JSON.stringify(counts));
@@ -615,9 +627,9 @@ const withChange = (before, change) => pullRequest(repository(before), change);
 
 test('the command writes the class and the two skip flags where the workflow reads them, and nothing else', () => {
   const cases = [
-    [{ 'docs/a.md': 'a\n' }, (dir) => put(dir, 'docs/a.md', 'b\n'), 'class=docs\nskip_host=true\nskip_ui=true\n'],
-    [{ 'ui-next/a.ts': 'a\n' }, (dir) => put(dir, 'ui-next/a.ts', 'b\n'), 'class=new-ui\nskip_host=true\nskip_ui=false\n'],
-    [{ 'go.mod': 'a\n' }, (dir) => put(dir, 'go.mod', 'b\n'), 'class=all\nskip_host=false\nskip_ui=false\n'],
+    [{ 'docs/a.md': 'a\n' }, (dir) => put(dir, 'docs/a.md', 'b\n'), 'class=docs\nskip_host=true\nskip_ui=true\nskip_windows=true\n'],
+    [{ 'ui-next/a.ts': 'a\n' }, (dir) => put(dir, 'ui-next/a.ts', 'b\n'), 'class=new-ui\nskip_host=true\nskip_ui=false\nskip_windows=false\n'],
+    [{ 'go.mod': 'a\n' }, (dir) => put(dir, 'go.mod', 'b\n'), 'class=all\nskip_host=false\nskip_ui=false\nskip_windows=false\n'],
   ];
   for (const [before, change, expected] of cases) {
     const outcome = run(withChange(before, change));
@@ -629,13 +641,13 @@ test('the command writes the class and the two skip flags where the workflow rea
 
 test('the default base is HEAD^1, the first parent of the merge commit a pull request is checked out as', () => {
   const root = withChange({ 'ui-next/a.ts': 'a\n', 'go.mod': 'a\n' }, (dir) => put(dir, 'ui-next/a.ts', 'b\n'));
-  assert.equal(run(root).outputs, 'class=new-ui\nskip_host=true\nskip_ui=false\n', 'what the pull request changed, with no flag at all');
-  assert.equal(run(root, ['--head', 'HEAD^1']).outputs, 'class=all\nskip_host=false\nskip_ui=false\n', 'the head is a flag too: the base against itself has no change to show');
+  assert.equal(run(root).outputs, 'class=new-ui\nskip_host=true\nskip_ui=false\nskip_windows=false\n', 'what the pull request changed, with no flag at all');
+  assert.equal(run(root, ['--head', 'HEAD^1']).outputs, 'class=all\nskip_host=false\nskip_ui=false\nskip_windows=false\n', 'the head is a flag too: the base against itself has no change to show');
   git(root, ['commit', '-q', '--allow-empty', '-m', 'on top']);
   // HEAD^1 of the empty commit on top is the merge commit: nothing changed since.
-  assert.equal(run(root).outputs, 'class=all\nskip_host=false\nskip_ui=false\n', 'an empty change runs everything');
-  assert.equal(run(root, ['--base', 'HEAD~1']).outputs, 'class=all\nskip_host=false\nskip_ui=false\n');
-  assert.equal(run(root, ['--base', 'main~0', '--head', 'pr']).outputs, 'class=new-ui\nskip_host=true\nskip_ui=false\n');
+  assert.equal(run(root).outputs, 'class=all\nskip_host=false\nskip_ui=false\nskip_windows=false\n', 'an empty change runs everything');
+  assert.equal(run(root, ['--base', 'HEAD~1']).outputs, 'class=all\nskip_host=false\nskip_ui=false\nskip_windows=false\n');
+  assert.equal(run(root, ['--base', 'main~0', '--head', 'pr']).outputs, 'class=new-ui\nskip_host=true\nskip_ui=false\nskip_windows=false\n');
 });
 
 test('the job summary says what was skipped by path and why, with the name of each check', () => {
@@ -680,11 +692,12 @@ test('NEGATIVE: a file name cannot write a workflow command or Markdown of its o
   const outcome = run(root, [], { GITHUB_ACTIONS: 'true' });
   assert.equal(outcome.status, 0, outcome.text);
   for (const stream of [outcome.stdout, outcome.stderr, outcome.summary]) {
-    for (const line of stream.split(/\r?\n/)) assert.doesNotMatch(line, /^::/, `a line that is a workflow command: ${line}`);
+    // the one workflow command the script writes is its own notice, with the class and the flags and nothing a file name could reach
+    for (const line of stream.split(/\r?\n/).filter((entry) => entry !== 'class=all skip_host=false skip_ui=false skip_windows=false' && !/^::notice title=Changed paths::class=all skip_host=false skip_ui=false skip_windows=false$/.test(entry))) assert.doesNotMatch(line, /^::/, `a line that is a workflow command: ${line}`);
     assert.doesNotMatch(stream, /\r/);
   }
   assert.doesNotMatch(outcome.summary, /^## heading/m);
-  assert.equal(outcome.outputs, 'class=all\nskip_host=false\nskip_ui=false\n', 'and a file name never reaches the outputs');
+  assert.equal(outcome.outputs, 'class=all\nskip_host=false\nskip_ui=false\nskip_windows=false\n', 'and a file name never reaches the outputs');
 });
 
 test('NEGATIVE: when it cannot tell what changed it fails, with the reason, and writes no output: the jobs that read none run, and the gates are red', () => {
@@ -711,4 +724,65 @@ test('the summary of a classification can be rendered without a repository', () 
   const text = renderSummary(classify(['docs/ui-next/status/N24-D1.md', 'ui-next/App.tsx']));
   assert.match(text, /### Changed paths: `new-ui`/);
   assert.match(text, /2 changed paths: 1 documentation, 1 new UI, 0 elsewhere/);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Rulings after the first review: the Windows build stays for the new UI; everything under docs/ui-next/status/ is documentation; where the merge gate reads the class
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+test('everything under docs/ui-next/status/ is documentation, whatever its extension: the evidence nothing reads', () => {
+  for (const file of DOCS_EVIDENCE) assert.equal(pathArea(file), 'docs', file);
+  assert.equal(classOf(DOCS_EVIDENCE), 'docs');
+  assert.equal(classOf(DOCS, DOCS_EVIDENCE), 'docs');
+  assert.equal(classOf('docs/ui-next/status/L2/shot.png', 'ui-next/App.tsx'), 'new-ui');
+});
+
+test('NEGATIVE: nothing else under docs/ changes class with that: the baseline, the slices and their fixture stay the new UI, the rest of docs/ stays "other", a Go input under status/ is "other"', () => {
+  for (const file of ['docs/ui-next/baseline/run.sh', 'docs/ui-next/baseline/raw/pass1/render.json', 'docs/ui-next/slices/1a-pods-list/fixture.yaml', 'docs/ui-next/slices/1a-pods-list/ref.webp', 'docs/ui-next/status', 'docs/ui-next/status.png', 'docs/ui-next/statuses/x.png']) {
+    assert.equal(pathArea(file), 'new-ui', file);
+  }
+  for (const file of ['docs/x.png', 'docs/images/a.png', 'docs/superpowers/specs/design.zip', 'docs/pr-evidence/run.sh', 'docs/notes.yaml', 'docs/status/x.png']) assert.equal(pathArea(file), 'other', file);
+  for (const file of ['docs/ui-next/status/x.go', 'docs/ui-next/status/y_test.go', 'docs/ui-next/status/go.mod', 'docs/ui-next/status/K2a/go.sum', 'docs/ui-next/status/n/glue.c']) assert.equal(pathArea(file), 'other', file);
+  assert.equal(classOf('docs/ui-next/status/L2/shot.png', 'docs/x.png'), 'all');
+  assert.equal(classOf('docs/ui-next/status/L2/shot.png', 'docs/ui-next/baseline/run.sh'), 'new-ui');
+  assert.equal(pathArea('docs/ui-next/status/../../../go.mod'), 'other');
+});
+
+test('the Windows build is kept for a change to the new UI and skipped only for documentation; the macOS and Linux builds are skipped for both', () => {
+  const windows = GATED.find((entry) => entry.job === 'build-artifacts-windows');
+  assert.ok(windows, 'the Windows build is a job of its own');
+  assert.equal(windows.flag, 'windows');
+  assert.equal(windows.check, 'build-artifacts (windows/amd64)');
+  const newUi = skippedBy(classify(['ui-next/App.tsx', 'packages/kit/src/index.ts'])).map((entry) => entry.job);
+  assert.ok(!newUi.includes('build-artifacts-windows'), 'a change to the kit is built on Windows');
+  assert.ok(newUi.includes('build-artifacts'), 'the macOS and Linux builds are skipped');
+  const docs = skippedBy(classify(['docs/ui-next/status/N24-D1.md'])).map((entry) => entry.job);
+  assert.ok(docs.includes('build-artifacts-windows') && docs.includes('build-artifacts'));
+  assert.deepEqual(skippedBy(classify(['go.mod'])), []);
+});
+
+test('on a runner the command also writes one notice that names the class and the flags and no path: the check run carries it where the merge gate can read it', () => {
+  const root = withChange({ 'ui-next/a.ts': 'a\n', 'go.mod': 'a\n' }, (dir) => put(dir, 'ui-next/a.ts', 'b\n'));
+  const onRunner = run(root, [], { GITHUB_ACTIONS: 'true' });
+  assert.equal(onRunner.status, 0, onRunner.text);
+  assert.match(onRunner.stdout, /^::notice title=Changed paths::class=new-ui skip_host=true skip_ui=false skip_windows=false$/m);
+  assert.equal(run(root, [], { GITHUB_ACTIONS: '' }).stdout.includes('::notice'), false, 'and nowhere else');
+});
+
+// "Nothing reads a path under docs/ui-next/status/" is what makes it documentation whatever it holds. Searched at the time: the mentions outside docs/ are comments, Markdown, messages and the e2e selector's classification (a regular
+// expression and its test data). This reads the repository and fails when another file names the path on a line of code, or builds it from parts.
+const STATUS_MENTIONS_ALLOWED = new Set(['scripts/ci/changes.mjs', 'scripts/ci/changes.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'e2e/scripts/select-tests.mjs', 'e2e/scripts/select-tests.test.mjs', 'scripts/ci/probe-shards.mjs']);
+
+test('TRIPWIRE: no code, test or workflow outside docs/ names a path under docs/ui-next/status/ on a line of code, or joins "ui-next" and "status" into one', () => {
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const search = (args) => spawnSync('git', ['-C', root, 'grep', '-I', ...args, '--', '.', ':(exclude)docs', ':(exclude)scripts/ci/changes.test.mjs'], { encoding: 'utf8', env: GIT_ENV, maxBuffer: 64 * 1024 * 1024 }).stdout.split('\n').filter(Boolean);
+  const offenders = [];
+  for (const file of search(['-l', '-F', 'docs/ui-next/status'])) {
+    if (file.endsWith('.md') || STATUS_MENTIONS_ALLOWED.has(file)) continue;
+    readRepoFile(file).split('\n').forEach((line, index) => {
+      if (line.includes('docs/ui-next/status') && !/^\s*(\/\/|#|\*|\/\*)/.test(line)) offenders.push(`${file}:${index + 1}`);
+    });
+  }
+  offenders.push(...search(['-n', '-E', '[\'"`]ui-next[\'"`] *, *[\'"`]status[\'"`]']));
+  assert.deepEqual(offenders, [], 'a file now names a path under docs/ui-next/status/: decide whether it READS it, and if it does take that path out of the documentation class in scripts/ci/changes.mjs (pathArea)');
 });
