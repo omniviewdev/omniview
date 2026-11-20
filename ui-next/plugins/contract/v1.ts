@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { IconName } from '@omniviewdev/kit';
+import type { IconName, LogFeed, LogFeedSnapshot } from '@omniviewdev/kit';
 import type { DetailPageDefinition, DetailSource, ListPageDefinition, ListSource } from '../../page';
 import type { ShellAccent, ShellScopeFace, ShellTreeNode } from '../../shell';
 
@@ -56,6 +56,13 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // to the owner is whether a new member needs `contributionV2` for the sake of rule (3); recorded in docs/ui-next/status/P1a.md. What a plugin brings is at most two tools of its own (S114) and,
 // for the sessions it opens in a tool of the host, how their card reads; the body of a host tool is the host's, so a plugin supplies a body only for a tool of its own.
 //
+// The panel handle (P1b-3a) is minor, on the terms of the panel: `ContextV1.panel` is a NEW optional member, and what it holds is how a plugin asks the host to open a session in a tool of the HOST. (1) Nothing that
+// exists is removed, renamed or given another meaning. (2) Every bundle written before it is admitted and drawn as before: a hook that never reads `ctx.panel` is unchanged (`admit.test.ts` keeps its bundle
+// with no `panel`, and the host's tests keep a page that reads none). (3) Rule (3) turns round for a member the HOST fills in: there is nothing in the artifact for an older admission to refuse, and a host
+// that lacks the handle simply leaves `ctx.panel` absent, so a plugin that needs it tests for it (`ctx.panel?.logs.open(...)`, and a command may say why it is unavailable). The handle is the plugin's side of
+// owner decision A20: a Logs session starts from the resource (a plugin's page or command), never from the panel, and the thing a plugin hands over is a plain target descriptor (`LogTargetV1`), so a
+// registry and a picker can later list the very same descriptors and call the same function without a change to this contract.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 
@@ -73,10 +80,12 @@ export type RouteV1 = {
   readonly params: Readonly<Record<string, string>>;
 };
 
-/** What the host tells a contribution's hooks: which plugin it is (the id it is installed under) and the route it is shown for. */
+/** What the host tells a contribution's hooks: which plugin it is (the id it is installed under), the route it is shown for and, on a host that has it, what the plugin may ask of the window's bottom panel. */
 export type ContextV1 = {
   readonly plugin: string;
   readonly route: RouteV1;
+  /** What the plugin asks of the bottom panel (P1b-3a). Absent on a host that predates it: a plugin that needs it tests for it. A hook and a command's callback both close over the context, so both reach it. */
+  readonly panel?: PanelHostV1 | undefined;
 };
 
 /**
@@ -249,6 +258,62 @@ export type PanelSessionsV1 = {
 export type PanelV1 = {
   readonly tools?: Readonly<Record<string, PanelToolV1>> | undefined;
   readonly sessions?: Readonly<Record<string, PanelSessionsV1>> | undefined;
+};
+
+/** A source a feed has heard of, as far as the card names it: its id (what a line's `source` says; `orders-api/app`) and the labels the backend gave it. */
+export type LogFeedSourceV1 = {
+  readonly id: string;
+  readonly labels?: Readonly<Record<string, string>> | undefined;
+};
+
+/** The status of a feed: the kit's, and the sources it lists when it can (`openLogStream`'s snapshot does; a feed that lists none says nothing of them). The same object until something in it changes. */
+export type LogFeedSnapshotV1 = LogFeedSnapshot & {
+  readonly sources?: readonly LogFeedSourceV1[] | undefined;
+};
+
+/**
+ * What a plugin hands the host to read a log session from: the kit's `LogFeed` and a `close`. `openLogStream(...)` from `@omniviewdev/runtime/ui/v1` returns one as it is (a type test proves it:
+ * `logFeed.test.ts`), so for a real plugin there is nothing to adapt. The host reads it with the kit's log view, a frame at a time, and calls `close` when the session's tab closes or its plugin
+ * unloads: `close` releases every listener and what the feed holds in the backend. A `close` that rejects is logged; the feed is closed either way.
+ */
+export type LogFeedV1 = Pick<LogFeed, 'subscribe' | 'read' | 'stats' | 'pause' | 'resume'> & {
+  readonly getSnapshot: () => LogFeedSnapshotV1;
+  readonly close: () => Promise<void> | void;
+};
+
+/**
+ * A log session a plugin asks the host to open: owner decision A20. A session starts from the resource, a plugin's page or command; a panel-side picker is deferred, and when it comes it lists
+ * descriptors like this one and calls the same function. So this is plain data and one function, which a registry can hold, list and call again. Everything else is the host's: the tab, the card, the
+ * words of the state, the lifecycle.
+ */
+export type LogTargetV1 = {
+  /** Names what is read, as the plugin knows it, and is the same each time the same thing is opened (`item/orders-api/app`): a registry lists by it. The host keeps it with the session and does not read it. */
+  readonly id: string;
+  /** What the tab is called. The shell cuts a long one (SCT1): a head that gives way with an ellipsis and a tail that stays whole, so what tells sessions apart goes last (`orders-api/app`). */
+  readonly title: string;
+  /** The muted qualifier after the title: the connection two sessions of one name are told apart by. */
+  readonly scope?: string | undefined;
+  /** The resource the lines belong to: its whole display text ("Item orders-api"), the word of the card's button ("Item" makes "Open Item") and its page, a link in the card that opens through the tab model. */
+  readonly resource?: { readonly label: string; readonly kind?: string | undefined; readonly icon?: IconName | undefined; readonly route?: RouteV1 | undefined } | undefined;
+  /** Starts the stream, once, when the host opens the session. A throw opens no session and is logged. For a real plugin: `() => openLogStream({ ... })`. */
+  readonly open: () => LogFeedV1;
+};
+
+/** A session the host opened for a plugin. */
+export type LogSessionV1 = {
+  /** The id the panel knows the session by. */
+  readonly id: string;
+  /** Closes the session's tab, and with it the stream. Safe to call again. */
+  readonly close: () => void;
+};
+
+/**
+ * What a plugin asks of the window's bottom panel. Call it from a user's action on a resource (a command, a click), as owner decision A20 has it, and not from an effect while a page mounts: the panel learns
+ * that a plugin is live after the page's own first effects have run, so a call made there is refused. `logs.open` opens a session in the host's Logs tool for a target and answers it, or `undefined` when the host could not (the plugin is not live,
+ * the target is not well formed, its `open` threw): the reason is in the console. The panel opens on the new session, as it does for any session the user starts.
+ */
+export type PanelHostV1 = {
+  readonly logs: { readonly open: (target: LogTargetV1) => LogSessionV1 | undefined };
 };
 
 export type ContributionV1 = {

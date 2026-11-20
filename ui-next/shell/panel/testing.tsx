@@ -50,6 +50,7 @@ export type StaticPanelOptions = {
   readonly renderBody?: PanelBindings['renderBody'] | undefined;
   readonly cardOf?: PanelBindings['cardOf'] | undefined;
   readonly linkOf?: PanelBindings['linkOf'] | undefined;
+  readonly emptyOf?: PanelBindings['emptyOf'] | undefined;
 };
 
 /** What the shell asks of its host to draw a panel, answered with invented tools and sessions over the real model. The model is `bindings.store`. */
@@ -71,6 +72,7 @@ export function staticPanel(options: StaticPanelOptions = {}): PanelBindings {
     store,
     renderBody: options.renderBody ?? ((session, visible) => <StreamBody session={session} visible={visible} />),
     cardOf: options.cardOf ?? (() => undefined),
+    emptyOf: options.emptyOf,
     newSessionOf: (tool) => {
       const add = options.start?.[tool];
       return add === undefined

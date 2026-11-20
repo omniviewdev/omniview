@@ -2,14 +2,22 @@ import { ErrorBody, LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit'
 import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { DetailPage, ListPage } from '../../page';
 import {
+  createLogStreams,
   createPanelStore,
   createRailChoice,
   createTabsStore,
   dispositionOf,
+  completeLogCard,
+  logCardOf,
+  LOGS_EMPTY,
+  LOGS_TOOL,
+  LOGS_TOOL_ID,
+  LogsBody,
   platformOf,
   Shell,
   type Contributions,
   type LoadedSession,
+  type LogStreams,
   type ModifierEvent,
   type PageTab,
   type PanelBindings,
@@ -23,12 +31,13 @@ import {
   type TabsStore,
 } from '../../shell';
 import { openable } from '../contract/admit';
-import type { ContextV1, ContributionV1, FrameV1, SidebarNodeV1 } from '../contract/v1';
+import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { ContributionBoundary } from './ContributionBoundary';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
+import { panelHostsOf } from './panelHost';
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -81,6 +90,10 @@ type Host = {
   readonly tabs: TabsStore;
   /** The window's bottom panel. Its tools and sessions come from the plugins that are ready (`panel.ts`). */
   readonly panel: PanelStore;
+  /** The feeds of the Logs tool's sessions: the host owns each from the moment a plugin hands over a target until the session goes (`shell/panel/logs`). */
+  readonly logs: LogStreams;
+  /** What `ctx.panel` is for each plugin: the Logs registry, bound to the plugin that asks (`panelHost.ts`). */
+  readonly panelHosts: (plugin: string) => PanelHostV1;
   /** The plugin the user chose on the rail, as the session saves it. The component's own state is the source; this is what the session listens to. */
   readonly rail: RailChoice;
   readonly contributions: Contributions;
@@ -97,12 +110,16 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const contributions = createContributions({ plugins, frames });
   const restored = session?.restore({ contributions });
+  const store = panel ?? createPanelStore({ initial: restored?.panel });
+  const logs = createLogStreams(store);
   return {
     frames,
     nodes,
     routes: new Published<Route>(),
     tabs: createTabsStore({ contributions, initial: restored?.tabs }),
-    panel: panel ?? createPanelStore({ initial: restored?.panel }),
+    panel: store,
+    logs,
+    panelHosts: panelHostsOf(logs),
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
@@ -233,10 +250,12 @@ type ListProps = {
   readonly route: Route;
   readonly page: string;
   readonly frames: Published<FrameV1>;
+  /** What the plugin asks of the bottom panel: `ctx.panel`. */
+  readonly panelHost: PanelHostV1;
 };
 
 /** The page's own component: its data hook runs here, in its tab's own subtree, and what the hook says about the frame is published for the frame and the tab to read. */
-function ListContribution({ entry, route, page: pageId, frames }: ListProps) {
+function ListContribution({ entry, route, page: pageId, frames, panelHost }: ListProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'list') {
     throw new Error(`The plugin has no list page "${pageId}"`);
@@ -244,7 +263,7 @@ function ListContribution({ entry, route, page: pageId, frames }: ListProps) {
 
   const connection = connectionOf(route);
   // A list page's route has no parameters of its own (`RouteV1.params`): what an address adds to one is not an identity the page reads, so its hook is told none.
-  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS } }), [entry.id, pageId, connection]);
+  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS }, panel: panelHost }), [entry.id, pageId, connection, panelHost]);
   const { frame, source } = page.usePage(context);
   // Before the first paint, so the scope lane and the tab's words are there with the page; a frame equal to the one held changes nothing.
   useLayoutEffect(() => {
@@ -260,6 +279,8 @@ type DetailProps = {
   readonly page: string;
   readonly frames: Published<FrameV1>;
   readonly tabs: TabsStore;
+  /** What the plugin asks of the bottom panel: `ctx.panel`. */
+  readonly panelHost: PanelHostV1;
 };
 
 /**
@@ -267,7 +288,7 @@ type DetailProps = {
  * title, glyph and path are not the hook's: they are the route's and the definition's (`describeDetail`), the same before this component has run. The back path above the heading is
  * the same path, its parents links that open in place.
  */
-function DetailContribution({ entry, route, page: pageId, frames, tabs }: DetailProps) {
+function DetailContribution({ entry, route, page: pageId, frames, tabs, panelHost }: DetailProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'detail') {
     throw new Error(`The plugin has no detail page "${pageId}"`);
@@ -275,7 +296,7 @@ function DetailContribution({ entry, route, page: pageId, frames, tabs }: Detail
 
   const connection = connectionOf(route);
   const params = useMemo(() => textParamsOf(route), [route]);
-  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params } }), [entry.id, pageId, connection, params]);
+  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost }), [entry.id, pageId, connection, params, panelHost]);
   const { scope, source } = page.usePage(context);
   const { definition } = page;
   const pluginName = entry.contribution.plugin.name;
@@ -315,6 +336,8 @@ type HostPageProps = {
   readonly inventory: PluginHostProps['inventory'];
   readonly onRetry: (id: string) => void;
   readonly onRetryInventory: () => void;
+  /** What each plugin asks of the bottom panel: its `ctx.panel`. */
+  readonly panelHosts: (plugin: string) => PanelHostV1;
 };
 
 /**
@@ -322,7 +345,7 @@ type HostPageProps = {
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
-function HostPage({ entries, route, pluginName, frames, tabs, platform, inventory, onRetry, onRetryInventory }: HostPageProps) {
+function HostPage({ entries, route, pluginName, frames, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts }: HostPageProps) {
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
@@ -371,9 +394,9 @@ function HostPage({ entries, route, pluginName, frames, tabs, platform, inventor
         fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
       >
         {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} tabs={tabs} />
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} tabs={tabs} panelHost={panelHosts(entry.id)} />
         ) : (
-          <ListContribution entry={entry} route={route} page={page} frames={frames} />
+          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id)} />
         )}
       </ContributionBoundary>
     </LinkProvider>
@@ -385,13 +408,15 @@ type NodesProps = {
   readonly route: Route;
   readonly useNodes: (context: ContextV1) => readonly SidebarNodeV1[] | undefined;
   readonly nodes: Published<readonly SidebarNodeV1[] | null>;
+  /** What the plugin asks of the bottom panel: `ctx.panel`. */
+  readonly panelHost: PanelHostV1;
 };
 
 /** Runs the sidebar's data hook for the plugin on the rail, and publishes what it answers: nothing until it answers, and the skeleton stands. It draws nothing. */
-function NodesSource({ plugin, route, useNodes, nodes }: NodesProps) {
+function NodesSource({ plugin, route, useNodes, nodes, panelHost }: NodesProps) {
   const page = route.contribution;
   const connection = connectionOf(route);
-  const answer = useNodes(useMemo<ContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS } }), [plugin, page, connection]));
+  const answer = useNodes(useMemo<ContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS }, panel: panelHost }), [plugin, page, connection, panelHost]));
   useLayoutEffect(() => {
     nodes.publish(plugin, answer ?? null);
   }, [nodes, plugin, answer]);
@@ -409,8 +434,8 @@ function NoNodes({ plugin, nodes }: { readonly plugin: string; readonly nodes: P
 }
 
 /**
- * The body of a session of a tool a plugin brought: the plugin's own component, in the tool's own error boundary, so a body that throws loses itself and no other (and no page, no frame). A
- * session in a tool of the host has no body here: the host's own tools draw their own (none is built yet). The host words the failure; the plugin's words go to the log.
+ * The body of a session of a tool a plugin brought: the plugin's own component, in the tool's own error boundary, so a body that throws loses itself and no other (and no page, no frame). The host
+ * words the failure; the plugin's words go to the log.
  */
 function panelBodyOf(entries: readonly PluginEntry[], session: PanelSession, visible: boolean): ReactElement | null {
   const found = toolOf(entries, session.tool);
@@ -422,6 +447,18 @@ function panelBodyOf(entries: readonly PluginEntry[], session: PanelSession, vis
   return (
     <ContributionBoundary name={`${found.plugin} panel ${found.local}`} fallback={(retry) => <ErrorBody title="Couldn't show this session" onRetry={retry} />}>
       <Body session={sessionV1(session)} visible={visible} />
+    </ContributionBoundary>
+  );
+}
+
+/**
+ * The body of a session of the host's Logs tool: the host's own log view over the stream a plugin handed over (`shell/panel/logs`), in a boundary of its own so that a stream whose status throws while
+ * it renders loses that session's body and no other. What the view does while the body is not on screen is `LogsBody`'s.
+ */
+function logsBodyOf(streams: LogStreams, session: PanelSession, visible: boolean): ReactElement {
+  return (
+    <ContributionBoundary name={`${session.plugin} logs session`} fallback={(retry) => <ErrorBody title="Couldn't show this session" onRetry={retry} />}>
+      <LogsBody streams={streams} session={session} visible={visible} />
     </ContributionBoundary>
   );
 }
@@ -560,15 +597,27 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
   // The panel. What each plugin that is ready brings to it is registered in a layout effect, in the commit the plugin turned ready in, so a tool does not arrive a frame after the interface it
   // belongs to; a plugin that goes away takes its tools and sessions with it in the same transaction (PO1).
-  const { panel } = host;
+  const { panel, logs, panelHosts } = host;
+  // The Logs tool is the host's: it is in the strip whatever the plugins are (the sessions that plugins open in it show when their plugin is ready). Registered before the plugins are, in the
+  // first layout effect, so the strip is never drawn without it; registering it again changes nothing.
+  useLayoutEffect(() => {
+    panel.registerTool(LOGS_TOOL);
+  }, [panel]);
   useLayoutEffect(() => {
     panel.syncPlugins(panelPluginsOf(entries));
   }, [panel, entries]);
+  // The feeds of the Logs sessions belong to the host from the moment a plugin hands over a target: they are released with the session, with the plugin, and with the window.
+  useEffect(() => logs.attach(), [logs]);
   const bindings = useMemo<PanelBindings>(
     () => ({
       store: panel,
-      renderBody: (session, visible) => panelBodyOf(entries, session, visible),
-      cardOf: (session) => cardOfSession(entries, session),
+      renderBody: (session, visible) => (session.tool === LOGS_TOOL_ID ? logsBodyOf(logs, session, visible) : panelBodyOf(entries, session, visible)),
+      // The Logs card is the host's, completed member by member by what the plugin says for the sessions it opens there (`panel.sessions.logs.card`): the plugin's words win over the host's.
+      cardOf: (session) => {
+        const given = cardOfSession(entries, session);
+        return session.tool === LOGS_TOOL_ID ? completeLogCard(logCardOf(session, logs.recordOf(session.id)), given) : given;
+      },
+      emptyOf: (toolId) => (toolId === LOGS_TOOL_ID ? LOGS_EMPTY : undefined),
       newSessionOf: (toolId) =>
         newSessionOf(entries, toolId, (input) => {
           const opened = panel.openSession(input);
@@ -584,7 +633,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         },
       }),
     }),
-    [panel, entries, tabs, platform],
+    [panel, logs, entries, tabs, platform],
   );
 
   const sidebar = shown?.phase === 'ready' ? shown.contribution.sidebar : undefined;
@@ -592,7 +641,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     <>
       {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
         <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={nodes} />}>
-          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} />
+          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} panelHost={panelHosts(shown.id)} />
         </ContributionBoundary>
       ) : null}
       <Shell
@@ -609,6 +658,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             inventory={inventory}
             onRetry={onRetry}
             onRetryInventory={onRetryInventory}
+            panelHosts={panelHosts}
           />
         )}
         empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open })}

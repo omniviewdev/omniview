@@ -229,7 +229,7 @@ describe('a ready plugin', () => {
     expect(screen.getByRole('treeitem', { name: 'Gadgets', selected: true })).toBeInTheDocument();
   });
 
-  it('gives the page\'s hook the plugin\'s id and the route it is shown for', () => {
+  it('gives the page\'s hook the plugin\'s id, the route it is shown for and the handle to the panel', () => {
     const seen: ContextV1[] = [];
     const contribution = acme({
       pages: {
@@ -243,7 +243,10 @@ describe('a ready plugin', () => {
 
     mount([ready(contribution, 'acme-installed')], { link: link('acme-installed', undefined, 'north') });
 
-    expect(seen.at(-1)).toEqual({ plugin: 'acme-installed', route: { page: 'widgets', connection: 'north', params: {} } });
+    expect(seen.at(-1)).toMatchObject({ plugin: 'acme-installed', route: { page: 'widgets', connection: 'north', params: {} } });
+    // The handle is the plugin's own: one object for the plugin, whatever the page or the render (a hook may list it among its dependencies).
+    expect(seen.at(-1)?.panel?.logs.open).toBeTypeOf('function');
+    expect(new Set(seen.map((context) => context.panel)).size).toBe(1);
   });
 
   it('tells a list page\'s hook no parameters, whatever the address adds: they are the identity of an object, and a list has none', () => {

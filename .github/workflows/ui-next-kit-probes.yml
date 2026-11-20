@@ -147,6 +147,19 @@ jobs:
             NEGATIVE_CONTROL="$control" node ui-next/shell/probes/panel-probe.mjs
           done
 
+      # The host's Logs tool (P1b-3a) on the host fixture (`?logs=1`): the log view fills the panel's body, opening a session moves nothing outside the log view, switching tool and back keeps the lines and the scroll place, what the
+      # plugin counts of its feed (the registry and the view listen while the session is on screen, only the registry while another tool is shown, none once the tab is closed), and what the 10,000 lines a second session costs: at most one
+      # commit a frame (and at least one) with the panel open (React's development build), and with the panel closed or another tool shown no commit, no frame requested, no timer started, no DOM mutation and (Chromium) no layout or
+      # style recalculation, WHILE THE FEED WENT ON (the fixture counts the lines it made: none was read, each is held by the stream or dropped past its bound of 100,000), and back on the Logs tool the view shows newer lines than it
+      # had when it was hidden, with every line the feed made since accounted for, at 1440 x 900 and 1280 x 800. It builds its own fixtures, so it does not read PROBE_DIST.
+      - name: Probe the Logs tool in a real engine
+        run: REPORT="$RUNNER_TEMP/logs-probe.json" node ui-next/shell/probes/logs-probe.mjs
+
+      # The negative control of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of. The probe must fail its check that the feed went on
+      # (Chromium at 1440 x 900, the hidden section only), and the step passes only when it did.
+      - name: Probe that the logs probe sees a feed that stopped
+        run: NEGATIVE_CONTROL=feed-stopped node ui-next/shell/probes/logs-probe.mjs
+
       # The log view (P1b-2): the kit's LogView staged at the size of the mock's Logs tool against the pinned mock reference (packages/kit/probes/mock-log.json, measured from the mock by
       # mock-log-measure.mjs): the regions, the header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event
       # as plain text, and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800. What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.

@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, type PanelStore } from '../../shell';
 import type { PanelBodyPropsV1, PanelToolV1 } from '../contract/v1';
@@ -75,10 +75,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Opens the panel and puts the plugin's tool on screen: the host's own Logs tool comes first. */
+async function openStreams(user: UserEvent): Promise<void> {
+  await user.click(toggle());
+  await user.click(screen.getByRole('tab', { name: 'Streams' }));
+}
+
 describe('a tool a plugin brings to the panel', () => {
-  it('is in the strip once the plugin is ready, and starts a session from its `+`', async () => {
+  it('is in the strip once the plugin is ready, after the host\'s own Logs tool, and starts a session from its `+`', async () => {
     const { user } = mount(streams());
     await user.click(toggle());
+    // The host's Logs tool is first in the strip (the mock's order, 20) and is the one on screen until the user chooses another.
+    expect(screen.getAllByRole('tab', { name: /^(Logs|Streams)$/ }).map((one) => one.textContent)).toEqual(['Logs', 'Streams']);
+    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('tab', { name: 'Streams' }));
     expect(screen.getByRole('tab', { name: 'Streams' })).toHaveAttribute('aria-selected', 'true');
     await user.click(plus());
     expect(screen.getByRole('tab', { name: 'alpha · north' })).toHaveAttribute('aria-selected', 'true');
@@ -88,7 +98,7 @@ describe('a tool a plugin brings to the panel', () => {
   // panel's own (CodeRabbit, PluginHost.tsx:499).
   it('draws the body of a session in the panel, in the same commit that opens the session: a plain element, not a promise of one', async () => {
     const { user } = mount(streams());
-    await user.click(toggle());
+    await openStreams(user);
     await user.click(plus());
     const body = screen.getByRole('tabpanel', { name: 'alpha · north' });
     expect(within(body).getByText('the body of alpha')).toBeInTheDocument();
@@ -100,7 +110,7 @@ describe('a tool a plugin brings to the panel', () => {
     };
 
     const { user } = mount(streams({ Body: Broken }));
-    await user.click(toggle());
+    await openStreams(user);
     await user.click(plus());
     const body = screen.getByRole('tabpanel', { name: 'alpha · north' });
     expect(within(body).getByText('Couldn\'t show this session')).toBeInTheDocument();
@@ -114,7 +124,7 @@ describe('a tool a plugin brings to the panel', () => {
       throw new Error('no stream');
     });
     const { user, panel } = mount(streams({ newSession: { label: 'New stream', open } }));
-    await user.click(toggle());
+    await openStreams(user);
     await user.click(plus());
     await user.click(plus());
     expect(open).toHaveBeenCalledTimes(2);
@@ -125,7 +135,7 @@ describe('a tool a plugin brings to the panel', () => {
 
   it('goes with the plugin: its sessions are hidden and the ones that were running end', async () => {
     const { user, panel, set } = mount(streams());
-    await user.click(toggle());
+    await openStreams(user);
     await user.click(plus());
     expect(Object.values(panel.getSnapshot().sessions).map((one) => one.state)).toEqual(['running']);
     set([]);

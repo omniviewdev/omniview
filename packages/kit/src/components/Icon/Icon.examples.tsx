@@ -26,7 +26,7 @@ export const Status = () => (
 const ALL: readonly IconName[] = [
   'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle',
   'circle-minus', 'clock', 'close', 'columns', 'copy', 'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'panel-bottom', 'play', 'plus', 'refresh', 'regex',
-  'search', 'search-x', 'server', 'status-error', 'status-info', 'status-success', 'status-warning',
+  'scroll-text', 'search', 'search-x', 'server', 'status-error', 'status-info', 'status-success', 'status-warning',
 ];
 
 const ROW = 8;

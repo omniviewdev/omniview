@@ -9,9 +9,9 @@
 //   e  a bundle of the old shell is refused before it runs (the global it sets is never set); a plugin with no bundle is a named state
 //   g  the rail (S2a): one entry for each plugin that contributes (the healthy plugin and its copy; the refused ones have none), in the order each declares; choosing the other entry shows its
 //      sidebar and closes no tab, activating a tab makes its plugin current; closing the last tab leaves the empty window (decision A17), which opens nothing by itself and offers the plugins to open
-//   h  the bottom panel (P1a): the tool each plugin that contributes brings, "Streams" and "Streams copy", is drawn by the host's strip over the plugin's own body; the status bar's toggle opens the panel,
-//      the tool's `+` opens its three streams (running, ended, failed), a hidden stream keeps running while another is on screen and while the panel is hidden, and the card of a stream links to its item,
-//      which opens in a tab of the window
+//   h  the bottom panel (P1a, P1b-3a): the host's own Logs tool comes first (empty: it says how a session arrives and has no `+`), then the tool each plugin that contributes brings, "Streams" and "Streams copy", drawn by the
+//      host's strip over the plugin's own body; the status bar's toggle opens the panel, the tool's `+` opens its three streams (running, ended, failed), a hidden stream keeps running while another is on screen and
+//      while the panel is hidden, and the card of a stream links to its item, which opens in a tab of the window
 //   i  the session (S3a): the window opens EMPTY when nothing was saved (decision A17: no page opens by itself); two tabs of two plugins, the rail on the second and the panel open on the second plugin's tool
 //      at a height the keyboard chose come back after a reload of the page, and after the host's process is stopped and started again (the packaged app's restart, in server mode); a session whose plugin is not
 //      installed keeps its tab and says so; a session of a newer version, and a text that is no session, are kept aside in a slot of their own and never deleted, and the window opens empty. The session lives in
@@ -400,10 +400,15 @@ async function checkPanel(page, base, engine) {
   await toggle.click();
   await region.waitFor({ state: 'visible' });
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${engine}: the toggle is pressed once it is open`);
-  // One tool for each plugin that contributes, in the plugin's own words, and the plugin that came first is on screen.
+  // The host's own Logs tool comes first and is on screen (it says how a session arrives, and has no `+`); then one tool for each plugin that contributes, in the plugin's own words.
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Streams', 'Streams copy'], `${engine}: the strip draws the tool of each plugin that contributes`);
-  assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the first is on screen`);
+  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Logs', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Logs tool, then the tool of each plugin that contributes`);
+  assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the Logs tool is on screen`);
+  await page.getByText('No log sessions').waitFor();
+  assert.equal(await page.locator('[data-shell-part="sessionAdd"]').count(), 0, `${engine}: the Logs tool has no \`+\` (decision A20)`);
+  // The plugin that came first brings the tool the rest of this scenario uses.
+  await tools.nth(1).click();
+  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
   await page.getByText('No sessions').waitFor();
   // The tool's `+` starts a stream; three in turn: running, ended and failed.
   const add = page.getByRole('button', { name: 'New stream' }).first();
@@ -437,6 +442,67 @@ async function checkPanel(page, base, engine) {
   assert.deepEqual(errors, [], `${engine}: the panel wrote no page error`);
 }
 
+/**
+ * j. The host's Logs tool (P1b-3a), in a page of its own: a command in the fixture item's menu opens a Logs session through `ctx.panel`, the plugin handing the host a feed (a synthetic one, bundled in the
+ * plugin) and the host drawing it in the kit's log view. What is checked is the seam: lines appear and fill the panel's body, the card is the host's, switching tool and back keeps the lines and the scroll
+ * place, and closing the tab releases every listener on the plugin's feed and closes it, which the plugin counts (`window.__fixtureLogs`).
+ */
+async function checkLogs(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  await page.getByRole('link', { name: 'orders-api' }).click();
+  await page.getByRole('heading', { level: 1, name: 'orders-api' }).waitFor();
+  await page.getByRole('button', { name: 'More actions for orders-api' }).click();
+  await page.getByRole('menuitem', { name: 'Logs: app' }).click();
+  // The panel opens on the Logs tool, on the new session; its lines appear in the host's log view, which fills the body the panel gives it (a flex item sizes to its content unless it is told to fill).
+  await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
+  const grid = page.getByRole('group', { name: 'Log, orders-api/app · north-yard' }).getByRole('grid');
+  await grid.waitFor();
+  await page.waitForFunction(() => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > 20, null, { timeout: 15_000 });
+  const box = await page.evaluate(() => {
+    const read = (element) => {
+      const { x, width, height } = element.getBoundingClientRect();
+      return [x, width, height].map((n) => Math.round(n));
+    };
+    return { body: read(document.querySelector('[data-shell-part="panelBody"]:not([hidden])')), view: read(document.querySelector('[data-log-session]')) };
+  });
+  assert.ok(box.body.every((value, index) => Math.abs(value - box.view[index]) <= 1), `${engine}: the log view fills the panel's body (${JSON.stringify(box)})`);
+  assert.deepEqual(await page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') })), { opened: 1, closed: 0, listeners: 3 }, `${engine}: one feed opened; the registry and the view (two) listen to it`);
+  // The card is the host's: the kind, the item as a link, the state in a log's words.
+  const tab = page.getByRole('tab', { name: 'orders-api/app · north-yard' });
+  await tab.hover();
+  const card = page.locator('[popover]:popover-open');
+  await card.waitFor();
+  assert.match(await card.innerText(), /Logs[\s\S]*Item orders-api[\s\S]*State\s+Streaming/, `${engine}: the card says what the host says of a log session`);
+  await page.mouse.move(2, 2);
+  // Scroll up (the view stops following), switch tool and back: the same lines, the same place.
+  const place = () => grid.evaluate((element) => ({ top: Math.round(element.scrollTop), first: element.querySelector('[data-n]')?.getAttribute('data-n') ?? '', rows: Number(element.getAttribute('aria-rowcount')) }));
+  await grid.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const before = await place();
+  await page.getByRole('tab', { name: 'Streams', exact: true }).click();
+  await grid.waitFor({ state: 'hidden' });
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  await page.getByRole('tab', { name: 'Logs', exact: true }).click();
+  await grid.waitFor();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const after = await place();
+  assert.deepEqual({ top: after.top, first: after.first }, { top: before.top, first: before.first }, `${engine}: switching tool and back keeps the scroll place (${JSON.stringify({ before, after })})`);
+  assert.ok(after.rows >= before.rows, `${engine}: and the lines it had (${String(before.rows)} then ${String(after.rows)})`);
+  // Closing the tab closes the plugin's feed and every listener on it is gone.
+  await tab.focus();
+  await page.keyboard.press('Delete');
+  await page.getByText('No log sessions').waitFor();
+  await page.waitForFunction(() => Reflect.get(window, '__fixtureLogs')?.listeners === 0);
+  assert.deepEqual(await page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') })), { opened: 1, closed: 1, listeners: 0 }, `${engine}: closing the tab closed the feed and released every listener`);
+  assert.deepEqual(errors, [], `${engine}: the Logs tool wrote no page error`);
+}
 /**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
@@ -503,7 +569,7 @@ async function checkSession(browser, getHost, restart, engine) {
   await toggleOf(page).click();
   await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  await tools.nth(1).click();
+  await tools.nth(2).click();
   await page.getByRole('separator', { name: 'Resize panel' }).focus();
   for (let press = 0; press < 3; press += 1) await page.keyboard.press('ArrowUp');
   const left = await look(page);
@@ -624,6 +690,7 @@ try {
       await page.close();
       await checkRail(await freshPage(browser, host.base), host.base, name);
       await checkPanel(await freshPage(browser, host.base), host.base, name);
+      await checkLogs(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the session (reload, restart, a plugin that is gone, a session kept aside)`);
     } finally {
