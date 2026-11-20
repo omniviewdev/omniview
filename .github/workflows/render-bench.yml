@@ -1,8 +1,44 @@
+# Render benchmarks: Vitest browser mode (Chromium) over the host's `ui/` and the Kubernetes plugin's UI source, with the Wails backend replaced by fixtures
+# (`pnpm bench:render`, vitest.render.config.ts). It asserts time bounds, so it is a performance gate, not a build check.
+#
+# THE PATH FILTER. The job runs only when a pull request changes something it reads: `ui/` (the app and the code the benches mount), `bench/render/` and
+# `bench/vite/` (the benches, the fixtures, the Wails binding index), the three workspace packages the benches import or `task packages` builds before them
+# (`omniviewdev-runtime`, with the committed Wails bindings, `omniviewdev-providers`, `omniviewdev-vite-plugin`), the Vite and Vitest configs, the root manifest, the
+# lockfile and the pnpm workspace and patches (`pnpm install`), the TypeScript configs (esbuild reads `jsx` from them), `Taskfile.yml` (`task packages`) and this file.
+# Not listed, on purpose: `packages/kit/` and `ui-next/` (no bench imports them, and `ui/` must not: AGENTS.md rule 10; the kit's build is run by UI checks and Kit probes), Go (the backend is a fixture), docs.
+# A workflow-level `paths:` filter means a skipped run reports NO check
+# at all; nothing requires this check (there is no branch protection on `main`, and the ruleset "Lockdown Main" has no required status checks), so a skip blocks no merge.
+# Add a path here whenever a new input of the bench is introduced. `workflow_dispatch` is unaffected.
+#
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `main` branch: 524d1232a499cf868eb028af61912499736a37a5 (2026-11-14), the head of `main` when it was pinned and the commit the last
+# unpinned run recorded, so pinning changes nothing about what is measured. Before, the checkout followed the default branch, so a plugin merge could change the benchmark of an unrelated pull request.
+# To bump it, in a pull request of this repository that changes nothing else:
+#   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/main`;
+#   2. put it in KUBERNETES_PLUGIN_REF; the step "Record Kubernetes commit" fails if the checkout is anything else;
+#   3. the job is green (it asserts time bounds, so run it twice before trusting a bump).
+
 name: Render Benchmarks
 
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "ui/**"
+      - "bench/render/**"
+      - "bench/vite/**"
+      - "packages/omniviewdev-runtime/**"
+      - "packages/omniviewdev-providers/**"
+      - "packages/omniviewdev-vite-plugin/**"
+      - "vite.config.ts"
+      - "vitest.render.config.ts"
+      - "vitest.cache.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "patches/**"
+      - "tsconfig*.json"
+      - "Taskfile.yml"
+      - ".github/workflows/render-bench.yml"
   workflow_dispatch:
 
 concurrency:
@@ -11,6 +47,7 @@ concurrency:
 
 env:
   NODE_VERSION: "26.13.0"
+  KUBERNETES_PLUGIN_REF: 524d1232a499cf868eb028af61912499736a37a5
 
 jobs:
   render-bench:
@@ -27,11 +64,15 @@ jobs:
         with:
           repository: omniviewdev/omniview-plugin-kubernetes
           path: .render-bench-sources/kubernetes
+          ref: ${{ env.KUBERNETES_PLUGIN_REF }}
           persist-credentials: false
 
       - name: Record Kubernetes commit
         id: kubernetes
-        run: echo "commit=$(git -C .render-bench-sources/kubernetes rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          commit="$(git -C .render-bench-sources/kubernetes rev-parse HEAD)"
+          test "$commit" = "$KUBERNETES_PLUGIN_REF"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
