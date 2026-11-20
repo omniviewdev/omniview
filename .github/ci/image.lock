@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "image": "ghcr.io/omniviewdev/omniview-ci",
+  "tag": "ubuntu24-20261120-63ba22d",
+  "digest": "sha256:289353ab91800166914d98c79ab71fa06b2261e7963c72a695dca606e36dd784",
+  "inputs": {
+    "schema": 1,
+    "dockerfile_sha256": "9f6f4eb8ac7df59a5317ed868be33d0dba755fefac479daca6913ac728a513bc",
+    "node": "26.13.0",
+    "pnpm": "12.14.0",
+    "playwright": "1.64.1",
+    "go_floor": "1.27.0",
+    "sha256": "23a990893d7a890d41439c03efcef3c743273b3a23928a935a07ee47a60ac478"
+  },
+  "manifest": {
+    "schema": 1,
+    "image": "ghcr.io/omniviewdev/omniview-ci",
+    "built_at": "2026-11-20T18:19:56Z",
+    "source": {
+      "repository": "omniviewdev/omniview",
+      "sha": "63ba22d0d8594b09cd0b845bec9520643f4bf335",
+      "run": "https://github.com/omniviewdev/omniview/actions/runs/44786470720"
+    },
+    "inputs_sha256": "23a990893d7a890d41439c03efcef3c743273b3a23928a935a07ee47a60ac478",
+    "dockerfile_sha256": "9f6f4eb8ac7df59a5317ed868be33d0dba755fefac479daca6913ac728a513bc",
+    "os": {
+      "id": "ubuntu",
+      "version": "24.04"
+    },
+    "tools": {
+      "node": "26.13.0",
+      "pnpm": "12.14.0",
+      "playwright": "1.64.1",
+      "go": "1.27.3",
+      "task": "v3.54.0",
+      "goimports": "v0.53.0",
+      "golangci-lint": "v2.15.0",
+      "kind": "v0.30.0",
+      "kubectl": "v1.35.0"
+    },
+    "browsers": {
+      "path": "/ms-playwright",
+      "chromium": {
+        "revision": "1248",
+        "version": "156.0.8078.4"
+      },
+      "chromium-headless-shell": {
+        "revision": "1248",
+        "version": "156.0.8078.4"
+      },
+      "ffmpeg": {
+        "revision": "1013",
+        "version": null
+      },
+      "webkit": {
+        "revision": "2370",
+        "version": "27.2"
+      }
+    }
+  }
+}

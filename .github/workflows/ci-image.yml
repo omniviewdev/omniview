@@ -1,21 +1,61 @@
 name: Linux CI Image
 
+# The image the container jobs run in (ghcr.io/omniviewdev/omniview-ci, from .github/ci/Dockerfile): native libraries, WebKit and Chromium libraries, the Playwright browsers of the version
+# pnpm-lock.yaml resolves, Node, pnpm, Go, Task, goimports, golangci-lint, kind and kubectl. Its tags are immutable (ubuntu24-<yyyymmdd>-<git sha>); consumers pin the DIGEST that
+# .github/ci/image.lock records, so the image a job runs in changes only through a reviewed pull request. The old mutable tag `ubuntu24-v1` is no longer rebuilt: it stays what it was until
+# the consumers move to the digest.
+#
+# What runs when:
+#   guard    every trigger, among them any change to a workflow (the pins live there): the unit tests of scripts/ci/check-image.mjs, then the guard itself. It fails when the lock is behind the
+#            repository (the Dockerfile, Playwright in pnpm-lock.yaml, Node, pnpm or the Go floor of go.mod changed since the image was built), when the workflows pin another digest than the
+#            lock, and when kind, kubectl or golangci-lint is pinned in a workflow and in the Dockerfile at two versions. A path filter cannot see "the Playwright line changed", so the guard
+#            looks at what the lockfile resolves and starts the build only when the inputs moved.
+#   image    builds the image once, smokes that image, and (when asked to) pushes that same image under an immutable tag. On a pull request it only builds and smokes: nothing is pushed.
+#              - pull request / push to main: when the guard says the inputs moved, or when a file of the image (.github/ci, this workflow, the guard) changed. A push to main also publishes
+#                when the lock cannot serve main.
+#              - weekly (Monday 05:17 UTC): always, so that the apt packages of the image are never older than a week.
+#              - workflow_dispatch with publish: true, from any ref: how a branch that changes an input gets the digest its lock needs.
+#   verify   pulls what was just published BY DIGEST, with the credentials block a consumer uses, and runs the smoke again inside it as a container job.
+#   lock     writes .github/ci/image.lock (and moves every `@sha256:` pin to the new digest). On main it pushes the branch ci/image-lock and opens, or updates, its pull request; on another
+#            ref it uploads `image-lock.patch`, which the author applies to the branch: `gh run download <run> -n image-lock && git apply image-lock.patch`.
+#
+# The package is private. The jobs that pull it authenticate with the job's GITHUB_TOKEN and `packages: read`.
+#
+# The lock pull request needs one of: Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests", or a token in the secret CI_IMAGE_PR_TOKEN (a pull
+# request opened with the job's own token does not start the PR checks; with the secret it does). Without either the job fails with the link that opens the pull request by hand: a lock
+# that is behind is never silent.
+
 on:
   pull_request:
     branches: [main]
     paths:
-      - .github/ci/Dockerfile
-      - .github/workflows/ci-image.yml
-      - e2e/package.json
+      - .github/ci/**
+      - .github/workflows/**
+      - scripts/ci/check-image.mjs
+      - scripts/ci/check-image.test.mjs
+      - pnpm-lock.yaml
+      - package.json
+      - go.mod
+      - .tool-versions
   push:
     branches: [main]
     paths:
-      - .github/ci/Dockerfile
-      - .github/workflows/ci-image.yml
-      - e2e/package.json
+      - .github/ci/**
+      - .github/workflows/**
+      - scripts/ci/check-image.mjs
+      - scripts/ci/check-image.test.mjs
+      - pnpm-lock.yaml
+      - package.json
+      - go.mod
+      - .tool-versions
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish an immutable tag of the image built from this ref. From a branch it gives the digest its lock needs; from main it also opens the lock pull request."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,84 +68,342 @@ env:
   IMAGE: ghcr.io/omniviewdev/omniview-ci
 
 jobs:
-  build:
-    name: Build and smoke Linux image
+  guard:
+    name: Image guard
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Verify Playwright pin
-        run: |
-          version=$(jq -r '.devDependencies["@playwright/test"]' e2e/package.json)
-          grep -Fx "ARG PLAYWRIGHT_VERSION=$version" .github/ci/Dockerfile
-      - uses: docker/setup-buildx-action@v3
-      - name: Build local smoke image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .github/ci/Dockerfile
-          platforms: linux/amd64
-          pull: true
-          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-          load: true
-          push: false
-          tags: omniview-ci:smoke
-          cache-from: type=gha,scope=ci-image-ubuntu24
-          cache-to: type=gha,mode=max,scope=ci-image-ubuntu24
-      - name: Smoke native libraries and Chromium OS dependencies
-        run: |
-          docker run --rm --init omniview-ci:smoke bash -euo pipefail -c '
-            test "$(id -u)" = 0
-            test "$(node --version)" = "v26.13.0"
-            zstd --version
-            pkg-config --exists gtk4 webkitgtk-6.0 wayland-client
-            pkg-config --modversion gtk4 webkitgtk-6.0 wayland-client
-            playwright install-deps --dry-run chromium
-          '
 
-  publish:
-    name: Publish trusted Linux image
-    needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - name: Unit tests of the guard
+        id: tests
+        run: node --test scripts/ci/check-image.test.mjs
+
+      # Fails the job when the lock is behind, a pin is not the lock's digest, or a workflow and the Dockerfile pin kind, kubectl or golangci-lint at two versions. The plan below still runs.
+      - name: Is the lock behind the repository?
+        id: check
+        run: node scripts/ci/check-image.mjs check --github-output "$GITHUB_OUTPUT"
+
+      - name: Plan, build and publish?
+        id: plan
+        if: (success() || failure()) && steps.tests.outcome == 'success'
+        env:
+          EVENT: ${{ github.event_name }}
+          REBUILD: ${{ steps.check.outputs.rebuild }}
+          DISPATCH_PUBLISH: ${{ inputs.publish }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # What an image is made of besides what the repository pins: a change to one of these is built even when the lock is current.
+          IMAGE_FILES: '^(\.github/ci/|\.github/workflows/ci-image\.yml$|scripts/ci/check-image\.mjs$)'
+        run: |
+          set -euo pipefail
+          build=false
+          publish=false
+          case "$EVENT" in
+            schedule)
+              build=true
+              publish=true
+              ;;
+            workflow_dispatch)
+              build=true
+              publish="$DISPATCH_PUBLISH"
+              ;;
+            push)
+              # main moved and its lock cannot serve it: publish, and the lock job opens the pull request that heals main.
+              if [ "$REBUILD" = true ]; then
+                build=true
+                publish=true
+              fi
+              ;;
+          esac
+          if [ "$build" = false ]; then
+            if [ "$REBUILD" = true ]; then
+              # A pull request that moves an input: the new image is built (not published) to prove it builds and passes the smoke.
+              build=true
+            else
+              changed=unknown
+              if [ -n "$BASE_SHA" ] && [ -n "${BASE_SHA//0/}" ]; then
+                git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
+                changed="$(git diff --name-only "$BASE_SHA" HEAD 2>/dev/null || echo unknown)"
+              fi
+              # When what changed cannot be told, build: a skipped build must never be a guess.
+              if [ "$changed" = unknown ] || grep -Eq "$IMAGE_FILES" <<<"$changed"; then
+                build=true
+              fi
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "event=$EVENT rebuild=${REBUILD:-unknown} build=$build publish=$publish"
+
+  image:
+    name: Build, smoke and publish the image
+    needs: guard
+    # The guard has failed here when a pull request moved an input without its lock: the image is still built, because that is how the new Dockerfile is proven.
+    if: ${{ !cancelled() && needs.guard.outputs.build == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
     outputs:
-      digest: ${{ steps.publish.outputs.digest }}
+      digest: ${{ steps.push.outputs.digest }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: docker/setup-buildx-action@v3
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+
+      - uses: actions/setup-node@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Image metadata
-        id: metadata
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: type=raw,value=ubuntu24-v1
-      - name: Publish image
-        id: publish
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .github/ci/Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
-          cache-from: type=gha,scope=ci-image-ubuntu24
-          cache-to: type=gha,mode=max,scope=ci-image-ubuntu24
-      - name: Record image digest
+          node-version-file: .tool-versions
+
+      - name: Tag
+        id: tag
+        run: echo "tag=ubuntu24-$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the image from the repository's inputs
         env:
-          DIGEST: ${{ steps.publish.outputs.digest }}
-        run: echo "Published $IMAGE:ubuntu24-v1@$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mapfile -t inputs < <(node scripts/ci/check-image.mjs inputs --format docker-args)
+          printf '%s\n' "${inputs[@]}"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          build() {
+            docker build --pull --platform linux/amd64 -f .github/ci/Dockerfile -t omniview-ci:smoke \
+              "${inputs[@]}" \
+              --build-arg="BUILT_AT=$built_at" --build-arg="SOURCE_SHA=$SOURCE_SHA" --build-arg="SOURCE_RUN=$SOURCE_RUN" \
+              .
+          }
+          # The build downloads from apt mirrors, GitHub and Playwright's CDN; a stalled or refused download is the one failure a second try cures. The layers that were built are kept.
+          build || {
+            echo "::warning::the image build failed once: trying again with the layers that were built"
+            build
+          }
+
+      - name: Size of the image
+        run: |
+          bytes="$(docker image inspect omniview-ci:smoke --format '{{.Size}}')"
+          {
+            echo "### Image size"
+            echo
+            echo "Uncompressed: $(numfmt --to=iec-i --suffix=B "$bytes") ($bytes bytes)."
+            echo
+            echo '| layer | instruction |'
+            echo '|--:|---|'
+            docker history --no-trunc --format '{{json .}}' omniview-ci:smoke | jq -r --slurp '.[] | select(.Size != "0B") | "| \(.Size) | `\(.CreatedBy | gsub("\n"; " ") | sub("^.*/bin/bash -o pipefail -c "; "") | gsub("[|`]"; "/") | .[0:90])` |"'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke inside the image
+        run: docker run --rm --init -v "$PWD:/work:ro" -w /work omniview-ci:smoke bash .github/ci/smoke.sh
+
+      # The smoke must be able to fail where it says it fails: browsers that are not where the repository's Playwright looks for them.
+      - name: Negative control, the smoke fails when the browsers are not where Playwright looks
+        run: |
+          set +e
+          output="$(docker run --rm --init -v "$PWD:/work:ro" -w /work -e PLAYWRIGHT_BROWSERS_PATH=/nonexistent omniview-ci:smoke bash .github/ci/smoke.sh 2>&1)"
+          status=$?
+          set -e
+          tail -n 12 <<<"$output"
+          [ "$status" -ne 0 ] || { echo "::error::the smoke passed with no browsers in /nonexistent"; exit 1; }
+          grep -q 'SMOKE-FAIL browser-directory-missing' <<<"$output" || { echo "::error::the smoke failed, but not on the browser directories"; exit 1; }
+          echo "the smoke failed on the browser directories, as it must"
+
+      - name: The image's manifest against the repository
+        run: |
+          docker run --rm omniview-ci:smoke cat /opt/ci/manifest.json > "$RUNNER_TEMP/manifest.json"
+          node scripts/ci/check-image.mjs check --manifest "$RUNNER_TEMP/manifest.json"
+
+      # An existing tag is never overwritten: a second run of the same sha on the same day uses the image that is already there, and the verify job tests that one.
+      - name: Publish the immutable tag
+        id: push
+        if: needs.guard.outputs.publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          ref="$IMAGE:$TAG"
+          if docker manifest inspect "$ref" > /dev/null 2>&1; then
+            echo "::notice::$ref already exists and tags are immutable: not pushing, the image that is there is used"
+          else
+            docker tag omniview-ci:smoke "$ref"
+            docker push "$ref"
+          fi
+          # The digest is what the registry holds under the tag, not what the local daemon thinks it pushed (the containerd image store rewrites the manifest on push).
+          digest="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')"
+          # A plain manifest lists its layers; an index (the containerd image store pushes one) lists the manifest of each platform.
+          raw="$(docker buildx imagetools inspect "$IMAGE@$digest" --raw)"
+          if ! jq -e '.layers' <<<"$raw" > /dev/null; then
+            raw="$(docker buildx imagetools inspect "$IMAGE@$(jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest' <<<"$raw")" --raw)"
+          fi
+          compressed="$(jq '[.layers[].size] | add' <<<"$raw")"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Published"
+            echo
+            echo "- tag: \`$ref\`"
+            echo "- digest: \`$digest\`"
+            echo "- compressed size, the sum of the layers in the registry: $(numfmt --to=iec-i --suffix=B "$compressed") ($compressed bytes)"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Pull by digest and smoke as a consumer
+    needs: image
+    if: ${{ !cancelled() && needs.image.outputs.digest != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    # What every consumer job will carry: the digest and the credentials of the job's own token. "Initialize containers" of this job is the pull time on a hosted runner.
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci@${{ needs.image.outputs.digest }}
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner as the container user.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The first step of every consumer job after the checkout: seconds, and a stale image is an error before anything else runs.
+      - name: The consumer's staleness check
+        run: node scripts/ci/check-image.mjs check --manifest /opt/ci/manifest.json
+
+      - name: Smoke as a consumer
+        run: bash .github/ci/smoke.sh
+
+      - name: Keep the manifest of the pulled image
+        run: cp /opt/ci/manifest.json "$RUNNER_TEMP/manifest.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-manifest
+          path: ${{ runner.temp }}/manifest.json
+          retention-days: 7
+          if-no-files-found: error
+
+  lock:
+    name: Lock the published image
+    needs: [image, verify]
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-manifest
+          path: ${{ runner.temp }}/manifest
+
+      - name: Write the lock and move the digest pins
+        id: lock
+        env:
+          DIGEST: ${{ needs.image.outputs.digest }}
+          TAG: ${{ needs.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/check-image.mjs write-lock --digest "$DIGEST" --tag "$TAG" --manifest "$RUNNER_TEMP/manifest/manifest.json"
+          # The first lock is a new file: intent-to-add makes `git diff` show it.
+          git add -A -N .github
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The lock already records this image: nothing to open." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            git diff > "$RUNNER_TEMP/image-lock.patch"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Lock"
+              echo
+              echo "\`$IMAGE@$DIGEST\` (\`$TAG\`). Files changed:"
+              echo
+              git diff --stat | sed 's/^/    /'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: steps.lock.outputs.changed == 'true'
+        with:
+          name: image-lock
+          path: ${{ runner.temp }}/image-lock.patch
+          retention-days: 14
+
+      - name: Pin it on this branch
+        if: steps.lock.outputs.changed == 'true' && github.ref != 'refs/heads/main'
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+        run: |
+          {
+            echo
+            echo "This is not main, so no pull request is opened. To pin \`$TAG\` on this branch:"
+            echo
+            echo '    gh run download ${{ github.run_id }} -n image-lock && git apply image-lock.patch && rm image-lock.patch'
+            echo '    git add -A .github && git commit -m "ci(image): lock '"$TAG"'" && git push'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Push the lock branch and open, or update, its pull request
+        if: steps.lock.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.CI_IMAGE_PR_TOKEN || github.token }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+          TAG: ${{ needs.image.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          branch=ci/image-lock
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add -A .github
+          git commit -q -m "ci(image): lock $TAG"
+          git push --force origin "$branch"
+          title="ci(image): lock $TAG"
+          cat > "$RUNNER_TEMP/body.md" <<BODY
+          What: \`.github/ci/image.lock\` records \`$TAG\` (\`$DIGEST\`), and every \`$IMAGE@sha256:\` pin in the workflows follows it.
+
+          Why: opened by \`ci-image.yml\` after a \`$EVENT\` run on main ($RUN_URL). The image is rebuilt every Monday and whenever the Dockerfile, the Playwright version of \`pnpm-lock.yaml\`, Node, pnpm or the Go floor of \`go.mod\` change; this is how a new image reaches the jobs, through a review.
+
+          How verified: that run built the image, ran \`.github/ci/smoke.sh\` inside it (toolchains, native libraries, the repository's Playwright launching Chromium and WebKit headless), pushed the immutable tag, then pulled it by digest as a consumer job and ran the smoke again. \`node scripts/ci/check-image.mjs\` passes on this branch.
+
+          Not verified: no consumer job has run in this image yet; the PR checks of this branch run the jobs that pin the digest.
+          BODY
+          if gh pr view "$branch" --json state --jq .state 2>/dev/null | grep -qx OPEN; then
+            gh pr edit "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            echo "Updated the open pull request of $branch." | tee -a "$GITHUB_STEP_SUMMARY"
+          elif url="$(gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md")"; then
+            echo "Opened $url" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            compare="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$branch?expand=1"
+            echo "::error title=The CI image lock is not in a pull request::The lock is pushed on the branch $branch but GitHub did not let this workflow open the pull request (Settings > Actions > General > Allow GitHub Actions to create and approve pull requests, or the secret CI_IMAGE_PR_TOKEN). Open it here: $compare"
+            echo "The lock is on branch \`$branch\`. Open the pull request: $compare" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
