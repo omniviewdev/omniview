@@ -5,7 +5,8 @@
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
-//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says
+//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the Logs command of a Pod
+//                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
@@ -16,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkDetail, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkDetail, checkLogs, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
 const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
@@ -120,5 +121,13 @@ if (mode === 'control-fixture-absent') {
   test('the Pod detail page, opened from the list, prints the name, node, Pod IP, host IP and QoS class kubectl says', async () => {
     const { read, expected } = await checkDetail({ browser, baseURL, kubeconfig });
     assert.equal(read.h1, expected.name);
+  });
+
+  // The first real log stream of the new stack (P1b-3b): the Logs command of a Pod's page opens a session in the host's Logs tool, whose rows are the lines `kubectl logs --timestamps` prints, and closing its tab
+  // closes the SDK's session (logs.mjs). Parity mode only.
+  test('the Logs command of a Pod opens a session with the lines kubectl logs prints, and closing its tab closes the SDK session', async () => {
+    const { read, pod } = await checkLogs({ browser, baseURL, kubeconfig });
+    assert.ok(read.rows.length > 0, 'the session has lines');
+    assert.ok(read.tabs[0]?.startsWith(`${pod.name} · `), `the session's tab is named for the Pod: ${JSON.stringify(read.tabs)}`);
   });
 }

@@ -1,0 +1,705 @@
+// The P1b-3b proof driver: the Kubernetes plugin's Pod page opens a Logs session in the host's Logs tool, in the real host (browser server mode), against a real kind cluster.
+//
+//   node p1b3b-proof.mjs <scenario>...        scenarios: equal | states | disabled | delete | shots        (no argument: all of them, in that order)
+//
+//   equal     logs/counter: the Pods list, the Pod page, Logs; the session's lines EQUAL `kubectl logs counter --timestamps` (the last 1,000 lines at the open, and the ones that follow);
+//             the card links back to the Pod; pressing Logs again (what the host does); closing the tabs returns the SDK's ListSessions to 0
+//   states    a Pod that finished (burst), one that crash-loops and says why (crashing), the slice fixture's crash loop that writes nothing (checkout/crashloop), two containers (duo) and an
+//             init container (withinit): each session's lines per source EQUAL `kubectl logs <pod> -c <container> --timestamps`
+//   disabled  every Pod of the cluster: whether its Logs command can be pressed, and the sentence it says, against what `kubectl logs --all-containers` answers for it
+//   delete    `kubectl delete pod` while the session streams (graceful, then forced): what the session and its card say, second by second
+//   shots     the screenshots (theme void; 1440x900 and 1280x800)
+//
+// Environment: OMNIVIEW_HOST_ROOT (a host checkout with Playwright installed), BASE (the host, default http://127.0.0.1:34311), KUBECONFIG_PATH (the proof cluster's kubeconfig), OUT (where the report
+// and the screenshots go), ENGINE (webkit or chromium; default webkit), HOST_RESTART (a command that restarts the host on a clean state root: run before a scenario that needs a panel with no earlier
+// sessions; without it the scenarios share one host and say so). Nothing here is imported by the plugin or the host.
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+const HOST_ROOT = process.env.OMNIVIEW_HOST_ROOT ?? '/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-p1b3b-host';
+const require = createRequire(path.join(HOST_ROOT, 'package.json'));
+const pw = require('playwright');
+const BASE = process.env.BASE ?? 'http://127.0.0.1:34311';
+const KUBECONFIG_PATH = process.env.KUBECONFIG_PATH ?? '/tmp/p1b3b/kubeconfig';
+const OUT = process.env.OUT ?? '/tmp/p1b3b/out';
+const ENGINE = process.env.ENGINE ?? 'webkit';
+const HOST_RESTART = process.env.HOST_RESTART;
+const CONNECTION = process.env.CONNECTION ?? 'kind-p1b3b-logs';
+mkdirSync(OUT, { recursive: true });
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const kubectl = (...args) => execFileSync('kubectl', ['--kubeconfig', KUBECONFIG_PATH, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+const kubectlTry = (...args) => {
+  try {
+    return { ok: true, out: kubectl(...args), err: '' };
+  } catch (error) {
+    return { ok: false, out: String(error.stdout ?? ''), err: String(error.stderr ?? error.message).trim() };
+  }
+};
+
+// --- the report ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const report = { engine: ENGINE, startedAt: new Date().toISOString(), checks: [], facts: {} };
+let passed = 0;
+let failed = 0;
+let gaps = 0;
+/** A check of the step's own requirements; `gap` marks a requirement the host (not this plugin) does not meet yet: it is printed as GAP, counted apart, and explained in the status file. */
+function check(name, ok, detail = '', { gap = false } = {}) {
+  const word = ok ? 'PASS' : gap ? 'GAP ' : 'FAIL';
+  if (ok) passed += 1;
+  else if (gap) gaps += 1;
+  else failed += 1;
+  report.checks.push({ name, result: word.trim(), detail });
+  console.log(`${word}: ${name}${detail === '' ? '' : ` -- ${String(detail).slice(0, 700)}`}`);
+}
+const fact = (key, value) => {
+  report.facts[key] = value;
+  console.log(`FACT ${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`.slice(0, 1500));
+};
+
+// --- the cluster's side ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** `kubectl logs ... --timestamps` as lines: the RFC 3339 text and the line. */
+function kubectlLines(namespace, pod, { container, previous = false } = {}) {
+  const args = ['-n', namespace, 'logs', pod, '--timestamps'];
+  if (container !== undefined) args.push('-c', container);
+  if (previous) args.push('--previous');
+  const { ok, out, err } = kubectlTry(...args);
+  if (!ok) return { ok, lines: [], err };
+  const lines = out.split('\n').filter((line) => line !== '').map((line) => {
+    const at = line.indexOf(' ');
+    return at < 0 ? { ts: line, text: '' } : { ts: line.slice(0, at), text: line.slice(at + 1) };
+  });
+  return { ok, lines, err };
+}
+
+const two = (value) => String(value).padStart(2, '0');
+/** The clock of a line as the kit's log view draws it (`HH:MM:SS.mmm`, local time, the first three digits of the fraction): the same arithmetic as packages/kit/src/log/time.ts. */
+function clockOf(timestamp) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/.exec(timestamp);
+  if (match === null) return '';
+  const [, y, mo, d, h, mi, s, fraction] = match;
+  const millis = Number((fraction ?? '').slice(0, 3).padEnd(3, '0'));
+  const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s), millis));
+  return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`;
+}
+
+// --- the page ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const IGNORED_ERRORS = /status of 422/;
+
+async function openApp({ width = 1440, height = 900, base = BASE } = {}) {
+  const browser = await pw[ENGINE].launch();
+  const page = await browser.newPage({ viewport: { width, height } });
+  const errors = [];
+  const wire = { headers: undefined, created: [], events: [], lines: { frames: 0, batches: 0, count: 0, levels: new Set(), origins: new Set(), sources: new Set(), keys: new Set(), labelKeys: new Set(), sample: undefined } };
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !IGNORED_ERRORS.test(message.text())) errors.push(`console: ${message.text().slice(0, 300)}`);
+  });
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message.slice(0, 300)}`));
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/wails/runtime') && wire.headers === undefined) wire.headers = request.headers();
+  });
+  page.on('response', async (response) => {
+    const request = response.request();
+    if (request.method() !== 'POST' || !response.url().endsWith('/wails/runtime')) return;
+    const body = request.postData() ?? '';
+    if (!body.includes('ServiceWrapper.CreateSession')) return;
+    try {
+      wire.created.push({ at: Date.now(), answer: JSON.parse(await response.text()) });
+    } catch {
+      wire.created.push({ at: Date.now(), answer: null });
+    }
+  });
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', (frame) => {
+      let message;
+      try {
+        message = JSON.parse(String(frame.payload));
+      } catch {
+        return;
+      }
+      if (typeof message?.name !== 'string') return;
+      if (message.name.startsWith('core/logs/event/')) {
+        wire.events.push({ at: Date.now(), data: message.data });
+      } else if (message.name.startsWith('core/logs/lines/')) {
+        wire.lines.frames += 1;
+        let batch;
+        try {
+          batch = typeof message.data === 'string' ? JSON.parse(message.data) : message.data;
+        } catch {
+          return;
+        }
+        wire.lines.batches += 1;
+        for (const line of batch) {
+          wire.lines.count += 1;
+          wire.lines.levels.add(line.level);
+          wire.lines.origins.add(line.origin);
+          wire.lines.sources.add(line.source_id);
+          for (const key of Object.keys(line)) wire.lines.keys.add(key);
+          for (const key of Object.keys(line.labels ?? {})) wire.lines.labelKeys.add(key);
+          wire.lines.sample ??= line;
+        }
+      }
+    });
+  });
+  await page.goto(`${base}/`, { waitUntil: 'load' });
+  return { browser, page, errors, wire };
+}
+
+const podHash = (namespace, name) => `#/kubernetes/pod?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`;
+
+/** Opens the page of one Pod by its address (a deep link) and waits until it is drawn. */
+async function openPod(page, namespace, name, { timeout = 60_000 } = {}) {
+  await page.goto(`${BASE}/${podHash(namespace, name)}`, { waitUntil: 'load' });
+  await page.waitForFunction((pod) => document.querySelector('h1')?.textContent === pod && [...document.querySelectorAll('button')].some((b) => b.textContent?.startsWith('Logs') && b.getAttribute('role') !== 'tab' && b.closest('[data-shell-part=panel]') === null), name, { timeout });
+  await page.waitForTimeout(400);
+}
+
+/** The Logs command of the header: whether it can be pressed, and the reason it says (the kit writes it inside the button, after the label, for a command that cannot be used). */
+async function logsCommand(page) {
+  return page.evaluate(() => {
+    const button = [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Logs') && b.closest('[data-shell-part=panel]') === null && b.getAttribute('role') !== 'tab');
+    if (button === undefined) return null;
+    const text = button.textContent ?? '';
+    return { disabled: button.getAttribute('aria-disabled') === 'true', text, reason: text.slice('Logs'.length), identityLine: document.querySelector('h1')?.parentElement?.parentElement?.innerText.replace(/\n/g, ' | ').slice(0, 300) };
+  });
+}
+
+const press = async (page) => {
+  const handle = await page.evaluateHandle(() => [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Logs') && b.closest('[data-shell-part=panel]') === null && b.getAttribute('role') !== 'tab'));
+  await handle.asElement().click();
+};
+
+/** The session tabs of the Logs tool: their accessible names (they say `, ended` or `, failed` when the session is), and which one is on screen. */
+const sessionTabs = (page) =>
+  page.evaluate(() => [...document.querySelectorAll('[role=tablist][aria-label="Logs sessions"] [role=tab]')].map((tab) => ({ label: tab.getAttribute('aria-label'), selected: tab.getAttribute('aria-selected') === 'true' })));
+
+/** What the log view of the session on screen holds: the strip under it, its rows in the DOM (the list is virtual), the row count the grid says. */
+const viewNow = (page) =>
+  page.evaluate(() => {
+    const view = document.querySelector('[data-log-session]');
+    const grid = view?.querySelector('[role=grid]');
+    const rows = grid === null || grid === undefined ? [] : [...grid.querySelectorAll('[role=row][data-n]')];
+    return {
+      session: view?.getAttribute('data-log-session') ?? null,
+      strip: view?.querySelector('[aria-label="Session status"]')?.textContent ?? null,
+      rowcount: Number(grid?.getAttribute('aria-rowcount') ?? 0),
+      rows: rows.map((row) => {
+        const cells = row.querySelectorAll('[role=gridcell]');
+        return { n: Number(row.getAttribute('data-n')), time: cells[0]?.textContent ?? '', level: cells[1]?.textContent ?? '', text: cells[2]?.textContent ?? '' };
+      }),
+      empty: document.querySelector('[data-shell-part=logsBody]')?.innerText.slice(0, 200) ?? null,
+    };
+  });
+
+/** Every row of the session on screen, from the top: the list is virtual, so the grid is scrolled a window at a time and the rows are kept by their number. Leaves the grid where it ended. */
+async function allRows(page) {
+  const seen = new Map();
+  const take = async () => {
+    for (const row of (await viewNow(page)).rows) seen.set(row.n, row);
+  };
+  await page.evaluate(() => {
+    document.querySelector('[data-log-session] [role=grid]').scrollTop = 0;
+  });
+  await page.waitForTimeout(150);
+  for (let step = 0; step < 4000; step += 1) {
+    await take();
+    const place = await page.evaluate(() => {
+      const grid = document.querySelector('[data-log-session] [role=grid]');
+      const before = grid.scrollTop;
+      grid.scrollTop = before + grid.clientHeight * 0.7;
+      return { before, after: grid.scrollTop, height: grid.scrollHeight, client: grid.clientHeight };
+    });
+    await page.waitForTimeout(40);
+    if (place.after === place.before || place.after + place.client >= place.height - 1) {
+      await page.waitForTimeout(120);
+      await take();
+      break;
+    }
+  }
+
+  return [...seen.values()].sort((a, b) => a.n - b.n);
+}
+
+/** `ListSessions` of the host's log service, asked as the page asks: the sessions the SDK holds now. */
+async function listSessions(page, wire) {
+  const headers = Object.fromEntries(Object.entries(wire.headers ?? {}).filter(([key]) => ['content-type', 'x-wails-client-id', 'x-wails-window-id'].includes(key)));
+  return page.evaluate(
+    async (sent) => {
+      const body = JSON.stringify({ object: 0, method: 0, args: { 'call-id': crypto.randomUUID(), methodName: 'github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper.ListSessions', args: [] } });
+      const response = await fetch('/wails/runtime', { method: 'POST', headers: sent, body });
+      return JSON.parse(await response.text());
+    },
+    headers,
+  );
+}
+
+async function untilTrue(label, test, { timeout = 30_000, every = 150 } = {}) {
+  const until = Date.now() + timeout;
+  let last;
+  while (Date.now() < until) {
+    last = await test();
+    if (last) return last;
+    await sleep(every);
+  }
+  throw new Error(`timed out: ${label}`);
+}
+
+const restartHost = async () => {
+  if (HOST_RESTART === undefined) return false;
+  execFileSync('bash', ['-c', HOST_RESTART], { stdio: 'ignore' });
+  return true;
+};
+
+/**
+ * Compares the rows of one source with the lines `kubectl logs` printed for it, as SEQUENCES: the first row says where in the oracle the run starts, and every row after it must be the next line of the
+ * oracle, with the same text and the same clock. Order, multiplicity and clock are all held: three copies of one line, a missing line or a swapped pair are reported. A line the oracle holds more than once
+ * (the same text at other times) makes several candidate starts, those with the first row's text AND clock: the run agrees when the whole of it holds from one of them.
+ */
+function compare(rows, oracle) {
+  if (rows.length === 0) return [];
+  const starts = oracle.flatMap((line, at) => (line.text === rows[0].text && clockOf(line.ts) === rows[0].time ? [at] : []));
+  if (starts.length === 0) {
+    const same = oracle.find((line) => line.text === rows[0].text);
+    return [same === undefined ? `${rows[0].text} is no line of the oracle` : `${rows[0].text}: the row says ${rows[0].time}, kubectl ${clockOf(same.ts)} (${same.ts})`];
+  }
+
+  let fewest;
+  for (const start of starts) {
+    const wrong = [];
+    rows.forEach((row, at) => {
+      const line = oracle[start + at];
+      if (line === undefined || line.text !== row.text) wrong.push(`row ${at}: the row says ${row.text}, kubectl has ${line === undefined ? 'no line' : line.text} there`);
+      else if (clockOf(line.ts) !== row.time) wrong.push(`${row.text}: the row says ${row.time}, kubectl ${clockOf(line.ts)} (${line.ts})`);
+    });
+    if (wrong.length === 0) return [];
+    if (fewest === undefined || wrong.length < fewest.length) fewest = wrong;
+  }
+
+  return fewest;
+}
+
+/** The numbers a counter says, in the order of the rows: a gap or a repeat is a lost or a doubled line. */
+const counterGaps = (rows, prefix) => {
+  const numbers = rows.filter((row) => row.text.startsWith(`${prefix} `)).map((row) => Number(row.text.slice(prefix.length + 1)));
+  const problems = [];
+  for (let at = 1; at < numbers.length; at += 1) if (numbers[at] !== numbers[at - 1] + 1) problems.push(`${numbers[at - 1]} then ${numbers[at]}`);
+  return { first: numbers[0], last: numbers.at(-1), count: numbers.length, problems };
+};
+
+// --- scenario: equal -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function equal() {
+  console.log('== equal: logs/counter, from the Pods list to the lines, the card, a second press, and the close');
+  await restartHost();
+  const { browser, page, errors, wire } = await openApp();
+  try {
+    // The window opens on Home with no tab (A17): choosing the plugin there opens its home page, the Pods list.
+    await page.getByText('Kubernetes', { exact: true }).first().click();
+    await page.waitForFunction(() => /^\d+ Pods/.test(document.querySelector('[data-ov-part=footer]')?.innerText.trim() ?? ''), null, { timeout: 90_000 });
+    const box = page.locator('input[placeholder="Search Pods"]').first();
+    await box.fill('counter');
+    const link = page.locator(`a[href="${podHash('logs', 'counter')}"]`).first();
+    await link.waitFor({ timeout: 20_000 });
+    await link.click();
+    await page.waitForFunction(() => document.querySelector('h1')?.textContent === 'counter' && [...document.querySelectorAll('button')].some((b) => b.textContent?.startsWith('Logs') && b.getAttribute('role') !== 'tab' && b.closest('[data-shell-part=panel]') === null), null, { timeout: 60_000 });
+    const command = await logsCommand(page);
+    check('the Logs command of a running Pod can be pressed, and says nothing against it', command !== null && command.disabled === false && command.reason === '', JSON.stringify(command));
+    check('the line under the header names Shell and Delete only', /Shell and Delete are not available yet/.test(command?.identityLine ?? '') && !/Logs, Shell/.test(command?.identityLine ?? ''), command?.identityLine);
+
+    // The oracle's boundary at the press: the latest line kubectl has, so the first row of the session can be held to the 1,000th line before it.
+    const latestAtPress = Number(kubectlLines('logs', 'counter').lines.at(-1)?.text.split(' ')[1]);
+    const pressedAt = Date.now();
+    await press(page);
+    await untilTrue('the first lines', async () => (await viewNow(page)).rows.length > 0, { timeout: 30_000 });
+    fact('first line on screen after the press (ms)', Date.now() - pressedAt);
+    const tabs = await sessionTabs(page);
+    check('the panel opened on one Logs session, named by the Pod and the connection', tabs.length === 1 && tabs[0].selected && tabs[0].label === `counter · ${CONNECTION}`, JSON.stringify(tabs));
+    await untilTrue('1,050 lines', async () => /^(1,\d{3}|[2-9],\d{3}) lines/.test((await viewNow(page)).strip ?? ''), { timeout: 40_000 });
+    const created = wire.created.at(-1)?.answer;
+    fact('CreateSession answer', created === undefined ? null : { status: created.status, active_sources: created.active_sources, options: created.options });
+
+    // The lines: every row of the view against kubectl. The latest line is read before the scan (the view must be at least that fresh) and the whole log after it (every row must be in it).
+    const latestBefore = Number(kubectlLines('logs', 'counter').lines.at(-1)?.text.split(' ')[1]);
+    const rows = await allRows(page);
+    const oracle = kubectlLines('logs', 'counter');
+    check('kubectl logs counter --timestamps was read', oracle.ok && oracle.lines.length > 0, oracle.err);
+    const wrong = compare(rows, oracle.lines);
+    check(`every row of the session (${rows.length}) is a line of kubectl logs counter --timestamps, with the same text and the same clock to the millisecond`, wrong.length === 0 && rows.length >= 1000, wrong.slice(0, 5).join(' | '));
+    const gaps_ = counterGaps(rows, 'counter');
+    check('the counter in the rows has no gap and no repeat from the first row to the last', gaps_.problems.length === 0 && gaps_.count === rows.length, JSON.stringify(gaps_));
+    const latestAfter = Number(oracle.lines.at(-1)?.text.split(' ')[1]);
+    check('the last row is a line that kubectl had when the scan began, and not one it did not have yet by the end', gaps_.last >= latestBefore - 2 && gaps_.last <= latestAfter, `last row ${gaps_.last}; kubectl's latest before the scan ${latestBefore}, after ${latestAfter}`);
+    check('the session opened on the last 1,000 lines at the press (tail_lines 1,000) and followed from there', gaps_.first >= latestAtPress - 999 && gaps_.first <= latestAtPress - 999 + 15, `first row ${gaps_.first}; the latest line at the press was ${latestAtPress}, so the first row should be ${latestAtPress - 999} plus the few lines written before the stream started; ${gaps_.count} rows to ${gaps_.last}`);
+    const sample = rows.slice(-3).map((row) => `${row.time} [${row.level}] ${row.text}`);
+    fact('the last rows', sample);
+    fact('the level column of a line with no level', [...new Set(rows.map((row) => row.level))]);
+    const view = await viewNow(page);
+    fact('status strip', view.strip);
+
+    // The card.
+    await page.locator('[data-shell-part=sessionTab] [role=tab]').first().hover();
+    await page.waitForSelector('[data-shell-part=sessionCard]', { timeout: 8000 });
+    const card = await page.evaluate(() => {
+      const element = document.querySelector('[data-shell-part=sessionCard]');
+      const anchor = element.querySelector('a[href]');
+      return { text: element.innerText.replace(/\n/g, ' | '), href: anchor?.getAttribute('href'), link: anchor?.textContent };
+    });
+    fact('card', card);
+    check('the card names the kind, the Pod as a link, Connection, Namespace and Container, and the state', /^Logs \| Pod counter \| Connection \| kind-p1b3b-logs \| Namespace \| logs \| Container \| All containers \| State \| Streaming/.test(card.text), card.text);
+    check('the card links back to the Pod: the link is the Pod\'s page', card.link === 'Pod counter' && /pod\?(name=counter&namespace=logs|namespace=logs&name=counter)$/.test(card.href ?? ''), `${card.link} ${card.href}`);
+    await page.locator('[data-shell-part=sessionCard] a[href]').first().click();
+    await page.waitForTimeout(800);
+    const afterLink = await page.evaluate(() => ({ strip: [...document.querySelectorAll('[data-shell-part=tabStrip] [role=tab]')].map((tab) => tab.getAttribute('aria-label')), h1: document.querySelector('h1')?.textContent }));
+    check('following the card\'s link shows the Pod\'s own tab: no second tab was made', afterLink.strip.length === 1 && afterLink.h1 === 'counter', JSON.stringify(afterLink));
+
+    // A second press.
+    const before = (await listSessions(page, wire)).length;
+    await press(page);
+    await page.waitForTimeout(2500);
+    const twin = await sessionTabs(page);
+    const after = (await listSessions(page, wire)).length;
+    check('pressing Logs again re-activates the Pod\'s session: still one session tab, one SDK session', twin.length === 1 && after === before, `session tabs ${JSON.stringify(twin.map((tab) => tab.label))}; SDK sessions ${before} then ${after}`, { gap: true });
+
+    // The close.
+    const open = (await listSessions(page, wire)).length;
+    for (let index = twin.length - 1; index >= 0; index -= 1) {
+      await page.locator('[data-shell-part=sessionTab]').nth(index).hover();
+      await page.locator('[data-shell-part=sessionTab] [data-shell-part=sessionClose]').nth(index).click({ force: true });
+      await page.waitForTimeout(300);
+    }
+
+    const closed = await untilTrue('ListSessions 0', async () => (await listSessions(page, wire)).length === 0, { timeout: 10_000 }).catch(() => false);
+    check(`closing the session tab${twin.length > 1 ? 's' : ''} returns the SDK's ListSessions to 0 (it held ${open})`, closed === true, JSON.stringify(await listSessions(page, wire)).slice(0, 200));
+    fact('wire: lines', { frames: wire.lines.frames, batches: wire.lines.batches, lines: wire.lines.count, levels: [...wire.lines.levels], origins: [...wire.lines.origins], sources: [...wire.lines.sources], keys: [...wire.lines.keys], labelKeys: [...wire.lines.labelKeys], sample: wire.lines.sample });
+    check('no page error and no console error (the host\'s known 422 of the activity session apart)', errors.length === 0, errors.join(' | '));
+  } finally {
+    await browser.close();
+  }
+}
+
+// --- scenario: states ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** Opens the logs of one Pod and waits until its session says it ended (or the lines stop growing for a while, for a stream that does not end). */
+/** The session on screen of a list of session tabs: the selected one (a restored session of an earlier run may sit before it). */
+const onScreen = (tabs) => tabs.find((tab) => tab.selected) ?? tabs[0];
+
+// `mark`, when given, is called once the session has settled and just before its rows are scanned (the scan takes a while): it takes what the oracle says at that moment, so the session's freshness can be held to it.
+async function sessionOf(namespace, name, { settle = 'ended', timeout = 60_000, mark } = {}) {
+  // A host that kept the panel's sessions of an earlier page brings them back, ended (S3a): each page starts on a host with none, so the session on screen is the only one.
+  await restartHost();
+  const { browser, page, errors, wire } = await openApp();
+  await openPod(page, namespace, name);
+  const command = await logsCommand(page);
+  if (command === null || command.disabled) return { browser, page, errors, wire, command, rows: [], view: null, tabs: [], added: 0 };
+  const before = (await sessionTabs(page)).length;
+  await press(page);
+  await untilTrue('the session tab', async () => (await sessionTabs(page)).length > before, { timeout: 30_000 });
+  if (settle === 'ended') {
+    await untilTrue('the session ended or failed', async () => /, (ended|failed)/.test(onScreen(await sessionTabs(page))?.label ?? ''), { timeout });
+  } else {
+    await untilTrue('lines', async () => (await viewNow(page)).rows.length > 3, { timeout });
+    await page.waitForTimeout(settle);
+  }
+
+  await page.waitForTimeout(400);
+  const marked = mark === undefined ? undefined : mark();
+  const view = await viewNow(page);
+  const rows = view.rows.length === 0 ? [] : await allRows(page);
+  const tabs = await sessionTabs(page);
+  return { browser, page, errors, wire, command, rows, view, tail: view.rows, marked, tabs, added: tabs.length - before };
+}
+
+async function states() {
+  console.log('== states: finished, crash-looping, empty, two containers, an init container');
+  await restartHost();
+
+  // burst: 500 lines, then the Pod completed.
+  {
+    const s = await sessionOf('logs', 'burst');
+    try {
+      const oracle = kubectlLines('logs', 'burst');
+      check('burst (Completed): the session read the whole log and ended', /, ended/.test(onScreen(s.tabs)?.label ?? '') && s.added === 1 && s.rows.length === 500, `${s.tabs.map((tab) => tab.label)}; ${s.rows.length} rows; strip ${s.view.strip}`);
+      const wrong = compare(s.rows, oracle.lines);
+      check('burst: the 500 rows are the 500 lines of kubectl logs burst --timestamps, same text, same clock', wrong.length === 0 && oracle.lines.length === 500, wrong.slice(0, 3).join(' | '));
+      fact('burst strip', s.view.strip);
+      fact('burst CreateSession answer', s.wire.created.at(-1)?.answer?.active_sources ?? null);
+      fact('burst events', s.wire.events.map((event) => event));
+    } finally {
+      await s.browser.close();
+    }
+  }
+
+  // crashing: the last run's three lines, three levels.
+  {
+    const s = await sessionOf('logs', 'crashing');
+    try {
+      const oracle = kubectlLines('logs', 'crashing');
+      check('crashing (CrashLoopBackOff): the session shows the last run\'s lines and ends', /^crashing · .*, ended/.test(onScreen(s.tabs)?.label ?? '') && s.added === 1 && s.rows.length >= 3, `${s.tabs.map((tab) => tab.label)}; ${s.rows.length} rows; strip ${s.view.strip}`);
+      fact('crashing rows', s.rows.map((row) => `${row.time} [${row.level}] ${row.text}`));
+      const last3 = s.rows.slice(-3);
+      const wrong = compare(last3, oracle.lines);
+      check('crashing: its last three rows are the three lines of kubectl logs crashing --timestamps (the run the Pod is in)', wrong.length === 0 && last3.length === 3, `${wrong.join(' | ')} (the Pod may have restarted between the two reads: ${JSON.stringify(oracle.lines.map((line) => line.ts))})`);
+      check('crashing: the view detected a level for each of INFO, WARN and ERROR (the backend sends level 0 for every line)', JSON.stringify(last3.map((row) => row.level)) === JSON.stringify(['INFO', 'WARN', 'ERROR']), JSON.stringify(last3.map((row) => row.level)));
+      fact('crashing wire levels', [...s.wire.lines.levels]);
+    } finally {
+      await s.browser.close();
+    }
+  }
+
+  // checkout/crashloop: exits 2 and writes nothing.
+  {
+    const s = await sessionOf('checkout', 'crashloop');
+    try {
+      const oracle = kubectlLines('checkout', 'crashloop');
+      check('crashloop (the slice fixture, writes nothing): Logs can be pressed, and the session ends with no line', s.command?.disabled === false && /^crashloop · .*, ended/.test(onScreen(s.tabs)?.label ?? '') && s.rows.length === 0 && oracle.ok && oracle.lines.length === 0, `${JSON.stringify(s.command)}; ${s.tabs.map((tab) => tab.label)}; strip ${s.view?.strip}; ${s.rows.length} rows`);
+      fact('crashloop what the body says', { strip: s.view?.strip, empty: s.view?.empty });
+      fact('crashloop CreateSession answer', s.wire.created.at(-1)?.answer?.active_sources ?? null);
+    } finally {
+      await s.browser.close();
+    }
+  }
+
+  // duo: two containers, one session.
+  {
+    const s = await sessionOf('logs', 'duo', { settle: 6000, mark: () => ({ first: kubectlLines('logs', 'duo', { container: 'first' }), second: kubectlLines('logs', 'duo', { container: 'second' }) }) });
+    try {
+      const first = kubectlLines('logs', 'duo', { container: 'first' });
+      const second = kubectlLines('logs', 'duo', { container: 'second' });
+      const rowsFirst = s.rows.filter((row) => row.text.startsWith('first '));
+      const rowsSecond = s.rows.filter((row) => row.text.startsWith('second '));
+      check('duo: one session follows both containers (rows of both are in it, and of nothing else)', rowsFirst.length > 0 && rowsSecond.length > 0 && rowsFirst.length + rowsSecond.length === s.rows.length, `${rowsFirst.length} first, ${rowsSecond.length} second, ${s.rows.length} rows; sessions ${s.tabs.length}`);
+      const wrongFirst = compare(rowsFirst, first.lines);
+      const wrongSecond = compare(rowsSecond, second.lines);
+      check('duo: the rows of each container equal kubectl logs duo -c <container> --timestamps (text and clock)', wrongFirst.length === 0 && wrongSecond.length === 0, [...wrongFirst, ...wrongSecond].slice(0, 3).join(' | '));
+      const gapsFirst = counterGaps(s.rows, 'first');
+      const gapsSecond = counterGaps(s.rows, 'second');
+      check('duo: each container\'s counter has no gap and no repeat in the merged rows', gapsFirst.problems.length === 0 && gapsSecond.problems.length === 0, JSON.stringify({ gapsFirst, gapsSecond }));
+      // A container that stopped delivering after its first lines would pass everything above: each container must be followed to the present, to within the lines it wrote while the oracle was read.
+      const newest = (rows, prefix) => Number(rows.filter((row) => row.text.startsWith(`${prefix} `)).at(-1)?.text.slice(prefix.length + 1));
+      const latest = (oracle, prefix) => Number(oracle.lines.at(-1)?.text.slice(prefix.length + 1));
+      const lagFirst = latest(s.marked.first, 'first') - newest(s.tail, 'first');
+      const lagSecond = latest(s.marked.second, 'second') - newest(s.tail, 'second');
+      check('duo: each container is followed to the present: its newest row, taken when the session had settled, is within 20 lines of the latest kubectl has for it', lagFirst <= 20 && lagSecond <= 20, `first lags ${String(lagFirst)} lines, second ${String(lagSecond)}`);
+      const inversions = s.rows.slice(1).filter((row, at) => row.time < s.rows[at].time).length;
+      fact('duo: rows whose clock is earlier than the row before (arrival order is not clock order across sources)', inversions);
+      fact('duo: do the rows tell the container? (the cells of a row)', { cells: ['time', 'level', 'text'], sample: s.rows.slice(-4) });
+      fact('duo CreateSession answer', s.wire.created.at(-1)?.answer?.active_sources ?? null);
+      fact('duo sources on the wire', [...s.wire.lines.sources]);
+      fact('duo events', s.wire.events.slice(0, 6));
+      await s.page.locator('[data-shell-part=sessionTab] [role=tab]').first().hover();
+      await s.page.waitForSelector('[data-shell-part=sessionCard]', { timeout: 8000 });
+      fact('duo card', await s.page.evaluate(() => document.querySelector('[data-shell-part=sessionCard]').innerText.replace(/\n/g, ' | ')));
+    } finally {
+      await s.browser.close();
+    }
+  }
+
+  // withinit: an init container that finished, and the main container.
+  {
+    const s = await sessionOf('logs', 'withinit', { settle: 4000 });
+    try {
+      const prepared = s.rows.filter((row) => row.text.startsWith('prepare '));
+      const main = s.rows.filter((row) => row.text.startsWith('main '));
+      const init = kubectlLines('logs', 'withinit', { container: 'prepare' });
+      const mainOracle = kubectlLines('logs', 'withinit', { container: 'main' });
+      check('withinit: the init container\'s three lines are in the session, with the main container\'s', prepared.length === 3 && main.length > 0, `${prepared.length} prepare, ${main.length} main`);
+      check('withinit: both containers\' rows equal kubectl logs withinit -c <container> --timestamps', compare(prepared, init.lines).length === 0 && compare(main, mainOracle.lines).length === 0, [...compare(prepared, init.lines), ...compare(main, mainOracle.lines)].slice(0, 3).join(' | '));
+      fact('withinit CreateSession answer', s.wire.created.at(-1)?.answer?.active_sources ?? null);
+      fact('withinit sources on the wire', [...s.wire.lines.sources]);
+    } finally {
+      await s.browser.close();
+    }
+  }
+}
+
+// --- scenario: disabled ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function disabled() {
+  console.log('== disabled: every Pod of the cluster, against kubectl logs --all-containers');
+  const pods = kubectl('get', 'pods', '-A', '--no-headers', '-o', 'custom-columns=NS:.metadata.namespace,NAME:.metadata.name')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([namespace]) => namespace !== 'kube-system' && namespace !== 'local-path-storage');
+  const { browser, page, errors } = await openApp();
+  const rows = [];
+  try {
+    for (const [namespace, name] of pods) {
+      await openPod(page, namespace, name);
+      const command = await logsCommand(page);
+      const oracle = kubectlTry('-n', namespace, 'logs', name, '--all-containers', '--tail=1');
+      rows.push({ pod: `${namespace}/${name}`, disabled: command?.disabled, reason: command?.reason ?? '', kubectl: oracle.ok ? (oracle.out === '' ? 'ok, no output' : 'ok') : oracle.err.replace(/^Error from server \(BadRequest\): /, '').slice(0, 110) });
+    }
+  } finally {
+    await browser.close();
+  }
+
+  for (const row of rows) console.log(`ROW ${row.pod.padEnd(48)} ${row.disabled ? 'DISABLED' : 'enabled '} | kubectl: ${row.kubectl}${row.reason === '' ? '' : ` | says: ${row.reason}`}`);
+  fact('every Pod', rows);
+  const refused = rows.filter((row) => /waiting to start|is not available/.test(row.kubectl));
+  check('every Pod that kubectl refuses a log for ("waiting to start") has its Logs command disabled, with the sentence', refused.length > 0 && refused.every((row) => row.disabled === true && row.reason === 'No container of this Pod has started, so it has no logs yet.'), JSON.stringify(refused));
+  const printed = rows.filter((row) => row.kubectl === 'ok');
+  check('every Pod that kubectl printed a line for has its Logs command enabled', printed.length > 0 && printed.every((row) => row.disabled === false), JSON.stringify(printed.filter((row) => row.disabled)));
+  const silent = rows.filter((row) => row.kubectl === 'ok, no output' && row.disabled === true);
+  fact('Pods kubectl answers with nothing and no error, and whose command is disabled (the API answers an unscheduled Pod with an empty log)', silent.map((row) => row.pod));
+  check('no page error and no console error', errors.length === 0, errors.join(' | '));
+}
+
+// --- scenario: delete ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const VICTIM = `apiVersion: v1
+kind: Pod
+metadata: {name: victim, namespace: logs}
+spec:
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: victim
+      image: busybox:1.37.0
+      command: [sh, -c, 'i=0; while true; do i=$((i+1)); echo "victim $i"; sleep 0.1; done']
+`;
+
+async function deleteWhileStreaming() {
+  console.log('== delete: kubectl delete pod while the session streams');
+  for (const mode of ['graceful', 'forced']) {
+    execFileSync('kubectl', ['--kubeconfig', KUBECONFIG_PATH, 'apply', '-f', '-'], { input: VICTIM, stdio: ['pipe', 'ignore', 'ignore'] });
+    kubectl('-n', 'logs', 'wait', '--for=condition=Ready', 'pod/victim', '--timeout=90s');
+    await restartHost();
+    const { browser, page, errors } = await openApp();
+    try {
+      await openPod(page, 'logs', 'victim');
+      await press(page);
+      await untilTrue('lines', async () => (await viewNow(page)).rows.length > 3, { timeout: 30_000 });
+      const timeline = [];
+      const read = async () => {
+        const view = await viewNow(page);
+        const tabs = await sessionTabs(page);
+        const pageState = await page.evaluate(() => document.querySelector('[data-shell-part=page]')?.innerText.slice(0, 260).replace(/\n/g, ' | '));
+        return { tab: onScreen(tabs)?.label, strip: view.strip, last: view.rows.at(-1)?.text, pageState };
+      };
+      const before = await read();
+      const t0 = Date.now();
+      const out = kubectl('-n', 'logs', 'delete', 'pod', 'victim', ...(mode === 'forced' ? ['--grace-period=0', '--force'] : ['--wait=false']));
+      let previous = '';
+      let settledAt;
+      while (Date.now() - t0 < 90_000) {
+        await sleep(700);
+        const now = await read();
+        const text = JSON.stringify({ tab: now.tab, strip: now.strip?.replace(/[\d,]+ lines · [\d.]+ lines\/s/, '<n> lines · <r> lines/s'), page: now.pageState?.slice(0, 120) });
+        if (text !== previous) {
+          timeline.push({ after: Number(((Date.now() - t0) / 1000).toFixed(1)), ...now });
+          previous = text;
+        }
+        if (settledAt === undefined && /, (ended|failed)/.test(now.tab ?? '')) settledAt = Date.now();
+        if (settledAt !== undefined && Date.now() - settledAt > 6000) break;
+      }
+
+      const settled = timeline.at(-1);
+      fact(`delete ${mode}: kubectl said`, out.trim().replace(/\n/g, ' / '));
+      fact(`delete ${mode}: before`, before);
+      fact(`delete ${mode}: the timeline of what the user reads`, timeline);
+      check(`delete (${mode}): the session leaves "Following" and says it ended or failed`, /, (ended|failed)/.test(settled?.tab ?? ''), `${settled?.tab}; ${settled?.strip}`);
+      await page.locator('[data-shell-part=sessionTab]', { hasText: 'victim' }).locator('[role=tab]').first().hover();
+      await page.waitForSelector('[data-shell-part=sessionCard]', { timeout: 8000 });
+      const card = await page.evaluate(() => document.querySelector('[data-shell-part=sessionCard]').innerText.replace(/\n/g, ' | '));
+      fact(`delete (${mode}): the card`, card);
+      fact(`delete (${mode}): the body's last words`, (await viewNow(page)).strip);
+      check(`delete (${mode}): no page error and no console error`, errors.length === 0, errors.join(' | '));
+    } finally {
+      await browser.close();
+    }
+  }
+}
+
+// --- scenario: shots -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+async function shots() {
+  console.log('== shots: theme void, 1440x900 and 1280x800');
+  for (const [width, height] of [
+    [1440, 900],
+    [1280, 800],
+  ]) {
+    const size = `${width}x${height}`;
+    await restartHost();
+    {
+      const { browser, page } = await openApp({ width, height });
+      try {
+        await openPod(page, 'logs', 'counter');
+        await press(page);
+        await untilTrue('1,050 lines', async () => /^(1,\d{3}|[2-9],\d{3}) lines/.test((await viewNow(page)).strip ?? ''), { timeout: 40_000 });
+        await page.mouse.move(5, 5);
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: path.join(OUT, `P1b-3b-streaming-${ENGINE}-void-${size}.png`) });
+        await page.locator('[data-shell-part=sessionTab] [role=tab]').first().hover();
+        await page.waitForSelector('[data-shell-part=sessionCard]', { timeout: 8000 });
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: path.join(OUT, `P1b-3b-card-${ENGINE}-void-${size}.png`) });
+        console.log(`shot ${size}: streaming, card`);
+      } finally {
+        await browser.close();
+      }
+    }
+
+    execFileSync('kubectl', ['--kubeconfig', KUBECONFIG_PATH, 'apply', '-f', '-'], { input: VICTIM, stdio: ['pipe', 'ignore', 'ignore'] });
+    kubectl('-n', 'logs', 'wait', '--for=condition=Ready', 'pod/victim', '--timeout=90s');
+    await restartHost();
+    {
+      const { browser, page } = await openApp({ width, height });
+      try {
+        await openPod(page, 'logs', 'victim');
+        await press(page);
+        await untilTrue('lines', async () => (await viewNow(page)).rows.length > 3, { timeout: 30_000 });
+        kubectl('-n', 'logs', 'delete', 'pod', 'victim', '--wait=false');
+        await untilTrue('the session ended', async () => /, (ended|failed)/.test(onScreen(await sessionTabs(page))?.label ?? ''), { timeout: 60_000 });
+        await page.waitForTimeout(1500);
+        await page.mouse.move(5, 5);
+        await page.screenshot({ path: path.join(OUT, `P1b-3b-deleted-${ENGINE}-void-${size}.png`) });
+        console.log(`shot ${size}: after the Pod was deleted`);
+      } finally {
+        await browser.close();
+      }
+    }
+
+    {
+      const { browser, page } = await openApp({ width, height });
+      try {
+        await openPod(page, 'checkout', 'bad-image');
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: path.join(OUT, `P1b-3b-disabled-${ENGINE}-void-${size}.png`) });
+        console.log(`shot ${size}: the Logs command that cannot be pressed (a Pod that never started)`);
+      } finally {
+        await browser.close();
+      }
+    }
+  }
+}
+
+// --- main ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const SCENARIOS = { equal, states, disabled, delete: deleteWhileStreaming, shots };
+const wanted = process.argv.slice(2).length === 0 ? Object.keys(SCENARIOS) : process.argv.slice(2);
+for (const name of wanted) {
+  if (SCENARIOS[name] === undefined) {
+    console.error(`no scenario ${name}: ${Object.keys(SCENARIOS).join(', ')}`);
+    process.exit(2);
+  }
+}
+
+for (const name of wanted) {
+  try {
+    await SCENARIOS[name]();
+  } catch (error) {
+    failed += 1;
+    report.checks.push({ name: `scenario ${name} ran to its end`, result: 'FAIL', detail: String(error.stack ?? error).split('\n').slice(0, 4).join(' / ').slice(0, 700) });
+    console.log(`FAIL: scenario ${name} threw -- ${error.stack?.split('\n').slice(0, 4).join(' / ') ?? error}`);
+  }
+}
+
+report.finishedAt = new Date().toISOString();
+report.result = { passed, failed, gaps };
+writeFileSync(path.join(OUT, `p1b3b-proof-report-${ENGINE}.json`), `${JSON.stringify(report, null, 2)}\n`);
+console.log(`${failed === 0 ? 'PASS' : 'FAIL'}: ${passed} of ${passed + failed} checks${gaps === 0 ? '' : `; ${gaps} known gap(s) of the host`} (${ENGINE})`);
+process.exit(failed === 0 ? 0 : 1);

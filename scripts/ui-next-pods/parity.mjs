@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
+import { compareLogs, expectedLogs, LOGS_JOB } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
 const run = promisify(execFile);
@@ -89,10 +90,10 @@ async function forgetSession(baseURL) {
 }
 
 // The window as the native app opens it for a first run: `/`, no `?screen=`, no hash, no connection, nothing saved. It is the EMPTY window (decision A17, S3a: no page opens by itself): the plugins that can
-// be opened are listed, a plugin that did not load among them, and the rail beside them has an entry for each.
-export async function openWindow(browser, baseURL) {
+// be opened are listed, a plugin that did not load among them, and the rail beside them has an entry for each. `options` are the page's own (a check that compares clocks gives it a time zone).
+export async function openWindow(browser, baseURL, options = {}) {
   await forgetSession(baseURL);
-  const page = await browser.newPage({ viewport: WINDOW });
+  const page = await browser.newPage({ viewport: WINDOW, ...options });
   await page.goto(new URL('/', baseURL).href);
   return page;
 }
@@ -100,8 +101,8 @@ export async function openWindow(browser, baseURL) {
 // The plugin's page, opened the way a person opens it from that window: the plugin's row in the list of plugins that can be opened. It is the same in every mode of the check: a plugin installed without its
 // bundle is in the list too ("Did not load") and its row opens the page that names the failure, and a host without the plugin has no row, so the window stays at its own list of plugins (the page the
 // check reads and finds wanting). What the page shows is the plugin's page, named by the plugin's contribution.
-export async function openPods(browser, baseURL) {
-  const page = await openWindow(browser, baseURL);
+export async function openPods(browser, baseURL, options = {}) {
+  const page = await openWindow(browser, baseURL, options);
   const row = page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ });
   try {
     await row.click({ timeout: 20_000 });
@@ -199,4 +200,129 @@ async function readDetail(page) {
       kv: [...(details?.querySelectorAll('[data-ov-part=row]') ?? [])].map((row) => [norm(row.querySelector('[data-ov-part=label]')?.textContent), norm(row.querySelector('[data-ov-part=value]')?.textContent)]),
     };
   });
+}
+
+// The SDK's log sessions, asked of the host as the page asks (`ServiceWrapper.ListSessions` of the log service): every session its log manager holds, ended ones included, until something closes them. The old UI
+// never closed one; the host closes the session of a Logs tab when the tab closes, so this is what shows that the open and the close reached the backend.
+const LOGS_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper';
+
+export async function listLogSessions(baseURL) {
+  const response = await fetch(new URL('/wails/runtime', baseURL), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'pods-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `pods-logs-${String(Date.now())}`, methodName: `${LOGS_SERVICE}.ListSessions`, args: [] } }),
+  });
+  if (!response.ok) {
+    throw new Error(`the SDK's log sessions could not be listed: ${String(response.status)} ${await response.text()}`);
+  }
+
+  const sessions = await response.json();
+  if (sessions !== null && !Array.isArray(sessions)) {
+    throw new Error(`the SDK's log sessions were not a list: ${JSON.stringify(sessions).slice(0, 200)}`);
+  }
+
+  return sessions ?? [];
+}
+
+// The Logs tool on screen: the accessible names of its session tabs, and the rows of the session shown, as printed (the clock cell and the line cell; a marker where lines were dropped has no line cell).
+async function readLogs(page) {
+  return page.evaluate(() => {
+    const view = document.querySelector('[data-log-session]');
+    return {
+      tabs: [...document.querySelectorAll('[role=tablist][aria-label="Logs sessions"] [role=tab]')].map((tab) => tab.getAttribute('aria-label') ?? ''),
+      rows: [...(view?.querySelectorAll('[role=grid] [role=row][data-n]') ?? [])].map((row) => {
+        const cells = row.querySelectorAll('[role=gridcell]');
+        return { time: cells[0]?.textContent ?? '', text: cells[2]?.textContent ?? '' };
+      }),
+    };
+  });
+}
+
+// Closes the first Logs session tab, as a person does: its close control, shown on hover. A page with no session tab has nothing to close. The host closes the session's stream when the tab closes, over a call that
+// needs a moment to leave the page before the page itself may be closed.
+async function closeLogsTab(page) {
+  const tab = page.locator('[data-shell-part=sessionTab]').first();
+  if ((await tab.count()) === 0) {
+    return;
+  }
+
+  await tab.hover();
+  await page.locator('[data-shell-part=sessionTab] [data-shell-part=sessionClose]').first().click({ force: true, timeout: 5_000 });
+  await page.waitForTimeout(300);
+}
+
+// The Logs of a Pod, opened the way a person opens them: the Pod's page (the click on its name in the Pods list), then the header's Logs command. A Pod of the Job `nightly-report` is Completed and wrote its lines
+// already, so the session in the host's Logs tool reads the whole log and ends: its rows must be the lines `kubectl logs --timestamps` prints (the page is given the UTC time zone, so the clocks compare as text),
+// and the SDK holds one more session while the tab is open and the same number as before once the tab is closed. This is the first real log stream of the new stack (docs/ui-next/status/P1b-3b.md).
+// Throws ParityError('FIXTURE_MISSING') when the Job has no Pod, ParityError('LOGS_MISMATCH') when the session does not agree before the deadline or the SDK does not follow the tab.
+export async function checkLogs({ browser, baseURL, kubeconfig, timeoutMs = 30_000 }) {
+  const names = (await kubectl(kubeconfig, ['get', 'pods', '-n', LOGS_JOB.namespace, '-l', `job-name=${LOGS_JOB.name}`, '-o', 'name']))
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => line.replace(/^pod\//, ''))
+    .sort();
+  if (names.length === 0) {
+    throw new ParityError('FIXTURE_MISSING', `the cluster lacks the Pods of the Job ${LOGS_JOB.namespace}/${LOGS_JOB.name}`, { names });
+  }
+
+  const pod = { namespace: LOGS_JOB.namespace, name: names[0] };
+  const expected = expectedLogs(await kubectl(kubeconfig, ['logs', '-n', pod.namespace, pod.name, '--timestamps']));
+  const before = (await listLogSessions(baseURL)).length;
+  const page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
+  try {
+    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    await link.waitFor({ timeout: timeoutMs });
+    await link.click();
+    // Playwright waits for the command to be enabled: the page enables it once the record of the Pod shows a container that ran.
+    await page.getByRole('button', { name: 'Logs', exact: true }).first().click({ timeout: timeoutMs });
+    const deadline = Date.now() + timeoutMs;
+    // What a reading says is wrong with the session: it is the only one, its rows are kubectl's lines, and it has ENDED (the log of a Completed Pod is read to its end).
+    const problemsOf = (reading) => {
+      if (reading.tabs.length !== 1) {
+        return [`the Logs tool holds ${String(reading.tabs.length)} sessions, not the one just opened`];
+      }
+
+      const found = compareLogs(reading.rows, expected);
+      return found.length === 0 && !reading.tabs[0].endsWith(', ended') ? ['the session has not ended'] : found;
+    };
+    let read;
+    let problems;
+    do {
+      await page.waitForTimeout(100);
+      read = await readLogs(page);
+      problems = problemsOf(read);
+    } while (problems.length > 0 && Date.now() < deadline);
+    if (problems.length === 0) {
+      // The reading agrees and the session has ended; a line still on its way (the host sends the end ahead of the last batch) would show after a quiet moment, so the reading is taken once more.
+      await page.waitForTimeout(500);
+      read = await readLogs(page);
+      problems = problemsOf(read);
+    }
+
+    if (problems.length > 0) {
+      throw new ParityError('LOGS_MISMATCH', `${pod.namespace}/${pod.name}: ${problems.join('; ')}`, { problems, read, expected });
+    }
+
+    const open = (await listLogSessions(baseURL)).length;
+    await closeLogsTab(page);
+    let closed = (await listLogSessions(baseURL)).length;
+    for (let attempt = 0; closed !== before && attempt < 100; attempt += 1) {
+      await page.waitForTimeout(100);
+      closed = (await listLogSessions(baseURL)).length;
+    }
+
+    if (open !== before + 1 || closed !== before) {
+      throw new ParityError(
+        'LOGS_MISMATCH',
+        `${pod.namespace}/${pod.name}: the SDK held ${String(before)} log sessions, ${String(open)} with the tab open (one more is expected) and ${String(closed)} after it was closed (the same as before is expected)`,
+        { before, open, closed },
+      );
+    }
+
+    return { read, expected, pod, sessions: { before, open, closed } };
+  } finally {
+    // A check that failed leaves no session running in the host: the tab is closed whatever happened (a page that closes by itself leaves the SDK's session open).
+    await closeLogsTab(page).catch(() => undefined);
+    await page.close();
+  }
 }

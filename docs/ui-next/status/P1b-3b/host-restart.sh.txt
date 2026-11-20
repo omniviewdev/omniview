@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Restarts the proof host on a clean state root (host.sh start removes the old one), as the proof driver HOST_RESTART:
+#
+#   OMNIVIEW_HOST_ROOT=<host checkout> KUBECONFIG_PATH=<kubeconfig> PLUGIN_DIR=<the plugin as its archive lays it out> [OMNIVIEW_E2E_WORK=<dir>] [HOST_NAME=main] [HOST_PORT=34311] bash host-restart.sh
+#
+# Nothing here is a path of the author machine: the host checkout, the kubeconfig and the plugin directory are read from the environment.
+set -euo pipefail
+: "${OMNIVIEW_HOST_ROOT:?OMNIVIEW_HOST_ROOT is required: a host checkout with bin/Omniview-server built}"
+: "${KUBECONFIG_PATH:?KUBECONFIG_PATH is required: the kubeconfig of the proof cluster}"
+: "${PLUGIN_DIR:?PLUGIN_DIR is required: the plugin as its archive lays it out}"
+export OMNIVIEW_E2E_WORK="${OMNIVIEW_E2E_WORK:-${TMPDIR:-/tmp}/p1b3b-host}"
+name="${HOST_NAME:-main}"
+port="${HOST_PORT:-34311}"
+"$OMNIVIEW_HOST_ROOT/scripts/ui-next-pods/host.sh" stop "$name" || true
+"$OMNIVIEW_HOST_ROOT/scripts/ui-next-pods/host.sh" start "$name" "$port" "$KUBECONFIG_PATH" "$PLUGIN_DIR"
