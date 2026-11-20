@@ -2,12 +2,15 @@ package resource
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -174,6 +177,7 @@ func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *te
 				defer ctrl.pluginsMu.RUnlock()
 				return ctrl.plugins[pluginID]
 			}
+			var startedPlugins atomic.Int32
 
 			probes := []lockProbe{
 				// A different connection of the same plugin.
@@ -209,6 +213,16 @@ func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *te
 				{name: "connection watch refresh(p2)", proceed: true, run: func() error {
 					_, err := ctrl.refreshWatchedConnections(testInvocationContext(), "p2", p2, generation("p2"))
 					return err
+				}},
+				// Plugin load runs LoadConnections, so it waits like any discovery.
+				{name: "OnPluginStart(other plugin) [plugin load runs LoadConnections]", proceed: true, run: func() error {
+					id := fmt.Sprintf("p3-%d", startedPlugins.Add(1))
+					backend := plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{Providers: map[string]interface{}{"resource": lockScopeProvider(id + "-native")}})
+					if err := ctrl.OnPluginStart(id, defaultMeta(), backend); err != nil {
+						return err
+					}
+					t.Cleanup(func() { _ = ctrl.OnPluginStop(id, defaultMeta()) })
+					return nil
 				}},
 				// Controls: read paths that never take profilesMu.
 				{name: "ListConnections(p1) [control]", proceed: true, run: func() error {
