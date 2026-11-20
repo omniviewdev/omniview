@@ -1,4 +1,5 @@
 // The kit's stylesheet first: it declares the cascade layer order that every later stylesheet sits in.
+// N24 D1 throwaway proof: a comment-only change to the new UI, never merged.
 import '@omniviewdev/kit/styles.css';
 import './global.css';
 import { ThemeProvider, TooltipHost } from '@omniviewdev/kit';
