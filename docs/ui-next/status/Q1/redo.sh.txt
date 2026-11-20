@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# Q1: the whole proof on a fresh cluster (docs/ui-next/status/Q1.md, "Dev tools"). Copy this file and q1-proof.mjs.txt into one directory WITHOUT the `.txt`, then:
+#
+#   HOST=<host checkout> PLUGIN=<plugin checkout> [BASE=<plugin checkout at the commit before the change>] bash redo.sh
+#
+#   HOST     a checkout of omniviewdev/omniview, `pnpm install` done and built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used (WebKit and Chromium
+#            installed), its docs/ui-next/slices/1a-pods-list/fixture.yaml is the cluster's fixture, and its scripts/ui-next-pods/ is the host's own cluster check, run first
+#   PLUGIN   a checkout of omniviewdev/omniview-plugin-kubernetes at the commit under test (Q1 or later on feature/ui-next): hack/package.sh builds it, and
+#            hack/kinds-capture/extra-states.yaml, more-kinds.yaml and more-kinds.sh make the states
+#   BASE     optional: a checkout of the plugin at the commit before the change. Its Go binary, in the bundle of PLUGIN, is the control: the same comparison must fail on it
+#   WORK     optional: a scratch directory (default: a new one under $TMPDIR); holds the kubeconfigs, the audit policy and the control's bundle
+#   OUT      optional: where the log and the report JSON go (default: $WORK/out)
+#   PORT     optional: the port of the host of the cluster check (default 34283)
+#            HOST, PLUGIN, BASE, WORK and OUT may be relative paths: they are made absolute first, before anything changes directory
+#
+# Needs docker, kind, kubectl, go, pnpm and node; about eight minutes. The cluster is a kind cluster whose API server writes an audit log (every list, watch and get, with its request URI and user agent): it is the
+# record of what the plugin asked. It reads and writes no kubeconfig but the ones it makes in $WORK. The cluster is deleted at the end, whatever happens, and only a cluster THIS RUN made: its name is made of the time, the
+# process and a random number, it is looked for among the Docker daemon's clusters before it is made (one that is there is never touched), and from the moment it is made, a partly made one included, it is this run's.
+# Exit status: 0 when the host's check and every check of the proof pass.
+set -euo pipefail
+
+: "${HOST:?HOST is required: a host checkout with bin/Omniview-server built}"
+: "${PLUGIN:?PLUGIN is required: a plugin checkout}"
+HOST="$(cd "$HOST" 2>/dev/null && pwd)" || { echo "HOST is not a directory" >&2; exit 1; }
+PLUGIN="$(cd "$PLUGIN" 2>/dev/null && pwd)" || { echo "PLUGIN is not a directory" >&2; exit 1; }
+if [ -n "${BASE:-}" ]; then BASE="$(cd "$BASE" 2>/dev/null && pwd)" || { echo "BASE is not a directory" >&2; exit 1; }; fi
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/q1-proof.XXXXXX")}"
+OUT="${OUT:-$WORK/out}"
+mkdir -p "$WORK" "$OUT"
+WORK="$(cd "$WORK" && pwd)"
+OUT="$(cd "$OUT" && pwd)"
+PORT="${PORT:-34283}"
+# kind deletes a cluster by its name, so the name must be one no cluster of this Docker daemon has: time, process and a random number, and the run checks it before it makes the cluster.
+NAME="q1-$(date +%s)-$$-${RANDOM}"
+KUBECONFIG_PATH="$WORK/kubeconfig"
+LIMITED="$WORK/limited.kubeconfig"
+test -x "$HOST/bin/Omniview-server" || { echo "missing $HOST/bin/Omniview-server: run OMNIVIEW_UI=next task build:server in $HOST" >&2; exit 1; }
+test -f "$HERE/q1-proof.mjs" || { echo "missing $HERE/q1-proof.mjs: copy q1-proof.mjs.txt next to this file, without the .txt" >&2; exit 1; }
+
+case "$(uname -s)_$(uname -m)" in
+  Darwin_arm64) PLATFORM=darwin_arm64 ;;
+  Darwin_x86_64) PLATFORM=darwin_amd64 ;;
+  Linux_x86_64) PLATFORM=linux_amd64 ;;
+  Linux_aarch64 | Linux_arm64) PLATFORM=linux_arm64 ;;
+  *) echo "no plugin platform for $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+
+OWNED=0   # 1 from the moment this run makes the cluster; only then is it deleted
+cleanup() {
+  OMNIVIEW_E2E_WORK="$WORK/host" "$HOST/scripts/ui-next-pods/host.sh" stop "$NAME-check" >/dev/null 2>&1 || true
+  if [ "$OWNED" = 1 ]; then
+    (unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" 2>&1 | tail -n 1) || true
+  fi
+  rm -f "$LIMITED"
+}
+trap cleanup EXIT
+
+echo "== cluster $NAME: kind, node v1.35.0 (the image the host's CI pins), with the API server's audit log"
+cat >"$WORK/audit-policy.yaml" <<'EOF'
+# The API server's own record of every read the plugin makes: metadata level, so who (user agent), what (verb, requestURI with its query) and when; no bodies.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: ["RequestReceived", "ResponseStarted"]
+rules:
+  - level: Metadata
+    verbs: ["list", "watch", "get"]
+  - level: None
+EOF
+cat >"$WORK/kind-config.yaml" <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661
+    extraMounts:
+      - hostPath: $WORK/audit-policy.yaml
+        containerPath: /etc/kubernetes/policies/audit-policy.yaml
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
+            audit-log-path: /var/log/kubernetes/audit/audit.log
+            audit-log-maxsize: "1000"
+          extraVolumes:
+            - name: audit-policy
+              hostPath: /etc/kubernetes/policies
+              mountPath: /etc/kubernetes/policies
+              readOnly: true
+              pathType: DirectoryOrCreate
+            - name: audit-log
+              hostPath: /var/log/kubernetes/audit
+              mountPath: /var/log/kubernetes/audit
+              readOnly: false
+              pathType: DirectoryOrCreate
+EOF
+if kind get clusters 2>/dev/null | grep -qx "$NAME"; then
+  echo "a kind cluster named $NAME exists already and this run did not make it: it is left alone" >&2
+  exit 1
+fi
+OWNED=1
+(unset KUBECONFIG; kind create cluster --name "$NAME" --config "$WORK/kind-config.yaml" --kubeconfig "$KUBECONFIG_PATH" --wait 240s >"$WORK/kind-create.log" 2>&1) || {
+  echo "kind could not make the cluster $NAME; the end of its output (all of it is in $WORK/kind-create.log):" >&2
+  tail -n 20 "$WORK/kind-create.log" >&2
+  exit 1
+}
+tail -n 1 "$WORK/kind-create.log"
+export KUBECONFIG="$KUBECONFIG_PATH"
+
+echo "== the fixture: the host's slice fixture, extra-states.yaml and more-kinds (as K2b-1), 300 ConfigMaps and 120 Secrets in one namespace, and a CRD with custom resources"
+kind load docker-image busybox:1.37.0 --name "$NAME" >/dev/null 2>&1 || true
+kubectl apply -f "$HOST/docs/ui-next/slices/1a-pods-list/fixture.yaml" >/dev/null
+kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s | tail -n 1
+kubectl -n checkout rollout status sts/cart-cache --timeout=240s | tail -n 1
+kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s | tail -n 1
+kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s | tail -n 1
+kubectl apply -f "$PLUGIN/hack/kinds-capture/extra-states.yaml" >/dev/null
+kubectl -n states rollout status deploy/stuck-rollout deploy/paused --timeout=300s | tail -n 1
+kubectl -n states patch deploy/stuck-rollout --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"registry.invalid/stuck:2"}]'
+kubectl -n states rollout pause deploy/paused
+"$PLUGIN/hack/kinds-capture/more-kinds.sh"
+kubectl create namespace bulk >/dev/null
+{
+  for i in $(seq 1 300); do printf 'apiVersion: v1\nkind: ConfigMap\nmetadata: {name: bulk-%04d, namespace: bulk}\ndata: {k: "v%d"}\n---\n' "$i" "$i"; done
+  for i in $(seq 1 120); do printf 'apiVersion: v1\nkind: Secret\nmetadata: {name: bulk-%04d, namespace: bulk}\nstringData: {password: "q1-sentinel-%04d-not-a-secret"}\n---\n' "$i" "$i"; done
+} | kubectl apply -f - >/dev/null
+cat <<'YAML' | kubectl apply -f - >/dev/null
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: widgets.q1.example.com}
+spec:
+  group: q1.example.com
+  scope: Namespaced
+  names: {plural: widgets, singular: widget, kind: Widget, listKind: WidgetList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+YAML
+kubectl wait --for=condition=established crd/widgets.q1.example.com --timeout=60s >/dev/null
+for ns in checkout monitoring; do
+  for i in 1 2 3 4; do printf 'apiVersion: q1.example.com/v1\nkind: Widget\nmetadata: {name: widget-%d, namespace: %s}\nspec: {size: %d}\n---\n' "$i" "$ns" "$i"; done
+done | kubectl apply -f - >/dev/null
+sleep 60   # let the states settle: the images that cannot be pulled, the Job with a deadline, the Pods that cannot be placed
+echo "objects: $(kubectl get pods,deploy,sts,ds,rs,job,cronjob,cm,secret,svc,ingress -A --no-headers | wc -l | tr -d ' ') namespaced ones of the thirteen kinds, $(kubectl get ns,nodes --no-headers | wc -l | tr -d ' ') Namespaces and Nodes, $(kubectl get widgets.q1.example.com -A --no-headers | wc -l | tr -d ' ') Widgets"
+
+echo "== a user who may list Pods and Namespaces and nothing else (F)"
+kubectl create serviceaccount q1-limited -n default >/dev/null
+kubectl create clusterrole q1-limited --verb=get,list --resource=pods,namespaces >/dev/null
+kubectl create clusterrolebinding q1-limited --clusterrole=q1-limited --serviceaccount=default:q1-limited >/dev/null
+TOKEN="$(kubectl create token q1-limited -n default --duration=3h)"
+kubectl config view --raw --minify >"$LIMITED"
+KUBECONFIG="$LIMITED" kubectl config set-credentials q1-limited --token="$TOKEN" >/dev/null
+KUBECONFIG="$LIMITED" kubectl config set-context "kind-$NAME" --user=q1-limited >/dev/null
+KUBECONFIG="$LIMITED" kubectl config unset "users.kind-$NAME" >/dev/null
+chmod 600 "$LIMITED"
+
+echo "== the plugin, packaged from $PLUGIN ($PLATFORM)"
+version="$(sed -n 's/^version: //p' "$PLUGIN/plugin.yaml" | head -n 1)"
+(cd "$PLUGIN" && GOTOOLCHAIN="${GOTOOLCHAIN:-local}" hack/package.sh "$version" "$PLATFORM" >"$WORK/package.log" 2>&1) || { tail -n 30 "$WORK/package.log" >&2; exit 1; }
+rm -rf "$WORK/plugin"
+mkdir -p "$WORK/plugin"
+tar -xzf "$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" -C "$WORK/plugin"
+echo "plugin commit $(git -C "$PLUGIN" rev-parse HEAD), plugin binary $(wc -c <"$WORK/plugin/bin/plugin" | tr -d ' ') bytes, assets/entry.js sha256 $(node -e 'console.log(require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"))' "$WORK/plugin/assets/entry.js")"
+
+ARCHIVE_BASE=""
+if [ -n "${BASE:-}" ]; then
+  echo "== the control: the Go binary of $BASE ($(git -C "$BASE" rev-parse --short HEAD)) in the same bundle"
+  rm -rf "$WORK/base"
+  mkdir -p "$WORK/base"
+  tar -xzf "$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" -C "$WORK/base"
+  os="${PLATFORM%%_*}"; arch="${PLATFORM#*_}"
+  (cd "$BASE" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 GOWORK=off GOTOOLCHAIN="${GOTOOLCHAIN:-local}" go build -trimpath \
+    -ldflags="-s -w -X github.com/omniview/kubernetes/pkg/pluginid.ID=kubernetes -X github.com/omniview/kubernetes/pkg/pluginid.Version=$version" -o "$WORK/base/bin/plugin" ./pkg)
+  (cd "$WORK/base" && COPYFILE_DISABLE=1 tar -czf "$WORK/kubernetes-$PLATFORM-base.tar.gz" plugin.yaml bin assets)
+  ARCHIVE_BASE="$WORK/kubernetes-$PLATFORM-base.tar.gz"
+fi
+
+status=0
+echo "== the host's own cluster check, unmodified (Pods parity with kubectl, a Pod created and deleted, the Pod page)"
+export OMNIVIEW_E2E_WORK="$WORK/host"
+"$HOST/scripts/ui-next-pods/host.sh" start "$NAME-check" "$PORT" "$KUBECONFIG_PATH" "$WORK/plugin"
+(cd "$HOST" && OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$PORT" OMNIVIEW_CHECK_KUBECONFIG="$KUBECONFIG_PATH" node --test scripts/ui-next-pods/pods-cluster.check.mjs) >"$OUT/host-pods-check.log" 2>&1 || status=1
+grep -E '^ℹ (tests|pass|fail)' "$OUT/host-pods-check.log" || true
+"$HOST/scripts/ui-next-pods/host.sh" stop "$NAME-check"
+
+echo "== the proof: the counts against kubectl, the cost in the API server's audit log, an open list, the control and a user who may list two kinds, in WebKit and Chromium"
+(cd "$OUT" && OMNIVIEW_HOST_ROOT="$HOST" PLUGIN_ARCHIVE="$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" ARCHIVE_BASE="$ARCHIVE_BASE" LIMITED_KUBECONFIG="$LIMITED" KUBECONFIG_PATH="$KUBECONFIG_PATH" CLUSTER="$NAME" OUT="$OUT" node "$HERE/q1-proof.mjs") >"$OUT/q1-proof-run.log" 2>&1 || status=1
+tail -n 1 "$OUT/q1-proof-run.log"
+grep -E '^FAIL' "$OUT/q1-proof-run.log" | cut -c1-300 || true
+echo "log and report: $OUT"
+exit "$status"

@@ -1,0 +1,641 @@
+#!/usr/bin/env node
+// Q1 proof (docs/ui-next/status/Q1.md): the count the host receives from the Kubernetes plugin, in the real host on a real kind cluster, equals kubectl, costs one `limit=1` List per kind that nobody has open,
+// is not asked again within its cache window, and for a kind whose list is open is the live source's.
+// `redo.sh` (beside this file in docs/ui-next/status/Q1/) runs it on a fresh cluster; this file is `q1-proof.mjs` without the `.txt`.
+//
+//   OMNIVIEW_HOST_ROOT=<host checkout> PLUGIN_ARCHIVE=<kubernetes-<os>_<arch>.tar.gz> KUBECONFIG_PATH=<kubeconfig> CLUSTER=<kind cluster name> OUT=<directory> node q1-proof.mjs
+//
+//   OMNIVIEW_HOST_ROOT  a host checkout of origin/main built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used, with WebKit and Chromium installed in it
+//   PLUGIN_ARCHIVE      the archive `hack/package.sh` wrote from the plugin checkout under test
+//   KUBECONFIG_PATH     the kind cluster of redo.sh (the only kubeconfig this script and the host ever read); kubectl is the oracle, and the cluster's own audit log is the record of what the plugin asked
+//   CLUSTER             the kind cluster's name: its node container is `<CLUSTER>-control-plane`, where the API server writes /var/log/kubernetes/audit/audit.log
+//   OUT                 where the report and the raw captures go
+//   ARCHIVE_BASE        optional: the archive of the plugin before the change. It is the control: the same check, on the plugin that sends `unknown`, must fail
+//   LIMITED_KUBECONFIG  optional: a kubeconfig of a user who may list Pods and Namespaces and nothing else (redo.sh makes it); a kind that user may not list answers FORBIDDEN, and no other kind's count suffers
+//   ENGINES             default `webkit,chromium`; each engine gets a fresh host, so its first round of counts is cold
+//
+// The host it starts runs on a throwaway HOME that holds a copy of the kubeconfig. The proof removes that HOME when the host has stopped, whatever happened, and a check says it is gone. A process is stopped by its
+// own pid (the host's, and the plugin's, which is the host's child); no process is ever found by a pattern.
+//
+// Every count is asked as `useResources` asks for an explicit page: the call the runtime makes for the bound `ServiceWrapper.Enumerate` (`Call.ByName`, here `POST /wails/runtime` with the page's own client id) with
+// `{ targetId, request: { target, pageSize: 1 } }`, the target resolved by `ResolveTarget`. A check says the call has the shape of the call the plugin's own Pods list makes.
+//
+//   A  for each of the 13 kinds of the plugin's sidebar and one custom resource: the count the host receives equals `kubectl get <kind> -A --no-headers | wc -l`, and for namespaced kinds equals the count of
+//      one namespace (the largest, one with a single object, one with none), and of two namespaces together; its kind is exact for 0 or 1 and an estimate above, never exact for a number it cannot know
+//   B  the cost, from the API server's audit log: one `limit=1` List per kind in the cold round (and not one that carries a selector, a continue or a resourceVersion), none repeated in a second round within the
+//      window, the same again once the window has passed; the time of 13 counts cold; the overlap of the Lists the server saw. An answer is kept 30 s: every round that claims a cache hit says by the proof's own clock that it ran
+//      inside the window, and the Lists of A are accounted for by whether each kept answer could still be held when it was asked (a slow machine does not fail a correct plugin, and a List for an answer that was held is a failure)
+//   C  an open list: with the Pods list open in the real page, the count is the plugin source's (exact), follows a Pod made and one deleted, and does so with no List
+//   D  the Pods list's own first page (256) carries a count; Secrets: no value of the 120 Secrets of the bulk namespace is in any count read's response
+//   E  controls, each a function the checks use, fed planted data: the comparison of the counts on a wrong count, an unknown and no count; the audit analysis on a kind asked twice or missed, a selector, a continue, a
+//      resourceVersion and a limit that is not 1; the FORBIDDEN test on the same words in another error; the cache accounting on a read that should and should not have made a List; the plugin before the change (ARCHIVE_BASE),
+//      which must ANSWER all 13 reads with unknown (an error is no unknown) and fail the comparison for each
+//   F  (LIMITED_KUBECONFIG) a user who may list Pods and Namespaces only: those two are counted, the other kinds answer the host's FORBIDDEN error (type, status 403 and code, by their fields), never a count or a zero, each error the one kind's
+import { spawn, spawnSync } from 'node:child_process';
+import { access, cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const archive = path.resolve(env('PLUGIN_ARCHIVE'));
+const kubeconfig = path.resolve(env('KUBECONFIG_PATH'));
+const cluster = env('CLUSTER');
+const out = path.resolve(env('OUT'));
+const archiveBase = process.env.ARCHIVE_BASE ? path.resolve(process.env.ARCHIVE_BASE) : undefined;
+const limitedKubeconfig = process.env.LIMITED_KUBECONFIG ? path.resolve(process.env.LIMITED_KUBECONFIG) : undefined;
+const engines = env('ENGINES', 'webkit,chromium').split(',');
+const node = `${cluster}-control-plane`;
+const context = `kind-${cluster}`;
+const pluginID = 'kubernetes';
+const STALENESS_MS = 30_000;
+
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const results = [];
+function check(scope, name, ok, measured) {
+  const value = measured === undefined ? '' : ` -- ${typeof measured === 'string' ? measured : JSON.stringify(measured)}`;
+  console.log(`${ok ? 'PASS' : 'FAIL'} [${scope}] ${name}${value}`);
+  results.push({ scope, name, ok: Boolean(ok), measured });
+  return ok;
+}
+const info = (scope, name, data) => {
+  console.log(`INFO [${scope}] ${name} -- ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  results.push({ scope, name, info: true, data });
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+    probe.on('error', reject);
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Hosts: the real Go host in server mode on a throwaway HOME. Processes are stopped by pid only.
+const hosts = [];
+const profiles = [];
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/** The pids whose parent is `pid`, and theirs, by the process table: the plugin is the host's child. */
+function descendants(pid) {
+  const table = spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' }).stdout.split('\n').map((line) => line.trim().split(/\s+/).map(Number)).filter((row) => row.length === 2);
+  const found = [];
+  const frontier = [pid];
+  while (frontier.length > 0) {
+    const parent = frontier.pop();
+    for (const [child, ppid] of table) {
+      if (ppid === parent && !found.includes(child)) { found.push(child); frontier.push(child); }
+    }
+  }
+  return found;
+}
+
+async function startHost(name, archivePath, kubeconfigPath) {
+  const work = await mkdtemp(path.join(os.tmpdir(), `q1-${name}-`));
+  profiles.push(work);
+  const home = path.join(work, 'home');
+  const pluginDir = path.join(home, '.omniview-feature-ui-next', 'plugins', pluginID);
+  await mkdir(path.join(home, '.kube'), { recursive: true });
+  await mkdir(pluginDir, { recursive: true });
+  await cp(kubeconfigPath, path.join(home, '.kube', 'config'));
+  const untar = spawnSync('tar', ['-xzf', archivePath, '-C', pluginDir], { encoding: 'utf8' });
+  if (untar.status !== 0) throw new Error(`could not extract ${archivePath}: ${untar.stderr}`);
+  const port = await freePort();
+  const lines = [];
+  const { PATH, TMPDIR, LANG, USER } = process.env;
+  const child = spawn(path.join(hostRoot, 'bin/Omniview-server'), [], {
+    env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => lines.push(String(chunk)));
+  let exited = false;
+  child.on('exit', () => { exited = true; });
+  const host = { name, pid: child.pid, child, work, lines, isExited: () => exited, children: new Set() };
+  hosts.push(host);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (exited) throw new Error(`the host ${name} exited while starting:\n${lines.join('').slice(-2000)}`);
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) {
+        info('host', `${name}: pid ${child.pid}`, { port });
+        return { ...host, base: `http://127.0.0.1:${port}` };
+      }
+    } catch { /* not listening yet */ }
+    await sleep(500);
+  }
+  throw new Error(`the host ${name} did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
+}
+
+async function stopHost(host) {
+  try {
+    for (const pid of descendants(host.pid)) host.children.add(pid);
+    if (!host.isExited()) {
+      host.child.kill('SIGTERM');
+      for (let i = 0; i < 50 && !host.isExited(); i += 1) await sleep(200);
+      if (!host.isExited()) host.child.kill('SIGKILL');
+    }
+    // the plugin's own process was recorded while the host lived: stopped by its pid, and only if it is still there
+    const leftovers = [...host.children].filter(alive);
+    for (const pid of leftovers) { try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ } }
+    for (let i = 0; i < 25 && leftovers.some(alive); i += 1) await sleep(200);
+    for (const pid of leftovers.filter(alive)) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+    info('host', `${host.name}: stopped pid ${host.pid}${leftovers.length > 0 ? `, and its leftover processes ${leftovers.join(', ')}` : ''}`, {});
+  } catch (error) {
+    check('cleanup', `the host ${host.name} was stopped without an error`, false, String(error));
+  } finally {
+    await writeFile(path.join(out, `host-${host.name}.log`), host.lines.join('')).catch(() => undefined);
+  }
+}
+
+async function removeProfiles() {
+  for (const profile of profiles) {
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
+    const gone = await access(profile).then(() => false, () => true);
+    check('cleanup', 'the throwaway profile of a host, with its copy of the kubeconfig, is removed after the host has stopped', gone, profile);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The oracle: kubectl, as the step says it: `kubectl get <kind> -A --no-headers | wc -l`.
+function kubectlLines(args, kubeconfigPath = kubeconfig) {
+  const result = spawnSync('kubectl', ['--kubeconfig', kubeconfigPath, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 256 * 1024 * 1024 });
+  if (result.status !== 0) throw new Error(`kubectl ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout.split('\n').filter((line) => line.trim() !== '');
+}
+const kubectlCount = (kind, namespace) => kubectlLines(['get', kind, ...(namespace === undefined ? [] : namespace === '' ? ['-A'] : ['-n', namespace]), '--no-headers']).length;
+
+const KINDS = [
+  { id: 'nodes', type: 'k8s:/nodes', namespaced: false },
+  { id: 'namespaces', type: 'k8s:/namespaces', namespaced: false },
+  { id: 'pods', type: 'k8s:/pods', namespaced: true },
+  { id: 'deployments', type: 'k8s:apps/deployments', namespaced: true },
+  { id: 'statefulsets', type: 'k8s:apps/statefulsets', namespaced: true },
+  { id: 'daemonsets', type: 'k8s:apps/daemonsets', namespaced: true },
+  { id: 'replicasets', type: 'k8s:apps/replicasets', namespaced: true },
+  { id: 'jobs', type: 'k8s:batch/jobs', namespaced: true },
+  { id: 'cronjobs', type: 'k8s:batch/cronjobs', namespaced: true },
+  { id: 'configmaps', type: 'k8s:/configmaps', namespaced: true },
+  { id: 'secrets', type: 'k8s:/secrets', namespaced: true },
+  { id: 'services', type: 'k8s:/services', namespaced: true },
+  { id: 'ingresses', type: 'k8s:networking.k8s.io/ingresses', namespaced: true },
+];
+const CUSTOM = { id: 'widgets.q1.example.com', type: 'k8s:q1.example.com/widgets', namespaced: true, custom: true };
+
+/** The objects of a namespaced kind by namespace, from kubectl. */
+function perNamespace(kind) {
+  const counts = new Map();
+  for (const line of kubectlLines(['get', kind.id, '-A', '--no-headers', '-o', 'custom-columns=NS:.metadata.namespace'])) {
+    const namespace = line.trim();
+    counts.set(namespace, (counts.get(namespace) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** What the wire may say of a count of `expected` objects asked by a page of one: 0 and 1 end the read in the page (exact); more is the API server's estimate. */
+const precisionOf = (expected) => (expected <= 1 ? 'exact' : 'estimate');
+
+/**
+ * The comparison every count check below makes, and the one its controls try to fool: the count says the number kubectl counted, as precisely as a page of one can know it.
+ * An error has no count, and no count is never a match.
+ */
+const isCountOf = (count, expected) => count?.kind === precisionOf(expected) && count?.value === String(expected);
+
+/** A read that was answered, with a count that says it does not know: not an error, not a number. */
+const isUnknownRead = (read) => read.error === undefined && read.count?.kind === 'unknown' && read.count?.value === undefined;
+
+/** The AppError the host puts in the message of a failed call (`{ type, title, status, detail, code, ... }`); undefined when the error carries none. */
+function appErrorOf(error) {
+  try {
+    const parsed = JSON.parse(error?.message ?? '');
+    return parsed !== null && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** What a kind the user may not list answers: the host's own error for it (type, status and code), not a word in the text of some other error. */
+const isForbidden = (error) => {
+  const appError = appErrorOf(error);
+  return appError?.type === 'omniview:resource/forbidden' && appError?.status === 403 && appError?.code === 'FORBIDDEN';
+};
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The page, and the calls it makes to the host.
+async function openPage(browser, base) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const capture = { calls: [], errors: [] };
+  page.on('pageerror', (error) => capture.errors.push(`pageerror: ${error.message}`));
+  page.on('response', async (response) => {
+    if (!new URL(response.url()).pathname.endsWith('/wails/runtime')) return;
+    const request = response.request();
+    let body;
+    try { body = JSON.parse(request.postData() ?? 'null'); } catch { body = undefined; }
+    let result;
+    try { result = await response.text(); } catch { result = undefined; }
+    capture.calls.push({ method: body?.args?.methodName, args: body?.args?.args, status: response.status(), result, at: Date.now() });
+  });
+  await page.goto(`${base}/`, { waitUntil: 'load' });
+  await page.waitForFunction(() => typeof window._wails?.clientId === 'string', undefined, { timeout: 30_000 });
+  return { page, capture };
+}
+
+/** Calls a bound method of the host's resource service the way the runtime's `Call.ByName` does, with the page's own client id. */
+const makeCaller = (page) => (method, ...args) =>
+  page.evaluate(async ({ method, args }) => {
+    const id = `q1-${Math.random().toString(36).slice(2)}`;
+    const response = await fetch('/wails/runtime', {
+      method: 'POST',
+      headers: { 'x-wails-client-id': window._wails.clientId, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': id, methodName: `github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper.${method}`, args } }),
+    });
+    const text = await response.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { parsed = text; }
+    return response.ok ? { ok: true, value: parsed } : { ok: false, error: parsed };
+  }, { method, args });
+
+const route = { connection: context };
+
+async function resolveTarget(call, type, namespaces) {
+  const request = { route, type };
+  if (namespaces !== undefined) request.scope = [{ dimension: 'namespace', match: 'oneOf', values: namespaces }];
+  const resolved = await call('ResolveTarget', pluginID, request);
+  if (!resolved.ok) throw new Error(`ResolveTarget ${type} ${JSON.stringify(namespaces)}: ${JSON.stringify(resolved.error)}`);
+  return resolved.value;
+}
+
+/** One count read as the sidebar will ask for it: the page of one of the kind, in the scope. The page's own count, and the error if there is one. */
+async function countRead(call, type, namespaces) {
+  const resolved = await resolveTarget(call, type, namespaces);
+  const page = await call('Enumerate', pluginID, { targetId: resolved.targetId, request: { target: resolved.target, pageSize: 1 } });
+  return page.ok ? { count: page.value.sourcePage.count, records: page.value.records.length, page: page.value } : { error: page.error };
+}
+
+async function startAndWait(call, name) {
+  const started = await call('StartConnection', pluginID, context);
+  info(name, 'StartConnection', started.ok ? { status: started.value?.status } : started.error);
+  const deadline = Date.now() + 90_000;
+  let last;
+  while (Date.now() < deadline) {
+    const states = await call('GetAllConnectionStates');
+    const mine = states.ok ? (states.value?.[pluginID] ?? []).find((state) => state.connection?.id === context) : undefined;
+    last = mine?.readiness;
+    if (last === 'CONNECTED') return true;
+    await sleep(500);
+  }
+  info(name, 'the connection did not reach CONNECTED', { last });
+  return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The API server's record of what the plugin asked: the audit log of the kind node, from a line on.
+const dockerExec = (command) => spawnSync('docker', ['exec', node, 'sh', '-c', command], { encoding: 'utf8', maxBuffer: 1024 * 1024 * 1024 });
+const auditLines = () => Number(dockerExec('wc -l < /var/log/kubernetes/audit/audit.log').stdout.trim());
+
+/** Audit events from line `after` on, parsed. */
+function auditSince(after) {
+  const raw = dockerExec(`tail -n +${after + 1} /var/log/kubernetes/audit/audit.log`).stdout;
+  const events = [];
+  for (const line of raw.split('\n')) {
+    if (line === '') continue;
+    try { events.push(JSON.parse(line)); } catch { /* a line cut by the tail */ }
+  }
+  return events;
+}
+
+/** The Lists the plugin made: its user agent is the plugin's own (`omniview-kubernetes/<version> (<os>/<arch>)`), not kubectl's. */
+function pluginLists(events) {
+  return events
+    .filter((event) => event.verb === 'list' && String(event.userAgent).startsWith('omniview-kubernetes/') && event.stage === 'ResponseComplete')
+    .map((event) => {
+      const url = new URL(`http://api${event.requestURI}`);
+      return { path: url.pathname, query: Object.fromEntries(url.searchParams), code: event.responseStatus?.code, received: Date.parse(event.requestReceivedTimestamp), done: Date.parse(event.stageTimestamp), agent: event.userAgent };
+    });
+}
+
+/** The Lists of one path in the round, and any of them that is not a count read's: it carries a selector, a continue or a resourceVersion, or its limit is not 1. */
+const notCountReads = (lists) => lists.filter((list) => list.query.limit !== '1' || ['labelSelector', 'fieldSelector', 'continue', 'resourceVersion'].some((name) => name in list.query));
+
+/** The most Lists that overlapped in time at the server. */
+function overlap(lists) {
+  let most = 0;
+  for (const list of lists) {
+    const at = lists.filter((other) => other.received <= list.received && other.done > list.received).length;
+    most = Math.max(most, at);
+  }
+  return most;
+}
+
+/** The path the API server is asked for the List of a kind (every kind of the cluster is served as v1 in its group): `/api/v1/pods`, `/apis/apps/v1/namespaces/shop/deployments`. */
+const listPathOf = (kind, namespace) => {
+  const [group, resource] = kind.type.replace(/^k8s:/, '').split('/');
+  const root = group === '' ? '/api/v1' : `/apis/${group}/v1`;
+  return namespace === undefined || !kind.namespaced ? `${root}/${resource}` : `${root}/namespaces/${namespace}/${resource}`;
+};
+
+/** Whether a round asked the API server for the List of each of the kinds exactly once, and for nothing else. */
+function oncePerKind(lists, kinds) {
+  const asked = new Map();
+  for (const list of lists) asked.set(list.path, (asked.get(list.path) ?? 0) + 1);
+  return lists.length === kinds.length && kinds.every((kind) => asked.get(listPathOf(kind)) === 1);
+}
+
+/**
+ * Whether an answer of the cold round is still kept when a read is asked at `askedAt` (the proof's own clock; the plugin keeps an answer for the window from the moment it has it, which is after the round began and before it ended):
+ * yes when the read is asked less than a window after the round began, no when a whole window has passed since it ended, and either in between.
+ */
+function answerHeld(askedAt, round) {
+  if (askedAt - round.startedAt < STALENESS_MS) return 'yes';
+  return askedAt - round.endedAt >= STALENESS_MS ? 'no' : 'either';
+}
+
+/** Whether the Lists a round made for a kind agree with whether its answer was kept: none when it was, one when it was not, at most one when it may or may not have been. */
+const listsAgreeWithKept = (held, lists) => (held === 'yes' ? lists === 0 : held === 'no' ? lists === 1 : lists <= 1);
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// A: the counts equal kubectl.
+async function counts(call, scope, kinds, label) {
+  const table = {};
+  for (const kind of kinds) {
+    const expected = kubectlCount(kind.id, kind.namespaced ? '' : undefined);
+    const askedAt = Date.now();
+    const read = await countRead(call, kind.type);
+    table[kind.id] = { kubectl: expected, count: read.count, records: read.records, error: read.error, askedAt };
+    check(scope, `${label}${kind.id}: \`kubectl get ${kind.id}${kind.namespaced ? ' -A' : ''} --no-headers | wc -l\` is ${expected}, the host receives ${read.count?.kind ?? 'an error'} ${read.count?.value ?? ''}`, isCountOf(read.count, expected) && (read.records ?? 0) <= 1, read.error ?? undefined);
+  }
+  return table;
+}
+
+/** The counts of one namespace and of two, for each namespaced kind. Returns how many different questions it asked: each is another one than the all-namespace question, so each is asked of the server, once. */
+async function countsOfNamespaces(call, scope, kinds) {
+  const asked = new Set();
+  const ask = (kind, namespaces) => {
+    asked.add(`${kind.id}|${[...namespaces].sort().join(',')}`);
+    return countRead(call, kind.type, namespaces);
+  };
+  for (const kind of kinds.filter((candidate) => candidate.namespaced)) {
+    const per = perNamespace(kind);
+    const sorted = [...per].sort((a, b) => b[1] - a[1]);
+    const most = sorted[0];
+    const single = sorted.find(([, n]) => n === 1);
+    const zero = (kubectlLines(['get', 'namespaces', '--no-headers', '-o', 'custom-columns=N:.metadata.name']).map((line) => line.trim()).find((namespace) => !per.has(namespace)));
+    const picks = [['the largest', most?.[0]], ['one with a single object', single?.[0]], ['one with none', zero]].filter(([, namespace]) => namespace !== undefined);
+    for (const [what, namespace] of picks) {
+      const expected = kubectlCount(kind.id, namespace);
+      const read = await ask(kind, [namespace]);
+      check(scope, `${kind.id}, ${what} (${namespace}): \`kubectl get ${kind.id} -n ${namespace} --no-headers | wc -l\` is ${expected}, the host receives ${read.count?.kind ?? 'an error'} ${read.count?.value ?? ''}`, isCountOf(read.count, expected), read.error ?? undefined);
+    }
+    // two namespaces together: a page of one reads the first one with an object and cannot know the rest: unknown (never the first namespace's count passed off as the whole)
+    if (sorted.length >= 2) {
+      const pair = [sorted[0][0], sorted[1][0]];
+      const read = await ask(kind, pair);
+      check(scope, `${kind.id}, two namespaces together (${pair.join(', ')}): a page of one does not end in the first, so the count is unknown, not the first namespace's`, isUnknownRead(read), read.count ?? read.error);
+    }
+  }
+  return asked.size;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+async function runEngine(engineName) {
+  const scope = engineName;
+  const host = await startHost(engineName, archive, kubeconfig);
+  const browser = await pw[engineName].launch();
+  info(scope, 'browser', `${engineName} ${browser.version()}`);
+  try {
+    const { page, capture } = await openPage(browser, host.base);
+    const call = makeCaller(page);
+    const clientId = await page.evaluate(() => window._wails?.clientId);
+    check(scope, 'the shell loaded and the runtime has the page\'s own client id (the calls below are the page\'s)', typeof clientId === 'string' && clientId !== '');
+    check(scope, 'the connection to the kind cluster is connected', await startAndWait(call, scope));
+    for (const pid of descendants(host.pid)) host.children.add(pid);
+
+    const catalog = await call('Catalog', pluginID, { route });
+    const types = catalog.ok ? catalog.value.types.map((type) => type.type) : [];
+    check(scope, 'the catalog offers the 13 kinds of the sidebar and the custom resource, and every one of them lists', [...KINDS, CUSTOM].every((kind) => catalog.ok && catalog.value.types.find((type) => type.type === kind.type)?.capabilities.some((capability) => capability.operation === 'enumerate')), types.filter((type) => type.startsWith('k8s:')).length);
+    const all = [...KINDS, CUSTOM];
+
+    // B: the cold round: the 13 counts at once, as a sidebar asks, with nothing open and nothing kept
+    // The targets are resolved first (host work, no read of the cluster), then the 13 counts are asked together.
+    const targets = {};
+    const resolveStarted = Date.now();
+    await Promise.all(KINDS.map(async (kind) => { targets[kind.id] = await resolveTarget(call, kind.type); }));
+    const resolveMs = Date.now() - resolveStarted;
+    const baselineCold = auditLines();
+    const coldStartedAt = Date.now();
+    const cold = await page.evaluate(async ({ requests, pluginID }) => {
+      const started = performance.now();
+      const answers = await Promise.all(requests.map(async ({ id, targetId, target }) => {
+        const at = performance.now();
+        const response = await fetch('/wails/runtime', {
+          method: 'POST',
+          headers: { 'x-wails-client-id': window._wails.clientId, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `q1-${Math.random().toString(36).slice(2)}`, methodName: 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper.Enumerate', args: [pluginID, { targetId, request: { target, pageSize: 1 } }] } }),
+        });
+        const text = await response.text();
+        const body = JSON.parse(text);
+        return { id, ms: performance.now() - at, bytes: new TextEncoder().encode(text).length, count: body?.sourcePage?.count, ok: response.ok };
+      }));
+      return { total: performance.now() - started, answers };
+    }, { requests: KINDS.map((kind) => ({ id: kind.id, ...targets[kind.id] })), pluginID });
+    const coldWindow = { startedAt: coldStartedAt, endedAt: Date.now() };
+    await sleep(500);
+    const coldLists = pluginLists(auditSince(baselineCold));
+    info(scope, 'B: the 13 counts, cold, asked together', { resolveTargetsMs: resolveMs, countsTotalMs: Math.round(cold.total), perCountMs: Object.fromEntries(cold.answers.map((answer) => [answer.id, Math.round(answer.ms)])), responseBytes: Object.fromEntries(cold.answers.map((answer) => [answer.id, answer.bytes])), responseBytesTotal: cold.answers.reduce((sum, answer) => sum + answer.bytes, 0), pluginUserAgent: coldLists[0]?.agent });
+    check(scope, 'B: the 13 counts, cold, all answered with a count (exact or estimate)', cold.answers.every((answer) => answer.ok && ['exact', 'estimate'].includes(answer.count?.kind)), cold.answers.map((answer) => `${answer.id}:${answer.count?.kind}`));
+    const paths = new Map();
+    for (const list of coldLists) paths.set(list.path, (paths.get(list.path) ?? 0) + 1);
+    check(scope, 'B: the API server saw one List for each of the 13 kinds in the cold round, and no kind twice', oncePerKind(coldLists, KINDS), Object.fromEntries(paths));
+    check(scope, 'B: every one of them is a read of one: limit=1, with no selector, no continue and no resourceVersion', coldLists.length === 13 && notCountReads(coldLists).length === 0, coldLists.map((list) => list.query));
+    info(scope, 'B: the most Lists that overlapped at the server in the cold round (the plugin allows 4 at a time; each List takes a few milliseconds)', overlap(coldLists));
+    check(scope, 'B: the overlap at the server did not exceed the 4 the plugin allows (an observation: Lists are short, so it cannot show the limiter, which the plugin\'s tests and control C2 do)', overlap(coldLists) <= 4);
+
+    // the second round, within the window: not asked again
+    const baselineSecond = auditLines();
+    const second = [];
+    for (const kind of KINDS) second.push({ id: kind.id, read: await countRead(call, kind.type) });
+    const secondEndedAt = Date.now();
+    await sleep(500);
+    const secondLists = pluginLists(auditSince(baselineSecond));
+    check(scope, `B: the round was inside the ${STALENESS_MS / 1000} s window (it ended ${secondEndedAt - coldWindow.startedAt} ms after the cold round began), so every answer of the cold round was still kept`, secondEndedAt - coldWindow.startedAt < STALENESS_MS);
+    check(scope, 'B: the same 13 counts asked again straight after reach the API server not at all', secondLists.length === 0, secondLists.map((list) => list.path));
+    check(scope, 'B: and give the counts they gave', second.every((entry) => entry.read.count?.kind === cold.answers.find((answer) => answer.id === entry.id)?.count?.kind && entry.read.count?.value === cold.answers.find((answer) => answer.id === entry.id)?.count?.value));
+
+    // A: the counts equal kubectl: every namespace, and the namespaces (these are other questions: they are asked of the server)
+    const baselineA = auditLines();
+    const table = await counts(call, scope, all, 'A: ');
+    const allNamespaceReadsEndedAt = Date.now();
+    const namespaceQuestions = await countsOfNamespaces(call, scope, all);
+    await sleep(500);
+    const aLists = pluginLists(auditSince(baselineA));
+    // The 13 all-namespace reads of A are answered from the cold round's kept answers while those are held. The window is 30 s and the reads of A take seconds, but a slow machine may take longer, and then a correct plugin asks
+    // again: a List of such a kind is allowed only for a read asked after its answer could no longer be held, and required for one asked after it certainly could not. A List for an answer that was held is a failure.
+    // The custom resource and each namespace question were never asked before: one List each. Nothing else may have been asked.
+    const perKind = KINDS.map((kind) => ({ id: kind.id, held: answerHeld(table[kind.id].askedAt, coldWindow), lists: aLists.filter((list) => list.path === listPathOf(kind)).length }));
+    const customLists = aLists.filter((list) => list.path === listPathOf(CUSTOM)).length;
+    const unexplained = aLists.length - perKind.reduce((sum, entry) => sum + entry.lists, 0) - customLists - namespaceQuestions;
+    check(scope, 'A: every List of A is a count read of one (limit=1); a kind of the cold round made one only if its kept answer could no longer be held, and one if it certainly could not; the custom resource made one, each namespace question made one, and none is unexplained', notCountReads(aLists).length === 0 && perKind.every((entry) => listsAgreeWithKept(entry.held, entry.lists)) && customLists === 1 && unexplained === 0, { lists: aLists.length, namespaceQuestions, kindsNotKeptOrMaybe: perKind.filter((entry) => entry.held !== 'yes' || entry.lists !== 0), customLists, unexplained });
+    writeFile(path.join(out, `counts-${engineName}.json`), JSON.stringify({ table }, null, 2)).catch(() => undefined);
+
+    // B: once the window has passed since the last read of the 13 all-namespace questions (an answer is made at its first read and again at a read after it expired, so none is newer than this), they are asked again
+    const wait = STALENESS_MS + 1500 - (Date.now() - allNamespaceReadsEndedAt);
+    if (wait > 0) await sleep(wait);
+    const baselineThird = auditLines();
+    for (const kind of KINDS) await countRead(call, kind.type);
+    await sleep(500);
+    const thirdLists = pluginLists(auditSince(baselineThird));
+    check(scope, `B: after the ${STALENESS_MS / 1000} s window the 13 are asked again, once each`, oncePerKind(thirdLists, KINDS), thirdLists.length);
+
+    // D: the Secrets of the bulk namespace hold values that name themselves: none is in any response of a count read
+    const secretPage = await countRead(call, 'k8s:/secrets', ['bulk']);
+    const wire = JSON.stringify(secretPage.page ?? {});
+    check(scope, 'D: a count read of the 120 Secrets of the bulk namespace: one Secret decoded, 120 counted, and no value on the wire (the values are q1-sentinel-NNNN-not-a-secret, in the clear and as base64)', secretPage.count?.value === '120' && !wire.includes('q1-sentinel') && !wire.includes(Buffer.from('q1-sentinel').toString('base64').slice(0, 12)), { count: secretPage.count, records: secretPage.records });
+
+    // C: an open list: the real Pods page of the plugin
+    await page.goto(`${host.base}/#/kubernetes/pods?connection=${encodeURIComponent(context)}`, { waitUntil: 'load' });
+    const deadline = Date.now() + 60_000;
+    let state;
+    while (Date.now() < deadline) {
+      state = await page.evaluate(() => ({ state: document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state'), rows: document.querySelectorAll('tbody tr').length }));
+      if (state.state === 'ready') break;
+      await sleep(250);
+    }
+    check(scope, 'C: the plugin\'s own Pods list opens in the real page', state?.state === 'ready', state);
+    await sleep(2500);
+    const firstSet = capture.calls.filter((entry) => entry.method?.endsWith('.Enumerate') && entry.args?.[1]?.request?.pageSize === 256);
+    const firstSetBody = firstSet.length > 0 ? JSON.parse(firstSet.at(-1).result) : undefined;
+    info(scope, 'D: the Pods list\'s own first page (256), received by the page', { count: firstSetBody?.sourcePage?.count, records: firstSetBody?.records?.length, calls: firstSet.length });
+    check(scope, 'D: the first page of 256 carries a count: the 50 Pods as an estimate or exactly, never unknown', ['exact', 'estimate'].includes(firstSetBody?.sourcePage?.count?.kind) && firstSetBody?.sourcePage?.count?.value === String(kubectlCount('pods', '')), firstSetBody?.sourcePage?.count);
+    // the shape of the call is the shape of the plugin's own
+    const shapeOf = (value) => (Array.isArray(value) ? value.map(shapeOf) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, shapeOf(value[key])])) : typeof value);
+    const mine = { targetId: 'x', request: { target: targets.pods.target, pageSize: 1 } };
+    check(scope, 'the call the proof makes has the shape of the call the Pods list makes (method, plugin id, `{ targetId, request: { target, pageSize } }`)', firstSet.length > 0 && JSON.stringify(shapeOf(firstSet.at(-1).args?.[1])) === JSON.stringify(shapeOf(mine)) && firstSet.at(-1).args?.[0] === pluginID, shapeOf(firstSet.at(-1)?.args?.[1]));
+
+    const open1 = await countRead(call, 'k8s:/pods');
+    const wantPods = kubectlCount('pods', '');
+    check(scope, `C: with the Pods list open, the count of Pods is the source's: exact ${wantPods}`, open1.count?.kind === 'exact' && open1.count?.value === String(wantPods), open1.count);
+    const baselineLive = auditLines();
+    kubectlLines(['run', 'q1-live-pod', '--image=busybox:1.37.0', '--restart=Never', '--', 'sleep', '3600']);
+    let live;
+    for (let i = 0; i < 60; i += 1) { live = await countRead(call, 'k8s:/pods'); if (live.count?.value === String(wantPods + 1)) break; await sleep(250); }
+    check(scope, `C: a Pod made: the count follows to exact ${wantPods + 1} (kubectl says ${kubectlCount('pods', '')})`, live.count?.kind === 'exact' && live.count?.value === String(wantPods + 1) && kubectlCount('pods', '') === wantPods + 1, live.count);
+    // the page is the answer kept since the first read (the same revision of the List) and says what it said: the count on it is not the kept answer's but the source's
+    info(scope, 'C: the page of the count read after the Pod was made is the page kept from the first read (same sourceRevision), with the live count on it', { sameRevision: live.page?.sourcePage?.sourceRevision === open1.page?.sourcePage?.sourceRevision, revision: live.page?.sourcePage?.sourceRevision });
+    kubectlLines(['delete', 'pod', 'q1-live-pod', '--grace-period=0', '--force', '--wait=true']);
+    for (let i = 0; i < 60; i += 1) { live = await countRead(call, 'k8s:/pods'); if (live.count?.value === String(wantPods)) break; await sleep(250); }
+    check(scope, `C: and deleted: back to exact ${wantPods} (kubectl says ${kubectlCount('pods', '')})`, live.count?.kind === 'exact' && live.count?.value === String(wantPods) && kubectlCount('pods', '') === wantPods, live.count);
+    await sleep(500);
+    const liveLists = pluginLists(auditSince(baselineLive)).filter((list) => list.path === '/api/v1/pods');
+    check(scope, 'C: the plugin asked the API server for no List of Pods while the count followed the cluster (no polling): the source\'s watch brought each change', liveLists.length === 0, liveLists.map((list) => list.query));
+
+
+    const failures = capture.errors.filter((message) => !message.includes('Activity'));
+    info(scope, 'page errors', failures.slice(0, 5));
+  } finally {
+    await browser.close().catch(() => undefined);
+    await stopHost(host);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// E: the plugin before the change (the control), F: a user who may list two kinds
+async function runControl(engineName) {
+  const scope = `control/${engineName}`;
+  const host = await startHost('control', archiveBase, kubeconfig);
+  const browser = await pw[engineName].launch();
+  try {
+    const { page } = await openPage(browser, host.base);
+    const call = makeCaller(page);
+    check(scope, 'the connection is connected', await startAndWait(call, scope));
+    for (const pid of descendants(host.pid)) host.children.add(pid);
+    const reads = [];
+    for (const kind of KINDS) {
+      const expected = kubectlCount(kind.id, kind.namespaced ? '' : undefined);
+      reads.push({ kind, expected, read: await countRead(call, kind.type) });
+    }
+    // The control is a control only if the 13 reads were ANSWERED and said unknown: an error has no count, so every comparison fails on it too, and "the comparison fails" would hold for a plugin that answered nothing.
+    check(scope, 'E: the plugin before the change answers every one of the 13 reads and says unknown of each (an answer with a count that does not know: not an error, not a number)', reads.every(({ read }) => isUnknownRead(read)), reads.filter(({ read }) => !isUnknownRead(read)).map(({ kind, read }) => `${kind.id}: ${read.error === undefined ? JSON.stringify(read.count) : 'an error'}`));
+    check(scope, 'E: so the comparison of A fails for each of the 13: it can fail', reads.every(({ expected, read }) => !isCountOf(read.count, expected)));
+  } finally {
+    await browser.close().catch(() => undefined);
+    await stopHost(host);
+  }
+}
+
+async function runLimited(engineName) {
+  const scope = `limited/${engineName}`;
+  const host = await startHost('limited', archive, limitedKubeconfig);
+  const browser = await pw[engineName].launch();
+  try {
+    const { page } = await openPage(browser, host.base);
+    const call = makeCaller(page);
+    check(scope, 'the limited user\'s connection is connected', await startAndWait(call, scope));
+    for (const pid of descendants(host.pid)) host.children.add(pid);
+    const answers = await Promise.all(KINDS.map(async (kind) => ({ kind, read: await countRead(call, kind.type) })));
+    const allowed = new Set(['pods', 'namespaces']);
+    for (const { kind, read } of answers) {
+      if (allowed.has(kind.id)) {
+        const expected = kubectlCount(kind.id, kind.namespaced ? '' : undefined);
+        check(scope, `F: the kind this user may list, ${kind.id}: counted, ${expected}`, isCountOf(read.count, expected), read.count ?? read.error);
+      } else {
+        const appError = appErrorOf(read.error);
+        check(scope, `F: ${kind.id}, which this user may not list: the host's FORBIDDEN error (type omniview:resource/forbidden, status 403, code FORBIDDEN, read from its fields), not a count and not a zero`, read.count === undefined && isForbidden(read.error), { type: appError?.type, status: appError?.status, code: appError?.code, count: read.count });
+      }
+    }
+  } finally {
+    await browser.close().catch(() => undefined);
+    await stopHost(host);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+async function controls() {
+  // The decisions the checks make are functions, and each is fed data that is wrong in the way it must catch (and right in the way it must pass).
+  const wrongFor50 = [{ kind: 'estimate', value: '51' }, { kind: 'estimate', value: '49' }, { kind: 'exact', value: '50' }, { kind: 'unknown' }, { kind: 'estimate', value: 50 }, undefined];
+  check('controls', 'E: the comparison of the counts fails on one too many, one too few, an exact count where the server only estimates, an unknown, a number that is not the wire\'s decimal string, and no count', wrongFor50.every((count) => !isCountOf(count, 50)));
+  check('controls', 'E: and passes the right ones (an estimate of 50 for 50, exact 1 for 1, exact 0 for 0), and fails an estimate of 1 for 1', isCountOf({ kind: 'estimate', value: '50' }, 50) && isCountOf({ kind: 'exact', value: '1' }, 1) && isCountOf({ kind: 'exact', value: '0' }, 0) && !isCountOf({ kind: 'estimate', value: '1' }, 1));
+  check('controls', 'E: an unknown read is an answer with an unknown count: an error, an estimate and an unknown with a value are not', isUnknownRead({ count: { kind: 'unknown' } }) && !isUnknownRead({ error: { message: 'boom' } }) && !isUnknownRead({ count: { kind: 'estimate', value: '3' } }) && !isUnknownRead({ count: { kind: 'unknown', value: '0' } }));
+  const forbidden = { message: JSON.stringify({ type: 'omniview:resource/forbidden', title: 'Access denied', status: 403, code: 'FORBIDDEN' }) };
+  const sameWords = { message: JSON.stringify({ type: 'omniview:resource/unavailable', status: 503, code: 'UNAVAILABLE', detail: 'FORBIDDEN is a word of this text' }) };
+  const wrongStatus = { message: JSON.stringify({ type: 'omniview:resource/forbidden', status: 500, code: 'FORBIDDEN' }) };
+  check('controls', 'E: the FORBIDDEN test reads the error\'s fields: it passes the host\'s error and fails the same word in another error, the right type with another status, a text that is not an error, and no error', isForbidden(forbidden) && !isForbidden(sameWords) && !isForbidden(wrongStatus) && !isForbidden({ message: 'FORBIDDEN' }) && !isForbidden(undefined));
+  // the audit analysis
+  const round = KINDS.map((kind) => ({ path: listPathOf(kind), query: { limit: '1' } }));
+  check('controls', 'E: a round that asked each kind once passes, and one that asked a kind twice and missed another, or asked one more List, fails', oncePerKind(round, KINDS) && !oncePerKind([...round.slice(0, 12), round[0]], KINDS) && !oncePerKind([...round, { path: '/api/v1/secrets', query: { limit: '1' } }], KINDS) && !oncePerKind(round.slice(0, 12), KINDS));
+  const notReads = [{ limit: '1', labelSelector: 'a=b' }, { limit: '1', fieldSelector: 'metadata.name=a' }, { limit: '1', continue: 'x' }, { limit: '1', resourceVersion: '0' }, { limit: '2' }, {}];
+  check('controls', 'E: a List that carries a selector, a continue or a resourceVersion, or whose limit is not 1, is not a count read; a limit of 1 alone is', notReads.every((query) => notCountReads([{ path: '/api/v1/pods', query }]).length === 1) && notCountReads(round).length === 0);
+  check('controls', 'E: the overlap measure finds four Lists at once, and one by one', overlap([1, 2, 3, 4].map((i) => ({ received: i, done: 10 }))) === 4 && overlap([1, 2, 3].map((i) => ({ received: i * 10, done: i * 10 + 5 }))) === 1);
+  // the cache accounting: a read asked inside the window is held (no List), one asked a whole window after the round ended is not (one List), and in between either
+  const heldRound = { startedAt: 1_000, endedAt: 1_100 };
+  check('controls', 'E: the answer of a round is held for a read asked inside the window, not for one asked a window after it ended, and either between', answerHeld(1_000 + STALENESS_MS - 1, heldRound) === 'yes' && answerHeld(1_000 + STALENESS_MS, heldRound) === 'either' && answerHeld(1_100 + STALENESS_MS, heldRound) === 'no');
+  check('controls', 'E: a List for a held answer fails, no List for an answer that was not held fails, and a second List fails', !listsAgreeWithKept('yes', 1) && listsAgreeWithKept('yes', 0) && !listsAgreeWithKept('no', 0) && listsAgreeWithKept('no', 1) && listsAgreeWithKept('either', 0) && listsAgreeWithKept('either', 1) && !listsAgreeWithKept('either', 2) && !listsAgreeWithKept('yes', 2) && !listsAgreeWithKept('no', 2));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+let failed = false;
+try {
+  await mkdir(out, { recursive: true });
+  await controls();
+  for (const engineName of engines) await runEngine(engineName);
+  if (archiveBase !== undefined) await runControl(engines[0]);
+  if (limitedKubeconfig !== undefined) await runLimited(engines[0]);
+} catch (error) {
+  failed = true;
+  console.log(`FAIL [proof] the proof stopped: ${error?.stack ?? error}`);
+  results.push({ scope: 'proof', name: 'the proof ran to the end', ok: false, measured: String(error) });
+} finally {
+  for (const host of hosts) if (!host.isExited()) await stopHost(host);
+  await removeProfiles();
+  await writeFile(path.join(out, 'report.json'), JSON.stringify(results, null, 2)).catch(() => undefined);
+  const checks = results.filter((entry) => entry.ok !== undefined);
+  const passed = checks.filter((entry) => entry.ok).length;
+  console.log(`${passed === checks.length && !failed ? 'PASS' : 'FAIL'}: ${passed} of ${checks.length} checks`);
+  process.exitCode = passed === checks.length && !failed ? 0 : 1;
+}
