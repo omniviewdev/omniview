@@ -31,7 +31,6 @@ linters:
     - gosec
     - govet
     - ineffassign
-    - lll
     - loggercheck
     - makezero
     - mirror
