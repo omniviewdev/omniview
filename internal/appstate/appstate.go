@@ -220,7 +220,12 @@ func (s *Service) Logs() *ScopedRoot { return s.logs }
 func (s *Service) RootDir() *ScopedRoot { return s.rootDir }
 
 // PluginData returns a scoped root for a specific plugin's data directory.
-// The result is cached; subsequent calls for the same id return the cached instance.
+// The result is cached while the directory it holds is still the one at that
+// path. A directory removed or replaced since (an uninstall, then a reinstall of
+// the same plugin ID) gets a fresh root and the stale one is closed. While the
+// plugin directory is missing altogether, the cached root is returned as it is:
+// recreating the directory would resurrect a plugin that was uninstalled, or
+// break the move that returns its state to it.
 func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 	if err := validatePluginID(id); err != nil {
 		return nil, fmt.Errorf("appstate: PluginData: %w", err)
@@ -229,7 +234,7 @@ func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 	s.pluginRootsMu.Lock()
 	defer s.pluginRootsMu.Unlock()
 
-	if r, ok := s.pluginDataRoots[id]; ok {
+	if r, _ := liveRoot(s.pluginDataRoots, id); r != nil {
 		return r, nil
 	}
 
@@ -245,7 +250,10 @@ func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 // PluginDataIfExists returns the scoped root for a plugin's data directory
 // only when that directory already exists. It never creates directories and
 // never caches a root for a missing directory, so read-only callers cannot
-// grow the disk or the descriptor table by probing novel plugin IDs.
+// grow the disk or the descriptor table by probing novel plugin IDs. A cached
+// root whose directory has since been removed or replaced is closed and dropped,
+// as in PluginData; one whose plugin directory is missing altogether is kept
+// but not returned.
 // ok is false (with a nil error) when the directory does not exist.
 func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err error) {
 	if err := validatePluginID(id); err != nil {
@@ -255,7 +263,10 @@ func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err 
 	s.pluginRootsMu.Lock()
 	defer s.pluginRootsMu.Unlock()
 
-	if r, cached := s.pluginDataRoots[id]; cached {
+	if r, away := liveRoot(s.pluginDataRoots, id); r != nil {
+		if away {
+			return nil, false, nil
+		}
 		return r, true, nil
 	}
 
@@ -272,7 +283,8 @@ func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err 
 }
 
 // PluginStore returns a scoped root for a specific plugin's store directory.
-// The result is cached; subsequent calls for the same id return the cached instance.
+// The result is cached while the directory it holds is still the one at that
+// path, as in PluginData.
 func (s *Service) PluginStore(id string) (*ScopedRoot, error) {
 	if err := validatePluginID(id); err != nil {
 		return nil, fmt.Errorf("appstate: PluginStore: %w", err)
@@ -281,7 +293,7 @@ func (s *Service) PluginStore(id string) (*ScopedRoot, error) {
 	s.pluginRootsMu.Lock()
 	defer s.pluginRootsMu.Unlock()
 
-	if r, ok := s.pluginStoreRoots[id]; ok {
+	if r, _ := liveRoot(s.pluginStoreRoots, id); r != nil {
 		return r, nil
 	}
 
@@ -292,4 +304,25 @@ func (s *Service) PluginStore(id string) (*ScopedRoot, error) {
 	}
 	s.pluginStoreRoots[id] = r
 	return r, nil
+}
+
+// liveRoot returns the cached root for id. A root that is stale (see
+// rootStale) is forgotten and closed first, so it releases its descriptor, and
+// nil is returned: a holder that still has it fails with os.ErrClosed on its
+// next use instead of acting on a directory that no path names. The bool
+// reports a root returned while its path and plugin directory are both
+// missing; see rootAway. The caller holds pluginRootsMu.
+func liveRoot(cache map[string]*ScopedRoot, id string) (*ScopedRoot, bool) {
+	r := cache[id]
+	if r == nil {
+		return nil, false
+	}
+	liveness := r.liveness()
+	if liveness != rootStale {
+		return r, liveness == rootAway
+	}
+	delete(cache, id)
+	// os.Root.Close reports no error, and the root is unreachable either way.
+	_ = r.Close()
+	return nil, false
 }

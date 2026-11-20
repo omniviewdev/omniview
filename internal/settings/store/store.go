@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -345,6 +346,53 @@ func (s *Store) DeletePluginSettings(pluginID string) error {
 		b := tx.Bucket(pluginsBucket)
 		return b.Delete([]byte(pluginID))
 	})
+}
+
+// ErasePluginSettings removes, in one transaction, every persisted setting value
+// of a plugin for which erase reports true, and keeps the other values as they
+// are. The plugin's entry is removed when nothing is kept. An entry that cannot
+// be decoded is removed whole, because the values in it cannot be told apart.
+// It is a no-op if the plugin has no entry.
+func (s *Store) ErasePluginSettings(pluginID string, erase func(id string) bool) error {
+	return s.persistSave("", pluginID, func() error { return s.erasePluginSettings(pluginID, erase) })
+}
+
+func (s *Store) erasePluginSettings(pluginID string, erase func(id string) bool) error {
+	if s == nil || s.db == nil {
+		return ErrUnavailable
+	}
+	unreadable := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(pluginsBucket)
+		key := []byte(pluginID)
+		data := bucket.Get(key)
+		if data == nil {
+			return nil
+		}
+		var values map[string]json.RawMessage
+		if decodeErr := json.Unmarshal(data, &values); decodeErr != nil {
+			unreadable = true
+			return bucket.Delete(key)
+		}
+		for id := range values {
+			if erase(id) {
+				delete(values, id)
+			}
+		}
+		if len(values) == 0 {
+			return bucket.Delete(key)
+		}
+		kept, encodeErr := json.Marshal(values)
+		if encodeErr != nil {
+			return fmt.Errorf("encode plugin settings %q: %w", pluginID, encodeErr)
+		}
+		return bucket.Put(key, kept)
+	})
+	if err == nil && unreadable {
+		s.logger().Warnw(context.Background(), "plugin settings entry could not be decoded; removed whole",
+			"pluginID", pluginID)
+	}
+	return err
 }
 
 // LoadAllPluginSettings returns all plugin settings keyed by plugin ID.

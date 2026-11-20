@@ -471,6 +471,9 @@ func (pm *pluginManager) installPluginArchive(
 }
 
 // UninstallPlugin uninstalls a plugin from the manager and removes it from the filesystem.
+// Once the uninstall is durable it also erases the credential-class state the plugin has
+// outside its directory (see notifyUninstalled); a failure to do so is returned as a
+// committed-cleanup-pending error for a plugin that is already uninstalled.
 //
 //nolint:nonamedreturns // Deferred telemetry records the returned error.
 func (pm *pluginManager) UninstallPlugin(id string) (info plugintypes.PluginInfo, err error) {
@@ -606,9 +609,10 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return restore(err, true)
 	}
 	installSpanPhase(ctx, "recovery_removed")
+	cleanupErr := pm.notifyUninstalled(ctx, id)
 	pm.emitter.Emit(EventInventoryChanged)
 	log.Infow(ctx, "plugin uninstalled", "pluginID", id, "durationMs", time.Since(started).Milliseconds())
-	return info, nil
+	return info, cleanupErr
 }
 
 // Build-related helper functions (extracted from dev.go).

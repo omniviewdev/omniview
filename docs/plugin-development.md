@@ -341,9 +341,31 @@ volumes. Archive replacement moves the
 existing state directories into the new installation without copying them, so
 cached scoped roots and nested authority handles still address live state.
 Failed publication moves that same state back before restarting the original
-plugin. Runtime unload does not close appstate-owned roots; appstate closes them
-when the application shuts down. Interrupted transactions retain their existing
-recovery barrier and private staging evidence instead of adopting another path.
+plugin. Runtime unload does not close appstate-owned roots. A cached root is
+reused while its directory is the one at its path, and while the plugin
+directory is missing altogether: an uninstall or an archive replacement may be
+moving it, and a lookup must not recreate what a rollback needs free. Once the
+plugin directory exists again without that directory (an uninstall, then a
+reinstall of the same ID), the next lookup closes the stale root and returns one
+on the live directory. A holder that kept the old root gets `os.ErrClosed` on its
+next use. appstate closes the remaining roots when the application shuts down.
+Interrupted transactions retain their existing recovery barrier and private
+staging evidence instead of adopting another path.
+
+Uninstalling a plugin removes its whole directory: the binary and assets, `data/`,
+`store/` (connection profiles, host-saved connection credentials, authority
+bindings) and any settings migration backup. Once the uninstall is durable, the
+host also erases the plugin's credential-class settings from the host settings
+store: every stored value whose setting the plugin declared `Sensitive` or of type
+`Password`, and every stored value its last known schema does not declare, as the
+settings snapshot already treats those as secret. The plugin's other setting values
+stay, and a later installation under the same ID inherits them. A plugin that never
+reported a schema in the session has nothing to tell its values apart, so all of its
+stored values are erased. A rolled-back or incomplete uninstall erases nothing. If
+the erase fails, the plugin is still uninstalled and the uninstall returns a
+`committed-cleanup-pending` error; installing the plugin again and uninstalling it
+retries the erase. Plugin process logs and activity history are not part of an
+uninstall.
 
 Managed development workspaces also require host-owned fixed-SDK build evidence
 for backend archives. Build the plugin through the selected workspace's normal
