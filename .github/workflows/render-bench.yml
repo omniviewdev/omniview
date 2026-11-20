@@ -21,7 +21,7 @@ name: Render Benchmarks
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, proof/n24-r1-base]
     paths:
       - "ui/**"
       - "bench/render/**"
