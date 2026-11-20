@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+// Measures the design mock's list pages (K2a: the five Workloads kinds, K2b-1: eight more, K2b-2: sixteen more and the two Events lists; a read-only use of the mock): per kind, in WebKit at 1440 x 900,
+// the header cells with their widths, the first six rows' cells with theirs, the quick-filter chips, the footer and a screenshot. It is the reference the plugin's lists are compared with by eye, and
+// the source of the widths the status files quote (the columns the mock fits to its own data, and the wide set it adds while the box has room).
+//
+// Serve the mock first (a CommonJS copy of its server.js with `root` set to the mock directory, as packages/kit/probes/mock-measure.mjs says; the lab's package.json says "type": "module"):
+//   sed "s#const root=__dirname#const root='<mock directory>'#" <mock directory>/server.js > /tmp/mock-server.cjs && PORT=48977 node /tmp/mock-server.cjs
+// The mock is `app/OmniviewNativeLab/frontend/mock` of the private repository omniviewdev/design-lab (tag spec-baseline-2026-11-16, docs/ui-next/AGENTS.md "Specification"). Then:
+//   MOCK_URL=http://127.0.0.1:48977/ OMNIVIEW_HOST_ROOT=<host checkout> OUT=<directory> node mock-measure.mjs
+//
+//   MOCK_URL            the served mock (default http://127.0.0.1:48977/)
+//   OMNIVIEW_HOST_ROOT  a host checkout with `pnpm install` done and WebKit installed in its Playwright (`pnpm exec playwright install webkit`): its Playwright is used
+//   OUT                 where mock-measure.json and the screenshots go
+//   TYPES               the logical types to measure, comma separated (default: the sixteen kinds of K2b-2 and the two Events lists; K2b-1 measured eight others, K2a the five of Workloads)
+import { mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const out = path.resolve(env('OUT'));
+const base = env('MOCK_URL', 'http://127.0.0.1:48977/');
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+
+const TYPES = (process.env.TYPES ?? 'k8s:/persistentvolumes,k8s:/persistentvolumeclaims,k8s:storage.k8s.io/storageclasses,k8s:networking.k8s.io/networkpolicies,k8s:/endpoints,k8s:discovery.k8s.io/endpointslices,k8s:networking.k8s.io/ingressclasses,k8s:/resourcequotas,k8s:/limitranges,k8s:autoscaling/horizontalpodautoscalers,k8s:policy/poddisruptionbudgets,k8s:/serviceaccounts,k8s:rbac.authorization.k8s.io/roles,k8s:rbac.authorization.k8s.io/clusterroles,k8s:rbac.authorization.k8s.io/rolebindings,k8s:rbac.authorization.k8s.io/clusterrolebindings,k8s:/events,k8s:events.k8s.io/events').split(',');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+await mkdir(out, { recursive: true });
+const data = {};
+const browser = await pw.webkit.launch();
+try {
+  for (const type of TYPES) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(base, { waitUntil: 'load' });
+    await sleep(3500);
+    // The mock's own route to a list: the connection prod-eu, the logical type.
+    await page.evaluate((logicalType) => {
+      const scope = K8s.connections.defaultScope('prod-eu');
+      Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType }, scope), scope }, { how: 'here' });
+    }, type);
+    await page.waitForSelector('table tbody tr', { timeout: 30000 });
+    await sleep(2500);
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    data[`webkit:${type}`] = await page.evaluate(() => {
+      const norm = (text) => (text ?? '').replace(/\s+/g, ' ').trim();
+      const table = document.querySelector('table');
+      const round = (value) => Math.round(value * 100) / 100;
+      return {
+        ths: [...table.querySelectorAll('thead th')].map((th) => ({ label: norm(th.textContent) || th.getAttribute('aria-label') || '', w: round(th.getBoundingClientRect().width), cls: th.className })),
+        rows: [...table.querySelectorAll('tbody tr')].slice(0, 6).map((tr) => ({ h: round(tr.getBoundingClientRect().height), cells: [...tr.children].map((td) => ({ t: norm(td.textContent), w: round(td.getBoundingClientRect().width) })) })),
+        chips: [...document.querySelectorAll('[data-block="filters"] button, .quick-filters button, .chip-row button')].map((chip) => norm(chip.textContent)),
+        footer: norm(document.querySelector('.footer, [data-part="footer"], footer')?.textContent),
+        title: norm(document.querySelector('h1')?.textContent),
+        tableWidth: Math.round(table.getBoundingClientRect().width),
+        count: table.querySelectorAll('tbody tr').length,
+      };
+    });
+    await page.screenshot({ path: path.join(out, `mock-${type.replace(/[^a-z]+/g, '-')}-webkit.png`) });
+    await page.close();
+    console.log('measured', type, data[`webkit:${type}`].ths.map((th) => `${th.label}:${th.w}`).join(' | '));
+  }
+} finally {
+  await browser.close();
+}
+await writeFile(path.join(out, 'mock-measure.json'), JSON.stringify(data, null, 2));
