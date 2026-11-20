@@ -14,7 +14,8 @@
 //   Playwright  `pnpm-lock.yaml`: the one version that `playwright`, `playwright-core` and `@playwright/test` resolve to. The browsers in the image are those of this version, so two
 //               versions in the lockfile cannot be served by one image and are a problem of their own.
 //   Go          `go.mod`: the `go` directive (raised by a `toolchain` directive) is a floor. The image holds one exact patch of the same series, pinned in the Dockerfile (`ARG GO_VERSION`).
-//   kind, kubectl  the Dockerfile's `ARG`s. The Pods workflow still pins the same two (and their sha256); until it takes them from the image the two copies must agree (MIRRORS below).
+//   kind, kubectl, golangci-lint  the Dockerfile's `ARG`s. The Pods workflow still pins kind and kubectl (and their sha256), PR Checks golangci-lint; until those jobs take the tools from the
+//               image the copies must agree (MIRRORS below).
 //   the Dockerfile itself, byte for byte.
 //
 // Those five make the INPUTS of the image and their hash (`inputsHash`). The lock (.github/ci/image.lock) records the hash an image was built from, its tag and digest, and the manifest the
@@ -28,7 +29,7 @@
 //   manifest-incomplete                the manifest lacks a tool or a browser that every consumer relies on.
 //   digest-split, digest-mismatch      the workflows pin two digests, or one that is not the lock's. Mutable tags (`omniview-ci:ubuntu24-v1`) are `mutable-pin` warnings until the consumers
 //                                      move to the digest (`--require-digest-pins` makes them problems), and `lock-old` warns when the lock is older than 21 days.
-//   tool-mirror-mismatch               kind or kubectl of the Pods workflow is not the Dockerfile's.
+//   tool-mirror-mismatch               kind or kubectl of the Pods workflow, or golangci-lint of PR Checks, is not the Dockerfile's.
 //
 // `--manifest <file>` is what a consumer's first step runs inside its container (`--manifest /opt/ci/manifest.json`): the same questions about the image that is actually running, plus
 // `image-behind` when it was built from other inputs than this checkout's. `--expect go=1.27` adds the job's own pins: a version is a prefix of dotted components.
@@ -53,8 +54,38 @@ const TOOLS = ['node', 'pnpm', 'playwright', 'go', 'task', 'goimports', 'golangc
 const BROWSERS = ['chromium', 'chromium-headless-shell', 'webkit'];
 /** The problems a rebuild of the image cures. The others (a split of the pins, a pin that is not the lock's, a mirror) are cured in the repository. */
 const REBUILD = new Set(['lock-missing', 'lock-invalid', 'inputs-behind', 'playwright-mismatch', 'node-mismatch', 'pnpm-mismatch', 'go-mismatch', 'manifest-incomplete', 'image-behind']);
-/** Tools whose pin the Dockerfile and the Pods workflow both state: [Dockerfile ARG, workflow file, workflow key]. */
-const MIRRORS = ['KIND_VERSION', 'KIND_SHA256', 'KUBECTL_VERSION', 'KUBECTL_SHA256'].map((key) => ({ arg: key, file: `${WORKFLOWS}/ui-next-pods.yml`, key }));
+/** The value of `KEY: value` in a workflow's env. */
+const workflowKey = (name) => (text) => new RegExp(`^\\s*${name}:\\s*["']?([^"'\\s#]+)`, 'm').exec(text)?.[1] ?? null;
+
+/** The `version:` in the `with` of the step that uses `action`: the step ends at the next line that is not indented under it. */
+const actionVersion = (action) => (text) => {
+  const lines = text.split(/\r?\n/);
+  const at = lines.findIndex((line) => line.includes(`uses: ${action}@`));
+  if (at === -1) return null;
+  const indentOf = (line) => line.match(/^\s*/)[0].length;
+  let marker = indentOf(lines[at]);
+  if (!/^\s*-\s/.test(lines[at])) {
+    for (let i = at - 1; i >= 0; i -= 1) {
+      if (/^\s*-\s/.test(lines[i]) && indentOf(lines[i]) < indentOf(lines[at])) {
+        marker = indentOf(lines[i]);
+        break;
+      }
+    }
+  }
+  for (let i = at + 1; i < lines.length; i += 1) {
+    if (lines[i].trim() === '') continue;
+    if (indentOf(lines[i]) <= marker) return null;
+    const version = /^\s*version:\s*["']?(v?\d+\.\d+\.\d+)["']?/.exec(lines[i]);
+    if (version) return version[1];
+  }
+  return null;
+};
+
+/** Pins that the Dockerfile and a workflow both state, while the workflow does: [Dockerfile ARG, the workflow file, what it pins, how to read it]. */
+const MIRRORS = [
+  ...['KIND_VERSION', 'KIND_SHA256', 'KUBECTL_VERSION', 'KUBECTL_SHA256'].map((name) => ({ arg: name, file: `${WORKFLOWS}/ui-next-pods.yml`, what: name, find: workflowKey(name) })),
+  { arg: 'GOLANGCI_LINT_VERSION', file: `${WORKFLOWS}/pr-checks.yml`, what: 'golangci-lint (the version of golangci-lint-action)', find: actionVersion('golangci/golangci-lint-action') },
+];
 const REBUILD_HINT = 'rebuild with `gh workflow run ci-image.yml --ref <your branch> -f publish=true`, then apply the `image-lock.patch` artifact of that run (the lock and the digest pins) and commit it';
 
 const problem = (code, message) => ({ code, message });
@@ -321,11 +352,6 @@ function age(builtAt, now, code, what) {
   return days > MAX_AGE_DAYS ? [problem(code, `${what} was built ${Math.ceil(days)} days ago (more than ${MAX_AGE_DAYS}): the weekly rebuild did not reach main. ${REBUILD_HINT}`)] : [];
 }
 
-function workflowValue(root, file, key) {
-  const match = new RegExp(`^\\s*${key}:\\s*["']?([^"'\\s#]+)`, 'm').exec(read(root, file) ?? '');
-  return match ? match[1] : null;
-}
-
 // ---- the checks --------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /** The repository against its lock: `{ problems, warnings }`, each `{ code, message }`. */
@@ -363,10 +389,10 @@ export function checkRepo(root, { now = new Date(), requireDigestPins = false } 
 
   const dockerfile = read(root, DOCKERFILE);
   const args = dockerfile === null ? {} : dockerfileArgs(dockerfile);
-  for (const { arg, file, key } of MIRRORS) {
-    const theirs = workflowValue(root, file, key);
+  for (const { arg, file, what, find } of MIRRORS) {
+    const theirs = find(read(root, file) ?? '');
     if (theirs !== null && theirs !== args[arg]) {
-      problems.push(problem('tool-mirror-mismatch', `${file} pins ${key} ${theirs} and the Dockerfile's ARG ${arg} is ${args[arg] ?? 'not set'}: change both (and rebuild the image), or drop the workflow's pin once the job takes the tool from the image`));
+      problems.push(problem('tool-mirror-mismatch', `${file} pins ${what} ${theirs} and the Dockerfile's ARG ${arg} is ${args[arg] ?? 'not set'}: change both (and rebuild the image), or drop the workflow's pin once the job takes the tool from the image`));
     }
   }
   if (args.GO_VERSION) {

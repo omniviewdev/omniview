@@ -6,9 +6,10 @@ name: Linux CI Image
 # the consumers move to the digest.
 #
 # What runs when:
-#   guard    every trigger: the unit tests of scripts/ci/check-image.mjs, then the guard itself. It fails when the lock is behind the repository (the Dockerfile, Playwright in pnpm-lock.yaml,
-#            Node, pnpm or the Go floor of go.mod changed since the image was built) and when the workflows pin another digest than the lock. A path filter cannot see "the Playwright line
-#            changed", so the guard looks at what the lockfile resolves and starts the build only when the inputs moved.
+#   guard    every trigger, among them any change to a workflow (the pins live there): the unit tests of scripts/ci/check-image.mjs, then the guard itself. It fails when the lock is behind the
+#            repository (the Dockerfile, Playwright in pnpm-lock.yaml, Node, pnpm or the Go floor of go.mod changed since the image was built), when the workflows pin another digest than the
+#            lock, and when kind, kubectl or golangci-lint is pinned in a workflow and in the Dockerfile at two versions. A path filter cannot see "the Playwright line changed", so the guard
+#            looks at what the lockfile resolves and starts the build only when the inputs moved.
 #   image    builds the image once, smokes that image, and (when asked to) pushes that same image under an immutable tag. On a pull request it only builds and smokes: nothing is pushed.
 #              - pull request / push to main: when the guard says the inputs moved, or when a file of the image (.github/ci, this workflow, the guard) changed. A push to main also publishes
 #                when the lock cannot serve main.
@@ -29,8 +30,7 @@ on:
     branches: [main]
     paths:
       - .github/ci/**
-      - .github/workflows/ci-image.yml
-      - .github/workflows/ui-next-pods.yml
+      - .github/workflows/**
       - scripts/ci/check-image.mjs
       - scripts/ci/check-image.test.mjs
       - pnpm-lock.yaml
@@ -41,8 +41,7 @@ on:
     branches: [main]
     paths:
       - .github/ci/**
-      - .github/workflows/ci-image.yml
-      - .github/workflows/ui-next-pods.yml
+      - .github/workflows/**
       - scripts/ci/check-image.mjs
       - scripts/ci/check-image.test.mjs
       - pnpm-lock.yaml
@@ -179,10 +178,18 @@ jobs:
           set -euo pipefail
           mapfile -t inputs < <(node scripts/ci/check-image.mjs inputs --format docker-args)
           printf '%s\n' "${inputs[@]}"
-          docker build --pull --platform linux/amd64 -f .github/ci/Dockerfile -t omniview-ci:smoke \
-            "${inputs[@]}" \
-            --build-arg="BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" --build-arg="SOURCE_SHA=$SOURCE_SHA" --build-arg="SOURCE_RUN=$SOURCE_RUN" \
-            .
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          build() {
+            docker build --pull --platform linux/amd64 -f .github/ci/Dockerfile -t omniview-ci:smoke \
+              "${inputs[@]}" \
+              --build-arg="BUILT_AT=$built_at" --build-arg="SOURCE_SHA=$SOURCE_SHA" --build-arg="SOURCE_RUN=$SOURCE_RUN" \
+              .
+          }
+          # The build downloads from apt mirrors, GitHub and Playwright's CDN; a stalled or refused download is the one failure a second try cures. The layers that were built are kept.
+          build || {
+            echo "::warning::the image build failed once: trying again with the layers that were built"
+            build
+          }
 
       - name: Size of the image
         run: |

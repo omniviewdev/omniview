@@ -47,6 +47,7 @@ ARG NODE_VERSION
 ARG PNPM_VERSION
 ARG PLAYWRIGHT_VERSION
 ARG GO_VERSION=1.27.3
+ARG GOLANGCI_LINT_VERSION=v2.15.0
 ARG KIND_VERSION=v0.30.0
 ARG KIND_SHA256=${KIND_SHA}
 ARG KUBECTL_VERSION=v1.35.0
@@ -123,6 +124,20 @@ jobs:
       image: ${image}
       options: --init
 `;
+/** The lint step of PR Checks as it is today: the action downloads golangci-lint at the version in `with`. */
+const lintStep = (version) => `      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${version}
+          only-new-issues: false
+        env:
+          GOWORK: "off"
+  other:
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          version: v9.9.9
+`;
 const PODS = `name: pods
 env:
   NODE_VERSION: "26.13.0"
@@ -178,7 +193,7 @@ function repository(over = {}) {
   put(root, 'go.mod', over.goMod ?? GO_MOD);
   put(root, 'pnpm-lock.yaml', over.lockfile ?? lockfile());
   put(root, '.github/workflows/pr.yml', over.pr ?? workflow(`${IMAGE}@${DIGEST_A}`));
-  put(root, '.github/workflows/pr-checks.yml', over.prChecks ?? workflow(`${IMAGE}@${DIGEST_A}`));
+  put(root, '.github/workflows/pr-checks.yml', over.prChecks ?? `${workflow(`${IMAGE}@${DIGEST_A}`)}${lintStep('v2.15.0')}`);
   put(root, '.github/workflows/ui-next-pods.yml', over.pods ?? PODS);
   put(root, '.github/workflows/ci-image.yml', `env:\n  IMAGE: ${IMAGE}\n# consumers pin ${IMAGE}@sha256:<digest>\n`);
 
@@ -415,6 +430,16 @@ test('NEGATIVE CONTROL: a kind or kubectl pin of the Pods workflow that the Dock
   assert.match(report.problems[0].message, /v0\.30\.0/);
   assert.deepEqual(codes(checkRepo(repository({ pods: PODS.replace(`KUBECTL_SHA256: ${KUBECTL_SHA}`, `KUBECTL_SHA256: ${'0'.repeat(64)}`) }), { now: NOW })), ['tool-mirror-mismatch']);
   assert.deepEqual(checkRepo(repository({ pods: 'name: pods\nenv:\n  NODE_VERSION: "26.13.0"\n' }), { now: NOW }).problems, []);
+});
+
+test('NEGATIVE CONTROL: a golangci-lint version of the lint step that the Dockerfile does not have fails, and a lint step that is gone, or another action\'s version, is fine', () => {
+  const bumped = repository({ prChecks: `${workflow(`${IMAGE}@${DIGEST_A}`)}${lintStep('v2.16.0')}` });
+  const report = checkRepo(bumped, { now: NOW });
+  assert.deepEqual(codes(report), ['tool-mirror-mismatch']);
+  assert.match(report.problems[0].message, /golangci-lint/);
+  assert.match(report.problems[0].message, /v2\.16\.0/);
+  assert.match(report.problems[0].message, /v2\.15\.0/);
+  assert.deepEqual(checkRepo(repository({ prChecks: workflow(`${IMAGE}@${DIGEST_A}`) }), { now: NOW }).problems, [], 'no lint step, nothing to mirror');
 });
 
 test('an exact Go pin in a workflow that is not the image\'s is a warning, a floating one of the same series is not', () => {
