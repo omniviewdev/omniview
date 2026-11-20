@@ -877,6 +877,29 @@ The host checks that captured epoch under the same fence as authority persistenc
 and route invalidation. A stale catalog cannot replace a newer durable binding,
 even when its caller would later reject the stale result.
 
+A type may also declare `ResourceType.environment`, a list of plugin-asserted
+fingerprints of the target itself, each `strong` or `weak` (for Kubernetes: the
+`kube-system` namespace UID and the public keys of the root CA bundle). They stay
+equal across connection stops and starts, profile edits and restarts, and a
+connection declares only what its caller can read. Two declarations are one
+environment when they share a strong fingerprint and no exclusive scheme (one
+value per environment, such as the namespace UID) carries different values; weak
+fingerprints are hints and never decide. They are the only input to a **durable
+identity**, which is for history and correlation and never for authorization or
+access: the host keeps using its own authority for policy, consent, MCP call
+binding, epoch fencing and reference currency, and environment equality never
+grants access. A reader may see history for a population (environment, resource
+type, scope) only if the reader's own current route is permitted to read that
+type and scope now, and equal environments never permit sharing a body, cache,
+grant or projection. The host namespaces every fingerprint by the declaring
+plugin, derives the identity from the type's admitted catalog descriptor (a source
+session keeps one environment for its whole life), and gives a type with no
+strong fingerprint no durable identity. Fingerprints cannot separate clusters
+restored from one backup; a consumer splits them when the same object is observed
+concurrently with conflicting incarnations. The wire field is optional and
+`WireVersion` is unchanged, but SDK receivers with strict unknown-field admission
+need the matching SDK before a plugin declares it: ship the host first.
+
 Native operations pin the **exact accepted** SDK `Catalog.Revision` through
 `WithCatalogRevision`; neither client nor host substitutes a latest-cache token.
 The SDK frames the actual source/client binding epoch separately from native
