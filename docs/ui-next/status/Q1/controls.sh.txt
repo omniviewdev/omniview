@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Q1 negative controls (docs/ui-next/status/Q1.md, "Negative controls"). A control is the plugin with ONE line of its code made wrong, and the tests that name that line must fail. The mutant is a copy of the file
+# with the edit of the table in Q1.md; `go test -overlay` builds the plugin with the copy in place of the file, so the checkout is never touched.
+#
+#   PLUGIN=<plugin checkout> bash controls.sh <name> <file, relative to the checkout> <mutant file> '<packages>' '<test regex>'
+#
+# It prints the result line of EVERY package, as `go test` printed it (a package that did not build, or that ran none of the selected tests, says so there), then the top-level tests that failed. The exit status says what the
+# run proved:
+#   0  tripped: at least one of the selected tests failed, and every package built and started
+#   1  NOT tripped: no selected test failed, so nothing guards the line
+#   2  not a control: a package did not build or could not start, a test binary panicked, `go test` failed with no failing test, or none of the packages ran a selected test. A failing test in another package does not make it one
+set -euo pipefail
+: "${PLUGIN:?PLUGIN is required: a plugin checkout}"
+name="$1"; original="$(cd "$PLUGIN" && pwd)/$2"; mutant="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"; packages="$4"; pattern="$5"
+overlay="$(mktemp "${TMPDIR:-/tmp}/q1-control.XXXXXX")"
+trap 'rm -f "$overlay"' EXIT
+printf '{"Replace": {"%s": "%s"}}' "$original" "$mutant" >"$overlay"
+cd "$PLUGIN"
+# shellcheck disable=SC2086
+output="$(GOWORK=off GOTOOLCHAIN="${GOTOOLCHAIN:-local}" go test $packages -overlay "$overlay" -run "$pattern" -count=1 -timeout 120s 2>&1)" && gotest=0 || gotest=$?
+echo "=== $name"
+# every package's own result line (ok, FAIL, ? and the build or setup failure of one), none cut to the first
+echo "$output" | grep -E '^(ok|FAIL|\?)[[:space:]]' || true
+broken="$(echo "$output" | grep -E '\[(build|setup) failed\]|^panic: ' || true)"
+tripped="$(echo "$output" | grep -E '^--- FAIL' | sort -u || true)"
+ran="$(echo "$output" | grep -E '^ok[[:space:]]' | grep -vc 'no tests to run' || true)"
+if [ -n "$broken" ]; then
+  echo "NOT A CONTROL: a package did not build or could not start, or a test binary panicked:"
+  echo "$broken"
+  exit 2
+fi
+if [ -n "$tripped" ]; then
+  echo "$tripped"
+  exit 0
+fi
+if [ "$gotest" != 0 ]; then
+  echo "NOT A CONTROL: go test failed (exit $gotest) and no test failed; its output follows"
+  echo "$output" | tail -n 20
+  exit 2
+fi
+if [ "$ran" = 0 ]; then
+  echo "NOT A CONTROL: none of the packages ran a selected test (the pattern selects nothing)"
+  exit 2
+fi
+echo "NOT TRIPPED: no selected test failed with the line made wrong"
+exit 1
