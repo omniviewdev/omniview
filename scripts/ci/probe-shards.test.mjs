@@ -31,6 +31,11 @@ const command = fileURLToPath(new URL('./probe-shards.mjs', import.meta.url));
 const workflowText = readFileSync(path.join(repo, WORKFLOW), 'utf8');
 const workflow = parse(workflowText);
 
+// The environment a test hands to a child: the caller's, minus every variable a probe or this runner reads (a developer runs the probes with FONT_DELAY_MS=40 exported, AGENTS.md rule 17), so that what a
+// test asserts about a probe's env does not depend on the shell it runs from.
+const PROBE_VARIABLES = ['FONT_DELAY_MS', 'NEGATIVE_CONTROL', 'REPORT', 'DIST', 'PROBE_DIST', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];
+const callerEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !PROBE_VARIABLES.includes(key)));
+
 const roots = [];
 after(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
@@ -328,6 +333,74 @@ test('a probe that CI never ran before the split is listed by hand with the reas
   for (const entry of BY_HAND) assert.ok(entry.reason.length > 20, entry.script);
 });
 
+// The balance (N24 B1). Seconds of each unit (a probe with its negative controls), from the green runs of 2026-11-20 on the runner (`### Kit probes shard N` of the job summary): the median of runs 44798544094,
+// 44803451635, 44806908384, 44808922038, 44810769664 and 44818285854; the panel probe, the Logs probe and their controls from the last of them and run 44820580415 (main after #561), the only runs that have the sections P1b-3c (A21) added.
+// A unit that is not here fails the test below: measure it (the job summary of its first run) and add it.
+const MEASURED_SECONDS = {
+  'Probe the bottom panel against the pinned mock reference': 280,
+  'Probe that the panel probe sees a panel that is wrong': 318,
+  'Probe the table against the pinned mock reference': 68,
+  'Probe the rail against the pinned mock reference': 16,
+  'Probe the detail page against the pinned mock reference': 10,
+  'Probe the command palette against the pinned mock reference': 258,
+  'Probe that the palette probe sees a palette that is wrong': 60,
+  'Probe the fonts and the layout shift': 43,
+  'Probe the shell frame against the pinned mock reference': 51,
+  'Probe the log view against the pinned mock reference': 195,
+  'Probe that the log probe sees a log view that is wrong': 114,
+  'Probe the tooltip host': 152,
+  'Probe the Logs tool in a real engine': 282,
+  'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved': 111,
+  'Probe the parts against the pinned mock reference': 172,
+  'Probe the tab strip, the page host and the load against the pinned mock reference': 186,
+  'Probe that the strip probe sees a label that gives way to a count': 26,
+};
+/** The seconds of every shard of a table, and the units no measurement is known for. */
+function balance(table, measured = MEASURED_SECONDS) {
+  const unmeasured = [];
+  const totals = table.shards.map((shard) => ({
+    id: shard.id,
+    seconds: shard.units.reduce((sum, candidate) => {
+      if (measured[candidate.name] === undefined) unmeasured.push(candidate.name);
+      return sum + (measured[candidate.name] ?? 0);
+    }, 0),
+    units: shard.units.length,
+  }));
+  return { totals, unmeasured };
+}
+// The shard jobs wait for the slowest. A probe stays with its controls, so the panel probe with its controls is the floor of the job (598 s) and nothing can make it shorter than that by moving units;
+// what moving can do is keep every other shard well under it, so that a slow run of one of them does not become the job. The best split of the other eleven probes into four shards (searched
+// exhaustively from the numbers above) has a longest shard of 461 s; the limit is that and 9 s.
+const OTHERS_LIMIT_SECONDS = 470;
+
+test('every unit of the table has a measurement, and every measurement is of a unit', () => {
+  const { unmeasured } = balance(TABLE);
+  assert.deepEqual(unmeasured, []);
+  const names = new Set(TABLE.shards.flatMap((shard) => shard.units.map((candidate) => candidate.name)));
+  assert.deepEqual(Object.keys(MEASURED_SECONDS).filter((name) => !names.has(name)), []);
+});
+
+test('the slowest shard is the longest probe with its controls and nothing else, and every other shard is under the limit', () => {
+  const { totals } = balance(TABLE);
+  const panel = totals.find((entry) => TABLE.shards.find((shard) => shard.id === entry.id).units.some((candidate) => candidate.script.endsWith('panel-probe.mjs')));
+  assert.equal(panel.units, 2, 'the panel probe and its controls are the shard');
+  for (const entry of totals) {
+    if (entry === panel) continue;
+    assert.ok(entry.seconds <= OTHERS_LIMIT_SECONDS, `shard ${entry.id} is ${entry.seconds} s, over ${OTHERS_LIMIT_SECONDS}: move a unit (the longest other shard of the best split is 461 s)`);
+  }
+  assert.ok(panel.seconds > Math.max(...totals.filter((entry) => entry !== panel).map((entry) => entry.seconds)), 'the panel shard is the slowest');
+});
+
+test('negative control: a unit moved onto a shard that is already long is seen as a shard over the limit', () => {
+  const moved = structuredClone(TABLE);
+  const tooltip = moved.shards.flatMap((shard) => shard.units).find((candidate) => candidate.name === 'Probe the tooltip host');
+  moved.shards = moved.shards.map((shard) => ({ ...shard, units: shard.units.filter((candidate) => candidate !== tooltip) }));
+  moved.shards.find((shard) => shard.units.some((candidate) => candidate.script.endsWith('logs-probe.mjs'))).units.push(tooltip);
+  const { totals } = balance(moved);
+  assert.ok(totals.some((entry) => entry.seconds > OTHERS_LIMIT_SECONDS && entry.units > 2), JSON.stringify(totals));
+  assert.deepEqual(balance(moved, { ...MEASURED_SECONDS, 'Probe the tooltip host': undefined }).unmeasured, ['Probe the tooltip host'], 'a unit without a measurement is named');
+});
+
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // One unit becomes runs; one shard becomes a plan
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -399,7 +472,7 @@ function shardsTable() {
 
 async function run(table, id, root) {
   const chunks = [];
-  const results = await runShard(table, id, { root, env: { ...process.env, RUNNER_TEMP: '/tmp/runner' }, out: (text) => chunks.push(text) });
+  const results = await runShard(table, id, { root, env: { ...callerEnv(), RUNNER_TEMP: '/tmp/runner' }, out: (text) => chunks.push(text) });
   return { results, log: chunks.join('') };
 }
 
@@ -468,7 +541,7 @@ test('the summary of a shard counts runs and failures, one row each with its sec
 // The command CI runs
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const cli = (root, ...args) => spawnSync('node', [command, '--root', root, ...args], { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_OUTPUT: '', GITHUB_STEP_SUMMARY: '' } });
+const cli = (root, ...args) => spawnSync('node', [command, '--root', root, ...args], { encoding: 'utf8', env: { ...callerEnv(), GITHUB_ACTIONS: '', GITHUB_OUTPUT: '', GITHUB_STEP_SUMMARY: '' } });
 
 /** A tree with one empty file for every script the real table names, the by-hand ones, and a workflow with the matrix of the table. */
 function treeOfTheTable() {
@@ -491,7 +564,7 @@ test('negative control: the check command fails on a probe file added to a probe
   const plain = cli(root, 'check');
   assert.equal(plain.status, 1);
   assert.match(plain.stderr, /probe-shards: ui-next\/shell\/probes\/forgotten-probe\.mjs is a probe script and no shard runs it/);
-  const annotated = spawnSync('node', [command, '--root', root, 'check'], { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' } });
+  const annotated = spawnSync('node', [command, '--root', root, 'check'], { encoding: 'utf8', env: { ...callerEnv(), GITHUB_ACTIONS: 'true' } });
   assert.equal(annotated.status, 1);
   assert.match(annotated.stdout, /^::error file=ui-next\/shell\/probes\/forgotten-probe\.mjs,title=Kit probe is in no shard::/m);
 });
@@ -509,7 +582,7 @@ test('the plan names the shard, its units and runs, says whether it reads the ui
   const root = treeOfTheTable();
   const output = path.join(root, 'github-output');
   for (const shard of TABLE.shards) {
-    const result = spawnSync('node', [command, '--root', root, 'plan', shard.id], { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output } });
+    const result = spawnSync('node', [command, '--root', root, 'plan', shard.id], { encoding: 'utf8', env: { ...callerEnv(), GITHUB_OUTPUT: output } });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, new RegExp(`Kit probes shard ${shard.id}: ${shard.units.length} steps`));
     for (const { name } of shard.units) assert.ok(result.stdout.includes(name), name);
@@ -534,7 +607,7 @@ test('the run command exits 1 when a probe of the shard fails and 0 when every p
   for (const shard of TABLE.shards) for (const { script } of shard.units) files[script] = script.endsWith('panel-probe.mjs') ? 'process.exit(5);\n' : 'process.exit(0);\n';
   const root = scratch(files);
   const summary = path.join(root, 'summary.md');
-  const env = { ...process.env, RUNNER_TEMP: root, PROBE_DIST: path.join(root, 'dist'), GITHUB_STEP_SUMMARY: summary, GITHUB_ACTIONS: '' };
+  const env = { ...callerEnv(), RUNNER_TEMP: root, PROBE_DIST: path.join(root, 'dist'), GITHUB_STEP_SUMMARY: summary, GITHUB_ACTIONS: '' };
   const withPanel = TABLE.shards.find((shard) => shard.units.some((candidate) => candidate.script.endsWith('panel-probe.mjs'))).id;
   const without = TABLE.shards.find((shard) => shard.id !== withPanel).id;
   const failing = spawnSync('node', [command, '--root', root, 'run', withPanel], { encoding: 'utf8', env });
@@ -570,7 +643,7 @@ test('the shard job fans out over the shards of the table, none stops the others
 
 test('the workflow keeps the env the single job had, and runs again when the table, its runner or its test change', () => {
   assert.equal(workflow.env.OMNIVIEW_UI, 'next');
-  assert.equal(workflow.env.NODE_VERSION, '26.13.0');
+  assert.equal(workflow.env.NODE_VERSION, undefined, 'Node is the image\'s, checked against .tool-versions by the guard step: a second pin here is a second home');
   for (const event of ['pull_request', 'push']) {
     const paths = workflow.on[event].paths;
     for (const entry of ['packages/kit/**', 'ui-next/**', 'packages/omniviewdev-runtime/**', 'pnpm-lock.yaml', '.github/workflows/ui-next-kit-probes.yml', 'scripts/ci/probe-shards.mjs', 'scripts/ci/probe-shards.test.mjs']) {
@@ -581,16 +654,65 @@ test('the workflow keeps the env the single job had, and runs again when the tab
   assert.ok('workflow_dispatch' in workflow.on);
 });
 
-test('every shard keeps the bounded, retried browser install of #557 and the browser cache, and builds the packages and, when its probes read it, ui-next', () => {
-  const install = stepsOf('shard').find((step) => step.name === 'Install the browsers');
-  assert.ok(install, 'the step "Install the browsers"');
-  assert.match(install.run, /for attempt in 1 2; do/);
-  assert.match(install.run, /timeout --kill-after=15 900 pnpm exec playwright install --with-deps chromium webkit/);
-  assert.match(install.run, /DPkg::Lock::Timeout "600";/);
-  assert.match(install.run, /::error::Playwright browser install failed twice"\n\s*exit 1\n?$/, 'two failed attempts fail the step');
-  assert.match(install.run, /if timeout --kill-after=15 900 pnpm exec playwright install --with-deps chromium webkit; then\n\s*exit 0\n\s*fi/, 'a first attempt that passes ends the step');
-  const cache = stepsOf('shard').find((step) => step.name === 'Cache the browsers');
-  assert.equal(cache.with.key, '${{ runner.os }}-playwright-1.64.1-chromium-webkit');
+// The image (N24 B1): the shards run in the CI image by DIGEST, as `.github/ci/image.lock` pins it, with the credentials of a private package, and ask the guard whether it is the image of this checkout before they do anything
+// else; the browser install (and its retry loop), the browser cache and the tool setup the image provides are gone. `imageProblems` says what a workflow lacks, one sentence each.
+const lock = JSON.parse(readFileSync(path.join(repo, '.github/ci/image.lock'), 'utf8'));
+const GUARD = /node scripts\/ci\/check-image\.mjs check --manifest \/opt\/ci\/manifest\.json/;
+const IMAGE_PROVIDES = [/^actions\/setup-node@/, /^pnpm\/setup@/, /^arduino\/setup-task@/, /^actions\/setup-go@/];
+
+function imageProblems(wf, pinned) {
+  const problems = [];
+  const job = wf.jobs.shard;
+  const want = `${pinned.image}@${pinned.digest}`;
+  if (job.container?.image !== want) problems.push(`the shard job pulls ${job.container?.image ?? 'no container'}, not ${want} (the digest of .github/ci/image.lock)`);
+  if (job.container?.credentials?.username !== '${{ github.actor }}' || job.container?.credentials?.password !== '${{ secrets.GITHUB_TOKEN }}') problems.push('the container has no credentials block: the package is private');
+  if (!String(job.container?.options ?? '').split(/\s+/).includes('--init')) problems.push('the container does not run with --init');
+  if (job.permissions?.packages !== 'read' || job.permissions?.contents !== 'read') problems.push('the shard job does not hold packages: read (and contents: read): the token cannot pull a private package');
+  const steps = job.steps;
+  if (!/^chown "\$\(id -u\):\$\(id -g\)" "\$PWD"$/.test(steps[0]?.run ?? '')) problems.push('the first step is not the checkout directory ownership fix of the other container jobs');
+  if (!steps[1]?.uses?.startsWith('actions/checkout@')) problems.push('the second step is not the checkout');
+  const guard = steps.findIndex((step) => GUARD.test(step.run ?? ''));
+  const install = steps.findIndex((step) => /pnpm install/.test(step.run ?? ''));
+  if (guard === -1) problems.push('no step runs the guard against /opt/ci/manifest.json');
+  else if (guard > 3 || guard > install) problems.push('the guard runs after the dependencies are installed or later than the fourth step: the image must be proven right first');
+  for (const step of steps) {
+    const label = step.name ?? step.uses ?? step.run?.split('\n')[0];
+    if (IMAGE_PROVIDES.some((pattern) => pattern.test(step.uses ?? ''))) problems.push(`the step "${label}" sets up a tool the image holds`);
+    if (/playwright install|--with-deps|apt-get|\bsudo\b/.test(step.run ?? '')) problems.push(`the step "${label}" installs what the image holds`);
+    if (String(step.with?.path ?? '').includes('ms-playwright')) problems.push(`the step "${label}" caches browsers the image holds`);
+  }
+  return problems;
+}
+
+test('every shard runs in the CI image by digest, with the credentials, and proves it is the image of this checkout before anything else; nothing the image holds is installed again', () => {
+  assert.deepEqual(imageProblems(workflow, lock), []);
+});
+
+test('negative control: the image contract names a tag, another digest, a missing credentials block, missing permissions, a late guard and every install the image replaces', () => {
+  const copy = () => structuredClone(workflow);
+  const mutate = (change) => {
+    const wf = copy();
+    change(wf.jobs.shard);
+    return imageProblems(wf, lock).join('\n');
+  };
+  const zero = `sha256:${'0'.repeat(64)}`;
+  assert.ok(mutate((job) => { job.container.image = `${lock.image}:ubuntu24-v1`; }).includes(`pulls ${lock.image}:ubuntu24-v1, not ${lock.image}@${lock.digest}`));
+  assert.ok(mutate((job) => { job.container.image = `${lock.image}@${zero}`; }).includes(`pulls ${lock.image}@${zero}, not ${lock.image}@${lock.digest}`));
+  assert.match(mutate((job) => { delete job.container.credentials; }), /no credentials block/);
+  assert.match(mutate((job) => { job.container.options = ''; }), /--init/);
+  assert.match(mutate((job) => { delete job.permissions.packages; }), /packages: read/);
+  assert.match(mutate((job) => { job.steps = job.steps.filter((step) => !GUARD.test(step.run ?? '')); }), /no step runs the guard/);
+  assert.match(mutate((job) => { const at = job.steps.findIndex((step) => GUARD.test(step.run ?? '')); job.steps.push(...job.steps.splice(at, 1)); }), /the guard runs after/);
+  assert.match(mutate((job) => { job.steps.shift(); }), /ownership fix/);
+  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Node', uses: 'actions/setup-node@v4' }); }), /sets up a tool the image holds/);
+  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'pnpm', uses: 'pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e' }); }), /sets up a tool the image holds/);
+  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Task', uses: 'arduino/setup-task@v2' }); }), /sets up a tool the image holds/);
+  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Install the browsers', run: 'pnpm exec playwright install --with-deps chromium webkit' }); }), /installs what the image holds/);
+  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'libs', run: 'sudo apt-get install -y libx' }); }), /installs what the image holds/);
+  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Cache the browsers', uses: 'actions/cache@v4', with: { path: '~/.cache/ms-playwright', key: 'k' } }); }), /caches browsers the image holds/);
+});
+
+test('every shard builds the packages and, when its probes read it, ui-next', () => {
   assert.ok(stepsOf('shard').some((step) => step.run?.includes('task packages')));
   const build = stepsOf('shard').find((step) => step.run?.includes('vite build'));
   assert.equal(build.if, "steps.plan.outputs.dist == 'true'");
