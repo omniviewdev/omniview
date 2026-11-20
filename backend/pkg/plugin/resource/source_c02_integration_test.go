@@ -37,6 +37,11 @@ func sourceFileObservation(client *sourceFileClient, target resourcev2.ReadTarge
 }
 
 func TestC02SourceViewLifecycle(t *testing.T) {
+	t.Run("sync before the first snapshot", func(t *testing.T) { runC02SourceViewLifecycle(t, false) })
+	t.Run("sync after the first snapshot", func(t *testing.T) { runC02SourceViewLifecycle(t, true) })
+}
+
+func runC02SourceViewLifecycle(t *testing.T, syncAfterSnapshot bool) {
 	ctx := testInvocationContext()
 	path := filepath.Join(t.TempDir(), "native.txt")
 	writeFile := func(value string) {
@@ -47,6 +52,7 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 	}
 	writeFile("first")
 	stopped := make(chan struct{})
+	publish := make(chan struct{})
 	provider, err := resourcev2.NewController(resourcev2.Config[sourceFileClient]{
 		Catalog: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
 			catalog := canonicalTestCatalog("proof", sourceFileType)
@@ -80,6 +86,11 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 			},
 			Source: func(ctx context.Context, client *sourceFileClient, request resourcev2.SourceRequest, emitter resourcev2.SourceEmitter) error {
 				defer close(stopped)
+				select {
+				case <-publish:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 				observation, err := sourceFileObservation(client, request.Target)
 				if err != nil {
 					return err
@@ -127,7 +138,16 @@ func TestC02SourceViewLifecycle(t *testing.T) {
 	opened, err := ctrl.OpenSourceView(ctx, "proof", HostSourceViewRequest{TargetID: resolved.TargetID, Target: resolved.Target, Updates: "ifSupported"})
 	require.NoError(t, err)
 	require.Equal(t, resourcev2.SourceModeSnapshotAndUpdates, opened.Mode)
+	if syncAfterSnapshot {
+		close(publish)
+		waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
+			return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
+		})
+	}
 	require.NoError(t, ctrl.SyncSourceView(ctx, "proof", opened.ViewID))
+	if !syncAfterSnapshot {
+		close(publish)
+	}
 	initial := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "snapshot" && len(event.Records) != 0 })
 	require.Equal(t, "first", initial.Records[0].Record.Body.Map["value"].String)
 	end := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
