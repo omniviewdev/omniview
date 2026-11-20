@@ -548,11 +548,21 @@ func (pm *pluginManager) createBackend(
 		// Unix socket limits even when the plugin has a verified short socket root.
 		// Activity and host-connection bindings complete sequentially before admission.
 		GRPCBrokerMultiplex: true,
-		GRPCDialOptions:     sdk.GRPCDialOptions(),
-		Cmd:                 cmd,
-		SkipHostEnv:         true,
-		StartTimeout:        pluginStartTimeout,
-		AllowedProtocols:    []goplugin.Protocol{goplugin.ProtocolGRPC},
+		// AutoMTLS makes go-plugin generate a throwaway certificate for this
+		// launch, hand its public half to the child in PLUGIN_CLIENT_CERT, and
+		// require the child to serve TLS that demands that exact client
+		// certificate. This stops other local processes from connecting to the
+		// plugin channel (a Unix socket, or loopback TCP on Windows) and reading
+		// or calling it. It does not contain a hostile plugin, and it does not
+		// protect against a process running as the same user that can read the
+		// plugin's environment or memory. Brokered callback connections use the
+		// same certificates.
+		AutoMTLS:         true,
+		GRPCDialOptions:  sdk.GRPCDialOptions(),
+		Cmd:              cmd,
+		SkipHostEnv:      true,
+		StartTimeout:     pluginStartTimeout,
+		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
 			Output: logOutput,
