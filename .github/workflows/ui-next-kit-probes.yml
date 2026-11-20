@@ -1,16 +1,17 @@
 name: UI next kit probes
 
-# Slice 1a, PRs 1a.4d and 1a.3c (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and
-# Chromium at 1440 x 900 and 1030 x 720, against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json for the
-# parts and mock-table.json for the table, measured from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs,
-# which writes where each came from into the file; the design lab is private and is never needed here).
-# Four probes, each fails the job on a difference: kit-probe (parity with the mock, tokens, counts, keyboard, accessibility with axe-core),
-# table-probe (the table: header, rows, selection column, sort, hover, selected and focus states, the fit, the nine themes), fonts-probe (the
-# fonts are delivered, used and the page does not shift) and tooltip-probe (the one tooltip host: listeners, cost, delay, Escape layering,
-# placement, motion).
+# Slice 1a, PRs 1a.4d and 1a.3c (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the shell's probes at 1440 x 900 and
+# 1280 x 800; tracker row N23 moves the first to the second), against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json for the parts and mock-table.json for the table, measured
+# from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs, which writes where each came from into the file; the design lab is private and is never needed here).
+# Each probe fails its job on a difference. They are listed in scripts/ci/probe-shards.mjs, each with what it checks, its negative controls and the shard that runs it.
+#
+# THE SHARDS (N24, step K1). The probes took 26 to 33 minutes one after the other in one job. They now run in five jobs at the same time, `Kit probes shard 1` to `5`, each one the probes (with their negative
+# controls) that scripts/ci/probe-shards.mjs gives it, and the job named `Kit probes` waits for them and is green only when every one is. A probe is a Node process on its own VM, as it was on the one VM: nothing
+# is shared between probes but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its probes reads it. To add a probe, add a unit to the table (the check below fails, naming the file,
+# when a probe script is in no shard); to move one, move its unit.
 #
 # NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
-# request blocks the merge. The lead makes it required in the branch protection settings once it has been green for a while.
+# request blocks the merge. The lead makes `Kit probes` (the aggregating job, whose name does not change) required in the branch protection settings once it has been green for a while.
 
 on:
   pull_request:
@@ -19,6 +20,8 @@ on:
       - "ui-next/**"
       - "packages/omniviewdev-runtime/**"
       - "pnpm-lock.yaml"
+      - "scripts/ci/probe-shards.mjs"
+      - "scripts/ci/probe-shards.test.mjs"
       - ".github/workflows/ui-next-kit-probes.yml"
   push:
     branches: [main]
@@ -27,6 +30,8 @@ on:
       - "ui-next/**"
       - "packages/omniviewdev-runtime/**"
       - "pnpm-lock.yaml"
+      - "scripts/ci/probe-shards.mjs"
+      - "scripts/ci/probe-shards.test.mjs"
       - ".github/workflows/ui-next-kit-probes.yml"
   workflow_dispatch:
 
@@ -42,14 +47,20 @@ env:
   OMNIVIEW_UI: next
 
 jobs:
-  probes:
-    name: Kit probes
+  shard:
+    name: Kit probes shard ${{ matrix.shard }}
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # 30 minutes held 29 of them on the last run (the browsers' cold install alone took 20), so the detail probe's minutes needed room of their own. The log probe and its seven controls
-    # (P1b-2) took 2 m 42 s and 1 m 45 s on a runner (run 44604456802: 28 minutes in all, the browsers cached); a cold install on top of that is about 48 minutes (an estimate), so 55 and not 40.
-    timeout-minutes: 55
+    # A shard takes about 9 minutes when the browsers install in one (setup 2, probes 4 to 7; the longest shard is the panel probe and its controls), so twice that is 18. It is 30 because the browser install below
+    # is bounded by its own retry: a first attempt that hangs is killed after 15 minutes and the second one runs, and a limit under 25 would cut that second attempt off and turn a healed install into a red shard.
+    timeout-minutes: 30
+    strategy:
+      # Every shard runs to the end: a shard that fails does not stop the others, so one push shows every failing probe, and `Kit probes` below needs all of them.
+      fail-fast: false
+      matrix:
+        # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,6 +95,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Before anything is built or downloaded: the check (every probe script of the probe directories is in exactly one shard, every shard is in the matrix above), then the tests of the check and of the job below, then what
+      # this shard runs. The check comes first so that a probe that is in no shard fails here, in every shard, in a few seconds, with its path on the error line and nothing before it.
+      - name: Check the shard table and plan this shard
+        id: plan
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          node scripts/ci/probe-shards.mjs check
+          node --test scripts/ci/probe-shards.test.mjs
+          node scripts/ci/probe-shards.mjs plan "$SHARD"
+
       - name: Build the workspace packages (the kit among them)
         run: |
           task packages
@@ -111,113 +133,54 @@ jobs:
           echo "::error::Playwright browser install failed twice"
           exit 1
 
+      # The kit's probes (parts, table, fonts, tooltip, log view) read one production build of ui-next, made here once; the shell's probes build their own fixtures, so a shard that has none of the first skips this step.
       # The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
-      - name: Build ui-next once, for every probe below
+      - name: Build ui-next once, for the probes of this shard that read it
+        if: steps.plan.outputs.dist == 'true'
         run: |
           echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
           OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
 
-      - name: Probe the parts against the pinned mock reference
-        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/kit-probe.json" node packages/kit/probes/kit-probe.mjs
-
-      - name: Probe the table against the pinned mock reference
-        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/table-probe.json" node packages/kit/probes/table-probe.mjs
-
-      - name: Probe the fonts and the layout shift
-        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/fonts-probe.json" node packages/kit/probes/fonts-probe.mjs
-
-      - name: Probe the tooltip host
-        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/tooltip-probe.json" node packages/kit/probes/tooltip-probe.mjs
-
-      # The shell's probes build their own fixtures (the repository's `vite build` of ui-next/shell/probes/*.html, once for production and once for React's development build, which the
-      # commit counts read), so they do not read PROBE_DIST. The strip probe runs at 1440 x 900 and 1280 x 800 (decision A15); the frame probe at its reference's two viewports until the
-      # probe viewports switch (tracker row N23). Linux Chromium needs the hinting flag the kit probes use, which the probes pass themselves.
-      - name: Probe the shell frame against the pinned mock reference
-        run: REPORT="$RUNNER_TEMP/shell-probe.json" node ui-next/shell/probes/shell-probe.mjs
-
-      - name: Probe the tab strip, the page host and the load against the pinned mock reference
-        run: REPORT="$RUNNER_TEMP/strip-probe.json" node ui-next/shell/probes/strip-probe.mjs
-
-      # The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
-      # measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
-      - name: Probe the rail against the pinned mock reference
-        run: REPORT="$RUNNER_TEMP/rail-probe.json" node ui-next/shell/probes/rail-probe.mjs
-
-      # The bottom panel (P1a): the region, the splitter, the tool strip, the session tabs, the session card and the status bar's toggle against the pinned mock reference
-      # (ui-next/shell/probes/mock-panel.json, measured from the mock's own panel by mock-panel-measure.mjs), what opening and resizing the panel move (the frame's height, nothing else), the paint of its parts,
-      # the keyboard path and the splitter's keys with real key presses, axe, what a drag costs (no write at the document root, no commit while the pointer moves), a plugin's tool that registers late, and a
-      # session body that keeps running while it is hidden, at 1440 x 900 and 1280 x 800. It builds its own fixtures, so it does not read PROBE_DIST.
-      - name: Probe the bottom panel against the pinned mock reference
-        run: REPORT="$RUNNER_TEMP/panel-probe.json" node ui-next/shell/probes/panel-probe.mjs
-
-      # The negative controls of that probe: each perturbs one measured value in the page (the region's height, the gap between a session's glyph and its name, the toggle's place, a tool tab's padding, the
-      # sidebar's place when the panel opens, a write at the document root during a drag) and passes only when the probe sees it. A probe that cannot fail proves nothing.
-      - name: Probe that the panel probe sees a panel that is wrong
-        run: |
-          for control in panel-height session-gap toggle tab-padding shift root-write; do
-            NEGATIVE_CONTROL="$control" node ui-next/shell/probes/panel-probe.mjs
-          done
-
-      # The host's Logs tool (P1b-3a) on the host fixture (`?logs=1`): the log view fills the panel's body, opening a session moves nothing outside the log view, switching tool and back keeps the lines and the scroll place, what the
-      # plugin counts of its feed (the registry and the view listen while the session is on screen, only the registry while another tool is shown, none once the tab is closed), and what the 10,000 lines a second session costs: at most one
-      # commit a frame (and at least one) with the panel open (React's development build), and with the panel closed or another tool shown no commit, no frame requested, no timer started, no DOM mutation and (Chromium) no layout or
-      # style recalculation, WHILE THE FEED WENT ON (the fixture counts the lines it made: none was read, each is held by the stream or dropped past its bound of 100,000), and back on the Logs tool the view shows newer lines than it
-      # had when it was hidden, with every line the feed made since accounted for, at 1440 x 900 and 1280 x 800. The source of a line (L2): a session that follows two sources has a Source column whose cell on every row names the source
-      # the feed gave the line (its label, its hue, the mock's 168 px and chip), one that follows one has none, and a column that appears while a session is open moves no row, scrolls nothing, measures nothing and (Chromium) lays the
-      # page out once, following the end and scrolled back. It builds its own fixtures, so it does not read PROBE_DIST.
-      - name: Probe the Logs tool in a real engine
-        run: REPORT="$RUNNER_TEMP/logs-probe.json" node ui-next/shell/probes/logs-probe.mjs
-
-      # The negative controls of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other source's name; the list is
-      # scrolled 48 px when the column appears. The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
-      - name: Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved
-        run: |
-          for control in feed-stopped source-label column-moves; do
-            NEGATIVE_CONTROL="$control" node ui-next/shell/probes/logs-probe.mjs
-          done
-
-      # The log view (P1b-2): the kit's LogView staged at the size of the mock's Logs tool against the pinned mock reference (packages/kit/probes/mock-log.json, measured from the mock by
-      # mock-log-measure.mjs): the regions, the header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event
-      # as plain text, the Source column of a log that follows several sources (the mock's own measurement of it, and the tooltip a cut name shows on a real hover), and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800.
-      # What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.
-      - name: Probe the log view against the pinned mock reference
-        run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/log-probe.json" node packages/kit/probes/log-probe.mjs
-
-      # The negative controls of that probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
-      # height, the copy event, the ArrowDown key, an unnamed button, a name that takes no pointer) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
-      - name: Probe that the log probe sees a log view that is wrong
-        run: |
-          for control in row-height time-column filter-shift strip-height copy keys axe source-tip; do
-            DIST="$PROBE_DIST" NEGATIVE_CONTROL="$control" node packages/kit/probes/log-probe.mjs
-          done
-
-      # The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
-      # with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
-      - name: Probe the detail page against the pinned mock reference
-        run: node ui-next/page/probes/detail-probe.mjs
-
-      # The command palette (C1b) in the real shell fixture (ui-next/shell/probes/palette-fixture.tsx: the real view, model and tab model over invented sources), against the pinned mock reference
-      # (ui-next/shell/probes/mock-palette.json, measured from the mock's own palette in seven scenes by mock-palette-measure.mjs): the Search control, the frame, the input, the kinds, the list, the status band and
-      # the footer within 1 px, the paint of each, the keyboard with real key presses (the chord, the arrows, Enter and Command Enter, Escape and where the focus goes, Tab, the inert page, hover), the states and
-      # axe on each, and what it costs with 1,000 host rows (open and keystroke to rows painted, recorded; one commit a keystroke, no layout shift, and a closed palette that holds one listener and no timer, judged), at
-      # 1440 x 900 and 1280 x 800. FONT_DELAY_MS=40 serves the fonts as a runner does. It builds its own fixtures, so it does not read PROBE_DIST.
-      - name: Probe the command palette against the pinned mock reference
-        run: FONT_DELAY_MS=40 REPORT="$RUNNER_TEMP/palette-probe.json" node ui-next/shell/probes/palette-probe.mjs
-
-      # The negative controls of that probe: each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the
-      # footer, the paint of the active row, hover that takes the keyboard's row, a palette that does not give the focus back) and passes only when the probe sees it. The widths of the Search control, of its hint and
-      # of the footer's keys are not compared, because a key is written for the platform (the mock was measured on a Mac: the Command sign and K; a Linux runner writes Ctrl+K); their heights, edges and gaps are, and every
-      # other box is compared in full. The report in the log counts the boxes of each kind and prints both widths and the fonts that draw the keys.
-      - name: Probe that the palette probe sees a palette that is wrong
-        run: |
-          for control in frame-width row-height foot-height search-place foot-gap paint hover-steals no-restore; do
-            FONT_DELAY_MS=40 NEGATIVE_CONTROL="$control" node ui-next/shell/probes/palette-probe.mjs
-          done
+      # Every probe of the shard, with its negative controls, one after the other, as the single job ran them (scripts/ci/probe-shards.mjs: the same scripts, the same env, FONT_DELAY_MS=40 included). All of them run even
+      # when one fails, so that a push shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, and writes the seconds of every probe to the job summary.
+      - name: Run the probes of this shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: node scripts/ci/probe-shards.mjs run "$SHARD"
 
       - name: Keep the reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kit-probe-reports
+          name: kit-probe-reports-${{ matrix.shard }}
           path: ${{ runner.temp }}/*-probe.json
           if-no-files-found: ignore
+
+  # The check that keeps the name `Kit probes`. Green only when every shard succeeded: a shard that failed, timed out (cancelled) or was skipped fails it, and so does an empty or unknown result; a cancelled run does not run it,
+  # as before. The matrix's result is one word for all its shards, so the shards that did not succeed are named from the job list of this run (the token reads it with `actions: read`).
+  probes:
+    name: Kit probes
+    needs: shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require every probe shard to have succeeded
+        env:
+          RESULT: ${{ needs.shard.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$RESULT" = success ]; then
+            echo "Every probe shard succeeded."
+            exit 0
+          fi
+          echo "::error title=Kit probes::the probe shards finished as '${RESULT:-unknown}', not as success: a shard that failed, was cancelled or was skipped fails this check"
+          if listed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+              --jq '.jobs[] | select(.name | startswith("Kit probes shard ")) | select(.conclusion != "success") | "::error title=Kit probes::\(.name) finished as \(.conclusion // .status): \(.html_url)"' 2>&1); then
+            if [ -n "$listed" ]; then printf '%s\n' "$listed"; fi
+          else
+            echo "::warning title=Kit probes::could not list the shards of this run: $listed"
+          fi
+          exit 1
