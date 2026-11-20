@@ -16,6 +16,11 @@
 //      at a height the keyboard chose come back after a reload of the page, and after the host's process is stopped and started again (the packaged app's restart, in server mode); a session whose plugin is not
 //      installed keeps its tab and says so; a session of a newer version, and a text that is no session, are kept aside in a slot of their own and never deleted, and the window opens empty. The session lives in
 //      the host's window service (`backend/window`: `GetState` and `SaveState`, persisted to `windows.json` in the state root), the one the packaged app uses
+//   j  the command palette (C1b, host providers): the chord opens it from a control of the page and the focus is in its input; typing the name of a page the plugin's sidebar opens finds it; the footer says the
+//      four open keys the tab model has and none for a window (Shift Enter is refused, with the reason); Enter opens the page in the tab on screen (smart open: the same plugin), Option Enter opens it here (the tab
+//      on screen goes to another plugin's page), Command or Control Enter opens a background tab, Command Shift Enter a new tab on screen; Escape gives the focus back to the control that had it, and so does the Search
+//      control of the top row; the homes of the plugins that did not load say Degraded; the host's commands are exactly the ones it can run (Close tab, Toggle panel, Next tab, Previous tab in a browser tab),
+//      each with the chord it is bound to; a kind with no provider (Settings) says Nothing to show yet. SHOTS=<dir> writes `host-<engine>-<state>.png` of the palette in those states
 //
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
@@ -503,6 +508,147 @@ async function checkLogs(page, base, engine) {
   assert.deepEqual(await page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') })), { opened: 1, closed: 1, listeners: 0 }, `${engine}: closing the tab closed the feed and released every listener`);
   assert.deepEqual(errors, [], `${engine}: the Logs tool wrote no page error`);
 }
+
+/**
+ * j. The command palette (C1b), on the real host with the fixture plugins loaded: the host's own sources (the pages the plugins' sidebars open, the open tabs, the host's commands) and the view over them, in a
+ * page of its own. Nothing of it is a plugin's: the palette offers a plugin's pages because the host reads them from the contribution it admitted. What it lists and says is what is real: the host's commands
+ * and no others, the four open keys the tab model has and no key for a window this host cannot open.
+ */
+async function checkPalette(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  const items = page.getByRole('tab', { name: 'Items' });
+  await items.waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  const mod = mac ? 'Meta' : 'Control';
+  const dialog = page.getByRole('dialog', { name: 'Search' });
+  const field = dialog.getByRole('combobox');
+  const foot = dialog.locator('[data-palette-part="foot"]');
+  const hasFocus = (locator) => locator.evaluate((element) => element === document.activeElement);
+  const shot = async (state) => {
+    if (process.env.SHOTS === undefined) return;
+    await mkdir(process.env.SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SHOTS, `host-${engine}-${state}.png`) });
+  };
+  /** Opens the palette from the chord and types a query. */
+  const ask = async (query) => {
+    await page.keyboard.press(`${mod}+KeyK`);
+    await dialog.waitFor();
+    await page.keyboard.type(query, { delay: 20 });
+  };
+
+  // From a control of the page: the chord opens it, the focus is in the input, and Escape gives the focus back where it was.
+  await items.focus();
+  await page.keyboard.press(`${mod}+KeyK`);
+  await dialog.waitFor();
+  assert.ok(await hasFocus(field), `${engine}: the focus is in the palette's input when it opens`);
+  await shot('empty');
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'tab');
+  assert.ok(await hasFocus(items), `${engine}: Escape gave the focus back to the control that had it`);
+
+  // A plugin's page is found by its name, from the sidebar the plugin published. The two plugins are built from one source, so each has a Crash page in a group called Things and the same name inside its
+  // bundle: two rows that read alike. Each says whose it is and the group it sits in, and the first plugin's (the rail's first) is the first row, which is the active one.
+  await ask('crash');
+  const crash = dialog.getByRole('option', { name: /^Page: Crash/ }).first();
+  await crash.waitFor();
+  assert.equal(await crash.getAttribute('aria-label'), 'Page: Crash, Seam Fixture · Things', `${engine}: a page row says whose it is, then the group it sits in`);
+  assert.equal(await crash.getAttribute('aria-selected'), 'true', `${engine}: the page that matched is the active row`);
+  await shot('page');
+
+  // The footer says the four open keys the tab model has, and none for a window. This host cannot open one: Shift Enter is refused with the reason, the palette stays open and nothing opens.
+  const keys = await foot.innerText();
+  for (const label of ['Open', 'Here', 'New tab', 'Background tab']) assert.ok(keys.includes(label), `${engine}: the footer says ${label} (${keys})`);
+  assert.ok(!keys.includes('New window'), `${engine}: and does not say New window (${keys})`);
+  await page.keyboard.press('Shift+Enter');
+  await foot.getByText('This window cannot open another one yet.').waitFor();
+  assert.ok(await dialog.isVisible(), `${engine}: the palette stayed open`);
+  assert.equal(await page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab').count(), 1, `${engine}: and opened nothing (the palette's own kinds are tabs too, so the strip is counted)`);
+
+  // Enter opens the page in the tab on screen (the same plugin: smart open), and the palette gives the focus back.
+  await page.keyboard.press('Enter');
+  await dialog.waitFor({ state: 'detached' });
+  await page.getByRole('tab', { name: 'Crash' }).waitFor();
+  await page.getByRole('alert').waitFor();
+  assert.equal(await page.getByRole('tab').count(), 1, `${engine}: a page of the same plugin opened in the tab on screen`);
+  await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'tab');
+
+  // Command (Control elsewhere) Enter opens a place in a background tab: the tab on screen stays. The first plugin's home is a place of the plugin the tab on screen is of, so a plain Enter would navigate that tab.
+  await ask('items');
+  const home = dialog.getByRole('option', { name: /^Plugin home: Seam Fixture/ }).first();
+  await home.waitFor();
+  assert.equal(await home.getAttribute('aria-selected'), 'true', `${engine}: the home that matched is the active row`);
+  await page.keyboard.press(`${mod}+Enter`);
+  await dialog.waitFor({ state: 'detached' });
+  assert.equal(await page.getByRole('tab').count(), 2, `${engine}: a background tab opened`);
+  assert.equal(await page.getByRole('tab', { name: 'Crash' }).getAttribute('aria-selected'), 'true', `${engine}: and the tab on screen stayed`);
+
+  // Option Enter opens HERE: the tab on screen goes to the place whatever plugin it is of, where a plain Enter on another plugin's page would open a tab of its own. The tab on screen is called Crash too and
+  // leads the list, so the second plugin's Crash page is the row the pointer is moved onto.
+  await ask('crash');
+  const copyCrash = dialog.locator('[data-palette-row*="fixture-b-dup:crash"]');
+  await copyCrash.waitFor();
+  await copyCrash.hover();
+  assert.equal(await copyCrash.getAttribute('aria-selected'), 'true', `${engine}: the pointer moved the active row onto the second plugin's page`);
+  await page.keyboard.press('Alt+Enter');
+  await dialog.waitFor({ state: 'detached' });
+  await page.locator('[data-shell-part="rail"] [aria-label="Seam Fixture Copy"][aria-current="true"]').waitFor();
+  assert.equal(await page.getByRole('tab').count(), 2, `${engine}: here opened no tab: the tab on screen went to the other plugin's page`);
+
+  // Command Shift Enter opens a NEW tab and shows it, even for a place that has a tab.
+  await ask('items');
+  await dialog.getByRole('option', { name: /^Plugin home: Seam Fixture/ }).first().waitFor();
+  await page.keyboard.press(`${mod}+Shift+Enter`);
+  await dialog.waitFor({ state: 'detached' });
+  assert.equal(await page.getByRole('tab').count(), 3, `${engine}: a new tab opened`);
+  await page.getByRole('tab', { name: 'Items', selected: true }).waitFor();
+
+  // The plugins that did not load are places to go: their homes say Degraded.
+  await ask('seam fixture m');
+  const missing = dialog.getByRole('option', { name: /^Plugin home: Seam Fixture Missing/ });
+  await missing.waitFor();
+  assert.equal(await missing.getAttribute('data-state'), 'degraded', `${engine}: the home of a plugin that did not load opens its page that says so, and the row says Degraded`);
+  assert.match(await missing.innerText(), /Degraded/, `${engine}: in a word`);
+
+  // The host's own commands, all of them and no others: what it can run now, with the chord each is bound to (a browser tab has no window of its own, so there is no Close window, and it keeps Command and Control W and J for itself, so the chords said are the shell's Control Option ones; Next and Previous have no chord).
+  await field.fill('');
+  await page.keyboard.type('>', { delay: 20 });
+  await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
+  assert.deepEqual(
+    await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
+    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs'],
+    `${engine}: the commands are the host's, and only those`,
+  );
+  await shot('commands');
+  await dialog.getByRole('tab', { name: 'All' }).click();
+  await field.fill('close');
+  await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
+  await shot('close');
+
+  // A kind with no provider behind it (Settings is the mock's, and nothing here provides it yet) says so, in the mock's words, and offers the plugin homes as somewhere to go from.
+  await field.fill('');
+  await dialog.getByRole('tab', { name: 'Settings' }).click();
+  await dialog.locator('[data-palette-part="note"]').getByText('Nothing to show yet').waitFor();
+  await shot('settings');
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+
+  // The Search control of the top row opens it with a click, and Escape gives the focus back to the control.
+  const search = page.getByRole('button', { name: /^Search / });
+  await search.click();
+  await dialog.waitFor();
+  assert.ok(await hasFocus(field), `${engine}: the Search control opens the palette with the focus in its input`);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.activeElement?.getAttribute('data-shell-part') === 'search');
+  assert.ok(await hasFocus(search), `${engine}: Escape gave the focus back to the Search control`);
+  assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the palette wrote no page error`);
+}
+
 /**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
@@ -691,8 +837,9 @@ try {
       await checkRail(await freshPage(browser, host.base), host.base, name);
       await checkPanel(await freshPage(browser, host.base), host.base, name);
       await checkLogs(await freshPage(browser, host.base), host.base, name);
+      await checkPalette(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the session (reload, restart, a plugin that is gone, a session kept aside)`);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside)`);
     } finally {
       await browser.close();
     }

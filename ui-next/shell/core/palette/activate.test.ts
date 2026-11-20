@@ -127,6 +127,28 @@ describe('choosing a place', () => {
     expect(titles(f)).toEqual(['Volumes']);
   });
 
+  it('moves the place the user is on out of Recent when the shell went somewhere else while the palette was open: refresh says where, and the query and the chips stay', () => {
+    const f = makePalette();
+    world(f);
+    f.palette.record({ route: { plugin: 'cloud', contribution: 'volumes' }, title: 'Volumes' });
+    f.palette.record({ route: { plugin: 'cloud', contribution: 'buckets' }, title: 'Buckets' });
+    f.palette.open({ current: { plugin: 'cloud', contribution: 'volumes', params: {} } });
+    expect(titles(f)).toEqual(['Buckets']);
+    f.palette.refresh({ route: { plugin: 'cloud', contribution: 'buckets', params: {} } });
+    expect(titles(f)).toEqual(['Volumes']);
+    f.palette.refresh();
+    expect(titles(f)).toEqual(['Volumes']);
+  });
+
+  it('leaves recording to a host that records what its tab model made of the open (the route with the connection the tab was given): a row that was opened is not remembered by its own route', () => {
+    const f = makePalette({ recordOpens: false });
+    world(f);
+    f.palette.open();
+    f.palette.setQuery('vol');
+    f.palette.activate();
+    expect(f.palette.serialise().recents).toEqual([]);
+  });
+
   it('records a tab the user switched to, when the host says so', () => {
     const f = makePalette();
     f.tabs.open({ route: { plugin: 'cloud', contribution: 'volumes' } });
@@ -333,7 +355,7 @@ describe('the keys (S66, S69, S70)', () => {
     expect(titles(f)).toEqual(['Volumes']);
   });
 
-  it('says the keys of the active row in the footer, and only the ones that are valid for it (S70, A5)', () => {
+  it('says the keys of the active row in the footer, and only the ones that are valid for it (S70, A5): a host that cannot open a window does not advertise one', () => {
     const f = makePalette();
     world(f);
     f.palette.open();
@@ -343,7 +365,6 @@ describe('the keys (S66, S69, S70)', () => {
       { keys: 'Alt+Enter', label: 'Here' },
       { keys: 'Mod+Shift+Enter', label: 'New tab' },
       { keys: 'Mod+Enter', label: 'Background tab' },
-      { keys: 'Shift+Enter', label: 'New window' },
     ]);
     f.palette.setKind('commands');
     f.palette.setQuery('reopen');
@@ -352,6 +373,25 @@ describe('the keys (S66, S69, S70)', () => {
     f.palette.setKind('goto');
     f.palette.setQuery('vol');
     expect(state(f).hints).toEqual([]);
+  });
+
+  it('says New window, and opens one, only for a host that can: the others refuse Shift+Enter with the reason, stay open, and do not call the tab model', () => {
+    const f = makePalette({ windows: true });
+    world(f);
+    f.palette.open();
+    f.palette.setQuery('vol');
+    expect(state(f).hints.map((hint) => hint.label)).toEqual(['Open', 'Here', 'New tab', 'Background tab', 'New window']);
+    expect(f.palette.activate(undefined, { shiftKey: true })).toMatchObject({ status: 'opened', result: { status: 'window' } });
+
+    const g = makePalette();
+    world(g);
+    const before = g.tabs.ids().length;
+    g.palette.open();
+    g.palette.setQuery('vol');
+    expect(g.palette.activate(undefined, { shiftKey: true })).toEqual({ status: 'refused', reason: 'invalid', message: 'This window cannot open another one yet.' });
+    expect(state(g)).toMatchObject({ open: true, notice: 'This window cannot open another one yet.' });
+    expect(g.tabs.ids()).toHaveLength(before);
+    expect(g.announced.at(-1)).toBe('This window cannot open another one yet.');
   });
 
   it('says a tab row\'s Enter as Switch to tab, and offers → on a row that can be searched inside', () => {

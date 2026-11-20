@@ -56,6 +56,10 @@ export type PaletteOptions = PaletteSeam & {
   readonly platform?: 'mac' | 'other' | undefined;
   /** Hears every failure of a plugin's code. Default: the console. */
   readonly onError?: ErrorHook | undefined;
+  /** Whether the host can open a window of its own (Shift+Enter, S64). Default `false`: the footer does not say New window and the key is refused with the reason, until a host that can says so. */
+  readonly windows?: boolean | undefined;
+  /** Whether choosing a row records its own route as a recent. Default `true`. A host that records what its tab model made of the open (the route with the connection the tab was given) turns it off and does. */
+  readonly recordOpens?: boolean | undefined;
 };
 
 export type PaletteStore = {
@@ -69,8 +73,11 @@ export type PaletteStore = {
   readonly registerProvider: (provider: Provider) => Registration;
   /** A plugin left (PO1): its providers, its pending requests and its rows go in one change, and so do the chips that narrowed the search to it. */
   readonly removePlugin: (plugin: string) => boolean;
-  /** What the static providers say changed (a tab opened, a command became unavailable): the list is made again. */
-  readonly refresh: () => void;
+  /**
+   * What the static providers say changed (a tab opened, a command became unavailable): the list is made again. `moved`: the shell went somewhere else while the palette was open, and Recent leaves out the place the
+   * user is on, so it is the new one; the query and the chips stay.
+   */
+  readonly refresh: (moved?: { readonly route: Route | undefined }) => void;
 
   readonly open: (options?: OpenPalette) => boolean;
   readonly close: () => boolean;
@@ -412,7 +419,7 @@ export function createPaletteStore(options: PaletteOptions): PaletteStore {
       folded: Math.max(0, runs.length - LIMITS.runs),
       sources: Object.freeze(sourcesOf(names, answers, fixed.reports)),
       runs: Object.freeze(runs),
-      hints: Object.freeze(hintsOf(active, core.view)),
+      hints: Object.freeze(hintsOf(active, core.view, options.windows === true)),
       sentence: sentenceOf(total, failed),
       notice: core.notice,
       running: core.running,
@@ -951,6 +958,10 @@ export function createPaletteStore(options: PaletteOptions): PaletteStore {
       }
 
       const disposition: OpenHow = typeof how === 'string' ? how : dispositionOf(how, { platform });
+      if (disposition === 'window' && options.windows !== true) {
+        return refuse('invalid', 'This window cannot open another one yet.', true);
+      }
+
       const result = guarded(
         () => {
           if (action.type === 'activate') {
@@ -976,7 +987,10 @@ export function createPaletteStore(options: PaletteOptions): PaletteStore {
         return { status: 'opened', result };
       }
 
-      rememberRow(row);
+      if (options.recordOpens !== false) {
+        rememberRow(row);
+      }
+
       close();
       return { status: 'opened', result };
     });
@@ -1149,9 +1163,12 @@ export function createPaletteStore(options: PaletteOptions): PaletteStore {
 
     registerProvider,
     removePlugin,
-    refresh: () => {
+    refresh: (moved) => {
       act(() => {
         revision += 1;
+        if (moved !== undefined && core.open) {
+          core = { ...core, current: moved.route };
+        }
       });
     },
 

@@ -356,6 +356,8 @@ describe('a provider that returns five thousand rows, fails or never answers', (
     expect(state(f).sections.map((section) => section.id)).toEqual(['sources']);
     const first = rows(f)[0];
     expect(first).toMatchObject({ kind: 'source', title: { text: 'Stack · Source a' }, word: 'Unavailable', action: { type: 'retry', source: 'stack:a' } });
+    // The name says what the row shows (Unavailable), not the state the model keeps for it (Degraded): a screen reader hears the word a sighted user reads.
+    expect(first?.name).toBe('Source: Stack · Source a, a is down, Unavailable');
     expect(state(f).hints).toEqual([{ keys: 'Enter', label: 'Retry' }, { keys: 'Escape', label: 'Back to results' }]);
     // Escape, and Backspace on the empty input, go back to the results.
     expect(f.palette.key({ key: 'Escape' }).handled).toBe(true);

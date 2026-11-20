@@ -304,7 +304,8 @@ export function ownRow(fields: OwnRow): Row {
     inert: false,
     into: undefined,
     shortcut: undefined,
-    name: nameOf(NOUNS[fields.kind], fields.title, fields.context, fields.availability),
+    // A source row says what the source is doing in its word (Searching…, Unavailable, Partial results), and the name says the same word: the state the model keeps for it is not what a person reads.
+    name: fields.word === '' ? nameOf(NOUNS[fields.kind], fields.title, fields.context, fields.availability) : [`${NOUNS[fields.kind]}: ${fields.title}`, fields.context, fields.word].filter((part) => part !== '').join(', '),
     score: 0,
   });
 }

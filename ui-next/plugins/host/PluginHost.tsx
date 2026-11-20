@@ -36,6 +36,7 @@ import { ContributionBoundary } from './ContributionBoundary';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
+import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { panelHostsOf } from './panelHost';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -99,30 +100,35 @@ type Host = {
   readonly contributions: Contributions;
   /** The request at the address the window last opened, by key: a link opens once, however often the plugins change. */
   readonly opened: Published<string>;
+  /** The window's command palette: the shell draws it, and the window attaches it to the models once it is on screen (`palette.ts`). */
+  readonly palette: HostPalette;
 };
 
 /**
- * The tab model, the panel and the rail's choice of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has nothing for starts
- * as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
+ * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
+ * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const contributions = createContributions({ plugins, frames });
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
+  const tabs = createTabsStore({ contributions, initial: restored?.tabs });
+  const routes = new Published<Route>();
   return {
     frames,
     nodes,
-    routes: new Published<Route>(),
-    tabs: createTabsStore({ contributions, initial: restored?.tabs }),
+    routes,
+    tabs,
     panel: store,
     logs,
     panelHosts: panelHostsOf(logs),
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin) }),
   };
 }
 
@@ -465,7 +471,7 @@ function logsBodyOf(streams: LogStreams, session: PanelSession, visible: boolean
 
 export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, nodes, routes, opened } = host;
@@ -498,6 +504,9 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   // The session is saved from the first commit to the last: the tabs, the panel and the rail's choice, one burst after each change and when the window is hidden. What the session restored is what
   // the models were made with; this only starts the saving.
   useEffect(() => session?.attach({ tabs, panel: host.panel, rail: host.rail }), [session, tabs, host]);
+
+  // The palette remembers the places the user goes to and keeps its list up to date while it is open, for as long as the window is on screen. Closed, it costs nothing.
+  useEffect(() => host.palette.attach(), [host]);
 
   const route = useSyncExternalStore(tabs.subscribe, () => activeRoute(tabs));
   const activeId = useSyncExternalStore(tabs.subscribe, () => tabs.getSnapshot().active);
@@ -667,6 +676,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         onNewTab={newTab}
         onCloseWindow={onCloseWindow}
         panel={bindings}
+        palette={host.palette}
       />
     </>
   );

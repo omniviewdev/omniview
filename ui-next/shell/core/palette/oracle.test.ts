@@ -61,6 +61,7 @@ describe('P1: the modifier mapping of S64, on a palette row', () => {
     const f = makePalette({
       tabs,
       platform,
+      windows: true,
       open: (destination, options) => {
         hows.push(options.how ?? 'smart');
         return tabs.store.open(destination, options);
@@ -101,7 +102,7 @@ describe('P1: the modifier mapping of S64, on a palette row', () => {
   });
 
   it('gives every disposition its result: here navigates the tab on screen, background leaves the focus, window is handed back', () => {
-    const f = makePalette();
+    const f = makePalette({ windows: true });
     f.palette.registerProvider(cloud(() => [instances(), page('volumes', 'Volumes')]));
     const first = f.tabs.open({ route: { plugin: 'cloud', contribution: 'buckets' } });
     f.tabs.store.keep(first);
