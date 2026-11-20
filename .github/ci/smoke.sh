@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # The one smoke of the CI image, run inside it from a checkout of the repository:
 #
-#   docker run --rm --init -v "$PWD:/work" -w /work <image> bash .github/ci/smoke.sh      (ci-image.yml, before the image is published)
+#   docker run --rm --init -v "$PWD:/work:ro" -w /work <image> bash .github/ci/smoke.sh   (ci-image.yml, before the image is published)
 #   - run: bash .github/ci/smoke.sh                                                       (a step of a container job, after: the way a consumer runs it)
 #
-# It proves what a consumer relies on: the toolchains answer, the native libraries are there, the manifest says what the repository pins, and the repository's own Playwright (the one
-# pnpm-lock.yaml resolves, installed from the lockfile) looks for its browsers where the image has them and launches Chromium and WebKit headless. A failure prints `SMOKE-FAIL <rule>: ...`.
+# It proves what a consumer relies on: the toolchains answer, the native libraries are there, the manifest says what the repository pins (Playwright included: the version pnpm-lock.yaml
+# resolves), and the Playwright of the image looks for its browsers where the image has them and launches Chromium and WebKit headless. It needs no `pnpm install`: a smoke that depends on the
+# npm registry would fail the weekly publish on a registry hiccup (22 of the 274 non-gate job failures in the plan's sample were downloads). A failure prints `SMOKE-FAIL <rule>: ...`.
 set -euo pipefail
 
 fail() {
@@ -41,23 +42,20 @@ echo "the system libraries of Chromium and WebKit are installed"
 heading "the manifest against this checkout"
 node scripts/ci/check-image.mjs check --manifest /opt/ci/manifest.json
 
-heading "the repository's Playwright finds the baked browsers"
-# Only the e2e project, which holds @playwright/test: the install is a few packages, at the version the lockfile resolves.
-pnpm install --frozen-lockfile --filter omniview-e2e
-cd e2e
-pnpm exec playwright --version
-dry="$(pnpm exec playwright install --dry-run chromium webkit)"
+heading "Playwright finds the baked browsers"
+playwright --version
+dry="$(playwright install --dry-run chromium webkit)"
 echo "$dry"
 locations="$(sed -n 's/^ *Install location: *//p' <<<"$dry")"
 [ -n "$locations" ] || fail no-install-locations "playwright install --dry-run named no browser directory"
 while read -r directory; do
-  [ -d "$directory" ] || fail browser-directory-missing "the repository's Playwright looks for a browser in $directory, which the image does not have"
+  [ -d "$directory" ] || fail browser-directory-missing "Playwright looks for a browser in $directory, which the image does not have"
 done <<<"$locations"
-echo "every browser directory the repository's Playwright names exists"
+echo "every browser directory Playwright names exists"
 
 heading "Chromium and WebKit launch headless"
-node - <<'LAUNCH'
-const { chromium, webkit } = require('@playwright/test');
+NODE_PATH="$(npm root -g)" node - <<'LAUNCH'
+const { chromium, webkit } = require('playwright');
 
 (async () => {
   for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]]) {

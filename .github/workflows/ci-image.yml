@@ -194,17 +194,17 @@ jobs:
             echo
             echo '| layer | instruction |'
             echo '|--:|---|'
-            docker history --no-trunc --format $'{{.Size}}\t{{.CreatedBy}}' omniview-ci:smoke | awk -F'\t' 'NR <= 14 { cmd = $2; sub(/^.*\/bin\/bash -o pipefail -c /, "", cmd); gsub(/[|`]/, "/", cmd); printf "| %s | `%s` |\n", $1, substr(cmd, 1, 90) }'
+            docker history --no-trunc --format '{{json .}}' omniview-ci:smoke | jq -r --slurp '.[] | select(.Size != "0B") | "| \(.Size) | `\(.CreatedBy | gsub("\n"; " ") | sub("^.*/bin/bash -o pipefail -c "; "") | gsub("[|`]"; "/") | .[0:90])` |"'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke inside the image
-        run: docker run --rm --init -v "$PWD:/work" -w /work omniview-ci:smoke bash .github/ci/smoke.sh
+        run: docker run --rm --init -v "$PWD:/work:ro" -w /work omniview-ci:smoke bash .github/ci/smoke.sh
 
       # The smoke must be able to fail where it says it fails: browsers that are not where the repository's Playwright looks for them.
       - name: Negative control, the smoke fails when the browsers are not where Playwright looks
         run: |
           set +e
-          output="$(docker run --rm --init -v "$PWD:/work" -w /work -e PLAYWRIGHT_BROWSERS_PATH=/nonexistent omniview-ci:smoke bash .github/ci/smoke.sh 2>&1)"
+          output="$(docker run --rm --init -v "$PWD:/work:ro" -w /work -e PLAYWRIGHT_BROWSERS_PATH=/nonexistent omniview-ci:smoke bash .github/ci/smoke.sh 2>&1)"
           status=$?
           set -e
           tail -n 12 <<<"$output"
@@ -229,15 +229,19 @@ jobs:
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           ref="$IMAGE:$TAG"
           if docker manifest inspect "$ref" > /dev/null 2>&1; then
-            echo "::notice::$ref already exists and tags are immutable: not pushing, the digest of the existing image is used"
-            digest="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')"
+            echo "::notice::$ref already exists and tags are immutable: not pushing, the image that is there is used"
           else
             docker tag omniview-ci:smoke "$ref"
             docker push "$ref"
-            digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$ref")"
-            digest="${digest#*@}"
           fi
-          compressed="$(docker buildx imagetools inspect "$IMAGE@$digest" --raw | jq '[.layers[].size] | add')"
+          # The digest is what the registry holds under the tag, not what the local daemon thinks it pushed (the containerd image store rewrites the manifest on push).
+          digest="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}')"
+          # A plain manifest lists its layers; an index (the containerd image store pushes one) lists the manifest of each platform.
+          raw="$(docker buildx imagetools inspect "$IMAGE@$digest" --raw)"
+          if ! jq -e '.layers' <<<"$raw" > /dev/null; then
+            raw="$(docker buildx imagetools inspect "$IMAGE@$(jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest' <<<"$raw")" --raw)"
+          fi
+          compressed="$(jq '[.layers[].size] | add' <<<"$raw")"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           {
             echo "### Published"

@@ -1,3 +1,4 @@
+# check=skip=InvalidDefaultArgInFrom
 # The Linux CI image: ghcr.io/omniviewdev/omniview-ci, built and published by .github/workflows/ci-image.yml. It holds what the container jobs would otherwise install on every run: the native
 # build libraries (GTK4, WebKitGTK 6, Wayland), the WebKit and Chromium system libraries, the Playwright browsers of the version pnpm-lock.yaml resolves, Node, pnpm, Go, Task, goimports,
 # golangci-lint, kind and kubectl. /opt/ci/manifest.json lists what the image holds, observed from the tools themselves.
