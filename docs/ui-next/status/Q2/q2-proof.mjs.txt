@@ -1,0 +1,1947 @@
+#!/usr/bin/env node
+// Q2 proof (docs/ui-next/status/Q2.md): the Kubernetes plugin's sidebar draws a count on each entry, in the real host, on a real kind cluster. The host holds origin/main and the Q2a branch (the tree's count slot and the open
+// groups); the plugin is the one under test (Q2). `redo.sh` (beside this file in docs/ui-next/status/Q2/) runs it on a fresh cluster; this file is `q2-proof.mjs` without the `.txt`. It adapts the Q1 proof (counts, the audit log, the
+// hosts started and stopped by pid) and the K2b-2 proof (the real window, the sidebar read, the second user as a second connection, screenshots, the mock beside).
+//
+//   OMNIVIEW_HOST_ROOT=<host checkout> PLUGIN_ARCHIVE=<kubernetes-<os>_<arch>.tar.gz> KUBECONFIG_PATH=<kubeconfig> CLUSTER=<kind cluster name> OUT=<directory> node q2-proof.mjs
+//
+//   OMNIVIEW_HOST_ROOT  a host checkout built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used, with WebKit and Chromium installed in it
+//   PLUGIN_ARCHIVE      the archive `hack/package.sh` wrote from the plugin checkout under test
+//   KUBECONFIG_PATH     the kind cluster of redo.sh (the admin's context); kubectl is the oracle, and the cluster's own audit log is the record of what the plugin asked
+//   CLUSTER             the kind cluster's name: its node container is `<CLUSTER>-control-plane`, where the API server writes /var/log/kubernetes/audit/audit.log
+//   OUT                 where the report and the raw captures go
+//   SHOTS               where the screenshots go (default OUT/screenshots)
+//   ARCHIVE_BASE        optional: the archive of the plugin before the change (46f66f4b: a sidebar with no counts). It is the control: every count check, run on it, must FAIL, and fail for the reason it names
+//   LIMITED_KUBECONFIG  optional: a kubeconfig of a user who may list Pods and Namespaces and nothing else (context `limited`); kubectl as that user is the oracle of the second connection
+//   BOTH_KUBECONFIG     optional: the admin's context and the limited user's in one kubeconfig, the second user as a second connection of one host (K2b-2 F, Q1 row 14)
+//   MOCK_ROOT           optional: the design mock's directory (`mock-sidebar.mjs`, beside this file, serves it read only and screenshots its sidebar with counts)
+//   ENGINES             default `webkit,chromium`; each phase gets a fresh host
+//   SECTIONS            default all: controls, counts, window, arrival, limited, shots, wide, control. The last line says which ran; a run that does not run them all is not the proof
+//
+// The host it starts runs on a throwaway HOME that holds a copy of a kubeconfig. The proof removes that HOME when the host has stopped, whatever happened, and a check says it is gone. A process is stopped by its own
+// pid (the host's, and the plugin's, which is the host's child and recorded while the host lives); no process is ever found by a pattern. No Secret value is read into a log or a picture: the sidebar shows labels and numbers.
+//
+// What it asserts, each as a PASS/FAIL line, in WebKit and in Chromium:
+//   controls  the decisions the checks make, as functions fed planted data (the name of a row, the audit analysis, the refusal and what it costs, the rectangles) and the measurement of the arrival run on synthetic sidebars that must pass
+//             and must fail; the plugin before the change (control section) must fail every count check
+//   counts    for the 29 kinds of the plugin's sidebar the count the host receives (the call the sidebar makes: `Enumerate` with a page of one) equals kubectl, and for one namespace (the backend's own check, Q1:
+//             the UI has no namespace menu yet, so a namespace is asked through the page's own client id)
+//   window    the plugin opened from the window's list of plugins as a person opens it: the sidebar skeleton (counts as held empty slots) is on screen before the first count; with every group open each of the 29 rows
+//             says `<Label> <n>` (exact) or `<Label> about <n>` (an estimate, drawn `~<n>`) and n is `kubectl get <kind> -A --no-headers | wc -l`; the open kind's count follows a Pod made and deleted with no reload and
+//             no List of its own; the cost from the API server's audit log (one `limit=1` List per unopened kind, none repeated within 30 s, once more after the refresh interval, none for a collapsed group,
+//             only the kinds of a group opened again, never more than four in flight); a user who does nothing for 30 s causes no repeat
+//   arrival   no layout shift when the counts arrive: every row's rectangle, glyph, label and label text are the ones they were (0.01 px), the layout-shift observer (Chromium) reads 0, at 1440x900 and 1280x800
+//   limited   a second connection of a user who may list Pods and Namespaces only: those two rows are counted, the other 27 have a held empty slot and still open their lists, which say that the user has no
+//             permission, with no Retry; the Pods list beside it stays loaded. What the refusals cost, read from the API server's audit log (the limited user, the plugin's user agent) and from the calls of the page:
+//             each refused kind is asked once at first sight (one List each), none again on a timer in a window left alone for 150 s, exactly one more for each kind of a group
+//             opened again, and exactly one more for a kind whose list was visited and left
+//   shots     screenshots (WebKit, void theme, 1440x900 and 1280x800) and the mock's sidebar with counts beside the plugin's
+//   wide      a count of 1,000 or more (grouped digits `1,326`): the name, the drawn text, and what moves when a count wider than the held slot arrives (measured, said)
+//   control   the plugin before the change: the same reading finds 29 rows, no slot and no count, and every count comparison fails
+import { execFile, spawn, spawnSync } from 'node:child_process';
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const optional = (name) => (process.env[name] ? path.resolve(process.env[name]) : undefined);
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const archive = path.resolve(env('PLUGIN_ARCHIVE'));
+const archiveBase = optional('ARCHIVE_BASE');
+const kubeconfig = path.resolve(env('KUBECONFIG_PATH'));
+const limitedKubeconfig = optional('LIMITED_KUBECONFIG');
+const bothKubeconfig = optional('BOTH_KUBECONFIG');
+const mockRoot = optional('MOCK_ROOT');
+const cluster = env('CLUSTER');
+const out = path.resolve(env('OUT'));
+const shots = path.resolve(env('SHOTS', path.join(out, 'screenshots')));
+const engines = env('ENGINES', 'webkit,chromium').split(',');
+const SECTION_NAMES = ['controls', 'counts', 'window', 'arrival', 'limited', 'shots', 'wide', 'control'];
+const sections = new Set((process.env.SECTIONS || SECTION_NAMES.join(',')).split(',').filter(Boolean));
+for (const name of sections) if (!SECTION_NAMES.includes(name)) throw new Error(`SECTIONS names ${name}: the sections are ${SECTION_NAMES.join(', ')}`);
+const node = `${cluster}-control-plane`;
+const context = `kind-${cluster}`;
+const LIMITED = 'limited';
+const pluginID = 'kubernetes';
+const here = path.dirname(fileURLToPath(import.meta.url));
+/** What the plugin's memory keeps a count read for (Q1), and how often the sidebar asks again (the step's rule): the proof's clocks. */
+const STALENESS_MS = 30_000;
+const REFRESH_MS = 60_000;
+/** The most count reads in flight at once: the backend's `CountConcurrency` (Q1) and the sidebar's own pool. */
+const SLOTS = 4;
+const VIEWPORTS = [{ name: '1440x900', width: 1440, height: 900 }, { name: '1280x800', width: 1280, height: 800 }];
+/** The 1-minute load average above which a timing-sensitive step waits (the machine is shared): at most every two minutes, for at most twenty. */
+const BUSY = 30;
+
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const results = [];
+function check(scope, name, ok, measured) {
+  const value = measured === undefined ? '' : ` -- ${typeof measured === 'string' ? measured : JSON.stringify(measured)}`;
+  console.log(`${ok ? 'PASS' : 'FAIL'} [${scope}] ${name}${value}`);
+  results.push({ scope, name, ok: Boolean(ok), measured });
+  return ok;
+}
+const info = (scope, name, data) => {
+  console.log(`INFO [${scope}] ${name} -- ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  results.push({ scope, name, info: true, data });
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const loads = [];
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+    probe.on('error', reject);
+  });
+}
+
+/**
+ * The machine is shared and was at a load average of 240 on a bad day: a timing-sensitive step (the 30 s and 60 s windows, the layout shift) waits while the 1-minute load is above BUSY, looking every two minutes,
+ * for at most twenty. The load at the start of each is recorded, and goes into the status file with its run.
+ */
+async function quiet(scope) {
+  const started = Date.now();
+  let load = os.loadavg()[0];
+  while (load > BUSY && Date.now() - started < 20 * 60_000) {
+    info(scope, `load average ${load.toFixed(1)} is above ${BUSY}: waiting two minutes`, { waitedSeconds: Math.round((Date.now() - started) / 1000) });
+    await sleep(120_000);
+    load = os.loadavg()[0];
+  }
+  const waitedOut = load > BUSY;
+  loads.push({ scope, load: Number(load.toFixed(1)), waitedOut });
+  info(scope, `load average at the start (1, 5, 15 minutes)${waitedOut ? ': STILL ABOVE the limit after twenty minutes, run anyway' : ''}`, os.loadavg().map((value) => Number(value.toFixed(1))));
+  return load;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Hosts: the real Go host in server mode on a throwaway HOME. Processes are stopped by pid only.
+const hosts = [];
+const profiles = [];
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/** The pids whose parent is `pid`, and theirs, by the process table: the plugin is the host's child. */
+function descendants(pid) {
+  const table = spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' }).stdout.split('\n').map((line) => line.trim().split(/\s+/).map(Number)).filter((row) => row.length === 2);
+  const found = [];
+  const frontier = [pid];
+  while (frontier.length > 0) {
+    const parent = frontier.pop();
+    for (const [child, ppid] of table) {
+      if (ppid === parent && !found.includes(child)) { found.push(child); frontier.push(child); }
+    }
+  }
+  return found;
+}
+
+async function startHost(name, archivePath, kubeconfigPath) {
+  const work = await mkdtemp(path.join(os.tmpdir(), `q2-${name}-`));
+  profiles.push(work);
+  const home = path.join(work, 'home');
+  const pluginDir = path.join(home, '.omniview-feature-ui-next', 'plugins', pluginID);
+  await mkdir(path.join(home, '.kube'), { recursive: true });
+  await mkdir(pluginDir, { recursive: true });
+  await cp(kubeconfigPath, path.join(home, '.kube', 'config'));
+  const untar = spawnSync('tar', ['-xzf', archivePath, '-C', pluginDir], { encoding: 'utf8' });
+  if (untar.status !== 0) throw new Error(`could not extract ${archivePath}: ${untar.stderr}`);
+  const port = await freePort();
+  const lines = [];
+  const { PATH, TMPDIR, LANG, USER } = process.env;
+  const child = spawn(path.join(hostRoot, 'bin/Omniview-server'), [], {
+    env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => lines.push(String(chunk)));
+  let exited = false;
+  child.on('exit', () => { exited = true; });
+  const host = { name, pid: child.pid, child, work, lines, isExited: () => exited, children: new Set() };
+  hosts.push(host);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (exited) throw new Error(`the host ${name} exited while starting:\n${lines.join('').slice(-2000)}`);
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) {
+        info('host', `${name}: pid ${child.pid}`, { port });
+        host.base = `http://127.0.0.1:${port}`;
+        return host;
+      }
+    } catch { /* not listening yet */ }
+    await sleep(500);
+  }
+  throw new Error(`the host ${name} did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
+}
+
+/** The plugin's own process is the host's child: its pid is recorded while the host lives, and it is stopped by that pid. */
+const recordChildren = (host) => { for (const pid of descendants(host.pid)) host.children.add(pid); };
+
+async function stopHost(host) {
+  try {
+    recordChildren(host);
+    if (!host.isExited()) {
+      host.child.kill('SIGTERM');
+      for (let i = 0; i < 50 && !host.isExited(); i += 1) await sleep(200);
+      if (!host.isExited()) host.child.kill('SIGKILL');
+    }
+    const leftovers = [...host.children].filter(alive);
+    for (const pid of leftovers) { try { process.kill(pid, 'SIGTERM'); } catch { /* gone */ } }
+    for (let i = 0; i < 25 && leftovers.some(alive); i += 1) await sleep(200);
+    for (const pid of leftovers.filter(alive)) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+    info('host', `${host.name}: stopped pid ${host.pid}${leftovers.length > 0 ? `, and its leftover processes ${leftovers.join(', ')}` : ''}`, {});
+  } catch (error) {
+    check('cleanup', `the host ${host.name} was stopped without an error`, false, String(error));
+  } finally {
+    await writeFile(path.join(out, `host-${host.name}.log`), host.lines.join('')).catch(() => undefined);
+  }
+}
+
+async function removeProfiles() {
+  for (const profile of [...profiles]) {
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
+    const gone = await access(profile).then(() => false, () => true);
+    check('cleanup', 'the throwaway profile of a host, with its copy of the kubeconfig, is removed after the host has stopped', gone, profile);
+    profiles.splice(profiles.indexOf(profile), 1);
+  }
+}
+
+/** A phase: a fresh host, its browser, and both stopped (and the plugin's process with the host) whatever happened. */
+async function phase(scope, hostName, archivePath, kubeconfigPath, engineName, body) {
+  const host = await startHost(hostName, archivePath, kubeconfigPath);
+  const browser = await pw[engineName].launch();
+  info(scope, 'browser', `${engineName} ${browser.version()}`);
+  try {
+    return await body({ host, browser });
+  } finally {
+    await browser.close().catch(() => undefined);
+    await stopHost(host);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The 29 kinds of the plugin's sidebar, in the order of the mock (ui/src/kinds/index.ts of the plugin at 46f66f4b): [id (the page, the resource and the row's data-id), label, API group, version, namespaced].
+const KIND_DEFS = [
+  ['nodes', 'Nodes', '', 'v1', false],
+  ['namespaces', 'Namespaces', '', 'v1', false],
+  ['pods', 'Pods', '', 'v1', true],
+  ['deployments', 'Deployments', 'apps', 'v1', true],
+  ['statefulsets', 'StatefulSets', 'apps', 'v1', true],
+  ['daemonsets', 'DaemonSets', 'apps', 'v1', true],
+  ['replicasets', 'ReplicaSets', 'apps', 'v1', true],
+  ['jobs', 'Jobs', 'batch', 'v1', true],
+  ['cronjobs', 'CronJobs', 'batch', 'v1', true],
+  ['configmaps', 'ConfigMaps', '', 'v1', true],
+  ['secrets', 'Secrets', '', 'v1', true],
+  ['resourcequotas', 'ResourceQuotas', '', 'v1', true],
+  ['limitranges', 'LimitRanges', '', 'v1', true],
+  ['horizontalpodautoscalers', 'HorizontalPodAutoscalers', 'autoscaling', 'v2', true],
+  ['poddisruptionbudgets', 'PodDisruptionBudgets', 'policy', 'v1', true],
+  ['services', 'Services', '', 'v1', true],
+  ['endpoints', 'Endpoints', '', 'v1', true],
+  ['endpointslices', 'EndpointSlices', 'discovery.k8s.io', 'v1', true],
+  ['ingresses', 'Ingresses', 'networking.k8s.io', 'v1', true],
+  ['ingressclasses', 'IngressClasses', 'networking.k8s.io', 'v1', false],
+  ['networkpolicies', 'NetworkPolicies', 'networking.k8s.io', 'v1', true],
+  ['persistentvolumes', 'PersistentVolumes', '', 'v1', false],
+  ['persistentvolumeclaims', 'PersistentVolumeClaims', '', 'v1', true],
+  ['storageclasses', 'StorageClasses', 'storage.k8s.io', 'v1', false],
+  ['serviceaccounts', 'ServiceAccounts', '', 'v1', true],
+  ['roles', 'Roles', 'rbac.authorization.k8s.io', 'v1', true],
+  ['clusterroles', 'ClusterRoles', 'rbac.authorization.k8s.io', 'v1', false],
+  ['rolebindings', 'RoleBindings', 'rbac.authorization.k8s.io', 'v1', true],
+  ['clusterrolebindings', 'ClusterRoleBindings', 'rbac.authorization.k8s.io', 'v1', false],
+];
+const KINDS = KIND_DEFS.map(([id, label, apiGroup, version, namespaced]) => ({ id, label, apiGroup, version, namespaced, type: `k8s:${apiGroup}/${id}` }));
+const KIND = Object.fromEntries(KINDS.map((kind) => [kind.id, kind]));
+/** The groups of the tree, in the mock's order: the two kinds above them, then each group (a row of its own, never a count) with its kinds. `id` is the group row's data-id. */
+const TOP = ['nodes', 'namespaces'];
+const GROUPS = [
+  { id: 'workloads', label: 'Workloads', kinds: ['pods', 'deployments', 'statefulsets', 'daemonsets', 'replicasets', 'jobs', 'cronjobs'] },
+  { id: 'config', label: 'Config', kinds: ['configmaps', 'secrets', 'resourcequotas', 'limitranges', 'horizontalpodautoscalers', 'poddisruptionbudgets'] },
+  { id: 'network', label: 'Network', kinds: ['services', 'endpoints', 'endpointslices', 'ingresses', 'ingressclasses', 'networkpolicies'] },
+  { id: 'storage', label: 'Storage', kinds: ['persistentvolumes', 'persistentvolumeclaims', 'storageclasses'] },
+  { id: 'access', label: 'Access control', kinds: ['serviceaccounts', 'roles', 'clusterroles', 'rolebindings', 'clusterrolebindings'] },
+];
+const groupOf = (kindId) => GROUPS.find((group) => group.kinds.includes(kindId));
+/** The rows of the tree with every group open: [id, label, level]. */
+const ALL_ROWS = [...TOP.map((id) => [id, KIND[id].label, 1]), ...GROUPS.flatMap((group) => [[group.id, group.label, 1], ...group.kinds.map((id) => [id, KIND[id].label, 2])])];
+const KIND_IDS = new Set(KINDS.map((kind) => kind.id));
+const CUSTOM = { id: 'widgets', label: 'Widgets', apiGroup: 'q2.example.com', version: 'v1', namespaced: true, type: 'k8s:q2.example.com/widgets', resource: 'widgets.q2.example.com' };
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The oracle: kubectl, as the step says it: `kubectl get <kind> -A --no-headers | wc -l` (`kubectl get <kind> --no-headers | wc -l` for a kind that lives in no namespace).
+const kubectlArgs = (kind) => ['get', kind.resource ?? kind.id, ...(kind.namespaced ? ['-A'] : []), '--no-headers'];
+const linesOf = (text) => text.split('\n').filter((line) => line.trim() !== '');
+function kubectlLines(args, config = kubeconfig) {
+  const result = spawnSync('kubectl', ['--kubeconfig', config, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 256 * 1024 * 1024 });
+  if (result.status !== 0) throw new Error(`kubectl ${args.join(' ')} failed: ${result.stderr}`);
+  return linesOf(result.stdout);
+}
+const kubectlCount = (kind, config = kubeconfig) => kubectlLines(kubectlArgs(kind), config).length;
+/** The counts of many kinds at once (eight kubectl processes at a time), by kind id. */
+async function kubectlCounts(kinds, config = kubeconfig) {
+  const counts = {};
+  const queue = [...kinds];
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    for (let kind = queue.shift(); kind !== undefined; kind = queue.shift()) {
+      const { stdout } = await run('kubectl', ['--kubeconfig', config, ...kubectlArgs(kind)], { encoding: 'utf8', timeout: 60_000, maxBuffer: 256 * 1024 * 1024 });
+      counts[kind.id] = linesOf(stdout).length;
+    }
+  }));
+  return counts;
+}
+/** kubectl read before and after something is read from the page: what the cluster held for the whole of it, or, for a kind that changed in between, both numbers. */
+async function bracketed(kinds, read, config = kubeconfig) {
+  const before = await kubectlCounts(kinds, config);
+  const value = await read();
+  const after = await kubectlCounts(kinds, config);
+  return { before, after, value, steady: kinds.filter((kind) => before[kind.id] === after[kind.id]).map((kind) => kind.id) };
+}
+
+/** The objects of a namespaced kind by namespace, from kubectl. */
+function perNamespace(kind) {
+  const counts = new Map();
+  for (const line of kubectlLines(['get', kind.resource ?? kind.id, '-A', '--no-headers', '-o', 'custom-columns=NS:.metadata.namespace'])) {
+    const namespace = line.trim();
+    counts.set(namespace, (counts.get(namespace) ?? 0) + 1);
+  }
+  return counts;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// What a row of the sidebar says, and the decisions the checks make about it: plain functions over data, each fed planted data by the controls.
+const GROUPED = String.raw`(?:0|[1-9]\d{0,2}(?:,\d{3})*)`;
+const COUNT_PART = new RegExp(`^(about )?(${GROUPED})$`);
+const grouped = (value) => value.toLocaleString('en-US');
+
+/**
+ * The accessible name of a row, read for the label the row must carry. `<Label>`: no count. `<Label> <n>`: an exact count, a plain number with its thousands grouped by commas. `<Label> about <n>`: an estimate (it is
+ * drawn `~<n>`). Anything else is `invalid` with the reason: a tilde, a number that is not grouped, a leading zero, `about` with no number, another label.
+ */
+function parseName(name, label) {
+  const text = String(name).replace(/\s+/g, ' ').trim();
+  if (text === label) return { kind: 'none' };
+  if (!text.startsWith(`${label} `)) return { kind: 'invalid', reason: `the name "${text}" does not start with the label "${label}"` };
+  const rest = text.slice(label.length + 1);
+  const match = COUNT_PART.exec(rest);
+  if (match === null) return { kind: 'invalid', reason: `"${rest}" is neither a number with its thousands grouped nor "about" and one` };
+  const value = Number(match[2].replaceAll(',', ''));
+  if (!Number.isSafeInteger(value)) return { kind: 'invalid', reason: `"${rest}" is beyond the numbers a count can hold` };
+  return { kind: match[1] === undefined ? 'exact' : 'estimate', value };
+}
+/** What the slot must draw for a name: nothing, the grouped digits, or the grouped digits after a tilde. */
+const drawnFor = (parsed) => (parsed.kind === 'exact' ? grouped(parsed.value) : parsed.kind === 'estimate' ? `~${grouped(parsed.value)}` : '');
+/** The drawn text and the name agree: what is seen is what is said. */
+const sameAsDrawn = (parsed, drawn) => parsed.kind !== 'invalid' && drawn === drawnFor(parsed);
+/** What a page of one can know: 0 and 1 end the read in the page (exact); more is the API server's estimate; the kind whose list is open is exact, the source's. */
+const precisionOf = (expected, open = false) => (open || expected <= 1 ? 'exact' : 'estimate');
+/** The comparison every count check below makes, and the one its controls try to fool: the row says the number kubectl counted, as precisely as the plugin can know it. A row with no count is never a match. */
+function rowVerdict(parsed, expected, open = false) {
+  const counted = parsed.kind === 'exact' || parsed.kind === 'estimate';
+  return { numberOk: counted && parsed.value === expected, precisionOk: counted && parsed.kind === precisionOf(expected, open) };
+}
+
+// The backend's own count (Q1): the page of one, as `useResources` asks for it.
+const precisionOfPage = (expected) => (expected <= 1 ? 'exact' : 'estimate');
+const isCountOf = (count, expected) => count?.kind === precisionOfPage(expected) && count?.value === String(expected);
+const isUnknownRead = (read) => read.error === undefined && read.count?.kind === 'unknown' && read.count?.value === undefined;
+/** The AppError the host puts in the message of a failed call (`{ type, title, status, detail, code, ... }`); undefined when the error carries none. */
+function appErrorOf(error) {
+  try {
+    const parsed = JSON.parse(error?.message ?? '');
+    return parsed !== null && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const isForbidden = (error) => {
+  const appError = appErrorOf(error);
+  return appError?.type === 'omniview:resource/forbidden' && appError?.status === 403 && appError?.code === 'FORBIDDEN';
+};
+
+/**
+ * What the page of a kind the user may not list says (the step's rule): the list's failed state, named `Couldn't load <Kinds>`, with the plugin's own sentence (`You do not have permission to list <Kinds> in all
+ * namespaces.`, and for a kind that lives in no namespace `... in this cluster.`), no Retry (asking again cannot change a refusal), no row, and never the host's fixed sentence for a failure it cannot name.
+ */
+function refusalProblems(body, kind) {
+  const problems = [];
+  const sentence = `You do not have permission to list ${kind.label} in ${kind.namespaced ? 'all namespaces' : 'this cluster'}.`;
+  if (body.state !== 'error') problems.push(`the page's state is ${JSON.stringify(body.state)}, not "error"`);
+  if (!new RegExp(`Couldn.t load ${kind.label}`).test(body.text)) problems.push(`the heading "Couldn't load ${kind.label}" is not there`);
+  if (!body.text.includes(sentence)) problems.push(`the sentence "${sentence}" is not there`);
+  if (body.buttons.some((button) => /^retry$/i.test(button))) problems.push('a Retry button is drawn');
+  if (body.text.includes('The operation could not be completed.')) problems.push('the sentence "The operation could not be completed." is there');
+  if (body.rows !== 0) problems.push(`${body.rows} rows are drawn`);
+  if (body.heading !== kind.label) problems.push(`the page's heading is ${JSON.stringify(body.heading)}, not ${JSON.stringify(kind.label)}`);
+  return problems;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The API server's record of what the plugin asked: the audit log of the kind node, from a line on.
+const dockerExec = (command) => spawnSync('docker', ['exec', node, 'sh', '-c', command], { encoding: 'utf8', maxBuffer: 1024 * 1024 * 1024 });
+const auditLines = () => Number(dockerExec('wc -l < /var/log/kubernetes/audit/audit.log').stdout.trim());
+const ADMIN_USER = 'kubernetes-admin';
+const LIMITED_USER = 'system:serviceaccount:default:q2-limited';
+
+/** Audit events from line `after` on, parsed. */
+function auditSince(after) {
+  const raw = dockerExec(`tail -n +${after + 1} /var/log/kubernetes/audit/audit.log`).stdout;
+  const events = [];
+  for (const line of raw.split('\n')) {
+    if (line === '') continue;
+    try { events.push(JSON.parse(line)); } catch { /* a line cut by the tail */ }
+  }
+  return events;
+}
+
+/** The Lists the plugin made for a user: its user agent is the plugin's own (`omniview-kubernetes/<version> (<os>/<arch>)`), not kubectl's. */
+function pluginLists(events, user = ADMIN_USER) {
+  return events
+    .filter((event) => event.verb === 'list' && String(event.userAgent).startsWith('omniview-kubernetes/') && event.stage === 'ResponseComplete' && (user === undefined || event.user?.username === user))
+    .map((event) => {
+      const url = new URL(`http://api${event.requestURI}`);
+      return { path: url.pathname, query: Object.fromEntries(url.searchParams), code: event.responseStatus?.code, received: Date.parse(event.requestReceivedTimestamp), done: Date.parse(event.stageTimestamp), agent: event.userAgent };
+    });
+}
+
+/** The path the API server is asked for the List of a kind in every namespace: `/api/v1/pods`, `/apis/apps/v1/deployments`. */
+const listPathOf = (kind) => (kind.apiGroup === '' ? `/api/${kind.version}/${kind.resource ?? kind.id}` : `/apis/${kind.apiGroup}/${kind.version}/${kind.resource ?? kind.id}`);
+const SELECTORS = ['labelSelector', 'fieldSelector', 'continue', 'resourceVersion', 'resourceVersionMatch'];
+/** The Lists of a limit of one: the count reads, and the probe a list's source makes as it opens. */
+const limitOnes = (lists) => lists.filter((list) => list.query.limit === '1');
+/** Of those, the ones that carry a selector, a continue or a resourceVersion: no count read does. */
+const carryingMore = (lists) => lists.filter((list) => SELECTORS.some((name) => name in list.query));
+const countsByPath = (lists) => {
+  const asked = new Map();
+  for (const list of lists) asked.set(list.path, (asked.get(list.path) ?? 0) + 1);
+  return asked;
+};
+
+/**
+ * A round of count reads against the kinds that were wanted: `once` when each unopened kind was read exactly once, which kinds were not read or were read twice, the `limit=1` Lists of paths that are no kind of the
+ * sidebar, how many carried more than a limit, and what the open kind (its list is the page on screen: its own full read is not a count read) was asked with a limit of one.
+ */
+function roundOf(lists, kinds, open) {
+  const reads = limitOnes(lists);
+  const asked = countsByPath(reads);
+  const wanted = kinds.filter((kind) => kind.id !== open);
+  const known = new Set(kinds.map(listPathOf));
+  return {
+    once: wanted.every((kind) => asked.get(listPathOf(kind)) === 1),
+    missed: wanted.filter((kind) => (asked.get(listPathOf(kind)) ?? 0) === 0).map((kind) => kind.id),
+    twice: wanted.filter((kind) => (asked.get(listPathOf(kind)) ?? 0) > 1).map((kind) => kind.id),
+    stray: [...asked].filter(([asked_path]) => !known.has(asked_path)).map(([asked_path, n]) => `${asked_path} x${n}`),
+    carrying: carryingMore(reads).length,
+    openReads: open === undefined ? 0 : asked.get(listPathOf(KIND[open])) ?? 0,
+    reads: reads.length,
+  };
+}
+/** The Lists of a path for each path, in the order the server received them. */
+function byPath(lists) {
+  const table = new Map();
+  for (const list of [...lists].sort((a, b) => a.received - b.received)) table.set(list.path, [...(table.get(list.path) ?? []), list]);
+  return table;
+}
+/** The pairs of Lists of one path that the server received closer than `ms`: nothing is read again inside the plugin's memory of an answer. */
+function repeatsWithin(lists, ms) {
+  const found = [];
+  for (const [listPath, entries] of byPath(lists)) {
+    for (let i = 1; i < entries.length; i += 1) if (entries[i].received - entries[i - 1].received < ms) found.push({ path: listPath, gapMs: entries[i].received - entries[i - 1].received });
+  }
+  return found;
+}
+/** The most Lists that overlapped in time at the server. */
+function overlap(lists) {
+  let most = 0;
+  for (const list of lists) most = Math.max(most, lists.filter((other) => other.received <= list.received && other.done > list.received).length);
+  return most;
+}
+/** The most spans (`{ start, end }`, in ms) in flight at once. */
+const maxInFlight = (spans) => overlap(spans.map((span) => ({ received: span.start, done: span.end })));
+/** The paths of the kinds of a group: its count reads are the ones a collapsed group must not make. */
+const pathsOf = (kindIds) => new Set(kindIds.map((id) => listPathOf(KIND[id])));
+
+/** Audit events of lines `from + 1` to `to`, parsed: a window of the log by the line counts taken at its two ends. */
+function auditBetween(from, to) {
+  const raw = dockerExec(`sed -n '${from + 1},${to}p' /var/log/kubernetes/audit/audit.log`).stdout;
+  const events = [];
+  for (const line of raw.split('\n')) {
+    if (line === '') continue;
+    try { events.push(JSON.parse(line)); } catch { /* a line cut by the cut */ }
+  }
+  return events;
+}
+/**
+ * The time in the audit log's own clock (the kind node's, which need not be this machine's to the second): the stage time of the last event written. The cluster writes one every second or two (leases are read
+ * all the time), so it is the log's clock to a couple of seconds, which is what a window of 30 or 60 seconds needs. Durations are measured in it, never against this process's clock.
+ */
+function auditNow() {
+  const tail = dockerExec('tail -n 5 /var/log/kubernetes/audit/audit.log').stdout.split('\n').filter(Boolean);
+  for (const line of tail.reverse()) {
+    try {
+      const event = JSON.parse(line);
+      const at = Date.parse(event.stageTimestamp ?? event.requestReceivedTimestamp);
+      if (Number.isFinite(at)) return at;
+    } catch { /* a line cut by the tail */ }
+  }
+  return Date.now();
+}
+/** Waits until the audit log's clock has passed `until` (ms in its clock), or `limitMs` of this process's time. */
+async function untilAuditClock(until, limitMs = 300_000) {
+  const deadline = Date.now() + limitMs;
+  while (auditNow() < until && Date.now() < deadline) await sleep(1000);
+  return auditNow() >= until;
+}
+/** The reads of a kind among Lists, in the order the server received them. */
+const readsOf = (lists, kind) => limitOnes(lists).filter((list) => list.path === listPathOf(kind)).sort((a, b) => a.received - b.received);
+const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+/** Waits until `done()` holds, looking every `everyMs`, for at most `limitMs`; whether it held. */
+async function until(done, limitMs, everyMs = 1000) {
+  const deadline = Date.now() + limitMs;
+  while (!done() && Date.now() < deadline) await sleep(everyMs);
+  return done();
+}
+/** The Lists the plugin made for the limited user from audit line `line` on. */
+const limitedListsSince = (line) => pluginLists(auditBetween(line, auditLines()), LIMITED_USER);
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// What a refusal costs (F:). A count read the user may not make (a 403) draws nothing and is NOT asked again on a timer: the sidebar asks a refused kind again only when its group is opened again, when the connection or
+// the namespaces counted change (a kind that lives in no namespace is not asked again for those), or when its list was open and is left. An ask is one List at the API server: the plugin's backend keeps no failure, so
+// each ask reaches it, and it does not try a refused read again. The decisions are plain functions over entries `{ kind, at }` (a refused List at the API server, or a count read the page made), each fed planted
+// data by the controls; a problem says which ASSERTION it is of, and a control must trip the assertion it is named for.
+/** How long a window must be left alone for the absence of an ask on a timer to mean something: two refresh intervals and thirty seconds of slack. */
+const QUIET_MS = 2 * REFRESH_MS + 30_000;
+const ASSERTIONS = { first: 'first sight', after: '0 after', reopen: 'exactly one (a group opened again)', visit: 'exactly one (a list visited)' };
+const describeProblems = (problems) => problems.map((problem) => `${problem.assertion}: ${problem.text}`);
+
+/** The refused Lists of the kinds given, as entries: a limit of one (a count read, or the probe of a list's source), answered with a 403, by the kind of the path, in the order the server received them. */
+function refusalsOf(lists, kinds) {
+  const byPath = new Map(kinds.map((kind) => [listPathOf(kind), kind.id]));
+  return limitOnes(lists).filter((list) => list.code === 403 && byPath.has(list.path)).sort((a, b) => a.received - b.received).map((list) => ({ kind: byPath.get(list.path), at: list.received }));
+}
+/** The calls of a page that are count reads of the kinds given, as entries: what the sidebar asked of the host (one ask, one call), in the order they were made. */
+function countAsksOf(calls, kinds) {
+  const byType = new Map(kinds.map((kind) => [kind.type, kind.id]));
+  return calls.filter((call) => byType.has(call.type)).map((call) => ({ kind: byType.get(call.type), at: call.start }));
+}
+/**
+ * A window in which each kind of `wanted` was asked for exactly once (one entry: one List at the API server, or one call of the page) and no other kind of `kinds` was asked for at all: a kind missed, a kind asked
+ * twice and a kind that was not to be asked are each a problem of the assertion named.
+ */
+function onceProblems(assertion, entries, wanted, kinds) {
+  const problems = [];
+  for (const kind of kinds) {
+    const n = entries.filter((entry) => entry.kind === kind.id).length;
+    const want = wanted.includes(kind.id) ? 1 : 0;
+    if (n !== want) problems.push({ assertion, text: `${kind.id} ${n}, not ${want}` });
+  }
+  return problems;
+}
+/**
+ * The window left alone, from `from` to `to` (one clock): it must be at least QUIET_MS long, or an ask on a timer might not have come and its absence says nothing; and no kind of `kinds` may be asked for in it, not
+ * once. An entry at `from` or before, or after `to`, is not the window's.
+ */
+function afterProblems(entries, from, to, kinds) {
+  const problems = [];
+  if (to - from < QUIET_MS) problems.push({ assertion: ASSERTIONS.after, text: `the window was left alone for ${Math.round((to - from) / 1000)} s, less than the ${QUIET_MS / 1000} s of two refresh intervals and slack: an ask on a timer might not have come` });
+  const later = entries.filter((entry) => entry.at > from && entry.at <= to);
+  for (const kind of kinds) {
+    const mine = later.filter((entry) => entry.kind === kind.id);
+    if (mine.length > 0) problems.push({ assertion: ASSERTIONS.after, text: `${kind.id} was asked for again, ${mine.length} time${mine.length === 1 ? '' : 's'}, the first ${Math.round((mine[0].at - from) / 1000)} s into the window` });
+  }
+  return problems;
+}
+/** How many entries fall in each part of the tree (the top level, then each group), as text: `top level 1, Workloads 6`. */
+const treeText = (entries) => [['top level', TOP], ...GROUPS.map((group) => [group.label, group.kinds])].map(([label, ids]) => `${label} ${entries.filter((entry) => ids.includes(entry.kind)).length}`).join(', ');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The page: what runs in it (an init script that watches the sidebar frame by frame, and a reading of its rows), the calls it makes to the host, and how a window is opened.
+
+/**
+ * Runs IN THE PAGE (an init script, before anything of the page's own): watches the sidebar's tree frame by frame. For each row, by the id of its entry: the rectangles of the row, its glyph, its label and the label's text,
+ * the count slot and the digits in it, whether the label is cut, as of the first frame the row was seen (the skeleton) and as of the frame before and the frame of the first count that arrived in it; the first frame in which any row
+ * existed, and the first and last count that arrived; the rectangles of the sidebar region and of the page island frame by frame; and the layout-shift observer's entries (Chromium), told apart by whether an input just
+ * happened (a click opens a group: the engine does not count the shifts of the next half second) and by whether the shifted node is in the sidebar. `watch(ms)` keeps it looking, `reset()` forgets the rows, so that a group
+ * opened later has its own skeleton and arrival.
+ */
+function recorder() {
+  if (window.__q2) return;
+  const r2 = (value) => Math.round(value * 100) / 100;
+  const rect = (element) => {
+    if (!element) return null;
+    const box = element.getBoundingClientRect();
+    return [r2(box.x), r2(box.y), r2(box.width), r2(box.height)];
+  };
+  const state = { frames: 0, until: 0, running: false, observer: false, shifts: [], rows: {}, skeleton: null, firstTreeAt: null, firstCountAt: null, lastCountAt: null, regions: {}, regionMoves: [], timeOrigin: performance.timeOrigin };
+  window.__q2 = state;
+  try {
+    // An engine that does not know the entry type may accept it and never say a word (WebKit does): only an engine that lists it has an observer.
+    if (!(PerformanceObserver.supportedEntryTypes ?? []).includes('layout-shift')) throw new Error('no layout-shift entries in this engine');
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        state.shifts.push({
+          at: r2(entry.startTime),
+          value: entry.value,
+          input: entry.hadRecentInput,
+          sources: (entry.sources ?? []).map((source) => {
+            const element = source.node && (source.node.nodeType === 1 ? source.node : source.node.parentElement);
+            const label = (element?.getAttribute?.('aria-label') ?? element?.getAttribute?.('data-ov-tip') ?? element?.textContent ?? '').trim().slice(0, 24);
+            return `${source.node?.nodeName ?? '?'}${label === '' ? '' : `[${label}]`}${element?.closest?.('nav[data-shell-region="sidebar"]') ? '@sidebar' : ''}`;
+          }),
+        });
+      }
+    }).observe({ type: 'layout-shift', buffered: true });
+    state.observer = true;
+  } catch {
+    state.observer = false;
+  }
+  const textOf = (row) => {
+    const slot = row.querySelector('[data-shell-part="count"]');
+    if (slot === null) return null;
+    const hidden = slot.querySelector('[aria-hidden="true"]');
+    return ((hidden ?? slot).textContent ?? '').trim();
+  };
+  const snap = (row) => {
+    const label = row.children[1];
+    const slot = row.querySelector('[data-shell-part="count"]');
+    return { row: rect(row), glyph: rect(row.children[0]), label: rect(label), labelText: rect(label ? label.firstElementChild : null), slot: rect(slot), digits: rect(slot ? slot.firstElementChild : null), text: textOf(row), cut: label ? label.scrollWidth > label.clientWidth : false };
+  };
+  const REGIONS = { sidebar: 'nav[data-shell-region="sidebar"]', island: '[data-shell-region="island"]' };
+  const tick = () => {
+    state.frames += 1;
+    const at = r2(performance.now());
+    for (const [name, selector] of Object.entries(REGIONS)) {
+      const box = rect(document.querySelector(selector));
+      const before = state.regions[name];
+      if (box !== null && before !== undefined && before !== null && before.join() !== box.join() && state.regionMoves.length < 200) state.regionMoves.push({ region: name, at, from: before, to: box });
+      state.regions[name] = box;
+    }
+    const rows = document.querySelectorAll('nav[aria-label="Kubernetes resources"] [role="treeitem"]');
+    if (rows.length > 0 && state.firstTreeAt === null) {
+      state.firstTreeAt = at;
+      state.skeleton = Array.from(rows, (row) => ({ id: row.getAttribute('data-id'), slot: row.querySelector('[data-shell-part="count"]') !== null, text: textOf(row) }));
+    }
+    for (const row of rows) {
+      const id = row.getAttribute('data-id');
+      const now = snap(row);
+      const entry = state.rows[id] ?? (state.rows[id] = { first: now, firstAt: at, last: null, arrival: null, changes: 0 });
+      const had = entry.last !== null && entry.last.text !== null && entry.last.text !== '';
+      const has = now.text !== null && now.text !== '';
+      if (entry.arrival === null && has) {
+        entry.arrival = { at, before: entry.last, after: now };
+        if (state.firstCountAt === null) state.firstCountAt = at;
+        state.lastCountAt = at;
+      } else if (had && has && entry.last.text !== now.text) {
+        entry.changes += 1;
+      }
+      entry.last = now;
+    }
+    if (performance.now() < state.until) requestAnimationFrame(tick);
+    else state.running = false;
+  };
+  state.watch = (ms) => {
+    state.until = Math.max(state.until, performance.now() + ms);
+    if (!state.running) {
+      state.running = true;
+      requestAnimationFrame(tick);
+    }
+  };
+  state.reset = () => {
+    state.rows = {};
+    state.skeleton = null;
+    state.firstTreeAt = null;
+    state.firstCountAt = null;
+    state.lastCountAt = null;
+    state.regionMoves = [];
+  };
+  state.snapshot = () => JSON.parse(JSON.stringify({ frames: state.frames, observer: state.observer, shifts: state.shifts, rows: state.rows, skeleton: state.skeleton, firstTreeAt: state.firstTreeAt, firstCountAt: state.firstCountAt, lastCountAt: state.lastCountAt, regionMoves: state.regionMoves, timeOrigin: state.timeOrigin }));
+  state.watch(40_000);
+}
+
+/** Runs IN THE PAGE: the rows of the sidebar's tree as a person reads them (no rectangles: those are the recorder's). */
+function readRowsDom() {
+  const nav = document.querySelector('nav[aria-label="Kubernetes resources"]');
+  return Array.from(nav?.querySelectorAll('[role="treeitem"]') ?? [], (row) => {
+    const label = row.children[1];
+    const slot = row.querySelector('[data-shell-part="count"]');
+    const hidden = slot?.querySelector('[aria-hidden="true"]');
+    return {
+      id: row.getAttribute('data-id'),
+      level: Number(row.getAttribute('aria-level')),
+      expanded: row.getAttribute('aria-expanded'),
+      selected: row.getAttribute('aria-selected') === 'true',
+      label: (label?.textContent ?? '').trim(),
+      slot: slot !== null,
+      drawn: slot === null ? null : ((hidden ?? slot).textContent ?? '').trim(),
+    };
+  });
+}
+
+/**
+ * The sidebar as a person (and a screen reader) has it: the rows in order, each with its level, whether it is open or selected, its label, whether it has a count slot and what the slot draws, and its ACCESSIBLE NAME as the
+ * engine's role query computes it (the `aria` snapshot of the navigation, which is what `getByRole('treeitem', { name })` matches). The two readings are taken one after the other, around the snapshot, and used only when they agree: a
+ * count that arrives between them is read again.
+ */
+async function readSidebar(page) {
+  const nav = page.locator('nav[aria-label="Kubernetes resources"]');
+  let last = [];
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const first = await page.evaluate(readRowsDom);
+    const snapshot = await nav.ariaSnapshot();
+    const second = await page.evaluate(readRowsDom);
+    const names = [...snapshot.matchAll(/^\s*- treeitem "((?:[^"\\]|\\.)*)"/gm)].map((match) => match[1].replace(/\\(.)/g, '$1'));
+    last = first.map((row, index) => ({ ...row, name: names[index] ?? null }));
+    if (JSON.stringify(first) === JSON.stringify(second) && names.length === first.length) return { rows: last, stable: true };
+    await sleep(150);
+  }
+  return { rows: last, stable: false };
+}
+
+/** A group's row: opened or closed by a click, as a person does it. */
+async function setGroup(page, groupId, open) {
+  const item = page.locator(`nav[aria-label="Kubernetes resources"] [role="treeitem"][data-id="${groupId}"]`);
+  if ((await item.getAttribute('aria-expanded')) !== String(open)) await item.click();
+}
+async function openGroups(page, ids = GROUPS.map((group) => group.id)) {
+  for (const id of ids) {
+    await setGroup(page, id, true);
+    await sleep(250);
+  }
+}
+
+/** Polls the rows until `done(rows)`, or the deadline; returns the last reading and whether it was the one waited for. */
+async function untilRows(page, done, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let rows = await page.evaluate(readRowsDom);
+  while (!done(rows) && Date.now() < deadline) {
+    await sleep(100);
+    rows = await page.evaluate(readRowsDom);
+  }
+  return { rows, reached: done(rows) };
+}
+const kindRowsOf = (rows) => rows.filter((row) => KIND_IDS.has(row.id));
+const everyKindCounted = (rows) => kindRowsOf(rows).length > 0 && kindRowsOf(rows).every((row) => row.drawn !== null && row.drawn !== '');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The calls the page makes to the host (`POST /wails/runtime`, what the runtime's `Call.ByName` sends in browser server mode), and the window.
+async function forgetSession(base) {
+  // Nothing saved for the host's main window: what a first run of the app finds (the host's own check does the same). A page that was just closed may still have a write on its way: it lands first.
+  await sleep(1200);
+  const response = await fetch(new URL('/wails/runtime', base), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'q2-proof' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `q2-forget-${Date.now()}`, methodName: 'github.com/omniviewdev/omniview/backend/window.Service.SaveState', args: ['main', 'session', 'null'] } }),
+  });
+  if (!response.ok) throw new Error(`the window's saved session could not be forgotten: ${response.status} ${await response.text()}`);
+}
+
+/** A page of the host at a viewport, with what it says and what it asks of the host recorded: errors, every call to the runtime with its start and end, and the type each resolved target was resolved for. */
+async function newPage(browser, viewport, { record = true } = {}) {
+  const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+  const capture = { errors: [], calls: [], targets: new Map() };
+  page.on('pageerror', (error) => capture.errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) capture.errors.push(`console: ${message.text().slice(0, 300)}`);
+  });
+  const pending = new Map();
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !new URL(request.url()).pathname.endsWith('/wails/runtime')) return;
+    let body;
+    try { body = JSON.parse(request.postData() ?? 'null'); } catch { body = undefined; }
+    const call = { method: String(body?.args?.methodName ?? '').split('.').at(-1), args: body?.args?.args, start: Date.now(), end: undefined };
+    pending.set(request, call);
+    capture.calls.push(call);
+  });
+  page.on('requestfinished', async (request) => {
+    const call = pending.get(request);
+    if (call === undefined) return;
+    call.end = Date.now();
+    try { call.bytes = (await request.sizes()).responseBodySize; } catch { /* the engine does not say */ }
+    if (call.method === 'ResolveTarget') {
+      try {
+        const resolved = JSON.parse(await (await request.response())?.text());
+        if (typeof resolved?.targetId === 'string') capture.targets.set(resolved.targetId, call.args?.[1]?.type);
+      } catch { /* the page went away */ }
+    }
+  });
+  page.on('requestfailed', (request) => {
+    const call = pending.get(request);
+    if (call !== undefined) call.end = Date.now();
+  });
+  if (record) await page.addInitScript(recorder);
+  return { page, capture };
+}
+/** The calls of a page that are count reads: `Enumerate` with a page of one (the sidebar's), and the kind each was resolved for. */
+const countCallsOf = (capture) => capture.calls.filter((call) => call.method === 'Enumerate' && call.args?.[1]?.request?.pageSize === 1).map((call) => ({ ...call, type: capture.targets.get(call.args?.[1]?.targetId) }));
+
+/**
+ * The window opened as the native app opens it for a first run: `/`, nothing saved (decision A17: no page opens by itself), the plugin opened from the window's list of plugins as a person opens it, the plugin's first
+ * page its Pods list (the same opening as the host's own cluster check).
+ */
+async function openWindow(browser, base, viewport, options) {
+  await forgetSession(base);
+  const opened = await newPage(browser, viewport, options);
+  const clickedAt = Date.now();
+  await opened.page.goto(`${base}/`, { waitUntil: 'load' });
+  await opened.page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ }).click({ timeout: 30_000 });
+  await opened.page.waitForSelector('nav[aria-label="Kubernetes resources"] [role="treeitem"]', { timeout: 60_000 });
+  return { ...opened, clickedAt };
+}
+const hashOf = (kindId, connection) => `#/kubernetes/${kindId}?connection=${encodeURIComponent(connection)}`;
+/** A page of the plugin by its route, with no input: the window as a saved route restores it (no click, so the engine's layout-shift observer counts every shift). */
+async function openRoute(browser, base, kindId, connection, viewport, options) {
+  await forgetSession(base);
+  const opened = await newPage(browser, viewport, options);
+  await opened.page.goto(`${base}/${hashOf(kindId, connection)}`, { waitUntil: 'load' });
+  return opened;
+}
+const stateOf = (page) => page.evaluate(() => document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') ?? null);
+async function untilListReady(page, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let state = await stateOf(page);
+  while (state !== 'ready' && Date.now() < deadline) {
+    await sleep(150);
+    state = await stateOf(page);
+  }
+  return state;
+}
+const marksOf = (page) => page.evaluate(() => window.__q2?.snapshot());
+
+// Calls a bound method of the host's resource service the way the runtime's `Call.ByName` does, with the page's own client id (Q1).
+const makeCaller = (page) => (method, ...args) =>
+  page.evaluate(async ({ method, args }) => {
+    const id = `q2-${Math.random().toString(36).slice(2)}`;
+    const response = await fetch('/wails/runtime', {
+      method: 'POST',
+      headers: { 'x-wails-client-id': window._wails.clientId, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': id, methodName: `github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper.${method}`, args } }),
+    });
+    const text = await response.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { parsed = text; }
+    return response.ok ? { ok: true, value: parsed } : { ok: false, error: parsed };
+  }, { method, args });
+/** A page of the host with the runtime ready, for the calls of the backend-level reads. */
+async function openBackendPage(browser, base) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(`${base}/`, { waitUntil: 'load' });
+  await page.waitForFunction(() => typeof window._wails?.clientId === 'string', undefined, { timeout: 30_000 });
+  return page;
+}
+async function resolveTarget(call, type, namespaces, connection = context) {
+  const request = { route: { connection }, type };
+  if (namespaces !== undefined) request.scope = [{ dimension: 'namespace', match: 'oneOf', values: namespaces }];
+  const resolved = await call('ResolveTarget', pluginID, request);
+  if (!resolved.ok) throw new Error(`ResolveTarget ${type} ${JSON.stringify(namespaces)}: ${JSON.stringify(resolved.error)}`);
+  return resolved.value;
+}
+/** One count read as the sidebar asks for it: the page of one of the kind, in the scope. The page's own count, and the error if there is one. */
+async function countRead(call, type, namespaces, connection = context) {
+  const resolved = await resolveTarget(call, type, namespaces, connection);
+  const page = await call('Enumerate', pluginID, { targetId: resolved.targetId, request: { target: resolved.target, pageSize: 1 } });
+  return page.ok ? { count: page.value.sourcePage.count, records: page.value.records.length, page: page.value } : { error: page.error };
+}
+async function startAndWait(call, name, connection = context) {
+  const started = await call('StartConnection', pluginID, connection);
+  info(name, 'StartConnection', started.ok ? { status: started.value?.status } : started.error);
+  const deadline = Date.now() + 90_000;
+  let last;
+  while (Date.now() < deadline) {
+    const states = await call('GetAllConnectionStates');
+    const mine = states.ok ? (states.value?.[pluginID] ?? []).find((state) => state.connection?.id === connection) : undefined;
+    last = mine?.readiness;
+    if (last === 'CONNECTED') return true;
+    await sleep(500);
+  }
+  info(name, 'the connection did not reach CONNECTED', { last });
+  return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The arrival: what the recorder saw of the counts coming in, judged. Plain functions over the recorder's data, so each is fed planted data by the controls.
+const sameRect = (a, b, tolerance = 0.01) => a !== null && a !== undefined && b !== null && b !== undefined && a.every((value, index) => Math.abs(value - b[index]) <= tolerance);
+const PARTS = ['row', 'glyph', 'label', 'labelText', 'slot'];
+
+/**
+ * The problems of an arrival (an empty list is a pass): the skeleton had a held, empty slot for every kind row of the tree and no count had arrived when it was read (a row's skeleton is the first frame it was seen in: for the
+ * rows the window opens with it is the first frame of the tree, for those of a group opened later the frame the group opened in); a count arrived for each kind that was to get one (`without` lists the ids that must
+ * NOT get one); and the row, glyph, label, label text and slot of each row are the rectangles they were the frame before its count came (0.01 px), the label is cut or not as it was, and the sidebar and the page island
+ * have not moved while the counts came.
+ */
+function arrivalProblems(snap, { kindIds = KIND_IDS, without = new Set(), tolerance = 0.01 } = {}) {
+  const problems = [];
+  if (snap === undefined || snap.skeleton === null) return ['the sidebar never showed a row'];
+  const ids = Object.keys(snap.rows).filter((id) => kindIds.has(id));
+  if (ids.length === 0) problems.push('the skeleton holds no row of a kind');
+  const noSlot = ids.filter((id) => snap.rows[id].first.text === null);
+  if (noSlot.length > 0) problems.push(`the skeleton has no count slot for ${noSlot.join(', ')}`);
+  const early = ids.filter((id) => snap.rows[id].first.text !== null && snap.rows[id].first.text !== '');
+  if (early.length > 0) problems.push(`counts had arrived when the skeleton was read: ${early.join(', ')}`);
+  const waiting = ids.filter((id) => !without.has(id) && snap.rows[id].arrival === null);
+  if (waiting.length > 0) problems.push(`no count arrived for ${waiting.join(', ')}`);
+  const got = ids.filter((id) => without.has(id) && snap.rows[id].arrival !== null);
+  if (got.length > 0) problems.push(`a count arrived for ${got.join(', ')}, which must have none`);
+  const moved = [];
+  for (const id of ids.filter((candidate) => snap.rows[candidate].arrival !== null)) {
+    const { before, after } = snap.rows[id].arrival;
+    if (before === null) {
+      moved.push(`${id} was first seen with its count: there is no skeleton of it to compare`);
+      continue;
+    }
+    for (const part of PARTS) if (!sameRect(before[part], after[part], tolerance)) moved.push(`${id}.${part} ${JSON.stringify(before[part])} then ${JSON.stringify(after[part])}`);
+    if (before.cut !== after.cut) moved.push(`${id}: label cut ${before.cut} then ${after.cut}`);
+  }
+  if (moved.length > 0) problems.push(`when a count arrived: ${moved.slice(0, 6).join('; ')}${moved.length > 6 ? `; and ${moved.length - 6} more` : ''}`);
+  if (snap.firstCountAt !== null) {
+    const during = snap.regionMoves.filter((move) => move.at >= snap.firstCountAt - 20 && move.at <= snap.lastCountAt + 400);
+    if (during.length > 0) problems.push(`the ${[...new Set(during.map((move) => move.region))].join(' and ')} moved while the counts came: ${JSON.stringify(during.slice(0, 2))}`);
+  }
+  return problems;
+}
+
+/**
+ * The layout shift over the arrival, from the observer where the engine has one (Chromium; WebKit has none: its rectangles are the check). The window starts after the frame in which the skeleton was read (the load
+ * before it is not the arrival's). `sidebar` is the shift of nodes in the sidebar; `total` all that the engine counted; `input` what the engine did not count, a click having just happened; `nearCounts` the part of the
+ * total that fell within a frame (24 ms) of the frame in which some count arrived, which is the part a count can have caused; `detail` each shift with its time (ms after the first count arrived, when one did) and its
+ * nodes. `null` when there is no observer.
+ */
+function layoutShiftOf(snap) {
+  if (snap === undefined || !snap.observer) return null;
+  const start = snap.firstTreeAt ?? 0;
+  const counted = snap.shifts.filter((shift) => shift.at > start + 1);
+  const sum = (list) => Math.round(list.reduce((total, shift) => total + shift.value, 0) * 1e6) / 1e6;
+  const free = counted.filter((shift) => !shift.input);
+  const arrivals = Object.values(snap.rows).map((row) => row.arrival?.at).filter((at) => Number.isFinite(at));
+  const near = (shift) => arrivals.some((at) => Math.abs(at - shift.at) <= 24);
+  return {
+    total: sum(free),
+    sidebar: sum(free.filter((shift) => shift.sources.some((source) => source.endsWith('@sidebar')))),
+    input: sum(counted.filter((shift) => shift.input)),
+    nearCounts: sum(free.filter(near)),
+    sources: [...new Set(free.flatMap((shift) => shift.sources))],
+    before: sum(snap.shifts.filter((shift) => shift.at <= start + 1 && !shift.input)),
+    detail: free.map((shift) => ({ afterFirstCountMs: snap.firstCountAt === null ? null : Math.round(shift.at - snap.firstCountAt), value: shift.value, sources: shift.sources })),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// CONTROLS. The decisions the checks make are functions, and each is fed data that is wrong in the way it must catch (and right in the way it must pass). The measurement of the arrival is run in each engine on synthetic
+// sidebars, built with the host's own rules for the tree (the grid, the held slot, the `about` word that is not drawn) and with one thing made wrong at a time: it must pass on the right one and fail on each wrong one.
+
+function controlsPure() {
+  const scope = 'controls';
+  // ---- the name of a row
+  const valid = [
+    ['Pods 50', 'Pods', { kind: 'exact', value: 50 }],
+    ['Deployments about 11', 'Deployments', { kind: 'estimate', value: 11 }],
+    ['ConfigMaps about 1,326', 'ConfigMaps', { kind: 'estimate', value: 1326 }],
+    ['Pods 1,234', 'Pods', { kind: 'exact', value: 1234 }],
+    ['PodDisruptionBudgets 0', 'PodDisruptionBudgets', { kind: 'exact', value: 0 }],
+    ['Nodes 1', 'Nodes', { kind: 'exact', value: 1 }],
+    ['Secrets', 'Secrets', { kind: 'none' }],
+    ['Pods   about   7', 'Pods', { kind: 'estimate', value: 7 }],
+  ];
+  check(scope, 'the name of a row is read as `<Label> <n>` (exact: a plain number, thousands grouped), `<Label> about <n>` (an estimate) or `<Label>` (no count): Pods 50, Deployments about 11, ConfigMaps about 1,326, Pods 1,234, PodDisruptionBudgets 0, Secrets', valid.every(([name, label, want]) => JSON.stringify(parseName(name, label)) === JSON.stringify(want)), valid.filter(([name, label, want]) => JSON.stringify(parseName(name, label)) !== JSON.stringify(want)).map(([name, label]) => parseName(name, label)));
+  const invalid = [['ConfigMaps ~', 'ConfigMaps'], ['Pods ~50', 'Pods'], ['Pods ~', 'Pods'], ['Pods 1234', 'Pods'], ['Pods 1,23', 'Pods'], ['Pods 01', 'Pods'], ['Pods about', 'Pods'], ['Pods about 1234', 'Pods'], ['Pods -3', 'Pods'], ['Pods 5 6', 'Pods'], ['Pods 1.5', 'Pods'], ['Pods 1,234,', 'Pods'], ['Pod 5', 'Pods'], ['PodsX 5', 'Pods'], ['Pods about about 5', 'Pods'], ['Pods 12,345,678,901,234,567,890', 'Pods'], ['', 'Pods']];
+  check(scope, 'a name that is not one of those three is invalid, and is never read as the nearest count: a tilde (`ConfigMaps ~`, `Pods ~50`), a number not grouped (`Pods 1234`, `Pods 1,23`), a leading zero, `about` alone, a sign, a fraction, two numbers, another label, a number beyond the safe integers', invalid.every(([name, label]) => parseName(name, label).kind === 'invalid'), invalid.filter(([name, label]) => parseName(name, label).kind !== 'invalid'));
+  // ---- what is drawn must be what is said
+  check(scope, 'the slot draws what the name says: nothing, the grouped digits, or `~` and the grouped digits; any other drawing of a name is detected (an estimate drawn plain, an exact count drawn with a tilde, a number drawn for a row named without one, ungrouped digits)',
+    sameAsDrawn({ kind: 'none' }, '') && sameAsDrawn({ kind: 'exact', value: 50 }, '50') && sameAsDrawn({ kind: 'estimate', value: 25 }, '~25') && sameAsDrawn({ kind: 'estimate', value: 1326 }, '~1,326') && sameAsDrawn({ kind: 'exact', value: 1234 }, '1,234')
+    && !sameAsDrawn({ kind: 'estimate', value: 25 }, '25') && !sameAsDrawn({ kind: 'exact', value: 50 }, '~50') && !sameAsDrawn({ kind: 'none' }, '0') && !sameAsDrawn({ kind: 'exact', value: 1234 }, '1234') && !sameAsDrawn({ kind: 'invalid' }, '') && !sameAsDrawn({ kind: 'none' }, null));
+  // ---- the comparison with kubectl
+  const wrongFor50 = [{ kind: 'exact', value: 51 }, { kind: 'exact', value: 49 }, { kind: 'estimate', value: 51 }, { kind: 'none' }, { kind: 'invalid', reason: 'x' }];
+  check(scope, 'the comparison with kubectl fails on one too many, one too few, an estimate one off, no count, and an invalid name', wrongFor50.every((parsed) => !rowVerdict(parsed, 50, true).numberOk));
+  check(scope, 'and passes the right ones: an estimate of 50 for 50, an exact 1 for 1, an exact 0 for 0, an exact 50 for the open kind; and holds the precision: an exact count where the server only estimates, an estimate for the open kind, and an estimate of 1 for 1 have the right number and the wrong precision',
+    rowVerdict({ kind: 'estimate', value: 50 }, 50).numberOk && rowVerdict({ kind: 'estimate', value: 50 }, 50).precisionOk && rowVerdict({ kind: 'exact', value: 1 }, 1).precisionOk && rowVerdict({ kind: 'exact', value: 0 }, 0).precisionOk && rowVerdict({ kind: 'exact', value: 50 }, 50, true).precisionOk
+    && rowVerdict({ kind: 'exact', value: 50 }, 50).numberOk && !rowVerdict({ kind: 'exact', value: 50 }, 50).precisionOk && !rowVerdict({ kind: 'estimate', value: 50 }, 50, true).precisionOk && !rowVerdict({ kind: 'estimate', value: 1 }, 1).precisionOk);
+  // ---- the backend's own count (Q1's controls, kept for the call the sidebar makes)
+  const wrongPages = [{ kind: 'estimate', value: '51' }, { kind: 'estimate', value: '49' }, { kind: 'exact', value: '50' }, { kind: 'unknown' }, { kind: 'estimate', value: 50 }, undefined];
+  check(scope, 'the comparison of the backend\'s count fails on one too many, one too few, an exact count where the server only estimates, an unknown, a number that is not the wire\'s decimal string, and no count; and passes the right ones', wrongPages.every((count) => !isCountOf(count, 50)) && isCountOf({ kind: 'estimate', value: '50' }, 50) && isCountOf({ kind: 'exact', value: '1' }, 1) && isCountOf({ kind: 'exact', value: '0' }, 0) && !isCountOf({ kind: 'estimate', value: '1' }, 1));
+  check(scope, 'an unknown read is an answer with an unknown count: an error, an estimate and an unknown with a value are not', isUnknownRead({ count: { kind: 'unknown' } }) && !isUnknownRead({ error: { message: 'boom' } }) && !isUnknownRead({ count: { kind: 'estimate', value: '3' } }) && !isUnknownRead({ count: { kind: 'unknown', value: '0' } }));
+  const forbidden = { message: JSON.stringify({ type: 'omniview:resource/forbidden', title: 'Access denied', status: 403, code: 'FORBIDDEN' }) };
+  const sameWords = { message: JSON.stringify({ type: 'omniview:resource/unavailable', status: 503, code: 'UNAVAILABLE', detail: 'FORBIDDEN is a word of this text' }) };
+  const wrongStatus = { message: JSON.stringify({ type: 'omniview:resource/forbidden', status: 500, code: 'FORBIDDEN' }) };
+  check(scope, 'the FORBIDDEN test reads the error\'s fields: it passes the host\'s error and fails the same word in another error, the right type with another status, a text that is not an error, and no error', isForbidden(forbidden) && !isForbidden(sameWords) && !isForbidden(wrongStatus) && !isForbidden({ message: 'FORBIDDEN' }) && !isForbidden(undefined));
+
+  // ---- the audit analysis
+  const sidebarKinds = KINDS.filter((kind) => kind.id !== 'pods');
+  const read = (kind, received = 0) => ({ path: listPathOf(kind), query: { limit: '1' }, received, done: received + 5 });
+  const round = sidebarKinds.map((kind, index) => read(kind, index * 10));
+  const good = roundOf(round, KINDS, 'pods');
+  check(scope, 'a round that read each of the 28 unopened kinds once, and not the open one, passes', good.once && good.missed.length === 0 && good.twice.length === 0 && good.stray.length === 0 && good.openReads === 0 && good.carrying === 0 && good.reads === 28, good);
+  const twice = roundOf([...round, read(KIND.secrets, 500)], KINDS, 'pods');
+  const missed = roundOf(round.filter((entry) => entry.path !== listPathOf(KIND.secrets)), KINDS, 'pods');
+  const stray = roundOf([...round, { path: '/api/v1/events', query: { limit: '1' }, received: 600, done: 605 }], KINDS, 'pods');
+  const opened = roundOf([...round, read(KIND.pods, 700)], KINDS, 'pods');
+  const carrying = roundOf([...round, { path: listPathOf(KIND.pods), query: { limit: '1', labelSelector: 'a=b' }, received: 800, done: 805 }], KINDS, 'pods');
+  check(scope, 'a round that read a kind twice, missed one, read a path that is no kind of the sidebar, read the open kind with a limit of one, or read with a selector, is detected, each for its reason',
+    !twice.once && twice.twice.join() === 'secrets' && !missed.once && missed.missed.join() === 'secrets' && stray.once && stray.stray.length === 1 && opened.openReads === 1 && carrying.carrying === 1,
+    { twice: twice.twice, missed: missed.missed, stray: stray.stray, openReads: opened.openReads, carrying: carrying.carrying });
+  const readsOfOnePath = [read(KIND.deployments, 0), read(KIND.deployments, 29_999), read(KIND.deployments, 100_000), read(KIND.secrets, 5_000)];
+  check(scope, 'two reads of one path closer than 30 s are found (29.999 s), 70 s apart are not, and the other path is not mixed in', JSON.stringify(repeatsWithin(readsOfOnePath, STALENESS_MS)) === JSON.stringify([{ path: listPathOf(KIND.deployments), gapMs: 29_999 }]) && repeatsWithin([read(KIND.deployments, 0), read(KIND.deployments, 60_000)], STALENESS_MS).length === 0);
+  check(scope, 'the overlap measure finds four Lists at once, five at once, and one by one; the in-flight measure of the page does the same', overlap([1, 2, 3, 4].map((i) => ({ received: i, done: 10 }))) === 4 && overlap([1, 2, 3, 4, 5].map((i) => ({ received: i, done: 10 }))) === 5 && overlap([1, 2, 3].map((i) => ({ received: i * 10, done: i * 10 + 5 }))) === 1 && maxInFlight([1, 2, 3, 4].map((i) => ({ start: i, end: 10 }))) === 4 && maxInFlight([1, 2, 3, 4, 5].map((i) => ({ start: i, end: 10 }))) === 5 && SLOTS === 4);
+  const lists = pluginLists([
+    { verb: 'list', userAgent: 'omniview-kubernetes/0.21.2 (darwin/arm64)', stage: 'ResponseComplete', user: { username: ADMIN_USER }, requestURI: '/api/v1/pods?limit=1', responseStatus: { code: 200 }, requestReceivedTimestamp: '2026-11-20T19:55:10.227089Z', stageTimestamp: '2026-11-20T19:55:10.229270Z' },
+    { verb: 'list', userAgent: 'kubectl/v1.33.0 (darwin/arm64)', stage: 'ResponseComplete', user: { username: ADMIN_USER }, requestURI: '/api/v1/pods?limit=1', requestReceivedTimestamp: '2026-11-20T19:55:10.227089Z', stageTimestamp: '2026-11-20T19:55:10.229270Z' },
+    { verb: 'watch', userAgent: 'omniview-kubernetes/0.21.2 (darwin/arm64)', stage: 'ResponseComplete', user: { username: ADMIN_USER }, requestURI: '/api/v1/pods?watch=true', requestReceivedTimestamp: '2026-11-20T19:55:10.227089Z', stageTimestamp: '2026-11-20T19:55:10.229270Z' },
+    { verb: 'list', userAgent: 'omniview-kubernetes/0.21.2 (darwin/arm64)', stage: 'ResponseComplete', user: { username: LIMITED_USER }, requestURI: '/apis/apps/v1/deployments?limit=1', responseStatus: { code: 403 }, requestReceivedTimestamp: '2026-11-20T19:55:11.000000Z', stageTimestamp: '2026-11-20T19:55:11.001000Z' },
+  ]);
+  check(scope, 'the audit filter keeps the plugin\'s Lists of the user asked for: not kubectl\'s, not a watch, not another user\'s', lists.length === 1 && lists[0].path === '/api/v1/pods' && lists[0].query.limit === '1' && lists[0].done - lists[0].received === 2);
+  // ---- the refusal
+  const refused = (kind, extra = {}) => ({ state: 'error', text: `Couldn't load ${kind.label} ${`You do not have permission to list ${kind.label} in ${kind.namespaced ? 'all namespaces' : 'this cluster'}.`}`, buttons: [], rows: 0, heading: kind.label, ...extra });
+  const wrongScope = refused(KIND.roles, { text: `Couldn't load Roles You do not have permission to list Roles in this cluster.` });
+  check(scope, 'the refusal is held to its words: it passes the plain sentence of a namespaced kind (`in all namespaces.`) and of a cluster-scoped one (`in this cluster.`) with the host\'s heading and no Retry',
+    refusalProblems(refused(KIND.roles), KIND.roles).length === 0 && refusalProblems(refused(KIND.clusterroles), KIND.clusterroles).length === 0 && refusalProblems(refused(KIND.nodes), KIND.nodes).length === 0);
+  check(scope, 'and each departure is detected for its reason: a Retry, the host\'s own sentence, the other scope\'s words, no heading, a page that is not in the failed state, a row, another heading',
+    refusalProblems(refused(KIND.roles, { buttons: ['Retry'] }), KIND.roles).some((line) => /Retry/.test(line))
+    && refusalProblems(refused(KIND.roles, { text: `${refused(KIND.roles).text} The operation could not be completed.` }), KIND.roles).some((line) => /could not be completed/.test(line))
+    && refusalProblems(wrongScope, KIND.roles).some((line) => /sentence/.test(line))
+    && refusalProblems(refused(KIND.roles, { text: 'You do not have permission to list Roles in all namespaces.' }), KIND.roles).some((line) => /heading/.test(line))
+    && refusalProblems(refused(KIND.roles, { state: 'loading' }), KIND.roles).some((line) => /state/.test(line))
+    && refusalProblems(refused(KIND.roles, { rows: 2 }), KIND.roles).some((line) => /rows/.test(line))
+    && refusalProblems(refused(KIND.roles, { heading: 'Pods' }), KIND.roles).some((line) => /heading is/.test(line)));
+
+  // ---- what a refusal costs (F:), on planted audit logs of the API server and planted calls of the page. A control must trip the assertion it is named for, and only that one.
+  const refusedKinds = KINDS.filter((kind) => kind.id !== 'pods' && kind.id !== 'namespaces');
+  const refusedIds = refusedKinds.map((kind) => kind.id);
+  const configKinds = GROUPS.find((group) => group.id === 'config').kinds;
+  const t0 = Date.parse('2026-11-20T19:55:00Z');
+  /** A raw audit event of a List of one kind as the API server writes it (a limit of one, a 403, the limited user, the plugin's user agent), `at` ms after t0. */
+  const rawList = (kind, at, extra = {}) => ({ verb: 'list', userAgent: 'omniview-kubernetes/0.21.2 (darwin/arm64)', stage: 'ResponseComplete', user: { username: LIMITED_USER }, requestURI: `${listPathOf(kind)}?limit=1`, responseStatus: { code: 403 }, requestReceivedTimestamp: new Date(t0 + at).toISOString(), stageTimestamp: new Date(t0 + at + 3).toISOString(), ...extra });
+  const served = (events) => refusalsOf(pluginLists(events, LIMITED_USER), refusedKinds);
+  /** The first round: each refused kind asked once (one List), one every 50 ms (four slots: the round took about a second in the run), with the changes given: kinds `skip`ped, kinds asked `again` at 20 s, kinds `retried` (a second List 4.2 s after the first: an ask that reached the API server twice). */
+  const firstRoundOf = ({ skip = [], again = [], retried = [] } = {}) => [
+    ...refusedKinds.filter((kind) => !skip.includes(kind.id)).flatMap((kind, index) => [rawList(kind, index * 50), ...(retried.includes(kind.id) ? [rawList(kind, index * 50 + 4_200)] : [])]),
+    ...again.map((id) => rawList(KIND[id], 20_000)),
+  ];
+  const settledAt = 12_000;
+  const windowEnd = settledAt + QUIET_MS + 5_000;
+  /** A problem list trips ONLY the assertion it is named for: there are problems, and each is of that assertion. */
+  const tripsOnly = (problems, assertion) => problems.length > 0 && problems.every((problem) => problem.assertion === assertion);
+  const mixed = [
+    rawList(KIND.deployments, 1_000),
+    rawList(KIND.configmaps, 1_500, { responseStatus: { code: 200 } }),
+    rawList(KIND.secrets, 2_000, { requestURI: `${listPathOf(KIND.secrets)}?limit=500` }),
+    rawList(KIND.roles, 3_000, { userAgent: 'kubectl/v1.33.0 (darwin/arm64)' }),
+    rawList(KIND.jobs, 3_000, { user: { username: ADMIN_USER } }),
+    rawList(KIND.services, 4_000, { verb: 'watch' }),
+    rawList(KIND.namespaces, 4_500),
+    rawList(KIND.nodes, 5_000),
+  ];
+  check(scope, 'F: the refused Lists are the plugin\'s Lists with a limit of one that the API server answered with a 403, of the limited user, for the kinds asked about: not a 200, not another limit, not kubectl\'s, not another user\'s, not a watch, not a kind that was not asked about (Namespaces)', served(mixed).map((entry) => entry.kind).join() === 'deployments,nodes', served(mixed));
+  const firstEntries = served(firstRoundOf());
+  check(scope, 'F: `first sight` passes a log in which each of the 27 refused kinds was asked once (one List each, 27), and the Lists are told by group', onceProblems(ASSERTIONS.first, firstEntries, refusedIds, refusedKinds).length === 0 && firstEntries.length === 27 && treeText(firstEntries) === 'top level 1, Workloads 6, Config 6, Network 6, Storage 3, Access control 5', treeText(firstEntries));
+  const firstWith = (changes) => onceProblems(ASSERTIONS.first, served(firstRoundOf(changes)), refusedIds, refusedKinds);
+  check(scope, 'F: `first sight` FAILS, for `first sight` and no other assertion, a log in which a kind was not asked (Secrets), one in which a kind was asked twice (two Lists), and one in which an ask reached the API server twice (a second List 4.2 s after the first)',
+    tripsOnly(firstWith({ skip: ['secrets'] }), ASSERTIONS.first) && tripsOnly(firstWith({ again: ['secrets'] }), ASSERTIONS.first) && tripsOnly(firstWith({ retried: ['secrets'] }), ASSERTIONS.first), { skipped: firstWith({ skip: ['secrets'] }), twice: firstWith({ again: ['secrets'] }), retried: firstWith({ retried: ['secrets'] }) });
+  const quietOf = (events, from = settledAt, to = windowEnd) => afterProblems(served(events), t0 + from, t0 + to, refusedKinds);
+  const oldRule = [...firstRoundOf(), ...refusedKinds.map((kind, index) => rawList(kind, index * 50 + 60_200))];
+  check(scope, 'F: `0 after` passes a log in which each refused kind was asked once at first sight and not again in a window of 155 s that was left alone; a List before the window and one after it are not the window\'s', quietOf(firstRoundOf()).length === 0 && quietOf([...firstRoundOf(), rawList(KIND.secrets, settledAt - 500), rawList(KIND.secrets, windowEnd + 500)]).length === 0, quietOf(firstRoundOf()));
+  check(scope, 'F: `0 after` FAILS, for `0 after` and no other assertion, a log of the old behaviour: each of the 27 refused kinds asked again 60.2 s after its first ask (a refresh interval after the first answer); and a log in which one kind only is asked again; and a window of 90 s, shorter than two refresh intervals and slack, whatever it saw',
+    tripsOnly(quietOf(oldRule), ASSERTIONS.after) && quietOf(oldRule).length === 27 && tripsOnly(quietOf([...firstRoundOf(), rawList(KIND.secrets, 60_200)]), ASSERTIONS.after) && quietOf([...firstRoundOf(), rawList(KIND.secrets, 60_200)]).length === 1
+    && tripsOnly(quietOf(firstRoundOf(), settledAt, settledAt + 90_000), ASSERTIONS.after), { oldRule: quietOf(oldRule).length, one: quietOf([...firstRoundOf(), rawList(KIND.secrets, 60_200)]).length, short: quietOf(firstRoundOf(), settledAt, settledAt + 90_000) });
+  const reopenOf = (ids, times = 1) => ids.flatMap((id, index) => Array.from({ length: times }, (_, again) => rawList(KIND[id], index * 50 + again * 20_000)));
+  const reopened = (events) => onceProblems(ASSERTIONS.reopen, served(events), configKinds, refusedKinds);
+  check(scope, 'F: `exactly one (a group opened again)` passes a reopen of Config that adds one ask for each of its 6 kinds (one List each, 6) and none for the other 21', reopened(reopenOf(configKinds)).length === 0 && served(reopenOf(configKinds)).length === 6, reopened(reopenOf(configKinds)));
+  check(scope, 'F: `exactly one (a group opened again)` FAILS, for that assertion and no other, a reopen that adds no ask, one that adds two asks for each kind (two Lists each), one that adds an ask for a kind of another group (Roles) as well, and one that misses a single kind',
+    tripsOnly(reopened([]), ASSERTIONS.reopen) && reopened([]).length === 6 && tripsOnly(reopened(reopenOf(configKinds, 2)), ASSERTIONS.reopen) && tripsOnly(reopened([...reopenOf(configKinds), rawList(KIND.roles, 5_000)]), ASSERTIONS.reopen) && tripsOnly(reopened(reopenOf(configKinds.slice(1))), ASSERTIONS.reopen),
+    { none: reopened([]).length, twice: reopened(reopenOf(configKinds, 2)).length, another: reopened([...reopenOf(configKinds), rawList(KIND.roles, 5_000)]), missed: reopened(reopenOf(configKinds.slice(1))) });
+  const visitedOf = (events) => onceProblems(ASSERTIONS.visit, served(events), ['roles'], refusedKinds);
+  check(scope, 'F: `exactly one (a list visited)` passes a visit that is followed by one ask of the visited kind (one List) and none of any other', visitedOf([rawList(KIND.roles, 3_000)]).length === 0, visitedOf([rawList(KIND.roles, 3_000)]));
+  check(scope, 'F: `exactly one (a list visited)` FAILS, for that assertion and no other, a visit that is followed by no ask, one followed by two asks (two Lists), and one followed by an ask of another kind as well',
+    tripsOnly(visitedOf([]), ASSERTIONS.visit) && tripsOnly(visitedOf([rawList(KIND.roles, 3_000), rawList(KIND.roles, 23_000)]), ASSERTIONS.visit) && tripsOnly(visitedOf([rawList(KIND.roles, 3_000), rawList(KIND.jobs, 3_000)]), ASSERTIONS.visit),
+    { none: visitedOf([]), twice: visitedOf([rawList(KIND.roles, 3_000), rawList(KIND.roles, 23_000)]), another: visitedOf([rawList(KIND.roles, 3_000), rawList(KIND.jobs, 3_000)]) });
+  // The page's own calls: the same decisions, one call to an ask.
+  const callOf = (kind, start) => ({ method: 'Enumerate', start: t0 + start, end: t0 + start + 80, type: kind.type });
+  const pageRound = refusedKinds.map((kind, index) => callOf(kind, index * 50));
+  const noise = [callOf(KIND.pods, 100), callOf(KIND.namespaces, 200)];
+  const pageFirst = (calls) => onceProblems(ASSERTIONS.first, countAsksOf(calls, refusedKinds), refusedIds, refusedKinds);
+  const pageQuiet = (calls) => afterProblems(countAsksOf(calls, refusedKinds), t0 + settledAt, t0 + windowEnd, refusedKinds);
+  check(scope, 'F: the page\'s count reads are told by kind and held to the same rules, one call to an ask: `first sight` passes one call for each refused kind (the reads of Pods and Namespaces, which this user may list, are not refusals) and fails a kind asked twice; `0 after` fails a call of a refused kind in the window and not one of Namespaces; `exactly one` fails a group that was not asked for again, and a kind asked for twice',
+    pageFirst([...pageRound, ...noise]).length === 0 && tripsOnly(pageFirst([...pageRound, callOf(KIND.secrets, 20_000)]), ASSERTIONS.first)
+    && tripsOnly(pageQuiet([...pageRound, callOf(KIND.secrets, 70_000)]), ASSERTIONS.after) && pageQuiet([...pageRound, callOf(KIND.namespaces, 70_000), callOf(KIND.pods, 70_000)]).length === 0
+    && tripsOnly(onceProblems(ASSERTIONS.reopen, countAsksOf([], refusedKinds), configKinds, refusedKinds), ASSERTIONS.reopen)
+    && tripsOnly(onceProblems(ASSERTIONS.visit, countAsksOf([callOf(KIND.roles, 1_000), callOf(KIND.roles, 2_000)], refusedKinds), ['roles'], refusedKinds), ASSERTIONS.visit)
+    && onceProblems(ASSERTIONS.visit, countAsksOf([callOf(KIND.roles, 1_000)], refusedKinds), ['roles'], refusedKinds).length === 0);
+
+  // ---- the arrival and the layout shift, on planted recordings
+  const rect = (x = 10, y = 10, w = 100, h = 24) => [x, y, w, h];
+  const state = (text, extra = {}) => ({ row: rect(5, 100, 224, 24), glyph: rect(12, 104, 16, 16), label: rect(36, 100, 150, 24), labelText: rect(36, 104, 40, 16), slot: rect(190, 100, 33, 16), digits: null, text, cut: false, ...extra });
+  const planted = (extra = {}) => ({
+    observer: true,
+    firstTreeAt: 100,
+    firstCountAt: 400,
+    lastCountAt: 600,
+    skeleton: [{ id: 'pods', slot: true, text: '' }, { id: 'nodes', slot: true, text: '' }, { id: 'workloads', slot: false, text: null }],
+    rows: { pods: { first: state(''), arrival: { at: 400, before: state(''), after: state('50') } }, nodes: { first: state(''), arrival: { at: 600, before: state(''), after: state('~1') } }, workloads: { first: state(null), arrival: null } },
+    regionMoves: [],
+    shifts: [],
+    ...extra,
+  });
+  const ids = new Set(['pods', 'nodes']);
+  check(scope, 'an arrival where the skeleton held a slot for each kind, no count had come, a count arrived for each and nothing moved, has no problem; a group row, which has no slot and no count, is not a kind', arrivalProblems(planted(), { kindIds: ids }).length === 0, arrivalProblems(planted(), { kindIds: ids }));
+  const withRow = (change) => { const snap = planted(); change(snap); return arrivalProblems(snap, { kindIds: ids }); };
+  check(scope, 'a skeleton with no slot for a kind is detected', withRow((snap) => { snap.rows.pods.first.text = null; }).some((line) => /no count slot for pods/.test(line)));
+  check(scope, 'a count that had arrived when the skeleton was read is detected', withRow((snap) => { snap.rows.nodes.first.text = '1'; }).some((line) => /arrived when the skeleton was read: nodes/.test(line)));
+  check(scope, 'a kind that got no count is detected, and a kind that must get none and got one is detected', withRow((snap) => { snap.rows.nodes.arrival = null; }).some((line) => /no count arrived for nodes/.test(line)) && arrivalProblems(planted(), { kindIds: ids, without: new Set(['nodes']) }).some((line) => /a count arrived for nodes, which must have none/.test(line)));
+  check(scope, 'a label that moved by 3 px, a row that moved, a glyph that moved, a label that became cut, a slot that was resized, and a count first seen with its text are each detected; 0.009 px is not a move and 0.02 px is',
+    withRow((snap) => { snap.rows.pods.arrival.after.label = rect(36, 100, 147, 24); }).some((line) => /pods\.label/.test(line))
+    && withRow((snap) => { snap.rows.pods.arrival.after.row = rect(5, 112, 224, 24); }).some((line) => /pods\.row/.test(line))
+    && withRow((snap) => { snap.rows.pods.arrival.after.glyph = rect(12, 105, 16, 16); }).some((line) => /pods\.glyph/.test(line))
+    && withRow((snap) => { snap.rows.pods.arrival.after.cut = true; }).some((line) => /cut false then true/.test(line))
+    && withRow((snap) => { snap.rows.pods.arrival.after.slot = rect(180, 100, 43, 16); }).some((line) => /pods\.slot/.test(line))
+    && withRow((snap) => { snap.rows.pods.arrival.before = null; }).some((line) => /first seen with its count/.test(line))
+    && withRow((snap) => { snap.rows.pods.arrival.after.labelText = rect(36.009, 104, 40, 16); }).length === 0
+    && withRow((snap) => { snap.rows.pods.arrival.after.labelText = rect(36.02, 104, 40, 16); }).some((line) => /pods\.labelText/.test(line)));
+  check(scope, 'the sidebar or the page island moving while the counts come is detected, and the same move long before them is not the arrival\'s',
+    withRow((snap) => { snap.regionMoves = [{ region: 'island', at: 450, from: rect(), to: rect(14) }]; }).some((line) => /island moved/.test(line))
+    && withRow((snap) => { snap.regionMoves = [{ region: 'sidebar', at: 50, from: rect(), to: rect(14) }]; }).length === 0);
+  const shifted = layoutShiftOf(planted({ shifts: [{ at: 50, value: 0.5, input: false, sources: ['DIV'] }, { at: 300, value: 0.03, input: false, sources: ['LI@sidebar', 'DIV'] }, { at: 350, value: 0.01, input: false, sources: ['TABLE'] }, { at: 405, value: 0.02, input: false, sources: ['BUTTON[Refresh]'] }, { at: 420, value: 0.2, input: true, sources: ['LI@sidebar'] }] }));
+  check(scope, 'the layout shift is read from the frame after the skeleton: a shift of a sidebar node counts for the sidebar, one of another node for the total only, one the engine put down to a click as input; one before the skeleton is the load\'s; the part that fell within a frame of a count\'s arrival is told apart; an engine with no observer says null',
+    shifted.total === 0.06 && shifted.sidebar === 0.03 && shifted.input === 0.2 && shifted.before === 0.5 && shifted.nearCounts === 0.02 && JSON.stringify(shifted.sources) === JSON.stringify(['LI@sidebar', 'DIV', 'TABLE', 'BUTTON[Refresh]']) && shifted.detail.length === 3 && shifted.detail[2].afterFirstCountMs === 5
+    && layoutShiftOf(planted({ observer: false })) === null && layoutShiftOf(undefined) === null && layoutShiftOf(planted()).total === 0 && layoutShiftOf(planted()).nearCounts === 0, shifted);
+  check(scope, 'the load is told as the proof\'s own: the busy limit is 30 (the 1-minute load average), a refresh is 60 s, an answer is kept 30 s, a slot count is 4', BUSY === 30 && REFRESH_MS === 60_000 && STALENESS_MS === 30_000 && SLOTS === 4);
+}
+
+/** A synthetic sidebar: the markup and the rules of the host's tree (ui-next/shell/Tree.tsx and Tree.module.css at the Q2a commit), with one thing made wrong by a variant. */
+function syntheticSidebar(variant) {
+  const wide = variant === 'wide' || variant === 'island';
+  const rows = [
+    ['nodes', 'Nodes', 1, { kind: 'exact', value: 1 }],
+    ['namespaces', 'Namespaces', 1, { kind: 'estimate', value: 18 }],
+    ['workloads', 'Workloads', 1, 'group'],
+    ['pods', 'Pods', 2, { kind: 'exact', value: 65 }],
+    ['deployments', 'Deployments', 2, { kind: 'estimate', value: 19 }],
+    ['configmaps', 'ConfigMaps', 2, { kind: 'estimate', value: variant === 'island' ? 123_456_789 : wide ? 1326 : 332 }],
+    ['secrets', 'Secrets', 2, { kind: 'exact', value: 0 }],
+  ];
+  const css = `
+    body { margin: 0; font: 13px/16px system-ui, -apple-system, sans-serif; color: #ddd; background: #1c1c1e; }
+    .frame { display: flex; height: 100vh; }
+    .side { flex: ${variant === 'island' ? '0 0 auto' : '0 0 234px'}; ${variant === 'island' ? 'min-width: 200px;' : ''} box-sizing: border-box; }
+    .head { height: 30px; } h2 { margin: 0; font-size: 13px; }
+    .tree { display: grid; grid-template-columns: 5px minmax(0, 1fr) 5px; align-content: start; min-inline-size: 0; margin: 0; padding: 0; list-style: none; }
+    .row { --_indent: calc(7px + var(--_level, 0) * 26px); grid-column: 2; display: grid; grid-template-columns: var(--_indent) 16px minmax(0, 1fr) auto 7px; align-items: center; box-sizing: border-box; ${variant === 'shift' ? 'min-block-size: 24px;' : 'block-size: 24px;'} }
+    .glyph { display: grid; grid-column: 2; place-items: center; inline-size: 16px; block-size: 16px; }
+    .label { grid-column: 3; min-inline-size: 0; margin-inline-start: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .count { grid-column: 4; justify-self: end; min-inline-size: ${variant === 'unheld' ? '0' : '4ch'}; ${variant === 'shift' ? '' : 'block-size: 16px;'} margin-inline-start: 8px; font-variant-numeric: tabular-nums; text-align: end; }
+    .cap { font-size: 12px; line-height: ${variant === 'shift' ? '40px' : '16px'}; color: #999; }
+    .about { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .disclosure { display: grid; grid-column: 4; place-items: center; inline-size: 24px; block-size: 24px; margin-inline-start: 8px; }
+    .island { flex: 1 1 auto; padding: 20px; }
+  `;
+  const item = ([id, label, level, count]) => {
+    const group = count === 'group';
+    const slot = group || variant === 'undeclared' ? '' : ' <span class="count" data-shell-part="count"></span>';
+    return `<li role="treeitem" class="row" data-id="${id}" tabindex="-1" aria-level="${level}" aria-selected="false"${group ? ' aria-expanded="true"' : ''} style="--_level: ${level - 1}"><span class="glyph"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect width="20" height="20" x="2" y="2"/></svg></span><span class="label"><span class="t">${label}</span></span>${slot}${group ? '<span class="disclosure"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg></span>' : ''}</li>`;
+  };
+  const script = `
+    const COUNTS = ${JSON.stringify(Object.fromEntries(rows.filter((row) => row[3] !== 'group').map((row) => [row[0], row[3]])))};
+    const grouped = (n) => n.toLocaleString('en-US');
+    setTimeout(() => {
+      for (const [id, count] of Object.entries(COUNTS)) {
+        const row = document.querySelector('[data-id="' + id + '"]');
+        let slot = row.querySelector('[data-shell-part="count"]');
+        if (slot === null) { row.append(' '); slot = document.createElement('span'); slot.className = 'count'; slot.setAttribute('data-shell-part', 'count'); row.append(slot); }
+        slot.innerHTML = count.kind === 'exact' ? '<span class="cap">' + grouped(count.value) + '</span>' : '<span class="cap"><span aria-hidden="true">~' + grouped(count.value) + '</span><span class="about">about ' + grouped(count.value) + '</span></span>';
+      }
+      window.__done = true;
+    }, 400);
+  `;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div class="frame"><nav class="side" data-shell-region="sidebar" aria-label="Kubernetes resources"><div class="head"><h2>Resources</h2></div><ul role="tree" aria-label="Kubernetes resources" class="tree">${rows.map(item).join('')}</ul></nav><main class="island" data-shell-region="island"><p>The page.</p></main></div><script>${script}</script></body></html>`;
+}
+
+async function controlsEngine(engineName) {
+  const scope = `controls/${engineName}`;
+  const browser = await pw[engineName].launch();
+  try {
+    const run = async (variant) => {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      await page.addInitScript(recorder);
+      await page.route('https://q2-synthetic.invalid/**', (route) => route.fulfill({ contentType: 'text/html', body: syntheticSidebar(variant) }));
+      await page.goto('https://q2-synthetic.invalid/sidebar.html', { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__done === true, undefined, { timeout: 10_000 });
+      await sleep(400);
+      const snap = await marksOf(page);
+      const sidebar = await readSidebar(page);
+      await page.close();
+      return { snap, sidebar, problems: arrivalProblems(snap, { kindIds: new Set(['nodes', 'namespaces', 'pods', 'deployments', 'configmaps', 'secrets']) }), shift: layoutShiftOf(snap) };
+    };
+    const held = await run('held');
+    check(scope, 'the measurement passes a sidebar that holds its slot as the host\'s tree does: the skeleton had the slot, the counts arrived, and the row, glyph, label, label text and slot are where they were (0.01 px)', held.problems.length === 0 && Object.values(held.snap.rows).filter((row) => row.arrival !== null).length === 6, held.problems);
+    check(scope, 'the arrival was seen with its skeleton before the first count (the first frame of the tree came before the first count), as frames', held.snap.firstTreeAt !== null && held.snap.firstCountAt !== null && held.snap.firstTreeAt < held.snap.firstCountAt && held.snap.frames > 5, { firstTreeAt: held.snap.firstTreeAt, firstCountAt: held.snap.firstCountAt, frames: held.snap.frames });
+    const names = held.sidebar.rows.map((row) => row.name);
+    check(scope, 'the engine\'s own accessible names of the rows are read: `Nodes 1`, `Namespaces about 18`, a group with no count, `Pods 65`, `Deployments about 19`, `ConfigMaps about 332`, `Secrets 0` (the tilde is drawn, and not said)', held.sidebar.stable && JSON.stringify(names) === JSON.stringify(['Nodes 1', 'Namespaces about 18', 'Workloads', 'Pods 65', 'Deployments about 19', 'ConfigMaps about 332', 'Secrets 0']), names);
+    check(scope, 'and the drawn text of each is what the name says (`~18`, `65`, `~19`, `~332`, `0`), and a group draws no slot', held.sidebar.rows.every((row) => (row.id === 'workloads' ? !row.slot : sameAsDrawn(parseName(row.name, row.label), row.drawn))), held.sidebar.rows.map((row) => `${row.id}:${row.drawn}`));
+    check(scope, 'the layout-shift observer, where the engine has one, reads 0 on the sidebar that holds its slot', held.shift === null || held.shift.total === 0, held.shift);
+    for (const [variant, why, pattern, shifts] of [
+      ['unheld', 'a slot that is not held (it takes its width from its count)', /(label|slot)/, false],
+      ['undeclared', 'a skeleton that declares no slot (the slot comes with the count)', /no count slot for/, false],
+      ['wide', 'a count wider than the held slot (`~1,326`: the host says a longer count widens its own slot)', /configmaps\.(label|slot)/, false],
+      ['island', 'a sidebar that grows with its count and pushes the page', /island moved|sidebar moved/, true],
+      ['shift', 'a count that makes its row taller and pushes the rows below it', /\.row /, true],
+    ]) {
+      const wrong = await run(variant);
+      check(scope, `the measurement FAILS ${why}, for the reason it names`, wrong.problems.some((line) => pattern.test(line)), wrong.problems.slice(0, 3));
+      if (shifts && wrong.shift !== null) check(scope, `and the layout-shift observer reads more than 0 on it (${wrong.shift.total})`, wrong.shift.total > 0, wrong.shift);
+      if (variant === 'wide') check(scope, 'and for the count wider than the slot only the label\'s and the slot\'s boxes moved: no row, glyph or other row (what the wide section of the proof reports)', !wrong.problems.some((line) => /\.(row|glyph|labelText) /.test(line)) && !/(pods|nodes|secrets)\./.test(wrong.problems.join(' ')), wrong.problems.slice(0, 3));
+    }
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Every visible row against kubectl: the name of the row (what a screen reader says), what the slot draws, and the number kubectl counts, one check for each kind. kubectl is read before and after the page
+// is read, so a kind that changed in between may read either way and nothing else may. `open` is the kind whose list is the page on screen (its count is the source's: exact); `left` the kind whose list was
+// open a moment ago and was left: the host keeps a closed list's source for a while, so the backend still answers exact for it, and the precision of that one row is not asserted (its number still is).
+async function checkNames(scope, page, kinds, { open, left, config = kubeconfig, tag = 'A' }) {
+  const { before, after, value } = await bracketed(kinds, () => readSidebar(page), config);
+  const { rows, stable } = value;
+  check(scope, `${tag}: the sidebar was read steadily (the rows and what they draw did not change while the engine computed their names)`, stable);
+  const table = {};
+  for (const kind of kinds) {
+    const row = rows.find((candidate) => candidate.id === kind.id);
+    const wants = [...new Set([before[kind.id], after[kind.id]])];
+    const parsed = row === undefined ? { kind: 'none' } : parseName(row.name ?? '', kind.label);
+    const matching = parsed.kind === 'exact' || parsed.kind === 'estimate' ? wants.find((want) => want === parsed.value) : undefined;
+    const expected = matching ?? wants[0];
+    const verdict = rowVerdict(parsed, expected, kind.id === open);
+    if (kind.id === left) verdict.precisionOk = verdict.numberOk;
+    const drawnOk = row !== undefined && row.slot && sameAsDrawn(parsed, row.drawn);
+    table[kind.id] = { name: row?.name ?? null, drawn: row?.drawn ?? null, kind: parsed.kind, value: parsed.value, kubectl: expected };
+    check(scope, `${tag}: ${kind.label}: \`kubectl get ${kind.id}${kind.namespaced ? ' -A' : ''} --no-headers | wc -l\` is ${wants.join(' or ')}; the row says ${JSON.stringify(row?.name ?? null)} (${parsed.kind}${parsed.kind === 'invalid' ? `: ${parsed.reason}` : ''}), the slot draws ${JSON.stringify(row?.drawn ?? null)}`,
+      row !== undefined && verdict.numberOk && verdict.precisionOk && drawnOk, { precisionWanted: precisionOf(expected, kind.id === open), numberOk: verdict.numberOk, precisionOk: verdict.precisionOk, drawnOk });
+  }
+  const said = (list, kindName) => list.filter((kind) => table[kind.id].kind === kindName).map((kind) => `${kind.label} ${table[kind.id].value}`);
+  info(scope, `${tag}: which rows say an exact count and which an estimate (kubectl's number in each)`, { exact: said(kinds, 'exact'), estimate: said(kinds, 'estimate'), none: kinds.filter((kind) => table[kind.id].kind === 'none').map((kind) => kind.label), invalid: kinds.filter((kind) => table[kind.id].kind === 'invalid').map((kind) => kind.label) });
+  return { rows, table };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// counts: what the host receives from the plugin for each kind of the sidebar (the call the sidebar makes: `Enumerate` with a page of one, from the page's own client id), for every namespace and for one.
+async function countsOfNamespaces(scope, call, kinds) {
+  for (const kind of kinds.filter((candidate) => candidate.namespaced)) {
+    const per = perNamespace(kind);
+    const sorted = [...per].sort((a, b) => b[1] - a[1]);
+    const single = sorted.find(([, n]) => n === 1);
+    const zero = kubectlLines(['get', 'namespaces', '--no-headers', '-o', 'custom-columns=N:.metadata.name']).map((line) => line.trim()).find((namespace) => !per.has(namespace));
+    const picks = [['the largest', sorted[0]?.[0]], ['one with a single object', single?.[0]], ['one with none', zero]].filter(([, namespace]) => namespace !== undefined);
+    for (const [what, namespace] of picks) {
+      const expected = kubectlLines(['get', kind.resource ?? kind.id, '-n', namespace, '--no-headers']).length;
+      const read = await countRead(call, kind.type, [namespace]);
+      check(scope, `N: ${kind.label}, ${what} (${namespace}): \`kubectl get ${kind.id} -n ${namespace} --no-headers | wc -l\` is ${expected}, the host receives ${read.count?.kind ?? 'an error'} ${read.count?.value ?? ''}`, isCountOf(read.count, expected), read.error ?? undefined);
+    }
+    // two namespaces together: a page of one reads the first one with an object and cannot know the rest: unknown (never the first namespace's count passed off as the whole)
+    if (sorted.length >= 2) {
+      const pair = [sorted[0][0], sorted[1][0]];
+      const read = await countRead(call, kind.type, pair);
+      check(scope, `N: ${kind.label}, two namespaces together (${pair.join(', ')}): a page of one does not end in the first, so the count is unknown, not the first namespace's`, isUnknownRead(read), read.count ?? read.error);
+    }
+  }
+}
+
+async function sectionCounts(engineName) {
+  const scope = `counts/${engineName}`;
+  await phase(scope, `counts-${engineName}`, archive, kubeconfig, engineName, async ({ host, browser }) => {
+    const page = await openBackendPage(browser, host.base);
+    const call = makeCaller(page);
+    check(scope, 'the shell loaded and the runtime has the page\'s own client id (the calls below are the page\'s), and the connection to the kind cluster is connected', await startAndWait(call, scope));
+    recordChildren(host);
+    const catalog = await call('Catalog', pluginID, { route: { connection: context } });
+    const lists = (kind) => catalog.ok && catalog.value.types.find((type) => type.type === kind.type)?.capabilities.some((capability) => capability.operation === 'enumerate');
+    check(scope, 'the catalog serves the 29 kinds of the sidebar and the custom resource, and every one of them lists', [...KINDS, CUSTOM].every(lists), KINDS.filter((kind) => !lists(kind)).map((kind) => kind.id));
+    const table = {};
+    for (const kind of KINDS) {
+      const expected = kubectlCount(kind);
+      const read = await countRead(call, kind.type);
+      table[kind.id] = { kubectl: expected, count: read.count, records: read.records, error: read.error };
+      check(scope, `A: ${kind.label}: \`kubectl get ${kind.id}${kind.namespaced ? ' -A' : ''} --no-headers | wc -l\` is ${expected}, the host receives ${read.count?.kind ?? 'an error'} ${read.count?.value ?? ''}`, isCountOf(read.count, expected) && (read.records ?? 0) <= 1, read.error ?? undefined);
+    }
+    info(scope, 'A: the counts the host receives, by kind (exact above one object only where the server cannot estimate, none is exact where it only estimates)', Object.fromEntries(Object.entries(table).map(([id, entry]) => [id, `${entry.count?.kind ?? 'error'} ${entry.count?.value ?? ''} (kubectl ${entry.kubectl})`])));
+    await writeFile(path.join(out, `counts-${engineName}.json`), JSON.stringify({ table }, null, 2)).catch(() => undefined);
+    // The UI has no namespace menu yet, so one namespace is shown here at the backend, as Q1 showed it: the page's own client id asks for a scope of one namespace.
+    await countsOfNamespaces(scope, call, [...KINDS, CUSTOM]);
+    await page.close();
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// window: the plugin opened from the window's list of plugins. The skeleton, the counts against kubectl, the cost in the audit log, the open kind's live count, a group collapsed and opened again.
+async function sectionWindow(engineName) {
+  const scope = `window/${engineName}`;
+  await quiet(scope);
+  const unopened = KINDS.filter((kind) => kind.id !== 'pods');
+  const rest = GROUPS.filter((group) => group.id !== 'workloads');
+  await phase(scope, `window-${engineName}`, archive, kubeconfig, engineName, async ({ host, browser }) => {
+    const baseline = auditLines();
+    const { page, capture } = await openWindow(browser, host.base, VIEWPORTS[0]);
+    recordChildren(host);
+    const marker = await page.evaluate(() => { window.__q2marker = `q2-${Math.random().toString(36).slice(2)}`; return { marker: window.__q2marker, origin: performance.timeOrigin }; });
+    check(scope, 'the plugin was opened from the window\'s list of plugins as a person opens it (the Kubernetes row of "Plugins you can open"), and its sidebar is on screen', true);
+    check(scope, 'the plugin\'s first page, its Pods list, loads', (await untilListReady(page)) === 'ready');
+
+    // ---- the skeleton and the first counts: the top level and the group of the page on screen (Workloads is open: the current entry is never hidden)
+    await untilRows(page, everyKindCounted, 25_000);
+    await sleep(600);
+    const first = await marksOf(page);
+    const firstProblems = arrivalProblems(first);
+    const skeletonProblems = firstProblems.filter((line) => /skeleton|never showed/.test(line));
+    check(scope, 'S: the sidebar\'s skeleton is on screen before the first count: a count slot, held and empty, on each kind that is there (the two of the top level and the seven of Workloads, the open group), and no count had arrived when it was read', skeletonProblems.length === 0, skeletonProblems);
+    const movedProblems = firstProblems.filter((line) => !skeletonProblems.includes(line));
+    check(scope, 'S: then a count arrives for each of those kinds, and the row, glyph, label and label text of each are where they were the frame before it came (0.01 px), the sidebar and the page did not move', movedProblems.length === 0, movedProblems);
+    const shift = layoutShiftOf(first);
+    info(scope, 'S: the recording of the first arrival (a click opened the window, so the engine does not count shifts of the half second after it: the `arrival` section opens the page with no input)', { firstTreeAt: first.firstTreeAt, firstCountAt: first.firstCountAt, lastCountAt: first.lastCountAt, frames: first.frames, rowsSeen: Object.keys(first.rows).length, arrivals: Object.values(first.rows).filter((row) => row.arrival !== null).length, layoutShift: shift });
+
+    // ---- every group open: the cold round of reads
+    await page.evaluate(() => window.__q2.reset());
+    await openGroups(page, rest.map((group) => group.id));
+    const opened = await untilRows(page, everyKindCounted, 30_000);
+    await sleep(600);
+    const second = await marksOf(page);
+    const newKinds = new Set(rest.flatMap((group) => group.kinds));
+    const secondProblems = arrivalProblems(second, { kindIds: newKinds });
+    check(scope, 'S: the four groups opened by a click show their rows with a held, empty slot, and their counts arrive and move nothing (0.01 px) in each row, glyph, label and label text', secondProblems.length === 0, secondProblems);
+    check(scope, 'all 29 kind rows have a count within 30 s of the groups being opened', opened.reached, opened.rows.filter((row) => KIND_IDS.has(row.id) && (row.drawn === null || row.drawn === '')).map((row) => row.id));
+    const coldCalls = countCallsOf(capture);
+    await sleep(2000);
+    const coldEnd = auditLines();
+    const coldLists = pluginLists(auditBetween(baseline, coldEnd));
+    const round = roundOf(coldLists, KINDS, 'pods');
+    const firstReads = unopened.map((kind) => readsOf(coldLists, kind)[0]?.received).filter((at) => at !== undefined);
+    const firstRead = Math.min(...firstReads);
+    const lastFirstRead = Math.max(...firstReads);
+
+    // ---- B: the tree, in the mock's order, with every group open
+    const tree = await readSidebar(page);
+    check(scope, 'B: with every group open the tree is Nodes and Namespaces, then Workloads, Config, Network, Storage and Access control with their kinds, in the mock\'s order and at their levels (5 groups and 29 kinds), and nothing else', JSON.stringify(tree.rows.map((row) => [row.id, row.label, row.level])) === JSON.stringify(ALL_ROWS), tree.rows.map((row) => `${row.id}:${row.level}`).join(' '));
+    check(scope, 'B: a group has no count: no slot, and its name is its label', GROUPS.every((group) => { const row = tree.rows.find((candidate) => candidate.id === group.id); return row !== undefined && !row.slot && row.name === group.label; }));
+    check(scope, 'B: the entry of the page on screen, Pods, is the selected one', tree.rows.filter((row) => row.selected).map((row) => row.id).join() === 'pods', tree.rows.filter((row) => row.selected).map((row) => row.id));
+
+    // ---- A: every visible count equals kubectl
+    await checkNames(scope, page, KINDS, { open: 'pods' });
+
+    // ---- C: the cost, from the API server's audit log: the cold round
+    check(scope, `C: the API server saw one \`limit=1\` List for each of the 28 unopened kinds of the sidebar (the 29th, Pods, is the open list) and no kind twice (${round.reads} Lists)`, round.once && round.twice.length === 0 && round.missed.length === 0 && round.stray.length === 0, { missed: round.missed, twice: round.twice, stray: round.stray, reads: round.reads });
+    check(scope, 'C: none of them carries a selector, a continue or a resourceVersion (and there were reads to look at)', round.reads > 0 && round.carrying === 0 && limitOnes(coldLists).every((list) => !SELECTORS.some((name) => name in list.query)), round.carrying);
+    const podsLists = coldLists.filter((list) => list.path === listPathOf(KIND.pods));
+    info(scope, 'C: the Lists of Pods in the cold round (the list\'s own first page, and the probe its source makes with a limit of one as it opens)', podsLists.map((list) => ({ query: list.query, at: list.received - firstRead })));
+    check(scope, 'C: no count read of the open kind: the only `limit=1` List of Pods is the probe of the list\'s own source (at most one, within 3 s of its first page), and the other 28 kinds were read', round.reads > 1 && limitOnes(podsLists).length <= 1 && limitOnes(podsLists).every((list) => podsLists.every((other) => other.query.limit === '1' || Math.abs(list.received - other.received) < 3000)), limitOnes(podsLists).map((list) => list.query));
+    const calls = countCallsOf(capture);
+    check(scope, 'C: never more than four count reads in flight at once: at the API server (the audit log), and in the page (the calls it made to the host), where the page made the 28 reads', calls.length >= unopened.length - 1 && overlap(limitOnes(coldLists)) <= SLOTS && maxInFlight(calls.filter((call) => call.end !== undefined)) <= SLOTS, { server: overlap(limitOnes(coldLists)), page: maxInFlight(calls.filter((call) => call.end !== undefined)), calls: calls.length });
+    const askedKinds = new Set(calls.map((call) => call.type));
+    info(scope, 'C: what the page asked of the host (count reads: `Enumerate` with a page of one) and what the API server saw', { pageCalls: calls.length, kindsAsked: askedKinds.size, askedPodsToo: askedKinds.has(KIND.pods.type), serverLists: round.reads, coldCalls: coldCalls.length, responseBytes: calls.reduce((sum, call) => sum + (call.bytes ?? 0), 0), largest: calls.reduce((most, call) => Math.max(most, call.bytes ?? 0), 0) });
+
+    // ---- I: a user who opened the page and does nothing for 30 s causes no repeat
+    const idleFrom = lastFirstRead;
+    const idleReached = await untilAuditClock(idleFrom + STALENESS_MS + 1000, 120_000);
+    const idleLists = pluginLists(auditBetween(baseline, auditLines()));
+    const idle = limitOnes(idleLists).filter((list) => list.received > idleFrom && list.received <= idleFrom + STALENESS_MS);
+    check(scope, 'I: a user who opened the page and did nothing for the 30 s after the last of the cold reads caused no repeat: not one count read reached the API server in them (after a cold round of 28 reads)', idleReached && firstReads.length === unopened.length && idle.length === 0, { reached: idleReached, coldReads: firstReads.length, reads: idle.map((list) => list.path) });
+    check(scope, 'I: and none of the cold round was read again within 30 s of its first read', firstReads.length === unopened.length && repeatsWithin(limitOnes(idleLists), STALENESS_MS).length === 0, repeatsWithin(limitOnes(idleLists), STALENESS_MS));
+
+    // ---- L: the open kind's count is live with no reload: a Pod made and deleted
+    const podsRow = async () => (await page.evaluate(readRowsDom)).find((row) => row.id === 'pods');
+    const n0 = Number((await podsRow())?.drawn?.replaceAll(',', '') ?? NaN);
+    const liveBaseline = auditLines();
+    kubectlLines(['run', 'q2-live-pod', '--image=busybox:1.37.0', '--restart=Never', '--', 'sleep', '3600']);
+    const series = [n0];
+    const wait = async (want) => {
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        const drawn = Number((await podsRow())?.drawn?.replaceAll(',', '') ?? NaN);
+        if (series.at(-1) !== drawn) series.push(drawn);
+        if (drawn === want) return true;
+        await sleep(100);
+      }
+      return false;
+    };
+    const made = await wait(n0 + 1);
+    check(scope, `L: a Pod made with \`kubectl run\`: the sidebar's Pods count follows it, ${n0} then ${n0 + 1} (kubectl says ${kubectlCount(KIND.pods)})`, Number.isFinite(n0) && made && kubectlCount(KIND.pods) === n0 + 1, series);
+    kubectlLines(['delete', 'pod', 'q2-live-pod', '--grace-period=0', '--force', '--wait=true']);
+    const deleted = await wait(n0);
+    check(scope, `L: and deleted: back to ${n0} (kubectl says ${kubectlCount(KIND.pods)}); the count went ${series.join(', ')}`, deleted && kubectlCount(KIND.pods) === n0, series);
+    const survives = await page.evaluate(() => ({ marker: window.__q2marker, origin: performance.timeOrigin }));
+    check(scope, 'L: all of it with no reload: the marker set on `window` before survived, and the page\'s time origin is the same (to 100 ms: the engine derives it from the clock)', survives.marker === marker.marker && Math.abs(survives.origin - marker.origin) < 100, { marker: survives.marker === marker.marker, originDriftMs: Math.round(survives.origin - marker.origin) });
+    await sleep(500);
+    const liveLists = pluginLists(auditBetween(liveBaseline, auditLines()));
+    check(scope, 'L: no count read of Pods reached the API server while the Pods list was open and the count followed the cluster: no `limit=1` List of Pods (its full list and watch are the list\'s own)', made && deleted && limitOnes(liveLists).filter((list) => list.path === listPathOf(KIND.pods)).length === 0, liveLists.filter((list) => list.path === listPathOf(KIND.pods)).map((list) => list.query));
+
+    // ---- R: the refresh interval: each kind is read again, once, after 60 s
+    if (firstReads.length < unopened.length) {
+      check(scope, 'R: after the refresh interval (60 s) each of the 28 kinds is read once more', false, 'the cold round read nothing, so there is nothing to refresh (the sidebar asks for no count)');
+    } else {
+      const refreshed = await (async () => {
+        const deadline = lastFirstRead + REFRESH_MS + 30_000;
+        for (;;) {
+          const lists = pluginLists(auditBetween(baseline, auditLines()));
+          const done = unopened.every((kind) => readsOf(lists, kind).length >= 2);
+          if (done || auditNow() > deadline) {
+            await untilAuditClock(Math.max(deadline, auditNow()) + 1000, 60_000);
+            return pluginLists(auditBetween(baseline, auditLines()));
+          }
+          await sleep(3000);
+        }
+      })();
+      const gaps = unopened.map((kind) => { const reads = readsOf(refreshed, kind); return reads.length >= 2 ? reads[1].received - reads[0].received : undefined; });
+      const counts = unopened.map((kind) => readsOf(refreshed, kind).length);
+      check(scope, 'R: each of the 28 unopened kinds was read exactly once more after the refresh interval (two reads in all), each at least 59 s after its first and within 90 s of it', unopened.every((kind, index) => counts[index] === 2 && gaps[index] >= REFRESH_MS - 1000 && gaps[index] <= 90_000), { counts: Object.fromEntries(unopened.map((kind, index) => [kind.id, counts[index]]).filter(([, n]) => n !== 2)), gapSeconds: { min: Math.round(Math.min(...gaps.filter(Number.isFinite)) / 100) / 10, median: Math.round(median(gaps.filter(Number.isFinite)) / 100) / 10, max: Math.round(Math.max(...gaps.filter(Number.isFinite)) / 100) / 10 } });
+      check(scope, 'R: none of the refresh carries a selector, a continue or a resourceVersion, Pods was not read, and at most four were in flight at the server', carryingMore(limitOnes(refreshed)).length === 0 && readsOf(refreshed, KIND.pods).filter((list) => list.received > idleFrom).length === 0 && overlap(limitOnes(refreshed)) <= SLOTS, { server: overlap(limitOnes(refreshed)) });
+      check(scope, 'R: and no kind was read twice within 30 s (the plugin\'s memory), nor within 59 s (the sidebar\'s refresh interval), in all of it', repeatsWithin(limitOnes(refreshed), REFRESH_MS - 1000).length === 0, repeatsWithin(limitOnes(refreshed), REFRESH_MS - 1000));
+    }
+
+    // ---- G: a group collapsed makes no more reads, and one opened again reads only its own
+    const network = GROUPS.find((group) => group.id === 'network');
+    const networkPaths = pathsOf(network.kinds);
+    const collapsedAt = auditNow();
+    await setGroup(page, 'network', false);
+    await sleep(1500);
+    const collapsedLines = auditLines();
+    const collapsedCalls = countCallsOf(capture).length;
+    await untilAuditClock(collapsedAt + REFRESH_MS + 15_000, 150_000);
+    const collapsedLists = limitOnes(pluginLists(auditBetween(collapsedLines, auditLines())));
+    const othersRead = unopened.filter((kind) => !network.kinds.includes(kind.id) && readsOf(collapsedLists, kind).length >= 1);
+    check(scope, `G: Network collapsed: in the ${Math.round((auditNow() - collapsedAt) / 1000)} s after, a window that holds a refresh of the others, no count read of its ${network.kinds.length} kinds reached the API server`, collapsedLists.filter((list) => networkPaths.has(list.path)).length === 0 && collapsedLists.length > 0, { ofNetwork: collapsedLists.filter((list) => networkPaths.has(list.path)).map((list) => list.path) });
+    check(scope, 'G: and the window was not empty: each of the other unopened kinds (those of groups that are open) was read in it', othersRead.length === unopened.filter((kind) => !network.kinds.includes(kind.id)).length, { notRead: unopened.filter((kind) => !network.kinds.includes(kind.id) && !othersRead.includes(kind)).map((kind) => kind.id) });
+    const expandedLines = auditLines();
+    const expandedCalls = countCallsOf(capture).length;
+    await setGroup(page, 'network', true);
+    await untilRows(page, everyKindCounted, 15_000);
+    await sleep(2000);
+    const expandedLists = limitOnes(pluginLists(auditBetween(expandedLines, auditLines())));
+    const networkReads = network.kinds.map((id) => readsOf(expandedLists, KIND[id]).length);
+    const otherPaths = expandedLists.filter((list) => !networkPaths.has(list.path));
+    check(scope, 'G: Network opened again after more than a minute: exactly its own kinds are read, one List each (the sidebar\'s and the plugin\'s memory of them is gone)', networkReads.every((n) => n === 1), Object.fromEntries(network.kinds.map((id, index) => [id, networkReads[index]])));
+    check(scope, 'G: and nothing else was read for it: the other Lists of those seconds, if any, are the scheduled refreshes of kinds that had not been read for a minute (and Network was read)', networkReads.every((n) => n === 1) && otherPaths.every((list) => { const previous = limitOnes(pluginLists(auditBetween(baseline, expandedLines))).filter((candidate) => candidate.path === list.path); return previous.length > 0 && list.received - previous.at(-1).received >= REFRESH_MS - 1000; }), otherPaths.map((list) => list.path));
+    info(scope, 'G: what the page asked while Network was collapsed and opened again', { callsWhileCollapsed: expandedCalls - collapsedCalls, callsOnOpening: countCallsOf(capture).length - expandedCalls });
+    // opened again at once: the sidebar's own memory (60 s) holds the answers, so it asks for nothing, and the API server sees nothing
+    await sleep(1500);
+    const quickLines = auditLines();
+    const quickCalls = countCallsOf(capture).length;
+    await setGroup(page, 'network', false);
+    await sleep(2000);
+    await setGroup(page, 'network', true);
+    const quickRows = await untilRows(page, everyKindCounted, 10_000);
+    await sleep(3000);
+    const quickLists = limitOnes(pluginLists(auditBetween(quickLines, auditLines())));
+    check(scope, 'G: Network collapsed and opened again within seconds: its rows have their counts again at once, no count read of it reached the API server, and the page asked the host for none (the answers it holds are younger than the refresh interval)', quickRows.reached && quickLists.filter((list) => networkPaths.has(list.path)).length === 0 && countCallsOf(capture).slice(quickCalls).filter((call) => network.kinds.some((id) => call.type === KIND[id].type)).length === 0, { counted: quickRows.reached, lists: quickLists.filter((list) => networkPaths.has(list.path)).length, calls: countCallsOf(capture).slice(quickCalls).length });
+    const everything = limitOnes(pluginLists(auditBetween(baseline, auditLines())));
+    check(scope, 'G: through all of it, never more than four Lists in flight at the server, and no kind read twice within 59 s (the refresh interval), nor within 30 s', everything.length >= 2 * unopened.length && overlap(everything) <= SLOTS && repeatsWithin(everything, REFRESH_MS - 1000).length === 0, { reads: everything.length, server: overlap(everything), repeats: repeatsWithin(everything, REFRESH_MS - 1000).slice(0, 3) });
+    check(scope, 'no page error and no console error in the window', capture.errors.filter((entry) => !/activity session unavailable/.test(entry)).length === 0, capture.errors.slice(0, 4));
+    await page.close();
+  });
+
+  // ---- M: a second window of the same host, asked inside the plugin's memory of an answer (30 s)
+  await phase(scope, `memory-${engineName}`, archive, kubeconfig, engineName, async ({ host, browser }) => {
+    const baseline = auditLines();
+    const one = await openRoute(browser, host.base, 'pods', context, VIEWPORTS[0]);
+    recordChildren(host);
+    await untilListReady(one.page);
+    await openGroups(one.page);
+    await untilRows(one.page, everyKindCounted, 30_000);
+    await sleep(1500);
+    const afterOne = auditLines();
+    const listsOne = limitOnes(pluginLists(auditBetween(baseline, afterOne)));
+    const startedAt = Math.min(...unopened.map((kind) => readsOf(listsOne, kind)[0]?.received ?? Infinity));
+    const two = await openRoute(browser, host.base, 'pods', context, VIEWPORTS[0]);
+    await openGroups(two.page);
+    const counted = await untilRows(two.page, everyKindCounted, 30_000);
+    await sleep(1500);
+    const age = auditNow() - startedAt;
+    const listsTwo = limitOnes(pluginLists(auditBetween(afterOne, auditLines())));
+    // The second window opens a Pods list of its own, whose source makes its probe (a List with a limit of one) as it opens: that is the list's, not a count's, and is said apart.
+    const counted2 = listsTwo.filter((list) => list.path !== listPathOf(KIND.pods));
+    const calls = countCallsOf(two.capture);
+    check(scope, `M: a second window of the same host, opened ${Math.round(age / 1000)} s after the first one's first read (inside the plugin's 30 s memory), shows every count`, counted.reached && age < STALENESS_MS, { ageSeconds: Math.round(age / 100) / 10 });
+    check(scope, `M: it asked the host for ${calls.length} counts and the API server saw ${counted2.length} Lists for them: they were answered from the plugin's memory (the only List it made is its own Pods list's probe: ${listsTwo.length - counted2.length})`, calls.length >= unopened.length - 1 && counted2.length === 0 && listsTwo.length - counted2.length <= 1, { calls: calls.length, lists: counted2.map((list) => list.path), podsProbes: listsTwo.length - counted2.length });
+    await one.page.close();
+    await two.page.close();
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// arrival: no layout shift when the counts arrive. The page is opened by its route, with no input (a saved window restored: the engine counts every shift), at each viewport; the sidebar's skeleton, then its counts.
+/** What the layout-shift observer read over each arrival (the control section reads the page before the change the same way, and says them side by side). */
+const shiftTotals = [];
+async function sectionArrival(engineName) {
+  const scope = `arrival/${engineName}`;
+  await quiet(scope);
+  const rest = GROUPS.filter((group) => group.id !== 'workloads');
+  for (const viewport of VIEWPORTS) {
+    const here = `${scope}/${viewport.name}`;
+    await phase(here, `arrival-${engineName}-${viewport.name}`, archive, kubeconfig, engineName, async ({ host, browser }) => {
+      const { page, capture } = await openRoute(browser, host.base, 'pods', context, viewport);
+      recordChildren(host);
+      await untilListReady(page);
+      await untilRows(page, everyKindCounted, 25_000);
+      await sleep(800);
+      const snap = await marksOf(page);
+      const problems = arrivalProblems(snap);
+      const skeleton = problems.filter((line) => /skeleton|never showed/.test(line));
+      check(here, 'the sidebar\'s skeleton (a held, empty count slot on each kind) is on screen before the first count, and no count had arrived when it was read', skeleton.length === 0, skeleton);
+      const moved = problems.filter((line) => !skeleton.includes(line));
+      check(here, 'every row\'s rectangle, glyph, label and label text are the ones they were before its count arrived (0.01 px), no label is cut that was not, and the sidebar and the page did not move', moved.length === 0, moved);
+      const shift = layoutShiftOf(snap);
+      if (shift === null) {
+        info(here, `no layout-shift observer in ${engineName}: the rectangles above are what it checks`, { frames: snap.frames });
+      } else {
+        // The observer counts every shift of the page, and the page loads in the same window: the quick-filter chips of the Pods list settle as its rows arrive, in the frames the counts come in. What the sidebar does is held to 0
+        // (no shift of a node in the sidebar, and no region moving: above); the observer's whole reading is said beside it, with each shift's nodes and time, and the control section reads the page before the change, which
+        // has no counts, the same way: whatever the page shifts by without counts is not the counts'.
+        check(here, `the layout-shift observer reads 0 for the sidebar over the arrival (reset after the skeleton was read, at ${snap.firstTreeAt} ms): ${shift.sidebar}`, shift.sidebar === 0, shift.detail);
+        info(here, `the layout-shift observer's whole reading over the arrival, from every node of the page: ${shift.total}`, shift);
+        shiftTotals.push({ here, engine: engineName, viewport: viewport.name, total: shift.total, sources: shift.sources });
+      }
+      const rows = await page.evaluate(() => Array.from(document.querySelectorAll('nav[aria-label="Kubernetes resources"] [role="treeitem"]'), (row) => {
+        const slot = row.querySelector('[data-shell-part="count"]');
+        const box = row.getBoundingClientRect();
+        const digits = slot?.firstElementChild?.getBoundingClientRect();
+        const style = slot?.firstElementChild === null || slot === null ? null : getComputedStyle(slot.firstElementChild.querySelector('[aria-hidden="true"]') ?? slot.firstElementChild);
+        return { id: row.getAttribute('data-id'), height: Math.round(box.height * 100) / 100, insideRow: digits === undefined ? null : Math.round((box.right - digits.right) * 100) / 100, slot: slot === null ? null : Math.round(slot.getBoundingClientRect().width * 100) / 100, style: style === null ? null : `${style.fontSize} ${style.fontVariantNumeric} ${style.color}` };
+      }));
+      info(here, 'where the digits end, in px inside the row\'s end (the mock puts its count 7 px inside), the held slot\'s width, the row\'s height (the mock\'s is 24) and the drawn count\'s font, numerals and colour', { digitsInsideRow: [...new Set(rows.filter((row) => row.insideRow !== null).map((row) => row.insideRow))], slotWidths: [...new Set(rows.filter((row) => row.slot !== null).map((row) => row.slot))], rowHeights: [...new Set(rows.map((row) => row.height))], countStyle: [...new Set(rows.filter((row) => row.style !== null).map((row) => row.style))] });
+      // the other groups, opened by a click
+      await page.evaluate(() => window.__q2.reset());
+      await openGroups(page, rest.map((group) => group.id));
+      await untilRows(page, everyKindCounted, 30_000);
+      await sleep(800);
+      const more = arrivalProblems(await marksOf(page), { kindIds: new Set(rest.flatMap((group) => group.kinds)) });
+      check(here, 'and the four groups opened by a click: their rows come with a held, empty slot, and their counts move nothing (0.01 px)', more.length === 0, more);
+      check(here, 'no page error and no console error', capture.errors.filter((entry) => !/activity session unavailable/.test(entry)).length === 0, capture.errors.slice(0, 4));
+      await page.close();
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// limited: a user who may list Pods and Namespaces and nothing else, a second connection of the host.
+const readBody = (page) => page.evaluate(() => {
+  const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const slot = [...document.querySelectorAll('[data-page-slot]')].find((candidate) => candidate.getClientRects().length > 0) ?? document;
+  const root = slot.querySelector('[data-ov-state]');
+  return { state: root?.getAttribute('data-ov-state') ?? null, text: text(root).slice(0, 600), rows: root?.querySelectorAll('tbody tr').length ?? 0, buttons: [...(root?.querySelectorAll('button') ?? [])].map(text), heading: text(slot.querySelector('h1') ?? document.querySelector('h1')), footer: text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) };
+});
+async function untilBody(page, label, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let body = await readBody(page);
+  while ((body.heading !== label || body.state === null || body.state === 'loading') && Date.now() < deadline) {
+    await sleep(150);
+    body = await readBody(page);
+  }
+  return body;
+}
+
+/**
+ * The user limited to Pods and Namespaces, as a second connection of the host (K2b-2 F, Q1 row 14). What the sidebar does with a count read the user may not make (a 403): it draws nothing, a held empty slot, and the read
+ * is NOT asked again on a timer; it is asked again when the kind's group is opened again, when the connection or the namespaces counted change, and when the kind's list was open and is left. An ask is one List at the
+ * API server (the plugin's backend keeps no failure, so each ask reaches it, and it does not try a refused read again), so the cost is read from the API server's audit log (the limited user, the plugin's user agent), with the
+ * calls the page made to the host beside it. The windows are sequenced so that each is measured before the next thing is done to the page: the first sight (the window opens, every group is opened, each refused kind is
+ * asked once); the same window left alone for QUIET_MS (0 after); one group collapsed and opened again (exactly one more ask for each of its kinds and for no other); one list opened and left (exactly one more ask for that
+ * kind, after it is left); then the rest of the lists, each opened and left in turn (one more ask each, counted in the page's calls: the list's own reads are the list's, and the audit log cannot tell them from the
+ * sidebar's). The Pods list of a second window is opened after those, so that the numbers are one window's.
+ */
+async function sectionLimited(engineName) {
+  const scope = `limited/${engineName}`;
+  const allowed = new Set(['pods', 'namespaces']);
+  const refused = KINDS.filter((kind) => !allowed.has(kind.id));
+  const refusedIds = refused.map((kind) => kind.id);
+  const refusedPaths = pathsOf(refusedIds);
+  const mayList = KINDS.filter((kind) => allowed.has(kind.id));
+  const config = GROUPS.find((group) => group.id === 'config');
+  const visited = KIND.roles;
+  const rest = refused.filter((kind) => kind.id !== visited.id);
+  await quiet(scope);
+  await phase(scope, `limited-${engineName}`, archive, bothKubeconfig, engineName, async ({ host, browser }) => {
+    // The backend's own answers for the limited connection (Q1 row 14): Pods and Namespaces are counted, each other kind answers the host's FORBIDDEN error, never a count and never a zero.
+    const backend = await openBackendPage(browser, host.base);
+    const call = makeCaller(backend);
+    check(scope, 'the limited user\'s connection, the host\'s second one, is connected', await startAndWait(call, scope, LIMITED));
+    recordChildren(host);
+    const answers = await Promise.all(KINDS.map(async (kind) => ({ kind, read: await countRead(call, kind.type, undefined, LIMITED) })));
+    for (const { kind, read } of answers) {
+      if (allowed.has(kind.id)) {
+        const expected = kubectlCount(kind, limitedKubeconfig);
+        check(scope, `F: the backend counts ${kind.label}, which this user may list: ${expected}`, isCountOf(read.count, expected), read.count ?? read.error);
+      } else {
+        const appError = appErrorOf(read.error);
+        check(scope, `F: the backend answers ${kind.label}, which this user may not list, with the host's FORBIDDEN error (type, status 403 and code, read from its fields), not a count and not a zero`, read.count === undefined && isForbidden(read.error), { type: appError?.type, status: appError?.status, code: appError?.code, count: read.count });
+      }
+    }
+    await backend.close();
+
+    // The window that walks the sidebar, ALONE: a second window's sidebar asks too, so the Pods list beside it comes later and the numbers below are one window's. The audit log is read from this line on.
+    const podsExpected = kubectlCount(KIND.pods, limitedKubeconfig);
+    const firstLine = auditLines();
+    const { page, capture } = await openRoute(browser, host.base, 'pods', LIMITED, VIEWPORTS[0]);
+    await untilListReady(page);
+    await openGroups(page);
+    await untilRows(page, (rows) => allowed.size === rows.filter((row) => allowed.has(row.id) && row.drawn !== null && row.drawn !== '').length, 25_000);
+    await sleep(8000);
+    const snap = await marksOf(page);
+    const problems = arrivalProblems(snap, { without: new Set(refusedIds) });
+    check(scope, 'F: the skeleton had a held, empty slot on every kind, a count arrived for the two that may be listed and for no other, and nothing moved (0.01 px)', problems.length === 0, problems);
+    const open = await checkNames(scope, page, mayList, { open: 'pods', config: limitedKubeconfig, tag: 'F' });
+    for (const kind of refused) {
+      const row = open.rows.find((candidate) => candidate.id === kind.id);
+      check(scope, `F: ${kind.label}, which this user may not list: a held slot with nothing in it, and a name that is the label alone`, row !== undefined && row.slot && row.drawn === '' && parseName(row.name ?? '', kind.label).kind === 'none', { slot: row?.slot, drawn: row?.drawn, name: row?.name });
+    }
+    const rowOf = (kind) => page.locator(`nav[aria-label="Kubernetes resources"] [role="treeitem"][data-id="${kind.id}"]`);
+    const countAsks = () => countAsksOf(countCallsOf(capture), refused);
+    const refusedSince = (line) => refusalsOf(limitedListsSince(line), refused);
+    const eachAsked = (entries, ids) => ids.every((id) => entries.some((entry) => entry.kind === id));
+    const opensItsList = async (kind) => {
+      await rowOf(kind).click();
+      const body = await untilBody(page, kind.label);
+      const wrong = refusalProblems(body, kind);
+      check(scope, `F: the row of ${kind.label} opens its list, which says ${kind.namespaced ? '`in all namespaces.`' : '`in this cluster.`'} with the heading \`Couldn't load ${kind.label}\`, no Retry and no row`, wrong.length === 0, wrong.length === 0 ? { text: body.text.slice(0, 160) } : { problems: wrong, text: body.text.slice(0, 200), buttons: body.buttons });
+    };
+
+    // ---- FIRST SIGHT: each refused kind of the top level and of the open groups is asked once by the page. The round takes a moment (four slots, a List each); it is waited for, then a few seconds more, so that a second ask would show in it.
+    const completed = await until(() => eachAsked(refusedSince(firstLine), refusedIds), 150_000, 2000);
+    await sleep(8000);
+    const quietFrom = auditNow();
+    const pageFrom = Date.now();
+    const firstServer = refusedSince(firstLine).filter((entry) => entry.at <= quietFrom);
+    const firstPage = countAsks().filter((entry) => entry.at <= pageFrom);
+    const firstServerProblems = onceProblems(ASSERTIONS.first, firstServer, refusedIds, refused);
+    const firstPageProblems = onceProblems(ASSERTIONS.first, firstPage, refusedIds, refused);
+    check(scope, `F: first sight, in the page: each of the ${refused.length} refused kinds of the top level and the open groups was asked for once (${firstPage.length} count reads of them, none a second time)`, completed && firstPageProblems.length === 0, describeProblems(firstPageProblems));
+    check(scope, `F: first sight, at the API server: ${firstServer.length} refused Lists, one for each of the ${refused.length} kinds (${treeText(firstServer)})`, completed && firstServerProblems.length === 0, describeProblems(firstServerProblems));
+    info(scope, 'F: what the API server saw at first sight for the refused kinds: Lists in all and by group, Lists a kind, and the seconds the round took', { total: firstServer.length, byGroup: treeText(firstServer), listsAKind: [...new Set(refused.map((kind) => firstServer.filter((entry) => entry.kind === kind.id).length))], roundSeconds: firstServer.length === 0 ? null : Math.round((firstServer.at(-1).at - firstServer[0].at) / 1000) });
+
+    // ---- 0 AFTER: the same window is left alone (no group opened or closed, no list opened: reading the sidebar is not touching it) for two refresh intervals and slack, and nothing of a refused kind is asked again
+    await untilAuditClock(quietFrom + QUIET_MS + 5000, QUIET_MS + 90_000);
+    const quietTo = auditNow();
+    const pageTo = Date.now();
+    const quietServer = refusedSince(firstLine);
+    const quietPage = countAsks();
+    const afterServer = afterProblems(quietServer, quietFrom, quietTo, refused);
+    const afterPage = afterProblems(quietPage, pageFrom, pageTo, refused);
+    const laterServer = quietServer.filter((entry) => entry.at > quietFrom && entry.at <= quietTo);
+    const laterPage = quietPage.filter((entry) => entry.at > pageFrom && entry.at <= pageTo);
+    check(scope, `F: 0 after, at the API server: the window was left alone for ${Math.round((quietTo - quietFrom) / 1000)} s (two refresh intervals and slack) and ${laterServer.length} refused Lists reached it: ${firstServer.length} refusals at first sight, ${laterServer.length} after`, afterServer.length === 0, describeProblems(afterServer));
+    check(scope, `F: 0 after, in the page: in those ${Math.round((pageTo - pageFrom) / 1000)} s the page made ${laterPage.length} count reads of a refused kind (${firstPage.length} at first sight, ${laterPage.length} after)`, afterPage.length === 0, describeProblems(afterPage));
+    // The window was not empty: a kind this user may list is read again on its timer in it, so the absence above is of a window in which a count was asked for again (R:, for this user's Namespaces).
+    const namespacesAsks = countAsksOf(countCallsOf(capture), [KIND.namespaces]);
+    const namespacesGaps = namespacesAsks.slice(1).map((entry, index) => entry.at - namespacesAsks[index].at);
+    const namespacesLists = limitOnes(limitedListsSince(firstLine)).filter((list) => list.path === listPathOf(KIND.namespaces) && list.code === 200 && list.received > quietFrom && list.received <= quietTo);
+    check(scope, `F: the timer was running in that window: Namespaces, which this user may list, was asked for ${namespacesAsks.length} times by the page, each ask ${REFRESH_MS / 1000} to 90 s after the one before (${namespacesGaps.map((gap) => Math.round(gap / 100) / 10).join(', ')} s), and the API server saw ${namespacesLists.length} Lists of it in the window`, namespacesAsks.filter((entry) => entry.at > pageFrom).length >= 2 && namespacesGaps.every((gap) => gap >= REFRESH_MS - 1000 && gap <= 90_000) && namespacesLists.length >= 2, { asks: namespacesAsks.length, gapSeconds: namespacesGaps.map((gap) => Math.round(gap / 100) / 10), lists: namespacesLists.length });
+
+    // ---- EXACTLY ONE (a group opened again): Config is collapsed and opened again; its refused kinds are asked once more each, and no other kind
+    const reopenLine = auditLines();
+    const reopenMark = countCallsOf(capture).length;
+    await setGroup(page, config.id, false);
+    await sleep(1500);
+    await setGroup(page, config.id, true);
+    const reopenAsked = await until(() => eachAsked(refusedSince(reopenLine), config.kinds), 90_000, 1500);
+    await sleep(10_000);
+    const reopenServer = refusedSince(reopenLine);
+    const reopenPage = countAsksOf(countCallsOf(capture).slice(reopenMark), refused);
+    const reopenServerProblems = onceProblems(ASSERTIONS.reopen, reopenServer, config.kinds, refused);
+    const reopenPageProblems = onceProblems(ASSERTIONS.reopen, reopenPage, config.kinds, refused);
+    check(scope, `F: exactly one (a group opened again), in the page: Config collapsed and opened again: each of its ${config.kinds.length} refused kinds was asked for exactly once more (${reopenPage.length} count reads) and none of the other ${refused.length - config.kinds.length}`, reopenAsked && reopenPageProblems.length === 0, describeProblems(reopenPageProblems));
+    check(scope, `F: exactly one (a group opened again), at the API server: ${reopenServer.length} refused Lists, one for each kind of Config and none for any other kind (${treeText(reopenServer)})`, reopenAsked && reopenServerProblems.length === 0, describeProblems(reopenServerProblems));
+
+    // ---- EXACTLY ONE (a list visited): the list of one refused kind is opened, read, and left. The list's own reads are the list's (said apart); the sidebar asks that kind once more after the list is left, and no other kind
+    const visitLine = auditLines();
+    const visitStart = auditNow();
+    await opensItsList(visited);
+    const ownLists = () => limitedListsSince(visitLine).filter((list) => list.path === listPathOf(visited));
+    await until(() => auditNow() - Math.max(visitStart, ...ownLists().map((list) => list.received)) >= 10_000, 60_000, 1500);
+    const ownReads = ownLists().map((list) => ({ limit: list.query.limit ?? null, code: list.code, afterSeconds: Math.round((list.received - visitStart) / 100) / 10 }));
+    const leaveLine = auditLines();
+    const leaveMark = countCallsOf(capture).length;
+    await rowOf(KIND.pods).click();
+    const leaveAsked = await until(() => eachAsked(refusedSince(leaveLine), [visited.id]), 45_000, 1500);
+    await sleep(10_000);
+    const leaveServer = refusedSince(leaveLine);
+    const leavePage = countAsksOf(countCallsOf(capture).slice(leaveMark), refused);
+    const leaveServerProblems = onceProblems(ASSERTIONS.visit, leaveServer, [visited.id], refused);
+    const leavePageProblems = onceProblems(ASSERTIONS.visit, leavePage, [visited.id], refused);
+    check(scope, `F: exactly one (a list visited), in the page: the list of ${visited.label} was opened and left: the sidebar asked for ${visited.label} exactly once more after the list was left, and for no other kind (${leavePage.length} count read${leavePage.length === 1 ? '' : 's'})`, leaveAsked && leavePageProblems.length === 0, describeProblems(leavePageProblems));
+    check(scope, `F: exactly one (a list visited), at the API server: after the list was left ${leaveServer.length} refused List${leaveServer.length === 1 ? '' : 's'} reached it, one for ${visited.label} and none for any other kind (what the list itself read while it was open, ${ownReads.length} Lists, is the list's)`, leaveAsked && leaveServerProblems.length === 0, describeProblems(leaveServerProblems));
+    info(scope, `F: what the ${visited.label} list itself read while it was open (the list's own reads, told apart from the sidebar's by the time: the sidebar asks nothing of a kind whose list is open)`, ownReads);
+
+    // The Pods list beside it, a second window: opened now, so that the numbers above are one window's. It must stay loaded while the other window visits every refused list.
+    const beside = await openRoute(browser, host.base, 'pods', LIMITED, VIEWPORTS[0], { record: false });
+    check(scope, 'F: the Pods list of the limited connection loads (a window of its own)', (await untilListReady(beside.page)) === 'ready');
+
+    // ---- the other refused lists, each opened and left in turn (each row opens its list, which says why); each is asked once more by the sidebar after its list is left, which the page's calls count
+    const sweepMark = countCallsOf(capture).length;
+    const sweepLine = auditLines();
+    const leftAt = {};
+    let previous;
+    for (const kind of rest) {
+      if (previous !== undefined) leftAt[previous.id] = Date.now();
+      await opensItsList(kind);
+      previous = kind;
+    }
+    leftAt[previous.id] = Date.now();
+    await rowOf(KIND.pods).click();
+    await untilListReady(page);
+    const sweepAsked = await until(() => countAsksOf(countCallsOf(capture).slice(sweepMark), refused).length >= rest.length, 90_000, 1500);
+    await sleep(10_000);
+    const sweepPage = countAsksOf(countCallsOf(capture).slice(sweepMark), refused);
+    const sweepProblems = onceProblems(ASSERTIONS.visit, sweepPage, rest.map((kind) => kind.id), refused);
+    const early = rest.filter((kind) => { const own = sweepPage.find((entry) => entry.kind === kind.id); return own !== undefined && own.at < leftAt[kind.id]; }).map((kind) => kind.id);
+    if (early.length > 0) sweepProblems.push({ assertion: ASSERTIONS.visit, text: `asked for before its list was left: ${early.join(', ')}` });
+    check(scope, `F: exactly one (a list visited), the other ${rest.length} lists: each refused kind, opened and left in turn, was asked for exactly once more by the sidebar, after its list was left and not before (${sweepPage.length} count reads), and ${visited.label}, visited before, was not asked for again`, sweepAsked && sweepProblems.length === 0, describeProblems(sweepProblems));
+    const sweepServer = refusedSince(sweepLine);
+    info(scope, 'F: what the API server saw while those lists were visited (each list\'s own reads and the sidebar\'s asks together: the audit log cannot tell them apart)', { refusedLists: sweepServer.length, listsAKind: [...new Set(rest.map((kind) => sweepServer.filter((entry) => entry.kind === kind.id).length))].sort((a, b) => a - b) });
+    await sleep(2000);
+    await checkNames(scope, page, mayList, { open: 'pods', config: limitedKubeconfig, tag: 'F2' });
+    const after = (await readSidebar(page)).rows;
+    check(scope, 'F: after a group was opened again and all 27 lists were visited, the refused kinds\' slots are still held and empty (a refusal harms no other row), and Pods and Namespaces still count', refused.every((kind) => { const row = after.find((candidate) => candidate.id === kind.id); return row !== undefined && row.slot && row.drawn === ''; }));
+    const everyList = limitedListsSince(firstLine).filter((list) => refusedPaths.has(list.path));
+    check(scope, `F: every List the API server saw for the ${refused.length} refused kinds in the whole window (first sight, the wait, the group opened again, the lists visited: ${everyList.length} Lists, with the lists' own reads) was a 403: not one was allowed, and none failed another way`, everyList.length > 0 && everyList.every((list) => list.code === 403), { codes: [...new Set(everyList.map((list) => list.code))] });
+    const still = await readBody(beside.page);
+    check(scope, `F: the Pods list beside it is still loaded and unchanged: ${podsExpected} Pods`, still.state === 'ready' && new RegExp(`^${podsExpected} Pods$`).test(still.footer), { state: still.state, footer: still.footer });
+    check(scope, 'F: neither window raised a page error or a console error that is not a refused request itself', [...capture.errors, ...beside.capture.errors].filter((entry) => !/activity session unavailable|403|Forbidden/i.test(entry)).length === 0, [...capture.errors, ...beside.capture.errors].slice(0, 4));
+    await beside.page.close();
+    await page.close();
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// shots: screenshots, WebKit, the void theme, at each viewport; the mock's sidebar with counts beside the plugin's.
+async function compose(items, file, browser) {
+  const images = await Promise.all(items.map(async (item) => ({ ...item, data: (await readFile(item.file)).toString('base64') })));
+  const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
+  await page.setContent(`<!doctype html><html><body style="margin:0;background:#101010;color:#d8d8d8;font:14px system-ui,sans-serif"><div style="display:flex;gap:20px;padding:16px;align-items:flex-start">${images.map((item) => `<figure style="margin:0"><figcaption style="padding:0 0 8px 2px">${item.label}</figcaption><img alt="" style="display:block" src="data:image/png;base64,${item.data}"></figure>`).join('')}</div></body></html>`);
+  await page.waitForFunction(() => [...document.images].every((image) => image.complete && image.naturalWidth > 0));
+  await page.screenshot({ path: file, fullPage: true });
+  await page.close();
+}
+
+async function sectionShots() {
+  const scope = 'shots';
+  await mkdir(shots, { recursive: true });
+  const taken = [];
+  const note = (file) => { taken.push(file); info(scope, 'screenshot', file); };
+  const mocks = {};
+  if (mockRoot !== undefined) {
+    const result = spawnSync(process.execPath, [path.join(here, 'mock-sidebar.mjs')], { env: { ...process.env, MOCK_ROOT: mockRoot, OMNIVIEW_HOST_ROOT: hostRoot, OUT: out, SHOTS: shots }, encoding: 'utf8', timeout: 300_000 });
+    check(scope, 'the mock\'s sidebar with counts was screenshotted and measured (read only: the mock is served from a copy of its server, and stopped by its pid)', result.status === 0, result.status === 0 ? undefined : `${result.stdout.slice(-400)} ${result.stderr.slice(-400)}`);
+    for (const line of result.stdout.split('\n')) if (line.startsWith('MOCK ')) info(scope, 'the mock', line.slice(5));
+  } else {
+    info(scope, 'no MOCK_ROOT: the mock is not screenshotted', {});
+  }
+  const compositor = await pw.webkit.launch();
+  try {
+    for (const viewport of VIEWPORTS) {
+      const here = `${scope}/${viewport.name}`;
+      let theme = 'void';
+      const own = {};
+      await phase(here, `shots-${viewport.name}`, archive, kubeconfig, 'webkit', async ({ host, browser }) => {
+        const { page } = await openWindow(browser, host.base, viewport, { record: false });
+        await untilListReady(page);
+        await openGroups(page);
+        await untilRows(page, everyKindCounted, 30_000);
+        await sleep(2000);
+        const seen = await page.evaluate(() => document.documentElement.getAttribute('data-ov-theme'));
+        check(here, 'the theme is the void theme', seen === 'void', seen);
+        theme = seen ?? theme;
+        // The tree scrolls (the groups are longer than the window): the picture shows its top, as the mock's does.
+        const toTop = () => page.evaluate(() => { const tree = document.querySelector('nav[aria-label="Kubernetes resources"] [role="tree"]'); if (tree !== null) tree.scrollTop = 0; });
+        await toTop();
+        await sleep(300);
+        own.sidebar = path.join(shots, `sidebar-counts-webkit-${theme}-${viewport.name}.png`);
+        await page.screenshot({ path: own.sidebar });
+        note(own.sidebar);
+        // every row at once: the same window, tall enough for the 34 rows of the tree
+        await page.setViewportSize({ width: viewport.width, height: 1400 });
+        await sleep(1200);
+        await toTop();
+        own.all = path.join(shots, `sidebar-counts-allrows-webkit-${theme}-${viewport.width}x1400.png`);
+        await page.screenshot({ path: own.all });
+        note(own.all);
+        await page.close();
+      });
+      await phase(here, `shots-limited-${viewport.name}`, archive, bothKubeconfig, 'webkit', async ({ host, browser }) => {
+        const pods = await openRoute(browser, host.base, 'pods', LIMITED, viewport, { record: false });
+        await untilListReady(pods.page);
+        const roles = await openRoute(browser, host.base, 'roles', LIMITED, viewport, { record: false });
+        const body = await untilBody(roles.page, 'Roles');
+        await sleep(1200);
+        check(here, 'the Roles list of the limited user shows the refusal (for the picture)', refusalProblems(body, KIND.roles).length === 0, refusalProblems(body, KIND.roles));
+        own.roles = path.join(shots, `refused-roles-webkit-${theme}-${viewport.name}.png`);
+        own.pods = path.join(shots, `refused-pods-webkit-${theme}-${viewport.name}.png`);
+        await roles.page.screenshot({ path: own.roles });
+        await pods.page.screenshot({ path: own.pods });
+        note(own.roles);
+        note(own.pods);
+        own.beside = path.join(shots, `refused-roles-beside-pods-webkit-${theme}-${viewport.name}.png`);
+        await compose([{ file: own.roles, label: `The Roles list of the limited user: the refusal (WebKit, ${theme}, ${viewport.name})` }, { file: own.pods, label: `Its Pods list beside it, loaded (the same host, a second window)` }], own.beside, compositor);
+        note(own.beside);
+        await pods.page.close();
+        await roles.page.close();
+      });
+      if (mockRoot !== undefined) {
+        const mockFile = path.join(shots, `mock-sidebar-webkit-${viewport.name}.png`);
+        const exists = await access(mockFile).then(() => true, () => false);
+        check(here, 'the mock\'s sidebar picture of this viewport exists', exists, mockFile);
+        if (exists) {
+          mocks[viewport.name] = mockFile;
+          const both = path.join(shots, `sidebar-plugin-and-mock-webkit-${theme}-${viewport.name}.png`);
+          await compose([{ file: own.sidebar, label: `The plugin, in the real host (WebKit, ${theme}, ${viewport.name}): the sidebar with its counts, every group open` }, { file: mockFile, label: `The mock (WebKit, ${viewport.name}): its Kubernetes sidebar with counts, the groups the plugin has open` }], both, compositor);
+          note(both);
+        }
+      }
+    }
+  } finally {
+    await compositor.close().catch(() => undefined);
+  }
+  for (const file of taken) check(scope, 'the picture was written and is not empty', (await readFile(file)).length > 5000, path.basename(file));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// wide: a count of 1,000 or more. A namespace of 1,000 ConfigMaps is made here (and removed at the end), so that the count of ConfigMaps is 1,326: grouped digits in the name and in the slot, and what moves when a count
+// wider than the held slot arrives. The host says a longer count widens its own slot (Tree.module.css); the proof measures what that moves and says it, and holds the rest to the same rule as every other count.
+async function sectionWide() {
+  const scope = 'wide';
+  await quiet(scope);
+  const apply = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'apply', '-f', '-'], { input: `apiVersion: v1\nkind: Namespace\nmetadata: {name: bulk-large}\n---\n${Array.from({ length: 1000 }, (_, i) => `apiVersion: v1\nkind: ConfigMap\nmetadata: {name: large-${String(i + 1).padStart(4, '0')}, namespace: bulk-large}\ndata: {k: "v"}\n`).join('---\n')}`, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 240_000 });
+  check(scope, 'a namespace of 1,000 ConfigMaps was made', apply.status === 0, apply.status === 0 ? undefined : apply.stderr.slice(-300));
+  try {
+    await sleep(3000);
+    for (const engineName of engines) {
+      const here = `${scope}/${engineName}`;
+      await phase(here, `wide-${engineName}`, archive, kubeconfig, engineName, async ({ host, browser }) => {
+        const { page } = await openRoute(browser, host.base, 'pods', context, VIEWPORTS[0]);
+        recordChildren(host);
+        await untilListReady(page);
+        await untilRows(page, everyKindCounted, 25_000);
+        await page.evaluate(() => window.__q2.reset());
+        await openGroups(page, ['config']);
+        await untilRows(page, (rows) => (rows.find((row) => row.id === 'configmaps')?.drawn ?? '') !== '', 25_000);
+        await sleep(800);
+        const snap = await marksOf(page);
+        const n = kubectlCount(KIND.configmaps);
+        const { rows } = await readSidebar(page);
+        const row = rows.find((candidate) => candidate.id === 'configmaps');
+        const parsed = parseName(row?.name ?? '', 'ConfigMaps');
+        check(here, `ConfigMaps: kubectl says ${n} (${grouped(n)}); the row says ${JSON.stringify(row?.name ?? null)} and draws ${JSON.stringify(row?.drawn ?? null)}: an estimate, thousands grouped in the name and in the slot`, n >= 1000 && parsed.kind === 'estimate' && parsed.value === n && row?.drawn === `~${grouped(n)}` && /about \d{1,3},\d{3}$/.test(row?.name ?? ''), { n, name: row?.name, drawn: row?.drawn });
+        const config = GROUPS.find((group) => group.id === 'config').kinds;
+        const parts = {};
+        for (const id of config) {
+          const arrival = snap.rows[id]?.arrival;
+          parts[id] = arrival === null || arrival === undefined || arrival.before === null ? null : PARTS.filter((part) => !sameRect(arrival.before[part], arrival.after[part]));
+        }
+        check(here, 'the rows of Config opened by a click: no glyph, label text or row rectangle changed in any of them, no label was cut or uncut by its count, and the only boxes that moved are the label\'s and the slot\'s of the row whose count is wider than the held slot', config.every((id) => parts[id] !== null && parts[id].every((part) => id === 'configmaps' && (part === 'label' || part === 'slot'))) && config.every((id) => snap.rows[id]?.arrival?.before?.cut === snap.rows[id]?.arrival?.after.cut), parts);
+        const arrival = snap.rows.configmaps?.arrival;
+        info(here, 'what a count wider than the held slot moves (the label\'s box gives to the slot what the slot takes: the label\'s text does not move)', arrival?.before === null || arrival === undefined ? 'no arrival' : { slotBefore: arrival.before.slot?.[2], slotAfter: arrival.after.slot?.[2], labelBoxBefore: arrival.before.label?.[2], labelBoxAfter: arrival.after.label?.[2], labelTextBefore: arrival.before.labelText?.[2], labelTextAfter: arrival.after.labelText?.[2] });
+        await page.close();
+      });
+    }
+  } finally {
+    const removed = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'delete', 'namespace', 'bulk-large', '--wait=true', '--timeout=240s'], { encoding: 'utf8', timeout: 300_000 });
+    check(scope, 'the namespace of 1,000 ConfigMaps was removed again', removed.status === 0, removed.status === 0 ? undefined : removed.stderr.slice(-300));
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// control: the plugin before the change. The same reading finds the rows of its sidebar and no count, and every count check FAILS on it: the checks can fail.
+async function sectionControl(engineName) {
+  const scope = `control/${engineName}`;
+  if (archiveBase === undefined) {
+    info(scope, 'no ARCHIVE_BASE: the plugin before the change is not run', {});
+    return;
+  }
+  await phase(scope, `control-${engineName}`, archiveBase, kubeconfig, engineName, async ({ host, browser }) => {
+    const baseline = auditLines();
+    const { page } = await openWindow(browser, host.base, VIEWPORTS[0]);
+    recordChildren(host);
+    await untilListReady(page);
+    await openGroups(page);
+    await sleep(10_000);
+    const { rows, stable } = await readSidebar(page);
+    check(scope, 'the reading works on the plugin before the change: the 34 rows of its sidebar are read, in order and at their levels, with their accessible names', stable && JSON.stringify(rows.map((row) => [row.id, row.label, row.level])) === JSON.stringify(ALL_ROWS) && rows.every((row) => row.name !== null), rows.map((row) => row.id).join(' '));
+    check(scope, 'and finds no count slot and no count on any of the 29 kinds: each name is its label alone', KINDS.every((kind) => { const row = rows.find((candidate) => candidate.id === kind.id); return row !== undefined && !row.slot && row.drawn === null && row.name === kind.label; }));
+    const expected = await kubectlCounts(KINDS);
+    const verdicts = KINDS.map((kind) => rowVerdict(parseName(rows.find((candidate) => candidate.id === kind.id)?.name ?? '', kind.label), expected[kind.id], kind.id === 'pods'));
+    check(scope, 'so the comparison with kubectl FAILS for each of the 29 kinds (no count is never a match): the count checks can fail', verdicts.every((verdict) => !verdict.numberOk && !verdict.precisionOk));
+    const problems = arrivalProblems(await marksOf(page));
+    check(scope, 'and the measurement of the arrival FAILS, for the reasons it names: the skeleton has no count slot, and no count arrives', problems.some((line) => /no count slot for/.test(line)) && problems.some((line) => /no count arrived for/.test(line)), problems);
+    const lists = pluginLists(auditSince(baseline));
+    const round = roundOf(lists, KINDS, 'pods');
+    check(scope, 'and the cost analysis FAILS: the plugin before the change reads no count of an unopened kind, so the round of 28 is missing', !round.once && round.missed.length === 28, { missed: round.missed.length, reads: round.reads });
+    await page.close();
+    // The layout-shift baseline: the page before the change, opened by its route with no input as the arrival section opens it, at each viewport. It has no counts, so every shift the observer reads is the page's own;
+    // the plugin under test, over the same window, must not read more than that (to 0.00001, a thirtieth of the reading): its counts add no shift to what the page does without them.
+    for (const viewport of VIEWPORTS) {
+      const plain = await openRoute(browser, host.base, 'pods', context, viewport);
+      await untilListReady(plain.page);
+      await sleep(3000);
+      const baselineShift = layoutShiftOf(await marksOf(plain.page));
+      await plain.page.close();
+      if (baselineShift === null) {
+        info(scope, `no layout-shift observer in ${engineName}`, {});
+        continue;
+      }
+      const withCounts = shiftTotals.find((entry) => entry.engine === engineName && entry.viewport === viewport.name);
+      info(scope, `the layout-shift observer's reading of the page before the change, which has no counts, at ${viewport.name}, over the same window (after its skeleton was read), from every node of the page: ${baselineShift.total} (${baselineShift.sources.join(', ') || 'no node'})`, baselineShift);
+      if (withCounts !== undefined) check(scope, `the plugin under test reads no more layout shift than the page before the change at ${viewport.name}: ${withCounts.total} against ${baselineShift.total}, so the counts added none`, withCounts.total <= baselineShift.total + 0.00001, { withCounts: withCounts.total, withoutCounts: baselineShift.total, sourcesWithCounts: withCounts.sources, sourcesWithoutCounts: baselineShift.sources });
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+async function guard(name, body) {
+  if (!sections.has(name)) return;
+  try {
+    await body();
+  } catch (error) {
+    check(name, 'the section ran to the end', false, String(error?.stack ?? error).slice(0, 700));
+  }
+}
+
+await mkdir(out, { recursive: true });
+let failed = false;
+try {
+  const git = (...args) => spawnSync('git', ['-C', hostRoot, ...args], { encoding: 'utf8' }).stdout.trim();
+  info('setup', 'host', { root: hostRoot, commit: git('rev-parse', 'HEAD'), subject: git('log', '-1', '--format=%s') });
+  info('setup', 'plugin archive', { archive, bytes: (await readFile(archive)).length, control: archiveBase === undefined ? null : archiveBase });
+  info('setup', 'cluster', { context, server: spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'version', '-o', 'json'], { encoding: 'utf8' }).stdout.match(/"gitVersion": "(v[^"]+)"/g)?.pop(), kubectl: spawnSync('kubectl', ['version', '--client', '-o', 'json'], { encoding: 'utf8' }).stdout.match(/"gitVersion": "(v[^"]+)"/)?.[1] });
+  info('setup', 'machine', { cpus: os.cpus().length, load: os.loadavg().map((value) => Number(value.toFixed(1))), sections: [...sections] });
+  await guard('controls', async () => {
+    controlsPure();
+    for (const engineName of engines) await controlsEngine(engineName);
+  });
+  await guard('counts', async () => { for (const engineName of engines) await sectionCounts(engineName); });
+  await guard('window', async () => { for (const engineName of engines) await sectionWindow(engineName); });
+  await guard('arrival', async () => { for (const engineName of engines) await sectionArrival(engineName); });
+  await guard('limited', async () => {
+    if (bothKubeconfig === undefined || limitedKubeconfig === undefined) throw new Error('BOTH_KUBECONFIG and LIMITED_KUBECONFIG are required for the limited section');
+    for (const engineName of engines) await sectionLimited(engineName);
+  });
+  await guard('shots', async () => {
+    if (bothKubeconfig === undefined) throw new Error('BOTH_KUBECONFIG is required for the shots section');
+    await sectionShots();
+  });
+  await guard('wide', sectionWide);
+  await guard('control', async () => { for (const engineName of engines) await sectionControl(engineName); });
+} catch (error) {
+  failed = true;
+  console.log(`FAIL [proof] the proof stopped: ${error?.stack ?? error}`);
+  results.push({ scope: 'proof', name: 'the proof ran to the end', ok: false, measured: String(error) });
+} finally {
+  for (const host of [...hosts]) if (!host.isExited()) await stopHost(host);
+  spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'delete', 'pod', 'q2-live-pod', '--ignore-not-found', '--grace-period=0', '--force'], { encoding: 'utf8' });
+  await removeProfiles();
+  check('cleanup', 'no process this run started is still running: no host, and no plugin of one', hosts.every((host) => !alive(host.pid) && [...host.children].every((pid) => !alive(pid))), hosts.filter((host) => alive(host.pid) || [...host.children].some(alive)).map((host) => host.name));
+  info('load', 'the 1-minute load average at the start of each timing-sensitive section', loads);
+  await writeFile(path.join(out, 'report.json'), JSON.stringify({ at: new Date().toISOString(), engines, sections: [...sections], loads, results }, null, 2)).catch(() => undefined);
+  const checks = results.filter((entry) => entry.ok !== undefined);
+  const passed = checks.filter((entry) => entry.ok).length;
+  const whole = SECTION_NAMES.every((name) => sections.has(name));
+  const ok = passed === checks.length && !failed;
+  console.log(`${ok ? 'PASS' : 'FAIL'}: ${passed} of ${checks.length} checks${whole ? '' : ` (NOT the whole proof: sections ${[...sections].join(', ')})`}`);
+  process.exitCode = ok ? 0 : 1;
+}

@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+// Q2: the design mock's Kubernetes sidebar with counts (a read-only use of the mock), screenshotted in WebKit at the two test viewports and measured: per row of the tree the label, the count as drawn, the rectangles of the
+// row and of the count and its computed style. It is the reference the plugin's sidebar is compared with by eye (`q2-proof.mjs` puts the two pictures side by side) and the source of the numbers the status file quotes.
+// The mock is `app/OmniviewNativeLab/frontend/mock` of the private repository omniviewdev/design-lab (tag spec-baseline-2026-11-16, docs/ui-next/AGENTS.md "Specification"). It is served from a copy of its own server.js whose
+// `root` names the mock's directory (the lab's package.json says "type": "module", so the copy is CommonJS, `.cjs`), written under OUT; nothing is written in the mock's directory. The server is stopped by its pid.
+//
+//   MOCK_ROOT=<the mock's directory> OMNIVIEW_HOST_ROOT=<host checkout> OUT=<directory> SHOTS=<directory> node mock-sidebar.mjs
+//
+//   OMNIVIEW_HOST_ROOT  a host checkout with `pnpm install` done and WebKit installed in its Playwright: its Playwright is used
+//   OUT                 where mock-server.cjs and mock-sidebar.json go
+//   SHOTS               where the pictures go: mock-sidebar-webkit-<w>x<h>.png (the whole window)
+import { spawn } from 'node:child_process';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import path from 'node:path';
+
+const env = (name) => process.env[name] ?? (() => { throw new Error(`${name} is required`); })();
+const mockRoot = path.resolve(env('MOCK_ROOT'));
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const out = path.resolve(env('OUT'));
+const shots = path.resolve(env('SHOTS'));
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const VIEWPORTS = [{ name: '1440x900', width: 1440, height: 900 }, { name: '1280x800', width: 1280, height: 800 }];
+/** The groups the plugin's sidebar has, by the mock's node ids: opened in the mock too, so that the two trees show the same rows. */
+const GROUPS = ['group:workloads', 'group:config', 'group:network', 'group:storage', 'group:access'];
+
+await mkdir(out, { recursive: true });
+await mkdir(shots, { recursive: true });
+const port = await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.listen(0, '127.0.0.1', () => { const { port: found } = probe.address(); probe.close(() => resolve(found)); });
+  probe.on('error', reject);
+});
+const source = await readFile(path.join(mockRoot, 'server.js'), 'utf8');
+if (!source.includes('const root=__dirname')) throw new Error('the mock\'s server.js no longer says `const root=__dirname`: the copy cannot name the mock\'s directory');
+const copy = path.join(out, 'mock-server.cjs');
+await writeFile(copy, source.replace('const root=__dirname', `const root=${JSON.stringify(mockRoot)}`));
+const server = spawn(process.execPath, [copy], { env: { PATH: process.env.PATH, PORT: String(port) }, stdio: 'ignore' });
+let exited = false;
+server.on('exit', () => { exited = true; });
+const base = `http://127.0.0.1:${port}/`;
+const data = {};
+let browser;
+try {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (exited) throw new Error('the mock\'s server exited while starting');
+    try { if ((await fetch(base)).ok) break; } catch { /* not listening yet */ }
+    await sleep(250);
+  }
+  browser = await pw.webkit.launch();
+  for (const viewport of VIEWPORTS) {
+    const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+    await page.goto(base, { waitUntil: 'load' });
+    await sleep(3500);
+    // The mock's own route to a list: the connection prod-eu, the logical type (as K2b-2's mock-measure does).
+    await page.evaluate(() => {
+      const scope = K8s.connections.defaultScope('prod-eu');
+      Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/pods' }, scope), scope }, { how: 'here' });
+    });
+    await page.waitForSelector('table tbody tr', { timeout: 30_000 });
+    await sleep(2500);
+    for (const group of GROUPS) {
+      const row = page.locator(`[role="tree"] .tree__row[data-node="${group}"]`);
+      if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click();
+      await sleep(300);
+    }
+    await sleep(1500);
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    // The tree scrolls (its groups are longer than the window): its top is what the picture shows, as the plugin's picture does.
+    const toTop = () => page.evaluate(() => { for (let element = document.querySelector('[role="tree"]'); element !== null; element = element.parentElement) element.scrollTop = 0; });
+    await toTop();
+    await sleep(300);
+    const file = path.join(shots, `mock-sidebar-webkit-${viewport.name}.png`);
+    await page.screenshot({ path: file });
+    // every row at once: the same window, tall enough for the tree
+    await page.setViewportSize({ width: viewport.width, height: 1400 });
+    await sleep(1200);
+    await toTop();
+    await page.screenshot({ path: path.join(shots, `mock-sidebar-allrows-webkit-${viewport.width}x1400.png`) });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await sleep(800);
+    data[viewport.name] = await page.evaluate(() => {
+      const r2 = (value) => Math.round(value * 100) / 100;
+      const rect = (element) => { if (!element) return null; const box = element.getBoundingClientRect(); return [r2(box.x), r2(box.y), r2(box.width), r2(box.height)]; };
+      const norm = (text) => (text ?? '').replace(/\s+/g, ' ').trim();
+      const tree = document.querySelector('[role="tree"]');
+      const rows = [...tree.querySelectorAll('.tree__row')].map((row) => {
+        const count = row.querySelector('.tree__count');
+        const style = count === null ? null : getComputedStyle(count);
+        return { label: norm(row.getAttribute('aria-label') ?? row.textContent), level: Number(row.getAttribute('aria-level')), expanded: row.getAttribute('aria-expanded'), row: rect(row), count: count === null ? null : norm(count.textContent), countRect: rect(count), digitsInsideRow: count === null ? null : r2(row.getBoundingClientRect().right - count.getBoundingClientRect().right), style: style === null ? null : { fontSize: style.fontSize, lineHeight: style.lineHeight, color: style.color, fontVariantNumeric: style.fontVariantNumeric, textAlign: style.textAlign } };
+      });
+      return { treeRect: rect(tree), rowHeight: rows[0]?.row?.[3], rows: rows.length, withCount: rows.filter((row) => row.count !== null).length, rowsData: rows, theme: document.documentElement.getAttribute('data-theme') ?? document.documentElement.className };
+    });
+    const sample = data[viewport.name].rowsData.filter((row) => row.count !== null).slice(0, 3);
+    console.log(`MOCK ${viewport.name}: ${data[viewport.name].rows} rows, ${data[viewport.name].withCount} with a count, row height ${data[viewport.name].rowHeight} px, tree ${JSON.stringify(data[viewport.name].treeRect)}, first counts ${sample.map((row) => `${row.label} ${row.count} (digits ${row.digitsInsideRow} px inside the row, ${row.style?.fontSize} ${row.style?.fontVariantNumeric})`).join('; ')}`);
+    await page.close();
+  }
+  await writeFile(path.join(out, 'mock-sidebar.json'), JSON.stringify(data, null, 2));
+} finally {
+  await browser?.close().catch(() => undefined);
+  server.kill('SIGTERM');
+  for (let i = 0; i < 25 && !exited; i += 1) await sleep(200);
+  if (!exited) server.kill('SIGKILL');
+}

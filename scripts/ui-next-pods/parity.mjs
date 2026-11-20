@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
+import { compareCounts, countLines } from './counts.mjs';
 import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
 import { compareLogs, expectedLogs, LOGS_JOB } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
@@ -156,6 +157,60 @@ export async function checkParity({ browser, baseURL, kubeconfig, timeoutMs = 30
 // The Pod detail page, opened the way a person opens it: the click on the Pod's name in the Pods list (the plugin's list draws the name as a link to the detail page).
 // The Pod is read with `kubectl get pod -o json`; the page's header title and its Details rows (Node, Pod IP, Host IP, QoS class) must print what kubectl says.
 // Polls until the page agrees or the deadline, then throws ParityError('DETAIL_MISMATCH') with the last problems.
+// The sidebar's counts (Q2, counts.mjs): the Pods list is the page on screen, so the Workloads group is open and its kinds are on screen with the two entries of the top level. Each row is named by its
+// content, the label and then the count the plugin drew: `Pods 50`, `Deployments about 11`, `Jobs 0`. The cluster is read before and after every reading of the sidebar: a kind that changed in between is read again.
+const COUNTED = [
+  { label: 'Nodes', resource: 'nodes', namespaced: false },
+  { label: 'Namespaces', resource: 'namespaces', namespaced: false },
+  { label: 'Pods', resource: 'pods', namespaced: true },
+  { label: 'Deployments', resource: 'deployments', namespaced: true },
+  { label: 'StatefulSets', resource: 'statefulsets', namespaced: true },
+  { label: 'DaemonSets', resource: 'daemonsets', namespaced: true },
+  { label: 'ReplicaSets', resource: 'replicasets', namespaced: true },
+  { label: 'Jobs', resource: 'jobs', namespaced: true },
+  { label: 'CronJobs', resource: 'cronjobs', namespaced: true },
+];
+
+async function oracleCounts(kubeconfig) {
+  const counts = await Promise.all(COUNTED.map(async ({ resource, namespaced }) => countLines(await kubectl(kubeconfig, ['get', resource, ...(namespaced ? ['-A'] : []), '--no-headers']))));
+  return Object.fromEntries(COUNTED.map(({ label }, index) => [label, counts[index]]));
+}
+
+// The sidebar's rows as a screen reader names them: the label, then what the count says (an estimate is drawn `~11` and named `about 11`: the word is a text that is not drawn, after the drawn tilde).
+async function sidebarRows(page) {
+  return page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem').evaluateAll((rows) =>
+    rows.map((row) => {
+      const slot = row.querySelector('[data-shell-part="count"]');
+      const said = slot === null ? '' : (slot.querySelector('[aria-hidden="true"]')?.nextElementSibling?.textContent ?? slot.textContent ?? '');
+      return `${row.children[1]?.textContent?.trim() ?? ''} ${said.trim()}`.trim();
+    }),
+  );
+}
+
+// Throws ParityError('COUNT_MISMATCH') when the sidebar does not agree with kubectl before the deadline.
+export async function checkCounts({ browser, baseURL, kubeconfig, timeoutMs = 45_000 }) {
+  const page = await openPods(browser, baseURL);
+  try {
+    const deadline = Date.now() + timeoutMs;
+    let rows = [];
+    let expected = {};
+    let problems = ['the sidebar is not on screen'];
+    do {
+      await page.waitForTimeout(250);
+      const before = await oracleCounts(kubeconfig);
+      rows = await sidebarRows(page);
+      expected = await oracleCounts(kubeconfig);
+      problems = JSON.stringify(before) !== JSON.stringify(expected) ? ['the cluster changed while the sidebar was read'] : compareCounts({ rows, expected, open: 'Pods' });
+    } while (problems.length > 0 && Date.now() < deadline);
+    if (problems.length > 0) {
+      throw new ParityError('COUNT_MISMATCH', problems.join('; '), { problems, rows, expected });
+    }
+    return { rows, expected };
+  } finally {
+    await page.close();
+  }
+}
+
 export async function checkDetail({ browser, baseURL, kubeconfig, pod = DETAIL_POD, timeoutMs = 30_000 }) {
   const oracle = async () => expectedDetail(JSON.parse(await kubectl(kubeconfig, ['get', 'pod', pod.name, '-n', pod.namespace, '-o', 'json'])));
   const page = await openPods(browser, baseURL);
