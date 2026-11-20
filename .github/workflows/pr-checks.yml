@@ -85,6 +85,8 @@ jobs:
     defaults:
       run:
         shell: bash
+    outputs:
+      c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner
       # as the container user after checkout's temporary HOME goes away.
@@ -164,6 +166,22 @@ jobs:
 
       - name: Test development control (devcontrol tag)
         run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      # TEMPORARY, proof only (N24 U1, never merged): the old path of the C02 corpus (the steps as they were in this job), under another artifact name, to compare it with the new job's file.
+      - name: Generate fresh C02 error transport corpus
+        id: c02-corpus
+        run: |
+          CORPUS_NAME="c02-error-corpus-gochecks-${GITHUB_RUN_ATTEMPT}"
+          export C02_ERROR_CORPUS="$RUNNER_TEMP/${CORPUS_NAME}.json"
+          task check:c02-corpus GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+          printf 'corpus_name=%s\n' "$CORPUS_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload C02 error transport corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.c02-corpus.outputs.corpus_name }}
+          path: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
+          if-no-files-found: error
 
   # Go lint is its own job with no `needs`: it starts with the other jobs and a lint failure shows as soon as the lint has run, not after the build, the vet and the tests.
   # The step is `continue-on-error` as it was inside Go checks: the lint reports and does not block yet. To make it block, delete the `continue-on-error: true` line of the Lint step below.
@@ -594,3 +612,38 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           jq -r 'to_entries[] | select(.value.result != "success") | "::error::\(.key) finished as \(.value.result)"' <<< "$NEEDS"
           jq -e 'length > 0 and all(.[]; .result == "success")' <<< "$NEEDS" > /dev/null
+
+  # TEMPORARY, proof only (N24 U1, never merged): the corpus of the old path (Go checks) against the corpus of the new path (C02 error transport corpus job), from the same run.
+  c02-compare:
+    name: C02 corpus, old path against new path (proof only)
+    needs: [go-checks, c02-corpus]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.go-checks.outputs.c02_corpus_name }}
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.c02-corpus.outputs.c02_corpus_name }}
+          path: new
+      - name: Compare the two corpus files
+        run: |
+          ls -l old new
+          echo "--- sizes"
+          wc -c old/*.json new/*.json
+          echo "--- raw sha256"
+          sha256sum old/*.json new/*.json
+          if cmp old/*.json new/*.json; then echo "RAW BYTES EQUAL"; else echo "RAW BYTES DIFFER (each error carries a random request id)"; fi
+          uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+          echo "--- request ids"
+          grep -o -E "$uuid" old/*.json | head -3
+          grep -o -E "$uuid" new/*.json | head -3
+          sed -E "s/$uuid/<uuid>/g" old/*.json > old.normalised
+          sed -E "s/$uuid/<uuid>/g" new/*.json > new.normalised
+          echo "--- normalised sha256 (request ids replaced by <uuid>)"
+          sha256sum old.normalised new.normalised
+          echo "request ids replaced: old $(grep -o '<uuid>' old.normalised | wc -l), new $(grep -o '<uuid>' new.normalised | wc -l)"
+          cmp old.normalised new.normalised
+          echo "NORMALISED BYTES EQUAL"
