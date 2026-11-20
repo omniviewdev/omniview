@@ -313,6 +313,9 @@ jobs:
       - name: Check Wails Call settlement ownership
         run: node --test scripts/wails-call.test.mjs
 
+      - name: Check the vitest failure summary
+        run: node --test scripts/vitest-failures.test.mjs
+
       - name: Build
         run: task check:ui-build
 
@@ -328,8 +331,10 @@ jobs:
       - name: Typecheck
         run: task check:ui-typecheck
 
+      # The JSON report goes to the runner's temp directory (outside tracked paths) beside the default reporter; the exit code stays vitest's.
+      # The last step of the job names what failed in the job summary.
       - name: Component tests
-        run: pnpm test
+        run: pnpm test --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-component.json"
 
       # The kit's build, typecheck and stylelint already ran above (task check:ui-build, check:ui-typecheck, check:ui-lint).
       - name: Kit contracts (generated tokens, tests, API report)
@@ -344,12 +349,16 @@ jobs:
         run: pnpm --filter @omniviewdev/runtime run api:check
 
       - name: Age clock DST regressions
-        run: pnpm exec vitest run ui/utils/ageClock.test.tsx
+        run: pnpm exec vitest run ui/utils/ageClock.test.tsx --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-ageclock.json"
         env:
           TZ: America/New_York
 
       - name: Runtime contract regressions
         working-directory: packages/omniviewdev-runtime
-        run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner
+        run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-runtime.json"
         env:
           C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json
+
+      - name: Name the failed vitest tests in the job summary
+        if: always()
+        run: node scripts/vitest-failures.mjs "Component tests=$RUNNER_TEMP/vitest-component.json" "Age clock=$RUNNER_TEMP/vitest-ageclock.json" "Runtime contract=$RUNNER_TEMP/vitest-runtime.json"
