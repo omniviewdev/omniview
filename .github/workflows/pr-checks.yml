@@ -17,10 +17,13 @@ env:
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
 
+# Every job has a timeout of about twice its measured p90 (N24, docs/ui-next/status/N24-U1.md) and never under 5 minutes, except the aggregating `UI checks`:
+# a stalled download ends a job in minutes, not after GitHub's default of 6 hours.
 jobs:
   release-packaging-checks:
     name: Release packaging contracts
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,6 +39,7 @@ jobs:
   windows-connection-profiles:
     name: Windows connection profiles
     runs-on: windows-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v7
@@ -71,6 +75,7 @@ jobs:
   go-checks:
     name: Go checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
       options: --init
@@ -80,8 +85,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    outputs:
-      c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner
       # as the container user after checkout's temporary HOME goes away.
@@ -136,6 +139,13 @@ jobs:
       - name: Verify effective Task Go cache
         run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
+      # The format check needs only Go and Task: it runs before the build, the vet and the tests, so a misformatted file fails in seconds, not after four minutes.
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Format check
+        run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
       - name: Build
         run: task check:go-build GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
@@ -155,26 +165,34 @@ jobs:
       - name: Test development control (devcontrol tag)
         run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-      - name: Generate fresh C02 error transport corpus
-        id: c02-corpus
-        run: |
-          CORPUS_NAME="c02-error-corpus-${GITHUB_RUN_ATTEMPT}"
-          export C02_ERROR_CORPUS="$RUNNER_TEMP/${CORPUS_NAME}.json"
-          task check:c02-corpus GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
-          printf 'corpus_name=%s\n' "$CORPUS_NAME" >> "$GITHUB_OUTPUT"
+  # Go lint is its own job with no `needs`: it starts with the other jobs and a lint failure shows as soon as the lint has run, not after the build, the vet and the tests.
+  # The step is `continue-on-error` as it was inside Go checks: the lint reports and does not block yet. To make it block, delete the `continue-on-error: true` line of the Lint step below.
+  go-lint:
+    name: Go lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner
+      # as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
 
-      - name: Upload C02 error transport corpus
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v7
         with:
-          name: ${{ steps.c02-corpus.outputs.corpus_name }}
-          path: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
-          if-no-files-found: error
-
-      - name: Install goimports
-        run: go install golang.org/x/tools/cmd/goimports@latest
-
-      - name: Format check
-        run: task check:fmt-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
 
       # Lint runs in a detached worktree on the committed go.mod/go.sum graph.
       - name: Prepare isolated checkout for lint
@@ -211,6 +229,7 @@ jobs:
   bindings-check:
     name: Bindings freshness
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
       options: --init
@@ -262,10 +281,238 @@ jobs:
       - name: Check native Wails capability contracts
         run: GOWORK=off GOFLAGS= node --test scripts/wails-tool.test.mjs
 
-  ui-checks:
-    name: UI checks
+  # The UI checks are five jobs that run side by side, and `UI checks`, the last job of this file, which is green only when every one of them succeeded (a new UI job must be added to its `needs`).
+  # They were one job that waited for Go checks (`needs: go-checks`) only to receive the C02 error transport corpus. This job generates it by itself, in the same image with the same
+  # task and the same artifact name; the jobs that read it take the name from this job's output. The UI jobs do not share a workspace, so each one repeats the setup block. A new step goes into the job that has what it needs.
+  c02-corpus:
+    name: C02 error transport corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
+    steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner
+      # as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Select restored Go cache for Task
+        id: go-cache
+        run: |
+          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
+          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify effective Task Go cache
+        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      - name: Generate fresh C02 error transport corpus
+        id: c02-corpus
+        run: |
+          CORPUS_NAME="c02-error-corpus-${GITHUB_RUN_ATTEMPT}"
+          export C02_ERROR_CORPUS="$RUNNER_TEMP/${CORPUS_NAME}.json"
+          task check:c02-corpus GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+          printf 'corpus_name=%s\n' "$CORPUS_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload C02 error transport corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.c02-corpus.outputs.corpus_name }}
+          path: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
+          if-no-files-found: error
+
+  # The frontend build and the guards that read its output.
+  ui-build:
+    name: UI build
     runs-on: ubuntu-latest
-    needs: go-checks
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
+
+      # Needs only the installed dependencies, so it runs before the build.
+      - name: Check React compiler source admission
+        run: node --test scripts/react-compiler.test.mjs
+
+      - name: Build
+        run: task check:ui-build
+
+      - name: Check each frontend flavour ships only its own tree
+        run: node --test scripts/ui-flavour.test.mjs
+
+  # The static checks, the kit's contracts and the runtime's API report. All of them read the built workspace packages.
+  ui-lint:
+    name: UI lint and kit contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
+
+      # The typed lint, the typecheck and the API reports resolve the workspace packages through their built output (task check:ui-build runs this step inside the UI build job).
+      - name: Build the workspace packages
+        run: task packages
+
+      - name: Typecheck
+        run: task check:ui-typecheck
+
+      - name: Lint
+        run: task check:ui-lint
+
+      # The kit's build, typecheck and stylelint already ran above (task packages, task check:ui-typecheck, task check:ui-lint).
+      - name: Kit contracts (generated tokens, tests, API report)
+        run: |
+          pnpm --filter @omniviewdev/kit run generate:check
+          pnpm --filter @omniviewdev/kit run test
+          pnpm --filter @omniviewdev/kit run api:check
+
+      # The runtime's curated entry for new-UI plugins (`@omniviewdev/runtime/ui/v1`). Its build (task packages) already proved that nothing of the previous UI library
+      # is reachable from it in source, declarations and scripts (packages/omniviewdev-runtime/scripts/check-ui-v1.ts); this fails when its API report is stale.
+      - name: Runtime curated entry (API report)
+        run: pnpm --filter @omniviewdev/runtime run api:check
+
+  # The root vitest run. The kit has to be built: ui-next imports its output.
+  ui-component-tests:
+    name: UI component tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
+
+      - name: Build the workspace packages
+        run: task packages
+
+      # The JSON reports go to the runner's temp directory (outside tracked paths) beside the default reporter; the exit code stays vitest's.
+      # The last step of the job names what failed in the job summary. The one-file run is the cheap one, so it goes first.
+      - name: Age clock DST regressions
+        run: pnpm exec vitest run ui/utils/ageClock.test.tsx --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-ageclock.json"
+        env:
+          TZ: America/New_York
+
+      - name: Component tests
+        run: pnpm test --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-component.json"
+
+      - name: Name the failed vitest tests in the job summary
+        if: always()
+        run: node scripts/vitest-failures.mjs "Component tests=$RUNNER_TEMP/vitest-component.json" "Age clock=$RUNNER_TEMP/vitest-ageclock.json"
+
+  # The checks that need the installed dependencies only (no built workspace package) and, for the transport check and the runtime's tests, the C02 corpus.
+  ui-runtime-contract:
+    name: UI runtime contract
+    needs: c02-corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -302,13 +549,13 @@ jobs:
       - name: Download producer C02 error transport corpus
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.go-checks.outputs.c02_corpus_name }}
+          name: ${{ needs.c02-corpus.outputs.c02_corpus_name }}
           path: ${{ runner.temp }}
 
       - name: Check actual C02 runtime error transport
         run: task check:c02-runtime
         env:
-          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.c02-corpus.outputs.c02_corpus_name }}.json
 
       - name: Check Wails Call settlement ownership
         run: node --test scripts/wails-call.test.mjs
@@ -316,49 +563,34 @@ jobs:
       - name: Check the vitest failure summary
         run: node --test scripts/vitest-failures.test.mjs
 
-      - name: Build
-        run: task check:ui-build
-
-      - name: Check React compiler source admission
-        run: node --test scripts/react-compiler.test.mjs
-
-      - name: Check each frontend flavour ships only its own tree
-        run: node --test scripts/ui-flavour.test.mjs
-
-      - name: Lint
-        run: task check:ui-lint
-
-      - name: Typecheck
-        run: task check:ui-typecheck
-
       # The JSON report goes to the runner's temp directory (outside tracked paths) beside the default reporter; the exit code stays vitest's.
       # The last step of the job names what failed in the job summary.
-      - name: Component tests
-        run: pnpm test --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-component.json"
-
-      # The kit's build, typecheck and stylelint already ran above (task check:ui-build, check:ui-typecheck, check:ui-lint).
-      - name: Kit contracts (generated tokens, tests, API report)
-        run: |
-          pnpm --filter @omniviewdev/kit run generate:check
-          pnpm --filter @omniviewdev/kit run test
-          pnpm --filter @omniviewdev/kit run api:check
-
-      # The runtime's curated entry for new-UI plugins (`@omniviewdev/runtime/ui/v1`). Its build (task check:ui-build) already proved that nothing of the previous UI library
-      # is reachable from it in source, declarations and scripts (packages/omniviewdev-runtime/scripts/check-ui-v1.ts); this fails when its API report is stale.
-      - name: Runtime curated entry (API report)
-        run: pnpm --filter @omniviewdev/runtime run api:check
-
-      - name: Age clock DST regressions
-        run: pnpm exec vitest run ui/utils/ageClock.test.tsx --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-ageclock.json"
-        env:
-          TZ: America/New_York
-
       - name: Runtime contract regressions
         working-directory: packages/omniviewdev-runtime
         run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-runtime.json"
         env:
-          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.c02-corpus.outputs.c02_corpus_name }}.json
 
       - name: Name the failed vitest tests in the job summary
         if: always()
-        run: node scripts/vitest-failures.mjs "Component tests=$RUNNER_TEMP/vitest-component.json" "Age clock=$RUNNER_TEMP/vitest-ageclock.json" "Runtime contract=$RUNNER_TEMP/vitest-runtime.json"
+        run: node scripts/vitest-failures.mjs "Runtime contract=$RUNNER_TEMP/vitest-runtime.json"
+
+  # Green only when every part above succeeded. A part that failed, timed out (cancelled) or was skipped (because the corpus job failed) fails this job; a cancelled run does not run it. List a new part in `needs`.
+  ui-checks:
+    name: UI checks
+    needs: [c02-corpus, ui-build, ui-lint, ui-component-tests, ui-runtime-contract]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every UI check job to have succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo '| UI check job | result |'
+            echo '|---|---|'
+            jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"' <<< "$NEEDS"
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -r 'to_entries[] | select(.value.result != "success") | "::error::\(.key) finished as \(.value.result)"' <<< "$NEEDS"
+          jq -e 'length > 0 and all(.[]; .result == "success")' <<< "$NEEDS" > /dev/null
