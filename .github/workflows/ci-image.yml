@@ -27,7 +27,7 @@ name: Linux CI Image
 
 on:
   pull_request:
-    branches: [main]
+    branches: ['**']
     paths:
       - .github/ci/**
       - .github/workflows/**
