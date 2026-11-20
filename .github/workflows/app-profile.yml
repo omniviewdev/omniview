@@ -133,7 +133,16 @@ jobs:
         run: task packages
 
       - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          # A hung browser download once held this step for 29 minutes: bound each attempt, retry once.
+          for attempt in 1 2; do
+            if timeout --kill-after=15 300 pnpm exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright browser install attempt $attempt failed or timed out after 300 s"
+          done
+          echo "::error::Playwright browser install failed twice"
+          exit 1
 
       - name: Prove native pnpm source composition
         env:
