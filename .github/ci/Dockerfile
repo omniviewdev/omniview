@@ -150,3 +150,5 @@ LABEL org.opencontainers.image.source="https://github.com/omniviewdev/omniview" 
 
 # GitHub container jobs need root for workspace mounts and tool-cache setup.
 USER root
+
+# proof: an edited Dockerfile is a new image, so the lock is behind and the image is built
