@@ -162,26 +162,32 @@ jobs:
       # plugin counts of its feed (the registry and the view listen while the session is on screen, only the registry while another tool is shown, none once the tab is closed), and what the 10,000 lines a second session costs: at most one
       # commit a frame (and at least one) with the panel open (React's development build), and with the panel closed or another tool shown no commit, no frame requested, no timer started, no DOM mutation and (Chromium) no layout or
       # style recalculation, WHILE THE FEED WENT ON (the fixture counts the lines it made: none was read, each is held by the stream or dropped past its bound of 100,000), and back on the Logs tool the view shows newer lines than it
-      # had when it was hidden, with every line the feed made since accounted for, at 1440 x 900 and 1280 x 800. It builds its own fixtures, so it does not read PROBE_DIST.
+      # had when it was hidden, with every line the feed made since accounted for, at 1440 x 900 and 1280 x 800. The source of a line (L2): a session that follows two sources has a Source column whose cell on every row names the source
+      # the feed gave the line (its label, its hue, the mock's 168 px and chip), one that follows one has none, and a column that appears while a session is open moves no row, scrolls nothing, measures nothing and (Chromium) lays the
+      # page out once, following the end and scrolled back. It builds its own fixtures, so it does not read PROBE_DIST.
       - name: Probe the Logs tool in a real engine
         run: REPORT="$RUNNER_TEMP/logs-probe.json" node ui-next/shell/probes/logs-probe.mjs
 
-      # The negative control of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of. The probe must fail its check that the feed went on
-      # (Chromium at 1440 x 900, the hidden section only), and the step passes only when it did.
-      - name: Probe that the logs probe sees a feed that stopped
-        run: NEGATIVE_CONTROL=feed-stopped node ui-next/shell/probes/logs-probe.mjs
+      # The negative controls of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other source's name; the list is
+      # scrolled 48 px when the column appears. The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
+      - name: Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved
+        run: |
+          for control in feed-stopped source-label column-moves; do
+            NEGATIVE_CONTROL="$control" node ui-next/shell/probes/logs-probe.mjs
+          done
 
       # The log view (P1b-2): the kit's LogView staged at the size of the mock's Logs tool against the pinned mock reference (packages/kit/probes/mock-log.json, measured from the mock by
       # mock-log-measure.mjs): the regions, the header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event
-      # as plain text, and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800. What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.
+      # as plain text, the Source column of a log that follows several sources (the mock's own measurement of it, and the tooltip a cut name shows on a real hover), and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800.
+      # What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.
       - name: Probe the log view against the pinned mock reference
         run: DIST="$PROBE_DIST" REPORT="$RUNNER_TEMP/log-probe.json" node packages/kit/probes/log-probe.mjs
 
       # The negative controls of that probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
-      # height, the copy event, the ArrowDown key, an unnamed button) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
+      # height, the copy event, the ArrowDown key, an unnamed button, a name that takes no pointer) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
       - name: Probe that the log probe sees a log view that is wrong
         run: |
-          for control in row-height time-column filter-shift strip-height copy keys axe; do
+          for control in row-height time-column filter-shift strip-height copy keys axe source-tip; do
             DIST="$PROBE_DIST" NEGATIVE_CONTROL="$control" node packages/kit/probes/log-probe.mjs
           done
 

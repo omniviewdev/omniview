@@ -1,7 +1,7 @@
 // The examples of the log view as the parts page meets them. The page mounts every example in one commit, and ExampleStage mounts what an example holds only when it comes near
 // the screen: the feed an example reads from, and what it does to the feed, must start with the view and not with the page, or what an example SHOWS depends on how long it
 // waited offscreen (a pause that came before the view read anything, a gap reported before the first lines were read, a 20,000-line fixture nobody looked at).
-import { act, render, type RenderResult } from '@testing-library/react';
+import { act, render, within, type RenderResult } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as examples from './LogView.examples';
 import * as parity from './LogView.parity.examples';
@@ -139,6 +139,25 @@ describe('what an example shows does not depend on how long it waited offscreen'
   });
 });
 
+describe('the Sources example', () => {
+  it('mounts nothing until it comes near the screen, and then shows a Source column for the three sources it follows: their names as text, a hue each in the series\' order', () => {
+    const view = render(<examples.Sources />);
+    wait(2000);
+    expect(view.container.querySelector('[role="grid"]')).toBeNull();
+    scrollToIt();
+    wait(1000);
+    const grid = view.getByRole('grid');
+    expect(within(grid).getAllByRole('columnheader').map((head) => head.textContent)).toEqual(['Time', 'Level', 'Source', 'Message']);
+    // The source cell is the third of a row; the text cell holds hues of its own, the ANSI spans.
+    const chips = [...grid.querySelectorAll('[role="row"][data-n] > [role="gridcell"]:nth-child(3) [data-ov-hue]')];
+    const names = (hue: string) => new Set(chips.filter((chip) => chip.getAttribute('data-ov-hue') === hue).map((chip) => chip.textContent));
+    expect(names('blue')).toEqual(new Set(['app']));
+    expect(names('green')).toEqual(new Set(['sidecar']));
+    // The third has no label: its id is its name, whole for a reader of the screen, and cut from its start on screen.
+    expect(names('amber')).toEqual(new Set(['orders-7d8c6f49b-f8q4m/init-migrations']));
+  });
+});
+
 describe('the fixtures of the log parity probe', () => {
   // packages/kit/probes/log-probe.mjs stages these three at the size of the mock's Logs tool and compares them with the mock's own measurement of the same lines.
   it('mount nothing until they come near the screen, as every example does, and then hold the 90, 110 and 100 lines of the mock\'s three scenarios', () => {
@@ -167,5 +186,18 @@ describe('the fixtures of the log parity probe', () => {
     expect(last?.getAttribute('data-ov-level')).toBe('info');
     expect(rows.at(-2)?.getAttribute('data-ov-level')).toBe('debug');
     expect(rows.at(-3)?.querySelector('[role="gridcell"]:last-child')?.textContent).toBe('request 87 served in 79 ms');
+  });
+
+  it('has a Sources fixture: the list scenario\'s 90 lines written by three sources in turn, so the Source column shows (the probe stages it at the size of the mock\'s tool)', () => {
+    const view = render(<parity.Sources />);
+    scrollToIt();
+    wait(1000);
+    expect(view.container.querySelector('[role="grid"]')?.getAttribute('aria-rowcount')).toBe('91');
+    expect(within(view.getByRole('grid')).getAllByRole('columnheader').map((head) => head.textContent)).toEqual(['Time', 'Level', 'Source', 'Message']);
+    const rows = [...view.container.querySelectorAll('[role="row"][data-n]')];
+    // Line n is written by source (n - 1) modulo 3, and the lines are the list scenario's own: the last is `worker 4 reconciled 89 objects`.
+    const names = ['app', 'sidecar', 'orders-7d8c6f49b-f8q4m/init-migrations'];
+    expect(rows.map((row) => row.querySelector('[role="gridcell"]:nth-child(3)')?.textContent)).toEqual(rows.map((row) => names[(Number(row.getAttribute('data-n')) - 1) % 3]));
+    expect(rows.at(-1)?.querySelector('[role="gridcell"]:last-child')?.textContent).toBe('worker 4 reconciled 89 objects');
   });
 });

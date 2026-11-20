@@ -34,14 +34,60 @@ afterEach(() => {
 });
 
 describe('the fixture\'s Logs sessions', () => {
-  it('are four targets of one item: an id and a title of their own, the item\'s group as the scope, and the item as the resource a card links to', () => {
+  it('are six targets of one item: an id and a title of their own, the item\'s group as the scope, and the item as the resource a card links to', () => {
     const targets = logTargetsOf(ITEM);
-    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit']);
-    expect(new Set(targets.map((target) => target.id)).size).toBe(4);
+    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late']);
+    expect(new Set(targets.map((target) => target.id)).size).toBe(6);
     for (const target of targets) {
       expect(target.scope).toBe('north-yard');
       expect(target.resource).toMatchObject({ label: 'Item orders-api', kind: 'Item', route: { page: 'item', params: { name: 'orders-api', group: 'north-yard' } } });
     }
+  });
+
+  it('has one session that follows two sources: it lists them with their labels and its lines take them in turn; the others follow one and list none', () => {
+    const targets = logTargetsOf(ITEM);
+    const pair = targets[4]?.open();
+    expect(pair?.getSnapshot().sources).toEqual([{ id: 'pair/app', label: 'app' }, { id: 'pair/worker', label: 'worker' }]);
+    vi.advanceTimersByTime(500);
+    const lines = pair?.read(100).lines ?? [];
+    expect(lines.length).toBeGreaterThan(4);
+    expect(lines.map((line) => line.source)).toEqual(lines.map((line) => (line.seq % 2 === 1 ? 'pair/app' : 'pair/worker')));
+    const single = targets[0]?.open();
+    expect(single?.getSnapshot().sources).toBeUndefined();
+    void pair?.close();
+    void single?.close();
+  });
+
+  it('has one session whose second source speaks later (the log\'s Source column appears while it is open): one source is listed at first, and `speak()` lists a second and writes its first line, once', () => {
+    const second = 'late/orders-7d8c6f49b-f8q4m/init-migrations';
+    const late = logTargetsOf(ITEM)[5]?.open();
+    expect(late?.getSnapshot().sources).toEqual([{ id: 'late/app' }]);
+    vi.advanceTimersByTime(100);
+    const before = late?.read(1_000).lines ?? [];
+    expect(before.length).toBeGreaterThan(10);
+    expect(new Set(before.map((line) => line.source))).toEqual(new Set(['late/app']));
+
+    hooks().speak();
+    expect(late?.getSnapshot().sources).toEqual([{ id: 'late/app' }, { id: second }]);
+    const spoke = late?.read(1_000).lines ?? [];
+    expect(spoke.filter((line) => line.source === second)).toHaveLength(1);
+    // Once: it has spoken, and a second call lists nothing new and writes nothing.
+    const listed = late?.getSnapshot();
+    hooks().speak();
+    expect(late?.getSnapshot()).toBe(listed);
+    expect((late?.read(1_000).lines ?? []).filter((line) => line.source === second)).toHaveLength(0);
+    void late?.close();
+  });
+
+  it('does not speak for a session that was closed, and does nothing when no session has a second source to give', () => {
+    const targets = logTargetsOf(ITEM);
+    const late = targets[5]?.open();
+    const app = targets[0]?.open();
+    void late?.close();
+    hooks().speak();
+    expect(late?.getSnapshot().sources).toEqual([{ id: 'late/app' }]);
+    expect(app?.getSnapshot().sources).toBeUndefined();
+    void app?.close();
   });
 
   it('start nothing until the host opens them, and count what a check reads: opened, closed, and the listeners on their feeds now', () => {
@@ -108,8 +154,8 @@ describe('the fixture\'s Logs sessions', () => {
     }
 
     expect(vi.getTimerCount()).toBe(0);
-    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(['ended', 'ended', 'ended', 'ended']);
-    expect(counters()).toMatchObject({ opened: 4, closed: 4 });
+    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(['ended', 'ended', 'ended', 'ended', 'ended', 'ended']);
+    expect(counters()).toMatchObject({ opened: 6, closed: 6 });
   });
 
   it('keep what happened to a stream that failed or ended on its own: closing it later is no new end', () => {

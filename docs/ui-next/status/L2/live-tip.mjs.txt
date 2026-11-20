@@ -1,0 +1,53 @@
+// Does a tip on an element inside a list that follows a live stream open? (L2, finding L2-03.) A dev tool, kept with a `.txt` suffix so that no tool compiles or lints it: copy it without the suffix beside itself and run it from
+// the repository root (the kit must be built; Playwright's browsers must be installed):
+//
+//   cp docs/ui-next/status/L2/live-tip.mjs.txt docs/ui-next/status/L2/live-tip.mjs && node docs/ui-next/status/L2/live-tip.mjs
+//
+// The parts page's `Streaming` example (20 lines a second, following the end) has `data-ov-tip` put on its column head, which sits inside the scroller as a name's chip does, and the pointer rests on it for 1.8 s: first while
+// the list follows the stream, then after the reader scrolled back (lines go on arriving, the list stands still). The kit's `TooltipHost` closes a tip, and cancels one that is pending, on a scroll of anything that holds
+// its trigger (`controller.ts` `onScroll`), and a list that follows a stream writes its scroll offset as lines arrive.
+//
+// Measured on 2026-11-20 (macOS arm64, 1440 x 900): in both engines the tip does NOT open while the list follows (37 scroll events of the list in 1.8 s) and DOES open once it was scrolled back (0 scroll events).
+import { awaitFonts, launch } from '../../../../packages/kit/probes/probe-lib.mjs';
+import { buildUiNext, serve } from '../../../../packages/kit/probes/serve.mjs';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const dist = buildUiNext();
+const { server, partsUrl } = await serve(dist);
+for (const engine of ['chromium', 'webkit']) {
+  const browser = await launch(engine);
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, locale: 'en-US', timezoneId: 'UTC' });
+  const page = await context.newPage();
+  await page.goto(partsUrl, { waitUntil: 'load' });
+  await awaitFonts(page);
+  const example = '[data-example="LogView/Streaming"]';
+  await page.evaluate((selector) => document.querySelector(selector)?.scrollIntoView({ block: 'center' }), example);
+  await page.waitForSelector(`${example} [role=grid] [data-n]`);
+  await sleep(1500);
+  await page.evaluate((selector) => {
+    document.querySelector(`${selector} [role=columnheader]`).setAttribute('data-ov-tip', 'a tip on the head of a live list');
+    window.__scrolls = 0;
+    document.querySelector(`${selector} [role=grid]`).addEventListener('scroll', () => { window.__scrolls += 1; });
+  }, example);
+  const head = await page.locator(`${example} [role=columnheader]`).first().boundingBox();
+  const probe = async (label) => {
+    await page.mouse.move(0, 0);
+    await sleep(300);
+    await page.evaluate(() => { window.__scrolls = 0; });
+    await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2, { steps: 3 });
+    await sleep(1800);
+    const read = await page.evaluate(() => { const host = document.querySelector('[role=tooltip]'); return { open: host.matches(':popover-open'), text: host.textContent, scrollsOfTheList: window.__scrolls }; });
+    console.log(engine, label, JSON.stringify(read));
+  };
+  await probe('following a live stream (20 lines/s):');
+  // The reader scrolls back: the pin stops.
+  await page.mouse.move(head.x + 40, head.y + 120);
+  await page.mouse.wheel(0, -600);
+  await sleep(800);
+  console.log(engine, 'strip after scrolling back:', ((await page.evaluate((selector) => document.querySelector(`${selector} [aria-label="Session status"]`)?.textContent ?? '', example))).slice(0, 80));
+  await probe('scrolled back (lines still arriving, the list stands still):');
+  await context.close();
+  await browser.close();
+}
+
+server.close();

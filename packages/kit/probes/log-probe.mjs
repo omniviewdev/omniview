@@ -5,11 +5,11 @@
 //
 //   DIST=<dir>                 probe an existing ui-next build instead of building (the page imports the BUILT kit: `pnpm --filter @omniviewdev/kit run build` first)
 //   ENGINES=webkit,chromium    VIEWPORTS=1440x900,1280x800      (defaults: both of each)
-//   ONLY=<regex>               only the sections whose name matches: geometry, find, keys, copy, axe (a pattern that matches none of them stops the run: it cannot read as a pass)
+//   ONLY=<regex>               only the sections whose name matches: geometry, find, keys, copy, sources, axe (a pattern that matches none of them stops the run: it cannot read as a pass)
 //   REPORT=<file>              write the full report as JSON
 //   SHOTS=<dir>                a screenshot of the staged log per engine and viewport
 //   AXE=<path>                 axe.min.js (default: the kit's axe-core)
-//   NEGATIVE_CONTROL=<name>    perturb ONE measured value in the page (row-height, time-column, filter-shift, strip-height, copy, keys, axe) and run the one section that must see it, in one
+//   NEGATIVE_CONTROL=<name>    perturb ONE measured value in the page (row-height, time-column, filter-shift, strip-height, copy, keys, axe, source-tip) and run the one section that must see it, in one
 //                              engine at one viewport (chromium 1440x900 unless ENGINES or VIEWPORTS say otherwise), twice: without the perturbation and with it. It is detected, printed as
 //                              "detected" with exit 0 (the panel probe's convention, so a CI loop over the controls passes only when every one is seen), only when the assertion the control
 //                              names is made and agrees without the perturbation and fails with it, and nothing threw; "NOT DETECTED" lists what kept it from being one, with exit 1. Run it
@@ -34,6 +34,9 @@
 //   copy       the `copy` event of the list with real keys, with a line selected (each platform's chord: at least one must deliver): it yields the line as plain text (a clock, a level and
 //              the text) and is prevented, with nothing else on the clipboard; with a range (click, Shift+click) it yields rows 96 to 98 exactly, in order; and text the reader dragged over
 //              inside a row, while a row is selected, is left to the browser (the event is not prevented and carries no text of the log's)
+//   sources    the Source column of a log that follows several sources (L2), on the `Sources` fixture of the parity examples (three sources: `app`, `sidecar` and one whose id is the name, too long for the cell), staged, against the mock's own
+//              measurement of its Source column (MOCK_SOURCE: 168 px, the chip 10 px in, 3 px down and 18 px high, its name 19 px in, an 8 px swatch with a 2 px radius, a name that does not fit fills the cell), the hue of each
+//              source's place in the series, and the kit's tooltip rule on a real hover: the one tooltip of the window shows the whole name of a name that is cut, and nothing for one that fits
 //   axe        axe-core over the staged log in the states above and over every log example of the parts page: no serious or critical violation
 //
 // Rectangles are the mock's, to half a pixel in y and one pixel in x and width (its own runs assert they do not depend on the engine except where KNOWN_DEVIATIONS says so);
@@ -53,7 +56,7 @@ const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 // A negative control runs the one section that must see it, in one engine at one viewport (a CI loop over seven of them stays short), unless ENGINES or VIEWPORTS say otherwise.
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(VIEWPORTS).join(',') : '1440x900')).split(',');
-const SECTIONS = ['geometry', 'find', 'keys', 'copy', 'axe'];
+const SECTIONS = ['geometry', 'find', 'keys', 'copy', 'sources', 'axe'];
 const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
@@ -164,6 +167,7 @@ const CONTROLS = {
   copy: { script: () => document.addEventListener('copy', (event) => event.stopImmediatePropagation(), true), expect: /^copy\.delivered$/, section: 'copy' },
   keys: { script: () => window.addEventListener('keydown', (event) => { if (event.key === 'ArrowDown') event.stopImmediatePropagation(); }, true), expect: /^keys\.ArrowDown\.activeN$/, section: 'keys' },
   axe: { script: () => { const button = document.createElement('button'); button.setAttribute('data-probe-injected', ''); document.querySelector('[data-probe-stage]')?.append(button); }, expect: /^axe\.rest$/, says: 'button-name', section: 'axe' },
+  'source-tip': { css: '[data-probe-stage] [data-ov-clip] { pointer-events: none !important; }', expect: /^sources\.tip\.cut$/, section: 'sources' },
 };
 
 // A selection that names nothing must not read as a pass: an unknown engine, viewport, section or control stops the run before a browser opens.
@@ -959,6 +963,92 @@ async function sectionAxe(page, where, size) {
   report.engines[where].axe = found;
 }
 
+// The mock's Source column, measured in WebKit and Chromium at 1440 x 900 (they agree) by docs/ui-next/status/L2/mock-sources-measure.mjs.txt (mock tree c8e44a44; its output is docs/ui-next/status/L2/mock-sources.json): the cell
+// is 168 px (the head with it); the chip stands 10 px into it (the cell's inset) and 3 px under the row's top, and is 18 px high; its name starts 19 px into it (the 1 px edge, the 6 px inset, the 8 px swatch and the 4 px gap); the
+// swatch is 8 x 8 with a 2 px radius; a name that does not fit fills the cell (a chip 148 px wide).
+const MOCK_SOURCE = { heads: [112, 96, 168], chipX: 10, chipY: 3, chipH: 18, nameX: 19, swatch: '8px', radius: '2px', cutChip: 148 };
+const STAGED = '[data-probe-stage]';
+const CUT_NAME = 'orders-7d8c6f49b-f8q4m/init-migrations';
+
+/** The one tooltip of the window, as text while it is open and null while it is not (the tooltip probe reads it the same way). */
+const openTip = (page) => page.evaluate(() => { const host = document.querySelector('[role="tooltip"]'); return host !== null && host.matches(':popover-open') ? host.textContent : null; });
+
+/** The `Sources` fixture of the parity examples (LogView.parity.examples.tsx: the list scenario's 90 lines written by three sources in turn), staged at the size of the mock's Logs tool, where the column is on screen. */
+async function sectionSources(page, where, size) {
+  await stage(page, 'Sources', size);
+  const read = await page.evaluate((selector) => {
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const grid = document.querySelector(`${selector} [role="grid"]`);
+    const heads = [...grid.querySelectorAll('[role="columnheader"]')];
+    const sources = new Map();
+    for (const row of grid.querySelectorAll('[role="row"][data-n]')) {
+      const cells = row.querySelectorAll('[role="gridcell"]');
+      const chip = cells[2]?.firstElementChild;
+      const name = chip?.firstElementChild;
+      if (cells.length !== 4 || !chip || !name) continue;
+      const full = name.getAttribute('data-ov-full') ?? name.textContent;
+      if (sources.has(full)) continue;
+      const box = row.getBoundingClientRect();
+      const cell = cells[2].getBoundingClientRect();
+      const c = chip.getBoundingClientRect();
+      const swatch = getComputedStyle(chip, '::before');
+      sources.set(full, { full, cut: name.scrollWidth > name.clientWidth, chipX: r2(c.left - cell.left), chipY: r2(c.top - box.top), chipH: r2(c.height), chipW: r2(c.width), nameX: r2(name.getBoundingClientRect().left - c.left), swatch: [swatch.width, swatch.height, swatch.borderTopLeftRadius], hue: chip.getAttribute('data-ov-hue') });
+    }
+
+    return { heads: heads.map((h) => h.textContent), widths: heads.map((h) => r2(h.getBoundingClientRect().width)), colcount: grid.getAttribute('aria-colcount'), sources: [...sources.values()] };
+  }, STAGED);
+  const wantNames = ['app', 'sidecar', CUT_NAME];
+  const number = (id, mock, kit, tol) => ({ id, kind: 'number', mock, kit, tol });
+  const checks = [
+    equal('sources.heads', ['Time', 'Level', 'Source', 'Message'], read.heads),
+    equal('sources.colcount', '4', read.colcount),
+    equal('sources.head.widths', MOCK_SOURCE.heads, read.widths.slice(0, 3)),
+    equal('sources.names', wantNames, read.sources.map((s) => s.full)),
+    equal('sources.hues', ['blue', 'green', 'amber'], read.sources.map((s) => s.hue)),
+    equal('sources.cut', [false, false, true], read.sources.map((s) => s.cut)),
+  ];
+  for (const s of read.sources) {
+    const id = s.full === CUT_NAME ? 'cut' : s.full;
+    checks.push(number(`sources.chip.${id}.x`, MOCK_SOURCE.chipX, s.chipX, 1), number(`sources.chip.${id}.y`, MOCK_SOURCE.chipY, s.chipY, 0.5), number(`sources.chip.${id}.height`, MOCK_SOURCE.chipH, s.chipH, 0.5), number(`sources.chip.${id}.nameX`, MOCK_SOURCE.nameX, s.nameX, 1));
+    checks.push(equal(`sources.swatch.${id}`, [MOCK_SOURCE.swatch, MOCK_SOURCE.swatch, MOCK_SOURCE.radius], s.swatch));
+  }
+
+  const cut = read.sources.find((s) => s.full === CUT_NAME);
+  checks.push(number('sources.cut.chipWidth', MOCK_SOURCE.cutChip, cut?.chipW ?? 0, 1));
+  // A real hover: the pointer is moved to the middle of the name of the row nearest the middle of the list (a row at the top of the list may be under its sticky head), by its box and not by `page.hover`, which would scroll
+  // the list to reveal a name that is half covered, and the scroll of the list that holds a name cancels its tip (the host's rule). The tip opens 500 ms after the pointer arrives.
+  const hover = async (inRow) => {
+    await page.mouse.move(0, 0);
+    await sleep(300);
+    const target = await page.evaluate(([selector, within]) => {
+      const grid = document.querySelector(`${selector} [role="grid"]`);
+      const list = grid.getBoundingClientRect();
+      let best = null;
+      for (const row of grid.querySelectorAll('[role="row"][data-n]')) {
+        const element = row.querySelector(within);
+        if (element === null) continue;
+        const box = element.getBoundingClientRect();
+        const distance = Math.abs(box.top + box.height / 2 - (list.top + list.height / 2));
+        if (best === null || distance < best.distance) best = { x: box.left + box.width / 2, y: box.top + box.height / 2, distance };
+      }
+
+      return best;
+    }, [STAGED, inRow]);
+    if (target === null) return `no row with ${inRow}`;
+    await page.mouse.move(target.x, target.y, { steps: 3 });
+    await page.waitForFunction(() => { const host = document.querySelector('[role="tooltip"]'); return host !== null && host.matches(':popover-open'); }, null, { timeout: 2500 }).catch(() => undefined);
+    return openTip(page);
+  };
+  const cutTip = await hover(`[data-ov-full="${CUT_NAME}"]`);
+  const fitTip = await hover('[data-ov-clip]:not([data-ov-full])');
+  await page.mouse.move(0, 0);
+  await sleep(300);
+  checks.push(equal('sources.tip.cut', CUT_NAME, cutTip), equal('sources.tip.fits', null, fitTip));
+  const bad = judge(where, checks);
+  console.log(`${where} sources: ${checks.length} checks, ${bad.length} differ`);
+  report.engines[where].sources = read;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 const dist = buildUiNext();
 const { server, partsUrl } = await serve(dist);
@@ -989,6 +1079,7 @@ async function runAll() {
             ['find', () => sectionFind(page, where, m, size)],
             ['keys', () => sectionKeys(page, where, m, size)],
             ['copy', () => sectionCopy(page, where, m, size)],
+            ['sources', () => sectionSources(page, where, size)],
             ['axe', () => sectionAxe(page, where, size)],
           ]) {
             if (!wanted(name)) continue;

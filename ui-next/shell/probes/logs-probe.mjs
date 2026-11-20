@@ -21,8 +21,17 @@
 //                        and the rate on the strip is the feed's (10,000 a second), not the burst of the catch-up (L1)
 //                told    the user is told of every line that was dropped (L1): the sources go quiet once the view has caught up, and then the lines the feed made are EXACTLY the lines the strip shows plus the
 //                        lines it says were dropped (emitted = shown + told-dropped), and the note on the strip says that the lines the stream dropped (its own count) never reached the view
+//   sources    the source of a line (L2): the fixture's `pair` session follows two sources (`app` and `worker`, listed by the stream, its lines taking them in turn): every mounted row has a Source cell, the name in it is the label the
+//              feed gave the line's source, its hue is the source's place in the series (blue, then green), the column is the mock's 168 px in the head and in the rows, and the chip is the mock's (10 px into the cell, 3 px under
+//              the row's top, 18 px high, its name 19 px in, an 8 px swatch with a 2 px radius: MOCK_SOURCE); the `app` session follows one source: no Source head, three cells in a row, no chip
+//   appears    the column appears (L2): the fixture's `late` session follows one source and hears of a second while it is open (`__fixtureLogs.speak()`), once the feeds were quiet, following the end and scrolled back: the
+//              rows that were drawn do not move (the same y and height, the clock and level cells where they were, the text 168 px on), the list does not scroll (scrolled back: the same scrollTop and the same rows; following:
+//              at the end, on the newest line, which is the second source's, cut with its whole name for its tip), the view measures nothing (no `getBoundingClientRect` of an element of it, no ResizeObserver callback for it) and,
+//              in Chromium, the page lays out at most once
 // NEGATIVE_CONTROL=feed-stopped   the feed goes quiet once the view is hidden (Chromium at 1440 x 900, the `hidden` section only): the probe must fail its check that the feed went on, which a view that
 //                                 costs nothing because its feed is quiet would pass; the exit code is 0 when it did, 1 when it did not
+// NEGATIVE_CONTROL=source-label   the name in every Source cell of the `pair` session is the other source's (the text of the name element only: the chip, its hue, its clip marker and the cell stay; the `sources` section only): the probe must fail its check that each row names the feed's source for its line
+// NEGATIVE_CONTROL=column-moves   the list scrolls 48 px when the column has appeared (scrolled back; the `appears` section only): the probe must fail its check that the list did not scroll
 // Exit code 1 when anything differs.
 import { writeFileSync } from 'node:fs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -31,6 +40,8 @@ import { NATIVE_VIEWPORTS, SAMPLER, buildFixtures, open, serveFixtures, sleep } 
 // The negative control: one perturbation of what the page does after it loaded, which the probe must see. With NEGATIVE_CONTROL the exit code is 0 when it did.
 const PERTURBATIONS = {
   'feed-stopped': { sections: ['hidden'], expected: /^hidden .*: the feed emitted/ },
+  'source-label': { sections: ['sources'], expected: /^sources .*: two sources: .* rows name the wrong source/ },
+  'column-moves': { sections: ['appears'], expected: /^appears .*: the list scrolled/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
@@ -38,7 +49,7 @@ const wants = (section) => CONTROL === '' || PERTURBATIONS[CONTROL].sections.inc
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(NATIVE_VIEWPORTS).join(',') : '1440x900')).split(',');
 const failures = [];
-const report = { fills: {}, shift: {}, keep: {}, listeners: {}, hidden: {}, notes: [] };
+const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 const url = (origin) => `${origin}/shell/probes/host-fixture.html?logs=1&panel=1&inventoryMs=30&loadMs=30&nodesMs=30&dataMs=30`;
 
@@ -200,6 +211,222 @@ async function windowOf(page, cdp, ms) {
   const b = await read();
   const to = await page.evaluate(READ_FEED);
   return { work: Object.fromEntries(Object.keys(a).map((key) => [key, b[key] - a[key]])), from, to };
+}
+
+/** The Source column of the session on screen, read in one task: the heads, the columns the grid says it has and, for each mounted row, its cells, the name and hue in the third, its width, and the chip's place. */
+const READ_SOURCES = () => {
+  const grid = document.querySelector('[data-log-session] [role=grid]');
+  const r2 = (value) => Math.round(value * 100) / 100;
+  const third = (row) => row.querySelectorAll('[role=gridcell]')[2];
+  return {
+    heads: [...grid.querySelectorAll('[role=columnheader]')].map((head) => head.textContent),
+    headWidths: [...grid.querySelectorAll('[role=columnheader]')].map((head) => r2(head.getBoundingClientRect().width)),
+    colcount: grid.getAttribute('aria-colcount'),
+    rows: [...grid.querySelectorAll('[role=row][data-n]')].map((row) => {
+      const cells = row.querySelectorAll('[role=gridcell]').length;
+      const cell = third(row);
+      // With one source the third cell is the text: only a row with four cells has a source cell and a chip.
+      const chip = cells === 4 ? cell?.firstElementChild ?? null : null;
+      const name = chip?.firstElementChild ?? null;
+      const box = row.getBoundingClientRect();
+      const cellBox = cell?.getBoundingClientRect();
+      const chipBox = chip?.getBoundingClientRect();
+      const swatch = chip === null ? null : getComputedStyle(chip, '::before');
+      return {
+        n: Number(row.getAttribute('data-n')),
+        cells,
+        name: cell?.textContent ?? '',
+        hue: cell?.querySelector('[data-ov-hue]')?.getAttribute('data-ov-hue') ?? null,
+        width: r2(cellBox?.width ?? 0),
+        chips: row.querySelectorAll('[data-ov-clip]').length,
+        chip: chipBox === undefined || cellBox === undefined ? null : { x: r2(chipBox.left - cellBox.left), y: r2(chipBox.top - box.top), w: r2(chipBox.width), h: r2(chipBox.height) },
+        nameX: chipBox === undefined || name === null ? null : r2(name.getBoundingClientRect().left - chipBox.left),
+        swatch: swatch === null ? null : { w: swatch.width, h: swatch.height, radius: swatch.borderTopLeftRadius },
+      };
+    }),
+  };
+};
+
+// The mock's Source column, measured in WebKit and Chromium at 1440 x 900 (they agree) by docs/ui-next/status/L2/mock-sources-measure.mjs.txt, mock tree c8e44a44: the cell is 168 px; the chip stands 10 px into it (the cell's
+// inset) and 3 px under the row's top, and is 18 px high; its name starts 19 px into it (the 1 px edge, the 6 px inset, the 8 px swatch and the 4 px gap); the swatch is 8 x 8 with a 2 px radius; a name that does not fit fills
+// the cell (a chip 148 px wide).
+const MOCK_SOURCE = { cell: 168, chipX: 10, chipY: 3, chipH: 18, nameX: 19, swatch: '8px', radius: '2px', chipWidthCut: 148 };
+
+/**
+ * The source of a line (L2), in a page of its own for each session. The fixture's `pair` (4) follows two sources and lists them with their labels; its lines take them in turn, the odd ones the first (`n` is the line's
+ * number while nothing was dropped, and at 20 lines a second nothing is). `app` (0) follows one source.
+ */
+async function sources(browser, engine, viewportName, viewport, origin) {
+  const where = `sources ${engine} ${viewportName}`;
+  const readSession = async (index) => {
+    const { page, context, errors } = await open(browser, url(origin), viewport);
+    await ready(page);
+    await page.evaluate((i) => { window.__logs.open(i); }, index);
+    // The panel's body is short (about 19 rows are mounted at 1440 x 900): the lines the session has are counted by the grid's own row count, as the other sections do.
+    await page.waitForFunction(() => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > 30, null, { timeout: 15000 });
+    await sleep(500);
+    // The negative control: the name in every Source cell is the other source's. Only the text of the name element changes (the chip, its hue, its clip marker and the cell stay), so the check of the label is the only one that can see it.
+    if (CONTROL === 'source-label' && index === 4) await page.evaluate(() => { for (const name of document.querySelectorAll('[data-log-session] [role=grid] [role=row][data-n] [role=gridcell] [data-ov-clip]')) name.textContent = name.textContent === 'app' ? 'worker' : 'app'; });
+    const read = await page.evaluate(READ_SOURCES);
+    for (const error of errors) fail(`errors ${where}`, error);
+    await context.close();
+    return read;
+  };
+  const LABELS = ['app', 'worker'];
+  const HUES = ['blue', 'green'];
+  const two = await readSession(4);
+  const one = await readSession(0);
+  if (JSON.stringify(two.heads) !== JSON.stringify(['Time', 'Level', 'Source', 'Message'])) fail(where, `two sources: the heads are ${JSON.stringify(two.heads)}, wanted Time, Level, Source, Message`);
+  if (two.colcount !== '4') fail(where, `two sources: aria-colcount is ${String(two.colcount)}, wanted 4`);
+  if (Math.abs((two.headWidths[2] ?? 0) - MOCK_SOURCE.cell) > 1) fail(where, `two sources: the Source head is ${String(two.headWidths[2])} px wide, the mock's is ${String(MOCK_SOURCE.cell)}`);
+  if (two.rows.length < 8) fail(where, `two sources: ${String(two.rows.length)} rows mounted, wanted at least 8`);
+  const wanted = (row) => (row.n - 1) % 2;
+  // Each thing a row says about its source is a check of its own, so that a negative control that changes one of them is seen by that check and by no other.
+  const wrongName = two.rows.filter((row) => row.name !== LABELS[wanted(row)]);
+  if (wrongName.length > 0) fail(where, `two sources: ${String(wrongName.length)} of ${String(two.rows.length)} rows name the wrong source (the feed's label for the line's source: app for the odd lines, worker for the even); first: ${JSON.stringify(wrongName[0])}`);
+  const bad = two.rows.filter((row) => row.cells !== 4 || row.hue !== HUES[wanted(row)] || Math.abs(row.width - MOCK_SOURCE.cell) > 1 || row.chips !== 1);
+  if (bad.length > 0) fail(where, `two sources: ${String(bad.length)} of ${String(two.rows.length)} rows have no Source cell of the feed's source (four cells, its hue, 168 px, one chip); first: ${JSON.stringify(bad[0])}`);
+  if (new Set(two.rows.map((row) => row.name)).size !== 2) fail(where, `two sources: the names in the rows are ${JSON.stringify([...new Set(two.rows.map((row) => row.name))])}, wanted both ${JSON.stringify(LABELS)}`);
+  const off = two.rows.filter((row) => row.chip === null || row.swatch === null || Math.abs(row.chip.x - MOCK_SOURCE.chipX) > 1 || Math.abs(row.chip.y - MOCK_SOURCE.chipY) > 0.5 || Math.abs(row.chip.h - MOCK_SOURCE.chipH) > 0.5 || Math.abs((row.nameX ?? 0) - MOCK_SOURCE.nameX) > 1 || row.swatch.w !== MOCK_SOURCE.swatch || row.swatch.h !== MOCK_SOURCE.swatch || row.swatch.radius !== MOCK_SOURCE.radius);
+  if (CONTROL === '' && off.length > 0) fail(where, `two sources: ${String(off.length)} of ${String(two.rows.length)} chips are not the mock's (10 px in, 3 px down, 18 px high, the name 19 px in, an 8 px swatch with a 2 px radius); first: ${JSON.stringify(off[0])}`);
+  if (JSON.stringify(one.heads) !== JSON.stringify(['Time', 'Level', 'Message'])) fail(where, `one source: the heads are ${JSON.stringify(one.heads)}, wanted Time, Level, Message`);
+  if (one.colcount !== '3') fail(where, `one source: aria-colcount is ${String(one.colcount)}, wanted 3`);
+  if (one.rows.length < 8) fail(where, `one source: ${String(one.rows.length)} rows mounted, wanted at least 8`);
+  const extra = one.rows.filter((row) => row.cells !== 3 || row.chips !== 0);
+  if (extra.length > 0) fail(where, `one source: ${String(extra.length)} rows draw more than a clock, a level and a text; first: ${JSON.stringify(extra[0])}`);
+  report.sources[`${engine} ${viewportName}`] = { twoHeads: two.heads, twoHeadWidths: two.headWidths, twoRows: two.rows.length, firstTwoRows: two.rows.slice(0, 2), oneHeads: one.heads, oneRows: one.rows.length };
+}
+
+/**
+ * What the view measures, counted from the page's start (the probe resets it before the window it reads): the `getBoundingClientRect` calls on an element of a log view, and the ResizeObserver callbacks that told a log view
+ * one of its boxes changed. The view reads its row height and its box once when it mounts and when either changes; a column that appears changes neither.
+ */
+const MEASURES = `(() => {
+  const measures = (window.__measures = { observed: 0, rects: 0 });
+  const inView = (element) => element instanceof Element && element.closest('[data-log-session]') !== null;
+  const Observer = window.ResizeObserver;
+  window.ResizeObserver = class extends Observer {
+    constructor(callback) {
+      super((entries, observer) => {
+        if (entries.some((entry) => inView(entry.target))) measures.observed += 1;
+        callback(entries, observer);
+      });
+    }
+  };
+  const rect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+    if (inView(this)) measures.rects += 1;
+    return rect.call(this);
+  };
+})();`;
+
+/** The list of the session on screen, read in one task: its heads, where it is scrolled, whether it follows, and for each mounted row where it is in the content (its y from the top of the rows' block) and where its cells are (x and width from the canvas). */
+const READ_APPEAR = () => {
+  const grid = document.querySelector('[data-log-session] [role=grid]');
+  const r2 = (value) => Math.round(value * 100) / 100;
+  const rows = [...grid.querySelectorAll('[role=row][data-n]')];
+  const canvas = grid.firstElementChild.getBoundingClientRect();
+  // A row sits in the window, which sits in the block as high as all the rows.
+  const block = rows[0]?.parentElement?.parentElement?.getBoundingClientRect();
+  return {
+    heads: [...grid.querySelectorAll('[role=columnheader]')].map((head) => head.textContent),
+    colcount: grid.getAttribute('aria-colcount'),
+    rowcount: Number(grid.getAttribute('aria-rowcount')),
+    scrollTop: grid.scrollTop,
+    scrollHeight: grid.scrollHeight,
+    clientHeight: grid.clientHeight,
+    following: (document.querySelector('[data-log-session] [aria-label="Session status"]')?.textContent ?? '').includes('Following'),
+    rows: rows.map((row) => {
+      const box = row.getBoundingClientRect();
+      const clip = row.querySelector('[data-ov-clip]');
+      return {
+        n: Number(row.getAttribute('data-n')),
+        y: r2(box.top - (block?.top ?? 0)),
+        h: r2(box.height),
+        cells: [...row.querySelectorAll('[role=gridcell]')].map((cell) => { const cellBox = cell.getBoundingClientRect(); return [r2(cellBox.left - canvas.left), r2(cellBox.width)]; }),
+        source: clip?.getAttribute('data-ov-full') ?? clip?.textContent ?? null,
+        cut: clip === null ? null : clip.scrollWidth > clip.clientWidth,
+        chipWidth: clip === null ? null : r2(clip.parentElement.getBoundingClientRect().width),
+      };
+    }),
+  };
+};
+
+/**
+ * The column appears (L2). The fixture's `late` session (5) follows one source and, when `speak()` is called, hears of a second and writes its first line. The feeds are made quiet first and given the time the strip's rate
+ * needs to settle (3 s), so what the page does in the window is the column's own. Read twice: following the end, and scrolled back 150 rows. Chromium counts the page's layouts (CDP); WebKit has no such counter, so the
+ * rest of what is asserted, which both have, is what "one layout, no jump" means in a page: no row moved, the list did not scroll, the view measured nothing.
+ */
+async function appears(browser, engine, viewportName, viewport, origin) {
+  const SECOND = 'late/orders-7d8c6f49b-f8q4m/init-migrations';
+  for (const mode of ['following', 'scrolled back']) {
+    const where = `appears ${engine} ${viewportName} (${mode})`;
+    const { page, context, errors } = await open(browser, url(origin), viewport, { init: MEASURES });
+    const cdp = engine === 'chromium' ? await context.newCDPSession(page) : null;
+    if (cdp !== null) await cdp.send('Performance.enable');
+    const layouts = async () => (cdp === null ? null : (await cdp.send('Performance.getMetrics')).metrics.find((metric) => metric.name === 'LayoutCount')?.value ?? null);
+    await ready(page);
+    await page.evaluate(() => { window.__logs.open(5); });
+    await page.waitForFunction(() => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > 400, null, { timeout: 30000 });
+    if (mode === 'scrolled back') {
+      await page.evaluate(() => { document.querySelector('[data-log-session] [role=grid]').scrollTop = 24 * 150; });
+      await sleep(300);
+    }
+
+    await page.evaluate(() => window.__fixtureLogs.stopSources());
+    await sleep(3800);
+    const before = await page.evaluate(READ_APPEAR);
+    const layoutsBefore = await layouts();
+    await page.evaluate(() => { window.__measures.observed = 0; window.__measures.rects = 0; window.__commitsAt = window.__commits.length; window.__fixtureLogs.speak(); });
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-log-session] [role=columnheader]')].some((head) => head.textContent === 'Source'), null, { polling: 'raf', timeout: 5000 });
+    await sleep(120);
+    const layoutsAfter = await layouts();
+    const counted = await page.evaluate(() => ({ observed: window.__measures.observed, rects: window.__measures.rects, commits: window.__commits.length - window.__commitsAt }));
+    // The negative control: the list is moved when the column has appeared.
+    if (CONTROL === 'column-moves' && mode === 'scrolled back') await page.evaluate(() => { document.querySelector('[data-log-session] [role=grid]').scrollTop += 48; });
+    const after = await page.evaluate(READ_APPEAR);
+
+    const said = JSON.stringify;
+    if (said(before.heads) !== said(['Time', 'Level', 'Message']) || before.colcount !== '3') fail(where, `with one source the heads were ${said(before.heads)} and aria-colcount ${String(before.colcount)}, wanted Time, Level, Message and 3`);
+    if (said(after.heads) !== said(['Time', 'Level', 'Source', 'Message']) || after.colcount !== '4') fail(where, `after the second source spoke the heads are ${said(after.heads)} and aria-colcount ${String(after.colcount)}, wanted Time, Level, Source, Message and 4`);
+    const rowHeight = before.rows[0]?.h ?? 0;
+    const was = new Map(before.rows.map((row) => [row.n, row]));
+    const near = (a, b, by) => Math.abs(a - b) <= by;
+    const moved = [];
+    let kept = 0;
+    for (const row of after.rows) {
+      const old = was.get(row.n);
+      if (old === undefined) continue;
+      kept += 1;
+      // The clock and the level are where they were, the row is where and as high as it was, and the text is one column on.
+      if (!near(row.y, old.y, 0.5) || !near(row.h, old.h, 0.5) || row.cells.length !== 4 || old.cells.length !== 3 || !near(row.cells[0][0], old.cells[0][0], 0.5) || !near(row.cells[0][1], old.cells[0][1], 0.5) || !near(row.cells[1][0], old.cells[1][0], 0.5) || !near(row.cells[1][1], old.cells[1][1], 0.5) || !near(row.cells[3][0], old.cells[2][0] + MOCK_SOURCE.cell, 1)) moved.push(row.n);
+    }
+
+    if (kept < 8) fail(where, `only ${String(kept)} rows were drawn before and after: the check had nothing to compare`);
+    if (moved.length > 0) fail(where, `${String(moved.length)} of ${String(kept)} rows that were drawn moved or changed size when the column appeared (rows ${moved.slice(0, 5).join(', ')}); first: ${said(was.get(moved[0] ?? 0))} then ${said(after.rows.find((row) => row.n === moved[0]))}`);
+    const off = [...before.rows, ...after.rows].filter((row) => !near(row.y, (row.n - 1) * rowHeight, 0.5));
+    if (off.length > 0) fail(where, `${String(off.length)} rows are not at their line's place in the content (y = (n - 1) x ${String(rowHeight)}); first: ${said(off[0])}`);
+    if (mode === 'scrolled back') {
+      if (after.scrollTop !== before.scrollTop) fail(where, `the list scrolled: scrollTop ${String(before.scrollTop)}, then ${String(after.scrollTop)}`);
+      if (after.rows[0]?.n !== before.rows[0]?.n || after.rows.at(-1)?.n !== before.rows.at(-1)?.n) fail(where, `the rows on screen changed: ${String(before.rows[0]?.n)} to ${String(before.rows.at(-1)?.n)}, then ${String(after.rows[0]?.n)} to ${String(after.rows.at(-1)?.n)}`);
+      if (before.following || after.following) fail(where, 'the list was following the end: the scrolled-back case is not what it was meant to be');
+    } else {
+      if (!after.following) fail(where, 'the list stopped following the end when the column appeared');
+      if (!near(after.scrollTop, after.scrollHeight - after.clientHeight, 1)) fail(where, `the list is not at the end: scrollTop ${String(after.scrollTop)} of ${String(after.scrollHeight - after.clientHeight)}`);
+      const last = after.rows.at(-1);
+      if (last === undefined || last.n !== after.rowcount - 1) fail(where, `the last row on screen is line ${String(last?.n)}, the newest line is ${String(after.rowcount - 1)}`);
+      else if (last.source !== SECOND || last.cut !== true || !near(last.chipWidth ?? 0, MOCK_SOURCE.chipWidthCut, 1)) fail(where, `the newest line's source is not the second source cut to the cell (its whole name for the tip): ${said(last)}`);
+    }
+
+    if (counted.observed !== 0) fail(where, `the view was told its box changed ${String(counted.observed)} time(s) when the column appeared, wanted none`);
+    if (counted.rects !== 0) fail(where, `the view measured ${String(counted.rects)} element(s) when the column appeared, wanted none`);
+    const lays = layoutsBefore === null || layoutsAfter === null ? null : layoutsAfter - layoutsBefore;
+    if (lays !== null && lays > 1) fail(where, `the page laid out ${String(lays)} times when the column appeared, wanted at most one`);
+    report.appears[`${engine} ${viewportName} ${mode}`] = { layouts: lays, commits: counted.commits, observed: counted.observed, rects: counted.rects, rowsDrawnBefore: before.rows.length, rowsKept: kept, rowsMoved: moved.length, scrollTop: [before.scrollTop, after.scrollTop], following: [before.following, after.following], rowCount: [before.rowcount, after.rowcount] };
+    if (cdp === null) report.notes.push(`${where}: WebKit has no layout counter: no row moved, the list did not scroll and the view measured nothing is what it checks`);
+    for (const error of errors) fail(`errors ${where}`, error);
+    await context.close();
+  }
 }
 
 async function hidden(browser, engine, viewportName, viewport, origin) {
@@ -372,8 +599,8 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   await context.close();
 }
 
-const production = wants('fills') ? await serveFixtures(buildFixtures('production')) : null;
-const development = await serveFixtures(buildFixtures('development'));
+const production = wants('fills') || wants('sources') ? await serveFixtures(buildFixtures('production')) : null;
+const development = wants('hidden') || wants('appears') ? await serveFixtures(buildFixtures('development')) : null;
 for (const engineName of engineNames) {
   const browser = await launch(engineName);
   for (const viewportName of viewportNames) {
@@ -385,7 +612,9 @@ for (const engineName of engineNames) {
       await listeners(browser, engineName, viewportName, viewport, production.origin);
     }
 
-    await hidden(browser, engineName, viewportName, viewport, development.origin);
+    if (wants('sources')) await sources(browser, engineName, viewportName, viewport, production.origin);
+    if (wants('appears')) await appears(browser, engineName, viewportName, viewport, development.origin);
+    if (wants('hidden')) await hidden(browser, engineName, viewportName, viewport, development.origin);
     console.log(engineName, viewportName, 'done');
   }
 
@@ -393,9 +622,9 @@ for (const engineName of engineNames) {
 }
 
 production?.server.close();
-development.server.close();
+development?.server.close();
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, notes: report.notes }, null, 1));
+console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, notes: report.notes }, null, 1));
 if (CONTROL !== '') {
   const detected = failures.filter((line) => PERTURBATIONS[CONTROL].expected.test(line));
   console.log(`\nwhat the probe saw with the perturbation "${CONTROL}": ${String(failures.length)} differences\n${failures.map((line) => `  ${line}`).join('\n')}`);

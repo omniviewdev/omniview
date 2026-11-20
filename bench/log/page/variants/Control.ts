@@ -3,6 +3,7 @@
 // geometry (a 25 px sticky header, 24 px rows, a block as high as all the rows, the window moved to its first row, the list pinned to the end by writing
 // `scrollTop` after the draw) in plain DOM: no React, no ANSI parse, no level detection, no search, no selection. It fixes what this machine and this
 // engine give a windowed scroller that follows a stream: the floor the kit is measured against.
+// With `sourceColumn` (a feed of more than one source) the control draws the source's name in a cell of its own, 168 px, as plain text: the data the kit's Source column shows, without its chip.
 import type { LogFeed, LogFeedLine } from '../../../../packages/kit/src/log/types';
 import { windowOf } from '../../../../packages/kit/src/log/window';
 import type { Probe } from '../harness';
@@ -31,6 +32,7 @@ const CSS = `
 .c-time{flex:0 0 112px;box-sizing:border-box;padding-inline:12px 8px;color:#9ba0a8;font-variant-numeric:tabular-nums;white-space:nowrap}
 .c-level{flex:0 0 96px;box-sizing:border-box;padding-inline:8px;white-space:nowrap}
 .c-text{flex:1 0 auto;box-sizing:border-box;padding-inline:8px 12px;font:13px/18px ui-monospace,Menlo,monospace;white-space:pre}
+.c-source{flex:0 0 168px;box-sizing:border-box;padding-inline:10px;color:#9ba0a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
 
 const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] => {
@@ -40,7 +42,11 @@ const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 };
 
 /** Mounts the control into `stage`; returns what takes it down. `listHeight` is the height the scroller has (the kit's list gets the stage less its filter row and strip). */
-export function mountControl(stage: HTMLElement, feed: LogFeed, options: { readonly overscan: number; readonly step: number; readonly listHeight: number }): () => void {
+export function mountControl(
+  stage: HTMLElement,
+  feed: LogFeed,
+  options: { readonly overscan: number; readonly step: number; readonly listHeight: number; readonly sourceColumn?: boolean | undefined },
+): () => void {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.append(style);
@@ -50,7 +56,7 @@ export function mountControl(stage: HTMLElement, feed: LogFeed, options: { reado
   scroller.style.height = `${options.listHeight}px`;
   const canvas = element('div', 'c-canvas');
   const head = element('div', 'c-head');
-  for (const label of ['Time', 'Level', 'Message']) {
+  for (const label of options.sourceColumn === true ? ['Time', 'Level', 'Source', 'Message'] : ['Time', 'Level', 'Message']) {
     const cell = document.createElement('span');
     cell.textContent = label;
     head.append(cell);
@@ -86,7 +92,14 @@ export function mountControl(stage: HTMLElement, feed: LogFeed, options: { reado
     level.textContent = line?.level?.toUpperCase() ?? '';
     const text = element('span', 'c-text');
     text.textContent = line?.text ?? '';
-    row.append(time, level, text);
+    if (options.sourceColumn === true) {
+      const source = element('span', 'c-source');
+      source.textContent = line?.source ?? '';
+      row.append(time, level, source, text);
+    } else {
+      row.append(time, level, text);
+    }
+
     return row;
   };
 

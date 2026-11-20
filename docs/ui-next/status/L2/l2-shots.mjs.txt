@@ -1,0 +1,74 @@
+// The screenshots of L2 (the log view's Source column), WebKit, theme void, 1440 x 900: a dev tool, kept with a `.txt` suffix so that no tool compiles or lints it. Copy it without the suffix beside itself and run it
+// from the repository root (the kit must be built: `pnpm --filter @omniviewdev/kit run build`; Playwright's WebKit must be installed):
+//
+//   cp docs/ui-next/status/L2/l2-shots.mjs.txt docs/ui-next/status/L2/l2-shots.mjs && node docs/ui-next/status/L2/l2-shots.mjs
+//   OUT=<dir>   default: ~/Notes/omniview/ui-migration/status/L2-assets
+//
+// What it takes (every file is `L2-<what>-webkit-1440x900.png`):
+//   two-sources        the host fixture's Logs tool on its `pair` session (two sources, `app` and `worker`, listed with labels): the whole window, and the log view alone (`-view`)
+//   one-source         the same on the `app` session (one source): no Source column, nothing extra
+//   late-appeared      the `late` session (one source, then a second whose name is too long for the cell speaks, last): the log view after the column appeared, its newest line the second source's
+//   sources-example    the kit's parts page (the real entry, which mounts the one tooltip of the window): the `Sources` example, the pointer on the name that is cut, and the tooltip it shows
+// The feeds are made quiet before a picture (`__fixtureLogs.stopSources()`) and given 4 s for the strip's rate to settle, so a picture is the same run to run.
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import path from 'node:path';
+import { awaitFonts, launch } from '../../../../packages/kit/probes/probe-lib.mjs';
+import { buildUiNext, serve } from '../../../../packages/kit/probes/serve.mjs';
+import { NATIVE_VIEWPORTS, buildFixtures, open, serveFixtures, sleep } from '../../../../ui-next/shell/probes/harness.mjs';
+
+const OUT = process.env.OUT ?? path.join(homedir(), 'Notes/omniview/ui-migration/status/L2-assets');
+mkdirSync(OUT, { recursive: true });
+const viewport = NATIVE_VIEWPORTS['1440x900'];
+const file = (what) => path.join(OUT, `L2-${what}-webkit-1440x900.png`);
+const browser = await launch('webkit');
+
+const production = await serveFixtures(buildFixtures('production'));
+const url = `${production.origin}/shell/probes/host-fixture.html?logs=1&panel=1&inventoryMs=30&loadMs=30&nodesMs=30&dataMs=30`;
+
+/** Opens the fixture's session `index` and waits for `lines` of them; `then` may do more before the feeds are made quiet (and may make them quiet itself). */
+async function session(what, index, lines, then = async () => undefined) {
+  const { page, context, errors } = await open(browser, url, viewport);
+  await page.waitForFunction(() => window.__logs?.ready() === true && window.__panel !== undefined, null, { timeout: 15000 });
+  await page.evaluate((i) => { window.__logs.open(i); }, index);
+  await page.waitForFunction((n) => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > n, lines, { timeout: 30000 });
+  await then(page);
+  await page.evaluate(() => window.__fixtureLogs.stopSources());
+  await sleep(4000);
+  await page.screenshot({ path: file(what) });
+  await page.screenshot({ path: file(`${what}-view`), clip: await page.locator('[data-log-session]').boundingBox() });
+  console.log(`${what}: ${file(what)}`, errors.length > 0 ? `page errors: ${errors.join(' | ')}` : '');
+  await context.close();
+}
+
+await session('two-sources', 4, 60);
+await session('one-source', 0, 60);
+// The feed makes 200 lines a second, so 450 lines are about 2 s. It is made quiet first and the second source speaks last, so its line is the newest and the cut name is on screen.
+await session('late-appeared', 5, 450, async (page) => {
+  await page.evaluate(() => window.__fixtureLogs.stopSources());
+  await sleep(300);
+  await page.evaluate(() => window.__fixtureLogs.speak());
+  await sleep(600);
+});
+production.server.close();
+
+// The parts page is the real entry: it mounts the one tooltip of the window (ui-next/main.tsx), which the host fixture does not.
+const dist = buildUiNext();
+const { server, partsUrl } = await serve(dist);
+const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+const page = await context.newPage();
+await page.goto(partsUrl, { waitUntil: 'load' });
+await awaitFonts(page);
+const example = '[data-example="LogView/Sources"]';
+await page.evaluate((selector) => document.querySelector(selector)?.scrollIntoView({ block: 'center' }), example);
+await page.waitForSelector(`${example} [role=grid] [data-n]`, { timeout: 10000 });
+await sleep(800);
+// The example's box is narrow on the parts page (the grid of examples is 200 px columns): the pointer goes where Playwright finds the name, which scrolls the list sideways to it.
+await page.hover(`${example} [role=row][data-n] [data-ov-full]`, { force: true });
+await page.waitForFunction(() => document.querySelector('[role=tooltip]')?.matches(':popover-open') === true, null, { timeout: 3000 });
+await sleep(300);
+console.log('the tooltip says:', await page.evaluate(() => document.querySelector('[role=tooltip]').textContent));
+await page.screenshot({ path: file('sources-example') });
+await context.close();
+server.close();
+await browser.close();

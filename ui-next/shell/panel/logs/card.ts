@@ -1,3 +1,4 @@
+import type { LogFeedSource } from '@omniviewdev/kit';
 import type { Session } from '../../core/panel';
 import { normaliseRoute } from '../../core/tabs';
 import type { PanelCard } from '../host';
@@ -13,13 +14,13 @@ import { LOGS_TOOL } from './tool';
 /** How many sources the card names before it says how many more there are. */
 const SOURCES_SHOWN = 3;
 
-/** The sources of a feed as the card words them: the one, or the first few and how many more. Nothing when the feed lists none. */
-function sourcesFact(sources: ReadonlyArray<{ readonly id: string }> | undefined): readonly [label: string, text: string] | undefined {
+/** The sources of a feed as the card words them, by the names the log's rows say (the label the feed gave, else the id): the one, or the first few and how many more. Nothing when the feed lists none. */
+function sourcesFact(sources: readonly LogFeedSource[] | undefined): readonly [label: string, text: string] | undefined {
   if (sources === undefined || sources.length === 0) {
     return undefined;
   }
 
-  const names = sources.slice(0, SOURCES_SHOWN).map((source) => source.id);
+  const names = sources.slice(0, SOURCES_SHOWN).map((source) => (source.label === undefined || source.label === '' ? source.id : source.label));
   const more = sources.length - names.length;
   return [sources.length === 1 ? 'Source' : 'Sources', `${names.join(', ')}${more > 0 ? ` and ${String(more)} more` : ''}`];
 }

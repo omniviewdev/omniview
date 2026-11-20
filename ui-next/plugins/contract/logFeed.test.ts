@@ -1,5 +1,5 @@
-import type { LogFeed } from '@omniviewdev/kit';
-import type { LogStream, LogStreamSnapshot } from '@omniviewdev/runtime/ui/v1';
+import type { LogFeed, LogFeedLine, LogFeedSnapshot, LogFeedSource } from '@omniviewdev/kit';
+import type { LogLine, LogSourceInfo, LogStream, LogStreamSnapshot } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { LogFeedSnapshotV1, LogFeedV1 } from './v1';
 
@@ -32,6 +32,19 @@ describe('the object `openLogStream` returns', () => {
     expectTypeOf<LogStreamSnapshot>().toExtend<LogFeedSnapshotV1>();
     expectTypeOf<LogFeedSnapshotV1['sources']>().toExtend<ReadonlyArray<{ readonly id: string }> | undefined>();
   });
+
+  // L2: the kit's Source column is drawn from what the runtime gives, with no adapter. A line's `source` is the id string the runtime's line already has; the sources a stream lists (id, labels, state) satisfy the
+  // kit's `LogFeedSource` (an id and an optional label) as they are: the runtime has no `label`, so a row says the id, and a plugin that wraps the snapshot may give one.
+  it('draws its Source column from what the runtime gives: its line is a kit line and its listed source is a kit source, as they are', () => {
+    expectTypeOf<LogLine>().toExtend<LogFeedLine>();
+    expectTypeOf<LogLine['source']>().toEqualTypeOf<LogFeedLine['source']>();
+    expectTypeOf<LogSourceInfo>().toExtend<LogFeedSource>();
+    expectTypeOf<LogStreamSnapshot['sources']>().toExtend<LogFeedSnapshot['sources']>();
+    const source = (info: LogSourceInfo): LogFeedSource => info;
+    expect(typeof source).toBe('function');
+    // A plugin that wraps the snapshot to give friendlier names adds a `label` to each listed source; the contract's snapshot admits it (the kit's `LogFeedSource` is part of it), though `LogFeedSourceV1` names `labels` only.
+    expectTypeOf<LogStreamSnapshot & { readonly sources: ReadonlyArray<LogSourceInfo & { readonly label: string }> }>().toExtend<LogFeedSnapshotV1>();
+  });
 });
 
 describe('the checks above can fail', () => {
@@ -48,5 +61,13 @@ describe('the checks above can fail', () => {
     // @ts-expect-error `idle` is not one of `starting`, `streaming`, `paused`, `ended`, `failed`
     const odd = (stream: Odd): LogFeed => stream;
     expect(typeof odd).toBe('function');
+  });
+
+  it('a source with no id, or a label that is not text, is not a kit source', () => {
+    // @ts-expect-error a source is named by its id: the lines say it, and the view tells sources apart by it
+    const noId = (info: Omit<LogSourceInfo, 'id'>): LogFeedSource => info;
+    // @ts-expect-error a label is the text a row says
+    const oddLabel = (info: LogSourceInfo & { readonly label: number }): LogFeedSource => info;
+    expect([typeof noId, typeof oddLabel]).toEqual(['function', 'function']);
   });
 });

@@ -444,6 +444,13 @@ export type LogFeedSnapshot = {
     readonly state: LogFeedState;
     readonly paused: boolean;
     readonly cause: LogFeedCause | undefined;
+    readonly sources?: readonly LogFeedSource[] | undefined;
+};
+
+// @public
+export type LogFeedSource = {
+    readonly id: string;
+    readonly label?: string | undefined;
 };
 
 // @public

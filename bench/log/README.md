@@ -24,6 +24,8 @@ node bench/log/analyze.mjs m1 --json docs/ui-next/baseline/raw/2026-11-19-log.js
 
 One piece at a time: `node bench/log/run.mjs --engine webkit --workload follow --configs kit:10000,control:10000 --rounds 10 --tag x-webkit-follow`, `node bench/log/search.mjs --engine chromium`, `node bench/log/memory.mjs`, `node bench/log/counts.mjs --engine webkit`. Playwright's browsers must be installed (`pnpm exec playwright install webkit chromium`). Do not run anything else on the machine while the matrix runs: the runner reads the 1-minute load average before and after every trial, runs a trial once more when it was above 12 (`--max-load`) at either end, and records how often. `results/` and the `.dist*` builds are git-ignored.
 
+`--sources 2` (L2) makes the seeded source follow two sources and list them, with the names a real stream has (`orders-7d8c6f49b-f8q4m/app` and `/sidecar`: 13 characters or more, which the kit draws in two halves, its dearest name): the kit's view then draws its Source column (a row of 13 elements against 7) and the control a plain 168 px source cell (5 against 4). `node bench/log/run.mjs --engine webkit --workload follow --configs kit:10000,control:10000 --rounds 10 --sources 2 --tag l2-webkit-follow`, then `node bench/log/analyze.mjs l2` (the tag prefix, as `m1` is for the matrix).
+
 ## Workloads
 
 | | |

@@ -165,7 +165,7 @@ export function LogList({ model, snapshot, label, listRef }: LogListProps) {
   // The rows come from the snapshot: the model is never read here (T-10: the compiler caches a render on its inputs, and a read by index has none). A row's place is its index in
   // the list (the lines that are held and pass the filter) and one more for the header: it moves when the head goes, and the ordinal (the key, the id, the selection) does not.
   let position = start + 2;
-  for (const { entry, hit } of snapshot.rows) {
+  for (const { entry, hit, source } of snapshot.rows) {
     const id = `${uid}-${entry.n}`;
     if (selection?.focus === entry.n) {
       activeId = id;
@@ -180,6 +180,8 @@ export function LogList({ model, snapshot, label, listRef }: LogListProps) {
         selected={entry.n >= low && entry.n <= high}
         current={hit && entry.n === search.current}
         pattern={hit ? (search.pattern ?? undefined) : undefined}
+        sourceColumn={snapshot.sourceColumn}
+        source={source}
       />,
     );
     position += 1;
@@ -193,7 +195,7 @@ export function LogList({ model, snapshot, label, listRef }: LogListProps) {
       tabIndex={0}
       aria-label={`Log lines, ${label}`}
       aria-rowcount={snapshot.count + 1}
-      aria-colcount={3}
+      aria-colcount={snapshot.sourceColumn ? 4 : 3}
       aria-multiselectable="true"
       aria-activedescendant={activeId}
       onScroll={(event) => {
@@ -218,6 +220,11 @@ export function LogList({ model, snapshot, label, listRef }: LogListProps) {
           <span role="columnheader" className={styles.head} data-ov-column="level">
             Level
           </span>
+          {snapshot.sourceColumn ? (
+            <span role="columnheader" className={styles.head} data-ov-column="source">
+              Source
+            </span>
+          ) : null}
           <span role="columnheader" className={styles.head} data-ov-column="message">
             Message
           </span>

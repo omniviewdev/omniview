@@ -7,6 +7,7 @@ export type {
   LogFeedLevel,
   LogFeedLine,
   LogFeedSnapshot,
+  LogFeedSource,
   LogFeedState,
   LogFeedStats,
 } from '../../log/types';

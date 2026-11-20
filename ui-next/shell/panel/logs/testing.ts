@@ -1,5 +1,5 @@
-import type { LogFeedBatch, LogFeedCause, LogFeedLine, LogFeedState, LogFeedStats } from '@omniviewdev/kit';
-import type { LogFeedHandle, LogFeedHandleSnapshot, LogSourceName } from './feed';
+import type { LogFeedBatch, LogFeedCause, LogFeedLine, LogFeedSnapshot, LogFeedSource, LogFeedState, LogFeedStats } from '@omniviewdev/kit';
+import type { LogFeedHandle } from './feed';
 
 // A feed for the tests of the Logs tool: it has the contract of a real one (consumer-paced `read`, a wake-up between two reads, a status that is the same object until it changes, a pause that is
 // the reader's) and the counters a test asks for: how many listeners it has, how many times it was closed and read. Invented lines; nothing here is a plugin's.
@@ -14,16 +14,16 @@ export type FakeFeed = LogFeedHandle & {
   /** How many times `pause` and `resume` were called. */
   readonly controls: () => number;
   /** A new status: only what is given changes, and every listener is told. */
-  readonly set: (change: { readonly state?: LogFeedState; readonly paused?: boolean; readonly cause?: LogFeedCause | undefined; readonly sources?: readonly LogSourceName[] }) => void;
-  /** Holds `count` lines for the reader and wakes the listeners once, until the next read. */
-  readonly push: (count: number) => void;
+  readonly set: (change: { readonly state?: LogFeedState; readonly paused?: boolean; readonly cause?: LogFeedCause | undefined; readonly sources?: readonly LogFeedSource[] }) => void;
+  /** Holds `count` lines for the reader, written by `source` (default `source/main`), and wakes the listeners once, until the next read. */
+  readonly push: (count: number, source?: string) => void;
   /** Tells the listeners without changing anything: what a feed does when held lines became readable. */
   readonly wake: () => void;
 };
 
 export type FakeFeedOptions = {
   readonly state?: LogFeedState | undefined;
-  readonly sources?: readonly LogSourceName[] | undefined;
+  readonly sources?: readonly LogFeedSource[] | undefined;
   /** What `close` does; default: nothing. */
   readonly close?: (() => Promise<void> | void) | undefined;
 };
@@ -35,7 +35,7 @@ export function fakeFeed(options: FakeFeedOptions = {}): FakeFeed {
   let closed = 0;
   let reads = 0;
   let controls = 0;
-  let status: LogFeedHandleSnapshot = { state: options.state ?? 'starting', paused: false, cause: undefined, ...(options.sources === undefined ? {} : { sources: options.sources }) };
+  let status: LogFeedSnapshot = { state: options.state ?? 'starting', paused: false, cause: undefined, ...(options.sources === undefined ? {} : { sources: options.sources }) };
   let held: LogFeedLine[] = [];
   let seq = 0;
   let woken = false;
@@ -105,11 +105,11 @@ export function fakeFeed(options: FakeFeedOptions = {}): FakeFeed {
       };
       tell();
     },
-    push: (count) => {
+    push: (count, source = 'source/main') => {
       for (let index = 0; index < count; index += 1) {
         seq += 1;
         received += 1;
-        held.push({ seq, source: 'source/main', timestamp: '', text: `line ${String(seq)}`, level: undefined });
+        held.push({ seq, source, timestamp: '', text: `line ${String(seq)}`, level: undefined });
       }
 
       if (!woken && held.length > 0) {
