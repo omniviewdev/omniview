@@ -21,6 +21,11 @@
 //      on screen goes to another plugin's page), Command or Control Enter opens a background tab, Command Shift Enter a new tab on screen; Escape gives the focus back to the control that had it, and so does the Search
 //      control of the top row; the homes of the plugins that did not load say Degraded; the host's commands are exactly the ones it can run (Close tab, Toggle panel, Next tab, Previous tab in a browser tab),
 //      each with the chord it is bound to; a kind with no provider (Settings) says Nothing to show yet. SHOTS=<dir> writes `host-<engine>-<state>.png` of the palette in those states
+//   k  a plugin's unload and the Logs sessions (P1b-3c, A21): the fixture plugin's interface is unloaded while two Logs sessions follow its item, one that failed on its own and one that streams (the window's plugin
+//      store, reached through React's hooks, since nothing in the product unloads a ready plugin yet; the bundle's request is held so the plugin stays off): both tabs STAY, in the same view with the lines they had
+//      read, the streams closed once (the plugin counts it); the one that streamed ENDED, the one that had failed is AS IT WAS (its own words and time); each card says the plugin was unloaded and its resource link and
+//      Open button cannot be used; the bundle is let through and nothing resumed, the link works, and a new press of Logs opens a NEW session beside them; closing the tabs frees every listener and closes each stream
+//      once (SEAM_SHOTS=<dir> writes WebKit's pictures: before the unload, after it, after the reload; SEAM_CONTROL=<name> runs k alone with one perturbation that its named assertion must see)
 //
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
@@ -42,6 +47,17 @@ const OK = 'fixture-a-ok';
 const DUP = 'fixture-b-dup';
 const OLD = 'fixture-c-old';
 const MISSING = 'fixture-d-missing';
+
+// The negative controls of scenario k: SEAM_CONTROL=<name> runs k alone, with one perturbation made just before the assertion that must see it and undone just after it, and passes (exit 0) when that assertion failed.
+const CONTROLS = {
+  'double-close': /the plugin's feeds were closed once each/,
+  'new-view': /it is the same view/,
+  'failed-ended': /the failed session stays failed/,
+  'close-twice': /close was asked of each feed once \(the calls are counted/,
+  'page-error': /the unload and the return wrote no page error/,
+};
+const CONTROL = process.env.SEAM_CONTROL ?? '';
+if (CONTROL !== '' && CONTROLS[CONTROL] === undefined) throw new Error(`SEAM_CONTROL must be one of ${Object.keys(CONTROLS).join(', ')}`);
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -661,6 +677,222 @@ async function checkPalette(page, base, engine) {
 }
 
 /**
+ * k. A plugin's unload and the Logs sessions (P1b-3c, A21), in a page of its own. Two Logs sessions of the fixture plugin follow an item: `sync`, which fails on its own, and `app`, which streams. The plugin's
+ * interface is unloaded (the window's plugin store takes it out of the live set, and the request for its bundle is held, so the window with the plugin off lasts as long as the check looks at it); both tabs STAY,
+ * each in the same view with the lines it had read, the streams closed once and the plugin's counters saying so: `app` ENDED, `sync` is AS IT WAS (failed, with its own words and time); the card of each says the
+ * plugin was unloaded, its resource is no link and its Open button is unavailable. The bundle is let through: the plugin is back and nothing resumed, the card's link and button work; a new press of Logs opens a
+ * NEW session beside them, a twin; closing the tabs frees every listener and closes each stream once. Nothing in the product unloads a ready plugin yet (`PluginStore` only adds, `retry` is offered for a plugin
+ * that failed), so the check takes the store from where the window keeps it (the hooks of `PluginHostScreen`, reached from any element React drew) and does what a reload of a plugin's interface is: `retry`.
+ * SEAM_SHOTS=<dir> writes the pictures of WebKit. SEAM_CONTROL=<name> makes one perturbation that one assertion must see (see CONTROLS).
+ */
+async function checkKept(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const shot = async (name) => {
+    if (process.env.SEAM_SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(process.env.SEAM_SHOTS, `kept-${name}-${engine}.png`) });
+  };
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  await page.getByRole('link', { name: 'orders-api' }).click();
+  await page.getByRole('heading', { level: 1, name: 'orders-api' }).waitFor();
+  const press = async (command) => {
+    await page.getByRole('button', { name: 'More actions for orders-api' }).click();
+    await page.getByRole('menuitem', { name: command }).click();
+  };
+  const counters = () => page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') }));
+  const kept = page.getByRole('tab', { name: 'orders-api/app · north-yard, ended' });
+  const failed = page.getByRole('tab', { name: 'orders-api/sync · north-yard, failed' });
+  const card = page.locator('[popover]:popover-open');
+  /** What the card of a tab says, in one line, and the mouse away again. */
+  const cardOf = async (tab) => {
+    await tab.hover();
+    await card.waitFor();
+    const text = (await card.innerText()).replace(/\s+/g, ' ').trim();
+    await page.mouse.move(2, 2);
+    await card.waitFor({ state: 'hidden' });
+    return text;
+  };
+  // A session that fails on its own (the fixture's `sync` fails 1.5 s after it opens), before the plugin leaves.
+  await press('Logs: sync (fails)');
+  await failed.waitFor({ timeout: 15_000 });
+  const failedBefore = await cardOf(failed);
+  assert.match(failedBefore, /State Failed · since .+ The log stream stopped\. The source did not answer\. Open Item$/, `${engine}: the failed session's card says what happened to it`);
+  await press('Logs: app');
+  const log = page.getByRole('group', { name: 'Log, orders-api/app · north-yard' });
+  const grid = log.getByRole('grid');
+  const failedGrid = page.locator('[role=group][aria-label="Log, orders-api/sync · north-yard"] [role=grid]');
+  await grid.waitFor();
+  await page.waitForFunction(() => Number(document.querySelector('[role=group][aria-label="Log, orders-api/app · north-yard"] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > 20, null, { timeout: 15_000 });
+  // Both views are marked: the same elements must still be there, with their lines, after everything that follows.
+  await grid.evaluate((element) => {
+    element.__kept = true;
+  });
+  await failedGrid.evaluate((element) => {
+    element.__kept = true;
+  });
+  const rowsOf = () => grid.evaluate((element) => Number(element.getAttribute('aria-rowcount')));
+  const rowsBefore = await rowsOf();
+  const failedRowsBefore = await failedGrid.evaluate((element) => Number(element.getAttribute('aria-rowcount')));
+  assert.deepEqual(await counters(), { opened: 2, closed: 0, listeners: 4 }, `${engine}: two feeds opened; the registry listens to both and the view on screen (two) to its own`);
+  await shot('before-unload');
+
+  // The unload. The bundle's requests are held first, so that the plugin stays off until the check lets them through.
+  const held = [];
+  let released = false;
+  await page.route(`**/_/plugins/${OK}/**`, (route) => {
+    if (released) void route.continue();
+    else held.push(route);
+  });
+  const found = await page.evaluate((id) => {
+    const start = document.querySelector('[data-shell-part="window"]');
+    const key = start === null ? undefined : Object.keys(start).find((name) => name.startsWith('__reactFiber$'));
+    for (let fiber = key === undefined ? null : start[key]; fiber; fiber = fiber.return) {
+      for (let hook = fiber.memoizedState; hook !== null && typeof hook === 'object' && 'next' in hook; hook = hook.next) {
+        const value = hook.memoizedState;
+        if (value !== null && typeof value === 'object' && typeof value.retry === 'function' && typeof value.getSnapshot === 'function') {
+          const entry = value.getSnapshot().find((candidate) => candidate.id === id);
+          void value.retry({ id, name: entry.name });
+          return true;
+        }
+      }
+    }
+    return false;
+  }, OK);
+  assert.equal(found, true, `${engine}: the window's plugin store was found in its component's hooks`);
+  // The panel reads the plugin leaving in the commit it happens in: the tab stays and says it ended.
+  await kept.waitFor({ timeout: 15_000 });
+  assert.equal(await page.getByRole('tab').filter({ hasText: 'orders-api/app' }).count(), 1, `${engine}: one tab for the session`);
+  // The negative control `new-view`: the marker of the view is taken off, as if the view had been made again.
+  if (CONTROL === 'new-view') {
+    await grid.evaluate((element) => {
+      delete element.__kept;
+    });
+  }
+
+  assert.equal(await grid.evaluate((element) => element.__kept === true), true, `${engine}: it is the same view (not made again)`);
+  if (CONTROL === 'new-view') {
+    await grid.evaluate((element) => {
+      element.__kept = true;
+    });
+  }
+
+  const rowsOff = await rowsOf();
+  assert.ok(rowsOff >= rowsBefore, `${engine}: the lines it had stay (${String(rowsBefore)} then ${String(rowsOff)})`);
+  await log.getByText('Stream ended').waitFor();
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  assert.equal(await rowsOf(), rowsOff, `${engine}: and no line comes after the end`);
+  // The negative control `double-close`: the plugin's count of closes is one more, as if the host had closed a feed twice.
+  if (CONTROL === 'double-close') {
+    await page.evaluate(() => {
+      Reflect.get(window, '__fixtureLogs').closed += 1;
+    });
+  }
+
+  assert.deepEqual(await counters(), { opened: 2, closed: 2, listeners: 2 }, `${engine}: the plugin's feeds were closed once each and the registry let go of them (the view's two stay)`);
+  if (CONTROL === 'double-close') {
+    await page.evaluate(() => {
+      Reflect.get(window, '__fixtureLogs').closed -= 1;
+    });
+  }
+  const calls = () => page.evaluate(() => [...Reflect.get(window, '__fixtureLogs').closeCalls]);
+  // The negative control `close-twice`: the plugin's count of the calls to the first feed's close is one more, as if the host had called it twice (`closed` counts a feed once, so only the calls show it); put back right after.
+  if (CONTROL === 'close-twice') {
+    await page.evaluate(() => {
+      Reflect.get(window, '__fixtureLogs').closeCalls[0] += 1;
+    });
+  }
+
+  assert.deepEqual(await calls(), [1, 1], `${engine}: close was asked of each feed once (the calls are counted, repeats too)`);
+  if (CONTROL === 'close-twice') {
+    await page.evaluate(() => {
+      Reflect.get(window, '__fixtureLogs').closeCalls[0] -= 1;
+    });
+  }
+
+  // The session that had failed on its own stays as it was: the same tab (failed, not ended), the same view and lines, and the card says its own words and time, and then that the plugin was unloaded.
+  // The negative control `failed-ended`: its tab's name says ended, as if the unload had ended it.
+  if (CONTROL === 'failed-ended') {
+    await page.locator('[role=tab][aria-label^="orders-api/sync "]').evaluate((element) => {
+      element.setAttribute('aria-label', 'orders-api/sync · north-yard, ended');
+    });
+  }
+
+  assert.equal(await failed.count(), 1, `${engine}: the failed session stays failed`);
+  if (CONTROL === 'failed-ended') {
+    await page.locator('[role=tab][aria-label^="orders-api/sync "]').evaluate((element) => {
+      element.setAttribute('aria-label', 'orders-api/sync · north-yard, failed');
+    });
+  }
+
+  assert.equal(await failedGrid.evaluate((element) => element.__kept === true), true, `${engine}: the failed session is the same view`);
+  assert.equal(await failedGrid.evaluate((element) => Number(element.getAttribute('aria-rowcount'))), failedRowsBefore, `${engine}: and has the lines it had`);
+  assert.equal(await cardOf(failed), failedBefore.replace(/ Open Item$/, ' The plugin was unloaded. Open Item'), `${engine}: the failed session's card keeps its own words and time and adds that the plugin was unloaded`);
+  await shot('after-unload');
+  await kept.hover();
+  await card.waitFor();
+  assert.match(await card.innerText(), /Logs[\s\S]*Item orders-api[\s\S]*State\s+Stream ended[\s\S]*The plugin was unloaded\./, `${engine}: the card says the plugin was unloaded`);
+  assert.equal(await card.getByRole('link').count(), 0, `${engine}: the resource is no link while the plugin is off`);
+  assert.equal(await card.getByRole('button', { name: 'Open Item' }).getAttribute('aria-disabled'), 'true', `${engine}: and the Open button is unavailable`);
+  await page.mouse.move(2, 2);
+
+  // The plugin is back: its bundle is let through.
+  released = true;
+  for (const route of held.splice(0)) await route.continue();
+  await page.getByRole('heading', { level: 1, name: 'orders-api' }).waitFor({ timeout: 30_000 });
+  await kept.waitFor();
+  assert.equal(await grid.evaluate((element) => element.__kept === true), true, `${engine}: still the same view`);
+  assert.equal(await rowsOf(), rowsOff, `${engine}: nothing resumed: the same lines`);
+  assert.deepEqual(await counters(), { opened: 2, closed: 2, listeners: 2 }, `${engine}: no stream was opened or closed by the plugin's return`);
+  await kept.hover();
+  await card.waitFor();
+  assert.equal(await card.getByRole('link', { name: 'Item orders-api' }).count(), 1, `${engine}: the card's link works again`);
+  assert.equal(await card.getByRole('button', { name: 'Open Item' }).getAttribute('aria-disabled'), null, `${engine}: and so does the Open button`);
+  await page.mouse.move(2, 2);
+  assert.equal(await failed.count(), 1, `${engine}: the failed session is still failed when the plugin is back`);
+
+  // A new press of Logs: a new session beside the held ones, with a stream of its own.
+  await press('Logs: app');
+  await page.getByRole('tab', { name: 'orders-api/app (2) · north-yard' }).waitFor({ timeout: 15_000 });
+  assert.equal(await kept.count(), 1, `${engine}: the held session is still there, ended`);
+  // The new session is on screen and the held ones are not: a hidden view holds no listener (the registry's one and the new view's two are the three), and the held streams are closed, once each.
+  assert.deepEqual(await counters(), { opened: 3, closed: 2, listeners: 3 }, `${engine}: a third feed opened; the held ones are untouched`);
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-log-session] [role=grid]')].some((element) => !('__kept' in element) && Number(element.getAttribute('aria-rowcount')) > 5), null, { timeout: 15_000 });
+  await kept.click();
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-log-session] [role=grid]')].some((element) => element.__kept === true && element.getClientRects().length > 0), null, { timeout: 15_000 });
+  await shot('after-reload');
+
+  // Closing the tabs frees every listener and closes each stream once.
+  await kept.focus();
+  await page.keyboard.press('Delete');
+  await page.waitForFunction(() => Reflect.get(window, '__fixtureLogs')?.listeners === 3);
+  assert.deepEqual(await counters(), { opened: 3, closed: 2, listeners: 3 }, `${engine}: closing the held tab closed nothing twice and freed its view's listeners`);
+  // The session that is left of its name is the first of its name now: closing a twin gives the other its name back (no ordinal).
+  await page.getByRole('tab', { name: 'orders-api/app · north-yard', exact: true }).focus();
+  await page.keyboard.press('Delete');
+  await failed.focus();
+  await page.keyboard.press('Delete');
+  await page.getByText('No log sessions').waitFor();
+  await page.waitForFunction(() => Reflect.get(window, '__fixtureLogs')?.listeners === 0);
+  assert.deepEqual(await counters(), { opened: 3, closed: 3, listeners: 0 }, `${engine}: the three streams closed once each, no listener left`);
+  assert.deepEqual(await calls(), [1, 1, 1], `${engine}: in all, each feed's close was asked for once`);
+  await page.unroute(`**/_/plugins/${OK}/**`);
+  // The negative control `page-error`: the page raises an error of the kind a failed request makes, which nothing in this scenario interrupted on purpose: it must be reported, not excused.
+  if (CONTROL === 'page-error') {
+    await page.evaluate(() => {
+      setTimeout(() => {
+        throw new Error('Failed to fetch');
+      }, 0);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  // No request is interrupted in this scenario (the plugin's bundle is held and then let through, never aborted), so no page error is excused: any one is the plugin's or the host's, and is reported.
+  assert.deepEqual(errors, [], `${engine}: the unload and the return wrote no page error`);
+}
+
+/**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
  * back. Then what is saved is made unusable in the ways that matter, through the window service the shell uses: a tab of a plugin that is not installed (the tab stays, and says so), a session of a
@@ -841,6 +1073,24 @@ try {
   for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
     const browser = await engine.launch();
     try {
+      if (CONTROL !== '') {
+        // A negative control runs scenario k alone with one perturbation, and passes when the assertion it is named for saw it.
+        try {
+          await checkKept(await freshPage(browser, host.base), host.base, name);
+          console.error(`NEGATIVE CONTROL "${CONTROL}": NOT DETECTED in ${name}`);
+          process.exitCode = 1;
+        } catch (error) {
+          const message = String(error?.message ?? error);
+          if (CONTROLS[CONTROL].test(message)) console.log(`NEGATIVE CONTROL "${CONTROL}": detected in ${name}: ${message.split('\n')[0]}`);
+          else {
+            console.error(`NEGATIVE CONTROL "${CONTROL}": failed in ${name}, but not the assertion it is named for: ${message}`);
+            process.exitCode = 1;
+          }
+        }
+
+        continue;
+      }
+
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
       await checkHealthy(page, host.base, name);
       await checkRefusals(page, host.base, name);
@@ -849,6 +1099,7 @@ try {
       await checkPanel(await freshPage(browser, host.base), host.base, name);
       await checkLogs(await freshPage(browser, host.base), host.base, name);
       await checkPalette(await freshPage(browser, host.base), host.base, name);
+      await checkKept(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside)`);
     } finally {

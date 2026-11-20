@@ -7,8 +7,8 @@
 //
 //   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds (production, and development for the commit counts)     FONT_DELAY_MS=40   as a runner serves fonts
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)      AXE=<axe.min.js>      REPORT=<file>   the full report as JSON      SHOTS=<dir>   a few screenshots
-//   NEGATIVE_CONTROL=<name>   perturb ONE measured value in the page (panel-height, session-gap, toggle, tab-padding, shift, root-write; see PERTURBATIONS), run the section that must see it, and exit 0
-//                             when it did and 1 when it did not (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise)
+//   NEGATIVE_CONTROL=<name>   perturb ONE measured value in the page (panel-height, session-gap, toggle, tab-padding, shift, root-write, held-hidden, held-done-hidden, held-moved, held-enabled; see PERTURBATIONS), run the section
+//                             that must see it, and exit 0 when it did and 1 when it did not (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise)
 //
 // What it checks, per engine and viewport:
 //   geometry   the hidden panel, the open one with no session, with three sessions, with one session in each state, and with fourteen (the strip scrolls): the rectangle of the window, the top row,
@@ -23,12 +23,16 @@
 //   keyboard   with real key presses: Tab reaches the status bar's toggle, Enter opens the panel and the focus goes to its tool on screen, the arrows move the focus and select nothing, Home, End,
 //              Enter and Space, Tab through the session strip, `+`, Hide and the body's own control and out, Hide, the toggle chord, the splitter's keys (16 and 64 px, the limits, the default),
 //              Delete and the close chord
-//   a11y       axe-core on the closed panel, the open one with sessions, with none, at its minimum height and with a card open
+//   a11y       axe-core on the closed panel, the open one with sessions, with none, at its minimum height, with a card open and with the card of a held session open (its plugin is off)
 //   drag       what a drag costs: writes to the region's style (one a frame at most), writes at the document root (none), React commits (none while the pointer moves, one on release), and in
 //              Chromium the layouts and style recalculations
 //   late       a plugin that registers its tool after the window is up: with the panel closed nothing moves and layout shift is 0; with it open nothing outside the strip's own content moves, the tool
 //              on screen stays on screen, and the report gives what the strip's content does
 //   keep       a session body keeps running while another is on screen and while the panel is hidden, and is not drawn
+//   held       (A21) a session of the host's Logs tool that its plugin's unload ended stays: in the strip where it was (no part of its tab moves), ended in its name, on screen, with its body mounted and the lines it
+//              counted kept, and counting no more; the session that had ended on its own stays too, as it was (its own state, its tab drawn in the strip and its body mounted); its card prints "The plugin was unloaded.", its resource is
+//              no link and its Open button is unavailable for that sentence and opens nothing when it is pressed; when the plugin returns the session is still ended, its card has the link and the button
+//              works (it opens the resource); a new press is a twin ("(2)") beside the held session; Delete closes the held tab and unmounts its body. Screenshots: before, after, the card with the plugin off
 // Exit code 1 when anything differs.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -44,7 +48,7 @@ const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const failures = [];
-const report = { geometry: {}, shift: {}, paint: {}, card: {}, facts: {}, keyboard: {}, a11y: {}, drag: {}, late: {}, keep: {}, notes: [] };
+const report = { geometry: {}, shift: {}, paint: {}, card: {}, facts: {}, keyboard: {}, a11y: {}, drag: {}, late: {}, keep: {}, held: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 
 const fixtureUrl = (origin, query = '') => `${origin}/shell/probes/fixture.html?case=panel${query === '' ? '' : `&${query}`}`;
@@ -948,6 +952,20 @@ async function a11y(browser, engine, viewportName, viewport, origin, axe) {
         await sleep(1000);
       },
     ],
+    [
+      'with the card of a held session open, its plugin off (A21)',
+      async (page) => {
+        // No scope: a session tab with one fails axe's `label-content-name-mismatch` (its name has a middle dot the visible text has not), in every state and since the panel was built; the Logs tool's tabs
+        // always have one. That is not this step's to settle (docs/ui-next/status/P1b-3c.md, "Found"), so the case is about the card.
+        await page.evaluate(HELD_SETUP, { scope: '' });
+        await page.evaluate(() => window.__panel.syncPlugins([]));
+        await sleep(600);
+        const box = await page.locator('[data-shell-part="sessionTab"][data-tab-id="kept"] [role=tab]').boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
+        // The card of the held session, open: the case is about it, so axe does not run before it is there (an auto-waiting assertion on its sentence, not a delay).
+        await page.locator('[popover]:popover-open [data-shell-part="sessionCard"]', { hasText: 'The plugin was unloaded.' }).waitFor({ timeout: 5000 });
+      },
+    ],
   ];
   for (const [label, prepare] of cases) {
     const { page, context } = await open(browser, fixtureUrl(origin), viewport);
@@ -1170,6 +1188,221 @@ async function keep(browser, engine, viewportName, viewport, origin) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// A session of a tool of the HOST that its plugin's unload ended is held (A21): it stays in the strip where it was, ended, with its body mounted and what it counted kept, until its tab closes; its card says
+// why and the way back to its resource cannot be used while the plugin is off; it can be used again when the plugin returns, and the session is still ended. What the unload did not end follows PO1: here a
+// session that had ended on its own, which leaves the strip with its plugin and comes back with it. The shell's own fixture and the real model (`syncPlugins` is what the host calls when a plugin goes).
+
+/** The strip and the bodies as they are drawn: every session tab with its state, its name and the rectangle of each of its parts, and every mounted body with what it counted. */
+const HELD = () => {
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const rect = (el) => {
+    if (!el || el.getClientRects().length === 0) return null;
+    const b = el.getBoundingClientRect();
+    return [r2(b.x), r2(b.y), r2(b.width), r2(b.height)];
+  };
+  const items = [...document.querySelectorAll('[data-shell-part="sessionTab"]')].map((item) => {
+    const tab = item.querySelector('[role=tab]');
+    const part = (name) => rect(item.querySelector(`[data-shell-part="${name}"]`));
+    return {
+      id: item.getAttribute('data-tab-id'),
+      name: tab?.getAttribute('aria-label') ?? null,
+      state: item.querySelector('[data-shell-part="sessionLead"]')?.getAttribute('data-state') ?? 'running',
+      selected: tab?.getAttribute('aria-selected') === 'true',
+      rect: rect(item),
+      parts: { lead: part('sessionLead'), label: part('sessionLabel'), head: part('sessionHead'), tail: part('sessionTail'), scope: part('sessionScope'), close: part('sessionClose') },
+    };
+  });
+  const bodies = [...document.querySelectorAll('[data-shell-part="panelBody"]')].map((slot) => {
+    const stream = slot.querySelector('[data-fixture="stream"]');
+    return { session: slot.getAttribute('data-session-id'), hidden: slot.hidden, state: stream?.getAttribute('data-state') ?? null, lines: stream === null ? null : Number(stream.getAttribute('data-lines')) };
+  });
+  return { items, bodies, opened: [...window.__opened] };
+};
+
+/** What the open card says and offers: its links, its buttons (name, whether it is unavailable, the sentence that says why) and the sentences it prints. */
+const CARD_HELD = () => {
+  const card = document.querySelector('[popover]:popover-open');
+  const content = card?.querySelector('[data-shell-part="sessionCard"]') ?? null;
+  if (card === null || content === null) return null;
+  const text = (el) => el.textContent.trim();
+  return {
+    links: [...content.querySelectorAll('a')].map((link) => ({ text: text(link), href: link.getAttribute('href') })),
+    printed: [...content.querySelectorAll('p')].map(text),
+    values: [...content.querySelectorAll('[data-ov-part="value"]')].map((el) => text(el).replace(/\s+since \d\d:\d\d/, ' since HH:MM')),
+    buttons: [...content.querySelectorAll('button')].map((button) => {
+      const box = button.getBoundingClientRect();
+      return {
+        label: [...button.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join('').trim(),
+        unavailable: button.getAttribute('aria-disabled'),
+        why: (button.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean).map((id) => document.getElementById(id)?.textContent.trim() ?? '').join(' '),
+        at: [box.x + box.width / 2, box.y + box.height / 2],
+      };
+    }),
+  };
+};
+
+/**
+ * The window the section works in: acme is live; `kept` runs and is on screen, `done` had ended on its own, `mine` is the host's. All three are in the host's Logs tool, with a route to their resource.
+ * `scope` is the muted qualifier of the two sessions of acme (the connection, in the host's Logs tool).
+ */
+const HELD_SETUP = ({ scope = 'north' } = {}) => {
+  const store = window.__panel;
+  const route = { plugin: 'acme', contribution: 'item', params: { name: 'orders-api' } };
+  store.syncPlugins([{ id: 'acme', tools: [] }]);
+  store.openSession({ id: 'kept', tool: 'logs', plugin: 'acme', title: 'orders-api/app', scope, state: 'running', route });
+  store.openSession({ id: 'done', tool: 'logs', plugin: 'acme', title: 'orders-api/migrate', scope, state: 'ended', cause: 'The source finished.', route });
+  store.openSession({ id: 'mine', tool: 'logs', plugin: 'host', title: 'host-follow', state: 'running' });
+  store.activateSession('kept');
+};
+
+const UNLOADED = 'The plugin was unloaded.';
+
+async function held(browser, engine, viewportName, viewport, origin) {
+  const where = `held ${engine} ${viewportName}`;
+  const { page, context, errors } = await open(browser, fixtureUrl(origin), viewport);
+  await sleep(250);
+  await page.evaluate(HELD_SETUP);
+  await sleep(900);
+  const before = await page.evaluate(HELD);
+  const kept0 = before.items.find((item) => item.id === 'kept');
+  const ids = (reading) => reading.items.map((item) => item.id).join();
+  if (ids(before) !== 'kept,done,mine') fail(where, `before the unload the strip draws ${ids(before)}, wanted kept,done,mine`);
+  if (kept0?.state !== 'running') fail(where, `before the unload the session is ${String(kept0?.state)}, wanted running`);
+  const countedBefore = before.bodies.find((body) => body.session === 'kept')?.lines ?? -1;
+  if (!(countedBefore > 0)) fail(where, `the running session counted ${String(countedBefore)} lines before the unload: the section proves nothing about lines that stay`);
+  if (SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(SHOTS, `held-before-${engine}-${viewportName}.png`) });
+
+  // The unload: the plugin leaves in one transaction.
+  await page.evaluate(() => window.__panel.syncPlugins([]));
+  if (CONTROL === 'held-moved' || CONTROL === 'held-hidden' || CONTROL === 'held-done-hidden') await page.addStyleTag({ content: PERTURBATIONS[CONTROL].css });
+  await sleep(900);
+  const after = await page.evaluate(HELD);
+  const kept1 = after.items.find((item) => item.id === 'kept');
+  // (1) It stays in the strip, in its place, and so does what had ended on its own: every session of the host's tool stays (A21), the unload ended only the one that ran.
+  if (kept1 === undefined || kept1.rect === null) fail(where, `the held session's tab is not in the strip (strip: ${ids(after)})`);
+  if (ids(after) !== 'kept,done,mine') fail(where, `after the unload the strip draws ${ids(after)}, wanted kept,done,mine (every session of the host's tool stays)`);
+  const done1 = after.items.find((item) => item.id === 'done');
+  if (done1 === undefined || done1.rect === null) fail(where, `the tab of the session that had ended on its own is not in the strip (strip: ${ids(after)}): it stays where a person can see and choose it`);
+  if (done1?.state !== 'ended' || done1.name !== 'orders-api/migrate · north, ended') fail(where, `the session that had ended on its own is ${JSON.stringify(done1?.name)} (${String(done1?.state)}) after the unload, wanted it as it was: "orders-api/migrate · north, ended"`);
+  // The negative control that hides the held tab has nothing to hover, focus or close: it ends here, with its own check made.
+  if (CONTROL === 'held-hidden') {
+    await context.close();
+    return;
+  }
+  // (2) It says it ended, in the strip and to a screen reader, and is still the one on screen.
+  if (kept1 !== undefined) {
+    if (kept1.state !== 'ended') fail(where, `the held session's lead says ${kept1.state}, wanted ended`);
+    if (kept1.name !== 'orders-api/app · north, ended') fail(where, `the held session's tab is named ${JSON.stringify(kept1.name)}, wanted "orders-api/app · north, ended"`);
+    if (!kept1.selected) fail(where, 'the held session is no longer the one on screen: a session that stays does not give its place to another');
+    // (3) Nothing about its tab moved: the ended glyph is the same size as the tool's, and the label stays where it was.
+    for (const key of ['rect', ...Object.keys(kept0.parts)]) {
+      const a = key === 'rect' ? kept0.rect : kept0.parts[key];
+      const b = key === 'rect' ? kept1.rect : kept1.parts[key];
+      if (a === null || b === null) {
+        if (a !== b) fail(where, `the held tab's ${key} was ${JSON.stringify(a)} and is ${JSON.stringify(b)}`);
+        continue;
+      }
+      const moved = Math.max(...a.map((value, index) => Math.abs(value - b[index])));
+      if (moved > 0.5) fail(where, `the held tab's ${key} moved by ${moved} px: ${JSON.stringify(a)} then ${JSON.stringify(b)}`);
+    }
+  }
+
+  // (4) Its body is still mounted and on screen, saying ended, with the lines it counted, and it counts no more.
+  const body = after.bodies.find((candidate) => candidate.session === 'kept');
+  if (body === undefined) fail(where, 'the held session\'s body is not mounted');
+  else {
+    if (body.hidden) fail(where, 'the held session\'s body is hidden though it is on screen');
+    if (body.state !== 'ended') fail(where, `the held session's body says ${String(body.state)}, wanted ended`);
+    if (!(body.lines >= countedBefore)) fail(where, `the held session's body had ${countedBefore} lines and has ${String(body.lines)}: what it counted did not stay`);
+    await sleep(500);
+    const later = (await page.evaluate(HELD)).bodies.find((candidate) => candidate.session === 'kept');
+    if (later?.lines !== body.lines) fail(where, `the held session went on counting: ${String(body.lines)} then ${String(later?.lines)}`);
+  }
+  const doneBody = after.bodies.find((candidate) => candidate.session === 'done');
+  if (doneBody === undefined || doneBody.state !== 'ended') fail(where, `the body of the session that had ended on its own is ${JSON.stringify(doneBody)} while its plugin is off, wanted it mounted and ended`);
+  if (SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(SHOTS, `held-after-${engine}-${viewportName}.png`) });
+
+  // (5) Its card says the plugin was unloaded and the way back to its resource cannot be used: the name is not a link, the button is unavailable for that sentence, and pressing it opens nothing.
+  const openCard = async (selector) => {
+    await page.mouse.move(1, 1);
+    await sleep(500);
+    const box = await page.locator(selector).boundingBox();
+    if (box === null) return null;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
+    await sleep(1000);
+    return page.evaluate(CARD_HELD);
+  };
+  const tab = '[data-shell-part="sessionTab"][data-tab-id="kept"] [role=tab]';
+  const off = await openCard(tab);
+  if (CONTROL === 'held-enabled') await page.evaluate(() => document.querySelector('[popover]:popover-open [data-shell-part="sessionCard"] button')?.removeAttribute('aria-disabled'));
+  const offAgain = CONTROL === 'held-enabled' ? await page.evaluate(CARD_HELD) : off;
+  report.held[`${engine} ${viewportName} plugin off`] = offAgain;
+  if (offAgain === null) fail(where, 'no card opened on the held session\'s tab');
+  else {
+    if (!offAgain.printed.includes(UNLOADED)) fail(where, `the card of the held session prints ${JSON.stringify(offAgain.printed)}, wanted "${UNLOADED}"`);
+    if (offAgain.links.length !== 0) fail(where, `the card has ${offAgain.links.length} link(s) while the plugin is off: ${JSON.stringify(offAgain.links)}`);
+    const [button] = offAgain.buttons;
+    if (button === undefined) fail(where, 'the card has no button that opens the resource');
+    else {
+      if (button.unavailable !== 'true') fail(where, `the button "${button.label}" is not unavailable while the plugin is off (aria-disabled ${String(button.unavailable)})`);
+      if (button.why !== UNLOADED) fail(where, `the button says ${JSON.stringify(button.why)} as its reason, wanted "${UNLOADED}"`);
+      await page.mouse.click(button.at[0], button.at[1]);
+      await sleep(300);
+      const pressed = (await page.evaluate(HELD)).opened;
+      if (pressed.length !== 0) fail(where, `pressing the button while the plugin is off opened ${JSON.stringify(pressed)}`);
+    }
+  }
+
+  if (SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(SHOTS, `held-card-off-${engine}-${viewportName}.png`) });
+  await page.keyboard.press('Escape');
+  await sleep(300);
+
+  // (6) The plugin returns: the session is as it was (held, ended), what had ended on its own comes back with it, and the way back to the resource works.
+  await page.evaluate(() => window.__panel.syncPlugins([{ id: 'acme', tools: [] }]));
+  await sleep(900);
+  const back = await page.evaluate(HELD);
+  const kept2 = back.items.find((item) => item.id === 'kept');
+  if (SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(SHOTS, `held-back-${engine}-${viewportName}.png`) });
+  if (ids(back) !== 'kept,done,mine') fail(where, `after the plugin returned the strip draws ${ids(back)}, wanted kept,done,mine`);
+  if (kept2?.state !== 'ended') fail(where, `after the plugin returned the held session is ${String(kept2?.state)}: a session that stays ended does not start again`);
+  if (back.bodies.find((candidate) => candidate.session === 'kept')?.state !== 'ended') fail(where, 'after the plugin returned the held session\'s body is not ended');
+  const on = await openCard(tab);
+  report.held[`${engine} ${viewportName} plugin back`] = on;
+  if (on === null) fail(where, 'no card opened on the held session\'s tab once the plugin was back');
+  else {
+    if (on.links.length !== 1 || on.links[0].href !== '#/acme/item') fail(where, `the card's links once the plugin is back: ${JSON.stringify(on.links)}, wanted one to #/acme/item`);
+    const [button] = on.buttons;
+    if (button === undefined || button.unavailable !== null) fail(where, `the button once the plugin is back: ${JSON.stringify(button)}, wanted one that is available`);
+    else {
+      await page.mouse.click(button.at[0], button.at[1]);
+      await sleep(300);
+      const pressed = (await page.evaluate(HELD)).opened;
+      if (pressed.join() !== 'acme/item') fail(where, `pressing the button once the plugin is back opened ${JSON.stringify(pressed)}, wanted acme/item`);
+    }
+  }
+
+  await page.keyboard.press('Escape');
+  await sleep(300);
+
+  // (7) A new press opens a new session beside the held one, a twin told apart by its ordinal; the held one is not touched. Closing the held tab (Delete) frees its body and moves nothing else.
+  await page.evaluate(() => window.__panel.openSession({ id: 'again', tool: 'logs', plugin: 'acme', title: 'orders-api/app', scope: 'north', state: 'running' }));
+  await sleep(600);
+  const twins = await page.evaluate(HELD);
+  if (ids(twins) !== 'kept,done,mine,again') fail(where, `with a second press the strip draws ${ids(twins)}, wanted kept,done,mine,again`);
+  if (twins.items.find((item) => item.id === 'kept')?.state !== 'ended') fail(where, 'a new press changed the held session');
+  if (twins.items.find((item) => item.id === 'again')?.name !== 'orders-api/app (2) · north') fail(where, `the new session is named ${JSON.stringify(twins.items.find((item) => item.id === 'again')?.name)}, wanted "orders-api/app (2) · north"`);
+  await page.locator(tab).focus();
+  await page.keyboard.press('Delete');
+  await sleep(600);
+  const closed = await page.evaluate(HELD);
+  if (ids(closed) !== 'done,mine,again') fail(where, `after closing the held session the strip draws ${ids(closed)}, wanted done,mine,again`);
+  if (closed.bodies.some((candidate) => candidate.session === 'kept')) fail(where, 'the body of the held session is still mounted after its tab closed');
+  report.held[`${engine} ${viewportName}`] = { before: before.items.map((item) => [item.id, item.state]), after: after.items.map((item) => [item.id, item.state]), counted: [countedBefore, body?.lines ?? null], twins: twins.items.map((item) => item.name), closed: closed.items.map((item) => item.id) };
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // The negative controls: one perturbation of one measured value, made in the page after it loaded. The probe must see it. With NEGATIVE_CONTROL the exit code is 0 when it did.
 const PERTURBATIONS = {
   'panel-height': { css: '[data-shell-region="panel"] { block-size: 272px !important; }', sections: ['geometry'], expected: /^geometry .* (empty|sessions): (panel|body)\[h\]/ },
@@ -1178,6 +1411,12 @@ const PERTURBATIONS = {
   'tab-padding': { css: '[data-shell-part="panelTools"] [role=tab] { padding-inline: 13px !important; }', sections: ['geometry'], expected: /^geometry .* (empty|sessions): tool tab 2\[x\]/ },
   shift: { sections: ['shift'], expected: /^shift .*: (opening: sidebar|.*sidebar before|.*sidebar after)/ },
   'root-write': { sections: ['drag'], expected: /^drag .*: \d+ writes to the document root/ },
+  // A21: the held session's tab is not drawn after the unload, and nor is the tab of the session that had ended on its own (two controls: each hides ONE tab, so each trips only its own check); the held tab moves; the way
+  // back to its resource is pressable while its plugin is off. Each is made in the page after the unload and must trip its own check.
+  'held-hidden': { css: '[data-shell-part="sessionTab"][data-tab-id="kept"] { display: none !important; }', sections: ['held'], expected: /^held .*: the held session's tab is not in the strip/ },
+  'held-done-hidden': { css: '[data-shell-part="sessionTab"][data-tab-id="done"] { display: none !important; }', sections: ['held'], expected: /^held .*: the tab of the session that had ended on its own is not in the strip/ },
+  'held-moved': { css: '[data-shell-part="sessionLead"][data-state="ended"] { margin-inline-end: 3px !important; }', sections: ['held'], expected: /^held .*: the held tab's (rect|lead|label|head|tail|scope|close) moved by/ },
+  'held-enabled': { sections: ['held'], expected: /^held .*: the button ".*" is not unavailable while the plugin is off/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
@@ -1194,6 +1433,7 @@ for (const engineName of engineNames) {
     const viewport = NATIVE_VIEWPORTS[viewportName];
     if (wants('geometry')) await geometry(browser, engineName, viewportName, viewport, production.origin);
     if (wants('shift')) await shift(browser, engineName, viewportName, viewport, production.origin);
+    if (wants('held')) await held(browser, engineName, viewportName, viewport, production.origin);
     if (CONTROL === '') {
       await card(browser, engineName, viewportName, viewport, production.origin);
       await paint(browser, engineName, viewportName, viewport, production.origin);

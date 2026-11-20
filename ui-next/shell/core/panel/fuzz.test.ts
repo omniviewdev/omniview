@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInvariants, createPanelStore, restorePanel, type PanelState, type PanelStore } from './index';
+import { checkInvariants, createPanelStore, HOST, restorePanel, type PanelState, type PanelStore } from './index';
 import { generator, tool } from './testing';
 
 // Thousands of random operations against the store, with the invariants of `checkInvariants` checked after each, and the saved session checked to come back whole. Deterministic: a seeded
@@ -31,7 +31,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
     return drawn;
   };
 
-  const roll = next() % 15;
+  const roll = next() % 18;
   tick();
   let name: string;
   switch (roll) {
@@ -106,6 +106,47 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
       store.fitHeight(pick([300, 500, 700, 900, 1400]));
       name = 'fitHeight';
       break;
+    case 15: {
+      // A plugin that is live leaves and the others stay: what an unload does to the sessions it was running (some of them are now held).
+      const leaving = state.live.length === 0 ? undefined : pick(state.live);
+      if (leaving === undefined) {
+        name = 'pluginLeaves (no plugin live)';
+        break;
+      }
+
+      store.syncPlugins(state.live.filter((id) => id !== leaving).map((id) => ({ id, tools: next() % 2 === 0 ? [tool('one'), tool('two', 'Two', 3)] : [] })));
+      name = 'pluginLeaves';
+      break;
+    }
+
+    case 16: {
+      // A plugin that is not live comes back, the live ones stay: the sessions it had come back with it, and the held ones were never gone.
+      const absent = PLUGINS.filter((id) => id !== 'host' && !state.live.includes(id));
+      if (absent.length === 0) {
+        name = 'pluginReturns (every plugin live)';
+        break;
+      }
+
+      const returning = pick(absent);
+      store.syncPlugins([...state.live, returning].map((id) => ({ id, tools: next() % 2 === 0 ? [tool('one'), tool('two', 'Two', 3)] : [] })));
+      name = 'pluginReturns';
+      break;
+    }
+
+    case 17: {
+      // A plugin presses Logs: it opens a session of its own, starting or running, in a tool of the host. This is what an unload holds, so the run has plenty of them to hold.
+      const hostTools = Object.values(state.tools).filter((one) => one.owner === HOST);
+      const opener = state.live.length === 0 ? undefined : pick(state.live);
+      if (opener === undefined || hostTools.length === 0) {
+        name = 'openFromPlugin (no plugin live, or no tool of the host)';
+        break;
+      }
+
+      store.openSession({ tool: pick(hostTools).id, plugin: opener, title: `f${String(next() % 3)}`, scope: next() % 2 === 0 ? 'dev' : '', state: next() % 2 === 0 ? 'running' : 'starting' }, { reveal: next() % 3 !== 0 });
+      name = 'openFromPlugin';
+      break;
+    }
+
     default:
       store.toggle();
       name = 'toggle';
@@ -116,7 +157,10 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
 }
 
 /** Every operation the generator can draw, as `step` names it when it acted. */
-const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'openSession', 'setSessionState', 'closeSession', 'activateSession', 'syncPlugins', 'registerTool', 'unregisterTool', 'fitHeight', 'toggle'];
+const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'openSession', 'setSessionState', 'closeSession', 'activateSession', 'syncPlugins', 'registerTool', 'unregisterTool', 'fitHeight', 'toggle', 'pluginLeaves', 'pluginReturns', 'openFromPlugin'];
+
+/** The sessions of a state that are held. */
+const heldOf = (state: PanelState): Array<PanelState['sessions'][string]> => Object.values(state.sessions).filter((session) => session.held === true);
 
 describe('the panel under random operations', () => {
   it('keeps every invariant after every operation, and what it saves comes back whole', () => {
@@ -151,6 +195,38 @@ describe('the panel under random operations', () => {
           expect(on === null || strip.includes(on)).toBe(true);
         }
 
+        // A21, in words: a session is listed exactly when its tool is registered and visible and (its plugin is live, or it is held): a held session of a plugin that is off is listed, and nothing else of one is.
+        // Written out here from `live` and `held`, not from `sessionVisible`, so the rule is not checked against its own implementation.
+        const listed = new Set(tools.flatMap((id) => store.selectors.sessionIds(state, id)));
+        for (const [id, one] of Object.entries(state.sessions)) {
+          const shouldList = tools.includes(one.tool) && (one.plugin === 'host' || state.live.includes(one.plugin) || one.held === true);
+          expect(listed.has(id), `seed ${String(seed)}, operation ${String(operation)} (${name}): ${id} of ${one.plugin} is ${shouldList ? '' : 'not '}to be listed`).toBe(shouldList);
+        }
+
+        // A held session never changes, whatever is done, until its tab closes: the very same record, or none. It is held by an unload and by nothing else.
+        const heldBefore = heldOf(before);
+        for (const one of heldBefore) {
+          // An own lookup: `constructor` is an id as legal as `s1`, and `sessions['constructor']` is a function when there is no such session.
+          const now = Object.hasOwn(state.sessions, one.id) ? state.sessions[one.id] : undefined;
+          expect([one, undefined], `seed ${String(seed)}, operation ${String(operation)} (${name}): the held session ${one.id} changed`).toContain(now);
+          if (now === undefined) {
+            count(tally, 'held:closed');
+          }
+        }
+
+        const heldBeforeIds = new Set(heldBefore.map((one) => one.id));
+        for (const one of heldOf(state)) {
+          if (!heldBeforeIds.has(one.id)) {
+            count(tally, 'held:made');
+            expect(name, `seed ${String(seed)}, operation ${String(operation)}: ${one.id} was held by ${name}`).toMatch(/^(syncPlugins|pluginLeaves)$/);
+          }
+        }
+
+        // A plugin that comes back while it has held sessions: they are still there, still ended, the same records (checked above).
+        if (heldBefore.some((one) => state.live.includes(one.plugin) && !before.live.includes(one.plugin))) {
+          count(tally, 'held:returned');
+        }
+
         // An operation that answers no-op returns the very state it was given (no work for a renderer).
         if (state === before) {
           continue;
@@ -159,22 +235,30 @@ describe('the panel under random operations', () => {
 
       const document = store.serialise();
       expect(JSON.parse(JSON.stringify(document))).toEqual(document);
+      // A held session is saved as every session is, by its identity: the flag is never written, and a session that comes back is never held.
+      expect(JSON.stringify(document), `seed ${String(seed)}: a held session is saved as identity only`).not.toContain('held');
       const restored = restorePanel(JSON.parse(JSON.stringify(document)), { now: clock.time });
       expect(restored.ok, `seed ${String(seed)}: what it saved is readable`).toBe(true);
       if (restored.ok) {
         expect(checkInvariants(restored.state)).toEqual([]);
         expect(restored.repaired, `seed ${String(seed)}: nothing needed repair`).toBe(false);
         expect(restored.state.order).toEqual(document.sessions.map((one) => one.id));
+        expect(heldOf(restored.state), `seed ${String(seed)}: a restored session is never held`).toEqual([]);
       }
     }
 
-    // A uniform draw gives each operation some 1,200 of the 18,000 and each state well over 1,000: the floor is a third of that, so a generator that stops mixing its bits fails here and not silently.
+    // A uniform draw gives each operation some 1,000 of the 18,000 and each state well over 1,000: the floor is a third of that, so a generator that stops mixing its bits fails here and not silently.
     for (const operation of OPERATIONS) {
-      expect(tally.get(operation) ?? 0, `operation ${operation}`).toBeGreaterThan(400);
+      expect(tally.get(operation) ?? 0, `operation ${operation}`).toBeGreaterThan(300);
     }
 
     for (const state of STATES) {
       expect(tally.get(`state:${state}`) ?? 0, `state ${state}`).toBeGreaterThan(400);
+    }
+
+    // The held sessions are what this is for: a run that never made one, never saw its plugin come back while it was held, or never closed one, proves nothing about them.
+    for (const event of ['held:made', 'held:returned', 'held:closed']) {
+      expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(100);
     }
   });
 

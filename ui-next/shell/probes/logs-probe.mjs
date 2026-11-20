@@ -32,6 +32,15 @@
 //                                 costs nothing because its feed is quiet would pass; the exit code is 0 when it did, 1 when it did not
 // NEGATIVE_CONTROL=source-label   the name in every Source cell of the `pair` session is the other source's (the text of the name element only: the chip, its hue, its clip marker and the cell stay; the `sources` section only): the probe must fail its check that each row names the feed's source for its line
 // NEGATIVE_CONTROL=column-moves   the list scrolls 48 px when the column has appeared (scrolled back; the `appears` section only): the probe must fail its check that the list did not scroll
+// NEGATIVE_CONTROL=kept-leak      every listener ever added to a Set is kept, which keeps the model of the view of a session after its tab closed (Chromium, the `memory` section only): the probe must fail its check that the
+//                                 heap fell back after the tab closed
+// NEGATIVE_CONTROL=close-twice    the count of the calls to the first feed's close is one more just before the check that close was asked of each feed once (the `kept` section only): `closed` counts a feed once, so only
+//                                 the calls themselves show a stream closed twice
+// NEGATIVE_CONTROL=kept-lines     the number of the oldest line of the first session's view is not the one the page drew, just before the check that the lines a view had are the ones it has (the `kept` section only)
+//
+// Sections added for A21 (a plugin's unload keeps its sessions of the host's Logs tool): `kept` (both engines: the tabs, the views, the streams closed once, the cards, the new press, the four tabs closed) and `memory`
+// (Chromium: a session fills the view to its bound, the plugin is unloaded, the tab is closed, and after a forced garbage collection the heap has fallen back; WebKit has no heap counter to drive: `kept` is its check).
+// SECTIONS=kept,memory runs only those sections (a draft run); a name that is no section, or a section that ran in no engine (`memory` measures in Chromium only), fails the run.
 // Exit code 1 when anything differs.
 import { writeFileSync } from 'node:fs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -42,14 +51,27 @@ const PERTURBATIONS = {
   'feed-stopped': { sections: ['hidden'], expected: /^hidden .*: the feed emitted/ },
   'source-label': { sections: ['sources'], expected: /^sources .*: two sources: .* rows name the wrong source/ },
   'column-moves': { sections: ['appears'], expected: /^appears .*: the list scrolled/ },
+  // A21: every listener ever added to a Set is kept for good, which keeps the view's model (its listeners close over it) after its tab closed: the heap must not be seen to fall (Chromium, the `memory` section).
+  'kept-leak': { sections: ['memory'], expected: /^memory .*: the heap kept/ },
+  // A21: a stream closed twice, which the count of closed feeds does not see (it counts a feed once): the calls to close are counted, and the page says one more.
+  'close-twice': { sections: ['kept'], expected: /^kept .*: after the unload: close was asked of each feed once/ },
+  // A21: the lines a held view shows are the ones it had, not only as many: the oldest line's number is changed in the page.
+  'kept-lines': { sections: ['kept'], expected: /^kept .*: the oldest line of app was/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
-const wants = (section) => CONTROL === '' || PERTURBATIONS[CONTROL].sections.includes(section);
+// SECTIONS=kept,memory runs only those sections (a draft run: the exit code says nothing of the others). A name that is no section is an error before a browser starts, and a section that ran in no engine (`memory`
+// measures the heap in Chromium only, so SECTIONS=memory ENGINES=webkit ran nothing) fails the run: a draft that proved nothing does not pass.
+const SECTION_NAMES = ['fills', 'sources', 'appears', 'hidden', 'kept', 'memory'];
+const ONLY = (process.env.SECTIONS ?? '').split(',').filter(Boolean);
+for (const name of ONLY) if (!SECTION_NAMES.includes(name)) throw new Error(`SECTIONS names ${name}, which is no section of this probe: ${SECTION_NAMES.join(', ')}`);
+/** The sections that really ran, in at least one engine. */
+const ran = new Set();
+const wants = (section) => (CONTROL === '' ? ONLY.length === 0 || ONLY.includes(section) : PERTURBATIONS[CONTROL].sections.includes(section));
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(NATIVE_VIEWPORTS).join(',') : '1440x900')).split(',');
 const failures = [];
-const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, notes: [] };
+const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, kept: {}, memory: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 const url = (origin) => `${origin}/shell/probes/host-fixture.html?logs=1&panel=1&inventoryMs=30&loadMs=30&nodesMs=30&dataMs=30`;
 
@@ -190,6 +212,220 @@ async function listeners(browser, engine, viewportName, viewport, origin) {
   same(closed, { opened: 1, closed: 1, listeners: 0 }, 'tab closed');
   for (const error of errors) fail(`errors ${where}`, error);
   await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A21: the sessions of the host's Logs tool across their plugin's unload, in a real engine (the host fixture: the product's own `PluginHost`; `window.__plugin.unload` takes the plugin out of the live set and holds
+// it there). Three sessions of one item: `app` streams, `migrate` ends on its own and `sync` fails on its own. The unload ends `app` with the cause and keeps the other two as they were; all three tabs stay, each
+// view is the SAME element and shows the oldest line it showed (read by its number and its text, not counted), every stream was closed once (the calls to `close` are counted, repeats too) and the registry let go of
+// it; the card of the failed one says what it says of itself and then that the plugin was unloaded, its link is no link and its Open button is unavailable; when the plugin is back nothing resumed and the link
+// works; a new press opens a new session; closing the four tabs leaves no listener and closes each stream once.
+async function kept(browser, engine, viewportName, viewport, origin) {
+  const where = `kept ${engine} ${viewportName}`;
+  const { page, context, errors } = await open(browser, url(origin), viewport);
+  await ready(page);
+  await page.evaluate(() => {
+    window.__logs.open(0);
+    window.__logs.open(1);
+    window.__logs.open(2);
+  });
+  await page.waitForFunction(() => Object.values(window.__panel.getSnapshot().sessions).filter((one) => one.state === 'ended' || one.state === 'failed').length === 2, null, { timeout: 15000 });
+  await sleep(400);
+  const sessions = () => page.evaluate(() => Object.fromEntries(Object.values(window.__panel.getSnapshot().sessions).map((one) => [one.title.split('/')[1], { id: one.id, state: one.state, cause: one.cause, since: one.since, held: one.held === true }])));
+  const rows = (id) => page.evaluate((one) => Number(document.querySelector(`[data-log-session="${one}"] [role=grid]`)?.getAttribute('aria-rowcount') ?? -1), id);
+  const marked = (id) => page.evaluate((one) => document.querySelector(`[data-log-session="${one}"] [role=grid]`)?.__kept === one, id);
+  const tabs = () => page.evaluate(() => [...document.querySelectorAll('[data-shell-part="sessionTab"] [role=tab]')].map((tab) => tab.getAttribute('aria-label')));
+  const same = (got, wanted, label) => {
+    if (JSON.stringify(got) !== JSON.stringify(wanted)) fail(where, `${label}: ${JSON.stringify(got)}, wanted ${JSON.stringify(wanted)}`);
+  };
+  const before = await sessions();
+  const ids = Object.fromEntries(Object.entries(before).map(([name, one]) => [name, one.id]));
+  /**
+   * The oldest line a session's view shows, read by its number and its text: the session's tab is chosen, its list scrolled to the top and the first row read once it is drawn. A count of rows would pass for a view
+   * that never had a line, or lost its lines and gained as many. `change` is the one perturbation of the control `kept-lines`: the number of the row is not the one the page drew.
+   */
+  const firstLine = async (name, change = false) => {
+    await page.locator(`[data-shell-part="sessionTab"] [role=tab][aria-label^="orders-api/${name} "]`).click();
+    await page.waitForFunction((id) => {
+      const grid = document.querySelector(`[data-log-session="${id}"] [role=grid]`);
+      return grid !== null && grid.getClientRects().length > 0 && grid.querySelector('[role=row][data-n]') !== null;
+    }, ids[name], { timeout: 15000 });
+    const line = await page.evaluate(({ id, perturb }) => new Promise((resolve) => {
+      const grid = document.querySelector(`[data-log-session="${id}"] [role=grid]`);
+      grid.scrollTop = 0;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const row = grid.querySelector('[role=row][data-n]');
+          if (row !== null && perturb) row.setAttribute('data-n', `${row.getAttribute('data-n')}0`);
+          resolve(row === null ? null : { n: row.getAttribute('data-n'), text: row.textContent.replace(/\s+/g, ' ').trim() });
+        });
+      });
+    }), { id: ids[name], perturb: change });
+    // The click gave the tab the focus: it is taken off, so that the card the check opens later is the one a pointer alone opens, as when no tab was chosen first.
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
+    return line;
+  };
+  // Each session is on screen once, in the order they were opened (so the last is the one on screen again), and its oldest line is kept to be found after the unload.
+  const linesBefore = {};
+  for (const name of ['app', 'migrate', 'sync']) {
+    linesBefore[name] = await firstLine(name);
+    if (linesBefore[name] === null) fail(where, `the view of ${name} drew no line before the unload: the check of its lines proves nothing`);
+  }
+
+  await page.mouse.move(1, 1);
+  await sleep(300);
+  await page.evaluate((all) => {
+    for (const id of all) document.querySelector(`[data-log-session="${id}"] [role=grid]`).__kept = id;
+  }, Object.values(ids));
+  const rowsBefore = { app: await rows(ids.app), migrate: await rows(ids.migrate), sync: await rows(ids.sync) };
+  same(await counters(page), { opened: 3, closed: 0, listeners: 5 }, 'three feeds opened: the registry listens to each (3) and the view on screen to its own (2)');
+
+  // The unload: the plugin leaves, and what it has in the Logs tool stays, whatever its state.
+  await page.evaluate(() => window.__plugin.unload('alpha'));
+  await page.waitForFunction(() => !window.__panel.getSnapshot().live.includes('alpha'), null, { timeout: 15000 });
+  await sleep(900);
+  const off = await sessions();
+  same(await tabs(), ['orders-api/app · north-yard, ended', 'orders-api/migrate · north-yard, ended', 'orders-api/sync · north-yard, failed'], 'the tabs after the unload');
+  if (!(off.app.state === 'ended' && off.app.cause === 'The plugin was unloaded.' && off.app.held)) fail(where, `the running session is ${JSON.stringify(off.app)} after the unload, wanted ended with "The plugin was unloaded." and held`);
+  for (const name of ['migrate', 'sync']) {
+    const a = before[name];
+    const b = off[name];
+    if (!(b.held && a.state === b.state && a.cause === b.cause && a.since === b.since)) fail(where, `${name} was ${JSON.stringify(a)} and is ${JSON.stringify(b)}: what was over before the unload stays as it was, and is held`);
+  }
+
+  for (const name of ['app', 'migrate', 'sync']) {
+    if (!(await marked(ids[name]))) fail(where, `the view of ${name} is not the element it was: it was made again`);
+    const now = await rows(ids[name]);
+    if (now < rowsBefore[name]) fail(where, `${name} had ${String(rowsBefore[name])} lines and has ${String(now)}`);
+    const line = await firstLine(name, CONTROL === 'kept-lines' && name === 'app');
+    if (JSON.stringify(line) !== JSON.stringify(linesBefore[name])) fail(where, `the oldest line of ${name} was ${JSON.stringify(linesBefore[name])} and is ${JSON.stringify(line)}: the lines its view had are not the ones it has`);
+  }
+
+  await page.mouse.move(1, 1);
+  await sleep(300);
+  const rowsOff = await rows(ids.app);
+  await sleep(800);
+  if ((await rows(ids.app)) !== rowsOff) fail(where, 'the lines of the session the unload ended went on growing');
+  same(await counters(page), { opened: 3, closed: 3, listeners: 2 }, 'after the unload: each stream closed once, the registry let go of all three, the view on screen keeps its two');
+  const calls = () => page.evaluate(() => [...window.__fixtureLogs.closeCalls]);
+  // The negative control `close-twice`: the count of the calls to the first feed's close is one more, as if the registry had closed it twice; it is put back right after the check.
+  if (CONTROL === 'close-twice') await page.evaluate(() => { window.__fixtureLogs.closeCalls[0] += 1; });
+  same(await calls(), [1, 1, 1], 'after the unload: close was asked of each feed once (the calls are counted, repeats too; `closed` counts a feed once)');
+  if (CONTROL === 'close-twice') await page.evaluate(() => { window.__fixtureLogs.closeCalls[0] -= 1; });
+  const cardOf = async (name) => {
+    await page.mouse.move(1, 1);
+    await sleep(500);
+    const box = await page.locator(`[data-shell-part="sessionTab"] [role=tab][aria-label^="orders-api/${name} "]`).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
+    await sleep(1000);
+    return page.evaluate(() => {
+      const content = document.querySelector('[popover]:popover-open [data-shell-part="sessionCard"]');
+      if (content === null) return null;
+      const button = content.querySelector('button');
+      return {
+        text: content.innerText.replace(/\s+/g, ' '),
+        links: content.querySelectorAll('a').length,
+        button: button === null ? null : { unavailable: button.getAttribute('aria-disabled'), why: (button.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean).map((id) => document.getElementById(id)?.textContent.trim() ?? '').join(' ') },
+      };
+    });
+  };
+  const cardOff = await cardOf('sync');
+  report.kept[`${engine} ${viewportName} plugin off`] = cardOff;
+  if (cardOff === null) fail(where, 'no card opened on the failed session');
+  else {
+    if (!/The log stream stopped\. The source did not answer\. The plugin was unloaded\./.test(cardOff.text)) fail(where, `the card of the failed session says ${JSON.stringify(cardOff.text)}: its own words, then that the plugin was unloaded`);
+    if (cardOff.links !== 0) fail(where, `the card of the failed session has ${String(cardOff.links)} link(s) while the plugin is off`);
+    if (cardOff.button?.unavailable !== 'true' || cardOff.button.why !== 'The plugin was unloaded.') fail(where, `its button is ${JSON.stringify(cardOff.button)}, wanted an unavailable one that says "The plugin was unloaded."`);
+  }
+
+  // The plugin is back: nothing resumes, and the way back to the resource works.
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.__plugin.reload('alpha'));
+  await page.waitForFunction(() => window.__panel.getSnapshot().live.includes('alpha'), null, { timeout: 15000 });
+  await sleep(900);
+  const back = await sessions();
+  const facts = (all) => Object.fromEntries(Object.entries(all).map(([name, one]) => [name, [one.state, one.cause, one.since, one.held]]));
+  same(facts(back), facts(off), 'the sessions after the plugin came back');
+  same(await counters(page), { opened: 3, closed: 3, listeners: 2 }, 'the plugin\'s return opened and closed nothing');
+  const cardBack = await cardOf('sync');
+  report.kept[`${engine} ${viewportName} plugin back`] = cardBack;
+  if (cardBack === null || cardBack.links !== 1 || cardBack.button?.unavailable !== null) fail(where, `the card once the plugin is back: ${JSON.stringify(cardBack)}, wanted one link and an available button`);
+
+  // A new press opens a new session beside them; closing the four tabs frees every listener and closes each stream once.
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    window.__logs.open(0);
+  });
+  await sleep(900);
+  same(await tabs(), ['orders-api/app · north-yard, ended', 'orders-api/migrate · north-yard, ended', 'orders-api/sync · north-yard, failed', 'orders-api/app (2) · north-yard'], 'the tabs after a new press');
+  same(await counters(page), { opened: 4, closed: 3, listeners: 3 }, 'a fourth feed: its registry listener and its view\'s two (the held views are hidden and listen to nothing)');
+  for (let tab = 0; tab < 4; tab += 1) {
+    await page.locator('[data-shell-part="sessionTab"] [role=tab]').first().focus();
+    await page.keyboard.press('Delete');
+    await sleep(300);
+  }
+
+  await page.getByText('No log sessions').waitFor({ timeout: 10000 });
+  await sleep(300);
+  same(await counters(page), { opened: 4, closed: 4, listeners: 0 }, 'after the four tabs closed: each stream closed once, no listener left');
+  same(await calls(), [1, 1, 1, 1], 'after the four tabs closed: close was asked of each feed once');
+  report.kept[`${engine} ${viewportName}`] = { before, off, back: facts(back), rowsBefore };
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A21, "closing the tab frees the buffer", in Chromium (the only engine with a heap counter we can drive): a session fills the view to its bound (100,000 lines), its plugin is unloaded (the stream closes and drops
+// its buffer; the view keeps its lines, so the heap stays up), and the tab is closed: after a forced garbage collection (CDP) the heap is back near what it was before the session. The control `kept-leak` keeps every
+// listener ever added to a Set, which keeps the view's model alive, and the check must see that the heap did not fall.
+const MIB = 1024 * 1024;
+const LEAK = '(() => { const keep = (window.__leak = []); const add = Set.prototype.add; Set.prototype.add = function (value) { if (typeof value === "function") keep.push(value); return add.call(this, value); }; })();';
+
+async function memory(browser, engine, viewportName, viewport, origin) {
+  if (engine !== 'chromium') {
+    report.notes.push(`memory ${engine} ${viewportName}: no heap counter to drive in this engine: the counters of the \`kept\` section are what it checks`);
+    return false;
+  }
+
+  const where = `memory ${engine} ${viewportName}`;
+  const { page, context, errors } = await open(browser, url(origin), viewport, CONTROL === 'kept-leak' ? { init: LEAK } : {});
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('HeapProfiler.enable');
+  /** The heap in use after three forced collections: what the page still holds. */
+  const heap = async () => {
+    for (let pass = 0; pass < 3; pass += 1) await cdp.send('HeapProfiler.collectGarbage');
+    await sleep(200);
+    return (await cdp.send('Runtime.getHeapUsage')).usedSize;
+  };
+  await ready(page);
+  const baseline = await heap();
+  await page.evaluate(() => {
+    window.__logs.open(3);
+  });
+  await page.waitForFunction(() => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) >= 100000, null, { timeout: 60000, polling: 500 });
+  const full = await heap();
+  await page.evaluate(() => window.__plugin.unload('alpha'));
+  await page.waitForFunction(() => !window.__panel.getSnapshot().live.includes('alpha'), null, { timeout: 15000 });
+  await sleep(500);
+  const held = await heap();
+  await page.locator('[data-shell-part="sessionTab"] [role=tab]').first().focus();
+  await page.keyboard.press('Delete');
+  await page.getByText('No log sessions').waitFor({ timeout: 10000 });
+  await sleep(500);
+  const closed = await heap();
+  const mib = (bytes) => Math.round((bytes / MIB) * 10) / 10;
+  report.memory[`${engine} ${viewportName}`] = { baselineMiB: mib(baseline), fullMiB: mib(full), heldMiB: mib(held), closedMiB: mib(closed) };
+  // The session really held a buffer (a probe that never filled the view would prove nothing), the held session still holds its lines, and closing the tab gave back all but a fraction of them.
+  if (full - baseline < 8 * MIB) fail(where, `the session added ${String(mib(full - baseline))} MiB to the heap: the view was not filled, so the check proves nothing`);
+  if (held - baseline < 8 * MIB) fail(where, `the held session adds ${String(mib(held - baseline))} MiB to the heap: its lines are not kept`);
+  const kept = closed - baseline;
+  const grew = held - baseline;
+  if (!(held - closed >= 8 * MIB && kept <= 0.3 * grew)) fail(where, `the heap kept ${String(mib(kept))} MiB of the ${String(mib(grew))} MiB the session held after its tab closed (the heap was ${String(mib(baseline))} before, ${String(mib(held))} held, ${String(mib(closed))} after): the buffer is not freed`);
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+  return true;
 }
 
 /**
@@ -599,7 +835,7 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   await context.close();
 }
 
-const production = wants('fills') || wants('sources') ? await serveFixtures(buildFixtures('production')) : null;
+const production = wants('fills') || wants('sources') || wants('kept') || wants('memory') ? await serveFixtures(buildFixtures('production')) : null;
 const development = wants('hidden') || wants('appears') ? await serveFixtures(buildFixtures('development')) : null;
 for (const engineName of engineNames) {
   const browser = await launch(engineName);
@@ -610,11 +846,29 @@ for (const engineName of engineNames) {
       await shift(browser, engineName, viewportName, viewport, production.origin);
       await keep(browser, engineName, viewportName, viewport, production.origin);
       await listeners(browser, engineName, viewportName, viewport, production.origin);
+      ran.add('fills');
     }
 
-    if (wants('sources')) await sources(browser, engineName, viewportName, viewport, production.origin);
-    if (wants('appears')) await appears(browser, engineName, viewportName, viewport, development.origin);
-    if (wants('hidden')) await hidden(browser, engineName, viewportName, viewport, development.origin);
+    if (wants('sources')) {
+      await sources(browser, engineName, viewportName, viewport, production.origin);
+      ran.add('sources');
+    }
+
+    if (wants('kept')) {
+      await kept(browser, engineName, viewportName, viewport, production.origin);
+      ran.add('kept');
+    }
+
+    if (wants('memory') && (await memory(browser, engineName, viewportName, viewport, production.origin))) ran.add('memory');
+    if (wants('appears')) {
+      await appears(browser, engineName, viewportName, viewport, development.origin);
+      ran.add('appears');
+    }
+
+    if (wants('hidden')) {
+      await hidden(browser, engineName, viewportName, viewport, development.origin);
+      ran.add('hidden');
+    }
     console.log(engineName, viewportName, 'done');
   }
 
@@ -623,8 +877,10 @@ for (const engineName of engineNames) {
 
 production?.server.close();
 development?.server.close();
+if (CONTROL === '') for (const name of ONLY) if (!ran.has(name)) fail('sections', `${name} was asked for (SECTIONS) and ran in no engine of ${engineNames.join(', ')}`);
+if (ONLY.length > 0) report.notes.push(`SECTIONS=${ONLY.join(',')}: ran ${[...ran].join(', ') || 'nothing'}`);
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, notes: report.notes }, null, 1));
+console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, memory: report.memory, notes: report.notes }, null, 1));
 if (CONTROL !== '') {
   const detected = failures.filter((line) => PERTURBATIONS[CONTROL].expected.test(line));
   console.log(`\nwhat the probe saw with the perturbation "${CONTROL}": ${String(failures.length)} differences\n${failures.map((line) => `  ${line}`).join('\n')}`);

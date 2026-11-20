@@ -8,7 +8,9 @@ import { LOGS_TOOL_ID } from './tool';
 // today, a registry and a picker one day, decision A20) and the registry makes the session in the panel and owns the feed from then on, until the session goes:
 //
 //   - it copies what the feed says to what the session says (`sessionStateOf`): the card and the tab show it, whether the session is on screen or not;
-//   - it closes the feed, and lets go of its own listener, when the session's tab closes, when its plugin unloads, and when the registry itself ends (the window);
+//   - it closes the feed, and lets go of its own listener, when the session's tab closes, when its plugin unloads, and when the registry itself ends (the window). A session the unload ENDED is kept (A21,
+//     `Session.held`): its stream is closed, but its entry stays, with the very feed object the view over it was made for, until the tab closes, so the lines a person was reading stay readable; a session
+//     the unload did not end (one that had ended or failed on its own) is hidden with its plugin and released with it (PO1);
 //   - it never reads the feed, and never pauses it: the view is the one reader (a feed has one), and a hidden view reads nothing while the feed goes on holding its lines, bounded.
 //
 // A feed's status is told to the registry's listener with every held line's first wake-up too; the listener compares the status with the last it saw and writes to the panel only for a new one, so a
@@ -39,8 +41,8 @@ export type LogStreamsOptions = {
 
 export type LogStreams = {
   /**
-   * Starts listening to the panel: a session that closes, or a plugin that leaves, releases its stream. Returns what stops it, which also closes every stream still open (the window is going). It may
-   * be attached again after it was stopped.
+   * Starts listening to the panel: a session that closes, or a plugin that leaves, releases its stream (a session the plugin's unload ended is kept: its stream is closed and its entry stays until its tab
+   * closes, A21). Returns what stops it, which also closes every stream still open and releases every entry (the window is going). It may be attached again after it was stopped.
    */
   readonly attach: () => () => void;
   /**
@@ -48,7 +50,7 @@ export type LogStreams = {
    * well formed, the plugin's `open` threw or answered something that is not a feed, or the panel refused the session (the plugin is not live); the stream is closed again in the last two cases.
    */
   readonly open: (target: LogTarget) => LogOpened | undefined;
-  /** The stream of a session the registry holds, by identity; `undefined` for a session that has none (one that closed, one restored from the last run, one whose plugin came back). */
+  /** The stream of a session the registry holds, by identity: the stream of a live session, or the closed one of a held session (A21); `undefined` for a session that has none (one that closed, one restored from the last run, one hidden with its plugin and back). */
   readonly feedOf: (session: SessionId) => LogFeedHandle | undefined;
   /** What the card of a session needs of its stream; `undefined` when it has none. */
   readonly recordOf: (session: SessionId) => LogSessionRecord | undefined;
@@ -62,6 +64,11 @@ type Entry = {
   stop: () => void;
   /** The status the registry last copied to the session. */
   last: LogFeedSnapshot;
+  /**
+   * The registry stopped listening to the stream and closed it, and the session stays (A21): the entry is kept for the feed, which the view over it reads, and for the card's record, until the tab closes.
+   * Nothing the closed stream says afterwards is the session's business, and it is closed only once.
+   */
+  ended: boolean;
 };
 
 const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'stats', 'pause', 'resume', 'close'] as const;
@@ -115,14 +122,16 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
     }
   };
 
-  /** Lets a session's stream go: out of the registry first (a feed that publishes as it closes finds nobody), then its listener, then the feed. */
-  const release = (id: SessionId): void => {
-    const entry = entries.get(id);
-    if (entry === undefined) {
+  /**
+   * Stops listening to a session's stream and closes it, and keeps the entry: the session stays and its view reads the feed it already has. Once: an entry that is ended is not closed again. It is marked
+   * first, so nothing the stream publishes as it closes (a real one tells its listeners it ended) is heard.
+   */
+  const end = (entry: Entry): void => {
+    if (entry.ended) {
       return;
     }
 
-    entries.delete(id);
+    entry.ended = true;
     try {
       entry.stop();
     } catch (error) {
@@ -133,7 +142,21 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
     closeFeed(entry.plugin, (): Promise<void> | void => entry.feed.close());
   };
 
-  /** The panel changed: a session that is gone, or whose plugin is, has no use for its stream. */
+  /** Lets a session's stream go: out of the registry first (a feed that publishes as it closes finds nobody), then its listener, then the feed, unless an unload already ended it. */
+  const release = (id: SessionId): void => {
+    const entry = entries.get(id);
+    if (entry === undefined) {
+      return;
+    }
+
+    entries.delete(id);
+    end(entry);
+  };
+
+  /**
+   * The panel changed: a session that is gone has no use for its stream, and neither has one whose plugin is off, except that a session the unload ended and the panel kept (held, A21) is still being
+   * read: its stream is closed once and its entry stays, until its tab closes.
+   */
   const reconcile = (): void => {
     if (entries.size === 0) {
       return;
@@ -141,16 +164,22 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
 
     const state = store.getSnapshot();
     for (const [id, entry] of [...entries]) {
-      if (!Object.hasOwn(state.sessions, id) || !state.live.includes(entry.plugin)) {
+      if (!Object.hasOwn(state.sessions, id)) {
         release(id);
+      } else if (!state.live.includes(entry.plugin)) {
+        if (state.sessions[id]?.held === true) {
+          end(entry);
+        } else {
+          release(id);
+        }
       }
     }
   };
 
-  /** A feed told its listeners something: only a new status is the session's business. */
+  /** A feed told its listeners something: only a new status is the session's business, and not once the registry has closed the stream (the session is ended for good, with its own cause). */
   const heard = (id: SessionId): void => {
     const entry = entries.get(id);
-    if (entry === undefined) {
+    if (entry === undefined || entry.ended) {
       return;
     }
 
@@ -212,7 +241,7 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
         return undefined;
       }
 
-      const entry: Entry = { plugin, target: targetId, resource: target.resource, feed, stop: () => undefined, last: first };
+      const entry: Entry = { plugin, target: targetId, resource: target.resource, feed, stop: () => undefined, last: first, ended: false };
       entries.set(id, entry);
       const opened = store.openSession({ id, tool: LOGS_TOOL_ID, plugin, title: target.title, scope: target.scope, route: target.resource?.route, ...sessionStateOf(first) });
       if (opened.status === 'refused') {

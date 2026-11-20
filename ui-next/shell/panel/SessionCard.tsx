@@ -4,7 +4,7 @@ import type { Route, SessionId } from '../core/panel';
 import { cardOf, type CardAction } from './card';
 import styles from './Card.module.css';
 import { usePanel } from './context';
-import { useSession, useToolItem } from './hooks';
+import { usePluginOff, useSession, useToolItem } from './hooks';
 import type { PanelCard } from './host';
 
 const FALLBACK_GLYPH = 'box';
@@ -12,14 +12,17 @@ const FALLBACK_GLYPH = 'box';
 /** A plain click: what the card's own button asks of the tab model (smart open). */
 const CLICK: LinkActivation = { type: 'click', button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
 
-/** The resource's name: a real link when it has a route (it opens the resource's page through the tab model, like every link), else text. */
-function Resource({ label, route }: { readonly label: string; readonly route: Route | undefined }) {
+/**
+ * The resource's name: a real link when it has a route (it opens the resource's page through the tab model, like every link), else text. While its link cannot open (the session's plugin is off, A21) it is
+ * text too: a link that does nothing is not drawn as one, and the card's reason and the Open button's say why.
+ */
+function Resource({ label, route, disabled }: { readonly label: string; readonly route: Route | undefined; readonly disabled: boolean }) {
   const { linkOf } = usePanel();
   const link = useMemo(() => (route === undefined ? undefined : linkOf(route)), [linkOf, route]);
   const handler = useMemo<LinkHandler | undefined>(() => (link === undefined ? undefined : { hrefOf: () => link.href, onOpen: (_target, activation) => {
     link.open(activation); 
   } }), [link]);
-  if (route === undefined || handler === undefined) {
+  if (route === undefined || handler === undefined || disabled) {
     return <Text>{label}</Text>;
   }
 
@@ -55,6 +58,7 @@ export function SessionCard({ id }: { readonly id: SessionId }) {
   const { cardOf: describe } = usePanel();
   const session = useSession(id);
   const tool = useToolItem(session?.tool ?? '');
+  const off = usePluginOff(id);
   // When the card opened: a card is made when it opens (the hover card keys it), so the age it words is as of that moment.
   const [now] = useState(() => Date.now());
   if (session === undefined || tool === undefined) {
@@ -69,7 +73,7 @@ export function SessionCard({ id }: { readonly id: SessionId }) {
     console.warn('[panel] a session card failed to describe itself', error);
   }
 
-  const card = cardOf(session, tool, given, now);
+  const card = cardOf(session, tool, given, now, off);
   const facts = [
     ...card.facts.map(([label, value]) => ({ label, value })),
     {
@@ -92,7 +96,7 @@ export function SessionCard({ id }: { readonly id: SessionId }) {
         <div className={styles.resource}>
           <KindTile icon={card.resource.icon !== undefined && isIconName(card.resource.icon) ? card.resource.icon : isIconName(tool.icon) ? tool.icon : FALLBACK_GLYPH} />
           <span className={styles.resourceName}>
-            <Resource label={card.resource.label} route={card.resource.route} />
+            <Resource label={card.resource.label} route={card.resource.route} disabled={card.resource.disabledReason !== undefined} />
           </span>
         </div>
       )}

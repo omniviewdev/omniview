@@ -20,6 +20,8 @@
 //                     the `ctx.panel` a plugin's page was given (`open(index, plugin = 'alpha')`, `close(n)` the n-th session opened, `ready()`); `window.__fixtureLogs` counts what the host opened, closed and listens to
 //   ?counts=late      the skeleton declares no count slot (the entries' counts arrive in a row that had none): the probe's negative control for a plugin that does not hold the slot
 //
+// `window.__plugin.unload(id = 'alpha')` takes a plugin's interface out of the live set (the store's `retry`: it is `loading` until its bundle is imported again, which is the plugin leaving as far as the panel
+// is concerned) and holds it there until `window.__plugin.reload(id)` (A21: a Logs session its plugin's unload ended stays, and the way back to its resource works again when the plugin is back).
 // `window.__ticks` counts the timer of the page `clock` per plugin: a page that is hidden must not run it. `window.__commits` lists every commit of the tree (React's profiler; the probe builds
 // this entry with the profiling build of React DOM). `window.__host` is the `PluginStore`.
 import '@omniviewdev/kit/styles.css';
@@ -240,10 +242,23 @@ function contribution(plugin: string): ContributionV1 {
   };
 }
 
+/**
+ * The plugins the probe has unloaded (`window.__plugin.unload`): the import of one waits for `reload`, so the window with the plugin off lasts as long as the probe looks at it. The store's `retry` is what a
+ * reload of an interface is (it is `loading`, which the panel reads as the plugin leaving, until its bundle is imported again).
+ */
+const off = new Set<string>();
+const gates = new Map<string, () => void>();
+
 const deps: LoaderDeps = {
   importBundle: async (id) => {
     // The second plugin registers `LATE_MS` after the first.
     await new Promise((resolve) => setTimeout(resolve, LOAD_MS + (id === 'beta' ? LATE_MS : 0)));
+    if (off.has(id)) {
+      await new Promise<void>((resolve) => {
+        gates.set(id, resolve);
+      });
+    }
+
     return { contributionV1: contribution(id) };
   },
   clearBundle: () => undefined,
@@ -252,6 +267,19 @@ const deps: LoaderDeps = {
 
 const store = new PluginStore(deps);
 Reflect.set(window, '__host', store);
+Reflect.set(window, '__plugin', {
+  /** The plugin's interface goes: it is not live until `reload`. */
+  unload: (id = 'alpha'): void => {
+    off.add(id);
+    void store.retry({ id, name: NAMES[id] ?? id });
+  },
+  /** The plugin's interface is back. */
+  reload: (id = 'alpha'): void => {
+    off.delete(id);
+    gates.get(id)?.();
+    gates.delete(id);
+  },
+});
 
 const descriptors: readonly PluginDescriptor[] = IDS.map((id) => ({ id, name: NAMES[id] ?? id }));
 

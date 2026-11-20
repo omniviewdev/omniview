@@ -312,17 +312,79 @@ describe('closing', () => {
 });
 
 describe('a plugin that goes away', () => {
-  it('closes its streams and ends its sessions: the panel ends them (the plugin was unloaded), the registry releases what they held', () => {
+  it('closes the stream of a session it was running, once, and lets go of its own listener, and KEEPS the session: the same feed is still its feed, and its record is still there (A21)', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target({ resource: { label: 'Item orders-api', kind: 'Item' } });
+    const id = streams.open(given)?.id ?? '';
+    feed.set({ state: 'streaming', sources: [{ id: 'orders-api/app' }] });
+    clock = 9_000;
+    store.syncPlugins([]);
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', cause: UNLOADED_CAUSE, held: true, since: 9_000 });
+    expect(feed.closed()).toBe(1);
+    expect(feed.listeners()).toBe(0);
+    // The kit's view makes its model once for a feed object: the very same object stays the session's until its tab closes.
+    expect(streams.feedOf(id)).toBe(feed);
+    expect(streams.recordOf(id)).toMatchObject({ id: 'item/orders-api/app', plugin: 'acme', resource: { label: 'Item orders-api', kind: 'Item' }, snapshot: { sources: [{ id: 'orders-api/app' }] } });
+  });
+
+  it('closes the stream of a session that was still connecting as well: its work was ended by the unload, and it is kept like the others', () => {
     const { store, streams, target } = harness();
     const { target: given, feed } = target();
     const id = streams.open(given)?.id ?? '';
+    expect(store.getSnapshot().sessions[id]?.state).toBe('starting');
+    store.syncPlugins([]);
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', held: true });
+    expect(feed.closed()).toBe(1);
+    expect(streams.feedOf(id)).toBe(feed);
+  });
+
+  it('hears nothing more of the stream it closed: the end the stream publishes as it closes, and anything after, writes nothing to the session, which keeps the unload\'s cause', () => {
+    const { store, streams } = harness();
+    const feed: FakeFeed = fakeFeed({
+      state: 'streaming',
+      close: () => {
+        // A real stream tells its listeners it ended before `close` returns.
+        feed.set({ state: 'ended' });
+      },
+    });
+    const id = streams.open({ plugin: 'acme', id: 't', title: 'x-stream', open: () => feed })?.id ?? '';
+    const write = vi.spyOn(store, 'setSessionState');
+    store.syncPlugins([]);
+    feed.set({ state: 'failed', cause: { stage: 'source', message: 'late' } });
     feed.set({ state: 'streaming' });
+    expect(write).not.toHaveBeenCalled();
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', cause: UNLOADED_CAUSE, held: true });
+  });
+
+  it('keeps a stream that had ended on its own just the same: closed once at the unload, its entry and feed kept, and the session exactly as it was (its own words, its own time)', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target();
+    const id = streams.open(given)?.id ?? '';
+    clock = 4_000;
+    feed.set({ state: 'ended' });
     clock = 9_000;
     store.syncPlugins([]);
-    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', cause: UNLOADED_CAUSE });
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', cause: '', since: 4_000, held: true });
     expect(feed.closed()).toBe(1);
     expect(feed.listeners()).toBe(0);
-    expect(streams.feedOf(id)).toBeUndefined();
+    expect(streams.feedOf(id)).toBe(feed);
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', since: 4_000, held: true });
+    expect(streams.feedOf(id)).toBe(feed);
+  });
+
+  it('keeps a stream that had failed on its own as well: the failure stays the session\'s words, and what the closed stream says afterwards is not heard', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target();
+    const id = streams.open(given)?.id ?? '';
+    feed.set({ state: 'failed', cause: { stage: 'source', message: 'The source did not answer' } });
+    store.syncPlugins([]);
+    expect(feed.closed()).toBe(1);
+    expect(streams.feedOf(id)).toBe(feed);
+    const words = { state: 'failed', cause: 'The log stream stopped. The source did not answer.', held: true };
+    expect(store.getSnapshot().sessions[id]).toMatchObject(words);
+    feed.set({ state: 'ended' });
+    expect(store.getSnapshot().sessions[id]).toMatchObject(words);
   });
 
   it('leaves the streams of the plugins that stayed', () => {
@@ -337,13 +399,100 @@ describe('a plugin that goes away', () => {
     expect(theirs.listeners()).toBe(1);
   });
 
-  it('has no stream for the session when the plugin comes back: it is the old session, ended, and what it held is gone', () => {
+  it('keeps what it held when the plugin comes back: the same feed, still closed, and the session still ended: nothing starts again, whatever the feed says', () => {
     const { store, streams, target } = harness();
-    const { target: given } = target();
+    const { target: given, feed } = target();
     const id = streams.open(given)?.id ?? '';
+    feed.set({ state: 'streaming' });
     store.syncPlugins([]);
     store.syncPlugins([{ id: 'acme', tools: [] }]);
-    expect(store.getSnapshot().sessions[id]?.state).toBe('ended');
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', held: true, cause: UNLOADED_CAUSE });
+    expect(streams.feedOf(id)).toBe(feed);
+    expect(feed.closed()).toBe(1);
+    expect(feed.listeners()).toBe(0);
+    feed.set({ state: 'streaming' });
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', held: true });
+  });
+
+  it('closes nothing twice, however the panel changes after the unload, and however often the plugin goes and comes back', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target();
+    streams.open(given);
+    store.syncPlugins([]);
+    store.hide();
+    store.show();
+    store.activateTool('logs');
+    store.syncPlugins([]);
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    store.syncPlugins([]);
+    expect(feed.closed()).toBe(1);
+  });
+
+  it('releases the entry when the tab closes, and closes nothing a second time: the stream was closed at the unload', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target();
+    const id = streams.open(given)?.id ?? '';
+    store.syncPlugins([]);
+    store.closeSession(id);
+    expect(feed.closed()).toBe(1);
+    expect(feed.listeners()).toBe(0);
+    expect(streams.feedOf(id)).toBeUndefined();
+    expect(streams.recordOf(id)).toBeUndefined();
+    expect(store.getSnapshot().sessions[id]).toBeUndefined();
+    store.show();
+    expect(feed.closed()).toBe(1);
+  });
+
+  it('closes through the handle the plugin was given, which is safe to use again after the unload: the tab closes, the entry goes, nothing closes twice', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target();
+    const opened = streams.open(given);
+    store.syncPlugins([]);
+    opened?.close();
+    opened?.close();
+    expect(Object.keys(store.getSnapshot().sessions)).toEqual([]);
+    expect(streams.feedOf(opened?.id ?? '')).toBeUndefined();
+    expect(feed.closed()).toBe(1);
+  });
+
+  it('opens a new session for a new press when the plugin is back, with a stream of its own: the held one keeps its closed one, and nothing is shared', () => {
+    const { store, streams, target } = harness();
+    const first = target();
+    const heldId = streams.open(first.target)?.id ?? '';
+    store.syncPlugins([]);
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    const second = target();
+    const newId = streams.open(second.target)?.id ?? '';
+    expect(newId).not.toBe(heldId);
+    expect(streams.feedOf(heldId)).toBe(first.feed);
+    expect(streams.feedOf(newId)).toBe(second.feed);
+    expect(first.feed.closed()).toBe(1);
+    expect(first.feed.listeners()).toBe(0);
+    expect(second.feed.closed()).toBe(0);
+    expect(second.feed.listeners()).toBe(1);
+    expect(store.getSnapshot().sessions[heldId]).toMatchObject({ state: 'ended', held: true });
+    expect(store.getSnapshot().sessions[newId]).toMatchObject({ state: 'starting' });
+    expect(store.getSnapshot().sessions[newId]?.held).toBeUndefined();
+    // The new session follows its own feed, and the held one is deaf to it.
+    second.feed.set({ state: 'streaming' });
+    expect(store.getSnapshot().sessions[newId]?.state).toBe('running');
+    expect(store.getSnapshot().sessions[heldId]?.state).toBe('ended');
+  });
+
+  it('says in the log when a stream cannot be closed at the unload, and keeps the session all the same: closing it is not tried again when the tab closes', () => {
+    const { store, streams, warn } = harness();
+    const throwing = fakeFeed({
+      close: () => {
+        throw new Error('it threw');
+      },
+    });
+    const id = streams.open({ plugin: 'acme', id: 't', title: 'x-stream', open: () => throwing })?.id ?? '';
+    store.syncPlugins([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not close the log stream'), expect.objectContaining({ message: 'it threw' }));
+    expect(streams.feedOf(id)).toBe(throwing);
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ state: 'ended', held: true });
+    store.closeSession(id);
+    expect(throwing.closed()).toBe(1);
     expect(streams.feedOf(id)).toBeUndefined();
   });
 });
@@ -363,6 +512,19 @@ describe('the registry\'s own end', () => {
     // Detached, it neither listens to the panel nor closes anything twice.
     store.syncPlugins([]);
     expect(a.feed.closed()).toBe(1);
+  });
+
+  it('closes nothing a second time when it is detached while a session is held: the stream was closed at the unload, and the entry goes with the registry', () => {
+    const { store, streams, detach, target } = harness();
+    const { target: given, feed } = target();
+    const id = streams.open(given)?.id ?? '';
+    store.syncPlugins([]);
+    expect(streams.feedOf(id)).toBe(feed);
+    detach();
+    expect(feed.closed()).toBe(1);
+    expect(feed.listeners()).toBe(0);
+    expect(streams.feedOf(id)).toBeUndefined();
+    expect(streams.recordOf(id)).toBeUndefined();
   });
 
   it('can be attached again after it was detached (a development build runs its effects twice)', () => {

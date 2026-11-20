@@ -57,13 +57,26 @@ type Mounted = {
   readonly unmount: () => void;
 };
 
-function mount(options: { readonly visible?: boolean; readonly stream?: boolean } = {}): Mounted {
+/**
+ * `endsOnClose`: the stream tells its listeners it ended as it closes, as a real one does (the runtime's `close` publishes the end before it returns): the view hears the end of the stream the host closed.
+ * The body is rendered over the session's record as the store holds it, as the panel's slot does, so a session that became held is drawn as one.
+ */
+function mount(options: { readonly visible?: boolean; readonly stream?: boolean; readonly endsOnClose?: boolean } = {}): Mounted {
   const store = createPanelStore();
   store.registerTool(LOGS_TOOL);
   store.syncPlugins([{ id: 'acme', tools: [] }]);
   const streams = createLogStreams(store);
   streams.attach();
-  const feed = fakeFeed({ state: 'streaming' });
+  const feed: FakeFeed = fakeFeed({
+    state: 'streaming',
+    ...(options.endsOnClose === true
+      ? {
+        close: () => {
+          feed.set({ state: 'ended' });
+        },
+      }
+      : {}),
+  });
   const opened = options.stream === false ? store.openSession({ tool: 'logs', plugin: 'acme', title: 'orders-api/app', scope: 'north', state: 'ended', cause: 'Restored from the last session.' }) : streams.open({ plugin: 'acme', id: 'item/orders-api/app', title: 'orders-api/app', scope: 'north', open: () => feed });
   const id = opened === undefined ? '' : 'id' in opened ? opened.id : '';
   const session = store.getSnapshot().sessions[id];
@@ -80,7 +93,7 @@ function mount(options: { readonly visible?: boolean; readonly stream?: boolean 
           commits += 1;
         }}
       >
-        <LogsBody streams={streams} session={session} visible={visible} />
+        <LogsBody streams={streams} session={store.getSnapshot().sessions[id] ?? session} visible={visible} />
       </Profiler>
     </ThemeProvider>
   );
@@ -217,6 +230,133 @@ describe('a body that is not on screen', () => {
     frames(3);
     const last = screen.queryAllByRole('row').filter((row) => row.getAttribute('data-n') !== null).at(-1);
     expect(last?.textContent).toContain('line 600');
+  });
+});
+
+// A21: a session of the host's tool that its plugin's unload ended stays on screen with its lines. The stream is closed (the backend session is released, the stream drops what it held), the registry keeps the
+// very feed object the view was made for, and the view keeps the lines it had read: it makes its model once per feed object.
+describe('a session that its plugin\'s unload ended (A21)', () => {
+  it('keeps the lines the view had read and says the stream ended: the same view over the same feed, closed, not a view made again over nothing', () => {
+    const { feed, store, show } = mount({ endsOnClose: true });
+    act(() => {
+      feed.push(120);
+      vi.advanceTimersByTime(16);
+    });
+    const before = rows();
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('121');
+    act(() => {
+      store.syncPlugins([]);
+    });
+    show(true);
+    frames(3);
+    expect(feed.closed()).toBe(1);
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('121');
+    expect(rows()).toBe(before);
+    expect(screen.getByText('Stream ended')).toBeInTheDocument();
+    expect(screen.queryByText('The earlier lines are gone')).toBeNull();
+  });
+
+  it('reads nothing more from the closed stream: a line that comes after the end is not shown, and no listener of the registry is left', () => {
+    const { feed, store } = mount({ endsOnClose: true });
+    act(() => {
+      feed.push(50);
+      vi.advanceTimersByTime(16);
+    });
+    act(() => {
+      store.syncPlugins([]);
+    });
+    expect(feed.listeners()).toBe(VIEW);
+    act(() => {
+      feed.push(500);
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('51');
+  });
+
+  it('keeps the lines it had read while it is not on screen, and shows them when it is back: the lines the stream held and nobody had read went with the stream when it closed', () => {
+    const { feed, store, show } = mount({ endsOnClose: true });
+    act(() => {
+      feed.push(50);
+      vi.advanceTimersByTime(16);
+    });
+    show(false);
+    act(() => {
+      feed.push(200);
+    });
+    act(() => {
+      store.syncPlugins([]);
+    });
+    show(true);
+    frames(3);
+    expect(feed.listeners()).toBe(VIEW);
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('51');
+    expect(screen.getByText('Stream ended')).toBeInTheDocument();
+  });
+
+  it('keeps them when its plugin comes back: nothing starts again, the same lines are on screen and the stream is still the closed one', () => {
+    const { feed, store, show } = mount({ endsOnClose: true });
+    act(() => {
+      feed.push(80);
+      vi.advanceTimersByTime(16);
+    });
+    act(() => {
+      store.syncPlugins([]);
+    });
+    act(() => {
+      store.syncPlugins([{ id: 'acme', tools: [] }]);
+    });
+    show(true);
+    frames(3);
+    expect(feed.closed()).toBe(1);
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('81');
+    expect(screen.getByText('Stream ended')).toBeInTheDocument();
+  });
+
+  it('frees everything when its tab closes: the registry lets the feed go, the view lets go of every listener when its body unmounts, no timer is left, and the closed stream holds nothing', () => {
+    const { feed, store, streams, session, unmount } = mount({ endsOnClose: true });
+    act(() => {
+      feed.push(200);
+      vi.advanceTimersByTime(16);
+    });
+    act(() => {
+      store.syncPlugins([]);
+    });
+    expect(streams.feedOf(session.id)).toBe(feed);
+    act(() => {
+      store.closeSession(session.id);
+    });
+    // The stream was closed once, at the unload: the tab's closing does not close it again.
+    expect(feed.closed()).toBe(1);
+    expect(streams.feedOf(session.id)).toBeUndefined();
+    expect(streams.recordOf(session.id)).toBeUndefined();
+    unmount();
+    expect(feed.listeners()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(feed.stats().held).toBe(0);
+  });
+
+  it('keeps the lines of a session that had ended on its own as well, whether its plugin is off or has come back: the unload did not end it, and it stays as it was', () => {
+    const { feed, store, show } = mount({ endsOnClose: true });
+    act(() => {
+      feed.push(30);
+      vi.advanceTimersByTime(16);
+    });
+    act(() => {
+      feed.set({ state: 'ended' });
+    });
+    act(() => {
+      store.syncPlugins([]);
+    });
+    show(true);
+    frames(3);
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('31');
+    expect(screen.getByText('Stream ended')).toBeInTheDocument();
+    act(() => {
+      store.syncPlugins([{ id: 'acme', tools: [] }]);
+    });
+    show(true);
+    expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('31');
+    expect(screen.queryByText('The earlier lines are gone')).toBeNull();
   });
 });
 

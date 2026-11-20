@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants } from './state';
-import { boot, session, tool } from './testing';
+import { UNLOADED_CAUSE } from './store';
+import { boot, session, tool, type Harness } from './testing';
 
 // The panel's model, through its store: open and closed, the size that is remembered, the tools and which one is on screen, the sessions each tool holds and what a plugin leaving does
 // to them. Cases marked "mock" are ported from the design lab's harness (tests/shell-model-harness: ShellStore/unit.cjs "persist: clamp on load and on resize", ShellStore2-unit.cjs "panel
@@ -506,24 +507,29 @@ describe('the body of a session (docs/ui-next/optimisations.md HLT-32, MNR-X4)',
 });
 
 describe('a plugin that is unloaded (PO1, S114a)', () => {
+  // What PO1 still hides: what a plugin brought into the panel, its own tools and the sessions in them. What it has in a tool of the host stays (A21, below).
   const world = () => {
     const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [tool('metrics', 'Metrics', 30)], beta: [] } });
-    h.store.openSession(session('logs', 'acme', 'one'));
+    h.store.openSession(session('acme:metrics', 'acme', 'one', { state: 'ended', cause: 'The run finished.' }));
     h.store.openSession(session('logs', 'beta', 'two'));
     h.store.openSession(session('logs', 'host', 'mine'));
     h.store.openSession(session('acme:metrics', 'acme', 'run'));
     return h;
   };
 
-  it('hides its sessions in the same transaction, and ends the ones that were running', () => {
+  it('hides its tools and the sessions in them in the same transaction, and ends the ones that were running', () => {
     const h = world();
-    h.store.setSessionState('s1', { state: 'running' });
+    h.store.setSessionState('s4', { state: 'running' });
     h.tick(2000);
     h.store.syncPlugins([{ id: 'beta', tools: [] }]);
-    expect(h.store.selectors.sessionIds(h.snapshot(), 'logs')).toEqual(['s2', 's3']);
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['terminal', 'logs']);
     expect(h.store.selectors.sessionIds(h.snapshot(), 'acme:metrics')).toEqual([]);
-    expect(h.snapshot().sessions.s1).toMatchObject({ state: 'ended', since: 1_002_000 });
-    expect(h.snapshot().sessions.s1?.cause).not.toBe('');
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'logs')).toEqual(['s2', 's3']);
+    expect(h.snapshot().sessions.s4).toMatchObject({ state: 'ended', since: 1_002_000 });
+    expect(h.snapshot().sessions.s4?.cause).not.toBe('');
+    expect(h.snapshot().sessions.s4?.held).toBeUndefined();
+    // What had ended on its own keeps its own words and its own time.
+    expect(h.snapshot().sessions.s1).toMatchObject({ state: 'ended', cause: 'The run finished.', since: 1_000_000 });
     // The session of another plugin and the host's own are not touched.
     expect(h.snapshot().sessions.s2?.state).toBe('starting');
     expect(h.snapshot().sessions.s3?.state).toBe('starting');
@@ -534,20 +540,19 @@ describe('a plugin that is unloaded (PO1, S114a)', () => {
     const h = world();
     expect(h.snapshot().mounted).toEqual(['s1', 's2', 's3', 's4']);
     h.store.syncPlugins([{ id: 'beta', tools: [] }]);
-    expect(h.store.selectors.mounted(h.snapshot())).not.toContain('s1');
-    expect(h.store.selectors.mounted(h.snapshot())).not.toContain('s4');
+    expect(h.store.selectors.mounted(h.snapshot())).toEqual(['s2', 's3']);
     h.store.syncPlugins([{ id: 'acme', tools: [tool('metrics', 'Metrics', 30)] }, { id: 'beta', tools: [] }]);
     expect(h.store.selectors.mounted(h.snapshot())).not.toContain('s1');
   });
 
   it('returns them with it, still ended: they stay ended until the user starts them again', () => {
     const h = world();
-    h.store.setSessionState('s1', { state: 'running' });
+    h.store.setSessionState('s4', { state: 'running' });
     h.store.syncPlugins([{ id: 'beta', tools: [] }]);
     h.store.syncPlugins([{ id: 'acme', tools: [tool('metrics', 'Metrics', 30)] }, { id: 'beta', tools: [] }]);
-    expect(h.store.selectors.sessionIds(h.snapshot(), 'logs')).toEqual(['s1', 's2', 's3']);
-    expect(h.snapshot().sessions.s1?.state).toBe('ended');
-    expect(h.store.selectors.sessionIds(h.snapshot(), 'acme:metrics')).toEqual(['s4']);
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'acme:metrics')).toEqual(['s1', 's4']);
+    expect(h.snapshot().sessions.s1).toMatchObject({ state: 'ended', cause: 'The run finished.' });
+    expect(h.snapshot().sessions.s4?.state).toBe('ended');
   });
 
   it('cannot open a session while it is off', () => {
@@ -556,14 +561,186 @@ describe('a plugin that is unloaded (PO1, S114a)', () => {
     expect(h.store.openSession(session('logs', 'acme', 'late'))).toMatchObject({ status: 'refused', reason: 'missing' });
   });
 
-  it('puts the strip on the first visible session when the one on screen is hidden', () => {
+  it('puts the panel on the first visible tool when the plugin\'s tool was the one on screen, and back when it returns', () => {
+    const h = world();
+    h.store.show({ tool: 'acme:metrics' });
+    expect(h.store.selectors.activeTool(h.snapshot())).toBe('acme:metrics');
+    h.store.syncPlugins([{ id: 'beta', tools: [] }]);
+    expect(h.store.selectors.activeTool(h.snapshot())).toBe('terminal');
+    h.store.syncPlugins([{ id: 'acme', tools: [tool('metrics', 'Metrics', 30)] }, { id: 'beta', tools: [] }]);
+    expect(h.store.selectors.activeTool(h.snapshot())).toBe('acme:metrics');
+  });
+});
+
+// A21, the one deviation from PO1 (the lead's ruling of 2026-11-20 widened it): the sessions of a tool of the HOST stay listed and mounted across their plugin's unload, whatever their state, until the user closes
+// their tab. What was running ends with the cause; what had ended or failed is kept AS IT WAS. The lines a person is reading are theirs; the stream is closed (its owner releases the backend session).
+describe('a session of a tool of the host, across its plugin\'s unload (A21: it is held)', () => {
+  const ACME = [tool('metrics', 'Metrics', 30)];
+  /**
+   * s1 follows (running), s2 is beta's, s3 is in a tool acme brought, s4 had ended and s5 had failed before the unload, s6 is still connecting: the unload ends s1 and s6 with its cause (the connecting one
+   * too: its work was ended by the unload), keeps s4 and s5 as they were, and hides s3 with the plugin (PO1).
+   */
+  const world = (): Harness => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: ACME, beta: [] } });
+    h.store.openSession(session('logs', 'acme', 'follows', { state: 'running' }));
+    h.store.openSession(session('logs', 'beta', 'stays', { state: 'running' }));
+    h.store.openSession(session('acme:metrics', 'acme', 'plugin tool', { state: 'running' }));
+    h.store.openSession(session('logs', 'acme', 'finished', { state: 'ended', cause: 'The source finished.' }));
+    h.store.openSession(session('logs', 'acme', 'broke', { state: 'failed', cause: 'The source did not answer.' }));
+    h.store.openSession(session('logs', 'acme', 'connecting'));
+    return h;
+  };
+
+  const unload = (h: Harness) => h.store.syncPlugins([{ id: 'beta', tools: [] }]);
+  const reload = (h: Harness) => h.store.syncPlugins([{ id: 'acme', tools: ACME }, { id: 'beta', tools: [] }]);
+  const idsOf = (h: Harness) => h.store.selectors.sessionIds(h.snapshot(), 'logs');
+
+  it('stays listed, ended with the cause the unload gives and since the unload, and says it is held', () => {
+    const h = world();
+    h.tick(2000);
+    unload(h);
+    expect(idsOf(h)).toEqual(['s1', 's2', 's4', 's5', 's6']);
+    expect(h.snapshot().sessions.s1).toEqual(expect.objectContaining({ state: 'ended', cause: UNLOADED_CAUSE, since: 1_002_000, held: true }));
+    // A session that was still connecting had its work ended by the unload as well.
+    expect(h.snapshot().sessions.s6).toEqual(expect.objectContaining({ state: 'ended', cause: UNLOADED_CAUSE, since: 1_002_000, held: true }));
+    // What had ended or failed on its own was not ended by the unload: it stays AS IT WAS, its own words and its own time.
+    expect(h.snapshot().sessions.s4).toEqual(expect.objectContaining({ state: 'ended', cause: 'The source finished.', since: 1_000_000, held: true }));
+    expect(h.snapshot().sessions.s5).toEqual(expect.objectContaining({ state: 'failed', cause: 'The source did not answer.', since: 1_000_000, held: true }));
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('keeps its body mounted, and its place on screen: it is not moved to another session as a hidden one is', () => {
     const h = world();
     h.store.activateSession('s1');
+    unload(h);
+    expect(h.snapshot().mounted).toEqual(['s1', 's2', 's4', 's5', 's6']);
+    expect(h.store.selectors.mounted(h.snapshot())).toEqual(['s1', 's2', 's4', 's5', 's6']);
     expect(h.store.selectors.activeSession(h.snapshot(), 'logs')).toBe('s1');
-    h.store.syncPlugins([{ id: 'beta', tools: [] }]);
-    expect(h.store.selectors.activeSession(h.snapshot(), 'logs')).toBe('s2');
-    h.store.syncPlugins([{ id: 'acme', tools: [tool('metrics', 'Metrics', 30)] }, { id: 'beta', tools: [] }]);
-    expect(h.store.selectors.activeSession(h.snapshot(), 'logs')).toBe('s1');
+    expect(h.store.selectors.isShown(h.snapshot(), 's1')).toBe(true);
+    expect(h.store.selectors.session(h.snapshot(), 's1')).toMatchObject({ held: true });
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's1')).toMatchObject({ state: 'ended', name: 'follows' });
+  });
+
+  it('hides only what the plugin brought into the panel (PO1): its own tool and the sessions in it, ended with the cause and not held', () => {
+    const h = world();
+    unload(h);
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'acme:metrics')).toEqual([]);
+    expect(h.snapshot().sessions.s3).toMatchObject({ state: 'ended', cause: UNLOADED_CAUSE });
+    expect(h.snapshot().sessions.s3?.held).toBeUndefined();
+    expect(h.store.selectors.mounted(h.snapshot())).not.toContain('s3');
+  });
+
+  it('keeps a session that had ended or failed on its own exactly as it was: the same words, the same time, its body mounted, and what it says is not the unload\'s', () => {
+    const h = world();
+    h.tick(5000);
+    unload(h);
+    expect(h.snapshot().sessions.s4).toMatchObject({ state: 'ended', cause: 'The source finished.', since: 1_000_000, held: true });
+    expect(h.snapshot().sessions.s5).toMatchObject({ state: 'failed', cause: 'The source did not answer.', since: 1_000_000, held: true });
+    expect(h.store.selectors.mounted(h.snapshot())).toEqual(expect.arrayContaining(['s4', 's5']));
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's5')).toMatchObject({ state: 'failed', name: 'broke' });
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('is not held when its tool is not registered: a session that could not be drawn is hidden, as it was', () => {
+    const h = world();
+    h.store.openSession(session('ports', 'acme', 'elsewhere', { state: 'running' }));
+    unload(h);
+    expect(h.snapshot().sessions.s7).toMatchObject({ state: 'ended', cause: UNLOADED_CAUSE });
+    expect(h.snapshot().sessions.s7?.held).toBeUndefined();
+  });
+
+  it('is left alone by the plugin\'s return and by its leaving again: it stays what it was, the same record', () => {
+    const h = world();
+    unload(h);
+    const held = h.snapshot().sessions.s1;
+    expect(unload(h)).toEqual({ status: 'noop' });
+    reload(h);
+    expect(h.snapshot().sessions.s1).toBe(held);
+    expect(idsOf(h)).toEqual(['s1', 's2', 's4', 's5', 's6']);
+    unload(h);
+    expect(h.snapshot().sessions.s1).toBe(held);
+    expect(idsOf(h)).toEqual(['s1', 's2', 's4', 's5', 's6']);
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('cannot be started again, re-targeted or given a new end by anything but its tab closing: every change of state is refused and tells nobody', () => {
+    const h = world();
+    unload(h);
+    const held = h.snapshot().sessions.s1;
+    const before = h.snapshot();
+    const told = h.notified();
+    for (const state of ['starting', 'running', 'ended', 'failed'] as const) {
+      for (const cause of [undefined, 'because', '']) {
+        expect(h.store.setSessionState('s1', { state, cause }), `${state} / ${String(cause)}`).toMatchObject({ status: 'refused', reason: 'held' });
+      }
+    }
+
+    expect(h.snapshot()).toBe(before);
+    expect(h.snapshot().sessions.s1).toBe(held);
+    expect(h.notified()).toBe(told);
+    // The plugin back does not make it the plugin's to change.
+    reload(h);
+    expect(h.store.setSessionState('s1', { state: 'running' })).toMatchObject({ status: 'refused', reason: 'held' });
+    expect(h.snapshot().sessions.s1?.state).toBe('ended');
+    // Its id is taken: nothing can open a session in its place.
+    expect(h.store.openSession(session('logs', 'acme', 'follows', { id: 's1' }))).toMatchObject({ status: 'refused', reason: 'taken' });
+  });
+
+  it('closes like any session: its tab and its body go, the strip passes to the next, and nothing else changes', () => {
+    const h = world();
+    h.store.activateSession('s1');
+    unload(h);
+    expect(h.store.closeSession('s1')).toMatchObject({ status: 'done', closed: 's1', active: 's2' });
+    expect(idsOf(h)).toEqual(['s2', 's4', 's5', 's6']);
+    expect(h.snapshot().mounted).toEqual(['s2', 's4', 's5', 's6']);
+    expect(h.snapshot().sessions.s1).toBeUndefined();
+    expect(h.snapshot().sessions.s6).toMatchObject({ held: true });
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('is told apart from a new session of the same name opened after the plugin returned: the press of Logs again is a new session, and the held one is the first', () => {
+    const h = world();
+    unload(h);
+    reload(h);
+    expect(h.store.openSession(session('logs', 'acme', 'follows', { state: 'running' }))).toEqual({ status: 'done', id: 's7' });
+    const names = idsOf(h).map((id) => h.store.selectors.sessionItem(h.snapshot(), id)?.name);
+    expect(names).toEqual(['follows', 'stays', 'finished', 'broke', 'connecting', 'follows (2)']);
+    expect(h.snapshot().sessions.s1).toMatchObject({ state: 'ended', held: true });
+    expect(h.snapshot().sessions.s7).toMatchObject({ state: 'running' });
+    expect(h.snapshot().sessions.s7?.held).toBeUndefined();
+    expect(h.store.selectors.activeSession(h.snapshot(), 'logs')).toBe('s7');
+  });
+
+  it('goes with its tool when the tool is unregistered, and comes back with it', () => {
+    const h = world();
+    unload(h);
+    h.store.unregisterTool('logs');
+    expect(h.snapshot().mounted).not.toContain('s1');
+    expect(h.store.selectors.session(h.snapshot(), 's1')).toBeUndefined();
+    h.store.registerTool(tool('logs', 'Logs', 20));
+    expect(idsOf(h)).toContain('s1');
+    expect(h.snapshot().sessions.s1).toMatchObject({ state: 'ended', held: true });
+  });
+
+  it('is the only session whose plugin may be off while it is listed: the selector says so, and says it no more when the plugin is back', () => {
+    const h = world();
+    expect(h.store.selectors.pluginOff(h.snapshot(), 's1')).toBe(false);
+    unload(h);
+    expect(h.store.selectors.pluginOff(h.snapshot(), 's1')).toBe(true);
+    expect(h.store.selectors.pluginOff(h.snapshot(), 's2')).toBe(false);
+    reload(h);
+    expect(h.store.selectors.pluginOff(h.snapshot(), 's1')).toBe(false);
+    expect(h.store.selectors.pluginOff(h.snapshot(), 'nobody')).toBe(false);
+  });
+
+  it('does not touch what the tab and the card of another session read: the same item, while nothing about it changed', () => {
+    const h = world();
+    const item = h.store.selectors.sessionItem(h.snapshot(), 's2');
+    unload(h);
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's2')).toBe(item);
+    const held = h.store.selectors.sessionItem(h.snapshot(), 's1');
+    reload(h);
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's1')).toBe(held);
   });
 });
 
@@ -667,12 +844,13 @@ describe('what each part of the panel subscribes to', () => {
   });
 
   it('a hidden session has no item, no record and no place in any list', () => {
-    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [] } });
-    h.store.openSession(session('logs', 'acme', 'one'));
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [tool('metrics', 'Metrics', 30)] } });
+    // A session in a tool the plugin brought leaves with it (PO1); what it has in a tool of the host stays (A21).
+    h.store.openSession(session('acme:metrics', 'acme', 'one', { state: 'ended', cause: 'The run finished.' }));
     h.store.syncPlugins([]);
     expect(h.store.selectors.sessionItem(h.snapshot(), 's1')).toBeUndefined();
     expect(h.store.selectors.session(h.snapshot(), 's1')).toBeUndefined();
-    expect(h.store.selectors.sessionIds(h.snapshot(), 'logs')).toEqual([]);
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'acme:metrics')).toEqual([]);
   });
 });
 
@@ -748,15 +926,26 @@ describe('identifiers longer than the words the model cuts', () => {
     expect(h.store.selectors.shown(h.snapshot())).toEqual({ tool: id, session: 's1' });
   });
 
-  it('a session of a live plugin with a 250 character id shows, and ends with the plugin', () => {
+  it('a session of a live plugin with a 250 character id shows, and is ended and held when the plugin leaves (its tool is the host\'s: A21)', () => {
     const plugin = `plugin-${'p'.repeat(243)}`;
     const h = boot({ hostTools: HOST_TOOLS, plugins: { [plugin]: [] } });
     expect(h.store.openSession(session('terminal', plugin, 'zsh', { state: 'running' }))).toMatchObject({ status: 'done' });
     expect(h.snapshot().sessions.s1?.plugin).toBe(plugin);
     expect(h.store.selectors.session(h.snapshot(), 's1')?.plugin).toBe(plugin);
     h.store.syncPlugins([]);
+    expect(h.snapshot().sessions.s1).toMatchObject({ state: 'ended', held: true, plugin });
+    expect(h.store.selectors.session(h.snapshot(), 's1')?.plugin).toBe(plugin);
+    expect(h.store.selectors.pluginOff(h.snapshot(), 's1')).toBe(true);
+  });
+
+  it('a session of a live plugin with a 250 character id, in a tool that plugin brought, is ended and hidden with the plugin (PO1)', () => {
+    const plugin = `plugin-${'p'.repeat(243)}`;
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { [plugin]: [tool('metrics')] } });
+    expect(h.store.openSession(session(`${plugin}:metrics`, plugin, 'run', { state: 'running' }))).toMatchObject({ status: 'done' });
+    h.store.syncPlugins([]);
     expect(h.store.selectors.session(h.snapshot(), 's1')).toBeUndefined();
     expect(h.snapshot().sessions.s1?.state).toBe('ended');
+    expect(h.snapshot().sessions.s1?.held).toBeUndefined();
   });
 
   it('are still trimmed, as the registry trims them, and still refused when they are empty', () => {

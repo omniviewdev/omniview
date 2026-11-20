@@ -10,7 +10,8 @@
 //   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
 //   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); `window.__tabs` is the model, `window.__commits` counts the commits of every render
 //   ?case=panel     the frame `full` and the bottom panel (panel/testing.tsx: the real model over the five tools the mock's host offers, the first of which has a `+`), closed; `window.__panel` is the model
-//                   a probe opens, fills and resizes, and `window.__lines()` reads every stream body's count
+//                   a probe opens, fills and resizes, and `window.__lines()` reads every stream body's count; `window.__opened` lists the addresses a session card's link was asked to open (A21: a link that
+//                   cannot open must not appear in it)
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import { Button, ThemeProvider, type IconName } from '@omniviewdev/kit';
@@ -121,6 +122,8 @@ Reflect.set(window, '__tabs', tabs);
 
 /** `?case=panel`: the bottom panel over the real model; `+` of the first tool starts `session-01`, `session-02`, ... A terminal's card says what the mock's says of a local shell. */
 let started = 0;
+const opened: string[] = [];
+Reflect.set(window, '__opened', opened);
 const panel =
   params.get('case') === 'panel'
     ? staticPanel({
@@ -152,6 +155,13 @@ const panel =
             actions: session.state === 'running' ? [{ label: 'Stop', onSelect: () => undefined }] : [],
           }
           : undefined,
+      // Where the link of a card goes: nowhere in a fixture, but a probe reads what it was asked to open (`window.__opened`, the addresses in order), so a link that cannot open is seen not to.
+      linkOf: (route) => ({
+        href: `#/${route.plugin}/${route.contribution}`,
+        open: () => {
+          opened.push(`${route.plugin}/${route.contribution}`);
+        },
+      }),
     })
     : undefined;
 Reflect.set(window, '__panel', panel?.store);

@@ -45,7 +45,10 @@ export type ToolInput = {
 export type Session = {
   readonly id: SessionId;
   readonly tool: ToolId;
-  /** The plugin that opened it, or `host`. A session of a plugin that is not live is hidden, and ended when it was running. */
+  /**
+   * The plugin that opened it, or `host`. A session of a plugin that is not live is hidden, and ended when it was running, except one that `held` keeps (A21): the sessions a plugin has in a tool of the
+   * host are what its unload leaves listed.
+   */
   readonly plugin: string;
   /** What the tab is called: the end of a long one is kept whole when it is cut (SCT1). */
   readonly title: string;
@@ -58,6 +61,13 @@ export type Session = {
   readonly cause: string;
   /** The resource the session belongs to, as a link the card opens through the tab model (SCD1). Absent for a session that belongs to no resource. */
   readonly route?: Route | undefined;
+  /**
+   * Kept across its plugin's unload, in a tool of the host (A21): it stays listed, with its body mounted, while its plugin is off, until the user closes its tab; the lines a person is reading are theirs, and the
+   * stream behind it is closed by the host. Whatever state it was in: a session that was running ended with the cause, one that had ended or failed on its own stays as it was. Only `syncPlugins` sets it, once,
+   * with the end; after that the session never changes (a change of state is refused, a plugin that returns clears nothing) and a new session is a new press. A fact of this run: the saved panel never writes it
+   * and a restored session is never held. Absent otherwise.
+   */
+  readonly held?: true | undefined;
 };
 
 /** What a caller opens a session with. The model adds the id (unless `id` is given) and the time. */
@@ -120,7 +130,9 @@ export type RefusedReason =
   /** The tool or the session is not valid data (an empty id or title, a route that is not a route). */
   | 'invalid'
   /** The id is taken, or the tool limit is reached. */
-  | 'taken';
+  | 'taken'
+  /** The session was ended by its plugin's unload and is kept as it is until its tab closes (A21): nothing changes it. */
+  | 'held';
 export type Refused = { readonly status: 'refused'; readonly reason: RefusedReason; readonly message: string };
 
 export type PanelResult = Done | Noop | Refused;
@@ -175,6 +187,11 @@ export type Selectors = {
   readonly shown: (state: PanelState) => Shown | null;
   /** Whether this session's body is the one on screen: the panel is open, its tool is the tool on screen and it is the tool's session on screen. */
   readonly isShown: (state: PanelState, id: SessionId) => boolean;
+  /**
+   * Whether the session's plugin is off now. Only a held session can be listed while its plugin is off (A21), so this is what the card asks to say that what needs the plugin, the link back to the
+   * resource, cannot work until it returns. `false` for a session that is not there.
+   */
+  readonly pluginOff: (state: PanelState, id: SessionId) => boolean;
 };
 
 /** What a saved session holds of a session: its identity, never its state or its output. */

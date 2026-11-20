@@ -24,8 +24,9 @@ type LogsBodyProps = {
  *     what the stream held meanwhile, over frames, and follows the tail if it was following.
  *
  * (The panel's own slot cannot do this: it hides a body with `hidden` and no more, because a plugin's body may need its effects to run while it is out of sight. This body's stream is not in its
- * effects.) A session with no stream (restored from the last run, or whose plugin was unloaded and came back: the panel hid it while the plugin was off, and the host closed its stream) has nothing
- * to read and nothing to search, so it is no view: it says that the earlier lines are gone and how to get logs again (`LOGS_GONE`).
+ * effects.) A session of the host's tool that its plugin's unload left (A21, whatever its state) keeps its body: the registry closed its stream and kept the very feed object, so this is the same view over a
+ * stream that ended, with the lines it had read. A session with no stream (restored from the last run) has nothing to read and nothing to search, so it is no view: it says that the earlier lines are gone and
+ * how to get logs again (`LOGS_GONE`).
  */
 export function LogsBody({ streams, session, visible }: LogsBodyProps) {
   const feed = streams.feedOf(session.id);

@@ -20,6 +20,9 @@
 //   shard 4  tooltip 145, logs 215 + 62                                                            = 422
 //   shard 5  parts 177, strip 187, strip controls 14 (Q2a: measured 2026-11-20 at a load of 4)      = 378
 // The panel probe with its six controls is the longest unit and cannot be split without parting a probe from its controls, so a sixth shard would not make the job shorter.
+// P1b-3c (A21) added the panel probe's `held` section and four controls, and the logs probe's `kept` and `memory` sections and three controls: by estimate about 180 s more in shard 1 (to about 600) and 155 s more
+// in shard 4 (to about 580), not yet measured on a runner. The panel probe with its controls stays the longest unit, so the job's wall time is the panel's; the next run's job summary has the seconds, and the tooltip
+// probe (145) is the unit to move out of shard 4 if that shard turns out to be more than a minute over the next.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -50,15 +53,18 @@ export const TABLE = {
         // The bottom panel (P1a): the region, the splitter, the tool strip, the session tabs, the session card and the status bar's toggle against the pinned mock reference
         // (ui-next/shell/probes/mock-panel.json, measured from the mock's own panel by mock-panel-measure.mjs), what opening and resizing the panel move (the frame's height, nothing else), the paint of its parts,
         // the keyboard path and the splitter's keys with real key presses, axe, what a drag costs (no write at the document root, no commit while the pointer moves), a plugin's tool that registers late, and a
-        // session body that keeps running while it is hidden, at 1440 x 900 and 1280 x 800. It builds its own fixtures, so it does not read PROBE_DIST.
+        // session body that keeps running while it is hidden, and (A21) the sessions of the host's Logs tool that their plugin's unload kept (the tab stays in its place, ended or as it was, its body mounted and counting
+        // no more, the card's link and Open button unavailable while the plugin is off and working when it returns, a new press a twin beside it, Delete closing it), at 1440 x 900 and 1280 x 800. It builds its own
+        // fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the bottom panel against the pinned mock reference', script: 'ui-next/shell/probes/panel-probe.mjs', env: { REPORT: '$RUNNER_TEMP/panel-probe.json' } },
 
         // The negative controls of that probe: each perturbs one measured value in the page (the region's height, the gap between a session's glyph and its name, the toggle's place, a tool tab's padding, the
-        // sidebar's place when the panel opens, a write at the document root during a drag) and passes only when the probe sees it. A probe that cannot fail proves nothing.
+        // sidebar's place when the panel opens, a write at the document root during a drag, and, for the sessions their plugin's unload kept (A21): the tab of the held session is not drawn, nor is the tab of the one that
+        // had ended on its own, a tab moves, the Open button can be pressed while the plugin is off) and passes only when the probe sees it. A probe that cannot fail proves nothing.
         {
           name: 'Probe that the panel probe sees a panel that is wrong',
           script: 'ui-next/shell/probes/panel-probe.mjs',
-          controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write'],
+          controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled'],
         },
       ],
     },
@@ -134,15 +140,18 @@ export const TABLE = {
         // style recalculation, WHILE THE FEED WENT ON (the fixture counts the lines it made: none was read, each is held by the stream or dropped past its bound of 100,000), and back on the Logs tool the view shows newer lines than it
         // had when it was hidden, with every line the feed made since accounted for, at 1440 x 900 and 1280 x 800. The source of a line (L2): a session that follows two sources has a Source column whose cell on every row names the source
         // the feed gave the line (its label, its hue, the mock's 168 px and chip), one that follows one has none, and a column that appears while a session is open moves no row, scrolls nothing, measures nothing and (Chromium) lays the
-        // page out once, following the end and scrolled back. It builds its own fixtures, so it does not read PROBE_DIST.
+        // page out once, following the end and scrolled back. A plugin's unload (A21, on the host fixture's `window.__plugin`): the sessions of an item (one streams, one ended, one failed) stay in the same views with the
+        // oldest line each showed (read by its number and text), each stream is closed once (the fixture counts every call to `close`) and the registry lets go of it, and closing the tabs leaves no listener; and, in Chromium,
+        // the heap after forced collections (CDP) falls back once the tab of a session that held 100,000 lines is closed. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
 
         // The negative controls of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other source's name; the list is
-        // scrolled 48 px when the column appears. The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
+        // scrolled 48 px when the column appears; every listener ever added to a Set is kept, so the model of a view outlives its closed tab and the heap does not fall back (A21); a stream is closed twice, which the count of closed
+        // feeds does not see; a held view shows another line from the one it had (A21). The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
         {
           name: 'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved',
           script: 'ui-next/shell/probes/logs-probe.mjs',
-          controls: ['feed-stopped', 'source-label', 'column-moves'],
+          controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines'],
         },
       ],
     },
