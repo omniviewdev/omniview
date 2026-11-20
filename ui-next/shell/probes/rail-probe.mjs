@@ -193,6 +193,7 @@ production.server.close();
 report.notes.push('The mock opens a rail tip to the right of its tool; the kit tooltip host opens below its trigger (no side option on `tip`): not compared.');
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({ geometryWorst: Object.fromEntries(Object.entries(report.geometry).map(([key, value]) => [key, value.worst])), notes: report.notes }, null, 1));
+fail('PROOF', 'N24-K1 proof, not for merge: this probe is made to fail on purpose, in shard 2');
 if (failures.length > 0) {
   console.error(`\n${failures.length} failures:\n${failures.map((line) => `  ${line}`).join('\n')}`);
   process.exit(1);
