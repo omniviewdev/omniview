@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -292,6 +293,20 @@ func (f *lockScopeFixture) startInFlight(t *testing.T, held string) <-chan error
 	return inFlight
 }
 
+// splitLockProbes returns the probes that must proceed and, separately, the ones
+// that are only observed.
+func splitLockProbes(probes []lockProbe) ([]lockProbe, []lockProbe) {
+	var proceed, observed []lockProbe
+	for _, probe := range probes {
+		if probe.proceed {
+			proceed = append(proceed, probe)
+		} else {
+			observed = append(observed, probe)
+		}
+	}
+	return proceed, observed
+}
+
 func reportLockProbes(t *testing.T, probes []lockProbe, pending []bool, held string) {
 	t.Helper()
 	for i, probe := range probes {
@@ -318,6 +333,10 @@ func reportLockProbes(t *testing.T, probes []lockProbe, pending []bool, held str
 // of other connections and the profile and discovery operations of other
 // plugins proceed. Same-plugin profile operations are only observed here,
 // because they coordinate with an in-flight start of the same plugin by design.
+// They are issued once the probes that must proceed have returned: a profile
+// transaction that waits for the in-flight call holds back the new starts and
+// stops of its plugin until it has run (see connectionCalls), so issued together
+// the start and stop of p1's other connections would depend on goroutine order.
 // The control probes must keep proceeding.
 func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *testing.T) {
 	for _, held := range []string{"StartConnection", "StopConnection"} {
@@ -332,9 +351,12 @@ func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *te
 			}
 
 			inFlight := f.startInFlight(t, held)
-			run := startLockProbes(f.scope, probes)
+			proceed, observed := splitLockProbes(probes)
+			run := startLockProbes(f.scope, proceed)
 			run.settle(lockScopeWindow)
 			pending := run.pending()
+			observedRun := startLockProbes(f.scope, observed)
+			observedPending := observedRun.pending()
 
 			f.hold.releaseRPC()
 			select {
@@ -344,7 +366,8 @@ func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *te
 				t.Fatalf("%s(p1, slow) did not finish after its provider RPC was released", held)
 			}
 			run.drain(t, 5*time.Second)
-			reportLockProbes(t, probes, pending, held)
+			observedRun.drain(t, 5*time.Second)
+			reportLockProbes(t, slices.Concat(proceed, observed), slices.Concat(pending, observedPending), held)
 		})
 	}
 }
