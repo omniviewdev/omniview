@@ -59,6 +59,7 @@ class FakeFeed implements LogFeed {
   private readonly lines: LogFeedLine[] = [];
   private readonly listeners = new Set<() => void>();
   private pendingDrops = 0;
+  private droppedTotal = 0;
   private status: LogFeedSnapshot = { state: 'streaming', paused: false, cause: undefined };
   private seq = 0;
 
@@ -87,7 +88,7 @@ class FakeFeed implements LogFeed {
     return { lines, dropped: lines.length > 0 ? dropped : 0, held: this.lines.length };
   };
 
-  stats = () => ({ received: this.received, dropped: 0, held: this.lines.length });
+  stats = () => ({ received: this.received, dropped: this.droppedTotal, held: this.lines.length });
   pause = (): void => {
     this.set({ ...this.status, paused: true, state: 'paused' });
   };
@@ -108,8 +109,11 @@ class FakeFeed implements LogFeed {
     this.wake();
   }
 
+  /** Like the runtime's stream: lines it had to drop were accepted first, so they are counted as received, and the next read tells of them. */
   drop(count: number): void {
     this.pendingDrops += count;
+    this.droppedTotal += count;
+    this.received += count;
   }
 
   wake(): void {
@@ -1048,16 +1052,22 @@ describe('what the strip reads', () => {
     frames.settle();
     expect(model.getStats().total).toBe(10);
 
-    // The clock runs out and a frame tells: the strip's numbers are what they were (the same lines, the same window of the rate), so nobody is told, and the object is the same.
+    // The rate of a feed that went quiet falls to nothing and stays there; the clock stops asking once it has.
+    for (let tell = 0; tell < 20; tell += 1) {
+      strip();
+    }
+
+    expect(model.getStats().rate).toBe(0);
+    // The clock runs out and a frame tells: the strip's numbers are what they were (the same lines, the same rate), so nobody is told, and the object is the same.
     const before = model.getStats();
     const told = seen.length;
     expect(strip()).toBe(before);
     expect(seen.length).toBe(told);
 
-    // A number moved: the next tell gives a new object, once.
+    // A number moved: the next tell gives a new object, once. (The rate of a feed that speaks again moves with every tell until its window is full, so the count is taken before the next.)
     feed.push(numbered(5, 11));
-    frames.settle();
-    const after = strip();
+    frames.frame();
+    const after = model.getStats();
     expect(after).not.toBe(before);
     expect(after.total).toBe(15);
     expect(seen.length).toBe(told + 1);
@@ -1101,6 +1111,172 @@ describe('what the strip reads', () => {
     frames.now += 10_000;
     expect(model.getStats()).toBe(told);
     expect(model.getStats()).toBe(told);
+  });
+});
+
+// L1: the lines the FEED dropped (a hidden panel at 10,000 lines a second, a reader that was too slow) were lost without the reader being told: the marker the view appended for them was
+// the oldest entry of a full buffer and went with the first line that did not fit, the strip counted only what the view itself evicted, and the rate counted the catch-up as live.
+describe('what the feed dropped (L1)', () => {
+  it('keeps the marker of a drop that came before the whole buffer was read: it is the first row, the lines are all there, and the strip counts the drop', () => {
+    const { frames, feed, model, strip } = setup({ maxLines: 100 });
+    feed.drop(30);
+    feed.push(numbered(100));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(101);
+    expect(model.entryAt(0)).toMatchObject({ kind: 'gap', dropped: 30 });
+    expect(model.entryAt(1)).toMatchObject({ kind: 'line', text: 'line 1' });
+    expect(model.entryAt(100)).toMatchObject({ kind: 'line', text: 'line 100' });
+    const stats = strip();
+    expect([stats.total, stats.shown, stats.dropped, stats.unread]).toEqual([100, 100, 30, 30]);
+  });
+
+  it('marks the gap where it occurred and keeps it while lines on either side of it are held', () => {
+    const { frames, feed, model } = setup({ maxLines: 100 });
+    feed.push(numbered(60));
+    frames.settle();
+    feed.drop(25);
+    feed.push(numbered(30, 61));
+    frames.settle();
+    const kinds = () => Array.from({ length: model.getSnapshot().count }, (_, index) => model.entryAt(index));
+    expect(kinds().findIndex((entry) => entry.kind === 'gap')).toBe(60);
+    // The lines before the marker roll off as new ones come; the marker goes on being the oldest, then the first row, and is never lost while the view holds a line.
+    feed.push(numbered(300, 91));
+    frames.settle();
+    const entries = kinds();
+    expect(entries[0]).toMatchObject({ kind: 'gap', dropped: 25 });
+    expect(entries.filter((entry) => entry.kind === 'gap')).toHaveLength(1);
+    expect(entries.filter((entry) => entry.kind === 'line')).toHaveLength(100);
+  });
+
+  it('adds what the feed dropped to what the view evicted, and every line the feed made is told: made = held + dropped', () => {
+    const { frames, feed, model, strip } = setup({ maxLines: 1000 });
+    feed.push(numbered(650));
+    frames.settle();
+    // A long time away: the feed dropped 300 lines, and kept the 1,000 newest.
+    feed.drop(300);
+    feed.push(numbered(1000, 651));
+    frames.settle();
+    const stats = strip();
+    expect(stats.total).toBe(1000);
+    expect(stats.unread).toBe(300);
+    // 650 held, 300 dropped by the feed, 1,000 more: the view evicted 650 of its own, and the strip says 950 in one number.
+    expect(stats.dropped).toBe(950);
+    expect(stats.total + stats.dropped).toBe(feed.received);
+    expect(stats.capacity).toBe(1000);
+    expect(model.entryAt(0)).toMatchObject({ kind: 'gap', dropped: 300 });
+  });
+
+  it('counts a drop that was told with no lines behind it, and one that is told again after the first has left the head', () => {
+    const { frames, feed, strip } = setup({ maxLines: 50 });
+    feed.drop(4);
+    feed.push(numbered(10));
+    frames.settle();
+    feed.drop(6);
+    feed.push(numbered(10, 11));
+    frames.settle();
+    expect(strip().dropped).toBe(10);
+    feed.push(numbered(200, 21));
+    frames.settle();
+    const stats = strip();
+    // 220 lines read, 50 held: 170 evicted by the view, 10 by the feed.
+    expect([stats.total, stats.dropped, stats.unread]).toEqual([50, 180, 10]);
+  });
+
+  it('says so from the first frame in which it read the lines: the strip is not told twice about one drop', () => {
+    const { frames, feed, model } = setup({ maxLines: 100 });
+    const seen: number[] = [];
+    model.subscribeStats(() => seen.push(model.getStats().dropped));
+    feed.drop(30);
+    feed.push(numbered(10));
+    frames.frame();
+    expect(model.getStats().dropped).toBe(30);
+    expect(seen).toEqual([30]);
+  });
+});
+
+describe('the rate on the strip (L1)', () => {
+  /** The strip's rate once its clock has run, with the feed given `lines` first and the clock moved a tell on. */
+  const tell = (strip: () => { rate: number }, feed: { push: (texts: readonly string[], level?: LogFeedLevel) => void }, lines: number) => {
+    feed.push(numbered(lines));
+    return strip().rate;
+  };
+
+  it('is the rate the feed makes, measured by the lines it accepted over the wall clock', () => {
+    const { feed, strip } = setup();
+    let rate = 0;
+    for (let tick = 0; tick < 20; tick += 1) {
+      rate = tell(strip, feed, 300);
+    }
+
+    // 300 lines in 316 ms of the clock (the frame and the strip's clock): about 950 a second.
+    expect(rate).toBeGreaterThan(900);
+    expect(rate).toBeLessThanOrEqual(1000);
+  });
+
+  it('is not the burst of a catch-up: lines that waited while the view was away are not lines the feed makes now', () => {
+    const { frames, feed, model, strip } = setup();
+    for (let tick = 0; tick < 20; tick += 1) {
+      tell(strip, feed, 300);
+    }
+
+    // Away for ten seconds, in which the feed made the same 1,000 lines a second and held them.
+    model.detach();
+    feed.push(numbered(10_000));
+    frames.now += 10_000;
+    model.attach();
+    // The view reads them all on return (a burst of ten thousand lines in a few frames) while the feed goes on at the same rate.
+    const rate = tell(strip, feed, 300);
+    expect(model.getStats().total).toBeGreaterThan(10_000);
+    expect(rate).toBeGreaterThan(900);
+    expect(rate).toBeLessThanOrEqual(1000);
+  });
+
+  it('is 0 once the feed is quiet, and again what the feed makes when it speaks after a long quiet', () => {
+    const { frames, feed, strip } = setup();
+    for (let tick = 0; tick < 5; tick += 1) {
+      tell(strip, feed, 300);
+    }
+
+    // Quiet for longer than the window the rate is told over.
+    for (let tick = 0; tick < 20; tick += 1) {
+      expect(strip().rate).toBeGreaterThanOrEqual(0);
+    }
+
+    expect(strip().rate).toBe(0);
+    // An hour later it speaks at the rate it had: not the average of the hour.
+    frames.now += 3_600_000;
+    const first = tell(strip, feed, 300);
+    const later = tell(strip, feed, 300);
+    expect(first).toBeGreaterThan(900);
+    expect(first).toBeLessThanOrEqual(1000);
+    expect(later).toBeGreaterThan(900);
+    expect(later).toBeLessThanOrEqual(1000);
+  });
+});
+
+describe('the strip after the first lines (L1)', () => {
+  it('tells the first lines at once, in the frame that read them, though the strip was told (empty) a moment before', () => {
+    const { frames, feed, model } = setup();
+    frames.frame();
+    expect(model.getStats().total).toBe(0);
+    feed.push(numbered(5));
+    frames.frame();
+    expect(model.getStats().total).toBe(5);
+    expect(model.getStats().shown).toBe(5);
+  });
+
+  it('then keeps to its clock: lines that follow within a quarter second wait for the next tell', () => {
+    const { frames, feed, model } = setup();
+    frames.frame();
+    feed.push(numbered(5));
+    frames.frame();
+    feed.push(numbered(5, 6));
+    frames.frame();
+    expect(model.getStats().total).toBe(5);
+    frames.now += 300;
+    feed.push(numbered(1, 11));
+    frames.frame();
+    expect(model.getStats().total).toBe(11);
   });
 });
 

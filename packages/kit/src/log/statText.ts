@@ -15,14 +15,41 @@ export type StatInput = {
   readonly following: boolean;
   /** Lines that came while the list was scrolled back. */
   readonly unseen: number;
-  /** Older lines the view dropped to stay within its bound. */
+  /** Lines that were dropped and are not in the view: the ones the view evicted to stay within its bound and the ones the feed dropped before the view read them. */
   readonly dropped: number;
+  /** Of `dropped`, the lines the feed dropped before the view read them: only the note says it. */
+  readonly unread: number;
+  /** The most lines the view keeps: only the note says it. */
+  readonly capacity: number;
 };
 
 const NUMBER = new Intl.NumberFormat('en-US');
 const RATE = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const plural = (count: number, word: string): string => `${NUMBER.format(count)} ${word}${count === 1 ? '' : 's'}`;
+
+/**
+ * What the one number of dropped lines is made of, for the tooltip and the accessible description of the strip's text; undefined while nothing was dropped. The strip says one
+ * total in the mock's words ("N older lines dropped"); a person who wants to know whether the lines were ever on screen finds it here: the lines the feed dropped never were, and the ones
+ * the view evicted had been.
+ */
+export function droppedNote({ dropped, unread, capacity }: Pick<StatInput, 'dropped' | 'unread' | 'capacity'>): string | undefined {
+  if (dropped <= 0) {
+    return undefined;
+  }
+
+  const evicted = dropped - unread;
+  const sentences: string[] = [];
+  if (unread > 0) {
+    sentences.push(`${plural(unread, 'line')} never reached the view: the feed held too many while the view was not reading.`);
+  }
+
+  if (evicted > 0) {
+    sentences.push(`${plural(evicted, 'older line')} ${evicted === 1 ? 'was' : 'were'} pushed out of the view, which keeps the latest ${NUMBER.format(capacity)}.`);
+  }
+
+  return sentences.join(' ');
+}
 
 /** The strip's text: parts separated by a middle dot, from the count to what was dropped. */
 export function statText({ shown, total, rate, live, paused, held, following, unseen, dropped }: StatInput): string {

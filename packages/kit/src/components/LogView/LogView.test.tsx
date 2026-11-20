@@ -1124,3 +1124,82 @@ describe('the states (design 16 S116, S120)', () => {
     expect(rows[2]?.textContent).toBe('7 lines dropped');
   });
 });
+
+// L1: lines the FEED dropped while the view was not reading (a hidden panel) are told: the marker is the first row of a view that holds nothing older, the strip counts them in the
+// one total of dropped lines, and the note on the strip says how many of them were never shown.
+describe('lines the feed dropped before the view read them (L1)', () => {
+  const stripOf = (view: RenderResult) => view.getByRole('group', { name: 'Session status' });
+  const tell = () => {
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+  };
+
+  it('shows the marker above the lines of a view that was handed a whole buffer after a drop, and says the drop on the strip, in one number', () => {
+    const feed = new SyntheticFeed({ rate: 0, maxHeld: 100 });
+    // The feed holds the newest 100 of 400 lines and drops the 300 before them, while nobody reads it.
+    feed.emit(400);
+    const { view, scroll } = mount({ feed, maxLines: 100 });
+    tell();
+    // The list follows the end; the marker is the first row, and the reader scrolls to the top to see it.
+    scroll.setContent(101 * 24 + 25);
+    scroll.scrollTo(0);
+    frame();
+    const rows = rowsOf(view);
+    expect(rows[0]?.getAttribute('data-ov-kind')).toBe('gap');
+    expect(rows[0]?.textContent).toBe('300 lines dropped');
+    expect(rows.slice(1).every((each) => each.getAttribute('data-ov-kind') === null)).toBe(true);
+    const text = stripOf(view).textContent ?? '';
+    expect(text).toContain('100 lines');
+    expect(text).toContain('300 older lines dropped');
+  });
+
+  it('keeps the marker while the lines go on coming and the view keeps its bound', () => {
+    const feed = new SyntheticFeed({ rate: 0, maxHeld: 100 });
+    feed.emit(400);
+    const { view, scroll } = mount({ feed, maxLines: 100 });
+    run(() => {
+      feed.emit(50);
+    }, 2);
+    tell();
+    scroll.setContent(101 * 24 + 25);
+    scroll.scrollTo(0);
+    frame();
+    expect(rowsOf(view)[0]?.textContent).toBe('300 lines dropped');
+    // The strip's one number is the 300 the feed dropped and the 50 the view evicted.
+    expect(stripOf(view).textContent).toContain('350 older lines dropped');
+  });
+
+  it('says what the number is made of in the tooltip and the accessible description of the strip, and the words stay the mock\'s', () => {
+    const feed = new SyntheticFeed({ rate: 0, maxHeld: 100 });
+    feed.emit(400);
+    const { view } = mount({ feed, maxLines: 100 });
+    run(() => {
+      feed.emit(50);
+    }, 2);
+    tell();
+    const stat = within(stripOf(view)).getByText(/older lines dropped/);
+    const note = '300 lines never reached the view: the feed held too many while the view was not reading. 50 older lines were pushed out of the view, which keeps the latest 100.';
+    expect(stat.getAttribute('data-ov-tip')).toBe(note);
+    expect(stat.getAttribute('aria-description')).toBe(note);
+  });
+
+  it('has no note on a strip that dropped nothing', () => {
+    const { view } = mount({ lines: 10 });
+    tell();
+    const stat = within(stripOf(view)).getByText(/10 lines/);
+    expect(stat.hasAttribute('data-ov-tip')).toBe(false);
+    expect(stat.hasAttribute('aria-description')).toBe(false);
+  });
+
+  it('draws the first lines on the strip at once: not `0 lines` for a quarter of a second after they are on screen', () => {
+    const feed = new SyntheticFeed({ rate: 0 });
+    const { view } = mount({ feed });
+    expect(stripOf(view).textContent).toContain('0 lines');
+    run(() => {
+      feed.emit(5);
+    });
+    expect(rowsOf(view).length).toBe(5);
+    expect(stripOf(view).textContent).toContain('5 lines');
+  });
+});
