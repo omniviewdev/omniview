@@ -1,0 +1,283 @@
+//go:build sec1cluster
+
+package resource
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"os"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+// SEC1 on a real cluster (docs/ui-next/status/SEC1.md): the registration the plugin builds from the cluster's own discovery is asked every operation for the Secrets the cluster holds, and nothing it sends holds a
+// value. Run it with the kubeconfig of a cluster that holds sec1-secrets.yaml:
+//
+//	SEC1_KUBECONFIG=<kubeconfig> GOWORK=off GOTOOLCHAIN=local go test -tags sec1cluster ./pkg/plugin/resource -run SEC1Cluster -v -count=1
+//
+// It writes one Secret and one ConfigMap-free object only: the throwaway Secret sec1/cluster-test, which it deletes.
+
+func clusterRegistration(t *testing.T) (resourcev2.Registration[clients.ClientSet], *clients.ClientSet, dynamic.Interface) {
+	t.Helper()
+	kubeconfig := os.Getenv("SEC1_KUBECONFIG")
+	if kubeconfig == "" {
+		t.Skip("SEC1_KUBECONFIG is not set")
+	}
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	require.NoError(t, err)
+	config.QPS, config.Burst = 200, 400
+	native, err := dynamic.NewForConfig(config)
+	require.NoError(t, err)
+	disco, err := discovery.NewDiscoveryClientForConfig(config)
+	require.NoError(t, err)
+	bindings, coverage, err := discoverNativeTypes(context.Background(), disco)
+	require.NoError(t, err)
+	provider := &kubernetesProvider{logger: zap.NewNop().Sugar()}
+	client := &clients.ClientSet{DynamicClient: native}
+	snapshot, err := provider.assembleNativeCatalog(context.Background(), "route", client, bindings, coverage, nil, nativeTestAny())
+	require.NoError(t, err)
+	return snapshot.registrations[secretsToken], client, native
+}
+
+// clusterNeedles are every Secret value the cluster holds, read without the plugin, in the forms a copy can take, and every key's real size.
+func clusterNeedles(t *testing.T, native dynamic.Interface) (needles []string, sizes map[string]map[string]int64) {
+	t.Helper()
+	list, err := native.Resource(secretsGVR).List(context.Background(), metav1.ListOptions{})
+	require.NoError(t, err)
+	sizes = map[string]map[string]int64{}
+	add := func(value []byte) {
+		if len(value) < 12 {
+			return
+		}
+		head := value
+		if len(head) > 64 {
+			head = head[:64]
+		}
+		needles = append(needles, string(head))
+		encoded := base64.StdEncoding.EncodeToString(value)
+		needles = append(needles, encoded[:min(len(encoded), 64)])
+	}
+	for _, item := range list.Items {
+		key := item.GetNamespace() + "/" + item.GetName()
+		sizes[key] = map[string]int64{}
+		data, _, _ := unstructured.NestedStringMap(item.Object, "data")
+		for name, encoded := range data {
+			value, err := base64.StdEncoding.DecodeString(encoded)
+			require.NoError(t, err)
+			sizes[key][name] = int64(len(value))
+			add(value)
+		}
+		annotations := item.GetAnnotations()
+		for _, token := range regexpTokens(annotations[lastApplied]) {
+			add([]byte(token))
+			needles = append(needles, base64.StdEncoding.EncodeToString([]byte(token))[:16])
+		}
+	}
+	return needles, sizes
+}
+
+func regexpTokens(text string) []string {
+	var tokens []string
+	for _, field := range strings.FieldsFunc(text, func(r rune) bool { return !(r == '-' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') }) {
+		if strings.HasPrefix(field, "SEC1-") {
+			tokens = append(tokens, field)
+		}
+	}
+	return tokens
+}
+
+func requireClean(t *testing.T, what string, needles []string, wire ...[]byte) {
+	t.Helper()
+	for _, frame := range wire {
+		for _, needle := range needles {
+			if bytes.Contains(frame, []byte(needle)) {
+				t.Errorf("%s: %q... is in the bytes the plugin sends (%d bytes)", what, needle[:min(len(needle), 12)], len(frame))
+			}
+		}
+	}
+}
+
+func requireRealSizes(t *testing.T, record resourcev2.Record, sizes map[string]map[string]int64) {
+	t.Helper()
+	key := recordKey(record)
+	want, found := sizes[key]
+	require.True(t, found, key)
+	got := keysOf(t, record, "data")
+	if len(want) == 0 {
+		want = map[string]int64{}
+	}
+	assert.Equal(t, want, got, "%s: the names and the sizes of the keys are the cluster's", key)
+	assert.NotContains(t, record.Body.Map["metadata"].Map["annotations"].Map, lastApplied, key)
+}
+
+func TestSEC1ClusterEveryOperationOfTheSecretsTypeSendsNoValue(t *testing.T) {
+	registration, client, native := clusterRegistration(t)
+	needles, sizes := clusterNeedles(t, native)
+	t.Logf("the cluster holds %d Secrets; %d forms of their values are looked for", len(sizes), len(needles))
+	require.Greater(t, len(needles), 20)
+	ctx := context.Background()
+	all := resourcev2.QueryScope{{Dimension: "namespace", Match: resourcev2.ScopeAny}, {Dimension: "name", Match: resourcev2.ScopeAny}}
+
+	// a list, in both representations, paged as the host pages it
+	for _, representation := range []string{rawSecretRep, modelSecretRep} {
+		var cursor *string
+		listed := 0
+		for {
+			page, err := registration.Enumerate(ctx, client, resourcev2.EnumerateRequest{Target: secretsTarget(secretsToken, representation, all), PageSize: 256, Cursor: cursor})
+			require.NoError(t, err)
+			requireClean(t, "the page ("+representation+")", needles, pageOnTheWire(t, page)...)
+			for _, record := range page.Records {
+				requireRealSizes(t, record, sizes)
+				listed++
+			}
+			if page.NextCursor == nil {
+				break
+			}
+			cursor = page.NextCursor
+		}
+		assert.Equal(t, len(sizes), listed, representation)
+	}
+
+	// the label query, and the read narrowed to one object by its name (the server selects: metadata.name)
+	query := resourcev2.NativeQueryRequest{Target: secretsTarget(secretsToken, rawSecretRep, all), Language: nativeLabelSelectorLanguage, PageSize: 256,
+		Query: resourcev2.Value{Kind: "map", Map: map[string]resourcev2.Value{"labelSelector": {Kind: "string", String: "app=sec1"}}}}
+	page, err := registration.NativeQuery(ctx, client, query)
+	require.NoError(t, err)
+	require.NotEmpty(t, page.Records)
+	requireClean(t, "the label query", needles, pageOnTheWire(t, page)...)
+	narrowed := resourcev2.QueryScope{
+		{Dimension: "namespace", Match: resourcev2.ScopeOneOf, Values: &[]string{"sec1"}},
+		{Dimension: "name", Match: resourcev2.ScopeOneOf, Values: &[]string{"applied-string-data"}},
+	}
+	page, err = registration.Enumerate(ctx, client, resourcev2.EnumerateRequest{Target: secretsTarget(secretsToken, rawSecretRep, narrowed), PageSize: 256})
+	require.NoError(t, err)
+	require.Len(t, page.Records, 1)
+	requireClean(t, "the name-narrowed read", needles, pageOnTheWire(t, page)...)
+	requireRealSizes(t, page.Records[0], sizes)
+	assert.Equal(t, map[string]int64{"password": 22, "username": 18}, keysOf(t, page.Records[0], "data"))
+
+	// a Get of every Secret
+	for key := range sizes {
+		namespace, name, _ := strings.Cut(key, "/")
+		record, err := registration.Get(ctx, client, resourcev2.GetRequest{Route: resourcev2.AccessRoute{Connection: "route"}, Reference: secretsReference(secretsToken, namespace, name), Representation: rawSecretRep})
+		require.NoError(t, err)
+		requireClean(t, "Get "+key, needles, recordOnTheWire(t, record)...)
+		requireRealSizes(t, record, sizes)
+	}
+
+	// create (the server converts stringData to data and echoes no stringData) and delete: the results
+	manifest, err := resourcev2.ValueFromNative(map[string]any{
+		"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+		"metadata":   map[string]any{"name": "cluster-test", "namespace": "sec1"},
+		"stringData": map[string]any{"password": "SEC1-cluster-test-value-0f3a1c9d"},
+	})
+	require.NoError(t, err)
+	mutation := func(operation string, input resourcev2.Value) resourcev2.MutationRequest {
+		return resourcev2.MutationRequest{Route: resourcev2.AccessRoute{Connection: "route"}, Reference: secretsReference(secretsToken, "sec1", "cluster-test"), Operation: operation, Input: input}
+	}
+	created, err := registration.Mutate(ctx, client, mutation("create", manifest))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = native.Resource(secretsGVR).Namespace("sec1").Delete(ctx, "cluster-test", metav1.DeleteOptions{}) })
+	planted := []string{"SEC1-cluster-test-value-0f3a1c9d", base64.StdEncoding.EncodeToString([]byte("SEC1-cluster-test-value-0f3a1c9d"))}
+	requireClean(t, "the result of create", planted, recordOnTheWire(t, created)...)
+	assert.Equal(t, map[string]int64{"password": 32}, keysOf(t, created, "data"))
+	deleted, err := registration.Mutate(ctx, client, mutation("delete", resourcev2.Value{Kind: "null"}))
+	require.NoError(t, err)
+	requireClean(t, "the result of delete", planted, recordOnTheWire(t, deleted)...)
+	assert.Equal(t, map[string]int64{"password": 32}, keysOf(t, deleted, "data"))
+}
+
+func TestSEC1ClusterTheLiveSourcesOfSecretsSendNoValue(t *testing.T) {
+	registration, client, native := clusterRegistration(t)
+	needles, sizes := clusterNeedles(t, native)
+	needles = append(needles, "SEC1-cluster-live-value-1b9d7e30", base64.StdEncoding.EncodeToString([]byte("SEC1-cluster-live-value-1b9d7e30")))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	open := func(scope resourcev2.QueryScope, representation string) *secretFrames {
+		frames := newSecretFrames()
+		go func() {
+			_ = registration.Source(ctx, client, resourcev2.SourceRequest{
+				Target:         secretsTarget(secretsToken, representation, scope),
+				Representation: resourcev2.Representation{ID: representation, Revision: representation},
+				Limits:         resourcev2.SourceLimits{MaxFrameBytes: resourcev2.MaxSourceFrameBytes, MaxBatchItems: resourcev2.MaxSourceBatchItems},
+			}, frames)
+		}()
+		return frames
+	}
+	scan := func(what string, frames []resourcev2.SourceFrame) {
+		for i, frame := range frames {
+			requireClean(t, what+" frame "+string(rune('0'+i%10)), needles, frameOnTheWire(t, frame)...)
+		}
+	}
+
+	everything := open(resourcev2.QueryScope{{Dimension: "namespace", Match: resourcev2.ScopeAny}, {Dimension: "name", Match: resourcev2.ScopeAny}}, rawSecretRep)
+	narrowed := open(resourcev2.QueryScope{
+		{Dimension: "namespace", Match: resourcev2.ScopeOneOf, Values: &[]string{"sec1"}},
+		{Dimension: "name", Match: resourcev2.ScopeOneOf, Values: &[]string{"applied-data"}},
+	}, modelSecretRep)
+	snapshot := everything.until(t, "the snapshot of every Secret", hasBoundary)
+	scan("the snapshot", snapshot)
+	listed := 0
+	for _, observation := range observationsOf(snapshot) {
+		requireRealSizes(t, recordOf(observation), sizes)
+		listed++
+	}
+	assert.Equal(t, len(sizes), listed)
+	one := narrowed.until(t, "the snapshot of one Secret", hasBoundary)
+	scan("the narrowed snapshot", one)
+	require.Len(t, observationsOf(one), 1)
+	requireRealSizes(t, recordOf(observationsOf(one)[0]), sizes)
+
+	// the live changes: a Secret made (add), a key added (modify), the Secret deleted, and a key added to the narrowed one
+	secrets := native.Resource(secretsGVR).Namespace("sec1")
+	made, err := secrets.Create(ctx, &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": map[string]any{"name": "cluster-live", "namespace": "sec1", "labels": map[string]any{"app": "sec1"}},
+		"stringData": map[string]any{"password": "SEC1-cluster-live-value-1b9d7e30"},
+	}}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = secrets.Delete(context.Background(), "cluster-live", metav1.DeleteOptions{}) })
+	after := everything.until(t, "the add", func(all []resourcev2.SourceFrame) bool { return len(observationsOf(all[len(snapshot):])) >= 1 })
+	scan("the add", after)
+	made.Object["stringData"] = map[string]any{"second": "SEC1-cluster-live-value-1b9d7e30"}
+	_, err = secrets.Update(ctx, made, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	after = everything.until(t, "the modify", func(all []resourcev2.SourceFrame) bool { return len(observationsOf(all[len(snapshot):])) >= 2 })
+	scan("the modify", after)
+	patched, err := secrets.Patch(ctx, "applied-data", "application/merge-patch+json", []byte(`{"stringData":{"cluster-live-key":"SEC1-cluster-live-value-1b9d7e30"}}`), metav1.PatchOptions{})
+	require.NoError(t, err)
+	changed := narrowed.until(t, "the change of the narrowed Secret", func(all []resourcev2.SourceFrame) bool { return len(observationsOf(all[len(one):])) >= 1 })
+	scan("the narrowed change", changed)
+	last := recordOf(observationsOf(changed[len(one):])[0])
+	assert.Equal(t, patched.GetResourceVersion(), *last.SourceRevision)
+	assert.Contains(t, keysOf(t, last, "data"), "cluster-live-key")
+	// put the Secret back as it was
+	_, err = secrets.Patch(ctx, "applied-data", "application/json-patch+json", []byte(`[{"op":"remove","path":"/data/cluster-live-key"}]`), metav1.PatchOptions{})
+	require.NoError(t, err)
+	require.NoError(t, secrets.Delete(ctx, "cluster-live", metav1.DeleteOptions{}))
+	removed := everything.until(t, "the removal", func(all []resourcev2.SourceFrame) bool {
+		return slices.ContainsFunc(all, func(frame resourcev2.SourceFrame) bool {
+			return frame.Changes != nil && slices.ContainsFunc(frame.Changes.Changes, func(change resourcev2.SourceChange) bool { return change.Kind == resourcev2.SourceChangeRemove })
+		})
+	})
+	scan("the removal", removed)
+	time.Sleep(200 * time.Millisecond)
+	encoded, err := json.Marshal(removed[len(removed)-1])
+	require.NoError(t, err)
+	assert.NotEmpty(t, encoded)
+}

@@ -1,0 +1,524 @@
+#!/usr/bin/env node
+// SEC1 proof (docs/ui-next/status/SEC1.md): no Secret value reaches the page, in the real host, on a real kind cluster, and the Secrets list still equals `kubectl get secrets -A`.
+// `redo.sh` (beside this file in docs/ui-next/status/SEC1/) runs it on a fresh cluster; this file is `sec1-proof.mjs` without the `.txt`. It is the K2b-1 proof's method (docs/ui-next/status/K2b-1/) pointed at the
+// bytes the page receives instead of the text it shows.
+//
+//   OMNIVIEW_HOST_ROOT=<host checkout> ARCHIVE_FIXED=<kubernetes-<os>_<arch>.tar.gz> [ARCHIVE_BASE=<same, built before the fix>] KUBECONFIG_PATH=<kubeconfig> OUT=<directory> node sec1-proof.mjs
+//
+//   OMNIVIEW_HOST_ROOT  a host checkout of origin/main built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used
+//   ARCHIVE_FIXED       the archive `hack/package.sh` wrote from the plugin checkout under test
+//   ARCHIVE_BASE        optional: the archive of the commit before the fix. It is the control: the same scan, on the plugin that sends values, must find them (a scan that finds nothing proves nothing)
+//   KUBECONFIG_PATH     the kind cluster that holds sec1-secrets.yaml (the only kubeconfig this script and the host ever read); kubectl is the oracle
+//   OUT                 where the report and the raw captures go
+//   ENGINES             default `chromium,webkit` (the frames of both; the heap of the page in Chromium only)
+//
+// For each plugin (base, then fixed) and each engine, the Secrets page is opened in a real browser against a real host, and EVERY byte the page receives is kept: each frame of the host's event socket, each
+// response of the host's call endpoint (`/wails/runtime`), and, in Chromium, the page's whole JS heap (a heap snapshot: where the runtime's caches and every record it holds live). Then:
+//   A  the page lists what `kubectl get secrets -A` lists: the same objects, TYPE, DATA (the page's Keys) and age, and the footer
+//   B  live: a key added to a Secret, a Secret made, a Secret deleted: the page follows each, and equals kubectl after each
+//   C  the values: every value of every Secret of the cluster (read through kubectl, in the clear and as base64), each token planted in sec1-secrets.yaml (in the clear and as base64 at its three alignments), and the
+//      values made and changed under the page, are looked for in the frames, the heap, the page's storage, the host's output and every file the host wrote. The fixed plugin: none. The base plugin: found (the control)
+//   D  controls: the scan finds a value planted in a buffer, in each of its forms, and finds none in a clean one
+import { spawn, spawnSync } from 'node:child_process';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile, access } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
+
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const archives = { fixed: path.resolve(env('ARCHIVE_FIXED')), ...(process.env.ARCHIVE_BASE ? { base: path.resolve(process.env.ARCHIVE_BASE) } : {}) };
+const kubeconfig = path.resolve(env('KUBECONFIG_PATH'));
+const out = path.resolve(env('OUT'));
+const engines = env('ENGINES', 'chromium,webkit').split(',');
+const fixtureFile = process.env.FIXTURE ? path.resolve(process.env.FIXTURE) : path.join(path.dirname(new URL(import.meta.url).pathname), 'sec1-secrets.yaml');
+
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const results = [];
+function check(scope, name, ok, measured) {
+  const value = measured === undefined ? '' : ` -- ${typeof measured === 'string' ? measured : JSON.stringify(measured)}`;
+  console.log(`${ok ? 'PASS' : 'FAIL'} [${scope}] ${name}${value}`);
+  results.push({ scope, name, ok: Boolean(ok), measured });
+  return ok;
+}
+const info = (scope, name, data) => {
+  console.log(`INFO [${scope}] ${name} -- ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  results.push({ scope, name, info: true, data });
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+    probe.on('error', reject);
+  });
+}
+
+const children = [];
+/** Every throwaway HOME the proof made. Each holds a copy of the kubeconfig, valid for as long as the cluster lives: they are removed when the proof ends. */
+const profiles = [];
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/** Starts the real Go host in server mode on a throwaway HOME that holds the kubeconfig and the plugin installed by directory. Nothing ambient reaches it. */
+async function startHost(name, archive) {
+  const work = await mkdtemp(path.join(os.tmpdir(), `sec1-${name}-`));
+  profiles.push(work);
+  const home = path.join(work, 'home');
+  const pluginDir = path.join(home, '.omniview-feature-ui-next', 'plugins', 'kubernetes');
+  await mkdir(path.join(home, '.kube'), { recursive: true });
+  await mkdir(pluginDir, { recursive: true });
+  await cp(kubeconfig, path.join(home, '.kube', 'config'));
+  const untar = spawnSync('tar', ['-xzf', archive, '-C', pluginDir], { encoding: 'utf8' });
+  if (untar.status !== 0) throw new Error(`could not extract ${archive}: ${untar.stderr}`);
+  const port = await freePort();
+  const lines = [];
+  const { PATH, TMPDIR, LANG, USER } = process.env;
+  const child = spawn(path.join(hostRoot, 'bin/Omniview-server'), [], {
+    env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => lines.push(String(chunk)));
+  let exited = false;
+  child.on('exit', () => { exited = true; });
+  const entry = { name, pid: child.pid, child, work, home, lines, isExited: () => exited };
+  children.push(entry);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (exited) throw new Error(`the host ${name} exited while starting:\n${lines.join('').slice(-2000)}`);
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) {
+        info('host', `${name}: pid ${child.pid}`, { port, archive: path.basename(path.dirname(archive)) });
+        return { ...entry, base: `http://127.0.0.1:${port}`, pluginDir };
+      }
+    } catch { /* not listening yet */ }
+    await sleep(500);
+  }
+  throw new Error(`the host ${name} did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
+}
+
+async function stopHost(host) {
+  if (!host.isExited()) {
+    host.child.kill('SIGTERM');
+    for (let i = 0; i < 50 && !host.isExited(); i += 1) await sleep(200);
+    if (!host.isExited()) host.child.kill('SIGKILL');
+  }
+  // The plugin's own process, started by the host from the throwaway profile: found by that profile's path in its command line.
+  const orphans = spawnSync('pgrep', ['-f', host.work], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).map(Number);
+  for (const orphan of orphans) {
+    try { process.kill(orphan, 'SIGTERM'); } catch { /* gone */ }
+  }
+  for (let i = 0; i < 25 && orphans.some(alive); i += 1) await sleep(200);
+  for (const orphan of orphans.filter(alive)) {
+    try { process.kill(orphan, 'SIGKILL'); } catch { /* gone */ }
+  }
+  info('host', `${host.name}: stopped pid ${host.pid}${orphans.length > 0 ? `, and its leftover processes ${orphans.join(', ')}` : ''}`, {});
+}
+
+async function removeProfiles() {
+  for (const profile of profiles) {
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
+    const gone = await access(profile).then(() => false, () => true);
+    check('cleanup', 'the throwaway profile of a host, with its copy of the kubeconfig, is removed after the host has stopped', gone, profile);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The oracle: kubectl's own table, parsed by the column offsets of its header.
+function kubectl(args, options = {}) {
+  const result = spawnSync('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 256 * 1024 * 1024, ...options });
+  if (result.status !== 0) throw new Error(`kubectl ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout;
+}
+
+function kubectlTable(args) {
+  const lines = kubectl(['get', ...args]).split('\n').filter((line) => line.trim() !== '');
+  const header = lines[0];
+  const starts = [...header.matchAll(/\S+(?: \S+)*/g)].map((match) => ({ name: match[0], at: match.index }));
+  const rows = new Map();
+  for (const line of lines.slice(1)) {
+    const cells = Object.fromEntries(starts.map((column, index) => [column.name, line.slice(column.at, starts[index + 1]?.at).trim()]));
+    rows.set(cells.NAMESPACE === undefined ? cells.NAME : `${cells.NAMESPACE}/${cells.NAME}`, cells);
+  }
+  return rows;
+}
+
+const UNIT = { y: 365 * 86400, d: 86400, h: 3600, m: 60, s: 1 };
+const kubectlSeconds = (text) => [...text.matchAll(/(\d+)([ydhms])/g)].reduce((sum, [, amount, unit]) => sum + Number(amount) * UNIT[unit], 0);
+/** The window of seconds a page's one-unit age ("8m") stands for. */
+function ageWindow(text) {
+  const [, amount, unit] = /^(\d+)([dhms])$/.exec(text ?? '') ?? [];
+  return amount === undefined ? undefined : [Number(amount) * UNIT[unit], (Number(amount) + 1) * UNIT[unit]];
+}
+
+/** What the page must say of each Secret: kubectl's TYPE, DATA and AGE. */
+function oracle() {
+  return new Map([...kubectlTable(['secrets', '-A'])].map(([key, cells]) => [key, { Type: cells.TYPE, Keys: cells.DATA, Age: cells.AGE }]));
+}
+
+/** What a person reads off the Secrets page: the headers, one entry per mounted row with its cells by header, the footer, the state of the body. */
+const readPage = (page) =>
+  page.evaluate(() => {
+    const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const root = document.querySelector('[data-ov-state]');
+    const table = root?.querySelector('table') ?? null;
+    const headers = [...(table?.querySelectorAll('thead th') ?? [])].map((th) => text(th));
+    const rows = [...(root?.querySelectorAll('tbody tr') ?? [])].map((row) => {
+      const cells = [...row.children].map((cell) => text(cell));
+      const name = text(row.querySelector('[data-testid=secret-name]'));
+      const namespace = text(row.querySelector('[data-testid=secret-namespace]'));
+      return { key: namespace === '' ? name : `${namespace}/${name}`, cells: Object.fromEntries(headers.map((header, index) => [header, cells[index]])) };
+    });
+    return {
+      state: root?.getAttribute('data-ov-state') ?? null,
+      headers,
+      rows,
+      rowCount: table === null ? 0 : Number(table.getAttribute('aria-rowcount')) - 1,
+      count: text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) || null,
+    };
+  });
+
+/** What differs between the page and kubectl, as readable lines (empty: they agree). */
+function compare(read, expected, slack = 3) {
+  const problems = [];
+  const shown = new Map(read.rows.map((row) => [row.key, row]));
+  for (const key of expected.keys()) if (!shown.has(key)) problems.push(`${key}: missing from the page`);
+  for (const key of shown.keys()) if (!expected.has(key)) problems.push(`${key}: on the page, not in kubectl`);
+  if (read.rows.length !== expected.size) problems.push(`the page mounts ${read.rows.length} rows and kubectl lists ${expected.size}`);
+  for (const [key, want] of expected) {
+    const row = shown.get(key);
+    if (row === undefined) continue;
+    for (const [header, value] of Object.entries(want)) {
+      const got = row.cells[header];
+      if (header === 'Age') {
+        const window = ageWindow(got);
+        const printed = kubectlSeconds(value);
+        if (window === undefined || printed < window[0] - slack || printed >= window[1] + slack) problems.push(`${key}: Age page ${got} kubectl ${value}`);
+      } else if (got !== value) {
+        problems.push(`${key}: ${header} page ${JSON.stringify(got)} kubectl ${JSON.stringify(value)}`);
+      }
+    }
+  }
+  const wantCount = `${expected.size} ${expected.size === 1 ? 'Secret' : 'Secrets'}`;
+  if (read.count !== wantCount) problems.push(`footer page ${JSON.stringify(read.count)} kubectl ${JSON.stringify(wantCount)}`);
+  if (JSON.stringify(read.headers.slice(0, 4)) !== JSON.stringify(['Name', 'Type', 'Keys', 'Age'])) problems.push(`headers page ${JSON.stringify(read.headers)}`);
+  return problems;
+}
+
+const stable = (map) => JSON.stringify([...map].map(([key, entry]) => [key, { Type: entry.Type, Keys: entry.Keys }]));
+
+/** Polls until the page and kubectl agree (kubectl is read before and after each reading of the page) or the deadline; returns the last. */
+async function converge(page, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  for (let attempt = 1; ; attempt += 1) {
+    const before = oracle();
+    const read = await readPage(page);
+    const after = oracle();
+    const problems = read.state !== 'ready' ? [`the page is ${read.state}`] : compare(read, after);
+    last = { read, problems, attempt, stable: stable(before) === stable(after) };
+    if (problems.length === 0 && last.stable) return last;
+    if (Date.now() > deadline) return last;
+    await page.waitForTimeout(250);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The values. Each is looked for in the forms it can take on a wire or in a heap.
+const MIN_VALUE = 12;
+const base64Of = (bytes) => Buffer.from(bytes).toString('base64');
+
+/** The three alignments of base64 for a text that sits inside a longer value: the text encoded after 0, 1 and 2 bytes of something else, without the groups that mix in the neighbours. */
+function alignments(text) {
+  const forms = [base64Of(Buffer.from(text)).replace(/=+$/, '')];
+  for (const pad of [1, 2]) {
+    const encoded = base64Of(Buffer.concat([Buffer.alloc(pad, 0x78), Buffer.from(text)])).replace(/=+$/, '');
+    if (encoded.length > 8) forms.push(encoded.slice(4, -4));
+  }
+  return forms.filter((form) => form.length >= MIN_VALUE - 2);
+}
+
+/**
+ * Needles: { id, bytes } for each form of each value. `values` are Buffers (the value as the cluster holds it), `tokens` the planted self-naming texts. A value longer than CLIP bytes is looked for by its first CLIP bytes:
+ * the same proof of its presence (a copy of a value begins with its beginning), and a needle that a heap snapshot can hold (V8 keeps the first 1,024 characters of a string in a snapshot).
+ */
+const CLIP = 64;
+function needlesOf(values, tokens) {
+  const needles = [];
+  const seen = new Set();
+  const add = (id, bytes) => {
+    const clipped = bytes.length > CLIP ? bytes.subarray(0, CLIP) : bytes;
+    const key = clipped.toString('latin1');
+    if (clipped.length < MIN_VALUE || seen.has(key)) return;
+    seen.add(key);
+    needles.push({ id: bytes.length > CLIP ? `${id}, first ${CLIP}` : id, bytes: clipped });
+  };
+  for (const [id, value] of values) {
+    add(`${id} (clear)`, value);
+    add(`${id} (base64)`, Buffer.from(base64Of(value)));
+    const text = value.toString('utf8');
+    if (Buffer.from(text).equals(value)) add(`${id} (as JSON text)`, Buffer.from(JSON.stringify(text).slice(1, -1)));
+  }
+  for (const token of tokens) {
+    add(`${token} (clear)`, Buffer.from(token));
+    for (const [index, form] of alignments(token).entries()) add(`${token} (base64, alignment ${index})`, Buffer.from(form));
+  }
+  return needles;
+}
+
+/** Every value of every Secret of the cluster now, as Buffers by `namespace/name.key`. */
+function secretValues() {
+  const values = new Map();
+  const items = JSON.parse(kubectl(['get', 'secrets', '-A', '-o', 'json'])).items;
+  for (const item of items) {
+    for (const [key, encoded] of Object.entries(item.data ?? {})) values.set(`${item.metadata.namespace}/${item.metadata.name}.${key}`, Buffer.from(encoded, 'base64'));
+  }
+  return values;
+}
+
+const plantedTokens = new Set();
+async function loadPlantedTokens() {
+  const source = await readFile(fixtureFile, 'utf8');
+  for (const token of source.match(/SEC1-[A-Za-z0-9-]+/g) ?? []) plantedTokens.add(token);
+  for (const token of ['SEC1-binary-blob-8c27d1f0', 'SEC1-large-value-marker-9a3e', 'SEC1-helm-values-token-5e66a2c4']) plantedTokens.add(token);
+}
+
+/** Which needles a buffer holds, as ids. */
+const found = (needles, haystack) => needles.filter((needle) => haystack.includes(needle.bytes)).map((needle) => needle.id);
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+/** The page, with every byte it receives kept: the frames of the event socket and the responses of the call endpoint. */
+async function openSecretsPage(browser, base, context) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 4000 } });
+  const capture = { sockets: [], responses: [], errors: [], requests: new Map() };
+  page.on('pageerror', (error) => capture.errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) capture.errors.push(`console: ${message.text().slice(0, 300)}`);
+  });
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', (event) => capture.sockets.push(typeof event.payload === 'string' ? Buffer.from(event.payload) : Buffer.from(event.payload)));
+  });
+  page.on('response', async (response) => {
+    const type = response.request().resourceType();
+    const url = new URL(response.url()).pathname;
+    capture.requests.set(url, (capture.requests.get(url) ?? 0) + 1);
+    // Everything the page asks the host for is kept; the static assets of the shell and of the plugin carry no record.
+    if (['script', 'stylesheet', 'font', 'image', 'document'].includes(type)) return;
+    try { capture.responses.push(await response.body()); } catch { /* a response with no body to read (a redirect, an aborted request) */ }
+  });
+  await page.goto(`${base}/#/kubernetes/secrets?connection=${encodeURIComponent(context)}`, { waitUntil: 'load' });
+  return { page, capture };
+}
+
+const totalBytes = (buffers) => buffers.reduce((sum, buffer) => sum + buffer.length, 0);
+
+/** The whole JS heap of a Chromium page, as one buffer. It holds the runtime's query cache, the source views and every record they keep, and what no component renders. */
+async function heapOf(page) {
+  const session = await page.context().newCDPSession(page);
+  const chunks = [];
+  session.on('HeapProfiler.addHeapSnapshotChunk', ({ chunk }) => chunks.push(chunk));
+  await session.send('HeapProfiler.enable');
+  await session.send('HeapProfiler.collectGarbage');
+  await session.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+  await session.detach();
+  return Buffer.from(chunks.join(''));
+}
+
+/** What the page keeps in its storage (read without handing the page anything to look for). */
+const storageOf = (page) =>
+  page.evaluate(async () => {
+    const dump = (storage) => Object.entries(storage).map(([key, value]) => `${key}=${value}`).join('\n');
+    const databases = typeof indexedDB.databases === 'function' ? await indexedDB.databases() : [];
+    const caches_ = typeof caches === 'undefined' ? [] : await caches.keys();
+    return { local: dump(localStorage), session: dump(sessionStorage), databases: JSON.stringify(databases), caches: JSON.stringify(caches_) };
+  });
+
+/** Every file under a directory, by path, with its size (a file over 200 MB is named and not read). */
+async function filesUnder(directory) {
+  const files = [];
+  const walk = async (current) => {
+    for (const entry of await readdir(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else if (entry.isFile()) files.push({ full, size: (await stat(full)).size });
+    }
+  };
+  await walk(directory);
+  return files;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// E: what else is bulk-sent (a read-only look, nothing changes): the bytes the page receives for the list of each kind, against what kubectl serves for the kind and against what the list shows. A ConfigMap's
+// values are configuration and not secret, but a list needs only its key count, its key names and their size, and the page receives every value.
+const MEASURED = ['configmaps', 'secrets', 'pods', 'deployments', 'replicasets', 'daemonsets', 'statefulsets', 'jobs', 'cronjobs', 'services', 'ingresses', 'namespaces', 'nodes'];
+async function measureKinds(browser, host, context) {
+  const table = {};
+  for (const kindId of MEASURED) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 4000 } });
+    const received = { frames: 0, responses: 0 };
+    page.on('websocket', (socket) => socket.on('framereceived', (event) => { received.frames += Buffer.byteLength(event.payload); }));
+    page.on('response', async (response) => {
+      if (['script', 'stylesheet', 'font', 'image', 'document'].includes(response.request().resourceType())) return;
+      try { received.responses += (await response.body()).length; } catch { /* no body */ }
+    });
+    await page.goto(`${host.base}/#/kubernetes/${kindId}?connection=${encodeURIComponent(context)}`, { waitUntil: 'load' });
+    const deadline = Date.now() + 30_000;
+    let rows = 0;
+    while (Date.now() < deadline) {
+      const state = await page.evaluate(() => ({ state: document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state'), rows: document.querySelectorAll('tbody tr').length }));
+      rows = state.rows;
+      if (state.state === 'ready' || state.state === 'empty') break;
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(2500);
+    const served = kubectl(['get', kindId === 'ingresses' ? 'ingress' : kindId, ...(['namespaces', 'nodes'].includes(kindId) ? [] : ['-A']), '-o', 'json']);
+    table[kindId] = { rows, kubectlJsonBytes: Buffer.byteLength(served), pageBytes: received.frames + received.responses };
+    await page.close();
+  }
+  info('sizes', 'bytes the page receives for each kind\'s list (events and calls), and what `kubectl get -o json` serves for it', table);
+  // the ConfigMaps' values: what a list needs of them is the number of keys, their names and the size
+  const maps = JSON.parse(kubectl(['get', 'configmaps', '-A', '-o', 'json'])).items.map((item) => ({ id: `${item.metadata.namespace}/${item.metadata.name}`, keys: Object.keys({ ...item.data, ...item.binaryData }).length, valueBytes: Object.values(item.data ?? {}).reduce((sum, value) => sum + Buffer.byteLength(value), 0) + Object.values(item.binaryData ?? {}).reduce((sum, value) => sum + Buffer.from(value, 'base64').length, 0), objectBytes: Buffer.byteLength(JSON.stringify(item)) }));
+  maps.sort((a, b) => b.valueBytes - a.valueBytes);
+  info('sizes', 'ConfigMaps: the values every read sends, against the objects', { objects: maps.length, valueBytes: maps.reduce((sum, item) => sum + item.valueBytes, 0), objectBytes: maps.reduce((sum, item) => sum + item.objectBytes, 0), largest: maps.slice(0, 3) });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+async function runVariant(variant, archive, context) {
+  const host = await startHost(variant, archive);
+  const rows = {};
+  try {
+    for (const engineName of engines) {
+      const scope = `${variant}/${engineName}`;
+      const browser = await pw[engineName].launch();
+      info(scope, 'browser', `${engineName} ${browser.version()}`);
+      try {
+        const { page, capture } = await openSecretsPage(browser, host.base, context);
+        // A: the page lists what kubectl lists
+        const result = await converge(page);
+        check(scope, `A: the Secrets page lists what \`kubectl get secrets -A\` lists: the same objects, the same TYPE, DATA (Keys) and age, and the footer (${result.read.rows.length} rows)`, result.problems.length === 0, result.problems.length === 0 ? { rows: result.read.rows.length, count: result.read.count } : result.problems.slice(0, 12));
+        await page.waitForTimeout(1500);
+
+        // B: live: a key added, a Secret made, a Secret deleted (values that did not exist when the page opened)
+        const live = [
+          ['a key added to a Secret of the page', () => kubectl(['-n', 'sec1', 'patch', 'secret', 'applied-data', '--type=merge', '-p', JSON.stringify({ stringData: { 'live-key': `SEC1-live-added-${variant}-${engineName}-aa11bb22cc` } })])],
+          ['a Secret made', () => kubectl(['-n', 'sec1', 'create', 'secret', 'generic', 'live-created', `--from-literal=live=SEC1-live-created-${variant}-${engineName}-dd33ee44ff`])],
+          ['the Secret deleted', () => kubectl(['-n', 'sec1', 'delete', 'secret', 'live-created'])],
+        ];
+        for (const [what, change] of live) {
+          change();
+          const after = await converge(page, 30_000);
+          check(scope, `B: live, ${what}: the page follows with no reload, and equals kubectl`, after.problems.length === 0, after.problems.slice(0, 6));
+          plantedTokens.add(`SEC1-live-added-${variant}-${engineName}-aa11bb22cc`);
+          plantedTokens.add(`SEC1-live-created-${variant}-${engineName}-dd33ee44ff`);
+        }
+        kubectl(['-n', 'sec1', 'patch', 'secret', 'applied-data', '--type=json', '-p', '[{"op":"remove","path":"/data/live-key"}]']);
+        const settled = await converge(page, 30_000);
+        check(scope, 'B: live, the key removed again: the page equals kubectl', settled.problems.length === 0, settled.problems.slice(0, 6));
+        await page.waitForTimeout(1500);
+
+        // C: the bytes the page received, the page's heap and storage, the host's output and its files
+        const needles = needlesOf(new Map([...secretValues()]), plantedTokens);
+        const frames = capture.sockets;
+        const responses = capture.responses;
+        const heap = engineName === 'chromium' ? await heapOf(page) : undefined;
+        const storage = await storageOf(page);
+        const places = [
+          ['the frames of the event socket', frames],
+          ['the responses of the call endpoint', responses],
+          ...(heap ? [['the JS heap of the page', [heap]]] : []),
+          ['the page\'s storage', [Buffer.from(Object.values(storage).join('\n'))]],
+        ];
+        rows[engineName] = { needles: needles.length, bytes: { frames: totalBytes(frames), frameCount: frames.length, responses: totalBytes(responses), responseCount: responses.length, heap: heap?.length }, found: {} };
+        for (const [place, buffers] of places) {
+          const ids = [...new Set(buffers.flatMap((buffer) => found(needles, buffer)))];
+          rows[engineName].found[place] = ids.length;
+          if (variant === 'fixed') check(scope, `C: none of the ${needles.length} forms of the cluster's Secret values and of the planted tokens is in ${place}`, ids.length === 0, ids.slice(0, 8));
+          else info(scope, `control: forms of the values found in ${place}`, { found: ids.length, of: needles.length, examples: ids.slice(0, 4) });
+        }
+        if (variant === 'base') {
+          const total = Object.values(rows[engineName].found).reduce((sum, count) => sum + count, 0);
+          check(scope, 'D: the control: the plugin that sends values is caught by the same scan (values found in the frames and, in Chromium, in the heap)', rows[engineName].found['the frames of the event socket'] > 0 && rows[engineName].found['the responses of the call endpoint'] > 0 && (heap === undefined || rows[engineName].found['the JS heap of the page'] > 0), { ...rows[engineName].found, total });
+        }
+        check(scope, 'no page error and no console error', capture.errors.filter((entry) => !/activity session unavailable/.test(entry)).length === 0, capture.errors);
+        info(scope, 'what the page received for the Secrets list', rows[engineName].bytes);
+        info(scope, 'endpoints the page called (count)', Object.fromEntries(capture.requests));
+        await writeFile(path.join(out, `captured-${variant}-${engineName}.json.gz`), zlib.gzipSync(JSON.stringify({ frames: frames.map((buffer) => buffer.toString('utf8')), responses: responses.map((buffer) => buffer.toString('utf8')) })));
+        await page.close();
+      } finally {
+        await browser.close();
+      }
+    }
+    if (variant === 'fixed' && process.env.SIZES !== '0') {
+      const browser = await pw.chromium.launch();
+      try { await measureKinds(browser, host, context); } finally { await browser.close(); }
+    }
+    // The host's own output and everything it wrote.
+    const needles = needlesOf(secretValues(), plantedTokens);
+    const output = Buffer.from(host.lines.join(''));
+    const inOutput = found(needles, output);
+    // What the proof itself put there is not what the host wrote: the copy of the kubeconfig, and the plugin's own binary and bundle.
+    const installed = path.join(host.home, '.omniview-feature-ui-next', 'plugins', 'kubernetes');
+    const files = (await filesUnder(host.home)).filter((file) => !file.full.endsWith(path.join('.kube', 'config')) && ![path.join(installed, 'bin'), path.join(installed, 'assets'), path.join(installed, 'plugin.yaml')].some((own) => file.full.startsWith(own)));
+    const inFiles = [];
+    for (const file of files) {
+      if (file.size > 200 * 1024 * 1024) continue;
+      const ids = found(needles, await readFile(file.full));
+      if (ids.length > 0) inFiles.push(`${path.relative(host.home, file.full)}: ${ids.slice(0, 3).join(', ')}`);
+    }
+    if (variant === 'fixed') {
+      check(variant, `C: none of the ${needles.length} forms of the values is in the host's output (${output.length} bytes: the host's and the plugin's logs)`, inOutput.length === 0, inOutput.slice(0, 6));
+      check(variant, `C: none of them is in any of the ${files.length} files the host and the plugin wrote under their profile (${files.reduce((sum, file) => sum + file.size, 0)} bytes)`, inFiles.length === 0, inFiles.slice(0, 6));
+    } else {
+      info(variant, 'control: forms of the values found in the host\'s output and in the files it wrote', { output: inOutput.length, files: inFiles.length, outputBytes: output.length, fileCount: files.length });
+    }
+    await writeFile(path.join(out, `host-${variant}.log`), host.lines.join(''));
+  } finally {
+    await stopHost(host);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+function checkControls() {
+  const value = Buffer.from('SEC1-control-value-0123456789');
+  const needles = needlesOf(new Map([['control/x.key', value]]), new Set(['SEC1-control-token-abcdef0123']));
+  const planted = (bytes) => found(needles, bytes);
+  check('control', 'D: the scan finds a value in the clear', planted(Buffer.from(`xx ${value} yy`)).length > 0);
+  check('control', 'D: the scan finds a value as base64', planted(Buffer.from(`"data":{"k":"${base64Of(value)}"}`)).length > 0);
+  check('control', 'D: the scan finds a value as JSON text', planted(Buffer.from(`"note":"${JSON.stringify(value.toString()).slice(1, -1)}"`)).length > 0);
+  const inside = Buffer.from(`prefix-and-then-${'SEC1-control-token-abcdef0123'}-and-suffix`);
+  const forms = [0, 1, 2].map((pad) => base64Of(Buffer.concat([Buffer.alloc(pad, 0x78), inside])));
+  check('control', 'D: the scan finds a planted token inside a longer base64 value, at each of its three alignments', forms.every((form) => planted(Buffer.from(`"data":"${form}"`)).some((id) => /base64/.test(id))), forms.map((form) => planted(Buffer.from(form)).length));
+  check('control', 'D: the scan finds nothing in a clean buffer', planted(Buffer.from('{"kind":"Secret","data":{"password":{"size":24}}}')).length === 0);
+}
+
+await mkdir(out, { recursive: true });
+const context = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'config', 'current-context'], { encoding: 'utf8' }).stdout.trim();
+let failed = true;
+try {
+  info('setup', 'host', { root: hostRoot, commit: spawnSync('git', ['-C', hostRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim() });
+  info('setup', 'plugin archives', Object.fromEntries(await Promise.all(Object.entries(archives).map(async ([name, file]) => [name, { file: path.basename(path.dirname(file)), bytes: (await readFile(file)).length }]))));
+  info('setup', 'cluster', { context, server: spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'version', '-o', 'json'], { encoding: 'utf8' }).stdout.match(/"gitVersion": "(v[^"]+)"/g)?.pop() });
+  await loadPlantedTokens();
+  const values = secretValues();
+  info('setup', 'the values of the cluster\'s Secrets and the tokens planted in them the scan looks for', { secrets: kubectlTable(['secrets', '-A']).size, values: values.size, tokens: plantedTokens.size, forms: needlesOf(values, plantedTokens).length, shorterThanMin: [...values].filter(([, value]) => value.length < MIN_VALUE).map(([id]) => id) });
+  checkControls();
+  const summary = {};
+  for (const variant of Object.keys(archives).sort().reverse()) summary[variant] = await runVariant(variant, archives[variant], context);
+  info('summary', 'bytes the page received, by plugin and engine', summary);
+  await writeFile(path.join(out, 'sec1-proof-summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+} finally {
+  await removeProfiles();
+  await writeFile(path.join(out, 'sec1-proof-report.json'), `${JSON.stringify({ at: new Date().toISOString(), engines, results }, null, 2)}\n`);
+}
+failed = results.some((entry) => entry.ok === false);
+
+const total = results.filter((entry) => entry.ok !== undefined).length;
+console.log(`${failed ? 'FAIL' : 'PASS'}: ${results.filter((entry) => entry.ok === true).length} of ${total} checks`);
+process.exit(failed ? 1 : 0);
