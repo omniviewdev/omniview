@@ -88,7 +88,7 @@ jobs:
         id: tests
         run: node --test scripts/ci/check-image.test.mjs
 
-      # Fails the job when the lock is behind, a pin is not the lock's digest, or the Dockerfile and the Pods workflow disagree on kind or kubectl. The plan below still runs.
+      # Fails the job when the lock is behind, a pin is not the lock's digest, or a workflow and the Dockerfile pin kind, kubectl or golangci-lint at two versions. The plan below still runs.
       - name: Is the lock behind the repository?
         id: check
         run: node scripts/ci/check-image.mjs check --github-output "$GITHUB_OUTPUT"
