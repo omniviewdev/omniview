@@ -530,7 +530,7 @@ jobs:
     name: UI runtime contract
     needs: c02-corpus
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@v4
 
@@ -563,6 +563,10 @@ jobs:
 
       - name: Install dependencies
         run: task check:ui-install
+
+      # TEMPORARY negative control (N24 U1, never merged): a part that does not finish inside its timeout is cancelled and must turn UI checks red.
+      - name: Negative control, a step that outlasts the job timeout
+        run: sleep 300
 
       - name: Download producer C02 error transport corpus
         uses: actions/download-artifact@v4
