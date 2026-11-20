@@ -1,7 +1,7 @@
 // The model of the log view: the feed read at the view's pace, the buffer and its view, follow, selection and search, behind one snapshot that changes at most
 // once a frame (HLT-4, HLT-6, HLT-9, HLT-10; MNR-L2, L3, L4, L6). These tests drive it with a feed written here and a clock and a frame scheduler they own,
 // so every assertion is about work done and snapshots published, never about time.
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_CHUNK_LINES } from './lineSearch';
 import { LogViewModel, READ_SLICE_LINES, SEARCH_SLICE_MS, type ViewModelOptions } from './logViewModel';
 import { MAX_MATCH_COUNT, SEARCH_TIME_BUDGET_MS } from './regexSafety';
@@ -836,10 +836,10 @@ describe('search (HLT-10, MNR-L4)', () => {
 });
 
 describe('selection and copy (HLT-18)', () => {
-  it('selects a line, extends to another, and copies the lines as plain text, a line each, with their clock and level', () => {
+  it('selects a line, extends to another, and copies the lines as plain text, a line each, with their clock and level (lines that name no source: with one, the copy carries its name)', () => {
     const { frames, feed, model } = setup();
-    feed.push(['first', 'second', 'third'], 'info');
-    feed.push(['fourth'], 'error');
+    feed.pushFrom('', ['first', 'second', 'third'], 'info');
+    feed.pushFrom('', ['fourth'], 'error');
     frames.settle();
     model.select(2, false);
     expect(model.getSnapshot().selection).toEqual({ anchor: 2, focus: 2 });
@@ -847,6 +847,42 @@ describe('selection and copy (HLT-18)', () => {
     expect(model.getSnapshot().selection).toEqual({ anchor: 2, focus: 4 });
     const clock = (text: string) => text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, 'HH:MM:SS.mmm');
     expect(model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO second', 'HH:MM:SS.mmm INFO third', 'HH:MM:SS.mmm ERROR fourth']);
+  });
+
+  describe('the clock', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    // The mock copies the clock of the viewer's own zone (`lineText` takes `clock(l.t)`, shell-panel.js 2062) and shows UTC, when asked, with a Z (1708). A copy says what the row said: local without a mark, UTC with its Z.
+    it('is the viewer\'s local clock with no mark of a zone by default', () => {
+      vi.stubEnv('TZ', 'Asia/Kolkata');
+      const { frames, feed, model } = setup();
+      feed.pushFrom('', ['first'], 'info', '2024-01-15T10:30:00.123Z');
+      frames.settle();
+      model.selectAll();
+      expect(model.copyText()).toBe('16:00:00.123 INFO first');
+      expect(model.copyText('local')).toBe('16:00:00.123 INFO first');
+    });
+
+    it('is the UTC clock with its Z when the view shows UTC, whatever zone the viewer is in, with a source too', () => {
+      vi.stubEnv('TZ', 'Asia/Kolkata');
+      const { frames, feed, model } = setup();
+      feed.pushFrom('', ['first'], 'info', '2024-01-15T10:30:00.123Z');
+      feed.pushFrom('svc/app', ['second'], 'warn', '2024-01-15T10:30:01.000+02:00');
+      frames.settle();
+      model.selectAll();
+      expect(model.copyText('utc')?.split('\n')).toEqual(['10:30:00.123Z INFO first', '08:30:01.000Z WARN  svc/app  second']);
+    });
+
+    it('leaves a line with no time with no clock, and no lone Z, in UTC as in local', () => {
+      const { frames, feed, model } = setup();
+      feed.pushFrom('', ['first'], 'info', '');
+      frames.settle();
+      model.selectAll();
+      expect(model.copyText('utc')).toBe('INFO first');
+      expect(model.copyText('local')).toBe('INFO first');
+    });
   });
 
   it('writes a marker as a line of its own', () => {
@@ -1521,13 +1557,15 @@ describe('the sources of the log (L2)', () => {
     expect(scrolled.model.getSnapshot().window).toEqual(before.window);
   });
 
-  it('copies each line as it is shown: with a source column the label comes after the level and two spaces set it off from the text (the mock\'s `lineText`), without one the text is what it was', () => {
+  it('copies the source of every line that has one, whether or not the log shows a Source column: the clock, the level padded to five, the label and two spaces, the text (the mock\'s `lineText`, shell-panel.js 2062)', () => {
     const clock = (text: string) => text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, 'HH:MM:SS.mmm');
+    // One source: nothing extra on screen, and the label is in the copy all the same.
     const one = setup();
     one.feed.pushFrom('svc/app', ['first', 'second'], 'info');
     one.frames.settle();
+    expect(one.model.getSnapshot().sourceColumn).toBe(false);
     one.model.selectAll();
-    expect(one.model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO first', 'HH:MM:SS.mmm INFO second']);
+    expect(one.model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  svc/app  first', 'HH:MM:SS.mmm INFO  svc/app  second']);
 
     const { frames, feed, model } = setup();
     feed.pushFrom('svc/app', ['first'], 'info');
@@ -1536,6 +1574,33 @@ describe('the sources of the log (L2)', () => {
     frames.settle();
     model.selectAll();
     expect(model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  svc/app  first', 'HH:MM:SS.mmm ERROR svc/sidecar  second', 'HH:MM:SS.mmm       svc/app  third']);
+  });
+
+  it('copies a line that names no source as it always was, with no label and no extra space, among lines that do', () => {
+    const clock = (text: string) => text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, 'HH:MM:SS.mmm');
+    const { frames, feed, model } = setup();
+    feed.pushFrom('svc/app', ['first'], 'info');
+    feed.pushFrom('', ['second'], 'warn');
+    frames.settle();
+    model.selectAll();
+    expect(model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  svc/app  first', 'HH:MM:SS.mmm WARN second']);
+  });
+
+  it('copies the name the feed lists for the one source of a log, and its id when it lists none', () => {
+    const clock = (text: string) => text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, 'HH:MM:SS.mmm');
+    const { frames, feed, model } = setup();
+    feed.list([{ id: 'svc/app', label: 'app' }]);
+    feed.pushFrom('svc/app', ['first'], 'info');
+    frames.settle();
+    model.selectAll();
+    expect(model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  app  first']);
+
+    const bare = setup();
+    bare.feed.list([{ id: 'svc/app' }]);
+    bare.feed.pushFrom('svc/app', ['first'], 'info');
+    bare.frames.settle();
+    bare.model.selectAll();
+    expect(bare.model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  svc/app  first']);
   });
 
   it('copies the label the feed gave, and a marker as its own sentence', () => {
@@ -1566,5 +1631,50 @@ describe('the sources of the log (L2)', () => {
     expect(search.status).toBe('done');
     const hit = model.getSnapshot().rows.filter((row) => row.hit).map((row) => (row.entry.kind === 'line' ? row.entry.text : ''));
     expect(hit).toEqual(['the sidecar said so']);
+  });
+});
+
+describe('the rate of a paused or quiet feed (L3)', () => {
+  // L1 flagged that a paused feed's rate is the feed's arrival rate and said the mock decays it. Measured in the mock (WebKit and Chromium, a producer at 20 lines a second): its rate is the lines pushed in the last
+  // 3 seconds over 3 (`rateOf`, shell-panel.js 1995), and `pushLines` (1679) is called by the generator (1650) whether or not the log is paused, so a paused log that goes on receiving reads 20.0 and one that
+  // goes quiet, paused or not, reads 0.0 about 3 seconds later. The kit's rate is the feed's lines accepted over the clock, and the feed goes on accepting while it is paused: the same two behaviours.
+  const tell = (strip: () => { rate: number }, feed: { push: (texts: readonly string[]) => void }) => {
+    feed.push(numbered(300));
+    return strip().rate;
+  };
+
+  it('is what the feed makes while the view is paused, as the mock\'s is: a pause holds the reads, not the arrivals', () => {
+    const { feed, strip } = setup();
+    for (let tick = 0; tick < 12; tick += 1) {
+      tell(strip, feed);
+    }
+
+    feed.pause();
+    let rate = 0;
+    for (let tick = 0; tick < 12; tick += 1) {
+      rate = tell(strip, feed);
+    }
+
+    expect(rate).toBeGreaterThan(900);
+    expect(rate).toBeLessThanOrEqual(1000);
+  });
+
+  it('decays to 0 when a paused feed goes quiet, as it does for one that is not paused, and the strip goes on asking for frames until it has', () => {
+    const { feed, model, strip } = setup();
+    for (let tick = 0; tick < 12; tick += 1) {
+      tell(strip, feed);
+    }
+
+    feed.pause();
+    const rates: number[] = [];
+    for (let tick = 0; tick < 20; tick += 1) {
+      rates.push(strip().rate);
+    }
+
+    expect(rates[0]).toBeGreaterThan(0);
+    expect(rates.at(-1)).toBe(0);
+    // It falls and does not come back: a feed that is quiet makes nothing.
+    expect(rates).toEqual([...rates].sort((a, b) => b - a));
+    expect(model.getStats().rate).toBe(0);
   });
 });

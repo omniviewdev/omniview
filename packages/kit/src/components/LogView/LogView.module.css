@@ -25,6 +25,11 @@
     line-height: var(--ov-lh-16);
   }
 
+  /* The clock is 112 px wide, and 120 px in UTC: its Z is one character more (the mock's `.plog__scroll { --plog-time: 112px }` and `[data-ts='utc'] { --plog-time: 120px }`, shell-panel.css 92 and 93). The head follows. */
+  .root[data-ov-timestamps='utc'] {
+    --_time: 120px;
+  }
+
   /* ---- the filter row: a find bar and the level filter, one 38 px line with the border (28 px controls, 5 px above and below) ---- */
   .filters {
     display: flex;

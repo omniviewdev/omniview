@@ -1,0 +1,79 @@
+// L3 dev tool (a .txt: copy it without the suffix beside itself and run it from the repository root). The design mock's rate on its strip while a producer feeds a log at 20 lines a second: following, then PAUSED
+// (the generator goes on), then paused and quiet, then resumed. The mock's rate is the lines pushed in the last 3 s over 3 (shell-panel.js 1995), pushed whether or not the log is paused (1650, 1679): it reads 20.0 while
+// paused and still receiving, and 0.0 about 3 s after the feed goes quiet. Measured 2026-11-20, Chromium and WebKit (the two agree).
+// Experiment (not in tree): the mock's tooltip and rate in a live log. Uses the probe lib of the worktree.
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import path from 'node:path';
+import { launch, normalizeFont, sleep } from '../../../../packages/kit/probes/probe-lib.mjs';
+
+const MOCK_DIR = path.join(homedir(), 'Repos/omniviewdev/aws-wails-native-lab/app/OmniviewNativeLab/frontend/mock');
+const copy = path.join(mkdtempSync(path.join(tmpdir(), 'l3-mock-')), 'server.cjs');
+writeFileSync(copy, readFileSync(path.join(MOCK_DIR, 'server.js'), 'utf8').replace('const root=__dirname', `const root=${JSON.stringify(MOCK_DIR)}`));
+const server = spawn(process.execPath, [copy], { env: { ...process.env, PORT: '49481' }, stdio: 'ignore' });
+const url = 'http://127.0.0.1:49481/';
+await sleep(1500);
+
+function install() {
+  Shell.panel.producers.register({
+    id: 'probe.two', kinds: ['logs'],
+    start: async ({ sink }) => {
+      sink.sources([{ id: 'pod/app', label: 'app', detail: 'node-1' }, { id: 'pod/sidecar-with-a-long-name', label: 'sidecar-with-a-long-name', detail: 'node-1 · init' }]);
+      sink.state({ state: 'running' });
+      return { ok: true };
+    },
+    stop: async () => ({ acknowledged: true }), reconnect: async () => ({ ok: true }), dispose: async () => undefined,
+  });
+}
+
+const out = {};
+try {
+  for (const engine of ['chromium', 'webkit']) {
+    const browser = await launch(engine);
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'UTC', locale: 'en-US' });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'load' });
+    await sleep(3000);
+    await page.waitForFunction(() => typeof Shell !== 'undefined' && Shell.panel?.show !== undefined && Shell.panel.logs !== undefined);
+    await sleep(1500);
+    await page.evaluate(install);
+    const sid = await page.evaluate(async () => {
+      const id = Shell.panel.logs.open({ id: 'probe/two', producer: 'probe.two', kind: 'probe', label: 'two', title: 'two' });
+      for (let i = 0; i < 100 && Shell.panel.sessions.get(id)?.state !== 'running'; i++) await new Promise((r) => setTimeout(r, 50));
+      window.__sid = id; window.__n = 0;
+      return id;
+    });
+    // a steady feed: `rate` lines a second, alternating the two sources
+    const feed = (rate) => page.evaluate((rate) => {
+      clearInterval(window.__timer);
+      if (rate <= 0) return;
+      const ids = ['pod/app', 'pod/sidecar-with-a-long-name'];
+      window.__timer = setInterval(() => { const n = window.__n++; Shell.panel.logs.feed(window.__sid, [{ time: Date.now(), level: 'info', source: ids[n % 2], message: `line ${n} of the live feed` }]); }, 1000 / rate);
+    }, rate);
+    const strip = () => page.evaluate(() => document.querySelector('shell-panel-leaf[data-leaf="logstat"]')?.textContent ?? '(no strip)');
+    await feed(20);
+    await sleep(2500);
+    out[engine] = {};
+    // ---- rate, following at 20 lines/s, then paused (the generator goes on), then quiet
+    const samples = [];
+    for (let i = 0; i < 4; i++) { samples.push(await strip()); await sleep(500); }
+    out[engine].following = samples;
+    await page.evaluate(() => Shell.run('host.logs.pause'));
+    const paused = [];
+    for (let i = 0; i < 12; i++) { await sleep(500); paused.push(await strip()); }
+    out[engine].pausedFeedGoesOn = paused;
+    await feed(0);
+    const quiet = [];
+    for (let i = 0; i < 9; i++) { await sleep(500); quiet.push(await strip()); }
+    out[engine].pausedAndQuiet = quiet;
+    await page.evaluate(() => Shell.run('host.logs.pause'));   // resume
+    await sleep(800);
+    out[engine].afterResume = await strip();
+    await context.close();
+    await browser.close();
+  }
+} finally {
+  server.kill();
+}
+console.log(JSON.stringify(out, null, 1));

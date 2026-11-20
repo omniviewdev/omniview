@@ -1,7 +1,13 @@
 // The time column: the clock of a line, `HH:MM:SS.mmm` (the mock's `clock(l.t)`), read from the RFC 3339 text the backend sent. Done for the few rows
-// in the window when they render, never for every line at ingest.
-import { describe, expect, it } from 'vitest';
-import { formatClock } from './time';
+// in the window when they render, never for every line at ingest. The mock shows it in the viewer's local time, and in UTC (with a `Z` after it) when the reader
+// chose that (`shell-panel.js` 129-132 `clock`, 1572 `ts: 'local'`, 1708 the UTC span, 2666 the Timestamps option).
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { formatClock, formatStamp } from './time';
+
+// Local time is the machine's: a test that tells it from UTC puts the process in a zone of its own (V8 follows `process.env.TZ` as it is written) and takes it out again.
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const pad = (value: number, width = 2) => String(value).padStart(width, '0');
 const local = (text: string) => {
@@ -38,5 +44,34 @@ describe('formatClock', () => {
     expect(formatClock('')).toBe('');
     expect(formatClock('yesterday')).toBe('');
     expect(formatClock('2024-13-45T99:99:99Z')).toBe('');
+  });
+});
+
+describe('formatStamp: the clock as a row shows it and a copy carries it', () => {
+  it('is the local clock in local time, with no mark of a zone: the mock\'s `clock(l.t)`', () => {
+    for (const text of ['2024-01-15T10:30:00.123Z', '2024-07-04T00:00:01.500Z', '2024-12-31T23:59:59.001+05:30']) {
+      expect(formatStamp(text, 'local')).toBe(local(text));
+    }
+
+    // In a zone that is not UTC and not a whole hour from it, local is not UTC in the hour or the minute.
+    vi.stubEnv('TZ', 'Asia/Kolkata');
+    expect(formatStamp('2024-01-15T10:30:00.123Z', 'local')).toBe('16:00:00.123');
+    expect(formatStamp('2024-01-15T10:30:00.123Z', 'utc')).toBe('10:30:00.123Z');
+  });
+
+  it('is the UTC clock with a Z after it in UTC: the mock\'s `clock(l.t, { utc: true })` and the `Z` it writes (shell-panel.js 1708)', () => {
+    expect(formatStamp('2024-01-15T10:30:00.123Z', 'utc')).toBe('10:30:00.123Z');
+    expect(formatStamp('2024-01-15T23:59:59.999Z', 'utc')).toBe('23:59:59.999Z');
+    // The clock of the instant, whatever zone the text was written in.
+    expect(formatStamp('2024-01-15T10:30:00.000+02:00', 'utc')).toBe('08:30:00.000Z');
+    expect(formatStamp('2024-01-15T10:30:00.123456789Z', 'utc')).toBe('10:30:00.123Z');
+  });
+
+  it('is empty for a line with no time or text that is not a time, in either zone: no lone Z', () => {
+    for (const zone of ['local', 'utc'] as const) {
+      expect(formatStamp('', zone)).toBe('');
+      expect(formatStamp('yesterday', zone)).toBe('');
+      expect(formatStamp('2024-13-45T99:99:99Z', zone)).toBe('');
+    }
   });
 });

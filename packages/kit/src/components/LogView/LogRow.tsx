@@ -1,8 +1,8 @@
 import { memo } from 'react';
-import { formatClock } from '../../log/time';
+import { formatStamp } from '../../log/time';
 import { matchRanges, rowRuns, type RowRun } from '../../log/runs';
 import type { SourceTag } from '../../log/sources';
-import type { LogEntry, LogLevel, PaintedRun } from '../../log/types';
+import type { LogEntry, LogLevel, LogTimestamps, PaintedRun } from '../../log/types';
 import { Icon, type IconName } from '../Icon';
 import { MiddleEllipsis } from '../MiddleEllipsis';
 import { MissingValue } from '../MissingValue';
@@ -34,6 +34,8 @@ export type LogRowProps = {
   readonly sourceColumn: boolean;
   /** The source of the line, drawn in its cell; undefined for a line that names none. The same object for a source until its label changes, so it widens the memo's comparison without adding a render (HLT-2). */
   readonly source: SourceTag | undefined;
+  /** The clock the row shows: the viewer's own, or UTC with a Z after it. A choice of the view, the same for every row, so a change draws the rows that are mounted and no other work. */
+  readonly timestamps: LogTimestamps;
 };
 
 /** One piece of a row's text: bare text when it has no paint and no mark, one span when it has. */
@@ -61,11 +63,12 @@ function Text({ text, runs, current, pattern }: { readonly text: string; readonl
 
 /**
  * One line of the log, or the marker where the feed dropped lines. Memoised on what it draws: the entry (immutable, made once at ingest), whether it is
- * selected or current, the pattern when it has a match, and its source when the log has a source column. A flush that appends lines renders none of the rows that
+ * selected or current, the pattern when it has a match, its source when the log has a source column, and the zone of the clock. A flush that appends lines renders none of the rows that
  * were already there (HLT-2, MNR-L3). A plain row is the row, three cells, the level's glyph and its text: no per-row style, no per-row handler (HLT-3, T-07); with a
- * source column it has a cell more, the source's name in a chip whose swatch takes the hue of its place in the series (the mock's `chipOf`).
+ * source column it has a cell more, the source's name in a chip whose swatch takes the hue of its place in the series (the mock's `chipOf`). The clock is `HH:MM:SS.mmm` in the viewer's time, or `HH:MM:SS.mmmZ`
+ * in UTC; its tip is the line's own timestamp (the source's text: the date, the zone and every digit of the fraction), an attribute the one tooltip of the window reads, so a row adds no element and no handler for it.
  */
-export const LogRow = memo(function LogRow({ entry, id, position, selected, current, pattern, sourceColumn, source }: LogRowProps) {
+export const LogRow = memo(function LogRow({ entry, id, position, selected, current, pattern, sourceColumn, source, timestamps }: LogRowProps) {
   if (entry.kind === 'gap') {
     return (
       <div role="row" id={id} aria-rowindex={position} aria-selected={selected ? 'true' : undefined} className={styles.marker} data-n={entry.n} data-ov-kind="gap">
@@ -78,6 +81,7 @@ export const LogRow = memo(function LogRow({ entry, id, position, selected, curr
   }
 
   const level = entry.level === undefined ? undefined : LEVELS[entry.level];
+  const clock = formatStamp(entry.timestamp, timestamps);
   return (
     <div
       role="row"
@@ -89,8 +93,8 @@ export const LogRow = memo(function LogRow({ entry, id, position, selected, curr
       data-ov-level={entry.level}
       data-ov-current={current ? 'true' : undefined}
     >
-      <span role="gridcell" className={styles.time}>
-        {formatClock(entry.timestamp)}
+      <span role="gridcell" className={styles.time} data-ov-tip={clock === '' ? undefined : entry.timestamp}>
+        {clock}
       </span>
       <span role="gridcell" className={styles.level}>
         {level === undefined ? (

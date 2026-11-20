@@ -1,0 +1,28 @@
+// L3 dev tool (a .txt: copy it without the suffix beside itself and run it from the repository root). The kit's strip on the host fixture's two-source session (`pair`, 20 lines a second): the rate while the sources
+// write (19.4 to 19.9) and after `__fixtureLogs.stopSources()` (decays to 0.0 in about 3 s): the 0.0 of the L2 screenshot was taken 4 s after the dev tool made the feed quiet. Measured 2026-11-20, both engines.
+// Experiment (not in tree): the strip's rate on the fixture's `pair` session (two sources, 20 lines a second): while lines arrive, after the sources went quiet.
+import { launch } from '../../../../packages/kit/probes/probe-lib.mjs';
+import { NATIVE_VIEWPORTS, buildFixtures, open, serveFixtures, sleep } from '../../../../ui-next/shell/probes/harness.mjs';
+
+const production = await serveFixtures(buildFixtures('production'));
+const url = `${production.origin}/shell/probes/host-fixture.html?logs=1&panel=1&inventoryMs=30&loadMs=30&nodesMs=30&dataMs=30`;
+for (const engine of ['chromium', 'webkit']) {
+  const browser = await launch(engine);
+  const { page, context, errors } = await open(browser, url, NATIVE_VIEWPORTS['1440x900']);
+  await page.waitForFunction(() => window.__logs?.ready() === true && window.__panel !== undefined, null, { timeout: 15000 });
+  await page.evaluate((i) => { window.__logs.open(i); }, 4);
+  await page.waitForFunction((n) => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > n, 5, { timeout: 30000 });
+  const strip = () => page.evaluate(() => document.querySelector('[data-log-session] [aria-label="Session status"]')?.textContent ?? '(none)');
+  const times = () => page.evaluate(() => [...document.querySelectorAll('[data-log-session] [role=row][data-n] [role=gridcell]:first-child')].slice(-6).map((e) => e.textContent));
+  const rows = [];
+  for (let i = 0; i < 8; i++) { rows.push(await strip()); await sleep(500); }
+  console.log(engine, 'while the sources write:', JSON.stringify(rows));
+  console.log(engine, 'the last clocks:', JSON.stringify(await times()));
+  await page.evaluate(() => window.__fixtureLogs.stopSources());
+  const quiet = [];
+  for (let i = 0; i < 9; i++) { await sleep(500); quiet.push(await strip()); }
+  console.log(engine, 'after stopSources():', JSON.stringify(quiet));
+  await context.close();
+  await browser.close();
+}
+production.server.close();

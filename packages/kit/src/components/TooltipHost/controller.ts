@@ -9,15 +9,28 @@ import { CLIP_ATTRIBUTE, FULL_ATTRIBUTE, TIP_ATTRIBUTE, TIP_DELAY_ATTRIBUTE } fr
  *
  *   open     500 ms after the pointer reaches a trigger (`data-ov-tip-delay="0"`: at once); at once on keyboard `:focus-visible`
  *   persist  while the trigger is focused, or the trigger or the tooltip is hovered; the stylesheet bridges the gap between them
- *   close    Escape, a press or click of the trigger, a scroll of anything that holds it, a resize, the window losing focus, the trigger
- *            leaving the page or changing what it says, or opening a popup of its own
+ *   close    Escape, a press or click of the trigger, a scroll that MOVES the trigger (see below), a resize, the window losing focus,
+ *            the trigger leaving the page or changing what it says, or opening a popup of its own
  *   Escape   hides the tip and goes on: it is never prevented or stopped, so a dialog whose Close shows its tip closes on that same
  *            press (the mock, finding PB-13). The same hover or focus does not bring the tip back; leaving it does
  *   sets     the trigger is described by the tip while it is open, unless its own name already is the text
+ *
+ * Scrolling. A tip describes the trigger the pointer is on, so a scroll ends it when that trigger is no longer where the pointer reached it: its
+ * rectangle changed (which is what a trigger scrolled out of the window does too). The mock closes a tip on ANY scroll of anything that holds its
+ * trigger (core.js 3529-3535), and a list that follows a live stream scrolls on every frame that draws a line, whether or not the trigger moved, so there
+ * a tip never opened (L2-03). Here a scroll that leaves the trigger where it was (a head that sticks, a control that is fixed) leaves the tip alone, and
+ * a waiting delay goes on. A row that scrolls under a resting pointer is not the trigger the pointer reached: its tip ends, and the row now under the
+ * pointer is a new trigger that gets its own tip after the usual delay, once the engine says the pointer is over it (`pointerover` after each step in
+ * Chromium, after the scrolling has settled in WebKit). So a list that moves its rows under the pointer faster than the delay shows no tip, and none
+ * ever points at a row that is gone. While no tip is shown or waiting a scroll costs nothing; while one is, a scroll of something that holds its
+ * trigger costs one rectangle read.
  */
 
 /** The design's hover delay: the tip opens 500 ms after the pointer reaches a trigger (design 12, 15). */
 export const DELAY_MS = 500;
+
+/** A pixel is the rounding of a layout, not a move (as `isCut` allows a pixel of text): a trigger this near its place has not moved. */
+const MOVED_PX = 1;
 
 const TRIGGER = `[${TIP_ATTRIBUTE}], [${CLIP_ATTRIBUTE}]`;
 const WATCHED = [TIP_ATTRIBUTE, FULL_ATTRIBUTE, CLIP_ATTRIBUTE, 'inert', 'aria-expanded', 'popovertarget'];
@@ -26,6 +39,13 @@ const WATCHED = [TIP_ATTRIBUTE, FULL_ATTRIBUTE, CLIP_ATTRIBUTE, 'inert', 'aria-e
 const attached = new WeakSet<Document>();
 
 type Described = { readonly text: string; readonly clip: boolean };
+/** Where a trigger is, in the window: what `getBoundingClientRect` says. */
+type Where = Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom' | 'width' | 'height'>;
+
+/** Whether a trigger is somewhere other than `was`, by more than the rounding of a layout. */
+function moved(was: Where, now: Where): boolean {
+  return Math.abs(now.left - was.left) > MOVED_PX || Math.abs(now.top - was.top) > MOVED_PX || Math.abs(now.width - was.width) > MOVED_PX || Math.abs(now.height - was.height) > MOVED_PX;
+}
 
 /** `matches()` that answers false for a selector the engine does not know (`:popover-open`, `:focus-visible` in an old one). */
 function matches(element: Element, selector: string): boolean {
@@ -119,6 +139,8 @@ export function attachTooltips(host: HTMLElement): () => void {
   let dismissed: Element | null = null;
   let open = false;
   let observer: MutationObserver | undefined;
+  /** Where the trigger of the shown or waiting tip was when the pointer reached it, or when it took focus: a scroll that leaves it there leaves the tip alone. */
+  let reached: Where | null = null;
 
   const ids = (element: Element) => (element.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
   const describe = (element: Element) => {
@@ -183,6 +205,7 @@ export function attachTooltips(host: HTMLElement): () => void {
     }
 
     shown = null;
+    reached = null;
     if (owner !== null) {
       undescribe(owner);
     }
@@ -198,15 +221,11 @@ export function attachTooltips(host: HTMLElement): () => void {
   }
 
   /** Below, above, right or left of the trigger; the host measures itself first, so the text is already in. */
-  function position(anchor: Element) {
+  function position(box: Where) {
     host.style.maxHeight = '';
     host.style.left = '0px';
     host.style.top = '0px';
-    const where = place(
-      anchor.getBoundingClientRect(),
-      { width: host.offsetWidth, height: host.offsetHeight },
-      { width: doc.documentElement.clientWidth, height: doc.documentElement.clientHeight },
-    );
+    const where = place(box, { width: host.offsetWidth, height: host.offsetHeight }, { width: doc.documentElement.clientWidth, height: doc.documentElement.clientHeight });
     host.style.left = `${where.left}px`;
     host.style.top = `${where.top}px`;
     host.setAttribute('data-placement', where.side);
@@ -219,6 +238,8 @@ export function attachTooltips(host: HTMLElement): () => void {
   }
 
   function show(owner: Element) {
+    // Where the trigger was when the pointer reached it, if this tip waited for its delay: a trigger that has moved since is not under the pointer, and nothing is shown for it.
+    const arrived = pending === owner ? reached : null;
     cancel();
     if (owner === shown || owner === dismissed) {
       return;
@@ -226,6 +247,11 @@ export function attachTooltips(host: HTMLElement): () => void {
 
     const said = valid(owner, true);
     if (said === null) {
+      return;
+    }
+
+    const box = owner.getBoundingClientRect();
+    if (arrived !== null && moved(arrived, box)) {
       return;
     }
 
@@ -240,7 +266,8 @@ export function attachTooltips(host: HTMLElement): () => void {
       describe(owner);
     }
 
-    position(owner);
+    reached = box;
+    position(box);
     watch();
   }
 
@@ -262,6 +289,7 @@ export function attachTooltips(host: HTMLElement): () => void {
     }
 
     pending = owner;
+    reached = owner.getBoundingClientRect();
     timer = setTimeout(() => {
       show(owner);
     }, delay);
@@ -391,10 +419,18 @@ export function attachTooltips(host: HTMLElement): () => void {
     }
   };
 
+  /**
+   * A scroll ends the tip of a trigger it moved. With no tip shown or waiting it does nothing at all, however often it comes (a list that follows a stream scrolls on every frame); with one, a scroll of
+   * something that holds the trigger reads its rectangle once, and the tip ends when that is not where the pointer reached it.
+   */
   const onScroll = (event: Event) => {
-    const moves = (owner: Element | null) =>
-      owner !== null && (event.target === doc || (event.target instanceof Element && event.target.contains(owner)));
-    if (moves(shown) || moves(pending)) {
+    const active = shown ?? pending;
+    if (active === null || reached === null) {
+      return;
+    }
+
+    const holds = event.target === doc || (event.target instanceof Element && event.target.contains(active));
+    if (holds && moved(reached, active.getBoundingClientRect())) {
       hide();
     }
   };

@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, 
 import { dataAttributes, type DataAttributes } from '../../shared/dataAttributes';
 import type { SearchOptions } from '../../log/lineSearch';
 import { DEFAULT_MAX_LINES, LogViewModel } from '../../log/logViewModel';
-import type { LogFeed } from '../../log/types';
+import type { LogFeed, LogTimestamps } from '../../log/types';
 import { emptyText, failureWords } from '../../log/words';
 import { Button } from '../Button';
 import { Icon } from '../Icon';
@@ -25,6 +25,11 @@ export type LogViewProps = {
   readonly maxLines?: number | undefined;
   /** What the search field holds when the view first appears. */
   readonly defaultQuery?: string | undefined;
+  /**
+   * The clock of the rows, and of a copy: `local`, the viewer's own (the default, as the mock's), or `utc`, with a Z after it (`10:30:00.123Z`). It is a setting of the view and not part of the feed: changing it draws
+   * the rows that are mounted again with the other clock, and keeps every line. A line's own timestamp, with its date and zone, is the tip of its clock. The control that offers the choice is the toolbar's.
+   */
+  readonly timestamps?: LogTimestamps | undefined;
 } & DataAttributes;
 
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -36,7 +41,7 @@ const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
  * ended, failed with its cause) and what it dropped. The list is one tab stop; the arrows, Page, Home and End move the active line, and the find field
  * takes Enter and Shift+Enter for the next and previous match. Props are closed: no `className`, no `style`; `data-*` passes through.
  */
-export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuery = '', ...rest }: LogViewProps) {
+export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuery = '', timestamps = 'local', ...rest }: LogViewProps) {
   // The view of a feed is made once for it: the feed gives each line once, so a view made again would have lost every line it had already given. The cap is told to the view that
   // exists in the layout phase of the commit that changes it, which no animation frame comes between: a frame that read in the gap between that commit and its passive effects would
   // find the old cap and evict lines the new one keeps, which cannot be given back. The view is made with the cap this component first had.
@@ -97,7 +102,7 @@ export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuer
     );
 
   return (
-    <div {...dataAttributes(rest)} ref={rootRef} className={styles.root} role="group" aria-label={`Log, ${label}`} onKeyDown={onRootKeyDown}>
+    <div {...dataAttributes(rest)} ref={rootRef} className={styles.root} role="group" aria-label={`Log, ${label}`} data-ov-timestamps={timestamps} onKeyDown={onRootKeyDown}>
       <div className={styles.filters} role="group" aria-label="Log filters">
         <FindBar
           options={options}
@@ -117,7 +122,7 @@ export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuer
         />
       </div>
       <div className={styles.main}>
-        <LogList model={model} snapshot={snapshot} label={label} listRef={listRef} />
+        <LogList model={model} snapshot={snapshot} label={label} listRef={listRef} timestamps={timestamps} />
         {empty === undefined ? null : (
           <div className={styles.overlay}>
             {failureIsBody ? (

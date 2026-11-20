@@ -1,0 +1,36 @@
+// L3 dev tool (a .txt so that no tool compiles or lints it): copy it without the suffix beside itself and run it from the repository root (Playwright's browsers installed).
+// What do the engines do for the element under a RESTING pointer when its scroller scrolls (programmatic steps every 50 ms, then quiet)? Measured 2026-11-20 (macOS arm64): Chromium sends pointerout + pointerover
+// for the new element after every step, just before the scroll event; WebKit sends nothing while the scrolling goes on and one pointerout + pointerover + pointermove about 100 ms after the last step.
+// Experiment (not in tree): what do the engines do for the element under a RESTING pointer when its scroller scrolls?
+import { launch } from '../../../../packages/kit/probes/probe-lib.mjs';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const html = `<!doctype html><html><body style="margin:0">
+<div id="s" style="height:300px;width:400px;overflow:auto;position:relative"><div id="c"></div></div>
+<script>
+const c = document.getElementById('c');
+for (let i = 0; i < 200; i++) { const d = document.createElement('div'); d.className = 'row'; d.dataset.i = i; d.textContent = 'row ' + i; d.style.cssText = 'height:24px;box-sizing:border-box;border-bottom:1px solid #ccc'; c.append(d); }
+window.log = [];
+const t0 = performance.now();
+for (const type of ['pointerover','pointerout','mouseover','mouseout','pointermove','mousemove','scroll']) {
+  document.addEventListener(type, (e) => { window.log.push([Math.round(performance.now() - t0), type, e.target.dataset?.i ?? e.target.id ?? e.target.nodeName]); }, true);
+}
+</script></body></html>`;
+for (const engine of ['chromium', 'webkit']) {
+  const browser = await launch(engine);
+  const page = await (await browser.newContext({ viewport: { width: 800, height: 600 } })).newPage();
+  await page.setContent(html);
+  await page.mouse.move(50, 100, { steps: 3 });
+  await sleep(300);
+  await page.evaluate(() => { window.log.length = 0; window.__t0 = performance.now(); });
+  // A programmatic scroll every 50 ms for 600 ms (a following list), then quiet.
+  await page.evaluate(async () => {
+    const s = document.getElementById('s');
+    for (let k = 0; k < 12; k++) { s.scrollTop += 24; await new Promise((r) => setTimeout(r, 50)); }
+  });
+  await sleep(500);
+  const log = await page.evaluate(() => window.log);
+  console.log(engine, 'streaming-scroll then quiet; events on the element under a resting pointer:');
+  console.log(log.filter((e) => !["mouseout","mouseover","mousemove"].includes(e[1])).slice(0, 24).map((e) => e.join(" ")).join("\n"));
+  console.log('scroll events:', log.filter((e) => e[1] === 'scroll').length);
+  await browser.close();
+}

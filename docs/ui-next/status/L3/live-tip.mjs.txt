@@ -1,0 +1,106 @@
+// L3 dev tool (a .txt: copy it without the suffix beside itself and run it from the repository root; DIST=<a built ui-next> or it builds one). The tooltip in a list that follows a live stream (L2-03), real pointer,
+// real host, both engines: the sticky head, rows moving at 20 lines a second, the stream stopping, a line every 1.4 s. It is the prototype of the tooltip probe's `scroll` section.
+// Prototype of the tooltip probe's scroll section (L2-03): a list that follows a live stream, in the real engines, on the real tooltip host.
+import { launch, VIEWPORTS } from '../../../../packages/kit/probes/probe-lib.mjs';
+import { buildUiNext, serve } from '../../../../packages/kit/probes/serve.mjs';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { server, url } = await serve(buildUiNext());
+
+function buildLive() {
+  const live = document.createElement('div');
+  live.id = 'live';
+  live.style.cssText = 'position:fixed;left:40px;top:60px;width:420px;height:240px;overflow:auto;background:#101216;color:#e6e6e6;font:13px/24px monospace;z-index:1';
+  const head = document.createElement('div');
+  head.id = 'live-head';
+  head.setAttribute('data-ov-tip', 'A tip on the head of a live list');
+  head.textContent = 'Time  Level  Message';
+  head.style.cssText = 'position:sticky;top:0;height:28px;line-height:28px;background:#1c1f26;padding:0 8px;z-index:1';
+  const rows = document.createElement('div');
+  live.append(head, rows);
+  let n = 0;
+  const state = (window.__live = { pin: true, timer: 0, scrolls: 0 });
+  const add = () => {
+    const row = document.createElement('div');
+    row.className = 'live-row';
+    row.setAttribute('data-ov-tip', `Row ${n}`);
+    row.textContent = `row ${n}`;
+    row.style.cssText = 'height:24px;padding:0 8px';
+    n += 1;
+    rows.append(row);
+    if (state.pin) live.scrollTop = live.scrollHeight;
+  };
+  state.start = (rate) => { clearInterval(state.timer); state.timer = setInterval(add, 1000 / rate); };
+  state.stop = () => { clearInterval(state.timer); state.timer = 0; };
+  live.addEventListener('scroll', () => { state.scrolls += 1; });
+  for (let i = 0; i < 40; i += 1) add();
+  document.body.append(live);
+  live.scrollTop = live.scrollHeight;
+  // A sampler: at every frame, whether the host is open, with what, and what is under the pointer.
+  window.__samples = [];
+  window.__sampling = false;
+  window.__pointer = { x: 0, y: 0 };
+  const sample = () => {
+    if (window.__sampling) {
+      const host = document.querySelector('[role="tooltip"]');
+      const open = host.matches(':popover-open');
+      const under = document.elementFromPoint(window.__pointer.x, window.__pointer.y)?.closest('[data-ov-tip]')?.getAttribute('data-ov-tip') ?? null;
+      window.__samples.push({ t: Math.round(performance.now()), open, text: open ? host.textContent : null, under });
+    }
+    requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
+
+const hostText = (page) => page.evaluate(() => { const host = document.querySelector('[role="tooltip"]'); return host.matches(':popover-open') ? host.textContent : null; });
+
+for (const engine of ['chromium', 'webkit']) {
+  const browser = await launch(engine);
+  const context = await browser.newContext({ viewport: VIEWPORTS['1440x900'] });
+  const page = await context.newPage();
+  await page.goto(`${url}?screen=tooltip-stress&n=3`, { waitUntil: 'load' });
+  await page.waitForSelector('[data-testid="first"]');
+  await page.evaluate(buildLive);
+  const head = await page.locator('#live-head').boundingBox();
+  const live = await page.locator('#live').boundingBox();
+  const out = { engine };
+
+  // S1: the pointer on the sticky head of a list that follows a 20 lines a second stream.
+  await page.evaluate(() => { window.__live.scrolls = 0; window.__live.start(20); });
+  await sleep(400);
+  await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2, { steps: 3 });
+  let opened = null;
+  for (let i = 0; i < 30 && opened === null; i += 1) { await sleep(100); opened = await hostText(page); }
+  out.s1 = { opened, scrollsBeforeOpen: await page.evaluate(() => window.__live.scrolls) };
+  await sleep(1200);
+  out.s1.stillOpen = await hostText(page);
+  out.s1.scrollsTotal = await page.evaluate(() => window.__live.scrolls);
+
+  // S2: the pointer in the body of the list, rows moving under it at 20 lines a second.
+  await page.mouse.move(0, 0);
+  await sleep(300);
+  const px = live.x + 200, py = live.y + 150;
+  await page.evaluate(([x, y]) => { window.__pointer = { x, y }; window.__samples.length = 0; window.__sampling = true; }, [px, py]);
+  await page.mouse.move(px, py, { steps: 3 });
+  await sleep(2500);
+  const s2 = await page.evaluate(() => { window.__sampling = false; return window.__samples; });
+  out.s2 = { frames: s2.length, opened: s2.filter((s) => s.open).length, gone: s2.filter((s) => s.open && s.text !== s.under).length };
+
+  // S3: the stream stops: the row under the pointer gets its tip.
+  await page.evaluate(() => { window.__live.stop(); });
+  let after = null; let waited = 0;
+  for (let i = 0; i < 24 && after === null; i += 1) { await sleep(100); waited += 100; after = await hostText(page); }
+  out.s3 = { tip: after, under: await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-ov-tip]')?.getAttribute('data-ov-tip') ?? null, [px, py]), waitedMs: waited };
+
+  // S4: a slow stream, a line every 1.4 s: each row that comes under the pointer gets its own tip, none for a row that is gone.
+  await page.mouse.move(0, 0);
+  await sleep(300);
+  await page.evaluate(([x, y]) => { window.__pointer = { x, y }; window.__samples.length = 0; window.__sampling = true; window.__live.start(1 / 1.4); }, [px, py]);
+  await page.mouse.move(px, py, { steps: 3 });
+  await sleep(8500);
+  const s4 = await page.evaluate(() => { window.__sampling = false; window.__live.stop(); return window.__samples; });
+  out.s4 = { frames: s4.length, openFrames: s4.filter((s) => s.open).length, gone: s4.filter((s) => s.open && s.text !== s.under).length, distinct: [...new Set(s4.filter((s) => s.open).map((s) => s.text))] };
+  console.log(JSON.stringify(out));
+  await context.close();
+  await browser.close();
+}
+server.close();

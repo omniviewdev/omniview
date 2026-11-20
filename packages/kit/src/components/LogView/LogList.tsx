@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent, type RefObject, type ClipboardEvent } from 'react';
 import type { LogViewModel, ViewSnapshot } from '../../log/logViewModel';
+import type { LogTimestamps } from '../../log/types';
 import { LogRow } from './LogRow';
 import styles from './LogView.module.css';
 
@@ -17,6 +18,8 @@ type LogListProps = {
   readonly label: string;
   /** The element that scrolls and holds the focus: the find bar's Escape and the strip's "Jump to latest" return to it. */
   readonly listRef: RefObject<HTMLDivElement | null>;
+  /** The clock the rows show, and a copy carries. */
+  readonly timestamps: LogTimestamps;
 };
 
 /**
@@ -25,7 +28,7 @@ type LogListProps = {
  * of event, on the scroller, whatever the rows (T-07). Follow pins to the end after every commit that the model asked it to (HLT-9); nothing here decides
  * what follows: the model does, and the list reports what it measures and where it scrolls.
  */
-export function LogList({ model, snapshot, label, listRef }: LogListProps) {
+export function LogList({ model, snapshot, label, listRef, timestamps }: LogListProps) {
   const uid = useId();
   const headerRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLDivElement>(null);
@@ -148,7 +151,7 @@ export function LogList({ model, snapshot, label, listRef }: LogListProps) {
       return;
     }
 
-    const text = model.copyText();
+    const text = model.copyText(timestamps);
     if (text !== undefined) {
       event.clipboardData.setData('text/plain', text);
       event.preventDefault();
@@ -182,6 +185,7 @@ export function LogList({ model, snapshot, label, listRef }: LogListProps) {
         pattern={hit ? (search.pattern ?? undefined) : undefined}
         sourceColumn={snapshot.sourceColumn}
         source={source}
+        timestamps={timestamps}
       />,
     );
     position += 1;
