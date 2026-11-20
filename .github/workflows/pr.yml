@@ -37,28 +37,31 @@ jobs:
         run: test "$RESULT" = success
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build Artifacts — downloadable binaries for manual testing
+  # Build Artifacts: compile gate, one build per OS. Nothing downloads or
+  # consumes the built binaries (N24 M1), so nothing is uploaded.
+  # macOS here is a thin arm64 build on macos-15. The universal (arm64+amd64)
+  # build runs on every push to main (main-macos-universal.yml) and in
+  # desktop-build.yml (nightly, release tags, feature channel): an x86_64-only
+  # break is first seen there, not on a PR.
   # ─────────────────────────────────────────────────────────────────────────────
   build-artifacts:
+    name: build-artifacts (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-intel
-            platform: darwin/universal
-            artifact-name: pr-build-macos
+          - os: macos-15
+            platform: darwin/arm64
             build-tags: "production"
             extra-ldflags: ""
             developer-dir: /Applications/Xcode_26.3.app/Contents/Developer
           - os: ubuntu-24.04
             container: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
             platform: linux/amd64
-            artifact-name: pr-build-linux
             build-tags: "production"
             extra-ldflags: ""
           - os: windows-latest
             platform: windows/amd64
-            artifact-name: pr-build-windows
             build-tags: "production"
             extra-ldflags: "-H windowsgui"
     runs-on: ${{ matrix.os }}
@@ -138,17 +141,16 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '13.0' || '' }}
         run: |
           HOST_MODFILE="$(task --silent host:prepare)"
-          build_command=(go build -o bin/Omniview)
-          if [[ "$RUNNER_OS" == macOS ]]; then
-            build_command=(bash build/darwin/build-universal.sh bin/Omniview)
-          fi
-          "${build_command[@]}" -modfile="$HOST_MODFILE" -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
+          go build -o bin/Omniview -modfile="$HOST_MODFILE" -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
             -ldflags "-w -s ${{ matrix.extra-ldflags }} \
               -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-pr.${{ github.event.pull_request.number }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            test "$(xcrun lipo -archs bin/Omniview)" = arm64
+          fi
 
       - name: Create macOS .app bundle
         if: runner.os == 'macOS'
@@ -162,29 +164,3 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.0.0' bin/Omniview.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" bin/Omniview.app/Contents/Info.plist
           codesign --force --deep --sign - bin/Omniview.app
-
-      - name: Prepare artifact (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd bin
-          zip -r Omniview-pr${{ github.event.pull_request.number }}-macos.zip Omniview.app
-
-      - name: Prepare artifact (Linux)
-        if: runner.os == 'Linux'
-        working-directory: bin
-        run: mv Omniview "Omniview-pr${{ github.event.pull_request.number }}-linux-amd64"
-
-      - name: Prepare artifact (Windows)
-        if: runner.os == 'Windows'
-        working-directory: bin
-        run: Rename-Item -Path "Omniview" -NewName "Omniview-pr${{ github.event.pull_request.number }}-windows-amd64.exe"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact-name }}
-          path: |
-            bin/*.zip
-            bin/Omniview-pr*
-          if-no-files-found: error
-          retention-days: 5
