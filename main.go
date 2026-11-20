@@ -919,3 +919,5 @@ func pluginTelemetryConfig(svc *telemetry.Service, id string) (plugin.TelemetryE
 		LogLevel:          logLevel,
 	}, nil
 }
+
+// n24-e1 proof (temporary)
