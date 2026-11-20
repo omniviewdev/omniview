@@ -13,16 +13,17 @@
 // with the reason. A new shard is a new entry in SHARDS and a new number in the workflow's `shard: [...]` line, both in one change: `check` fails when they differ.
 //
 // BALANCE. The shard jobs wait for the slowest shard, so a shard that grows is the job's wall time. Every run of a shard writes the seconds of each of its probes to the job summary: move a unit between shards
-// when one is more than a minute over the others. The assignment below was made from the green runs of 2026-11-20 on main at e32cd86e (runs 44773679493, 44779358333 and 44783882679), in seconds, each probe and its controls:
-//   shard 1  panel 231 + 188                                                                       = 419
-//   shard 2  table 64, rail 16, detail 11, palette 265 + 65                                        = 421
-//   shard 3  fonts 36, shell 50, log view 205 + 118                                                = 409
-//   shard 4  tooltip 145, logs 215 + 62                                                            = 422
-//   shard 5  parts 177, strip 187, strip controls 14 (Q2a: measured 2026-11-20 at a load of 4)      = 378
-// The panel probe with its six controls is the longest unit and cannot be split without parting a probe from its controls, so a sixth shard would not make the job shorter.
-// P1b-3c (A21) added the panel probe's `held` section and four controls, and the logs probe's `kept` and `memory` sections and three controls: by estimate about 180 s more in shard 1 (to about 600) and 155 s more
-// in shard 4 (to about 580), not yet measured on a runner. The panel probe with its controls stays the longest unit, so the job's wall time is the panel's; the next run's job summary has the seconds, and the tooltip
-// probe (145) is the unit to move out of shard 4 if that shard turns out to be more than a minute over the next.
+// when one is more than a minute over the others, and put its new seconds in MEASURED_SECONDS of scripts/ci/probe-shards.test.mjs (a test fails when a unit has no measurement or a shard is over its limit).
+// The assignment below is from the green runs of 2026-11-20 (the runs the test names), in seconds, each probe and its controls; the job of a shard is its probes plus its setup (about 100 s before the CI image, see
+// docs/ui-next/status/N24-B1.md):
+//   shard 1  panel 280 + 318                                                                       = 598
+//   shard 2  table 68, shell 51, palette 258 + 60                                                  = 437
+//   shard 3  rail 16, detail 10, logs 282 + 111                                                    = 419
+//   shard 4  fonts 43, parts 172, strip 186 + 26                                                   = 427
+//   shard 5  tooltip 152, log view 195 + 114                                                       = 461
+// The panel probe with its ten controls is the longest unit and cannot be split without parting a probe from its controls: it is the floor of the job (about 600 s), alone in its shard, and a sixth shard would not
+// make the job shorter. What the assignment does is keep the other four between 419 and 461 s, 137 s or more under the panel's (the best split of the rest into four, found exhaustively, has a longest shard of 461 s).
+// Before it, the Logs probe, which P1b-3c (A21) lengthened by 72 s, sat in a shard of 546 s, 52 s under the panel's, and a slow run of that shard could have made it the job.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -74,13 +75,10 @@ export const TABLE = {
         // The table: header, rows, selection column, sort, hover, selected and focus states, the fit, the nine themes, against the pinned mock reference (packages/kit/probes/mock-table.json).
         { name: 'Probe the table against the pinned mock reference', script: 'packages/kit/probes/table-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/table-probe.json' } },
 
-        // The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
-        // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
-        { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
-
-        // The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
-        // with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
-        { name: 'Probe the detail page against the pinned mock reference', script: 'ui-next/page/probes/detail-probe.mjs' },
+        // The shell's probes build their own fixtures (the repository's `vite build` of ui-next/shell/probes/*.html, once for production and once for React's development build, which the
+        // commit counts read), so they do not read PROBE_DIST. The strip probe runs at 1440 x 900 and 1280 x 800 (decision A15); the frame probe at its reference's two viewports until the
+        // probe viewports switch (tracker row N23). Linux Chromium needs the hinting flag the kit probes use, which the probes pass themselves.
+        { name: 'Probe the shell frame against the pinned mock reference', script: 'ui-next/shell/probes/shell-probe.mjs', env: { REPORT: '$RUNNER_TEMP/shell-probe.json' } },
 
         // The command palette (C1b) in the real shell fixture (ui-next/shell/probes/palette-fixture.tsx: the real view, model and tab model over invented sources), against the pinned mock reference
         // (ui-next/shell/probes/mock-palette.json, measured from the mock's own palette in seven scenes by mock-palette-measure.mjs): the Search control, the frame, the input, the kinds, the list, the status band and
@@ -104,35 +102,13 @@ export const TABLE = {
     {
       id: '3',
       units: [
-        // The fonts are delivered, used, and the page does not shift.
-        { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
+        // The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
+        // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
+        { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
 
-        // The shell's probes build their own fixtures (the repository's `vite build` of ui-next/shell/probes/*.html, once for production and once for React's development build, which the
-        // commit counts read), so they do not read PROBE_DIST. The strip probe runs at 1440 x 900 and 1280 x 800 (decision A15); the frame probe at its reference's two viewports until the
-        // probe viewports switch (tracker row N23). Linux Chromium needs the hinting flag the kit probes use, which the probes pass themselves.
-        { name: 'Probe the shell frame against the pinned mock reference', script: 'ui-next/shell/probes/shell-probe.mjs', env: { REPORT: '$RUNNER_TEMP/shell-probe.json' } },
-
-        // The log view (P1b-2): the kit's LogView staged at the size of the mock's Logs tool against the pinned mock reference (packages/kit/probes/mock-log.json, measured from the mock by
-        // mock-log-measure.mjs): the regions, the header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event
-        // as plain text, the Source column of a log that follows several sources (the mock's own measurement of it, and the tooltip a cut name shows on a real hover), and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800.
-        // What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.
-        { name: 'Probe the log view against the pinned mock reference', script: 'packages/kit/probes/log-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/log-probe.json' } },
-
-        // The negative controls of that probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
-        // height, the copy event, the ArrowDown key, an unnamed button, a name that takes no pointer) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
-        {
-          name: 'Probe that the log probe sees a log view that is wrong',
-          script: 'packages/kit/probes/log-probe.mjs',
-          env: { DIST: '$PROBE_DIST' },
-          controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
-        },
-      ],
-    },
-    {
-      id: '4',
-      units: [
-        // The one tooltip host: listeners, cost, delay, Escape layering, placement, motion.
-        { name: 'Probe the tooltip host', script: 'packages/kit/probes/tooltip-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/tooltip-probe.json' } },
+        // The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
+        // with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
+        { name: 'Probe the detail page against the pinned mock reference', script: 'ui-next/page/probes/detail-probe.mjs' },
 
         // The host's Logs tool (P1b-3a) on the host fixture (`?logs=1`): the log view fills the panel's body, opening a session moves nothing outside the log view, switching tool and back keeps the lines and the scroll place, what the
         // plugin counts of its feed (the registry and the view listen while the session is on screen, only the registry while another tool is shown, none once the tab is closed), and what the 10,000 lines a second session costs: at most one
@@ -156,8 +132,11 @@ export const TABLE = {
       ],
     },
     {
-      id: '5',
+      id: '4',
       units: [
+        // The fonts are delivered, used, and the page does not shift.
+        { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
+
         // The kit's parts on the real `ui-next` page against the pinned mock reference (packages/kit/probes/mock-reference.json): parity with the mock, tokens, counts, keyboard, accessibility with axe-core.
         { name: 'Probe the parts against the pinned mock reference', script: 'packages/kit/probes/kit-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/kit-probe.json' } },
 
@@ -173,6 +152,28 @@ export const TABLE = {
         },
       ],
     },
+    {
+      id: '5',
+      units: [
+        // The one tooltip host: listeners, cost, delay, Escape layering, placement, motion.
+        { name: 'Probe the tooltip host', script: 'packages/kit/probes/tooltip-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/tooltip-probe.json' } },
+
+        // The log view (P1b-2): the kit's LogView staged at the size of the mock's Logs tool against the pinned mock reference (packages/kit/probes/mock-log.json, measured from the mock by
+        // mock-log-measure.mjs): the regions, the header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event
+        // as plain text, the Source column of a log that follows several sources (the mock's own measurement of it, and the tooltip a cut name shows on a real hover), and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800.
+        // What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS), each with its approval.
+        { name: 'Probe the log view against the pinned mock reference', script: 'packages/kit/probes/log-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/log-probe.json' } },
+
+        // The negative controls of that probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
+        // height, the copy event, the ArrowDown key, an unnamed button, a name that takes no pointer) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
+        {
+          name: 'Probe that the log probe sees a log view that is wrong',
+          script: 'packages/kit/probes/log-probe.mjs',
+          env: { DIST: '$PROBE_DIST' },
+          controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
+        },
+      ],
+    },
   ],
 
   // Probe scripts that CI never ran, before the split and after it: each is run by hand (docs/ui-next/status/K1.md, 1a.3c.md), and a probe is listed here, with the reason, so that "no shard runs it" is a decision someone
@@ -180,15 +181,15 @@ export const TABLE = {
   byHand: [
     {
       script: 'packages/kit/probes/kit-probe-bc.mjs',
-      reason: 'The sibling of kit-probe.mjs for the Chip, Status, MissingValue, KindTile, QuickFilters, RovingGroup and MiddleEllipsis parts; run by hand, never a workflow step (docs/ui-next/status/K1.md: "Not in CI today").',
+      reason: 'The sibling of kit-probe.mjs for the Chip, Status, MissingValue, KindTile, QuickFilters, RovingGroup and MiddleEllipsis parts; run by hand, never a workflow step (docs/ui-next/status/K1.md: "Not in CI today"). It passed on 2026-11-20 (168 s, macOS arm64); it needs its AXE default (/tmp/ov-axe/...) to resolve axe-core as kit-probe.mjs does before a runner can run it (docs/ui-next/status/N24-B1.md).',
     },
     {
       script: 'packages/kit/probes/row-menu-probe.mjs',
-      reason: 'The row menu on the 5,000-row example, opened with the mouse and the keyboard; run by hand, never a workflow step: it builds and serves its own page and passes (docs/ui-next/status/1a.3c.md, item 10: "a candidate").',
+      reason: 'The row menu on the 5,000-row example, opened with the mouse and the keyboard; run by hand, never a workflow step. It FAILED on 2026-11-20 (196 findings, every one about aria-expanded: the page-wide read finds a second element that carries it at rest), so it is stale and not yet a candidate (docs/ui-next/status/N24-B1.md; docs/ui-next/status/1a.3c.md, item 10: "a candidate").',
     },
     {
       script: 'ui-next/page/probes/page-probe.mjs',
-      reason: 'The list page chrome against mock-page.json; run by hand, never a workflow step: it still normalizes the font and keeps its own reference, which a CI probe must not (docs/ui-next/status/1a.3c.md, item 9).',
+      reason: 'The list page chrome against mock-page.json; run by hand, never a workflow step: it still normalizes the font and keeps its own reference, which a CI probe must not (docs/ui-next/status/1a.3c.md, item 9). It passed on 2026-11-20 (58 s, 28 known differences).',
     },
   ],
 };

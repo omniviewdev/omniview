@@ -10,6 +10,11 @@ name: UI next kit probes
 # is shared between probes but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its probes reads it. To add a probe, add a unit to the table (the check below fails, naming the file,
 # when a probe script is in no shard); to move one, move its unit.
 #
+# THE IMAGE (N24, step B1). Each shard runs in the CI image, pinned by digest (.github/ci/image.lock), and installs neither Node, pnpm, Task, the Playwright browsers nor the system libraries of WebKit: the install step
+# (and its bounded retry, #557) is gone because there is nothing left to hang. The browsers of the probes are the image's, in /ms-playwright, of the Playwright version pnpm-lock.yaml resolves. Moving to a newer image
+# is a change of the digest here and in .github/ci/image.lock (ci-image.yml writes both: `image-lock.patch`); `scripts/ci/check-image.mjs` fails on two digests and on a lock behind the repository. Numbers:
+# docs/ui-next/status/N24-B1.md.
+#
 # NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
 # request blocks the merge. The lead makes `Kit probes` (the aggregating job, whose name does not change) required in the branch protection settings once it has been green for a while.
 
@@ -43,7 +48,6 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "26.13.0"
   OMNIVIEW_UI: next
 
 jobs:
@@ -52,9 +56,24 @@ jobs:
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # A shard takes about 9 minutes when the browsers install in one (setup 2, probes 4 to 7; the longest shard is the panel probe and its controls), so twice that is 18. It is 30 because the browser install below
-    # is bounded by its own retry: a first attempt that hangs is killed after 15 minutes and the second one runs, and a limit under 25 would cut that second attempt off and turn a healed install into a red shard.
-    timeout-minutes: 30
+    # A shard takes 8 to 12.5 minutes (measured: pull of the image 24 to 46 s, the rest of the setup 50 s, probes 4 to 11; the longest shard is the panel probe and its controls), so 20 is about 1.6 times the longest. The 30 it had
+    # was for the bounded browser install of #557 (a first attempt killed after 15 minutes, then a second): the browsers are in the image now, there is no install to hang, and a pull that hangs is what this limit is for.
+    timeout-minutes: 20
+    # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
+    # them. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private: the job token
+    # reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do. `--init` is theirs too.
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci@sha256:289353ab91800166914d98c79ab71fa06b2261e7963c72a695dca606e36dd784
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       # Every shard runs to the end: a shard that fails does not stop the others, so one push shows every failing probe, and `Kit probes` below needs all of them.
       fail-fast: false
@@ -62,25 +81,18 @@ jobs:
         # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
         shard: [1, 2, 3, 4, 5]
     steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # Is the image the one this checkout needs? The lock's inputs (Dockerfile, Node, pnpm, Playwright, Go floor) against the repository's, and the manifest of the image that is running against both. A stale image fails
+      # here, in a second, naming the input that moved, and not as a probe that cannot find its browser.
+      - name: The image is not stale
+        run: node scripts/ci/check-image.mjs check --manifest /opt/ci/manifest.json
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -95,7 +107,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Before anything is built or downloaded: the check (every probe script of the probe directories is in exactly one shard, every shard is in the matrix above), then the tests of the check and of the job below, then what
+      # Before anything is built: the check (every probe script of the probe directories is in exactly one shard, every shard is in the matrix above), then the tests of the check and of the job below, then what
       # this shard runs. The check comes first so that a probe that is in no shard fails here, in every shard, in a few seconds, with its path on the error line and nothing before it.
       - name: Check the shard table and plan this shard
         id: plan
@@ -111,27 +123,6 @@ jobs:
           task packages
           # `task packages` rewrites this tracked shim (docs/ui-next/AGENTS.md, Commands); it is not part of the change under test.
           git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
-
-      - name: Cache the browsers
-        id: browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-1.64.1-chromium-webkit
-
-      - name: Install the browsers
-        run: |
-          # A hung browser download once held this step for 29 minutes: bound each attempt, retry once.
-          for attempt in 1 2; do
-            if timeout --kill-after=15 900 pnpm exec playwright install --with-deps chromium webkit; then
-              exit 0
-            fi
-            echo "::warning::Playwright browser install attempt $attempt failed or timed out after 900 s"
-            # The killed attempt can leave its root apt-get running: let the retry wait for the dpkg lock instead of failing on it.
-            echo 'DPkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/99-dpkg-lock-timeout >/dev/null
-          done
-          echo "::error::Playwright browser install failed twice"
-          exit 1
 
       # The kit's probes (parts, table, fonts, tooltip, log view) read one production build of ui-next, made here once; the shell's probes build their own fixtures, so a shard that has none of the first skips this step.
       # The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
