@@ -190,6 +190,42 @@ async function icons(page, where) {
   return rows;
 }
 
+// ---- the box of every glyph and where its ink sits -------------------------------------------------------------------------
+// A glyph is drawn at 12, 16 and 20 px: its svg is exactly that square, and the ink it draws (the geometry of its paths and half a stroke
+// beyond it) stays inside its artboard and sits at its centre. The 24 artboard is Lucide's, whose keylines keep the ink in 2..22 and
+// centred; the 16 artboard is Int UI's. The tolerance is the off-centre ink of the registry's glyphs before the per-kind glyphs (G1),
+// measured here in both engines: at most 1.0 on the 24 artboard (case-sensitive, a short wide glyph) and 0.5 on the 16 one; the thirty
+// new glyphs measure 0.85 at most (the document of the cog, whose cog reaches past the left edge of the page).
+const INK_OFF_CENTRE = { 24: 1.0, 16: 0.5 };
+async function glyphGeometry(page, where) {
+  const rows = await page.locator('[data-example="Icon/AllGlyphs"] svg').evaluateAll((svgs) => svgs.map((svg) => {
+    const rect = svg.getBoundingClientRect();
+    const box = svg.viewBox.baseVal.width;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const path of svg.querySelectorAll('path')) {
+      const b = path.getBBox();
+      const pad = path.getAttribute('stroke') === null && path.getAttribute('data-ov-stroke') === null ? 0 : Number(path.getAttribute('stroke-width') ?? 1) / 2;
+      minX = Math.min(minX, b.x - pad); minY = Math.min(minY, b.y - pad); maxX = Math.max(maxX, b.x + b.width + pad); maxY = Math.max(maxY, b.y + b.height + pad);
+    }
+
+    return { glyph: svg.getAttribute('data-ov-glyph'), size: Number(svg.getAttribute('data-ov-size')), w: rect.width, h: rect.height, box, minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+  }));
+  const bad = [];
+  for (const row of rows) {
+    const diffs = [];
+    if (Math.abs(row.w - row.size) > 0.01 || Math.abs(row.h - row.size) > 0.01) diffs.push(`drawn ${row.w}x${row.h}, not ${row.size}x${row.size}`);
+    if (row.minX < -0.01 || row.minY < -0.01 || row.maxX > row.box + 0.01 || row.maxY > row.box + 0.01) diffs.push(`ink ${row.minX.toFixed(2)},${row.minY.toFixed(2)} to ${row.maxX.toFixed(2)},${row.maxY.toFixed(2)} leaves the ${row.box} artboard`);
+    if (Math.abs(row.cx - row.box / 2) > INK_OFF_CENTRE[row.box] + 0.01 || Math.abs(row.cy - row.box / 2) > INK_OFF_CENTRE[row.box] + 0.01) diffs.push(`ink centred at ${row.cx.toFixed(2)},${row.cy.toFixed(2)}, more than ${INK_OFF_CENTRE[row.box]} from the centre of the ${row.box} artboard`);
+    for (const diff of diffs) fail(where, `glyph ${row.glyph} at ${row.size}: ${diff}`);
+    if (diffs.length) bad.push(row.glyph);
+  }
+
+  const names = new Set(rows.map((row) => row.glyph));
+  if (rows.length !== names.size * 3) fail(where, `AllGlyphs draws ${rows.length} svgs for ${names.size} glyphs, expected three sizes each`);
+  report.notes.push(`${where} glyph geometry: ${names.size} glyphs x 3 sizes, box, ink inside the artboard and centred; widest off-centre ${Math.max(...rows.map((row) => Math.max(Math.abs(row.cx - row.box / 2), Math.abs(row.cy - row.box / 2)))).toFixed(2)}`);
+  return rows;
+}
+
 // ---- tokens ------------------------------------------------------------------------------------------------------------------
 // What a control paints in a state, read from the page without the settling of `measure`: the colours are read twice a frame apart.
 async function paintOf(page, selector, state) {
@@ -494,6 +530,7 @@ try {
       const where = `${engineName} ${viewportName}`;
       const { page, context, errors } = await open(browser, partsUrl, viewport);
       report.parity[where] = { buttons: await parity(page, where), icons: await icons(page, where) };
+      report.parity[where].glyphs = await glyphGeometry(page, where);
       await countsAndRootWrites(page, where);
       await keyboard(browser, partsUrl, viewport, engineName, where);
       await a11y(page, engineName, where);

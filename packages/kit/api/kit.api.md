@@ -289,7 +289,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'box' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clock' | 'close' | 'columns' | 'copy' | 'ellipsis' | 'folder-tree' | 'layers' | 'loader' | 'loader-circle' | 'panel-bottom' | 'play' | 'plus' | 'refresh' | 'regex' | 'scroll-text' | 'search' | 'search-x' | 'server' | 'status-error' | 'status-info' | 'status-success' | 'status-warning';
+export type IconName = 'activity' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'blocks' | 'box' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'file-cog' | 'folder-tree' | 'gauge' | 'globe' | 'hard-drive' | 'hard-drive-download' | 'hourglass' | 'key-round' | 'layers' | 'layout-template' | 'list-ordered' | 'loader' | 'loader-circle' | 'network' | 'panel-bottom' | 'play' | 'plus' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'server' | 'server-cog' | 'settings-2' | 'shield' | 'shield-check' | 'split' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'target' | 'umbrella' | 'waypoints';
 
 // @public (undocumented)
 export type IconProps = {
