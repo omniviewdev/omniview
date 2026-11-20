@@ -1,7 +1,50 @@
+# Whole-app profile and Production profile (stable, nightly). They produce measurements and fail only when the run itself breaks.
+#
+# THE PATH FILTER. The workflow runs only when a pull request changes something its jobs read: the list under `on.pull_request.paths` is derived from what the jobs build and
+# run (the host frontend and its build inputs for `Whole-app profile`; the host Go packages that `go test` and `go run` compile for both jobs; this file). Not listed, on purpose:
+# `packages/kit/` and `ui-next/` (the profile builds the stable `ui/` and `bench/app` never imports them; the kit's build is run by UI checks and Kit probes),
+# `e2e/` other than `sdk-source.mjs`, `cmd/` and the root `*.go` files (nothing the jobs compile imports them), docs. `paths:` is workflow-wide, so `Production profile` (Go only)
+# also runs on a frontend-only change; it costs 0.3 to 0.4 runner-minutes. Giving it its own filter needs its own workflow file or a changed-files gate (step D1).
+# A skipped workflow reports NO check at all; nothing requires these checks (there is no branch protection on `main`, and the ruleset "Lockdown Main" has no required status checks),
+# so a skip blocks no merge. Add a path here whenever a new input of the profile is introduced. `workflow_dispatch` is unaffected.
+#
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `main` branch: 524d1232a499cf868eb028af61912499736a37a5 (2026-11-14), the head of `main` when it was pinned. Before, the checkout followed
+# the default branch, so a plugin merge changed the profile of an unrelated pull request: Whole-app profile failed 23 times in 20 days, the last (2026-11-11, #485) on a TypeScript error merged there. To bump it, in a pull request of this repository that changes nothing else:
+#   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/main`;
+#   2. put it in KUBERNETES_PLUGIN_REF; the step "Record Kubernetes commit" fails if the checkout is anything else;
+#   3. the job is green.
+
 name: Whole-App Profile
 
 on:
   pull_request:
+    paths:
+      # Host frontend that `bench/app` builds and profiles (`pnpm bench:app`: bench/app/vite.config.ts loads the root vite.config.ts), and what `pnpm install` and `task packages` read.
+      - "ui/**"
+      - "index.html"
+      - "public/**"
+      - "bench/app/**"
+      - "bench/vite/**"
+      - "packages/omniviewdev-runtime/**"
+      - "packages/omniviewdev-providers/**"
+      - "packages/omniviewdev-vite-plugin/**"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "patches/**"
+      - "tsconfig*.json"
+      - "Taskfile.yml"
+      # Host Go that both jobs compile and run: `go test ./internal/instance` and `./internal/devworkspace`, `go run ./bench/app/build-plugin` and `./scripts/hostmod`
+      # (their imports are under `backend/` and `internal/`), the module files, and the script that resolves the SDK commit from go.mod.
+      - "internal/**"
+      - "backend/**"
+      - "pkg/**"
+      - "scripts/hostmod/**"
+      - "go.mod"
+      - "go.sum"
+      - "e2e/scripts/sdk-source.mjs"
+      - ".github/workflows/app-profile.yml"
   workflow_dispatch:
 
 concurrency:
@@ -15,6 +58,7 @@ env:
   NODE_VERSION: "26.13.0"
   GOWORK: "off"
   GOFLAGS: ""
+  KUBERNETES_PLUGIN_REF: 524d1232a499cf868eb028af61912499736a37a5
 
 jobs:
   production-profile:
@@ -63,12 +107,16 @@ jobs:
         with:
           repository: omniviewdev/omniview-plugin-kubernetes
           path: .app-profile-sources/kubernetes
+          ref: ${{ env.KUBERNETES_PLUGIN_REF }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Record Kubernetes commit
         id: kubernetes
-        run: echo "commit=$(git -C .app-profile-sources/kubernetes rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          commit="$(git -C .app-profile-sources/kubernetes rev-parse HEAD)"
+          test "$commit" = "$KUBERNETES_PLUGIN_REF"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v4
