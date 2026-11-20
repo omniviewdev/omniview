@@ -43,6 +43,11 @@ export function visibleRows<Node extends TreeShape<Node>>(nodes: readonly Node[]
   return rows;
 }
 
+/** The groups that are open on screen, sorted: the open groups of `visibleRows`, which are those whose ancestors are all open too. The same list whatever order they were opened in. */
+export function expandedIds<Node extends TreeShape<Node>>(rows: ReadonlyArray<TreeRow<Node>>): readonly string[] {
+  return rows.filter((row) => row.expanded).map((row) => row.id).sort();
+}
+
 /**
  * The groups open at first: the ones the screen asked for that are groups, and every ancestor of `current`, so the current entry is
  * never hidden at load. Runs once per tree, not per render.

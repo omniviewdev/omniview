@@ -1,8 +1,9 @@
 import { Icon, Text } from '@omniviewdev/kit';
-import { useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useState, type KeyboardEvent } from 'react';
+import { countText, type CountText } from './core/count';
 import type { ModifierEvent } from './core/tabs';
-import { hasNode, press, revealed, stopOf, toggled, visibleRows } from './core/tree';
-import type { ShellAccent, ShellTreeNode } from './registration';
+import { expandedIds, hasNode, press, revealed, stopOf, toggled, visibleRows } from './core/tree';
+import type { ShellAccent, ShellCount, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
 type TreeProps = {
@@ -17,13 +18,19 @@ type TreeProps = {
    * What it opens is the host's to decide.
    */
   readonly onChoose: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
+  /**
+   * The groups that are open on screen, told to the host when the tree mounts and each time they change, and told as none when the tree goes away: the host tells the plugin's sidebar hook, which then asks for the
+   * counts of the entries that are on screen and of no others. A group inside a closed group is not told, for none of its entries is on screen. Sorted, so that the same groups are the same list in whatever order they were opened.
+   * Absent: nobody listens.
+   */
+  readonly onOpenChange?: ((open: readonly string[]) => void) | undefined;
 };
 
 type RowProps = {
   readonly id: string;
   readonly label: string;
   readonly icon: ShellTreeNode['icon'];
-  readonly count: number | undefined;
+  readonly count: ShellCount | null | undefined;
   readonly level: number;
   readonly position: number;
   readonly setSize: number;
@@ -36,9 +43,39 @@ type RowProps = {
   readonly onChoose: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
 };
 
-// A row is named by its text, the label and the count (WCAG 2.5.3: the name contains the visible text). The space between them is a text
-// node, not layout: it is ignored by the grid and it keeps the name "Label 89" wherever the name is computed without CSS.
+/**
+ * The count slot (ch12 SB1: every collection row has one): the space at the end of the row that a count is drawn in, held whether or not there is a number in it, so a number that arrives moves no label. The mock's
+ * tree draws a count as the last thing in its row, in muted 12 px tabular figures (shell-widgets.css `.tree__count`), and so does this: the digits sit at the row's end, and the slot holds the width of a count beside them.
+ * The space before the slot is a text node, not layout: it is ignored by the grid and keeps the row's name "Label 89" wherever the name is computed without CSS.
+ *
+ * An approximate count is drawn "~89" and named "about 89": what is drawn is hidden from assistive technology, which would say "tilde", and a second text that is not drawn says what it means. The row keeps no
+ * `aria-label` of its own, so the name is still the row's content and holds the visible text of the label: an `aria-label` that put "about" where the eye reads "~" fails axe's label-content-name-mismatch (WCAG 2.5.3).
+ */
+function CountSlot({ text }: { readonly text: CountText | undefined }) {
+  return (
+    <>
+      {' '}
+      <span className={styles.count} data-shell-part="count">
+        {text === undefined ? null : (
+          <Text variant="caption" tone="muted">
+            {text.approximate ? (
+              <>
+                <span aria-hidden="true">{text.text}</span>
+                <span className={styles.about}>about {text.digits}</span>
+              </>
+            ) : (
+              text.text
+            )}
+          </Text>
+        )}
+      </span>
+    </>
+  );
+}
+
+// A row is named by its text, the label and the count (WCAG 2.5.3: the name contains the visible text), and so a screen reader hears "Label 89", and for an approximate count "Label about 89".
 function Row({ id, label, icon, count, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow, onChoose }: RowProps) {
+  const text = count === undefined ? undefined : countText(count);
   return (
     <li
       role="treeitem"
@@ -69,14 +106,7 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       <span className={styles.label}>
         <Text>{label}</Text>
       </span>
-      {count === undefined ? null : (
-        <>
-          {' '}
-          <span className={styles.count}>
-            <Text variant="caption" tone="muted">{count}</Text>
-          </span>
-        </>
-      )}
+      {count === undefined ? null : <CountSlot text={text} />}
       {expandable ? (
         <span className={styles.disclosure}>
           <Icon name="chevron-right" />
@@ -94,7 +124,7 @@ type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | u
  * Choosing an entry (a click, Enter or Space) tells the host which one; the tree does not move the current entry itself: the host registers the page
  * it opened, and that entry becomes current. Kit part it should become: Tree.
  */
-export function Tree({ label, nodes, open, current, accent, onChoose }: TreeProps) {
+export function Tree({ label, nodes, open, current, accent, onChoose, onOpenChange }: TreeProps) {
   const [state, setState] = useState<TreeState>(() => ({ open: revealed(nodes, open ?? [], current), stop: undefined }));
   // The current entry is never hidden: when it is, or becomes, an entry inside a group that is closed (another tab was activated, the plugin's frame registered after the tree did, or the entry only
   // comes with the nodes the plugin's data hook answers after the page did), its ancestors open, once. What the user opened or closed stays when the same entry registers again.
@@ -108,6 +138,18 @@ export function Tree({ label, nodes, open, current, accent, onChoose }: TreeProp
 
   const rows = visibleRows(nodes, state.open);
   const stop = stopOf(rows, state.stop, current);
+
+  // What is on screen is told to the host: the key stands for the list, so the host hears of a change of the groups and not of a render. The tree that goes away tells it that nothing is open.
+  const expandedKey = JSON.stringify(expandedIds(rows));
+  useLayoutEffect(() => {
+    onOpenChange?.(JSON.parse(expandedKey) as string[]);
+  }, [expandedKey, onOpenChange]);
+  useLayoutEffect(
+    () => () => {
+      onOpenChange?.([]);
+    },
+    [onOpenChange],
+  );
 
   const onToggle = (id: string) => {
     setState((before) => ({ ...before, open: toggled(before.open, id) }));

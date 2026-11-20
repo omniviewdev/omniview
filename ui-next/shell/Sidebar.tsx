@@ -1,4 +1,5 @@
 import { Text } from '@omniviewdev/kit';
+import { useCallback } from 'react';
 import type { ModifierEvent } from './core/tabs';
 import type { ShellSidebar } from './registration';
 import styles from './Sidebar.module.css';
@@ -11,6 +12,8 @@ type SidebarProps = {
   readonly onChoose: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
   /** The rail entry whose sidebar this is. The tree is another tree when it changes: what was opened in one entry's sidebar stays with that entry, even if another's is called the same and has the same ids. */
   readonly owner: string | undefined;
+  /** The groups of the tree that are open on screen, and the rail entry whose tree they are: told when the tree mounts, on each change, and as none when it goes away. */
+  readonly onOpen: ((owner: string | undefined, open: readonly string[]) => void) | undefined;
 };
 
 /**
@@ -18,13 +21,19 @@ type SidebarProps = {
  * yet: ch12 SB1 puts a search above any tree of more than 12 nodes, and the actions have nothing to act on. While the frame is pending it is the same
  * element, busy and empty, so the entries arrive in it without anything moving. Kit part it should become: ToolHeader.
  */
-export function Sidebar({ sidebar, owner, onChoose }: SidebarProps) {
+export function Sidebar({ sidebar, owner, onChoose, onOpen }: SidebarProps) {
+  const report = useCallback(
+    (open: readonly string[]) => {
+      onOpen?.(owner, open);
+    },
+    [onOpen, owner],
+  );
   return (
     <nav className={styles.sidebar} data-shell-region="sidebar" aria-label={sidebar?.label ?? 'Loading navigation'} aria-busy={sidebar === undefined ? 'true' : undefined}>
       <div className={styles.header} data-shell-part="sidebarHeader">
         {sidebar === undefined ? null : <Text as="h2" variant="title">{sidebar.title}</Text>}
       </div>
-      {sidebar === undefined ? null : <Tree key={`${owner ?? ''}\u0000${sidebar.label}`} label={sidebar.label} nodes={sidebar.nodes} open={sidebar.open} current={sidebar.current} accent={sidebar.accent} onChoose={onChoose} />}
+      {sidebar === undefined ? null : <Tree key={`${owner ?? ''}\u0000${sidebar.label}`} label={sidebar.label} nodes={sidebar.nodes} open={sidebar.open} current={sidebar.current} accent={sidebar.accent} onChoose={onChoose} onOpenChange={onOpen === undefined ? undefined : report} />}
     </nav>
   );
 }

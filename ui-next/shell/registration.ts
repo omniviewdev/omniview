@@ -6,13 +6,26 @@ import type { IconName } from '@omniviewdev/kit';
 // API checks them at registration. What a tab is called and where it sits (the tab's title and glyph, the status bar's path) is not here: it is the tab model's (core/tabs), which
 // asks the plugin through `Contributions.describe`.
 
+/**
+ * A count that is only about right: the number of entries the source estimates there are (the API's own count of a collection it did not read to the end). It is drawn with a tilde before its
+ * digits ("~1,234") and named "about 1,234" (Q2a; the owner approved the tilde). `approximate` is always `true`: an exact count is a plain number, and there is no third thing to say.
+ */
+export type ShellApproximateCount = { readonly value: number; readonly approximate: true };
+
+/** What the number in an entry's count slot is: the number of entries there are, or about how many. */
+export type ShellCount = number | ShellApproximateCount;
+
 /** A node of the sidebar's tree: an entry, or a group when it has children. */
 export type ShellTreeNode = {
   readonly id: string;
   readonly label: string;
   readonly icon: IconName;
-  /** The 12 px count slot at the end of an entry's row (ch12 SB1). Absent: the row has no count. */
-  readonly count?: number | undefined;
+  /**
+   * The 12 px count slot at the end of an entry's row (ch12 SB1: every collection row has one). Absent: the row has no count and no slot. A number is drawn in grouped digits ("1,234"), an approximate
+   * count with a tilde before them ("~1,234") and is named "about 1,234". `null`: a count is expected, draw nothing yet (the count is on its way, the source cannot say one, the user may not
+   * read it): the row has the slot and no number in it, and the slot is held at the width of a count, so that a number which arrives moves no label. A value that is not a count (negative, a fraction, `NaN`) draws an empty slot, as `null` does.
+   */
+  readonly count?: ShellCount | null | undefined;
   readonly children?: readonly ShellTreeNode[];
 };
 

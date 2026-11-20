@@ -23,6 +23,14 @@ const isFunction = (value: unknown): boolean => typeof value === 'function';
 
 type Problems = string[];
 
+/**
+ * What an entry's count may be: absent, a number (as it always was), `null` (the entry has a count slot and no number yet) or an approximate count. Whether a number is a count (a whole number of at least zero) is not
+ * checked: it never was, and the shell draws a number that is not one as an empty slot. A bundle written before the last two shapes is admitted; one that writes them is refused by a host that predates them, by this check's older words.
+ */
+function isCount(count: unknown): boolean {
+  return count === undefined || count === null || typeof count === 'number' || (isRecord(count) && count.approximate === true && typeof count.value === 'number');
+}
+
 function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set<string>, leaves: string[]): void {
   if (!Array.isArray(nodes)) {
     problems.push(`${where} is not a list`);
@@ -53,8 +61,8 @@ function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set
       problems.push(`${at}.icon is not a glyph name`);
     }
 
-    if (node.count !== undefined && typeof node.count !== 'number') {
-      problems.push(`${at}.count is not a number`);
+    if (!isCount(node.count)) {
+      problems.push(`${at}.count is not a number, null, or { value, approximate: true }`);
     }
 
     const children = node.children;

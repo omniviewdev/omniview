@@ -18,7 +18,7 @@
 //   shard 2  table 64, rail 16, detail 11, palette 265 + 65                                        = 421
 //   shard 3  fonts 36, shell 50, log view 205 + 118                                                = 409
 //   shard 4  tooltip 145, logs 215 + 62                                                            = 422
-//   shard 5  parts 177, strip 187                                                                  = 364
+//   shard 5  parts 177, strip 187, strip controls 14 (Q2a: measured 2026-11-20 at a load of 4)      = 378
 // The panel probe with its six controls is the longest unit and cannot be split without parting a probe from its controls, so a sixth shard would not make the job shorter.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -154,6 +154,14 @@ export const TABLE = {
 
         // The tab strip, the page host and the load, at 1440 x 900 and 1280 x 800 (decision A15). It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the tab strip, the page host and the load against the pinned mock reference', script: 'ui-next/shell/probes/strip-probe.mjs', env: { REPORT: '$RUNNER_TEMP/strip-probe.json' } },
+
+        // The negative controls of the strip probe's `arrival` section (Q2a): a tree that does not hold the count slot (`slot-width`) and a skeleton that declares none (`slot-undeclared`) each make a label give way when its
+        // count arrives. The probe must see it, and passes only when it does: the label's rectangle is the assertion (the layout-shift observer reads 0 for both, so a probe that only watched it would pass).
+        {
+          name: 'Probe that the strip probe sees a label that gives way to a count',
+          script: 'ui-next/shell/probes/strip-probe.mjs',
+          controls: ['slot-width', 'slot-undeclared'],
+        },
       ],
     },
   ],

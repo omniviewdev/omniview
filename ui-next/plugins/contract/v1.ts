@@ -63,6 +63,14 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // owner decision A20: a Logs session starts from the resource (a plugin's page or command), never from the panel, and the thing a plugin hands over is a plain target descriptor (`LogTargetV1`), so a
 // registry and a picker can later list the very same descriptors and call the same function without a change to this contract.
 //
+// The sidebar's open groups and the entry's count (Q2a) are minor, on the terms of the panel handle: `useNodes` is told ONE member more, `open`, and a node's `count` has two shapes more. (1) Nothing that exists is removed,
+// renamed or given another meaning: `SidebarContextV1` is `ContextV1` and one member, so a hook that reads the context every hook gets is called with all of it, and a plain number draws as it always did. (2) Every bundle written
+// before it is admitted and drawn as before (`admit.test.ts` keeps one: its hook reads only the context every hook gets and its entries carry plain numbers; `PluginHost.test.tsx` runs one). (3) What a host that lacks them does is
+// settled in the bundle, not at run time: a count is read as a number only before this, so a bundle that writes an approximate count or a `null` count in its static skeleton, as a plugin that draws counts does (the `null` of an
+// entry is the slot it fills, and the slot's width), is refused by name by a host that predates them (`count is not a number`, the `contract` failure, R11's refusal on proof of mismatch) and is never drawn wrong; `open` is a member
+// the HOST fills in, and a host that lacks it leaves it `undefined`, which a plugin that reads it without declaring a `null` count has nothing to be refused by (it tests for it). An approximate count is how the owner approved an estimate
+// to read: "~1,234", named "about 1,234"; the mock's own word for it in a footer is "About 120" (`H.count`, core.js:1879), for which the slot has no room.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 
@@ -137,9 +145,23 @@ export type DetailPageV1 = {
 };
 
 /**
+ * What the host tells the sidebar's data hook: the context every hook of the plugin gets, and which groups of the sidebar's tree are open (Q2a).
+ */
+export type SidebarContextV1 = ContextV1 & {
+  /**
+   * The ids of the groups of the tree that are open on screen, sorted: the entries of an open group are on screen and those of a closed one are not, so a hook that reads something for each entry (what it counts) has a
+   * reason to read it only for the entries of these groups, and of the entries that have no group. A group inside a closed group is not listed: none of its entries is on screen. Empty until the tree is on screen, and
+   * again when it is not (the rail shows another plugin's sidebar). The list is the same array for as long as the set of groups is the same, and the context is the same object for as long as it and the route are, so
+   * a hook may use either as a dependency and is not run again by a render of the host.
+   */
+  readonly open: readonly string[];
+};
+
+/**
  * The sidebar: its words and a static skeleton that draws before any data is read, and optionally a hook for what depends on the connection.
  * While the hook answers `undefined` the skeleton stays; an array replaces it. A hook that throws leaves the skeleton and the failure in the
- * sidebar's own boundary.
+ * sidebar's own boundary. An entry's `count` is a number, an approximate count (`{ value, approximate: true }`), or `null`: a count is expected, draw nothing yet (the entry has the count slot and no number to draw in it):
+ * the slot is held at the width of a count, so a skeleton that declares `null` on the entries that will have a count draws them with no number and no shift, and a number that arrives moves no label.
  */
 export type SidebarV1 = {
   /** Names the navigation landmark and its tree. */
@@ -147,7 +169,7 @@ export type SidebarV1 = {
   /** The title of the sidebar's header. */
   readonly title: string;
   readonly nodes: readonly SidebarNodeV1[];
-  readonly useNodes?: ((context: ContextV1) => readonly SidebarNodeV1[] | undefined) | undefined;
+  readonly useNodes?: ((context: SidebarContextV1) => readonly SidebarNodeV1[] | undefined) | undefined;
 };
 
 /**
