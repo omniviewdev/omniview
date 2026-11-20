@@ -117,8 +117,8 @@ describe('a view at or above a minimum level', () => {
     // The first error went: three lines and a marker remain.
     expect([view.length, view.lineCount]).toEqual([4, 3]);
     feed(buffer, view, [(n) => line(n, 'info')]);
-    // The marker went.
-    expect([view.length, view.lineCount]).toEqual([3, 3]);
+    // The marker reached the head and stayed as the lead (L1): it is not a line, so the count of lines is the same.
+    expect([view.length, view.lineCount]).toEqual([4, 3]);
     view.setMinRank(0);
     expect(view.lineCount).toBe(buffer.lines);
   });
@@ -149,17 +149,18 @@ describe('a view when the buffer shrinks', () => {
     const buffer = new LineBuffer(10);
     const view = new LineView(buffer);
     feed(buffer, view, [(n) => line(n, 'info'), (n) => gap(n), (n) => line(n, 'error'), (n) => line(n, 'warn'), (n) => line(n, 'error'), (n) => line(n, 'info')]);
-    expect(view.shrunk(buffer.resize(4))).toBe(2);
-    expect([ordinals(view), view.lineCount]).toEqual([[3, 4, 5, 6], 4]);
+    // The first line and the marker go; the marker stays as the lead (L1), so one row left the list, and the lead is numbered one before the first line held.
+    expect(view.shrunk(buffer.resize(4))).toBe(1);
+    expect([ordinals(view), view.lineCount]).toEqual([[2, 3, 4, 5, 6], 4]);
 
     const filtered = new LineBuffer(10);
     const errors = new LineView(filtered);
     feed(filtered, errors, [(n) => line(n, 'info'), (n) => gap(n), (n) => line(n, 'error'), (n) => line(n, 'warn'), (n) => line(n, 'error'), (n) => line(n, 'info')]);
     errors.setMinRank(3);
-    // The marker and the two errors pass; the first error and the marker go with the head, so one entry and one line remain of three entries and two lines.
+    // The marker and the two errors pass; the first error and the marker go with the head, and the marker stays as the lead (L1): one row left the list, and the lead and one line remain.
     expect(errors.length).toBe(3);
-    expect(errors.shrunk(filtered.resize(3))).toBe(2);
-    expect([ordinals(errors), errors.lineCount]).toEqual([[5], 1]);
+    expect(errors.shrunk(filtered.resize(3))).toBe(1);
+    expect([ordinals(errors), errors.lineCount]).toEqual([[3, 5], 1]);
   });
 
   it('drops nothing from a view for a buffer that only grew', () => {
@@ -169,5 +170,102 @@ describe('a view when the buffer shrinks', () => {
     feed(buffer, view, [(n) => line(n, 'warn'), (n) => line(n, 'error')]);
     expect(view.shrunk(buffer.resize(9))).toBe(0);
     expect([ordinals(view), view.lineCount]).toEqual([[1, 2], 2]);
+  });
+});
+
+// A marker that reaches the head of a full buffer is not given up with the lines: it stays as the first row of the view, for the lines it stands for, while the view holds any
+// line (L1). The lines the feed dropped are lost without the reader being told, otherwise: a catch-up of a whole buffer pushes the marker out in the frame that appended it.
+describe('a marker that reaches the head', () => {
+  const gapOf = (dropped: number) => (n: number): GapEntry => ({ kind: 'gap', n, dropped });
+
+  it('stays as the first row when the lines behind it go, and says what it stood for', () => {
+    const buffer = new LineBuffer(4);
+    const view = new LineView(buffer);
+    feed(buffer, view, [gapOf(30), (n) => line(n), (n) => line(n), (n) => line(n), (n) => line(n)]);
+    // The ring pushed the marker out of its head to make room for the fourth line; the view keeps it, one row beyond the buffer's own bound.
+    expect(buffer.length).toBe(4);
+    expect(view.length).toBe(5);
+    expect(view.at(0)).toMatchObject({ kind: 'gap', dropped: 30 });
+    expect(view.at(1).n).toBe(buffer.first);
+    expect(view.lineCount).toBe(4);
+
+    feed(buffer, view, Array.from({ length: 10 }, () => (n: number) => line(n)));
+    expect([view.length, view.at(0).kind, view.at(1).kind, view.lineCount]).toEqual([5, 'gap', 'line', 4]);
+    expect(view.at(0)).toMatchObject({ dropped: 30 });
+  });
+
+  it('numbers the row one before the oldest line, so the ordinals of the view stay in a row', () => {
+    const buffer = new LineBuffer(3);
+    const view = new LineView(buffer);
+    feed(buffer, view, [gapOf(9), (n) => line(n), (n) => line(n), (n) => line(n), (n) => line(n), (n) => line(n)]);
+    expect(ordinals(view)).toEqual([buffer.first - 1, ...Array.from({ length: 3 }, (_, index) => buffer.first + index)]);
+    expect(view.lowerBound(0)).toBe(0);
+    expect(view.lowerBound(buffer.first - 1)).toBe(0);
+    expect(view.lowerBound(buffer.first)).toBe(1);
+    expect(view.lowerBound(buffer.next)).toBe(4);
+  });
+
+  it('is told apart by what the feed dropped: two that reach the head are one row for their sum', () => {
+    const buffer = new LineBuffer(3);
+    const view = new LineView(buffer);
+    feed(buffer, view, [(n) => line(n), gapOf(4), (n) => line(n), gapOf(6), (n) => line(n), (n) => line(n), (n) => line(n), (n) => line(n)]);
+    expect(view.at(0)).toMatchObject({ kind: 'gap', dropped: 10 });
+    expect(Array.from({ length: view.length }, (_, index) => view.at(index).kind)).toEqual(['gap', 'line', 'line', 'line']);
+  });
+
+  it('leaves a marker that still has lines behind it where it is', () => {
+    const buffer = new LineBuffer(5);
+    const view = new LineView(buffer);
+    feed(buffer, view, [(n) => line(n), (n) => line(n), gapOf(7), (n) => line(n), (n) => line(n), (n) => line(n)]);
+    // The first line went; the marker is second, and is no lead: the line before it is held.
+    expect(Array.from({ length: view.length }, (_, index) => view.at(index).kind)).toEqual(['line', 'gap', 'line', 'line', 'line']);
+  });
+
+  it('says how many rows left the top of the list, the lead taking the place of the marker that became it', () => {
+    const buffer = new LineBuffer(3);
+    const view = new LineView(buffer);
+    const left: number[] = [];
+    for (const make of [gapOf(5), (n: number) => line(n), (n: number) => line(n), (n: number) => line(n), (n: number) => line(n), (n: number) => line(n)]) {
+      const evicted = buffer.push(make(buffer.next));
+      left.push(view.pushed(buffer.at(buffer.length - 1), evicted));
+    }
+
+    // Nothing left until the ring was full; the marker became the lead (no row left: it is where it was); each line after it pushed one line out.
+    expect(left).toEqual([0, 0, 0, 0, 1, 1]);
+  });
+
+  it('counts the lead in a filtered view and keeps the lines it shows', () => {
+    const buffer = new LineBuffer(4);
+    const view = new LineView(buffer);
+    view.setMinRank(3);
+    const left: number[] = [];
+    for (const make of [gapOf(8), (n: number) => line(n, 'error'), (n: number) => line(n, 'info'), (n: number) => line(n, 'error'), (n: number) => line(n, 'error'), (n: number) => line(n, 'info'), (n: number) => line(n, 'error')]) {
+      const evicted = buffer.push(make(buffer.next));
+      left.push(view.pushed(buffer.at(buffer.length - 1), evicted));
+    }
+
+    // The ring holds the entries 4 to 7 (error, error, info, error): the view shows the lead and the three errors.
+    expect(view.at(0)).toMatchObject({ kind: 'gap', dropped: 8 });
+    const kinds = Array.from({ length: view.length }, (_, index) => view.at(index));
+    expect(kinds.slice(1).every((entry) => entry.kind === 'line' && entry.level === 'error')).toBe(true);
+    expect(view.lineCount).toBe(kinds.length - 1);
+    expect(view.ordinalAt(0)).toBe(buffer.first - 1);
+    expect(view.lowerBound(buffer.first)).toBe(1);
+    expect(left.every((count) => count >= 0)).toBe(true);
+    // Back to everything: the lead is the first row of the whole buffer too.
+    view.setMinRank(0);
+    expect(view.length).toBe(buffer.length + 1);
+    expect(view.at(0)).toMatchObject({ kind: 'gap', dropped: 8 });
+  });
+
+  it('takes the markers a smaller buffer gives up, as it takes those a full ring overwrites', () => {
+    const buffer = new LineBuffer(10);
+    const view = new LineView(buffer);
+    feed(buffer, view, [(n) => line(n), gapOf(3), (n) => line(n), (n) => line(n), (n) => line(n), (n) => line(n)]);
+    // 1 line, a marker, 4 lines; a buffer of 3 gives up the first line, the marker and one line.
+    expect(view.shrunk(buffer.resize(3))).toBe(2);
+    expect(view.at(0)).toMatchObject({ kind: 'gap', dropped: 3 });
+    expect(view.length).toBe(4);
+    expect(view.lineCount).toBe(3);
   });
 });

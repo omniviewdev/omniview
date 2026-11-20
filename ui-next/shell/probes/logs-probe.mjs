@@ -18,6 +18,9 @@
 //                        went on making lines at its rate (the fixture's own count), none of them was read (each is held by the stream or counted as dropped past its bound) and the view took in no entry
 //                back    the view catches up with the stream and shows NEWER lines than it had when it was hidden (the ordinal of its newest row, and its rows), follows the tail, and every line the feed made
 //                        since is accounted for: taken in by the view, still held by the stream, or dropped past the stream's bound (the marker of the dropped ones is an entry of the view, not a line)
+//                        and the rate on the strip is the feed's (10,000 a second), not the burst of the catch-up (L1)
+//                told    the user is told of every line that was dropped (L1): the sources go quiet once the view has caught up, and then the lines the feed made are EXACTLY the lines the strip shows plus the
+//                        lines it says were dropped (emitted = shown + told-dropped), and the note on the strip says that the lines the stream dropped (its own count) never reached the view
 // NEGATIVE_CONTROL=feed-stopped   the feed goes quiet once the view is hidden (Chromium at 1440 x 900, the `hidden` section only): the probe must fail its check that the feed went on, which a view that
 //                                 costs nothing because its feed is quiet would pass; the exit code is 0 when it did, 1 when it did not
 // Exit code 1 when anything differs.
@@ -43,7 +46,7 @@ const url = (origin) => `${origin}/shell/probes/host-fixture.html?logs=1&panel=1
 // runtime's stream does), so a view hidden for more than ten seconds at this rate loses the oldest lines to the stream's bound.
 const RATE = 10_000;
 const STREAM_BOUND = 100_000;
-// The view's own bound (the kit's default, HLT-4): its buffer holds 100,000 entries, lines and the markers of dropped lines, and the oldest go when more come.
+// The view's own bound (the kit's default, HLT-4): its buffer holds 100,000 lines and the markers of dropped lines (the first of which stays as the view's first row, L1), and the oldest lines go when more come.
 const VIEW_BOUND = 100_000;
 // How long each hidden window lasts. The panel closed and, after it, another tool shown, with half a second to settle before each: about 13 s in all, 130,000 lines, past the stream's bound.
 const CLOSED_MS = 3000;
@@ -64,6 +67,7 @@ const READ_FEED = () => {
     newest: rows.length === 0 ? 0 : Number(rows[rows.length - 1].getAttribute('data-n')),
     rows: Number(grid?.getAttribute('aria-rowcount') ?? 0),
     strip: document.querySelector('[data-log-session] [aria-label="Session status"]')?.textContent ?? '',
+    note: document.querySelector('[data-log-session] [aria-label="Session status"] [data-ov-tip]')?.getAttribute('data-ov-tip') ?? '',
   };
 };
 
@@ -275,15 +279,27 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   const atReturn = await page.evaluate(READ_FEED);
   await page.evaluate(() => window.__panel.show({ tool: 'logs' }));
   const returned = Date.now();
-  let caughtUp = true;
-  try {
-    await page.waitForFunction((lines) => window.__fixtureLogs.stats().held < lines, CAUGHT_UP_LINES, { timeout: 30000, polling: 100 });
-  } catch {
-    caughtUp = false;
+  // The strip's rate while the view catches up and for 3.5 s after (the window the rate is told over is 3 s): the feed makes 10,000 lines a second, and the lines the view reads in a burst are the feed's
+  // past, so the strip must not read them as live (L1: the rate was about 35,000 lines/s for a few seconds after coming back).
+  const rateOf = (text) => Number((/([\d,.]+) lines\/s/.exec(text)?.[1] ?? '0').replace(/,/g, ''));
+  const rates = [];
+  let caughtUp = false;
+  let caughtUpAt = 0;
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    const now = await page.evaluate(READ_FEED);
+    rates.push(rateOf(now.strip));
+    if (!caughtUp && now.held < CAUGHT_UP_LINES) {
+      caughtUp = true;
+      caughtUpAt = Date.now();
+    }
+
+    if (caughtUp && Date.now() - caughtUpAt >= 3500) break;
+    if (Date.now() > deadline) break;
+    await sleep(100);
   }
 
-  const caughtUpMs = Date.now() - returned;
-  await sleep(500);
+  const caughtUpMs = caughtUpAt === 0 ? Date.now() - returned : caughtUpAt - returned;
   const back = await page.evaluate(READ_FEED);
   // The view stopped reading when it was hidden (`closed.from`). Since then the feed made `made` lines. The view took in `tookIn` entries: the lines it read, and a marker where the stream dropped some. The
   // stream still holds `held` of them and dropped `dropped`. So `tookIn + held + dropped - made` is the number of markers, a few at most.
@@ -293,17 +309,41 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   const held = back.held - stopped.held;
   const dropped = back.dropped - stopped.dropped;
   const markers = tookIn + held + dropped - made;
+  const fastest = Math.max(...rates);
+  const lastRate = rates.at(-1) ?? 0;
+  if (fastest > 1.5 * RATE) fail(where, `the strip read ${String(fastest)} lines/s on the way back, the feed makes ${String(RATE)}: the catch-up was counted as live`);
+  if (lastRate < 0.5 * RATE || lastRate > 1.5 * RATE) fail(where, `3.5 s after the view caught up the strip reads ${String(lastRate)} lines/s, the feed makes ${String(RATE)}`);
   if (!caughtUp) fail(where, `the view had not caught up with the stream 30 s after it came back (the stream still holds ${String(back.held)} lines)`);
   if (back.newest <= stopped.newest) fail(where, `back on the Logs tool the view shows no newer line than before it was hidden (its newest row was ${String(stopped.newest)}, then ${String(back.newest)})`);
   if (tookIn < atReturn.held - CAUGHT_UP_LINES) fail(where, `the stream held ${String(atReturn.held)} lines when the view came back and the view took in ${String(tookIn)} entries since it was hidden`);
   if (markers < 0 || markers > 3) fail(where, `${String(made)} lines were made since the view stopped reading; it took in ${String(tookIn)} entries, the stream holds ${String(held)} more and dropped ${String(dropped)}: ${String(markers)} markers, wanted 0 to 3`);
   if (back.rows < stopped.rows) fail(where, `back on the Logs tool the view has ${String(back.rows)} rows, it had ${String(stopped.rows)} when it was hidden`);
   if (!back.strip.includes('Following')) fail(where, `back on the Logs tool the view says "${back.strip}", wanted Following`);
-  // The view's own words: its strip says how many older lines it pushed out to stay within its bound. The strip is told four times a second, so it may be a few thousand lines behind (here 20,000 are allowed),
-  // and it counts lines, not the marker.
+  // The view's own words: its strip says ONE number of dropped lines, the lines the stream dropped while the view was not reading and the lines the view pushed out of its own buffer (L1). Every line
+  // the stream dropped since the view stopped reading must be in it. The strip is told four times a second, so it may be a few thousand lines behind the feed, which is why the exact sum is checked below,
+  // once the sources are quiet.
   const droppedSaid = (text) => Number((/([\d,]+) older lines? dropped/.exec(text)?.[1] ?? '0').replace(/,/g, ''));
-  const pushedOut = Math.max(0, back.newest - VIEW_BOUND);
-  if (droppedSaid(back.strip) > pushedOut + 1000 || droppedSaid(back.strip) < pushedOut - 20_000) fail(where, `the view pushed ${String(pushedOut)} entries out of its buffer of ${String(VIEW_BOUND)} and says "${back.strip}"`);
+  const countOf = (text) => Number((/^([\d,]+) lines?/.exec(text)?.[1] ?? '-1').replace(/,/g, ''));
+  const neverShown = (text) => Number((/([\d,]+) lines? never reached the view/.exec(text)?.[1] ?? '0').replace(/,/g, ''));
+  if (droppedSaid(back.strip) < dropped) fail(where, `the stream dropped ${String(dropped)} lines while the view was not reading and the strip says "${back.strip}": the user is not told of every dropped line`);
+  // Told: the sources go quiet, the view reads what the stream still holds, and the strip is told. From here the numbers stand still, so they must add up exactly: every line the sources made is a line the
+  // strip counts or a line it says was dropped, and the lines the note says never reached the view are the stream's own count of what it dropped.
+  await page.evaluate(() => window.__fixtureLogs.stopSources());
+  try {
+    await page.waitForFunction(() => window.__fixtureLogs.stats().held === 0, undefined, { timeout: 30000, polling: 100 });
+  } catch {
+    fail(where, 'the view did not read what the stream held once the sources were quiet');
+  }
+
+  await sleep(800);
+  const quiet = await page.evaluate(READ_FEED);
+  const shownLines = countOf(quiet.strip);
+  const toldDropped = droppedSaid(quiet.strip);
+  if (shownLines < 0) fail(where, `the strip says "${quiet.strip}": no count of lines`);
+  if (quiet.emitted !== shownLines + toldDropped) fail(where, `the sources made ${String(quiet.emitted)} lines; the strip shows ${String(shownLines)} and says ${String(toldDropped)} were dropped (${String(shownLines + toldDropped)}): "${quiet.strip}"`);
+  if (quiet.dropped === 0) fail(where, 'the stream dropped no line in 13 s at 10,000 lines a second: the probe does not reach the case it is for');
+  if (neverShown(quiet.note) !== quiet.dropped) fail(where, `the stream dropped ${String(quiet.dropped)} lines and the strip's note says ${String(neverShown(quiet.note))} never reached the view: "${quiet.note}"`);
+  if (shownLines > VIEW_BOUND) fail(where, `the strip counts ${String(shownLines)} lines, more than the view's bound of ${String(VIEW_BOUND)}`);
   report.hidden[`${engine} ${viewportName}`] = {
     open: { ...frames, ...open_.work, emitted: madeOpen, newestRow: [open_.from.newest, open_.to.newest] },
     closed: { ...closed.work, emitted: madeClosed, streamHeldAfter: closed.to.held },
@@ -319,11 +359,13 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
       markers,
       stripBefore: stopped.strip,
       stripAfter: back.strip,
+      stripRate: { fastestOnTheWayBack: fastest, last: lastRate },
     },
+    told: { emitted: quiet.emitted, shown: shownLines, toldDropped, streamDropped: quiet.dropped, note: quiet.note, strip: quiet.strip },
   };
   console.log(
     `${where}: while hidden the feed made ${String(madeClosed + madeOther)} lines (${String(madeClosed)} panel closed, ${String(madeOther)} another tool shown), the stream held ${String(atReturn.held)} and dropped ${String(other.to.dropped - stopped.dropped)}; ` +
-      `back: newest row ${String(stopped.newest)} to ${String(back.newest)}, rows ${String(stopped.rows)} to ${String(back.rows)}, caught up in ${String(caughtUpMs)} ms, the strip says ${String(droppedSaid(back.strip))} older lines dropped (before: ${String(droppedSaid(stopped.strip))})`,
+      `back: newest row ${String(stopped.newest)} to ${String(back.newest)}, rows ${String(stopped.rows)} to ${String(back.rows)}, caught up in ${String(caughtUpMs)} ms, the strip says ${String(droppedSaid(back.strip))} older lines dropped (before: ${String(droppedSaid(stopped.strip))}); quiet: made ${String(quiet.emitted)} = shown ${String(shownLines)} + told dropped ${String(toldDropped)}`,
   );
   if (cdp === null) report.notes.push(`${where}: WebKit has no layout or style counter: frames, timers, mutations and commits only`);
   for (const error of errors) fail(`errors ${where}`, error);

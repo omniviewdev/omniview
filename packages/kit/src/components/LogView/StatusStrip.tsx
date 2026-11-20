@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { LogViewModel } from '../../log/logViewModel';
-import { statText } from '../../log/statText';
+import { droppedNote, statText } from '../../log/statText';
 import type { LogFeedState } from '../../log/types';
 import { Button } from '../Button';
 import styles from './LogView.module.css';
@@ -22,7 +22,7 @@ const OVER: Partial<Record<LogFeedState, string>> = { ended: 'Stream ended', fai
 
 /**
  * The status strip (the mock's `.ptool__status`, S116): a fixed 28 px lane that says what the session is doing: how many lines, how fast, whether the list
- * follows, what was dropped, and the one way back to the live end, which is drawn only while the list is not there (scrolled back, or paused), so it never
+ * follows, what was dropped (one total: the lines the view evicted and the ones the feed never gave it; what it is made of is the tooltip and the accessible description), and the one way back to the live end, which is drawn only while the list is not there (scrolled back, or paused), so it never
  * covers a line. Its numbers come from their own subscription, told at most four times a second and only when one changed, so a stream does not render it
  * once per frame.
  */
@@ -32,11 +32,12 @@ export function StatusStrip({ model, state, paused: flagged, following, onResume
   // A log that is over has no pause to lift (the view lifts it); any other is paused when the feed says so, in whatever state it is, and a paused log is a live one.
   const paused = over === undefined && (flagged || state === 'paused');
   const live = state === 'streaming' || paused;
+  const note = droppedNote(stats);
   return (
     <div className={styles.strip} role="group" aria-label="Session status">
       {over === undefined ? null : <span className={styles.state}>{over}</span>}
-      <span className={styles.stat} aria-live="off">
-        {statText({ shown: stats.shown, total: stats.total, rate: stats.rate, live, paused, held: stats.held, following, unseen: stats.unseen, dropped: stats.dropped })}
+      <span className={styles.stat} aria-live="off" aria-description={note} data-ov-tip={note}>
+        {statText({ ...stats, live, paused, following })}
       </span>
       {paused ? (
         <span className={styles.actions}>

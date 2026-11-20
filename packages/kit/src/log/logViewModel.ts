@@ -39,7 +39,7 @@ export const OVERSCAN_ROWS = 10;
 export const RANGE_STEP = 4;
 /** How often the strip's numbers may change on screen, in ms. */
 export const STATS_INTERVAL_MS = 250;
-/** The window of lines over which the rate of a stream is told, in ms (the mock's three seconds). */
+/** The window over which the rate of a feed is told, in ms (the mock's three seconds). */
 const RATE_WINDOW_MS = 3000;
 /** A scroll event this close to the place the list was asked to go is the list's own (sub-pixel layout and rounding), in px. */
 const OWN_SCROLL_TOLERANCE = 3;
@@ -112,14 +112,21 @@ export type StatsSnapshot = {
   readonly shown: number;
   /** Lines the view holds. */
   readonly total: number;
-  /** Lines a second over the last three seconds, to a tenth. */
+  /**
+   * Lines a second that the FEED made over the last three seconds, to a tenth: its count of lines accepted (`LogFeedStats.received`) over the wall clock, not the lines the view
+   * appended in a frame, so a catch-up of lines the feed held while the view was away is not read as live (L1).
+   */
   readonly rate: number;
   /** Lines the feed holds back (a paused feed). */
   readonly held: number;
   /** Lines that came while the reader was scrolled back. */
   readonly unseen: number;
-  /** Older lines the view dropped to stay within its bound. */
+  /** Lines that were dropped and are not in the view: the ones the view evicted to stay within its bound and the ones the feed dropped before the view read them. */
   readonly dropped: number;
+  /** Of `dropped`, the lines the feed dropped for want of room before the view read them (the view was not reading, or was too slow): they were never shown. */
+  readonly unread: number;
+  /** The most lines the view keeps, for the note that says what `dropped` is made of. */
+  readonly capacity: number;
 };
 
 /** A move of the active line: by rows, by a page, or to an end. */
@@ -147,7 +154,16 @@ const defaultTimer = (callback: () => void, ms: number): (() => void) => {
 };
 
 function sameStats(a: StatsSnapshot, b: StatsSnapshot): boolean {
-  return a.shown === b.shown && a.total === b.total && a.rate === b.rate && a.held === b.held && a.unseen === b.unseen && a.dropped === b.dropped;
+  return (
+    a.shown === b.shown &&
+    a.total === b.total &&
+    a.rate === b.rate &&
+    a.held === b.held &&
+    a.unseen === b.unseen &&
+    a.dropped === b.dropped &&
+    a.unread === b.unread &&
+    a.capacity === b.capacity
+  );
 }
 
 /** The text of an entry as it is copied: the clock, the level, the text; a marker as its own sentence. */
@@ -198,7 +214,14 @@ export class LogViewModel {
   /** What the search was last asked for, and the version of its result that the last snapshot carries. */
   private options: SearchOptions = { query: '', regex: false, caseSensitive: false };
   private searchRevision = -1;
-  private readonly rates: Array<{ readonly at: number; readonly lines: number }> = [];
+  /** The feed's count of lines accepted, sampled with the clock: what the rate is told from. The first is the baseline. */
+  private readonly arrivals: Array<{ readonly at: number; readonly received: number }> = [];
+  /** The rate the strip last told: kept while there is no span long enough to tell a new one. */
+  private lastRate = 0;
+  /** Lines the feed dropped before the view read them: the sum of what its batches said. */
+  private unread = 0;
+  /** The strip has been told of lines: the first lines are told at once, the rest by the clock. */
+  private toldLines = false;
 
   constructor(feed: LogFeed, options: ViewModelOptions) {
     this.stream = feed;
@@ -209,6 +232,7 @@ export class LogViewModel {
     this.schedule = options.schedule ?? defaultSchedule;
     this.timer = options.timer ?? defaultTimer;
     this.searchSnapshot = this.makeSearchSnapshot();
+    this.sample(true);
     this.stats = this.computeStats();
     this.snapshot = this.makeSnapshot();
   }
@@ -256,6 +280,8 @@ export class LogViewModel {
     }
 
     this.unsubscribe = this.stream.subscribe(this.wake);
+    // A view that comes back found the feed going on without it: the lines it held are the feed's past, and the rate is what the feed makes from here on.
+    this.sample(true);
     this.requestFrame();
     this.requestStats();
   }
@@ -499,6 +525,7 @@ export class LogViewModel {
 
   /** The feed woke us: a frame will read it. */
   private readonly wake = (): void => {
+    this.sample(false);
     this.requestFrame();
     this.requestStats();
   };
@@ -532,6 +559,7 @@ export class LogViewModel {
       for (;;) {
         const batch = this.stream.read(READ_SLICE_LINES);
         if (batch.dropped > 0) {
+          this.unread += batch.dropped;
           shift += this.append({ kind: 'gap', n: this.buffer.next, dropped: batch.dropped });
           changed = true;
         }
@@ -556,9 +584,14 @@ export class LogViewModel {
       }
 
       if (lines > 0) {
-        this.rates.push({ at: this.now(), lines });
         if (!this.following) {
           this.unseen += lines;
+        }
+
+        // The first lines the strip could tell of are told at once: it was told (empty) when the view started, and its clock would leave it saying `0 lines` over lines that are drawn.
+        if (!this.toldLines) {
+          this.toldLines = true;
+          this.statsDue = true;
         }
       }
 
@@ -592,7 +625,7 @@ export class LogViewModel {
     if (this.statsDue || at - this.statsAt >= STATS_INTERVAL_MS) {
       this.statsDue = false;
       this.statsAt = at;
-      if (this.tellStats() || this.rates.length > 0 || this.stream.getSnapshot().paused) {
+      if (this.tellStats() || this.lastRate > 0 || this.stream.getSnapshot().paused) {
         this.requestStats();
       }
     } else {
@@ -784,20 +817,46 @@ export class LogViewModel {
 
   // ---- the strip ----
 
-  private computeStats(): StatsSnapshot {
+  /**
+   * Starts the series of the feed's count of lines accepted against the clock. `fresh`: from the feed's count now (the view starts or comes back, and the lines the feed made before
+   * are its past). Otherwise it is the feed's wake-up, and a sample is taken only when the last is older than the window, which is a feed that was quiet and speaks: from the last
+   * count, which the quiet left unchanged, so the lines that woke it are counted, and from now, so the quiet is not. The clock's tells take every other sample.
+   */
+  private sample(fresh: boolean): void {
     const at = this.now();
-    while ((this.rates.at(0)?.at ?? at) < at - RATE_WINDOW_MS) {
-      this.rates.shift();
+    const last = this.arrivals.at(-1);
+    if (!fresh && last !== undefined && at - last.at < RATE_WINDOW_MS) {
+      return;
     }
 
-    const lines = this.rates.reduce((sum, sample) => sum + sample.lines, 0);
+    const received = fresh || last === undefined ? this.stream.stats().received : last.received;
+    this.arrivals.length = 0;
+    this.arrivals.push({ at, received });
+  }
+
+  private computeStats(): StatsSnapshot {
+    const at = this.now();
+    const feed = this.stream.stats();
+    // The baseline is the newest sample that is at least a window old, else the oldest: the series is the feed's counter against the wall clock, taken at each tell.
+    while ((this.arrivals.at(1)?.at ?? Number.POSITIVE_INFINITY) <= at - RATE_WINDOW_MS) {
+      this.arrivals.shift();
+    }
+
+    const base = this.arrivals.at(0);
+    if (base !== undefined && at - base.at >= STATS_INTERVAL_MS) {
+      this.lastRate = Math.round(((feed.received - base.received) / ((at - base.at) / 1000)) * 10) / 10;
+    }
+
+    this.arrivals.push({ at, received: feed.received });
     return {
       shown: this.view.lineCount,
       total: this.buffer.lines,
-      rate: Math.round((lines / (RATE_WINDOW_MS / 1000)) * 10) / 10,
-      held: this.stream.stats().held,
+      rate: this.lastRate,
+      held: feed.held,
       unseen: this.unseen,
-      dropped: this.buffer.evictedLines,
+      dropped: this.buffer.evictedLines + this.unread,
+      unread: this.unread,
+      capacity: this.buffer.capacity,
     };
   }
 

@@ -4,8 +4,14 @@
 // A view of everything is the buffer: no array, no copy. A filtered view keeps the ordinals that pass in an array that grows at the end and loses its head
 // as the buffer evicts, compacted once most of it is dead, so a filtered view of a 100,000-line buffer costs one number per line shown (HLT-16: no
 // filtered copy of the entries, no rescan of the buffer per frame).
+//
+// The lead (L1). A marker is the one place the reader is told that lines are missing, and a ring that overwrites its head would take it with the oldest lines: a view that had
+// read nothing and was handed a whole buffer after a gap pushed the marker out in the frame that appended it. So a marker that reaches the head of the buffer is not given up:
+// the view keeps what it stood for (`headDropped`, the sum of the markers that reached the head) and shows it as ONE row before the oldest entry the buffer holds, for as long as the
+// view holds any line. That row is the one entry beyond the buffer's own bound. It is not in the buffer: it is numbered one before the buffer's first ordinal (an ordinal no entry holds
+// any more), so the ordinals of the view stay in a row, and it is told in the four places a list reads the view by index.
 import type { LineBuffer } from './lineBuffer';
-import type { LogEntry, LogLevel } from './types';
+import type { GapEntry, LogEntry, LogLevel } from './types';
 
 /** The mock's ranks: a minimum rank keeps the levels at or above it. */
 export const LEVEL_RANK: Readonly<Record<LogLevel, number>> = { trace: 0, debug: 0, info: 1, warn: 2, error: 3 };
@@ -24,6 +30,10 @@ export class LineView {
   private start = 0;
   /** The lines among what a filtered view shows (the markers are not lines). */
   private shownLines = 0;
+  /** What the markers that left the head of the buffer stood for: lines the feed dropped before the oldest entry the buffer holds. 0 while there is no lead. */
+  private headDropped = 0;
+  /** The row that says it, made when it is asked for and kept while its ordinal and its count stay. */
+  private headEntry: GapEntry | undefined;
 
   private readonly source: LineBuffer;
 
@@ -35,9 +45,9 @@ export class LineView {
     return this.minRank;
   }
 
-  /** How many entries the view shows. */
+  /** How many entries the view shows, the lead included. */
   get length(): number {
-    return this.minRank === 0 ? this.source.length : this.ordinals.length - this.start;
+    return this.lead + (this.minRank === 0 ? this.source.length : this.ordinals.length - this.start);
   }
 
   /** How many of the entries are lines, markers left out: what the strip counts. */
@@ -52,31 +62,36 @@ export class LineView {
 
   /** The entry at `index` of the view. The index must be inside it. */
   at(index: number): LogEntry {
+    if (this.lead === 1) {
+      if (index === 0) {
+        return this.head();
+      }
+
+      index -= 1;
+    }
+
     return this.minRank === 0 ? this.source.at(index) : this.source.at((this.ordinals[this.start + index] ?? 0) - this.source.first);
   }
 
   ordinalAt(index: number): number {
+    if (this.lead === 1) {
+      if (index === 0) {
+        return this.source.first - 1;
+      }
+
+      index -= 1;
+    }
+
     return this.minRank === 0 ? this.source.first + index : (this.ordinals[this.start + index] ?? 0);
   }
 
   /** The index of the first entry of the view whose ordinal is at least `n`; the length when there is none. */
   lowerBound(n: number): number {
-    if (this.minRank === 0) {
-      return Math.min(Math.max(n - this.source.first, 0), this.source.length);
+    if (this.lead === 1) {
+      return n < this.source.first ? 0 : this.entriesFrom(n) + 1;
     }
 
-    let low = this.start;
-    let high = this.ordinals.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if ((this.ordinals[middle] ?? 0) < n) {
-        low = middle + 1;
-      } else {
-        high = middle;
-      }
-    }
-
-    return low - this.start;
+    return this.entriesFrom(n);
   }
 
   /** Shows the entries at or above `rank`: 0 shows everything. Rebuilds the index from the buffer once, in one pass. */
@@ -103,12 +118,14 @@ export class LineView {
   }
 
   /**
-   * The buffer took `entry` as its newest, and gave back `evicted` when that pushed its oldest out: the view takes the one and forgets the other.
-   * Returns how many entries left the head of the view, which is how far a reader scrolled back has to be moved to stay on the same line.
+   * The buffer took `entry` as its newest, and gave back `evicted` when that pushed its oldest out: the view takes the one and forgets the other, except a marker, which it keeps as the
+   * lead. Returns how many rows left the head of the list, which is how far a reader scrolled back has to be moved to stay on the same line: a marker that became the lead is one row
+   * that did not leave (it is where it was), and one that joined a lead already there is a row that did.
    */
   pushed(entry: LogEntry, evicted?: LogEntry): number {
+    const replaced = evicted?.kind === 'gap' ? this.keep([evicted]) : 0;
     if (this.minRank === 0) {
-      return evicted === undefined ? 0 : 1;
+      return evicted === undefined ? 0 : 1 - replaced;
     }
 
     if (rankOf(entry) >= this.minRank) {
@@ -120,16 +137,17 @@ export class LineView {
       this.shownLines -= 1;
     }
 
-    return this.trim();
+    return this.trim() - replaced;
   }
 
   /**
-   * The buffer gave up its oldest entries because its capacity went down (`LineBuffer.resize`): the view forgets them, as `pushed` forgets the one a full ring overwrites.
-   * Returns how many entries left the head of the view.
+   * The buffer gave up its oldest entries because its capacity went down (`LineBuffer.resize`): the view forgets them, as `pushed` forgets the one a full ring overwrites, and keeps their
+   * markers as the lead. Returns how many rows left the head of the list.
    */
   shrunk(evicted: readonly LogEntry[]): number {
+    const replaced = this.keep(evicted);
     if (this.minRank === 0) {
-      return evicted.length;
+      return evicted.length - replaced;
     }
 
     for (const entry of evicted) {
@@ -138,7 +156,54 @@ export class LineView {
       }
     }
 
-    return this.trim();
+    return this.trim() - replaced;
+  }
+
+  /** 1 while the view has a lead, else 0: the rows before the entries of the buffer. */
+  private get lead(): number {
+    return this.headDropped > 0 ? 1 : 0;
+  }
+
+  /** The row of the lead: the ordinal moves with the buffer's head, the count with the markers that reach it. */
+  private head(): GapEntry {
+    const n = this.source.first - 1;
+    if (this.headEntry?.n !== n || this.headEntry.dropped !== this.headDropped) {
+      this.headEntry = { kind: 'gap', n, dropped: this.headDropped };
+    }
+
+    return this.headEntry;
+  }
+
+  /** `lowerBound` over the entries of the buffer alone: the lead is not among them. */
+  private entriesFrom(n: number): number {
+    if (this.minRank === 0) {
+      return Math.min(Math.max(n - this.source.first, 0), this.source.length);
+    }
+
+    let low = this.start;
+    let high = this.ordinals.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if ((this.ordinals[middle] ?? 0) < n) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    return low - this.start;
+  }
+
+  /** Adds what the markers among `evicted` stood for to the lead; returns 1 when that made the lead, else 0. */
+  private keep(evicted: readonly LogEntry[]): number {
+    const had = this.headDropped > 0;
+    for (const entry of evicted) {
+      if (entry.kind === 'gap') {
+        this.headDropped += entry.dropped;
+      }
+    }
+
+    return !had && this.headDropped > 0 ? 1 : 0;
   }
 
   /** Drops the ordinals below the buffer's first; returns how many it dropped. */
