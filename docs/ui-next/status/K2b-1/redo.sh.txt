@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# K2b-1: the whole proof on a fresh cluster (docs/ui-next/status/K2b-1.md, "Dev tools"). Copy this file and k2b1-proof.mjs.txt into one directory WITHOUT the `.txt`, then:
+#
+#   HOST=<host checkout> PLUGIN=<plugin checkout> bash redo.sh
+#
+#   HOST     a checkout of omniviewdev/omniview, `pnpm install` done and built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used (WebKit and
+#            Chromium installed), its docs/ui-next/slices/1a-pods-list/fixture.yaml is the cluster's fixture, and its scripts/ui-next-pods/ is the host's own cluster check, run first
+#   PLUGIN   a checkout of omniviewdev/omniview-plugin-kubernetes at the commit under test (the K2b-1 commit of feature/ui-next or later): hack/package.sh builds it, and
+#            hack/kinds-capture/extra-states.yaml, more-kinds.yaml and more-kinds.sh make the states
+#   WORK     optional: a scratch directory (default: a new one under $TMPDIR); holds the kubeconfig, the extracted plugin and the hosts' state
+#   OUT      optional: where the log, the report JSON and the screenshots go (default: $WORK/out)
+#   PORT     optional: the port of the host of the cluster check (default 34281)
+#            HOST, PLUGIN, WORK and OUT may be relative paths: they are made absolute first, before anything changes directory
+#
+# Needs docker, kind, kubectl, go, pnpm and node; about eight minutes. It reads and writes no kubeconfig but the one it makes in $WORK, and the cluster is deleted at the end, whatever happens.
+# Exit status: 0 when the host's check and every check of the proof pass.
+set -euo pipefail
+
+: "${HOST:?HOST is required: a host checkout with bin/Omniview-server built}"
+: "${PLUGIN:?PLUGIN is required: a plugin checkout}"
+# Every path is made absolute here, before anything changes directory: the host's check and the proof each run in a directory of their own, where a relative path would name another place.
+HOST="$(cd "$HOST" 2>/dev/null && pwd)" || { echo "HOST is not a directory" >&2; exit 1; }
+PLUGIN="$(cd "$PLUGIN" 2>/dev/null && pwd)" || { echo "PLUGIN is not a directory" >&2; exit 1; }
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/k2b1-proof.XXXXXX")}"
+OUT="${OUT:-$WORK/out}"
+mkdir -p "$WORK" "$OUT"
+WORK="$(cd "$WORK" && pwd)"
+OUT="$(cd "$OUT" && pwd)"
+PORT="${PORT:-34281}"
+NAME="k2b1-$$"
+KUBECONFIG_PATH="$WORK/kubeconfig"
+test -x "$HOST/bin/Omniview-server" || { echo "missing $HOST/bin/Omniview-server: run OMNIVIEW_UI=next task build:server in $HOST" >&2; exit 1; }
+test -f "$HERE/k2b1-proof.mjs" || { echo "missing $HERE/k2b1-proof.mjs: copy k2b1-proof.mjs.txt next to this file, without the .txt" >&2; exit 1; }
+
+case "$(uname -s)_$(uname -m)" in
+  Darwin_arm64) PLATFORM=darwin_arm64 ;;
+  Darwin_x86_64) PLATFORM=darwin_amd64 ;;
+  Linux_x86_64) PLATFORM=linux_amd64 ;;
+  Linux_aarch64 | Linux_arm64) PLATFORM=linux_arm64 ;;
+  *) echo "no plugin platform for $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+
+cleanup() {
+  OMNIVIEW_E2E_WORK="$WORK/host" "$HOST/scripts/ui-next-pods/host.sh" stop "$NAME-check" >/dev/null 2>&1 || true
+  (unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" 2>&1 | tail -n 1) || true
+}
+trap cleanup EXIT
+
+echo "== cluster $NAME: kind, node v1.35.0 (the image the host's CI pins), the slice fixture, the extra states and the more kinds"
+(unset KUBECONFIG; kind create cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" --wait 240s \
+  --image 'kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661' 2>&1 | tail -n 1)
+export KUBECONFIG="$KUBECONFIG_PATH"
+kubectl apply -f "$HOST/docs/ui-next/slices/1a-pods-list/fixture.yaml" >/dev/null
+kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s | tail -n 1
+kubectl -n checkout rollout status sts/cart-cache --timeout=240s | tail -n 1
+kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s | tail -n 1
+kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s | tail -n 1
+kubectl apply -f "$PLUGIN/hack/kinds-capture/extra-states.yaml" >/dev/null
+# The header of extra-states.yaml: the patch must land on a Deployment whose old replicas are ready, so the first rollout is waited for.
+kubectl -n states rollout status deploy/stuck-rollout deploy/paused --timeout=300s | tail -n 1
+kubectl -n states patch deploy/stuck-rollout --type=json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"registry.invalid/stuck:2"}]'
+kubectl -n states rollout pause deploy/paused
+# The objects of the eight new kinds (more-kinds.yaml), and what a manifest cannot say (more-kinds.sh).
+"$PLUGIN/hack/kinds-capture/more-kinds.sh"
+# Let the states settle: the images that cannot be pulled, the Job with a deadline, the Pods that cannot be placed.
+sleep 60
+echo "objects: $(kubectl get deploy,sts,ds,rs,job,cronjob,cm,secret,svc,ingress -A --no-headers | wc -l | tr -d ' ') of the thirteen kinds' namespaced ones, $(kubectl get ns,nodes --no-headers | wc -l | tr -d ' ') of Namespaces and Nodes"
+
+echo "== the plugin, packaged from $PLUGIN ($PLATFORM)"
+version="$(sed -n 's/^version: //p' "$PLUGIN/plugin.yaml" | head -n 1)"
+(cd "$PLUGIN" && GOTOOLCHAIN="${GOTOOLCHAIN:-local}" hack/package.sh "$version" "$PLATFORM" >"$WORK/package.log" 2>&1) || { tail -n 30 "$WORK/package.log" >&2; exit 1; }
+rm -rf "$WORK/plugin"
+mkdir -p "$WORK/plugin"
+tar -xzf "$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" -C "$WORK/plugin"
+echo "plugin commit $(git -C "$PLUGIN" rev-parse HEAD), assets/entry.js $(wc -c <"$WORK/plugin/assets/entry.js" | tr -d ' ') bytes, sha256 $(node -e 'console.log(require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"))' "$WORK/plugin/assets/entry.js")"
+
+status=0
+echo "== the host's own cluster check, unmodified (Pods parity with kubectl, a Pod created and deleted, the Pod page)"
+export OMNIVIEW_E2E_WORK="$WORK/host"
+"$HOST/scripts/ui-next-pods/host.sh" start "$NAME-check" "$PORT" "$KUBECONFIG_PATH" "$WORK/plugin"
+(cd "$HOST" && OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$PORT" OMNIVIEW_CHECK_KUBECONFIG="$KUBECONFIG_PATH" node --test scripts/ui-next-pods/pods-cluster.check.mjs) >"$OUT/host-pods-check.log" 2>&1 || status=1
+grep -E '^ℹ (tests|pass|fail)' "$OUT/host-pods-check.log" || true
+"$HOST/scripts/ui-next-pods/host.sh" stop "$NAME-check"
+
+echo "== the proof: the thirteen lists against kubectl, the sidebar, a live change in each group, no Secret value on a page, in WebKit and Chromium"
+(cd "$OUT" && OMNIVIEW_HOST_ROOT="$HOST" PLUGIN_ARCHIVE="$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" KUBECONFIG_PATH="$KUBECONFIG_PATH" OUT="$OUT" node "$HERE/k2b1-proof.mjs") >"$OUT/k2b1-proof-run.log" 2>&1 || status=1
+tail -n 1 "$OUT/k2b1-proof-run.log"
+grep -E '^FAIL' "$OUT/k2b1-proof-run.log" | cut -c1-300 || true
+echo "log, report and screenshots: $OUT"
+exit "$status"

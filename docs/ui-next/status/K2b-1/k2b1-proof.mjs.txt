@@ -1,0 +1,944 @@
+#!/usr/bin/env node
+// K2b-1 proof (docs/ui-next/status/K2b-1.md): the Kubernetes plugin's new UI, built from the plugin checkout under test, lists the five Workloads kinds of K2a and the eight kinds of K2b-1
+// (ReplicaSets, CronJobs, ConfigMaps, Secrets, Services, Ingresses, Namespaces, Nodes) in the real host, each equal to `kubectl get <kind>`, and follows a live change in each group. `redo.sh`
+// (beside this file in docs/ui-next/status/K2b-1/) runs it on a fresh cluster; this file is `k2b1-proof.mjs` without the `.txt`. It is the K2a proof (docs/ui-next/status/K2a/k2a-proof.mjs.txt) with
+// the kinds, the sidebar and the live changes of this step.
+//
+//   OMNIVIEW_HOST_ROOT=<host checkout> PLUGIN_ARCHIVE=<kubernetes-<os>_<arch>.tar.gz> KUBECONFIG_PATH=<kubeconfig> OUT=<directory> node k2b1-proof.mjs
+//
+//   OMNIVIEW_HOST_ROOT  a host checkout of origin/main built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used, with WebKit and Chromium installed in it
+//                       (`pnpm exec playwright install webkit chromium`)
+//   PLUGIN_ARCHIVE      the archive `hack/package.sh` wrote from the plugin checkout (plugin.yaml, bin/plugin, assets/entry.js): extracted into the channel's state root of a throwaway HOME
+//   KUBECONFIG_PATH     the kind cluster that holds the slice fixture, extra-states.yaml and more-kinds.yaml (the only kubeconfig this script and the host ever read); kubectl is the oracle
+//   OUT                 where the screenshots and the report go
+//   ENGINES             default `webkit,chromium` (the data checks run in each; the screenshots are WebKit)
+//
+// The host it starts runs on a throwaway HOME that holds a copy of KUBECONFIG_PATH. The proof removes that HOME when the host has stopped, whatever happened, and a check says it is gone.
+//
+// What it asserts, each as a PASS/FAIL line:
+//   A  for each of the thirteen kinds, in each engine: the page lists exactly the objects of `kubectl get <kind>` (`-A` for a namespaced kind): the same `namespace/name`, the same numbers and words
+//      (the columns of the kind's mock definition, from kubectl's own cells; what kubectl does not print, a ConfigMap's key names and size, a Secret's keys and an Ingress's hosts and address, from
+//      `kubectl get -o json`), the same age (inside the span the page's unit stands for), the footer's count and the quick filters' counts (and no strip for a kind that has none)
+//   B  the sidebar: Nodes and Namespaces at the top, then Workloads, Config and Network in the mock's order and with the kinds each holds; a click on an entry opens its list in this tab
+//   C  live, one change per group: Workloads (a ReplicaSet scaled, a CronJob suspended), Config (a ConfigMap and a Secret made, changed and deleted), Network (a Service made, changed and deleted; an
+//      Ingress given an address), the cluster (a Node cordoned; a Namespace made and deleted): the page follows each, with no reload
+//   D  no Secret value on a page (defence in depth: the row model never reads one, which the plugin's unit test proves with a record whose values throw when read). Every value of 12 characters or more of
+//      the cluster's Secrets (read through kubectl) is looked for, in the clear and as base64, in the text, in every attribute and in the markup of the Secrets page; so are the values of a Secret the
+//      proof makes and changes under the page, two of them short and one with markup characters. The shorter values of the cluster's own Secrets (`true`, a namespace's name) are words a page uses for other
+//      reasons, so a substring of one proves nothing: they are NOT looked for, and the proof says which (by Secret and key)
+//   E  controls: the comparison, run on a deliberately altered oracle, detects a wrong number, a missing row, an extra row, a row listed twice, a wrong word, a wrong count, a wrong footer, a wrong age, a wrong
+//      size and a strip where there should be none; the leak scan, run in each engine on a page where values are planted, finds each (in the text, in an attribute, in a hidden element, in a comment, with
+//      markup characters in an attribute, a short one) and finds none on a clean page
+//   F  screenshots, WebKit, void theme, 1440x900: the eight new lists, and the sidebar with its three groups open
+import { spawn, spawnSync } from 'node:child_process';
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const hostRoot = path.resolve(env('OMNIVIEW_HOST_ROOT'));
+const archive = path.resolve(env('PLUGIN_ARCHIVE'));
+const kubeconfig = path.resolve(env('KUBECONFIG_PATH'));
+const out = path.resolve(env('OUT'));
+const engines = env('ENGINES', 'webkit,chromium').split(',');
+
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const results = [];
+function check(scope, name, ok, measured) {
+  const value = measured === undefined ? '' : ` -- ${typeof measured === 'string' ? measured : JSON.stringify(measured)}`;
+  console.log(`${ok ? 'PASS' : 'FAIL'} [${scope}] ${name}${value}`);
+  results.push({ scope, name, ok: Boolean(ok), measured });
+  return ok;
+}
+const info = (scope, name, data) => {
+  console.log(`INFO [${scope}] ${name} -- ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+  results.push({ scope, name, info: true, data });
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+    probe.on('error', reject);
+  });
+}
+
+const children = [];
+/** Every throwaway HOME the proof made. Each holds a copy of the kubeconfig, valid for as long as the cluster lives: they are removed when the proof ends. */
+const profiles = [];
+/** Starts the real Go host in server mode on a throwaway HOME that holds the kubeconfig and the plugin installed by directory. Nothing ambient reaches it. */
+async function startHost(name) {
+  const work = await mkdtemp(path.join(os.tmpdir(), `k2b1-${name}-`));
+  profiles.push(work);
+  const home = path.join(work, 'home');
+  const pluginDir = path.join(home, '.omniview-feature-ui-next', 'plugins', 'kubernetes');
+  await mkdir(path.join(home, '.kube'), { recursive: true });
+  await mkdir(pluginDir, { recursive: true });
+  await cp(kubeconfig, path.join(home, '.kube', 'config'));
+  const untar = spawnSync('tar', ['-xzf', archive, '-C', pluginDir], { encoding: 'utf8' });
+  if (untar.status !== 0) throw new Error(`could not extract ${archive}: ${untar.stderr}`);
+  const port = await freePort();
+  const lines = [];
+  const { PATH, TMPDIR, LANG, USER } = process.env;
+  const child = spawn(path.join(hostRoot, 'bin/Omniview-server'), [], {
+    env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => lines.push(String(chunk)));
+  let exited = false;
+  child.on('exit', () => { exited = true; });
+  children.push({ name, pid: child.pid, child, work, lines, isExited: () => exited });
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if (exited) throw new Error(`the host ${name} exited while starting:\n${lines.join('').slice(-2000)}`);
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) {
+        info('host', `${name}: pid ${child.pid}`, { port, home });
+        return { name, base: `http://127.0.0.1:${port}`, pluginDir, lines, work, pid: child.pid };
+      }
+    } catch { /* not listening yet */ }
+    await sleep(500);
+  }
+  throw new Error(`the host ${name} did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
+}
+
+const alive = (pid) => {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+};
+
+async function stopAll() {
+  try {
+    for (const { name, pid, child, work, lines, isExited } of children) {
+      try {
+        if (!isExited()) {
+          child.kill('SIGTERM');
+          for (let i = 0; i < 50 && !isExited(); i += 1) await sleep(200);
+          if (!isExited()) child.kill('SIGKILL');
+        }
+        // The plugin's own process, started by the host from the throwaway profile: found by that profile's path in its command line. A `pgrep` that cannot start finds none, which is a failed check: a leftover process may be running.
+        const found = spawnSync('pgrep', ['-f', work], { encoding: 'utf8' });
+        if (found.error !== undefined) check('cleanup', `the plugin's own process of the host ${name} could be looked for: pgrep ran`, false, String(found.error));
+        const orphans = (found.stdout ?? '').split('\n').filter(Boolean).map(Number);
+        for (const orphan of orphans) {
+          try { process.kill(orphan, 'SIGTERM'); } catch { /* gone */ }
+        }
+        for (let i = 0; i < 25 && orphans.some(alive); i += 1) await sleep(200);
+        for (const orphan of orphans.filter(alive)) {
+          try { process.kill(orphan, 'SIGKILL'); } catch { /* gone */ }
+        }
+        info('host', `${name}: stopped pid ${pid}${orphans.length > 0 ? `, and its leftover processes ${orphans.join(', ')}` : ''}`, {});
+      } catch (error) {
+        // A host that cannot be stopped cleanly is a defect of the run, and it must not keep the other profiles from being removed.
+        check('cleanup', `the host ${name} was stopped without an error`, false, String(error));
+      } finally {
+        // The host's own log is kept, in OUT, before its profile goes (and when the run failed).
+        await writeFile(path.join(out, `host-${name}.log`), lines.join('')).catch(() => undefined);
+      }
+    }
+  } finally {
+    // A profile holds a copy of the kubeconfig, valid for as long as its cluster lives: every one is removed whatever happened above, and a check says that it is gone.
+    for (const profile of profiles) {
+      await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
+      const gone = await access(profile).then(() => false, () => true);
+      check('cleanup', 'the throwaway profile of a host, with its copy of the kubeconfig, is removed after the host has stopped', gone, profile);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// The oracle: kubectl's own table, parsed by the column offsets of its header (a cell may be empty: a suspended Job has no DURATION, an Ingress with no address has no ADDRESS).
+function kubectl(args, options = {}) {
+  const result = spawnSync('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024, ...options });
+  if (result.status !== 0) throw new Error(`kubectl ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout;
+}
+
+/** `kubectl get <args>` as { 'namespace/name' (or 'name' for a kind of the cluster): { COLUMN: cell } }. */
+function kubectlTable(args) {
+  const lines = kubectl(['get', ...args]).split('\n').filter((line) => line.trim() !== '');
+  const header = lines[0];
+  const starts = [...header.matchAll(/\S+(?: \S+)*/g)].map((match) => ({ name: match[0], at: match.index }));
+  const rows = new Map();
+  for (const line of lines.slice(1)) {
+    const cells = Object.fromEntries(starts.map((column, index) => [column.name, line.slice(column.at, starts[index + 1]?.at).trim()]));
+    rows.set(cells.NAMESPACE === undefined ? cells.NAME : `${cells.NAMESPACE}/${cells.NAME}`, cells);
+  }
+  return rows;
+}
+
+/** `kubectl get <resource> -A -o json`, by `namespace/name` (or `name`). */
+function kubectlObjects(resource, namespaced = true) {
+  const items = JSON.parse(kubectl(['get', resource, ...(namespaced ? ['-A'] : []), '-o', 'json'])).items;
+  return new Map(items.map((item) => [namespaced ? `${item.metadata.namespace}/${item.metadata.name}` : item.metadata.name, item]));
+}
+
+/** The Deployments whose rollout is paused: `spec.paused` is in no printed cell. */
+function pausedDeployments() {
+  const lines = kubectl(['get', 'deployments', '-A', '-o', 'jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}={.spec.paused}{"\\n"}{end}']).split('\n');
+  return new Set(lines.filter((line) => line.endsWith('=true')).map((line) => line.slice(0, line.indexOf('='))));
+}
+
+/** The governing Service of each StatefulSet: `spec.serviceName`, in no printed cell. */
+function serviceNames() {
+  const lines = kubectl(['get', 'statefulsets', '-A', '-o', 'jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}={.spec.serviceName}{"\\n"}{end}']).split('\n').filter(Boolean);
+  return new Map(lines.map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
+}
+
+const UNIT = { y: 365 * 86400, d: 86400, h: 3600, m: 60, s: 1 };
+/** kubectl's AGE and DURATION, in seconds: "6m12s" is 372. */
+const kubectlSeconds = (text) => [...text.matchAll(/(\d+)([ydhms])/g)].reduce((sum, [, amount, unit]) => sum + Number(amount) * UNIT[unit], 0);
+/**
+ * The seconds kubectl's text stands for: HumanDuration drops what is below its coarseness (`29m` is 29m00s to 29m59s, `17h` is 17h to 17h59m, `3d5h` is 3d5h to 3d5h59m), so the text is a window that
+ * starts at what it says and is as wide as its smallest unit.
+ */
+function kubectlWindow(text) {
+  const parts = [...text.matchAll(/(\d+)([ydhms])/g)];
+  const lower = parts.reduce((sum, [, amount, unit]) => sum + Number(amount) * UNIT[unit], 0);
+  return [lower, lower + UNIT[parts.at(-1)[2]]];
+}
+
+/** The window of seconds a page's one-unit age ("8m") stands for. */
+function ageWindow(text) {
+  const [, amount, unit] = /^(\d+)([dhms])$/.exec(text) ?? [];
+  return amount === undefined ? undefined : [Number(amount) * UNIT[unit], (Number(amount) + 1) * UNIT[unit]];
+}
+/** The seconds the page's span ("6 min 12 s", "1 h 2 min", "3 d 4 h", "7 s") says. */
+function spanSeconds(text) {
+  const parts = [...text.matchAll(/(\d+)\s*(d|h|min|s)\b/g)];
+  if (parts.length === 0) return undefined;
+  return parts.reduce((sum, [, amount, unit]) => sum + Number(amount) * { d: 86400, h: 3600, min: 60, s: 1 }[unit], 0);
+}
+
+/** K61.3's rule for a Deployment, a StatefulSet or a DaemonSet, over the counts kubectl printed (the oracle's own coding, not the page's). */
+function workloadWord({ paused = false, desired, ready, available, updated }) {
+  if (paused) return 'Paused';
+  if (desired === 0) return 'Scaled to zero';
+  if (available === 0) return 'Unavailable';
+  if (ready < desired) return 'Partially ready';
+  return updated < desired ? 'Progressing' : 'Available';
+}
+
+/** The same rule for a ReplicaSet: no paused rollout, no template to be on, and `Ready` for the one that is well. */
+function replicaSetWord({ desired, ready, available }) {
+  if (desired === 0) return 'Scaled to zero';
+  if (available === 0) return 'Unavailable';
+  return ready < desired ? 'Partially ready' : 'Ready';
+}
+
+const ratio = (text) => text.split('/').map(Number);
+const dash = '—';
+/** The mock's size units (K61.1), coded again: bytes below a KiB, whole KiB and MiB with thousands grouped, GiB and TiB with one decimal. */
+function bytesText(bytes) {
+  const grouped = (value) => Math.round(value).toLocaleString('en-US');
+  const one = (value) => String(Number(value.toFixed(1)));
+  if (bytes >= 1024 ** 4) return `${one(bytes / 1024 ** 4)} TiB`;
+  if (bytes >= 1024 ** 3) return `${one(bytes / 1024 ** 3)} GiB`;
+  if (bytes >= 1024 ** 2) return `${grouped(bytes / 1024 ** 2)} MiB`;
+  return bytes >= 1024 ? `${grouped(bytes / 1024)} KiB` : `${grouped(bytes)} B`;
+}
+/** The first `max` names and the number of the rest, as the mock's `listText`. */
+const firstNames = (names, max) => (names.length > max ? `${names.slice(0, max).join(', ')} +${names.length - max}` : names.join(', '));
+const orDash = (text) => (text === '<none>' || text === '' ? dash : text);
+
+const WORKLOAD_FILTERS = { Available: (word) => word === 'Available', Progressing: (word) => word === 'Progressing', 'Partially ready': (word) => word === 'Partially ready', Unavailable: (word) => word === 'Unavailable' };
+
+/**
+ * What each kind is: how to read kubectl's row into what the page must say, and the quick filters it must count. `args` is what `kubectl get` takes; `second` is the test id suffix of the line
+ * under the name (`namespace`, or `address` for a Node, or none); `filters` is empty for a kind whose list has no strip. `extra` reads what kubectl's table does not print.
+ */
+const KINDS = {
+  pods: {
+    args: ['pods', '-A'], plural: 'Pods', one: 'Pod', singular: 'pod', headers: ['Name', 'Ready', 'Status', 'Restarts', 'Age'],
+    filters: { Running: (word) => word === 'Running', Pending: (word) => ['Pending', 'ContainerCreating', 'PodInitializing', 'Terminating'].includes(word) || /^Init:\d+\/\d+$/.test(word), Failed: (word) => ['CrashLoopBackOff', 'Error', 'Failed', 'ImagePullBackOff', 'ErrImagePull', 'ErrImageNeverPull', 'OOMKilled', 'Evicted', 'NotReady', 'CreateContainerConfigError', 'CreateContainerError', 'RunContainerError', 'InvalidImageName', 'ContainerCannotRun', 'DeadlineExceeded'].includes(word) || /^Init:(Error|CrashLoopBackOff)/.test(word), Completed: (word) => ['Completed', 'Succeeded'].includes(word) },
+    // A Pod that was never scheduled has no container status: the page shows a dash where kubectl prints 0 (golden.test.ts of the Pods data layer documents it).
+    expect: (cells) => ({ Ready: cells.READY, Status: cells.STATUS, Restarts: cells.RESTARTS.split(' ')[0], Age: cells.AGE, word: cells.STATUS }),
+  },
+  deployments: {
+    args: ['deployments', '-A'], plural: 'Deployments', one: 'Deployment', singular: 'deployment', headers: ['Name', 'Status', 'Ready', 'Up-to-date', 'Age'],
+    filters: WORKLOAD_FILTERS,
+    extra: () => ({ paused: pausedDeployments() }),
+    expect: (cells, id, extra) => {
+      const [ready, desired] = ratio(cells.READY);
+      const word = workloadWord({ paused: extra.paused.has(id), desired, ready, available: Number(cells.AVAILABLE), updated: Number(cells['UP-TO-DATE']) });
+      return { Ready: cells.READY, 'Up-to-date': cells['UP-TO-DATE'], Status: word, Age: cells.AGE, word };
+    },
+  },
+  statefulsets: {
+    args: ['statefulsets', '-A'], plural: 'StatefulSets', one: 'StatefulSet', singular: 'statefulset', headers: ['Name', 'Status', 'Ready', 'Service', 'Age'],
+    filters: WORKLOAD_FILTERS,
+    extra: () => ({ services: serviceNames() }),
+    // kubectl prints READY and AGE only: its counts say ready and desired, so available is read as ready (a rollout in progress is not in them).
+    expect: (cells, id, extra) => {
+      const [ready, desired] = ratio(cells.READY);
+      const word = workloadWord({ desired, ready, available: ready, updated: desired });
+      return { Ready: cells.READY, Status: word, Service: extra.services.get(id), Age: cells.AGE, word };
+    },
+  },
+  daemonsets: {
+    args: ['daemonsets', '-A'], plural: 'DaemonSets', one: 'DaemonSet', singular: 'daemonset', headers: ['Name', 'Status', 'Desired', 'Ready', 'Up-to-date', 'Age'],
+    filters: WORKLOAD_FILTERS,
+    expect: (cells) => {
+      const word = workloadWord({ desired: Number(cells.DESIRED), ready: Number(cells.READY), available: Number(cells.AVAILABLE), updated: Number(cells['UP-TO-DATE']) });
+      return { Desired: cells.DESIRED, Ready: cells.READY, 'Up-to-date': cells['UP-TO-DATE'], Status: word, Age: cells.AGE, word };
+    },
+  },
+  replicasets: {
+    args: ['replicasets', '-A'], plural: 'ReplicaSets', one: 'ReplicaSet', singular: 'replicaset', headers: ['Name', 'Status', 'Desired', 'Current', 'Ready', 'Age'],
+    filters: {},
+    // kubectl prints no AVAILABLE for a ReplicaSet: it is read through kubectl's jsonpath (the API omits a count that is zero).
+    extra: () => ({ available: new Map(kubectl(['get', 'replicasets', '-A', '-o', 'jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}={.status.availableReplicas}{"\\n"}{end}']).split('\n').filter(Boolean).map((line) => [line.slice(0, line.indexOf('=')), Number(line.slice(line.indexOf('=') + 1) || 0)])) }),
+    expect: (cells, id, extra) => {
+      const word = replicaSetWord({ desired: Number(cells.DESIRED), ready: Number(cells.READY), available: extra.available.get(id) });
+      return { Desired: cells.DESIRED, Current: cells.CURRENT, Ready: cells.READY, Status: word, Age: cells.AGE, word };
+    },
+  },
+  jobs: {
+    args: ['jobs', '-A'], plural: 'Jobs', one: 'Job', singular: 'job', headers: ['Name', 'Status', 'Completions', 'Duration', 'Age'],
+    filters: { Running: (word) => word === 'Running', Complete: (word) => word === 'Complete', Failed: (word) => word === 'Failed', Suspended: (word) => word === 'Suspended' },
+    expect: (cells) => ({ Status: cells.STATUS, Completions: cells.COMPLETIONS, Duration: cells.DURATION, Age: cells.AGE, word: cells.STATUS }),
+  },
+  cronjobs: {
+    args: ['cronjobs', '-A'], plural: 'CronJobs', one: 'CronJob', singular: 'cronjob', headers: ['Name', 'Schedule', 'Status', 'Active', 'Last schedule', 'Age'],
+    filters: { Active: (word) => word === 'Active', Suspended: (word) => word === 'Suspended' },
+    // The mock's word is kubectl's SUSPEND in the user's words.
+    expect: (cells) => {
+      const word = cells.SUSPEND === 'True' ? 'Suspended' : 'Active';
+      return { Schedule: cells.SCHEDULE, Status: word, Active: cells.ACTIVE, 'Last schedule': cells['LAST SCHEDULE'], Age: cells.AGE, word };
+    },
+  },
+  configmaps: {
+    args: ['configmaps', '-A'], plural: 'ConfigMaps', one: 'ConfigMap', singular: 'configmap', headers: ['Name', 'Keys', 'Key names', 'Size', 'Age'],
+    filters: {},
+    // kubectl prints only DATA: the names and the bytes are read from the objects, with the oracle's own arithmetic (UTF-8 of data, the bytes binaryData decodes to).
+    extra: () => ({ objects: kubectlObjects('configmaps') }),
+    expect: (cells, id, extra) => {
+      const { data = {}, binaryData = {} } = extra.objects.get(id) ?? {};
+      const names = [...Object.keys(data), ...Object.keys(binaryData)].sort();
+      const size = Object.values(data).reduce((sum, value) => sum + Buffer.byteLength(value, 'utf8'), 0) + Object.values(binaryData).reduce((sum, value) => sum + Buffer.from(value, 'base64').length, 0);
+      return { Keys: cells.DATA, 'Key names': names.length === 0 ? dash : firstNames(names, 3), Size: bytesText(size), Age: cells.AGE };
+    },
+  },
+  secrets: {
+    args: ['secrets', '-A'], plural: 'Secrets', one: 'Secret', singular: 'secret', headers: ['Name', 'Type', 'Keys', 'Age'],
+    filters: {},
+    expect: (cells) => ({ Type: cells.TYPE, Keys: cells.DATA, Age: cells.AGE }),
+  },
+  services: {
+    args: ['services', '-A'], plural: 'Services', one: 'Service', singular: 'service', headers: ['Name', 'Type', 'Cluster IP', 'Ports', 'Age'],
+    filters: {},
+    expect: (cells) => ({ Type: cells.TYPE, 'Cluster IP': orDash(cells['CLUSTER-IP']), Ports: orDash(cells['PORT(S)']).split(',').join(', '), Age: cells.AGE }),
+  },
+  ingresses: {
+    args: ['ingress', '-A'], plural: 'Ingresses', one: 'Ingress', singular: 'ingress', headers: ['Name', 'Class', 'Hosts', 'Address', 'Ports', 'Age'],
+    filters: {},
+    // kubectl prints `*` for the hosts of an Ingress with no rules and the first three hosts of the rest; the list has none for no rules (the mock's) and every host (a rule with no host is `*`).
+    extra: () => ({ objects: kubectlObjects('ingress') }),
+    expect: (cells, id, extra) => {
+      const { spec = {}, status = {} } = extra.objects.get(id) ?? {};
+      const hosts = [...new Set((spec.rules ?? []).map((rule) => rule.host || '*'))];
+      const addresses = (status.loadBalancer?.ingress ?? []).map((entry) => entry.ip || entry.hostname);
+      return { Class: orDash(cells.CLASS), Hosts: hosts.length === 0 ? dash : hosts.join(', '), Address: addresses.length === 0 ? dash : firstNames(addresses, 2), Ports: cells.PORTS, Age: cells.AGE };
+    },
+  },
+  namespaces: {
+    args: ['namespaces'], plural: 'Namespaces', one: 'Namespace', singular: 'namespace', second: null, headers: ['Name', 'Status', 'Age'],
+    filters: { Active: (word) => word === 'Active', Terminating: (word) => word === 'Terminating' },
+    expect: (cells) => ({ Status: cells.STATUS, Age: cells.AGE, word: cells.STATUS }),
+  },
+  nodes: {
+    args: ['nodes', '-o', 'wide'], plural: 'Nodes', one: 'Node', singular: 'node', second: 'address', headers: ['Name', 'Status', 'Version', 'Age'],
+    filters: { Ready: (word) => word === 'Ready', NotReady: (word) => word === 'NotReady', 'Scheduling disabled': (word) => word === 'Scheduling disabled' },
+    // kubectl prints `Ready,SchedulingDisabled` for a Node that is cordoned: the list has one word for it (K61.1), for a Node that is Ready, and shows three numbers of the version.
+    expect: (cells) => {
+      const [status, cordon] = cells.STATUS.split(',');
+      const word = cordon === 'SchedulingDisabled' && status === 'Ready' ? 'Scheduling disabled' : status;
+      return { Status: word, Version: /^v?\d+\.\d+\.\d+/.exec(cells.VERSION)?.[0] ?? cells.VERSION, Age: cells.AGE, word, '@second': cells['INTERNAL-IP'] };
+    },
+  },
+};
+
+const GROUPS = {
+  // The pages of the sidebar's groups, in the mock's order (K61.2): the labels are the kinds' plurals.
+  top: ['nodes', 'namespaces'],
+  Workloads: ['pods', 'deployments', 'statefulsets', 'daemonsets', 'replicasets', 'jobs', 'cronjobs'],
+  Config: ['configmaps', 'secrets'],
+  Network: ['services', 'ingresses'],
+};
+
+/** The oracle for one kind now: a Map of `namespace/name` to what the page must say. */
+function oracleOf(id) {
+  const kind = KINDS[id];
+  const table = kubectlTable(kind.args);
+  const extra = kind.extra?.() ?? {};
+  return new Map([...table].map(([key, cells]) => [key, kind.expect(cells, key, extra)]));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+/** What a person reads off a list page: the headers, one entry per mounted row with its cells by header, the chips, the footer, the state of the body. */
+const readPage = (page, kind) =>
+  page.evaluate(({ testId, second }) => {
+    const text = (element) => (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const root = document.querySelector('[data-ov-state]');
+    const table = root?.querySelector('table') ?? null;
+    const headers = [...(table?.querySelectorAll('thead th') ?? [])].map((th) => text(th));
+    const rows = [...(root?.querySelectorAll('tbody tr') ?? [])].map((row) => {
+      const cells = [...row.children].map((cell) => text(cell));
+      const name = text(row.querySelector(`[data-testid=${testId}-name]`));
+      const namespace = second === 'namespace' ? text(row.querySelector(`[data-testid=${testId}-namespace]`)) : '';
+      const line = second === null ? '' : text(row.querySelector(`[data-testid=${testId}-${second}]`));
+      return { key: namespace === '' ? name : `${namespace}/${name}`, second: line, cells: Object.fromEntries(headers.map((header, index) => [header, cells[index]])), glyphs: [...row.querySelectorAll('[data-ov-glyph]')].map((glyph) => glyph.getAttribute('data-ov-glyph')) };
+    });
+    return {
+      state: root?.getAttribute('data-ov-state') ?? null,
+      headers,
+      rows,
+      rowCount: table === null ? 0 : Number(table.getAttribute('aria-rowcount')) - 1,
+      count: text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) || null,
+      filters: [...(root?.querySelectorAll('[data-ov-block=filters] button') ?? [])].map((chip) => text(chip)),
+      heading: text(document.querySelector('[data-ov-part=header] h1, h1')),
+    };
+  }, { testId: KINDS[kind].singular, second: KINDS[kind].second === undefined ? 'namespace' : KINDS[kind].second });
+
+/**
+ * What differs between the page and the oracle, as readable lines (empty: they agree). `slack` is the seconds of age the two reads may be apart.
+ */
+function compare(kindId, read, oracle, slack = 3) {
+  const kind = KINDS[kindId];
+  const problems = [];
+  const shown = new Map(read.rows.map((row) => [row.key, row]));
+  for (const key of oracle.keys()) if (!shown.has(key)) problems.push(`${key}: missing from the page`);
+  for (const key of shown.keys()) if (!oracle.has(key)) problems.push(`${key}: on the page, not in kubectl`);
+  if (read.rowCount !== read.rows.length) problems.push(`the table says ${read.rowCount} rows and mounts ${read.rows.length}`);
+  // The rows are a list, not a set: a row mounted twice collapses in `shown`, so it is counted apart, and the page mounts as many rows as kubectl lists.
+  const twice = [...new Set(read.rows.map((row) => row.key).filter((key, at, keys) => keys.indexOf(key) !== at))];
+  if (twice.length > 0) problems.push(`${twice.join(', ')}: on the page more than once`);
+  if (read.rows.length !== oracle.size) problems.push(`the page mounts ${read.rows.length} rows and kubectl lists ${oracle.size}`);
+  for (const [key, expected] of oracle) {
+    const row = shown.get(key);
+    if (row === undefined) continue;
+    for (const [header, want] of Object.entries(expected)) {
+      if (header === 'word') continue;
+      if (header === '@second') {
+        if (row.second !== want) problems.push(`${key}: the line under the name page ${JSON.stringify(row.second)} kubectl ${JSON.stringify(want)}`);
+        continue;
+      }
+      const got = row.cells[header];
+      if (header === 'Age' || header === 'Last schedule') {
+        // kubectl prints `<none>` for a CronJob that has not run: the page has a dash.
+        if (want === '<none>') { if (got !== dash) problems.push(`${key}: ${header} page ${got} kubectl (none)`); continue; }
+        const window = ageWindow(got ?? '');
+        const printed = kubectlSeconds(want);
+        if (window === undefined || printed < window[0] - slack || printed >= window[1] + slack) problems.push(`${key}: ${header} page ${got} kubectl ${want}`);
+      } else if (header === 'Duration') {
+        // kubectl prints nothing for a Job that never started; a finished Job's span is exact, a running or failed one counts on, so the two reads may be apart.
+        if (want === '') { if (got !== dash && got !== '') problems.push(`${key}: Duration page ${got} kubectl (none)`); continue; }
+        const seconds = spanSeconds(got ?? '');
+        const [from, to] = kubectlWindow(want);
+        if (seconds === undefined || seconds < from - slack || seconds >= to + slack) problems.push(`${key}: Duration page ${got} kubectl ${want}`);
+      } else if (header === 'Restarts' && got === dash) {
+        // A Pod that was never scheduled has no container status: a dash where kubectl prints 0 (documented in the Pods data layer's golden test).
+        if (want !== '0') problems.push(`${key}: Restarts page ${got} kubectl ${want}`);
+      } else if (got !== want) {
+        problems.push(`${key}: ${header} page ${JSON.stringify(got)} kubectl ${JSON.stringify(want)}`);
+      }
+    }
+  }
+
+  const words = [...oracle.values()].map((entry) => entry.word).filter((word) => word !== undefined);
+  const strip = Object.keys(kind.filters).length > 0;
+  const wantChips = strip ? [`All ${oracle.size}`, ...Object.entries(kind.filters).map(([label, test]) => `${label} ${words.filter(test).length}`)] : [];
+  if (JSON.stringify(read.filters) !== JSON.stringify(wantChips)) problems.push(`quick filters page ${JSON.stringify(read.filters)} kubectl ${JSON.stringify(wantChips)}`);
+  const wantCount = `${oracle.size} ${oracle.size === 1 ? kind.one : kind.plural}`;
+  if (read.count !== wantCount) problems.push(`footer page ${JSON.stringify(read.count)} kubectl ${JSON.stringify(wantCount)}`);
+  if (JSON.stringify(read.headers.slice(0, kind.headers.length)) !== JSON.stringify(kind.headers)) problems.push(`headers page ${JSON.stringify(read.headers)} want ${JSON.stringify(kind.headers)}`);
+  return problems;
+}
+
+/** What of the oracle may not change between two reads of it: everything but the times, which tick by themselves. */
+const stable = (oracle) => JSON.stringify([...oracle].map(([key, entry]) => [key, Object.fromEntries(Object.entries(entry).filter(([header]) => !['Age', 'Last schedule', 'Duration'].includes(header)))]));
+
+/** Polls until the page and kubectl agree (kubectl is read before and after each reading of the page, so a change in between is not a defect) or the deadline; returns the last. */
+async function converge(page, kindId, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  for (let attempt = 1; ; attempt += 1) {
+    const before = oracleOf(kindId);
+    const read = await readPage(page, kindId);
+    const after = oracleOf(kindId);
+    const same = stable(before) === stable(after);
+    const problems = read.state !== 'ready' ? [`the page is ${read.state}`] : compare(kindId, read, after);
+    last = { read, oracle: after, problems, attempt, stable: same };
+    if (problems.length === 0 && same) return last;
+    if (Date.now() > deadline) return last;
+    await page.waitForTimeout(250);
+  }
+}
+
+const hashOf = (kindId, context) => `#/kubernetes/${kindId}?connection=${encodeURIComponent(context)}`;
+
+async function openList(browser, base, kindId, context, { viewport = { width: 1440, height: 4000 } } = {}) {
+  const page = await browser.newPage({ viewport });
+  const seen = { errors: [] };
+  page.on('pageerror', (error) => seen.errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) seen.errors.push(`console: ${message.text().slice(0, 300)}`);
+  });
+  await page.goto(`${base}/${hashOf(kindId, context)}`, { waitUntil: 'load' });
+  return { page, seen };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// D: no Secret value on any page. The values of the cluster's Secrets, read through kubectl, in the clear and as base64: none may be on a page. A value shorter than MIN_VALUE characters (`true`, a
+// namespace's name) is a word a page uses for other reasons, so a substring of it proves nothing: it is not looked for, and the proof says which (by Secret and key, never by value).
+const MIN_VALUE = 12;
+const base64Of = (value) => Buffer.from(value).toString('base64');
+
+function secretValues() {
+  const strings = new Set();
+  const left = [];
+  let count = 0;
+  for (const [id, item] of kubectlObjects('secrets')) {
+    for (const [key, encoded] of Object.entries(item.data ?? {})) {
+      count += 1;
+      const found = [Buffer.from(encoded, 'base64').toString('utf8'), encoded].filter((form) => form.length >= MIN_VALUE);
+      for (const form of found) strings.add(form);
+      if (found.length === 0) left.push(`${id}.${key}`);
+    }
+  }
+
+  return { strings: [...strings], count, left };
+}
+
+/**
+ * Where a page holds any of `values`, as [value, where]: in the text of the document (every element, hidden or not), in every attribute (read from the DOM, so a value with `&`, `"`, `<` or `>` is looked
+ * for as the characters it is, not as the entities the serialiser writes), in the text a person sees, and in the serialised markup (which also holds comments).
+ */
+async function leaksOf(page, values) {
+  const html = await page.content();
+  const { text, shown, attributes } = await page.evaluate(() => ({
+    text: document.documentElement.textContent ?? '',
+    shown: document.body.innerText,
+    attributes: [...document.querySelectorAll('*')].flatMap((element) => element.getAttributeNames().map((name) => element.getAttribute(name) ?? '')).join('\n'),
+  }));
+  const places = [['text', text], ['visible text', shown], ['an attribute', attributes], ['the markup', html]];
+  return values.flatMap((value) => {
+    const where = places.filter(([, haystack]) => haystack.includes(value)).map(([place]) => place);
+    return where.length === 0 ? [] : [[value, where.join(', ')]];
+  });
+}
+
+const leakLines = (found) => found.map(([value, where]) => `${value.slice(0, 6)}… in ${where}`);
+
+async function checkKinds(engineName, engine, host, context, secrets) {
+  const browser = await engine.launch();
+  info(engineName, 'browser', `${engineName} ${browser.version()}`);
+  try {
+    for (const kindId of Object.keys(KINDS)) {
+      const scope = `${engineName}/${kindId}`;
+      const { page, seen } = await openList(browser, host.base, kindId, context);
+      const result = await converge(page, kindId);
+      check(scope, `A: the page lists what \`kubectl get ${KINDS[kindId].args.join(' ')}\` lists: the same objects, numbers, words and ages, the footer and the quick filters (${result.read.rows.length} rows)`, result.problems.length === 0, result.problems.length === 0 ? { rows: result.read.rows.length, count: result.read.count, filters: result.read.filters } : result.problems.slice(0, 12));
+      check(scope, 'A: the heading is the kind\'s plural', result.read.heading === KINDS[kindId].plural, result.read.heading);
+      const states = {};
+      for (const row of result.read.rows) {
+        const word = result.oracle.get(row.key)?.word;
+        if (word !== undefined) states[word] = (states[word] ?? 0) + 1;
+      }
+      info(scope, 'the state words on the page, counted', states);
+      if (kindId === 'secrets') {
+        const found = await leaksOf(page, secrets.strings);
+        check(scope, `D: none of the ${secrets.strings.length} strings (the clear and the base64 form of each of the cluster's Secret values of ${MIN_VALUE} characters or more) is in the text, an attribute or the markup of the page`, found.length === 0, leakLines(found));
+      }
+      check(scope, 'no page error and no console error', seen.errors.filter((entry) => !/activity session unavailable/.test(entry)).length === 0, seen.errors);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+async function checkSidebar(engine, host, context) {
+  const browser = await engine.launch();
+  try {
+    const { page } = await openList(browser, host.base, 'deployments', context, { viewport: { width: 1440, height: 900 } });
+    await page.getByRole('heading', { name: 'Deployments' }).first().waitFor({ timeout: 60_000 });
+    const tree = page.getByRole('navigation', { name: 'Kubernetes resources' });
+    // The groups Config and Network are closed until they are opened: a click on a group opens it.
+    for (const group of ['Config', 'Network']) {
+      const item = tree.getByRole('treeitem', { name: group, exact: true });
+      if ((await item.getAttribute('aria-expanded')) !== 'true') await item.click();
+    }
+    const items = await tree.getByRole('treeitem').evaluateAll((elements) => elements.map((element) => ({ label: (element.textContent ?? '').replace(/\s+/g, ' ').trim(), level: Number(element.getAttribute('aria-level')), selected: element.getAttribute('aria-selected') === 'true' || element.getAttribute('aria-current') === 'page' })));
+    info('sidebar', 'the tree\'s items', items);
+    const labels = items.map((item) => item.label);
+    const plural = (id) => KINDS[id].plural;
+    const want = [...GROUPS.top.map(plural), 'Workloads', ...GROUPS.Workloads.map(plural), 'Config', ...GROUPS.Config.map(plural), 'Network', ...GROUPS.Network.map(plural)];
+    check('sidebar', 'B: the tree is Nodes and Namespaces at the top, then Workloads, Config and Network with their kinds, in the mock\'s order, and nothing else', JSON.stringify(labels) === JSON.stringify(want), labels);
+    check('sidebar', 'B: the top level is level 1 and each kind of a group is level 2', items.every((item) => (['Nodes', 'Namespaces', 'Workloads', 'Config', 'Network'].includes(item.label) ? item.level === 1 : item.level === 2)), items.map((item) => `${item.label}:${item.level}`));
+    check('sidebar', 'B: the entry of the page on screen is the selected one', items.filter((item) => item.selected).map((item) => item.label).join() === 'Deployments', items.filter((item) => item.selected));
+    check('sidebar', 'B: an entry has no count (the data layer gives none cheaply)', labels.every((label) => !/\d/.test(label)), labels);
+    const order = [...GROUPS.top, ...GROUPS.Workloads, ...GROUPS.Config, ...GROUPS.Network];
+    for (const id of [...order.slice(1), order[0]]) {
+      const label = plural(id);
+      await tree.getByRole('treeitem', { name: label, exact: true }).click();
+      await page.getByRole('heading', { name: label, exact: true }).first().waitFor({ timeout: 30_000 });
+      const state = await page.evaluate(() => ({
+        tab: document.querySelector('[role=tab][aria-selected=true]')?.textContent?.trim(),
+        tabs: document.querySelectorAll('[role=tab]').length,
+        selected: [...document.querySelectorAll('nav[aria-label="Kubernetes resources"] [role=treeitem][aria-selected=true]')].map((item) => item.textContent.trim()),
+        heading: document.querySelector('h1')?.textContent?.trim(),
+      }));
+      check('sidebar', `B: a click on ${label} opens its list in this tab: the tab, the heading and the selected entry say ${label}`, state.tab === label && state.heading === label && state.selected.join() === label && state.tabs === 1, state);
+    }
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+}
+
+/** Polls the page for a condition and says how long it took; the page is never reloaded. */
+async function until(page, kindId, done, timeoutMs = 90_000) {
+  const start = Date.now();
+  const seen = [];
+  for (;;) {
+    const read = await readPage(page, kindId);
+    seen.push(read);
+    if (done(read)) return { read, ms: Date.now() - start, seen, timedOut: false };
+    if (Date.now() - start > timeoutMs) return { read, ms: Date.now() - start, seen, timedOut: true };
+    await page.waitForTimeout(150);
+  }
+}
+
+const rowOf = (read, key) => read.rows.find((candidate) => candidate.key === key);
+
+/**
+ * One live change: the list is checked against kubectl, a marker is set on the window, `act` changes the cluster, the page is polled until `done` holds (and never reloaded), and the list is
+ * checked against kubectl again. `states` reads what the page showed on the way, for the log.
+ */
+async function liveCase(browser, host, context, scope, kindId, title, act, done, states = () => '') {
+  const { page } = await openList(browser, host.base, kindId, context);
+  try {
+    const first = await converge(page, kindId);
+    check(scope, `C: before the change, the ${KINDS[kindId].plural} list equals kubectl`, first.problems.length === 0, first.problems.slice(0, 5));
+    await page.evaluate(() => { window.__k2b1Marker = 'loaded-once'; });
+    const started = Date.now();
+    act();
+    const followed = await until(page, kindId, done);
+    const sequence = [...new Set(followed.seen.map((read) => states(read)).filter(Boolean))];
+    check(scope, `C: ${title}: the page follows it with no reload`, !followed.timedOut, { ms: followed.ms, sinceTheCommand: Date.now() - started, sequenceSeen: sequence });
+    const settled = await converge(page, kindId);
+    check(scope, `C: after the change the whole ${KINDS[kindId].plural} list, the footer and the quick filters equal kubectl again`, settled.problems.length === 0, settled.problems.slice(0, 5));
+    check(scope, 'C: the page was not reloaded (a marker set on the window survived)', (await page.evaluate(() => window.__k2b1Marker)) === 'loaded-once');
+    return { page, followed };
+  } catch (error) {
+    await page.close();
+    throw error;
+  }
+}
+
+const apply = (manifest) => {
+  const result = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'apply', '--server-side', '-f', '-'], { input: manifest, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`kubectl apply failed: ${result.stderr}`);
+};
+
+async function checkLive(engineName, engine, host, context, secrets) {
+  const browser = await engine.launch();
+  const tag = `live-${engineName}`;
+  try {
+    // ---- Workloads: a ReplicaSet scaled
+    {
+      const scope = `live/${engineName}/Workloads`;
+      const key = 'more/standalone';
+      const { page } = await liveCase(browser, host, context, scope, 'replicasets', 'rs/standalone scaled from 2 to 3: Desired, Current and Ready follow',
+        () => kubectl(['-n', 'more', 'scale', 'rs/standalone', '--replicas=3']),
+        (read) => ['Desired', 'Current', 'Ready'].every((header) => rowOf(read, key)?.cells[header] === '3') && rowOf(read, key)?.cells.Status === 'Ready',
+        (read) => `${rowOf(read, key)?.cells.Desired}/${rowOf(read, key)?.cells.Current}/${rowOf(read, key)?.cells.Ready} ${rowOf(read, key)?.cells.Status}`);
+      kubectl(['-n', 'more', 'scale', 'rs/standalone', '--replicas=2']);
+      const back = await until(page, 'replicasets', (read) => ['Desired', 'Current', 'Ready'].every((header) => rowOf(read, key)?.cells[header] === '2') && rowOf(read, key)?.cells.Status === 'Ready');
+      check(scope, 'C: scaled back to 2, the page follows', !back.timedOut, { ms: back.ms });
+      await page.close();
+    }
+    // ---- Workloads: a CronJob suspended
+    {
+      const scope = `live/${engineName}/Workloads`;
+      const key = 'more/never';
+      const { page } = await liveCase(browser, host, context, scope, 'cronjobs', 'cronjob/never suspended: its word goes from Active to Suspended and the quick filters count it',
+        () => kubectl(['-n', 'more', 'patch', 'cronjob', 'never', '-p', '{"spec":{"suspend":true}}']),
+        (read) => rowOf(read, key)?.cells.Status === 'Suspended',
+        (read) => rowOf(read, key)?.cells.Status);
+      const filters = (await readPage(page, 'cronjobs')).filters;
+      check(scope, 'C: the strip counts the suspended CronJob', filters.some((chip) => /^Suspended 3$/.test(chip)), filters);
+      kubectl(['-n', 'more', 'patch', 'cronjob', 'never', '-p', '{"spec":{"suspend":false}}']);
+      const back = await until(page, 'cronjobs', (read) => rowOf(read, key)?.cells.Status === 'Active');
+      check(scope, 'C: resumed, the page follows', !back.timedOut, { ms: back.ms });
+      await page.close();
+    }
+    // ---- Config: a ConfigMap made, changed and deleted
+    {
+      const scope = `live/${engineName}/Config`;
+      const key = `more/${tag}`;
+      const { page } = await liveCase(browser, host, context, scope, 'configmaps', `configmap/${tag} made with one key: its row appears with 1 key`,
+        () => kubectl(['-n', 'more', 'create', 'configmap', tag, '--from-literal=a=1']),
+        (read) => rowOf(read, key)?.cells.Keys === '1',
+        (read) => `${rowOf(read, key)?.cells.Keys ?? 'absent'} ${rowOf(read, key)?.cells['Key names'] ?? ''}`);
+      kubectl(['-n', 'more', 'patch', 'configmap', tag, '-p', '{"data":{"b":"twelve bytes."}}']);
+      const added = await until(page, 'configmaps', (read) => rowOf(read, key)?.cells.Keys === '2' && rowOf(read, key)?.cells['Key names'] === 'a, b');
+      check(scope, 'C: a second key added: Keys 2, the names a, b and the size 14 B (1 byte of a and the 13 bytes of `twelve bytes.`) follow', !added.timedOut && rowOf(added.read, key)?.cells.Size === '14 B', { ms: added.ms, size: rowOf(added.read, key)?.cells.Size });
+      kubectl(['-n', 'more', 'delete', 'configmap', tag, '--wait=true']);
+      const gone = await until(page, 'configmaps', (read) => rowOf(read, key) === undefined);
+      check(scope, 'C: deleted, the row leaves the page', !gone.timedOut, { ms: gone.ms });
+      const after = await converge(page, 'configmaps');
+      check(scope, 'C: after the delete the list, the footer equal kubectl', after.problems.length === 0, after.problems.slice(0, 5));
+      await page.close();
+    }
+    // ---- Config: a Secret made, changed and deleted; no value on the page at any moment
+    {
+      const scope = `live/${engineName}/Config`;
+      const key = `more/${tag}`;
+      const secret = (data) => `apiVersion: v1\nkind: Secret\nmetadata: {name: ${tag}, namespace: more}\ntype: Opaque\nstringData:\n${data}`;
+      const planted = ['live-value-one-4be1', 'live-value-two-77d0', 'Zk3~Qv', 'q&"<z>w'];
+      const { page } = await liveCase(browser, host, context, scope, 'secrets', `secret/${tag} made with one key: its row appears with the type Opaque and 1 key`,
+        () => apply(secret(`  one: ${planted[0]}\n`)),
+        (read) => rowOf(read, key)?.cells.Keys === '1' && rowOf(read, key)?.cells.Type === 'Opaque',
+        (read) => `${rowOf(read, key)?.cells.Type ?? 'absent'} ${rowOf(read, key)?.cells.Keys ?? ''}`);
+      apply(secret(`  one: ${planted[0]}\n  two: ${planted[1]}\n  three: '${planted[2]}'\n  four: '${planted[3]}'\n`));
+      const added = await until(page, 'secrets', (read) => rowOf(read, key)?.cells.Keys === '4');
+      check(scope, 'C: three keys added, one value short and one with markup characters: Keys 4 follows', !added.timedOut, { ms: added.ms });
+      const found = await leaksOf(page, [...secrets.strings, ...planted, ...planted.map(base64Of)]);
+      check(scope, `D: the four values of the Secret made and changed under the page, in the clear and as base64, two of them shorter than ${MIN_VALUE} characters, are not in its text, its attributes or its markup`, found.length === 0, leakLines(found));
+      kubectl(['-n', 'more', 'delete', 'secret', tag, '--wait=true']);
+      const gone = await until(page, 'secrets', (read) => rowOf(read, key) === undefined);
+      check(scope, 'C: deleted, the row leaves the page', !gone.timedOut, { ms: gone.ms });
+      await page.close();
+    }
+    // ---- Network: a Service made, changed and deleted
+    {
+      const scope = `live/${engineName}/Network`;
+      const key = `more/${tag}`;
+      const { page } = await liveCase(browser, host, context, scope, 'services', `service/${tag} made with port 80: its row appears with 80/TCP`,
+        () => kubectl(['-n', 'more', 'create', 'service', 'clusterip', tag, '--tcp=80:8080']),
+        (read) => rowOf(read, key)?.cells.Ports === '80/TCP',
+        (read) => `${rowOf(read, key)?.cells.Type ?? 'absent'} ${rowOf(read, key)?.cells['Cluster IP'] ?? ''} ${rowOf(read, key)?.cells.Ports ?? ''}`);
+      kubectl(['-n', 'more', 'patch', 'service', tag, '--type=json', '-p', '[{"op":"add","path":"/spec/ports/-","value":{"name":"https","port":443,"protocol":"TCP","targetPort":8443}}]']);
+      const added = await until(page, 'services', (read) => rowOf(read, key)?.cells.Ports === '80/TCP, 443/TCP');
+      check(scope, 'C: a second port added: `80/TCP, 443/TCP` follows', !added.timedOut, { ms: added.ms });
+      kubectl(['-n', 'more', 'delete', 'service', tag, '--wait=true']);
+      const gone = await until(page, 'services', (read) => rowOf(read, key) === undefined);
+      check(scope, 'C: deleted, the row leaves the page', !gone.timedOut, { ms: gone.ms });
+      await page.close();
+    }
+    // ---- Network: an Ingress given an address
+    {
+      const scope = `live/${engineName}/Network`;
+      const key = 'more/plain';
+      const patch = (ingress) => kubectl(['-n', 'more', 'patch', 'ingress', 'plain', '--subresource=status', '--type=merge', '-p', JSON.stringify({ status: { loadBalancer: { ingress } } })]);
+      const { page } = await liveCase(browser, host, context, scope, 'ingresses', 'ingress/plain given an address (the status a controller writes): the Address column follows',
+        () => patch([{ ip: '10.0.0.9' }]),
+        (read) => rowOf(read, key)?.cells.Address === '10.0.0.9',
+        (read) => rowOf(read, key)?.cells.Address);
+      patch(null);
+      const cleared = await until(page, 'ingresses', (read) => rowOf(read, key)?.cells.Address === dash);
+      check(scope, 'C: the address removed, the dash follows', !cleared.timedOut, { ms: cleared.ms });
+      await page.close();
+    }
+    // ---- The cluster: a Node cordoned
+    {
+      const scope = `live/${engineName}/Cluster`;
+      const node = kubectl(['get', 'nodes', '-o', 'jsonpath={.items[0].metadata.name}']).trim();
+      const { page } = await liveCase(browser, host, context, scope, 'nodes', `node/${node} cordoned: its word goes from Ready to Scheduling disabled and the quick filters count it`,
+        () => kubectl(['cordon', node]),
+        (read) => rowOf(read, node)?.cells.Status === 'Scheduling disabled',
+        (read) => rowOf(read, node)?.cells.Status);
+      const filters = (await readPage(page, 'nodes')).filters;
+      check(scope, 'C: the strip counts it', filters.some((chip) => /^Scheduling disabled 1$/.test(chip)) && filters.some((chip) => /^Ready 0$/.test(chip)), filters);
+      kubectl(['uncordon', node]);
+      const back = await until(page, 'nodes', (read) => rowOf(read, node)?.cells.Status === 'Ready');
+      check(scope, 'C: uncordoned, the page follows', !back.timedOut, { ms: back.ms });
+      await page.close();
+    }
+    // ---- The cluster: a Namespace made and deleted
+    {
+      const scope = `live/${engineName}/Cluster`;
+      const name = tag;
+      const { page } = await liveCase(browser, host, context, scope, 'namespaces', `namespace/${name} made: its row appears, Active`,
+        () => kubectl(['create', 'namespace', name]),
+        (read) => rowOf(read, name)?.cells.Status === 'Active',
+        (read) => rowOf(read, name)?.cells.Status);
+      kubectl(['delete', 'namespace', name, '--wait=false']);
+      const gone = await until(page, 'namespaces', (read) => rowOf(read, name) === undefined);
+      check(scope, 'C: deleted, the row leaves the page (it may be seen Terminating on the way)', !gone.timedOut, { ms: gone.ms, seen: [...new Set(gone.seen.map((read) => rowOf(read, name)?.cells.Status ?? 'gone'))] });
+      const after = await converge(page, 'namespaces');
+      check(scope, 'C: after the delete the list, the footer and the chips equal kubectl', after.problems.length === 0, after.problems.slice(0, 5));
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+/** kubectl's age as the page says it: one unit, the first (`2m4s` is `2m`, `3d5h` is `3d`). */
+const oneUnit = (age) => /^\d+[ydhms]/.exec(age)?.[0] ?? age;
+
+function checkControls() {
+  const kindId = 'deployments';
+  const oracle = oracleOf(kindId);
+  const good = {
+    state: 'ready',
+    headers: KINDS[kindId].headers,
+    rows: [...oracle].map(([key, expected]) => ({ key, second: '', cells: { Name: key, Status: expected.Status, Ready: expected.Ready, 'Up-to-date': expected['Up-to-date'], Age: oneUnit(expected.Age) } })),
+    rowCount: oracle.size,
+    count: `${oracle.size} Deployments`,
+    filters: [`All ${oracle.size}`, ...Object.entries(KINDS[kindId].filters).map(([label, test]) => `${label} ${[...oracle.values()].filter((entry) => test(entry.word)).length}`)],
+  };
+  check('control', 'E: an exact page passes the comparison', compare(kindId, good, oracle).length === 0, compare(kindId, good, oracle));
+  const mutate = (change) => {
+    const clone = structuredClone(good);
+    change(clone);
+    return compare(kindId, clone, oracle);
+  };
+  check('control', 'E: a wrong READY is detected', mutate((page) => { page.rows[0].cells.Ready = '9/9'; }).some((line) => /Ready page/.test(line)));
+  check('control', 'E: a missing row is detected', mutate((page) => { page.rows.pop(); page.rowCount -= 1; }).some((line) => /missing from the page/.test(line)));
+  check('control', 'E: an extra row is detected', mutate((page) => { page.rows.push({ key: 'x/extra', cells: {} }); page.rowCount += 1; }).some((line) => /not in kubectl/.test(line)));
+  check('control', 'E: a wrong state word is detected', mutate((page) => { page.rows[0].cells.Status = 'Unavailable'; }).some((line) => /Status page/.test(line)));
+  check('control', 'E: a wrong quick-filter count is detected', mutate((page) => { page.filters[1] = 'Available 99'; }).some((line) => /quick filters/.test(line)));
+  check('control', 'E: a wrong footer is detected', mutate((page) => { page.count = '3 Deployments'; }).some((line) => /footer/.test(line)));
+  check('control', 'E: an age far from kubectl\'s is detected', mutate((page) => { page.rows[0].cells.Age = '9d'; }).some((line) => /Age page/.test(line)));
+
+  // A kind of the new ones, with the cells kubectl does not print: a ConfigMap's size and names.
+  const maps = oracleOf('configmaps');
+  const exact = {
+    state: 'ready',
+    headers: KINDS.configmaps.headers,
+    rows: [...maps].map(([key, expected]) => ({ key, second: '', cells: { Name: key, Keys: expected.Keys, 'Key names': expected['Key names'], Size: expected.Size, Age: oneUnit(expected.Age) } })),
+    rowCount: maps.size,
+    count: `${maps.size} ConfigMaps`,
+    filters: [],
+  };
+  check('control', 'E: an exact ConfigMaps page passes the comparison (no strip, none expected)', compare('configmaps', exact, maps).length === 0, compare('configmaps', exact, maps));
+  const alter = (change) => { const clone = structuredClone(exact); change(clone); return compare('configmaps', clone, maps); };
+  check('control', 'E: a wrong Size is detected', alter((page) => { page.rows[0].cells.Size = '999 MiB'; }).some((line) => /Size page/.test(line)));
+  check('control', 'E: a wrong list of Key names is detected', alter((page) => { page.rows[0].cells['Key names'] = 'nope'; }).some((line) => /Key names page/.test(line)));
+  check('control', 'E: a strip where the kind has none is detected', alter((page) => { page.filters = ['All 25']; }).some((line) => /quick filters/.test(line)));
+
+  // The line under a Node's name.
+  const nodes = oracleOf('nodes');
+  const node = {
+    state: 'ready',
+    headers: KINDS.nodes.headers,
+    rows: [...nodes].map(([key, expected]) => ({ key, second: expected['@second'], cells: { Name: key, Status: expected.Status, Version: expected.Version, Age: oneUnit(expected.Age) } })),
+    rowCount: nodes.size,
+    count: `${nodes.size} ${nodes.size === 1 ? 'Node' : 'Nodes'}`,
+    filters: [`All ${nodes.size}`, ...Object.entries(KINDS.nodes.filters).map(([label, test]) => `${label} ${[...nodes.values()].filter((entry) => test(entry.word)).length}`)],
+  };
+  check('control', 'E: an exact Nodes page passes the comparison', compare('nodes', node, nodes).length === 0, compare('nodes', node, nodes));
+  const wrongAddress = structuredClone(node);
+  wrongAddress.rows[0].second = '10.9.9.9';
+  check('control', 'E: a wrong address under a Node\'s name is detected', compare('nodes', wrongAddress, nodes).some((line) => /under the name/.test(line)));
+
+  // A row listed twice: the page mounts A, A, B for kubectl's A, B. The table's own count says three rows, so that count alone does not see it.
+  check('control', 'E: a row listed twice is detected', mutate((page) => { page.rows.push(structuredClone(page.rows[0])); page.rowCount += 1; }).some((line) => /more than once/.test(line)));
+}
+
+/** The leak scan, controlled in an engine on a page where values are planted: it finds each, and finds none on a clean page. */
+async function checkLeakScan(engineName, engine) {
+  const browser = await engine.launch();
+  try {
+    const scope = `control/${engineName}`;
+    const planted = { text: 'planted-in-text-4c1d', attribute: 'planted-in-attribute-9e2a', hidden: 'planted-in-hidden-element-1a8c', comment: 'planted-in-comment-7b3f', markup: 'm&"<k>w', short: 'Zk3~Qv' };
+    const all = Object.values(planted);
+    const page = await browser.newPage();
+    await page.setContent('<!doctype html><html><body><main></main></body></html>');
+    const clean = await leaksOf(page, all);
+    check(scope, 'E: the leak scan finds nothing on a page that holds none of the planted values', clean.length === 0, leakLines(clean));
+    await page.evaluate((values) => {
+      const main = document.querySelector('main');
+      const add = (set) => {
+        const element = document.createElement('p');
+        set(element);
+        main.append(element);
+      };
+      add((element) => { element.textContent = values.text; });
+      add((element) => { element.setAttribute('data-ov-tip', values.attribute); });
+      add((element) => { element.hidden = true; element.textContent = values.hidden; });
+      main.append(document.createComment(values.comment));
+      add((element) => { element.setAttribute('aria-label', values.markup); });
+      add((element) => { element.setAttribute('title', values.short); });
+    }, planted);
+    const found = await leaksOf(page, all);
+    check(scope, 'E: the leak scan finds each planted value: in the text, in an attribute, in an element that is hidden, in a comment, with markup characters in an attribute, and a short one', found.length === all.length, leakLines(found));
+    const others = await leaksOf(page, all.map(base64Of));
+    check(scope, 'E: and none of their base64 forms, which were not planted: the scan does not match everything', others.length === 0, leakLines(others));
+    // The first version of this scan read the serialised markup and the visible text for the raw value. A value with markup characters in an attribute is serialised as entities, so it missed that value.
+    const markup = await page.content();
+    const visible = await page.evaluate(() => document.body.innerText);
+    check(scope, 'E: the value with markup characters is in the page only as entities: a search of the serialised markup and the visible text for the raw value would have missed it', !markup.includes(planted.markup) && !visible.includes(planted.markup));
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+}
+
+async function screenshots(host, context) {
+  const browser = await pw.webkit.launch();
+  try {
+    const theme = async (page) => page.evaluate(() => document.documentElement.getAttribute('data-ov-theme'));
+    for (const kindId of ['replicasets', 'cronjobs', 'configmaps', 'secrets', 'services', 'ingresses', 'namespaces', 'nodes']) {
+      const { page } = await openList(browser, host.base, kindId, context, { viewport: { width: 1440, height: 900 } });
+      await page.waitForFunction((plural) => new RegExp(`^\\d+ ${plural}$|^1 `).test(document.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')?.textContent?.trim() ?? ''), KINDS[kindId].plural, { timeout: 60_000 });
+      await page.waitForTimeout(1500);
+      const file = path.join(out, `plugin-${kindId}-webkit-${await theme(page)}-1440x900.png`);
+      await page.screenshot({ path: file });
+      info('screenshot', file, {});
+      await page.close();
+    }
+    // The sidebar with its three groups open, on the Secrets list.
+    const { page } = await openList(browser, host.base, 'secrets', context, { viewport: { width: 1440, height: 900 } });
+    await page.getByRole('heading', { name: 'Secrets' }).first().waitFor({ timeout: 60_000 });
+    const tree = page.getByRole('navigation', { name: 'Kubernetes resources' });
+    for (const group of ['Workloads', 'Config', 'Network']) {
+      const item = tree.getByRole('treeitem', { name: group, exact: true });
+      if ((await item.getAttribute('aria-expanded')) !== 'true') await item.click();
+    }
+    await page.waitForTimeout(1500);
+    const file = path.join(out, `plugin-sidebar-webkit-${await theme(page)}-1440x900.png`);
+    await page.screenshot({ path: file });
+    info('screenshot', file, {});
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+await mkdir(out, { recursive: true });
+const context = spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'config', 'current-context'], { encoding: 'utf8' }).stdout.trim();
+let failed = true;
+try {
+  info('setup', 'host', { root: hostRoot, commit: spawnSync('git', ['-C', hostRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim() });
+  info('setup', 'plugin archive', { archive, bytes: (await readFile(archive)).length });
+  info('setup', 'cluster', { kubeconfig, context, server: spawnSync('kubectl', ['--kubeconfig', kubeconfig, 'version', '-o', 'json'], { encoding: 'utf8' }).stdout.match(/"gitVersion": "(v[^"]+)"/g)?.pop() });
+  const secrets = secretValues();
+  info('setup', 'the Secret values of the cluster the leak scan looks for', { values: secrets.count, strings: secrets.strings.length, lookedFor: `the clear and the base64 form of each value of ${MIN_VALUE} characters or more`, notLookedFor: secrets.left });
+  checkControls();
+  for (const name of engines) await checkLeakScan(name, pw[name]);
+  const host = await startHost('with-plugin');
+  for (const name of engines) await checkKinds(name, pw[name], host, context, secrets);
+  await checkSidebar(pw.webkit, host, context);
+  for (const name of engines) await checkLive(name, pw[name], host, context, secrets);
+  await screenshots(host, context);
+} finally {
+  await stopAll();
+  await writeFile(path.join(out, 'k2b1-proof-report.json'), `${JSON.stringify({ at: new Date().toISOString(), engines, results }, null, 2)}\n`);
+}
+failed = results.some((entry) => entry.ok === false);
+
+const total = results.filter((entry) => entry.ok !== undefined).length;
+console.log(`${failed ? 'FAIL' : 'PASS'}: ${results.filter((entry) => entry.ok === true).length} of ${total} checks`);
+process.exit(failed ? 1 : 0);
