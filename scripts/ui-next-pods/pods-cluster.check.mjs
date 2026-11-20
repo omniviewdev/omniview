@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkDetail, checkLogs, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDetail, checkLogs, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
 const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
@@ -114,6 +114,13 @@ if (mode === 'control-fixture-absent') {
       await kubectl(kubeconfig, ['delete', 'pod', 'live-probe', '-n', 'checkout', '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']).catch(() => undefined);
       await page.close();
     }
+  });
+
+  // The sidebar's counts (Q2): the kinds on screen (the Workloads group, which holds the page on screen, and the top level) say the number `kubectl get <kind> -A --no-headers | wc -l` says, the open kind exactly and a
+  // kind of none or one exactly (counts.mjs, with its controls). Parity mode only: the controls stop before any Pod is listed.
+  test('the sidebar counts the kinds on screen as kubectl does', async () => {
+    const { rows, expected } = await checkCounts({ browser, baseURL, kubeconfig });
+    assert.ok(rows.length >= Object.keys(expected).length, `the sidebar lists the counted kinds: ${JSON.stringify(rows)}`);
   });
 
   // The Pod detail page the list links to (the plugin's `kubernetes/pod` page): opened by the click on the Pod's name, it prints what `kubectl get pod -o json` says
