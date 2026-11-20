@@ -1,5 +1,7 @@
 name: UI next kit probes
 
+# EXPERIMENT (N24-K1, not for merge): the same five shards, but packages and ui-next are built ONCE in the job `build`, shipped as an artifact, and unpacked in each shard.
+
 # Slice 1a, PRs 1a.4d and 1a.3c (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the shell's probes at 1440 x 900 and
 # 1280 x 800; tracker row N23 moves the first to the second), against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json for the parts and mock-table.json for the table, measured
 # from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs, which writes where each came from into the file; the design lab is private and is never needed here).
@@ -47,20 +49,10 @@ env:
   OMNIVIEW_UI: next
 
 jobs:
-  shard:
-    name: Kit probes shard ${{ matrix.shard }}
-    # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
-    # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
+  build:
+    name: Kit probes build
     runs-on: ubuntu-24.04
-    # A shard takes about 9 minutes when the browsers install in one (setup 2, probes 4 to 7; the longest shard is the panel probe and its controls), so twice that is 18. It is 30 because the browser install below
-    # is bounded by its own retry: a first attempt that hangs is killed after 15 minutes and the second one runs, and a limit under 25 would cut that second attempt off and turn a healed install into a red shard.
-    timeout-minutes: 30
-    strategy:
-      # Every shard runs to the end: a shard that fails does not stop the others, so one push shows every failing probe, and `Kit probes` below needs all of them.
-      fail-fast: false
-      matrix:
-        # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
-        shard: [1, 2, 3, 4, 5]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,22 +87,89 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Before anything is built or downloaded: the check (every probe script of the probe directories is in exactly one shard, every shard is in the matrix above), then the tests of the check and of the job below, then what
-      # this shard runs. The check comes first so that a probe that is in no shard fails here, in every shard, in a few seconds, with its path on the error line and nothing before it.
+      - name: Build the workspace packages (the kit among them)
+        run: |
+          task packages
+          git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+
+      - name: Build ui-next once
+        run: OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
+
+      - name: Pack the build
+        run: |
+          mkdir -p "$RUNNER_TEMP/stage"
+          tar -czf "$RUNNER_TEMP/stage/packages.tgz" packages/*/dist
+          tar -czf "$RUNNER_TEMP/stage/ui.tgz" -C "$RUNNER_TEMP" ui-next-dist
+          ls -l "$RUNNER_TEMP/stage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-probe-build
+          path: ${{ runner.temp }}/stage/*.tgz
+          retention-days: 1
+          compression-level: 0
+
+  shard:
+    needs: build
+    name: Kit probes shard ${{ matrix.shard }}
+    # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
+    # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
+    runs-on: ubuntu-24.04
+    # A shard takes about 9 minutes when the browsers install in one (setup 2, probes 4 to 7; the longest shard is the panel probe and its controls), so twice that is 18. It is 30 because the browser install below
+    # is bounded by its own retry: a first attempt that hangs is killed after 15 minutes and the second one runs, and a limit under 25 would cut that second attempt off and turn a healed install into a red shard.
+    timeout-minutes: 30
+    strategy:
+      # Every shard runs to the end: a shard that fails does not stop the others, so one push shows every failing probe, and `Kit probes` below needs all of them.
+      fail-fast: false
+      matrix:
+        # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Check the shard table and plan this shard
         id: plan
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           node scripts/ci/probe-shards.mjs check
-          node --test scripts/ci/probe-shards.test.mjs
           node scripts/ci/probe-shards.mjs plan "$SHARD"
 
-      - name: Build the workspace packages (the kit among them)
+      - uses: actions/download-artifact@v4
+        with:
+          name: kit-probe-build
+          path: ${{ runner.temp }}/stage
+
+      - name: Unpack the build
         run: |
-          task packages
-          # `task packages` rewrites this tracked shim (docs/ui-next/AGENTS.md, Commands); it is not part of the change under test.
-          git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+          tar -xzf "$RUNNER_TEMP/stage/packages.tgz"
+          tar -xzf "$RUNNER_TEMP/stage/ui.tgz" -C "$RUNNER_TEMP"
+          echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
 
       - name: Cache the browsers
         id: browsers
@@ -132,14 +191,6 @@ jobs:
           done
           echo "::error::Playwright browser install failed twice"
           exit 1
-
-      # The kit's probes (parts, table, fonts, tooltip, log view) read one production build of ui-next, made here once; the shell's probes build their own fixtures, so a shard that has none of the first skips this step.
-      # The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
-      - name: Build ui-next once, for the probes of this shard that read it
-        if: steps.plan.outputs.dist == 'true'
-        run: |
-          echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
-          OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
 
       # Every probe of the shard, with its negative controls, one after the other, as the single job ran them (scripts/ci/probe-shards.mjs: the same scripts, the same env, FONT_DELAY_MS=40 included). All of them run even
       # when one fails, so that a push shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, and writes the seconds of every probe to the job summary.
