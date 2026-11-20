@@ -31,6 +31,8 @@ const AXE = process.env.AXE ?? createRequire(import.meta.url).resolve('axe-core/
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
 const SHOTS = process.env.SHOTS;
+// ONLY=busy runs the busy section alone (the loader's timing and reduced motion), for repeated runs under load.
+const ONLY = process.env.ONLY;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -357,27 +359,73 @@ async function keyboard(browser, url, viewport, engineName, where) {
 }
 
 // ---- busy -------------------------------------------------------------------------------------------------------------------
+// The rule (packages/kit/src/shared/useCommand.ts: LOADER_DELAY_MS = 1000; design 13 M2, 05 local loading): a busy command says so at once and its icon
+// becomes the loader after one second. The delay is a JS timer, `setTimeout(…, LOADER_DELAY_MS)` started in the effect that runs after the commit
+// of `busy` (no CSS animation or transition delay is involved).
+//
+// Measured in the page, on one clock (`performance.now()`), at the moment each thing happens:
+//   timer set    the call of `setTimeout` made while the busy button shows its icon (a wrapper installed before the page's scripts records it)
+//   loader       the MutationObserver record that turns the glyph into the loader (the commit of the timer's own `setState`: it can only be seen late)
+//   icon         the first MutationObserver record with the icon (seen late as well)
+// The old assertion took `loader - icon`. React runs the effect (the timer starts) inside the task that commits the icon, and the observer's record is
+// delivered when that task ends: `icon` is therefore later than the timer's start by the rest of the task (15 to 27 ms on a quiet machine, more than 100 ms on
+// a loaded one: the 897 and 898 ms of runs 44667706048 and others, against a lower bound of 900), so `loader - icon = delay - lateness`. `loader - timer set` carries no such error.
+const LOADER_DELAY_MS = 1000;
+// performance.now() is whole milliseconds in WebKit: a difference of two readings is off by one at most.
+const CLOCK_MS = 1;
+// What the page may add to the delay (a timer fires late on a loaded runner, the commit of the loader follows) and how long after the icon the timer may start.
+const LOADER_LATE_MS = 300;
+
+/** What is wrong with a busy button's icon-to-loader timing, or undefined. `timeline` records glyph changes, `timers` the `setTimeout` calls made while the icon showed. */
+function judgeLoader({ timeline, timers }) {
+  const first = timeline[0];
+  const swapped = timeline.find((entry) => entry.glyph === 'loader');
+  if (first?.glyph !== 'refresh' || swapped === undefined) return `busy timeline ${JSON.stringify(timeline)}: expected refresh, then loader`;
+  // The timer that ended in the loader: the longest one that fired before the loader was committed (the latest, among equals).
+  const started = timers.filter((timer) => timer.fired !== undefined && timer.fired <= swapped.at).sort((a, b) => b.delay - a.delay || b.fired - a.fired)[0];
+  if (started === undefined) return `no timer set while the icon showed had fired when the loader came (timers ${JSON.stringify(timers)})`;
+  const waited = swapped.at - started.set;
+  if (waited < LOADER_DELAY_MS - CLOCK_MS || waited > LOADER_DELAY_MS + LOADER_LATE_MS) {
+    return `the loader came ${waited.toFixed(1)} ms after its timer was set (timer of ${started.delay} ms set at ${started.set.toFixed(1)}, fired at ${started.fired.toFixed(1)}, loader at ${swapped.at.toFixed(1)}), expected ${LOADER_DELAY_MS} to ${LOADER_DELAY_MS + LOADER_LATE_MS} ms`;
+  }
+  if (started.set - first.at > LOADER_LATE_MS) return `the timer was set ${(started.set - first.at).toFixed(1)} ms after the icon appeared: the second does not start with the icon`;
+  return undefined;
+}
+
 async function busy(browser, url, viewport, where) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
   await page.addInitScript(() => {
-    window.__busy = [];
+    window.__busy = { timeline: [], timers: [] };
     const start = performance.now();
+    const icon = () => document.querySelector('[data-example="Button/Busy"] svg');
     const note = () => {
-      const svg = document.querySelector('[data-example="Button/Busy"] svg');
-      if (!svg) return;
-      const glyph = svg.getAttribute('data-ov-glyph');
-      if (window.__busy.at(-1)?.glyph !== glyph) window.__busy.push({ glyph, at: Math.round(performance.now() - start) });
+      const glyph = icon()?.getAttribute('data-ov-glyph');
+      if (glyph === undefined) return;
+      if (window.__busy.timeline.at(-1)?.glyph !== glyph) window.__busy.timeline.push({ glyph, at: performance.now() - start });
     };
     new MutationObserver(note).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-ov-glyph'] });
+    const nativeSetTimeout = window.setTimeout;
+    window.setTimeout = function setTimeoutNoted(handler, delay, ...args) {
+      if (typeof handler !== 'function' || icon()?.getAttribute('data-ov-glyph') !== 'refresh') return nativeSetTimeout.call(this, handler, delay, ...args);
+      const timer = { delay, set: performance.now() - start, fired: undefined };
+      window.__busy.timers.push(timer);
+      return nativeSetTimeout.call(
+        this,
+        function noted(...rest) {
+          timer.fired = performance.now() - start;
+          return handler.apply(this, rest);
+        },
+        delay,
+        ...args,
+      );
+    };
   });
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForTimeout(1800);
-  const timeline = await page.evaluate(() => window.__busy);
-  const swapped = timeline.find((entry) => entry.glyph === 'loader');
-  const first = timeline[0];
-  if (first?.glyph !== 'refresh' || swapped === undefined) fail(where, `busy timeline ${JSON.stringify(timeline)}: expected refresh, then loader`);
-  else if (swapped.at - first.at < 900 || swapped.at - first.at > 1300) fail(where, `the loader came ${swapped.at - first.at} ms after the icon, not about one second`);
+  const { timeline, timers } = await page.evaluate(() => window.__busy);
+  const wrong = judgeLoader({ timeline, timers });
+  if (wrong !== undefined) fail(where, wrong);
   const spinning = await page.evaluate(() => getComputedStyle(document.querySelector('[data-example="Button/Busy"] svg')).animationName);
   if (spinning === 'none') fail(where, 'the loader does not turn');
   const ariaBusy = await page.evaluate(() => document.querySelector('[data-example="Button/Busy"] button').getAttribute('aria-busy'));
@@ -391,7 +439,7 @@ async function busy(browser, url, viewport, where) {
   const reduced = await quiet.evaluate(() => ({ glyph: document.querySelector('[data-example="Button/Busy"] svg').getAttribute('data-ov-glyph'), animation: getComputedStyle(document.querySelector('[data-example="Button/Busy"] svg')).animationName }));
   if (reduced.glyph !== 'loader' || reduced.animation !== 'none') fail(where, `reduced motion: ${JSON.stringify(reduced)}, expected a still loader`);
   await still.close();
-  report.keyboard[where].busy = { timeline, spinning, reducedMotion: reduced };
+  (report.keyboard[where] ??= {}).busy = { timeline, timers, spinning, reducedMotion: reduced };
 }
 
 // ---- a11y -------------------------------------------------------------------------------------------------------------------
@@ -492,6 +540,11 @@ try {
     for (const viewportName of viewportNames) {
       const viewport = VIEWPORTS[viewportName];
       const where = `${engineName} ${viewportName}`;
+      if (ONLY === 'busy') {
+        await busy(browser, partsUrl, viewport, where);
+        continue;
+      }
+
       const { page, context, errors } = await open(browser, partsUrl, viewport);
       report.parity[where] = { buttons: await parity(page, where), icons: await icons(page, where) };
       await countsAndRootWrites(page, where);
