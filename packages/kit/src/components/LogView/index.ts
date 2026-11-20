@@ -10,4 +10,5 @@ export type {
   LogFeedSource,
   LogFeedState,
   LogFeedStats,
+  LogTimestamps,
 } from '../../log/types';

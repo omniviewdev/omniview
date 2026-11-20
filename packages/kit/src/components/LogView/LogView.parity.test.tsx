@@ -30,6 +30,14 @@ describe('the cells of the list (the mock\'s table cells: base.css 1222-1235)', 
     expect(rule('.level').color).toBeUndefined();
     expect(rule('.text').color).toBeUndefined();
   });
+
+  // The mock's Time column is `--plog-time: 112px` and, for UTC, 120 px (shell-panel.css 92 and 93: the clock is 8 px wider with its Z). The kit's column is the same custom property on the root, and the head follows it.
+  it('is 112 px wide, and 120 px when the view shows UTC (the Z is one character more), in the rows and in the head', () => {
+    expect(rule('.root')['--_time']).toBe('112px');
+    expect(rule('.root[data-ov-timestamps=\'utc\']')['--_time']).toBe('120px');
+    expect(rule('.time').flex).toBe('0 0 var(--_time)');
+    expect(rule('.head[data-ov-column=\'time\']')['flex-basis']).toBe('var(--_time)');
+  });
 });
 
 describe('the Source column (the mock\'s Logs table of a session with more than one source: shell-panel.css 103, base.css 1368 and 1585, shell-panel.js 332 and 1702)', () => {

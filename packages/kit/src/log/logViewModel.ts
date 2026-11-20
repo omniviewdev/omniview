@@ -22,8 +22,8 @@ import { LineBuffer } from './lineBuffer';
 import { LineSearch, type SearchOptions, type SearchStatus } from './lineSearch';
 import { LineView } from './lineView';
 import { LogSources, type SourceTag } from './sources';
-import { formatClock } from './time';
-import type { LogEntry, LogFeed } from './types';
+import { formatStamp } from './time';
+import type { LogEntry, LogFeed, LogTimestamps } from './types';
 import { windowOf, type RowWindow } from './window';
 
 /** The most entries a view keeps unless it is told otherwise: the cap of the old viewer (HLT-4, MNR-L2). */
@@ -175,15 +175,16 @@ function sameStats(a: StatsSnapshot, b: StatsSnapshot): boolean {
 }
 
 /**
- * The text of an entry as it is copied: the clock, the level, the text; a marker as its own sentence. With a source `label` (a view that shows its source column) the label comes after the level and two
- * spaces set it off from the text, as the mock copies a line (shell-panel.js 2062 `lineText`: the clock, the level padded to five, the label, two spaces, the message).
+ * The text of an entry as it is copied: the clock, the level, the text; a marker as its own sentence. The clock is the one the rows show (`timestamps`: local, or UTC with its Z). With a source `label` (a line that
+ * has a source) the label comes after the level and two spaces set it off from the text, as the mock copies a line (shell-panel.js 2062 `lineText`: the clock, the level padded to five, the label, two spaces,
+ * the message). The mock names the source of every line it copies, whether or not its Source column shows; a line that names none is copied without a label.
  */
-export function entryText(entry: LogEntry, label?: string): string {
+export function entryText(entry: LogEntry, label?: string, timestamps: LogTimestamps = 'local'): string {
   if (entry.kind === 'gap') {
     return `-- ${entry.dropped.toLocaleString('en-US')} ${entry.dropped === 1 ? 'line' : 'lines'} dropped --`;
   }
 
-  const clock = formatClock(entry.timestamp);
+  const clock = formatStamp(entry.timestamp, timestamps);
   if (label !== undefined && label !== '') {
     return `${clock === '' ? '' : `${clock} `}${(entry.level?.toUpperCase() ?? '').padEnd(5)} ${label}  ${entry.text}`;
   }
@@ -521,8 +522,11 @@ export class LogViewModel {
     this.reveal(index);
   }
 
-  /** The selected lines as plain text, a line each, or undefined with no selection. */
-  copyText(): string | undefined {
+  /**
+   * The selected lines as plain text, a line each, or undefined with no selection. A line that has a source is copied with its name, a log of one source included: what a copy says does not depend on
+   * whether the view has a column for it (the mock's `lineText` names the source of every line). The clock is the one the rows show: the viewer's own by default, or UTC with its Z.
+   */
+  copyText(timestamps: LogTimestamps = 'local'): string | undefined {
     const selection = this.selection;
     if (selection === undefined) {
       return undefined;
@@ -531,10 +535,9 @@ export class LogViewModel {
     const low = Math.min(selection.anchor, selection.focus);
     const high = Math.max(selection.anchor, selection.focus);
     const lines: string[] = [];
-    const column = this.sources.count > 1;
     for (let index = this.view.lowerBound(low); index < this.view.length && this.view.ordinalAt(index) <= high; index += 1) {
       const entry = this.view.at(index);
-      lines.push(entryText(entry, column && entry.kind === 'line' ? this.sources.tag(entry.source)?.label : undefined));
+      lines.push(entryText(entry, entry.kind === 'line' ? this.sources.tag(entry.source)?.label : undefined, timestamps));
     }
 
     return lines.length === 0 ? undefined : lines.join('\n');

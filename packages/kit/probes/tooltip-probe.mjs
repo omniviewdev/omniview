@@ -12,6 +12,10 @@
 //   place      a tip never leaves the window (8 px margin) and never covers its trigger, from the four corners
 //   motion     no transition and no animation on the host, with and without reduced motion
 //   axe        no serious or critical violation with a tip open
+//   scroll     a list that follows a live stream (L2-03): a tip on its sticky head opens and stays while the list scrolls on every line; with rows moving under a resting pointer faster than the delay no tip opens and
+//              none ever stands for a row that is gone; when the stream stops the row under the pointer gets its tip; at a line every 1.4 s each row that comes under the pointer gets its own
+// NEGATIVE_CONTROL=scroll-closes  every scroll presses Escape, as the old rule closed a tip on any scroll: the head's tip must not open (`head.opened`); no-pin: the stream does not scroll the list (`premise`);
+//                                 blind-host: after its first tip the host hears of no scroll and no pointer event (`slow.gone`). Chromium at 1440 x 900, the `scroll` section only; exit 0 when it was seen.
 import { createRequire } from 'node:module';
 import { writeFileSync } from 'node:fs';
 import { ENGINES, VIEWPORTS, launch, sleep } from './probe-lib.mjs';
@@ -78,8 +82,140 @@ async function open(browser, url, viewport, query, options = {}) {
 const hostShown = (page) => page.evaluate(() => { const host = document.querySelector('[role="tooltip"]'); return host.matches(':popover-open') ? host.textContent : null; });
 const tabKey = (engineName, backwards = false) => `${engineName === 'webkit' ? 'Alt+' : ''}${backwards ? 'Shift+' : ''}Tab`;
 
+const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
+const CONTROLS = { 'scroll-closes': /^head\.opened$/, 'no-pin': /^premise$/, 'blind-host': /^slow\.gone$/ };
+if (CONTROL !== '' && CONTROLS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(CONTROLS).join(', ')}`);
+
+/** Page side: a list that follows a live stream as the log view does (a 24 px row appended and the scroll pinned to the end on every line), a sticky head that carries a tip, a tip on every row, and a sampler that notes at every frame whether the host is open, with what, and what is under the pointer. */
+function buildLive({ pin }) {
+  const live = document.createElement('div');
+  live.id = 'live';
+  live.style.cssText = 'position:fixed;left:40px;top:60px;width:420px;height:240px;overflow:auto;background:#101216;color:#e6e6e6;font:13px/24px monospace;z-index:1';
+  const head = document.createElement('div');
+  head.id = 'live-head';
+  head.setAttribute('data-ov-tip', 'A tip on the head of a live list');
+  head.textContent = 'Time  Level  Message';
+  head.style.cssText = 'position:sticky;top:0;height:28px;line-height:28px;background:#1c1f26;padding:0 8px;z-index:1';
+  const rows = document.createElement('div');
+  live.append(head, rows);
+  let n = 0;
+  const state = (window.__live = { pin, timer: 0, scrolls: 0 });
+  const add = () => {
+    const row = document.createElement('div');
+    row.setAttribute('data-ov-tip', `Row ${n}`);
+    row.textContent = `row ${n}`;
+    row.style.cssText = 'height:24px;padding:0 8px';
+    n += 1;
+    rows.append(row);
+    if (state.pin) live.scrollTop = live.scrollHeight;
+  };
+  state.start = (rate) => { clearInterval(state.timer); state.timer = setInterval(add, 1000 / rate); };
+  state.stop = () => { clearInterval(state.timer); state.timer = 0; };
+  live.addEventListener('scroll', () => { state.scrolls += 1; });
+  for (let i = 0; i < 40; i += 1) add();
+  document.body.append(live);
+  if (pin) live.scrollTop = live.scrollHeight;
+  window.__samples = [];
+  window.__sampling = false;
+  window.__pointer = { x: 0, y: 0 };
+  window.__blind = false;
+  for (const type of ['scroll', 'pointerover', 'pointerout']) window.addEventListener(type, (event) => { if (window.__blind) event.stopPropagation(); }, true);
+  const sample = () => {
+    if (window.__sampling) {
+      const host = document.querySelector('[role="tooltip"]');
+      const open = host.matches(':popover-open');
+      const under = document.elementFromPoint(window.__pointer.x, window.__pointer.y)?.closest('[data-ov-tip]')?.getAttribute('data-ov-tip') ?? null;
+      window.__samples.push({ open, text: open ? host.textContent : null, under });
+    }
+    requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
+
+/**
+ * The scroll section (L2-03). `check(name, detail)` is told of every check that failed; `perturb` is a negative control's perturbation ('' for none). A real pointer and the real tooltip host, 20 lines a second (the log view's
+ * own rate in its examples), then none, then a line every 1.4 s.
+ */
+async function sectionScroll(browser, url, viewport, perturb, check, out = {}) {
+  const { context, page } = await open(browser, url, viewport, 'n=3');
+  try {
+    await page.evaluate(buildLive, { pin: perturb !== 'no-pin' });
+    if (perturb === 'scroll-closes') await page.evaluate(() => document.addEventListener('scroll', () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })), true));
+    const head = await page.locator('#live-head').boundingBox();
+    const live = await page.locator('#live').boundingBox();
+    const waitTip = async (ms) => { let tip = null; for (let waited = 0; waited < ms && tip === null; waited += 100) { await sleep(100); tip = await hostShown(page); } return tip; };
+    const frames = (stop) => page.evaluate((s) => { window.__sampling = s; const taken = window.__samples; if (s === false) window.__samples = []; return taken; }, stop);
+
+    // The pointer on the sticky head while the list follows 20 lines a second: the head does not move, and the list scrolls on every line.
+    await page.evaluate(() => { window.__live.scrolls = 0; window.__live.start(20); });
+    await sleep(400);
+    await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2, { steps: 3 });
+    const opened = await waitTip(2000);
+    await sleep(1200);
+    const stayed = await hostShown(page);
+    out.head = { opened, stayed, scrolls: await page.evaluate(() => window.__live.scrolls) };
+    if (out.head.scrolls < 20) check('premise', `the stream scrolled the list ${out.head.scrolls} times while the pointer was on the head (at least 20 are needed for the check to mean anything)`);
+    if (opened !== 'A tip on the head of a live list') check('head.opened', `the tip of the sticky head did not open in a list that follows a stream: ${JSON.stringify(opened)}`);
+    if (stayed !== opened) check('head.stayed', `the tip of the head did not stay while the list went on scrolling: ${JSON.stringify(stayed)}`);
+
+    // Rows move under a resting pointer faster than the delay: no tip opens, and none ever stands for a row that is gone.
+    await page.mouse.move(0, 0);
+    await sleep(300);
+    const px = live.x + 200;
+    const py = live.y + 150;
+    await page.evaluate(([x, y]) => { window.__pointer = { x, y }; window.__samples = []; window.__sampling = true; }, [px, py]);
+    await page.mouse.move(px, py, { steps: 3 });
+    await sleep(2500);
+    const moving = await frames(false);
+    out.rows = { frames: moving.length, open: moving.filter((s) => s.open).length, gone: moving.filter((s) => s.open && s.text !== s.under).length };
+    if (out.rows.open > 0) check('rows.opened', `${out.rows.open} frames had a tip open while the row under the pointer changed 20 times a second`);
+    if (out.rows.gone > 0) check('rows.gone', `${out.rows.gone} frames had a tip that was not the row under the pointer`);
+
+    // The stream stops: the row under the pointer gets its own tip after the delay, once the engine has said the pointer is over it.
+    await page.evaluate(() => window.__live.stop());
+    const settled = await waitTip(2400);
+    const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-ov-tip]')?.getAttribute('data-ov-tip') ?? null, [px, py]);
+    out.settled = { tip: settled, under };
+    if (settled === null || settled !== under) check('settled', `after the stream stopped the tip was ${JSON.stringify(settled)} for a row under the pointer that says ${JSON.stringify(under)}`);
+
+    // A line every 1.4 s: each row that comes under the pointer gets its own tip, none for a row that is gone.
+    await page.mouse.move(0, 0);
+    await sleep(300);
+    await page.evaluate(([x, y]) => { window.__pointer = { x, y }; window.__samples = []; window.__sampling = true; window.__live.start(1 / 1.4); }, [px, py]);
+    await page.mouse.move(px, py, { steps: 3 });
+    if (perturb === 'blind-host') {
+      await waitTip(2000);
+      await page.evaluate(() => { window.__blind = true; });
+    }
+
+    await sleep(8500);
+    await page.evaluate(() => window.__live.stop());
+    const slow = await frames(false);
+    out.slow = { frames: slow.length, open: slow.filter((s) => s.open).length, gone: slow.filter((s) => s.open && s.text !== s.under).length, distinct: [...new Set(slow.filter((s) => s.open).map((s) => s.text))].length };
+    if (out.slow.gone > 0) check('slow.gone', `${out.slow.gone} frames had a tip that was not the row under the pointer`);
+    if (out.slow.distinct < 3) check('slow.followed', `only ${out.slow.distinct} different rows got a tip in 8.5 s at a line every 1.4 s`);
+  } finally {
+    await context.close();
+  }
+
+  return out;
+}
+
 const dist = buildUiNext();
 const { server, url } = await serve(dist);
+
+if (CONTROL !== '') {
+  // A negative control: the `scroll` section once as it is (it must not fail the check the control is named for) and once with the perturbation (it must). Exit 0 when the perturbation was seen.
+  const browser = await launch('chromium');
+  const run = async (perturb) => { const names = []; await sectionScroll(browser, url, VIEWPORTS['1440x900'], perturb, (name) => names.push(name)); return names; };
+  const without = await run('');
+  const withIt = await run(CONTROL);
+  await browser.close();
+  server.close();
+  const seen = !without.some((name) => CONTROLS[CONTROL].test(name)) && withIt.some((name) => CONTROLS[CONTROL].test(name));
+  console.log(`NEGATIVE CONTROL "${CONTROL}": ${seen ? 'detected' : 'NOT DETECTED'} (without it: ${without.join(', ') || 'no failure'}; with it: ${withIt.join(', ') || 'no failure'})`);
+  process.exit(seen ? 0 : 1);
+}
 try {
   for (const engineName of engineNames) {
     const browser = await launch(engineName);
@@ -267,6 +403,7 @@ try {
       out.reducedMotion = { shown: await hostShown(quiet.page), ...(await quiet.page.evaluate(() => { const style = getComputedStyle(document.querySelector('[role="tooltip"]')); return { transition: style.transitionDuration, animation: style.animationName }; })) };
       if (out.reducedMotion.shown === null || out.reducedMotion.animation !== 'none' || !/^0s/.test(out.reducedMotion.transition)) fail(where, `reduced motion: ${JSON.stringify(out.reducedMotion)}`);
       await quiet.context.close();
+      out.scroll = await sectionScroll(browser, url, viewport, '', (name, detail) => fail(where, `scroll.${name}: ${detail}`));
     }
 
     await browser.close();

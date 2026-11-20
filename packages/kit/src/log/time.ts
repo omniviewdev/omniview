@@ -1,5 +1,7 @@
-// The clock of a line: `HH:MM:SS.mmm`, from the RFC 3339 text the backend sent (the mock's `clock(l.t)`, local time). Read for the rows in the window when
-// they render; a line that has no time, or text that is not one, has an empty clock.
+// The clock of a line: `HH:MM:SS.mmm`, from the RFC 3339 text the backend sent. The mock shows it in the viewer's local time (`clock(l.t)`, shell-panel.js 129-132 and the default `ts: 'local'` of 1572) and, when the
+// reader chose UTC (the Timestamps option, 2666), in UTC with a `Z` after it (1708). Read for the rows in the window when they render; a line that has no time, or text that is not one, has an empty clock.
+import type { LogTimestamps } from './types';
+
 const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/;
 
 const two = (value: number): string => (value < 10 ? `0${value}` : String(value));
@@ -36,4 +38,14 @@ export function formatClock(timestamp: string, { utc = false }: { readonly utc?:
   const s = utc ? date.getUTCSeconds() : date.getSeconds();
   const ms = utc ? date.getUTCMilliseconds() : date.getMilliseconds();
   return `${two(h)}:${two(m)}:${two(s)}.${String(ms).padStart(3, '0')}`;
+}
+
+/**
+ * The clock of a line as a row shows it and a copy carries it: `HH:MM:SS.mmm` in local time, `HH:MM:SS.mmmZ` in UTC, where the `Z` says which clock it is (the mock writes it after its UTC clock, shell-panel.js 1708).
+ * Empty for a line that has no time, in either zone.
+ */
+export function formatStamp(timestamp: string, timestamps: LogTimestamps): string {
+  const utc = timestamps === 'utc';
+  const clock = formatClock(timestamp, { utc });
+  return utc && clock !== '' ? `${clock}Z` : clock;
 }

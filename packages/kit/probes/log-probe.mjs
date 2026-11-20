@@ -74,13 +74,13 @@ const LABEL = 'Omniview host logs';
 const TAB_STOPS = [['input', 'Search logs'], ['button', 'Match case'], ['radio', 'All'], ['grid', `Log lines, ${LABEL}`]];
 const MOCK_LEVELS = ['info', 'warn', 'error', 'info', 'debug', 'info', 'warn', 'info', 'debug', 'info'];
 const MESSAGE_98 = 'worker 2 reconciled 97 objects';
-/** Row `row` (from 1) as the list copies it: the clock (the probe's page is in UTC), the level and the text, without the escape sequence that line 4 holds. */
+/** Row `row` (from 1) as the list copies it: the clock (the probe's page is in UTC), the level padded to five, the source of the line (the parity fixtures' feed names `source/main`; a copy carries the source of every line that has one, as the mock's `lineText` does) and two spaces, and the text, without the escape sequence that line 4 holds. */
 const copyLine = (row) => {
   const index = row - 1;
   let text = index % 3 === 0 ? `request ${index} served in ${10 + ((index * 7) % 90)} ms` : `worker ${index % 5} reconciled ${index} objects`;
   if (index === 3) text = `Applied retry budget to upstream ${index}`;
   if (index === 9) text = `request ${index} ${'very-long-message-segment '.repeat(18)}end`;
-  return `${new Date(Date.UTC(2026, 0, 15, 10, 0, 0) + index * 1013).toISOString().slice(11, 23)} ${MOCK_LEVELS[index % 10].toUpperCase()} ${text}`;
+  return `${new Date(Date.UTC(2026, 0, 15, 10, 0, 0) + index * 1013).toISOString().slice(11, 23)} ${MOCK_LEVELS[index % 10].toUpperCase().padEnd(5)} source/main  ${text}`;
 };
 const wanted = (section) => (CONTROL !== '' ? CONTROLS[CONTROL]?.section === section : only === null || only.test(section));
 

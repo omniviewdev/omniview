@@ -5,6 +5,7 @@
 import { act, fireEvent, render, within, type RenderResult } from '@testing-library/react';
 import { Profiler, useLayoutEffect, type ReactElement } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LogTimestamps } from '../../log/types';
 import { LogView } from './LogView';
 import { SyntheticFeed } from './syntheticFeed';
 
@@ -161,7 +162,7 @@ function stubScroll(list: HTMLElement, options: { readonly clamp?: boolean | und
   };
 }
 
-function mount(options: { feed?: SyntheticFeed; lines?: number; maxLines?: number; onCommit?: () => void; defaultQuery?: string; clampScroll?: boolean } = {}) {
+function mount(options: { feed?: SyntheticFeed; lines?: number; maxLines?: number; onCommit?: () => void; defaultQuery?: string; clampScroll?: boolean; timestamps?: LogTimestamps } = {}) {
   const feed = options.feed ?? new SyntheticFeed({ rate: 0 });
   const lines = options.lines ?? 0;
   if (lines > 0) {
@@ -169,9 +170,9 @@ function mount(options: { feed?: SyntheticFeed; lines?: number; maxLines?: numbe
   }
 
   const onCommit = options.onCommit;
-  const ui = (): ReactElement => (
+  const ui = (timestamps: LogTimestamps | undefined = options.timestamps): ReactElement => (
     <Profiler id="log" onRender={() => onCommit?.()}>
-      <LogView label="worker-0 · app" feed={feed} maxLines={options.maxLines} defaultQuery={options.defaultQuery} />
+      <LogView label="worker-0 · app" feed={feed} maxLines={options.maxLines} defaultQuery={options.defaultQuery} timestamps={timestamps} />
     </Profiler>
   );
   const view = render(ui());
@@ -1393,7 +1394,7 @@ describe('the source of a line (L2)', () => {
     expect(marker?.getAttribute('aria-colspan')).toBe('4');
   });
 
-  it('copies the selected lines with their source named after the level, and with one source copies what it always did', () => {
+  it('copies the selected lines with their source named after the level, a log of one source included (the mock copies the label of any line that has one)', () => {
     const feed = pair();
     const { view, list } = mount({ feed, lines: 6 });
     fireEvent.keyDown(list, { key: 'a', ctrlKey: true });
@@ -1407,12 +1408,16 @@ describe('the source of a line (L2)', () => {
     });
     view.unmount();
 
+    // One source, so no column on screen: the copy still says which source wrote each line.
     const single = mount({ lines: 6 });
+    expect(single.view.container.querySelector('[data-ov-column="source"]')).toBeNull();
     fireEvent.keyDown(single.list, { key: 'a', ctrlKey: true });
     const one = vi.fn();
     fireEvent.copy(single.list, { clipboardData: { setData: one } });
-    for (const line of String(one.mock.calls[0]?.[1]).split('\n')) {
-      expect(line).not.toContain('source/main');
+    const singles = String(one.mock.calls[0]?.[1]).split('\n');
+    expect(singles).toHaveLength(6);
+    for (const line of singles) {
+      expect(line).toMatch(/^\d\d:\d\d:\d\d\.\d{3} (?:INFO |WARN |ERROR|DEBUG| {5}) source\/main {2}\S/);
     }
   });
 
@@ -1425,5 +1430,94 @@ describe('the source of a line (L2)', () => {
     }
 
     expect(within(view.getByRole('group', { name: 'Log filters' })).getByText('No results')).toBeTruthy();
+  });
+});
+
+describe('the zone of the clock (L3)', () => {
+  // The mock shows the clock in the viewer's local time and, when the reader asks, in UTC with a Z after it (shell-panel.js 1572 `ts: 'local'`, 1708, 2666 the Timestamps option). The control that asks is the
+  // toolbar's (P1b-4): the view takes the choice as a prop and draws it. The full timestamp, with its zone, is the tip of the clock.
+  const INSTANT = '2024-01-15T10:30:00.123Z';
+  const stamped = (...texts: string[]) => {
+    const feed = new SyntheticFeed({ rate: 0, clock: () => Date.parse(INSTANT) });
+    feed.push(texts.map((text) => feed.line(text, 'info')));
+    return feed;
+  };
+
+  const clocksOf = (view: RenderResult) => rowsOf(view).map((row) => row.querySelector('[role="gridcell"]')?.textContent);
+  const root = (view: RenderResult) => view.getByRole('group', { name: 'Log, worker-0 · app' });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('shows the viewer\'s local clock with no mark of a zone when it is not told otherwise', () => {
+    vi.stubEnv('TZ', 'Asia/Kolkata');
+    const { view } = mount({ feed: stamped('first', 'second') });
+    expect(clocksOf(view)).toEqual(['16:00:00.123', '16:00:00.123']);
+    expect(root(view).getAttribute('data-ov-timestamps')).toBe('local');
+  });
+
+  it('shows the UTC clock with a Z after it when it is asked for UTC, whatever zone the viewer is in', () => {
+    vi.stubEnv('TZ', 'Asia/Kolkata');
+    const { view } = mount({ feed: stamped('first', 'second'), timestamps: 'utc' });
+    expect(clocksOf(view)).toEqual(['10:30:00.123Z', '10:30:00.123Z']);
+    expect(root(view).getAttribute('data-ov-timestamps')).toBe('utc');
+  });
+
+  it('changes the clock of the rows already drawn when the choice changes, in the rows it has: the lines stay, it is a setting and not another view', () => {
+    vi.stubEnv('TZ', 'Asia/Kolkata');
+    const { view, ui } = mount({ feed: stamped('first', 'second') });
+    const before = rowsOf(view);
+    view.rerender(ui('utc'));
+    frame();
+    expect(clocksOf(view)).toEqual(['10:30:00.123Z', '10:30:00.123Z']);
+    expect(rowsOf(view).every((row, index) => row === before[index])).toBe(true);
+    view.rerender(ui('local'));
+    frame();
+    expect(clocksOf(view)).toEqual(['16:00:00.123', '16:00:00.123']);
+    expect(root(view).getAttribute('data-ov-timestamps')).toBe('local');
+  });
+
+  it('draws no clock, no Z and no tip for a line that has no time, in either zone', () => {
+    const feed = new SyntheticFeed({ rate: 0 });
+    feed.push([{ ...feed.line('timeless', 'info'), timestamp: '' }]);
+    const { view, ui } = mount({ feed });
+    for (const zone of ['local', 'utc'] as const) {
+      view.rerender(ui(zone));
+      frame();
+      const cell = rowsOf(view)[0]?.querySelector('[role="gridcell"]');
+      expect(cell?.textContent).toBe('');
+      expect(cell?.hasAttribute('data-ov-tip')).toBe(false);
+    }
+  });
+
+  it('copies the clock the rows show: UTC with its Z in UTC, the local clock with no mark in local time', () => {
+    vi.stubEnv('TZ', 'Asia/Kolkata');
+    const { view, list, ui } = mount({ feed: stamped('first'), timestamps: 'utc' });
+    fireEvent.keyDown(list, { key: 'a', ctrlKey: true });
+    const inUtc = vi.fn();
+    fireEvent.copy(list, { clipboardData: { setData: inUtc } });
+    expect(inUtc.mock.calls[0]?.[1]).toBe('10:30:00.123Z INFO  source/main  first');
+    view.rerender(ui('local'));
+    frame();
+    const inLocal = vi.fn();
+    fireEvent.copy(list, { clipboardData: { setData: inLocal } });
+    expect(inLocal.mock.calls[0]?.[1]).toBe('16:00:00.123 INFO  source/main  first');
+  });
+
+  // The tip of the clock is the line's own timestamp: the text the source sent, with its zone and every digit of its fraction (an RFC 3339 timestamp with nanoseconds, as a command-line log tool prints it), so a reader who sees a local clock
+  // can read the instant in UTC, and the date the clock leaves out. It is the attribute the one tooltip of the window reads; no element and no handler is added to a row.
+  it('gives the clock the line\'s own full timestamp for a tip, in either zone, on the clock alone', () => {
+    const feed = new SyntheticFeed({ rate: 0, clock: () => Date.parse(INSTANT) });
+    feed.push([feed.line('first', 'info'), { ...feed.line('second', 'info'), timestamp: '2026-11-20T03:22:38.782123456Z' }]);
+    const { view, ui } = mount({ feed });
+    const tipsOf = () => rowsOf(view).map((row) => row.querySelector('[role="gridcell"]')?.getAttribute('data-ov-tip'));
+    expect(tipsOf()).toEqual([INSTANT, '2026-11-20T03:22:38.782123456Z']);
+    view.rerender(ui('utc'));
+    frame();
+    expect(tipsOf()).toEqual([INSTANT, '2026-11-20T03:22:38.782123456Z']);
+    for (const row of rowsOf(view)) {
+      expect(row.querySelectorAll('[data-ov-tip]')).toHaveLength(1);
+    }
   });
 });

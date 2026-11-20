@@ -464,6 +464,9 @@ export type LogFeedStats = {
 };
 
 // @public
+export type LogTimestamps = 'local' | 'utc';
+
+// @public
 export function LogView(input: LogViewProps): JSX.Element;
 
 // @public
@@ -472,6 +475,7 @@ export type LogViewProps = {
     readonly feed: LogFeed;
     readonly maxLines?: number | undefined;
     readonly defaultQuery?: string | undefined;
+    readonly timestamps?: LogTimestamps | undefined;
 } & DataAttributes;
 
 // @public

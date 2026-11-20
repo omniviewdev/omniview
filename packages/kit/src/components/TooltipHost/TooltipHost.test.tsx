@@ -500,7 +500,9 @@ describe('TooltipHost', () => {
       expect(isOpen()).toBe(false);
     });
 
-    it('when the trigger, or anything that holds it, scrolls; not for a scroll elsewhere', () => {
+    // A tip describes the trigger the pointer is on. A scroll that takes the trigger from where the pointer reached it ends the tip (the mock's rule, core.js 3529-3535, kept for a trigger that moves); a scroll that leaves
+    // it where it was does not (`describe('scrolling')` below).
+    it('when a scroll of anything that holds the trigger moves it; not for a scroll elsewhere', () => {
       mount(
         <>
           <div id="region">
@@ -510,18 +512,22 @@ describe('TooltipHost', () => {
         </>,
       );
       const trigger = document.querySelector('button')!;
+      layout(trigger, { left: 100, top: 100, width: 80, height: 24 });
       hover(trigger);
       act(() => {
         document.getElementById('elsewhere')!.dispatchEvent(new Event('scroll'));
       });
       expect(isOpen()).toBe(true);
+      layout(trigger, { left: 100, top: 76, width: 80, height: 24 });
       act(() => {
         document.getElementById('region')!.dispatchEvent(new Event('scroll'));
       });
       expect(isOpen()).toBe(false);
-      hover(trigger);
+      layout(trigger, { left: 100, top: 100, width: 80, height: 24 });
       leave(trigger);
       hover(trigger);
+      expect(isOpen()).toBe(true);
+      layout(trigger, { left: 100, top: 52, width: 80, height: 24 });
       act(() => {
         document.dispatchEvent(new Event('scroll'));
       });
@@ -604,6 +610,306 @@ describe('TooltipHost', () => {
         </div>,
       );
       hover(document.querySelector('button')!, 1000);
+      expect(isOpen()).toBe(false);
+    });
+  });
+
+  // L2-03: `scroll` is reported on every scroller that holds a trigger, and a list that follows a live stream scrolls on every frame that draws a line (dozens a second), so a tip that closed on the EVENT never opened in
+  // one: a cut name could not be read. The rule is about the TRIGGER: a tip describes what the pointer is on, so it ends when that has moved from where the pointer reached it (its rectangle changed, which includes
+  // a trigger scrolled out of the window), and a scroll that leaves it where it was (a header that sticks, a control that is fixed) leaves the tip alone. Rows that DO move under a resting pointer are other triggers:
+  // the tip of the row that went goes with it, and the row now under the pointer gets its own after the usual delay, which the engine's own hover update starts (a `pointerover` after each step in Chromium, once the
+  // scrolling has settled in WebKit). No tip ever points at a row that is gone, and while no tip is shown or waiting a scroll costs nothing.
+  describe('scrolling', () => {
+    const scrolled = (target: Element | Document | null) => {
+      act(() => {
+        defined(target ?? undefined).dispatchEvent(new Event('scroll'));
+      });
+    };
+
+    const WHERE = { left: 100, top: 100, width: 80, height: 24 };
+    const list = () => document.getElementById('list');
+
+    it('keeps a tip when the scrolls around its trigger leave it where it was: a head that sticks, a control that is fixed', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, WHERE);
+      hover(trigger);
+      expect(isOpen()).toBe(true);
+      const placed = { left: host().style.left, top: host().style.top };
+      for (let scrolls = 0; scrolls < 40; scrolls += 1) {
+        scrolled(list());
+        scrolled(document);
+      }
+
+      expect(isOpen()).toBe(true);
+      expect(host().textContent).toBe('Time');
+      expect({ left: host().style.left, top: host().style.top }).toEqual(placed);
+    });
+
+    it('lets a tip that is waiting open on time while the scrolls around its trigger leave it where it was: a list at 20 lines a second never showed one', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, WHERE);
+      pointer('pointerover', trigger);
+      for (let elapsed = 0; elapsed < 450; elapsed += 50) {
+        advance(50);
+        scrolled(list());
+        expect(isOpen()).toBe(false);
+      }
+
+      advance(50);
+      expect(isOpen()).toBe(true);
+      expect(host().textContent).toBe('Time');
+    });
+
+    it('cancels a tip that is waiting when the scroll moves its trigger, and nothing opens for it later', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, WHERE);
+      pointer('pointerover', trigger);
+      advance(200);
+      layout(trigger, { ...WHERE, top: 76 });
+      scrolled(list());
+      advance(2000);
+      expect(isOpen()).toBe(false);
+    });
+
+    it('does not open a tip for a trigger that moved while it waited, though no scroll event has reached it yet: the pointer is not on it', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, WHERE);
+      pointer('pointerover', trigger);
+      advance(300);
+      layout(trigger, { ...WHERE, top: 52 });
+      advance(200);
+      expect(isOpen()).toBe(false);
+    });
+
+    it('allows a pixel of rounding: a trigger a fraction off is where it was, one 2 px off is not', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, WHERE);
+      hover(trigger);
+      layout(trigger, { ...WHERE, top: 100.4, left: 99.7 });
+      scrolled(list());
+      expect(isOpen()).toBe(true);
+      layout(trigger, { ...WHERE, top: 98 });
+      scrolled(list());
+      expect(isOpen()).toBe(false);
+    });
+
+    it('ends the tip of a trigger that scrolled out of the window: there is nothing left to point at', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, { ...WHERE, top: 4 });
+      hover(trigger);
+      expect(isOpen()).toBe(true);
+      layout(trigger, { ...WHERE, top: -40 });
+      scrolled(list());
+      expect(isOpen()).toBe(false);
+    });
+
+    it('costs nothing while no tip is shown or waiting: no layout is read for a scroll, however many there are, and no frame is asked for', () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const reads = vi.spyOn(Element.prototype, 'getBoundingClientRect');
+      const frames = vi.fn((_callback: FrameRequestCallback) => 0);
+      vi.stubGlobal('requestAnimationFrame', frames);
+      const hit = vi.fn(() => null);
+      Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: hit });
+      try {
+        for (let scrolls = 0; scrolls < 100; scrolls += 1) {
+          scrolled(list());
+          scrolled(document);
+        }
+
+        expect(reads).not.toHaveBeenCalled();
+        expect(frames).not.toHaveBeenCalled();
+        expect(hit).not.toHaveBeenCalled();
+      } finally {
+        Reflect.deleteProperty(document, 'elementFromPoint');
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('reads the one trigger it waits for, once for a scroll that holds it, and nothing for a scroll that does not', () => {
+      mount(
+        <>
+          <div id="list">
+            <button type="button" {...tip('Time')}>Time</button>
+          </div>
+          <div id="elsewhere" />
+        </>,
+      );
+      const trigger = document.querySelector('button')!;
+      const reads = vi.fn(() => ({ ...WHERE, right: WHERE.left + WHERE.width, bottom: WHERE.top + WHERE.height, x: WHERE.left, y: WHERE.top, toJSON: () => WHERE }));
+      trigger.getBoundingClientRect = reads;
+      hover(trigger);
+      reads.mockClear();
+      for (let scrolls = 0; scrolls < 30; scrolls += 1) {
+        scrolled(document.getElementById('elsewhere'));
+      }
+
+      expect(reads).not.toHaveBeenCalled();
+      for (let scrolls = 0; scrolls < 30; scrolls += 1) {
+        scrolled(list());
+      }
+
+      expect(reads).toHaveBeenCalledTimes(30);
+      expect(isOpen()).toBe(true);
+    });
+
+    // Rows that scroll under a resting pointer: each is a trigger of its own, with a tip of its own.
+    describe('a list whose rows move under a resting pointer', () => {
+      const ROW = 24;
+      const POINTER_Y = 100;
+      const rowsAt = (offset: number) => {
+        const rows = [...document.querySelectorAll<HTMLElement>('[data-row]')];
+        rows.forEach((row, index) => {
+          layout(row, { left: 10, top: index * ROW - offset, width: 80, height: ROW });
+        });
+        return rows;
+      };
+
+      const underPointer = (rows: readonly HTMLElement[], offset: number) => defined(rows[Math.floor((POINTER_Y + offset) / ROW)]);
+      const mountRows = () =>
+        mount(
+          <div id="list">
+            {Array.from({ length: 80 }, (_, index) => (
+              <button key={index} type="button" data-row={index} {...tip(`Row ${index}`)}>
+                {index}
+              </button>
+            ))}
+          </div>,
+        );
+
+      it('takes the tip of the row that went, and gives the row now under the pointer its own after the usual delay (WebKit: the pointer events come once the scrolling has settled)', () => {
+        mountRows();
+        let rows = rowsAt(0);
+        const first = underPointer(rows, 0);
+        hover(first);
+        expect(host().textContent).toBe(`Row ${first.dataset.row}`);
+        // The list scrolls three rows: the row the tip was for is above the pointer, another is under it.
+        rows = rowsAt(3 * ROW);
+        scrolled(list());
+        expect(isOpen()).toBe(false);
+        const next = underPointer(rows, 3 * ROW);
+        leave(first, next);
+        pointer('pointerover', next);
+        advance(499);
+        expect(isOpen()).toBe(false);
+        advance(1);
+        expect(isOpen()).toBe(true);
+        expect(host().textContent).toBe(`Row ${next.dataset.row}`);
+        expect(host().style.top).toBe(`${next.getBoundingClientRect().bottom + GAP}px`);
+      });
+
+      it('opens the tip of the row that came under the pointer when the engine says so before it fires the scroll (Chromium: the pointer events of the step come first, the row has not moved since)', () => {
+        mountRows();
+        let rows = rowsAt(0);
+        const first = underPointer(rows, 0);
+        hover(first);
+        rows = rowsAt(ROW);
+        const next = underPointer(rows, ROW);
+        leave(first, next);
+        pointer('pointerover', next);
+        scrolled(list());
+        advance(500);
+        expect(isOpen()).toBe(true);
+        expect(host().textContent).toBe(`Row ${next.dataset.row}`);
+      });
+
+      it('shows no tip while a stream moves the row under the pointer faster than the delay, never one for a row that is gone, and one for the row it stops on', () => {
+        mountRows();
+        let offset = 0;
+        let rows = rowsAt(offset);
+        let current = underPointer(rows, offset);
+        pointer('pointerover', current);
+        for (let line = 1; line <= 40; line += 1) {
+          advance(50);
+          expect(isOpen()).toBe(false);
+          // A line arrived: the list pins to the end, one row up. Chromium's pointer events for the step, then the scroll.
+          offset += ROW;
+          rows = rowsAt(offset);
+          const next = underPointer(rows, offset);
+          leave(current, next);
+          pointer('pointerover', next);
+          scrolled(list());
+          current = next;
+        }
+
+        advance(499);
+        expect(isOpen()).toBe(false);
+        advance(1);
+        expect(isOpen()).toBe(true);
+        expect(host().textContent).toBe(`Row ${current.dataset.row}`);
+      });
+
+      it('shows no tip while a stream moves the rows when the engine says nothing until it settles (WebKit), and the one for the row it stops on then', () => {
+        mountRows();
+        let offset = 0;
+        let rows = rowsAt(offset);
+        const first = underPointer(rows, offset);
+        hover(first);
+        expect(isOpen()).toBe(true);
+        for (let line = 1; line <= 40; line += 1) {
+          offset += ROW;
+          rows = rowsAt(offset);
+          scrolled(list());
+          advance(50);
+          expect(isOpen()).toBe(false);
+        }
+
+        const last = underPointer(rows, offset);
+        leave(first, last);
+        pointer('pointerover', last);
+        advance(500);
+        expect(isOpen()).toBe(true);
+        expect(host().textContent).toBe(`Row ${last.dataset.row}`);
+      });
+    });
+
+    it('ends the tip of a focused trigger the scroll moves, and keeps it when the scroll leaves it where it was', async () => {
+      mount(
+        <div id="list">
+          <button type="button" {...tip('Time')}>Time</button>
+        </div>,
+      );
+      const trigger = document.querySelector('button')!;
+      layout(trigger, WHERE);
+      await focus(trigger);
+      expect(isOpen()).toBe(true);
+      scrolled(list());
+      expect(isOpen()).toBe(true);
+      layout(trigger, { ...WHERE, top: 76 });
+      scrolled(list());
       expect(isOpen()).toBe(false);
     });
   });

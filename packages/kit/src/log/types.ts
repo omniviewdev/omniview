@@ -101,6 +101,12 @@ export type LogFeed = {
 /** The levels the view tells apart. A feed's `fatal` is an `error` here. */
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
+/**
+ * Which clock a log shows its lines' times in: `local`, the viewer's own, or `utc`. The mock shows local time and offers UTC as a display option (shell-panel.js 1572 `ts: 'local'`, 2666 the Timestamps option);
+ * its third choice, Hidden, comes with the toolbar that offers the choice.
+ */
+export type LogTimestamps = 'local' | 'utc';
+
 /** The closed set of hues a coloured span may take: the mock's own (`.plog__a[data-hue]`), each a token of the theme. */
 export type LogHue = 'red' | 'green' | 'amber' | 'blue' | 'purple' | 'cyan' | 'gray';
 
