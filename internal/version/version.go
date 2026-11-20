@@ -7,6 +7,7 @@ import (
 )
 
 // sourceCompatibilityVersion describes capabilities in development and nightly builds.
+// N24 D1 throwaway proof: a comment-only change to Go code, never merged.
 const sourceCompatibilityVersion = "0.35.2"
 
 var (
