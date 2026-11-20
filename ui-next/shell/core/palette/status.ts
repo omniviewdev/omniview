@@ -104,14 +104,16 @@ const OPEN_KEYS: readonly Hint[] = [
   { keys: 'Alt+Enter', label: 'Here' },
   { keys: 'Mod+Shift+Enter', label: 'New tab' },
   { keys: 'Mod+Enter', label: 'Background tab' },
-  { keys: 'Shift+Enter', label: 'New window' },
 ];
 
+/** The key that opens a window of its own: said only to a host that can open one (the footer never says a key that does nothing). */
+const WINDOW_KEY: Hint = { keys: 'Shift+Enter', label: 'New window' };
+
 /**
- * The real keys of the active row, one muted line (A5, S70): the five open keys for anything that opens a page, one key for a command, none for a row that cannot be used (an
- * unavailable row shows its reason instead). The chords are platform-neutral (`Mod` is Command or Control); the view draws them with the platform's own glyphs.
+ * The real keys of the active row, one muted line (A5, S70): the open keys for anything that opens a page (four, and a fifth, New window, when the host can open a window), one key for a command,
+ * none for a row that cannot be used (an unavailable row shows its reason instead). The chords are platform-neutral (`Mod` is Command or Control); the view draws them with the platform's own glyphs.
  */
-export function hintsOf(row: Row | undefined, view: 'results' | 'sources'): Hint[] {
+export function hintsOf(row: Row | undefined, view: 'results' | 'sources', windows: boolean): Hint[] {
   if (view === 'sources') {
     return [...(row?.action.type === 'retry' ? [{ keys: 'Enter', label: 'Retry' }] : []), { keys: 'Escape', label: 'Back to results' }];
   }
@@ -133,8 +135,8 @@ export function hintsOf(row: Row | undefined, view: 'results' | 'sources'): Hint
 
   if (row.kind === 'tab') {
     // A tab with no place of its own can only be switched to: the other keys open a place.
-    return [{ keys: 'Enter', label: 'Switch to tab' }, ...(row.action.type === 'activate' && row.action.destination !== undefined ? OPEN_KEYS.slice(1) : []), ...search];
+    return [{ keys: 'Enter', label: 'Switch to tab' }, ...(row.action.type === 'activate' && row.action.destination !== undefined ? [...OPEN_KEYS.slice(1), ...(windows ? [WINDOW_KEY] : [])] : []), ...search];
   }
 
-  return [...OPEN_KEYS, ...search];
+  return [...OPEN_KEYS, ...(windows ? [WINDOW_KEY] : []), ...search];
 }

@@ -1,0 +1,556 @@
+/* The command palette (ch16 S66 to S73; the mock's shell-search.css). One modal dialog per window, 640 px wide and 64 px from the top, a frame of 480 px whose rows never depend on the results:
+   the input 40, the kinds 40, the list (the rest), the status band 24, the footer 33 (S72: nothing moves when a source answers late). The dialog is the scrim: the whole window, transparent, in
+   the browser's top layer, so no z-index is needed and the page behind it is inert. The shell's own metrics are the exceptions to the closed scales that the chapter names (the frame's
+   width and height, the row's 24 px, the offset from the top): they are track sizes and sizes, not spacing. */
+@layer ov.shell {
+  .scrim {
+    display: none;
+  }
+
+  /* Open: a grid whose second row holds the frame, so the 64 px offset is a track and not a margin. The browser's own rules for a modal dialog (its size, its margin, its border, its paint)
+     are put back to nothing: this is only the place the frame hangs in. */
+  .scrim[open] {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 640px);
+    grid-template-rows: 64px minmax(0, auto);
+    justify-content: center;
+    align-content: start;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    max-block-size: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    background-color: transparent;
+    color: inherit;
+  }
+
+  .scrim::backdrop {
+    background-color: transparent;
+  }
+
+  .frame {
+    position: relative;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: 40px auto minmax(0, 1fr);
+    grid-template-rows: 40px 40px minmax(0, 1fr) 24px 33px;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 480px;
+    max-block-size: calc(100dvh - 96px);
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* Said by assistive technology and never drawn: the dialog's name and the live region. */
+  .hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* ---- the input row: a glyph, the chips of a narrowed search, the input ---- */
+  .glyph {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ov-icon);
+  }
+
+  .chips {
+    grid-area: 1 / 2;
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    max-inline-size: 360px;
+    padding-inline-end: var(--ov-spacing-4);
+  }
+
+  /* No focus ring: the palette is the context the focus is in, the caret is the cue, and the mock draws none (`#pq:focus { outline: 0 }`). */
+  .input {
+    grid-area: 1 / 3;
+    align-self: stretch;
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 120px;
+    block-size: 100%;
+    margin: 0;
+    padding: 0 var(--ov-spacing-12) 0 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--ov-fg);
+    caret-color: var(--ov-fg-editor);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    outline: 0;
+  }
+
+  /* ---- a chip of the narrowed search (S69): a glyph, a pressed label, a named Remove ---- */
+  .chip {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    block-size: 28px;
+    padding: 0 0 0 var(--ov-spacing-8);
+    overflow: clip;
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-control);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .chipGlyph {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+
+  /* The label is the chip's own button: ← and → from the input reach it, and it is pressed while it is the one selected. */
+  .chipLabel {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 26px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+    text-overflow: ellipsis;
+    cursor: default;
+  }
+
+  .chipLabel[aria-pressed='true'] {
+    background-color: var(--ov-selection-inactive);
+    color: var(--ov-fg);
+  }
+
+  .chipLabel:focus-visible,
+  .chipRemove:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .chipRemove {
+    display: inline-flex;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    inline-size: 24px;
+    block-size: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-icon);
+    cursor: default;
+  }
+
+  .chipRemove:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  /* ---- the kinds (S67): the kit's Tabs in the palette's inset, with the line above them ---- */
+  .kinds {
+    grid-area: 2 / 1 / 3 / -1;
+    align-self: stretch;
+    box-sizing: border-box;
+    min-block-size: 40px;
+    padding-inline: var(--ov-spacing-12);
+    overflow: hidden;
+    box-shadow: inset 0 1px 0 var(--ov-border-popup);
+  }
+
+  /* ---- the list: a scroll owner under the kinds ---- */
+  .results {
+    grid-area: 3 / 1 / 4 / -1;
+    box-sizing: border-box;
+    min-block-size: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8) var(--ov-spacing-8);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-block-start: 1px solid var(--ov-border-popup);
+  }
+
+  .note {
+    margin: 0;
+    padding: var(--ov-spacing-8);
+    color: var(--ov-fg-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .list {
+    min-inline-size: 0;
+  }
+
+  .group + .group {
+    margin-block-start: var(--ov-spacing-4);
+  }
+
+  .label {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    block-size: 24px;
+    padding-inline: var(--ov-spacing-8);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .labelText {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The rows of a group share their columns, so every glyph, name, context and state starts at the same x (the mock's H.listrows). A column exists only when some row of the group has its cell,
+     so a group of names alone is not pushed by a column nothing fills. The lines are numbered, not named (a CSS Module); the private properties hold the number of each cell's line. */
+  .rows {
+    --_icon: 2;
+    --_text: 2;
+    --_body: 3;
+    --_meta: 3;
+
+    display: grid;
+    grid-template-columns: 4px minmax(64px, 1fr) 4px;
+    column-gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  .rows[data-icon] {
+    --_text: 3;
+
+    grid-template-columns: 4px auto minmax(64px, 1fr) 4px;
+  }
+
+  .rows[data-body] {
+    grid-template-columns: 4px minmax(64px, 1fr) minmax(0, 232px) 4px;
+  }
+
+  .rows[data-meta] {
+    grid-template-columns: 4px minmax(64px, 1fr) fit-content(33%) 4px;
+  }
+
+  .rows[data-icon][data-body] {
+    --_body: 4;
+
+    grid-template-columns: 4px auto minmax(64px, 1fr) minmax(0, 232px) 4px;
+  }
+
+  .rows[data-icon][data-meta] {
+    --_meta: 4;
+
+    grid-template-columns: 4px auto minmax(64px, 1fr) fit-content(33%) 4px;
+  }
+
+  .rows[data-body][data-meta] {
+    --_meta: 4;
+
+    grid-template-columns: 4px minmax(64px, 1fr) minmax(0, 232px) fit-content(33%) 4px;
+  }
+
+  .rows[data-icon][data-body][data-meta] {
+    --_body: 4;
+    --_meta: 5;
+
+    grid-template-columns: 4px auto minmax(64px, 1fr) minmax(0, 232px) fit-content(33%) 4px;
+  }
+
+  /* ---- a row (S68): 24 px, a glyph, the name (the matched run in weight 600), the muted context, the trailing slot. One native button with the role option; the container owns the keys. ---- */
+  .row {
+    --_sub: var(--ov-fg-muted);
+    --_glyph: var(--ov-icon);
+
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 24px;
+    min-block-size: 24px;
+    margin: 0;
+    padding: var(--ov-spacing-4) 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    cursor: default;
+  }
+
+  /* The active row is the one blue fill, shared by the keyboard and the pointer (ch05:57). */
+  .row[aria-selected='true'] {
+    --_sub: var(--ov-fg-editor);
+
+    background-color: var(--ov-selection-active);
+  }
+
+  /* Unavailable (S65): dimmed and still in the arrow order. Active, it keeps the retained-selection fill and a muted text, so its label stays legible while its reason is in the footer. */
+  .row[data-state='unavailable'] {
+    --_sub: var(--ov-fg-disabled);
+    --_glyph: var(--ov-icon-disabled);
+
+    background-color: transparent;
+    color: var(--ov-fg-disabled);
+  }
+
+  .row[data-state='unavailable'][aria-selected='true'] {
+    --_sub: var(--ov-fg-muted);
+    --_glyph: var(--ov-fg-secondary);
+
+    background-color: var(--ov-selection-inactive);
+    color: var(--ov-fg-muted);
+  }
+
+  /* A stale row (S71) is inert but not dimmed: it stays where it was until its source answers. */
+  .row[data-inert] {
+    background-color: transparent;
+    color: var(--ov-fg);
+  }
+
+  .row[data-inert][aria-selected='true'] {
+    background-color: var(--ov-selection-active);
+  }
+
+  /* A fill is not drawn in forced colours: the active row is an outline there. */
+  @media (forced-colors: active) {
+    .row[aria-selected='true'] {
+      outline: 2px solid currentcolor;
+      outline-offset: -2px;
+    }
+  }
+
+  .icon {
+    grid-column: var(--_icon);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--_glyph);
+  }
+
+  .text {
+    grid-column: var(--_text);
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .text b,
+  .context b {
+    font-weight: 600;
+  }
+
+  .body {
+    grid-column: var(--_body);
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--_sub);
+    font-size: var(--ov-fs-12);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .context {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The trailing slot, in priority (S68): the state word, an action word, the command's key hint, then the chevron of a row that can be searched inside. */
+  .meta {
+    grid-column: var(--_meta);
+    display: inline-flex;
+    align-items: center;
+    justify-self: end;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    color: var(--_sub);
+    font-size: var(--ov-fs-12);
+  }
+
+  .meta[data-state-word] {
+    justify-self: start;
+  }
+
+  .action {
+    color: var(--ov-link);
+  }
+
+  .drill {
+    display: inline-flex;
+    color: var(--_glyph);
+  }
+
+  /* A state: the glyph of its meaning and its word, at the row's size (12/16, a 16 px glyph). */
+  .mark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    color: var(--_sub);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .markLabel {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---- the status band (S72): only something notable, in a 16 px line inside a 24 px band ---- */
+  .band {
+    grid-area: 4 / 1 / 5 / -1;
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    padding: 0 var(--ov-spacing-12);
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .run {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  /* A link that is a button: the text is 16 px high, and its hit area is the 24 px of the band, drawn by a pseudo-element so no negative margin moves anything (A20). */
+  .linkButton {
+    position: relative;
+    flex: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    color: var(--ov-link);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .linkButton::after {
+    content: '';
+    position: absolute;
+    inset-block: -4px;
+    inset-inline: 0;
+  }
+
+  .linkButton:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  /* ---- the footer (S70, A5): one muted line of the real keys of the active row ---- */
+  .foot {
+    grid-area: 5 / 1 / 6 / -1;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    padding: 0 var(--ov-spacing-16);
+    overflow: hidden;
+    border-block-start: 1px solid var(--ov-border-popup);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .hints {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: baseline;
+    gap: var(--ov-spacing-12);
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  .hint {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--ov-spacing-4);
+  }
+
+  .kbd {
+    direction: ltr;
+    unicode-bidi: isolate;
+    color: var(--ov-fg-muted);
+    font: inherit;
+    white-space: nowrap;
+  }
+
+  .keys .kbd {
+    color: var(--_sub);
+  }
+
+  .reason {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

@@ -1,6 +1,9 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { platformOf } from './core/chords';
 import type { ModifierEvent, TabsStore } from './core/tabs';
+import { PaletteProvider } from './palette/context';
+import type { PaletteBindings } from './palette/host';
+import { Palette } from './palette/Palette';
 import { Panel } from './panel/Panel';
 import { PanelProvider } from './panel/context';
 import type { PanelBindings } from './panel/host';
@@ -49,6 +52,10 @@ export type ShellProps = {
    * splitter and no toggle, and the grid's panel row is 0 px.
    */
   readonly panel?: PanelBindings | undefined;
+  /**
+   * The command palette: its model, its live region, and what it opens with (`palette/host.ts`). Absent: the top row has no Search control, no chord opens anything, and there is no surface.
+   */
+  readonly palette?: PaletteBindings | undefined;
 };
 
 /**
@@ -57,7 +64,7 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow, panel }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow, panel, palette }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
@@ -87,15 +94,18 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelec
         </div>
         {panel === undefined ? null : <Panel platform={platform} />}
         <StatusBar platform={platform} />
+        {palette === undefined ? null : <Palette />}
       </div>
     </TabsProvider>
   );
-  return panel === undefined ? (
-    content
-  ) : (
-    <PanelProvider panel={panel}>
-      {content}
-      <SessionCards />
-    </PanelProvider>
-  );
+  const framed =
+    panel === undefined ? (
+      content
+    ) : (
+      <PanelProvider panel={panel}>
+        {content}
+        <SessionCards />
+      </PanelProvider>
+    );
+  return palette === undefined ? framed : <PaletteProvider palette={palette}>{framed}</PaletteProvider>;
 }
