@@ -24,12 +24,16 @@ export const Status = () => (
 
 // Every glyph of the registry, for review: the test of this file fails when the registry and this list differ.
 const ALL: readonly IconName[] = [
-  'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle',
-  'circle-minus', 'clock', 'close', 'columns', 'copy', 'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'panel-bottom', 'play', 'plus', 'refresh', 'regex',
-  'scroll-text', 'search', 'search-x', 'server', 'status-error', 'status-info', 'status-success', 'status-warning',
+  'activity', 'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-up-wide-narrow', 'blocks', 'box', 'brick-wall', 'calendar-clock',
+  'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle', 'circle-minus', 'clipboard-check', 'clock', 'close', 'columns', 'copy', 'cpu',
+  'database', 'ellipsis', 'file-cog', 'folder-tree', 'gauge', 'globe', 'hard-drive', 'hard-drive-download', 'hourglass', 'key-round', 'layers', 'layout-template',
+  'list-ordered', 'loader', 'loader-circle', 'network', 'panel-bottom', 'play', 'plus', 'refresh', 'regex', 'repeat', 'rocket', 'ruler', 'scaling', 'scroll-text',
+  'search', 'search-x', 'server', 'server-cog', 'settings-2', 'shield', 'shield-check', 'split', 'status-error', 'status-info', 'status-success', 'status-warning',
+  'target', 'umbrella', 'waypoints',
 ];
 
-const ROW = 8;
+// Six to a row: eight 20 px glyphs and their gaps (216 px) are wider than the stage of one example (200 px) and would stand outside its border.
+const ROW = 6;
 const rows = (names: readonly IconName[]): IconName[][] => Array.from({ length: Math.ceil(names.length / ROW) }, (_row, index) => names.slice(index * ROW, (index + 1) * ROW));
 
 /** Every glyph of the registry, at all three sizes. */

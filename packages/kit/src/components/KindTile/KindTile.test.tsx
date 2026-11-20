@@ -70,7 +70,7 @@ describe('KindTile', () => {
     // @ts-expect-error a tile has a glyph
     const iconless: KindTileProps = {};
     // @ts-expect-error a glyph outside the registry
-    const unknownIcon: KindTileProps = { icon: 'rocket' };
+    const unknownIcon: KindTileProps = { icon: 'sparkles' };
     // @ts-expect-error a tone outside the closed set: any CSS colour is not one
     const unknownTone: KindTileProps = { icon: 'box', tone: 'chartreuse' };
     // @ts-expect-error a size outside the closed set

@@ -146,7 +146,7 @@ describe('IconButton', () => {
     // @ts-expect-error an icon button needs its glyph
     const glyphless: IconButtonProps = { label: 'Refresh' };
     // @ts-expect-error an icon outside the registry
-    const unknownIcon: IconButtonProps = { icon: 'rocket', label: 'Go' };
+    const unknownIcon: IconButtonProps = { icon: 'sparkles', label: 'Go' };
     // @ts-expect-error className is not a prop of a kit part
     const withClass: IconButtonProps = { icon: 'refresh', label: 'Go', className: 'x' };
     // @ts-expect-error style is not a prop of a kit part

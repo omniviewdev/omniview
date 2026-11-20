@@ -35,6 +35,32 @@ describe('Icon', () => {
     expect(container.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 16 16');
   });
 
+  it('draws every per-kind glyph (G1) at the three sizes of the scale, on the 24 artboard', () => {
+    const kinds: IconName[] = [
+      'activity', 'arrow-up-wide-narrow', 'blocks', 'brick-wall', 'calendar-clock', 'clipboard-check', 'cpu', 'database', 'file-cog', 'gauge', 'globe', 'hard-drive',
+      'hard-drive-download', 'hourglass', 'key-round', 'layout-template', 'list-ordered', 'network', 'repeat', 'rocket', 'ruler', 'scaling', 'server-cog', 'settings-2',
+      'shield', 'shield-check', 'split', 'target', 'umbrella', 'waypoints',
+    ];
+    for (const name of kinds) {
+      for (const size of [12, 16, 20] as const) {
+        const { container, unmount } = render(<Icon name={name} size={size} />);
+        const svg = container.querySelector('svg');
+        expect(svg?.getAttribute('data-ov-glyph'), name).toBe(name);
+        expect(svg?.getAttribute('viewBox'), name).toBe('0 0 24 24');
+        expect(svg?.getAttribute('data-ov-size'), name).toBe(String(size));
+        const paths = [...container.querySelectorAll('path')];
+        expect(paths.length, name).toBe(GLYPHS[name].layers.length);
+        for (const path of paths) {
+          expect(path.getAttribute('d'), name).toMatch(/^M/);
+          expect(path.getAttribute('stroke'), name).toBe('currentColor');
+          expect(path.getAttribute('stroke-width'), name).toBe('2');
+        }
+
+        unmount();
+      }
+    }
+  });
+
   it('names the glyph it draws, for the stylesheet and for tests', () => {
     const { container } = render(<Icon name="chevron-down" />);
     expect(container.querySelector('svg')).toHaveProperty('dataset.ovGlyph', 'chevron-down');
@@ -95,7 +121,7 @@ describe('Icon', () => {
     // Types only: a glyph that is not in the registry has nothing to draw, so these are never rendered.
     const accepted: IconProps[] = [{ name: 'refresh' }, { name: 'refresh', size: 12 }, { name: 'refresh', size: 20 }, { name: 'refresh', 'data-testid': 'probe' }];
     // @ts-expect-error a name outside the registry
-    const unknownName: IconProps = { name: 'rocket' };
+    const unknownName: IconProps = { name: 'sparkles' };
     // @ts-expect-error a size outside the scale
     const unknownSize: IconProps = { name: 'refresh', size: 24 };
     // @ts-expect-error className is not a prop of a kit part

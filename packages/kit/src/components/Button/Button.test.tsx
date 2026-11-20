@@ -276,7 +276,7 @@ describe('Button', () => {
     // @ts-expect-error a size outside the closed set
     const unknownSize: ButtonProps = { children: 'Go', size: 'huge' };
     // @ts-expect-error an icon outside the registry
-    const unknownIcon: ButtonProps = { children: 'Go', icon: 'rocket' };
+    const unknownIcon: ButtonProps = { children: 'Go', icon: 'sparkles' };
     // @ts-expect-error a label is text, not an element: a face holds no status, count or timer
     const elementLabel: ButtonProps = { children: <b>Go</b> };
     // @ts-expect-error a native disabled attribute is not a prop: a button is unavailable for a reason

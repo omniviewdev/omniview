@@ -8,15 +8,23 @@ const names = Object.keys(GLYPHS) as IconName[];
 // Slice 1b adds the tab strip's: the new-tab plus and the back and forward arrows. The bottom panel (P1a) adds the status bar's toggle.
 // The log view (P1b2) adds its find bar's case and regex toggles and previous-match chevron, the follow glyph and the neutral debug-level circle.
 // The host's Logs tool (P1b-3a) adds its own glyph, the mock's scroll of text.
+// The per-kind glyphs of a plugin's resource lists (G1) add the Lucide glyphs below, named by what they draw.
 const SLICE_1A = [
   'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'box', 'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle',
   'circle-minus', 'clock', 'close', 'columns', 'copy', 'ellipsis', 'folder-tree', 'layers', 'loader', 'loader-circle', 'panel-bottom', 'play', 'plus', 'refresh', 'regex',
   'scroll-text', 'search', 'search-x', 'server', 'status-error', 'status-info', 'status-success', 'status-warning',
 ];
 
+// G1: thirty Lucide glyphs (24 artboard, stroke 2, round caps and joins), named by what they depict.
+const KIND_GLYPHS = [
+  'activity', 'arrow-up-wide-narrow', 'blocks', 'brick-wall', 'calendar-clock', 'clipboard-check', 'cpu', 'database', 'file-cog', 'gauge', 'globe', 'hard-drive',
+  'hard-drive-download', 'hourglass', 'key-round', 'layout-template', 'list-ordered', 'network', 'repeat', 'rocket', 'ruler', 'scaling', 'server-cog', 'settings-2',
+  'shield', 'shield-check', 'split', 'target', 'umbrella', 'waypoints',
+];
+
 describe('the glyph registry', () => {
-  it('holds the glyphs slices 1a and 1b draw, and no other', () => {
-    expect([...names].sort()).toEqual(SLICE_1A);
+  it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
+    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS].sort());
   });
 
   it('is plain data: nothing in it is a function, a markup string or an element', () => {
@@ -26,9 +34,9 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('names a glyph in lower-case words joined by hyphens', () => {
+  it('names a glyph in lower-case words joined by hyphens, a word may end in a digit as the source names it (settings-2)', () => {
     for (const name of names) {
-      expect(name).toMatch(/^[a-z]+(?:-[a-z]+)*$/);
+      expect(name).toMatch(/^[a-z]+(?:-[a-z0-9]+)*$/);
     }
   });
 
@@ -77,15 +85,15 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs', () => {
-    const twoTone = ['status-error', 'status-info', 'status-success', 'status-warning'];
+  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs and for the key, whose pin is a filled dot', () => {
+    const twoTone = ['key-round', 'status-error', 'status-info', 'status-success', 'status-warning'];
     for (const name of names) {
       const elements = 1 + GLYPHS[name].layers.length;
       expect(elements, name).toBe(twoTone.includes(name) ? 3 : 2);
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 7,950: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 231 bytes for the Logs tool glyph)', () => {
+  it('stays within its byte budget (one glyph 800 bytes, the registry 15,100: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -93,7 +101,32 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(7950);
+    expect(total).toBeLessThanOrEqual(15100);
+  });
+
+  it('draws the per-kind glyphs as the Lucide family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke', () => {
+    for (const name of KIND_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(24);
+      for (const layer of glyph.layers) {
+        expect(layer.stroke, name).toBe('ink');
+        expect(layer.width, name).toBe(2);
+        expect(layer.cap, name).toBe('round');
+        expect(layer.join, name).toBe('round');
+        expect(layer.evenodd, name).toBeUndefined();
+      }
+
+      // Only a paint of its own is a second layer: the key's pin is a dot that is filled as well as stroked.
+      expect(glyph.layers.filter((layer) => layer.fill !== undefined).length, name).toBe(name === 'key-round' ? 1 : 0);
+    }
+  });
+
+  it('merges shapes into one path without a relative moveto: a lower-case m after the start would begin at the end of the previous shape, not at the artboard origin', () => {
+    for (const name of KIND_GLYPHS as IconName[]) {
+      for (const layer of GLYPHS[name].layers) {
+        expect(layer.d, name).not.toMatch(/m/);
+      }
+    }
   });
 
   it('guards a name from outside: true for every glyph, false for anything else', () => {
