@@ -1,0 +1,16 @@
+EVIDENCE after old-plugin NOT_FOUND causeEqualsMessage=true
+  message: {"type":"omniview:resource/not-found","title":"Not found","status":404,"detail":"The requested resource was not found.","code":"NOT_FOUND","requestId":"<uuid>","recovery":"none"}
+EVIDENCE after old-plugin FORBIDDEN causeEqualsMessage=true
+  message: {"type":"omniview:resource/forbidden","title":"Access denied","status":403,"detail":"The operation is not permitted.","code":"FORBIDDEN","requestId":"<uuid>","recovery":"none"}
+EVIDENCE after old-plugin CONFLICT causeEqualsMessage=true
+  message: {"type":"omniview:resource/conflict","title":"Conflict","status":409,"detail":"The operation conflicts with current state.","code":"CONFLICT","requestId":"<uuid>","recovery":"refreshContract"}
+EVIDENCE after old-plugin TIMEOUT causeEqualsMessage=true
+  message: {"type":"omniview:resource/timeout","title":"Timed out","status":408,"detail":"The operation exceeded its deadline.","code":"TIMEOUT","requestId":"<uuid>","recovery":"none"}
+EVIDENCE after new-plugin NOT_FOUND causeEqualsMessage=true
+  message: {"type":"omniview:resource/not-found","title":"Not found","status":404,"detail":"The requested resource or API group was not found.","code":"NOT_FOUND","requestId":"<uuid>","recovery":"none"}
+EVIDENCE after new-plugin FORBIDDEN causeEqualsMessage=true
+  message: {"type":"omniview:resource/forbidden","title":"Access denied","status":403,"detail":"The operation is not permitted.","code":"FORBIDDEN","requestId":"<uuid>","recovery":"none"}
+EVIDENCE after new-plugin CONFLICT causeEqualsMessage=true
+  message: {"type":"omniview:resource/conflict","title":"Conflict","status":409,"detail":"The resource operation conflicts with the current cluster state.","code":"CONFLICT","requestId":"<uuid>","recovery":"refreshContract"}
+EVIDENCE after new-plugin TIMEOUT causeEqualsMessage=true
+  message: {"type":"omniview:resource/timeout","title":"Timed out","status":408,"detail":"The cluster did not complete the request in time.","code":"TIMEOUT","requestId":"<uuid>","recovery":"none"}

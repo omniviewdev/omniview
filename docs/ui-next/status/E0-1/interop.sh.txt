@@ -1,0 +1,137 @@
+#!/bin/bash
+# E0-1 interop matrix: a Kubernetes-style plugin server and a host-side client, each built
+# on the unmodified v0.20.0 SDK ("old") or on a checkout of the SDK change ("new"), run
+# against each other over a unix socket. Prints what the host's SDK client returns for a
+# not-found, a forbidden, a conflict and a timeout.
+#
+#   SDK_NEW=~/Repos/omniviewdev/worktrees/plugin-sdk-e0-1-error-text bash interop.sh.txt
+#
+# Offline: the modules come from the local module cache (GOPROXY=off). One script starts
+# the servers and stops them by PID in a trap.
+set -u
+SDK_NEW=${SDK_NEW:?set SDK_NEW to the SDK checkout that carries the change}
+SDK_OLD=${SDK_OLD:-v0.20.0}
+GRPC_FORK=${GRPC_FORK:-github.com/omniviewdev/grpc-go v1.85.1-0.20261107225428-6ba964c95af2} # the replace line of the SDK's go.mod
+WORK=$(mktemp -d)
+SERVER_PID=""
+cleanup() { [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null && wait "$SERVER_PID" 2>/dev/null; rm -rf "$WORK"; }
+trap cleanup EXIT
+
+write_server() { cat > "$1/main.go" <<'EOF'
+package main
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"os"
+	"os/signal"
+
+	"google.golang.org/grpc"
+
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+)
+
+// A Kubernetes-style provider (omniview-plugin-kubernetes, pkg/plugin/resource/errors.go):
+// the error returned depends on the connection the host asks about.
+type provider struct{}
+
+var errs = map[string]*resourcev2.ResourceOperationError{
+	"NOT_FOUND": {Code: "NOT_FOUND", Title: "Resource not found", Message: "The requested resource or API group was not found.", Err: fmt.Errorf("native: pods \"x\" not found (token=SECRET)")},
+	"FORBIDDEN": {Code: "FORBIDDEN", Title: "Access denied", Message: "You do not have permission to perform this resource operation."},
+	"CONFLICT":  {Code: "CONFLICT", Title: "Resource conflict", Message: "The resource operation conflicts with the current cluster state."},
+	"TIMEOUT":   {Code: "TIMEOUT", Title: "Request timed out", Message: "The cluster did not complete the request in time."},
+}
+
+func (provider) Catalog(_ context.Context, r resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
+	return resourcev2.Catalog{}, errs[r.Route.Connection]
+}
+
+func main() {
+	path := os.Args[1]
+	_ = os.Remove(path)
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		panic(err)
+	}
+	s := grpc.NewServer()
+	plugin.RegisterServer(s, provider{})
+	go func() { _ = s.Serve(l) }()
+	fmt.Println("ready")
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
+	s.Stop()
+}
+EOF
+}
+
+write_client() { cat > "$1/main.go" <<'EOF'
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+)
+
+func main() {
+	conn, err := grpc.NewClient("unix://"+os.Args[1], grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(err)
+	}
+	c := plugin.NewClient(conn)
+	for _, code := range []string{"NOT_FOUND", "FORBIDDEN", "CONFLICT", "TIMEOUT"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, err := c.Catalog(ctx, resourcev2.CatalogRequest{Route: resourcev2.AccessRoute{Connection: code}})
+		cancel()
+		var typed *resourcev2.ResourceOperationError
+		if errors.As(err, &typed) {
+			st, _ := status.FromError(typed.Err)
+			fmt.Printf("%-9s class=%-9s message=%q title=%q suggestions=%d statusText=%q details=%d\n", code, typed.Code, typed.Message, typed.Title, len(typed.Suggestions), st.Message(), len(st.Details()))
+		} else {
+			fmt.Printf("%-9s NOT TYPED: %v\n", code, err)
+		}
+	}
+}
+EOF
+}
+
+make_module() { # name, program (server|client), sdk (old|new)
+  local dir="$WORK/$1"
+  mkdir -p "$dir"
+  "write_$2" "$dir"
+  {
+    echo "module e2e/$1"
+    echo
+    echo "go 1.27.0"
+    echo
+    if [ "$3" = old ]; then echo "require github.com/omniviewdev/plugin-sdk $SDK_OLD"; else echo "require github.com/omniviewdev/plugin-sdk v0.0.0"; fi
+    echo "require google.golang.org/grpc v1.85.0"
+    echo "replace google.golang.org/grpc => $GRPC_FORK"
+    [ "$3" = new ] && echo "replace github.com/omniviewdev/plugin-sdk => $SDK_NEW"
+  } > "$dir/go.mod"
+  (cd "$dir" && GOWORK=off GOTOOLCHAIN=local GOFLAGS=-mod=mod GOPROXY=off GOSUMDB=off go build -o "$WORK/bin-$1" .) || exit 1
+}
+
+for v in old new; do make_module "srv-$v" server "$v"; make_module "cli-$v" client "$v"; done
+
+for pair in "old old" "new old" "old new" "new new"; do
+  set -- $pair
+  echo "=== plugin built on SDK: $1   host built on SDK: $2"
+  "$WORK/bin-srv-$1" "$WORK/plugin.sock" > "$WORK/server.out" 2>&1 &
+  SERVER_PID=$!
+  for _ in $(seq 1 50); do grep -q ready "$WORK/server.out" && break; sleep 0.1; done
+  "$WORK/bin-cli-$2" "$WORK/plugin.sock"
+  kill "$SERVER_PID" 2>/dev/null; wait "$SERVER_PID" 2>/dev/null; SERVER_PID=""
+done
