@@ -17,24 +17,69 @@ env:
   NODE_VERSION: "26.13.0"
 
 jobs:
+  # What the pull request changes, class by class (scripts/ci/changes.mjs, docs/ui-next/status/N24-D1.md). The outputs are skip flags: a job runs unless its flag is the string "true", so a
+  # classifier that wrote nothing skips nothing. The jobs below that need it are skipped when the change cannot reach them (a documentation-only change, or the new UI alone); a path the
+  # script does not know skips nothing. The same job is in pr-checks.yml.
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      class: ${{ steps.classify.outputs.class }}
+      skip_host: ${{ steps.classify.outputs.skip_host }}
+      skip_ui: ${{ steps.classify.outputs.skip_ui }}
+    steps:
+      # HEAD^1 is the base of the merge commit a pull request is checked out as: two commits are all the script needs.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Classify the changed paths
+        id: classify
+        run: node scripts/ci/changes.mjs --base HEAD^1
+
   # One canonical application execution; the exact required check name stays
   # stable even though reusable workflow checks have a caller/job prefix.
   e2e-application:
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_host != 'true' }}
     uses: ./.github/workflows/e2e-runner.yml
     with:
       base: ${{ github.event.pull_request.base.sha }}
 
   e2e-tests:
     name: e2e-tests
-    needs: e2e-application
+    needs: [changes, e2e-application]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
-      - name: Require canonical suite or explicit prose-only success
+      # Green when the suite succeeded, or when the classifier skipped it (a change that cannot reach the application: documentation, or the new UI alone) and it was skipped. A suite that was
+      # meant to be skipped and ran and failed is red; so is a skipped suite when the classifier did not say skip (a code path never reaches the skip), and so is a classifier that did not succeed.
+      - name: Require canonical suite, its skip by path, or explicit prose-only success
         env:
+          CHANGES: ${{ needs.changes.result }}
+          SKIP: ${{ needs.changes.outputs.skip_host }}
+          CLASS: ${{ needs.changes.outputs.class }}
           RESULT: ${{ needs.e2e-application.result }}
-        run: test "$RESULT" = success
+        run: |
+          if [ "$CHANGES" != success ]; then
+            echo "::error::the changed-path classification finished as ${CHANGES:-unknown}: nothing says whether e2e-application had to run"
+            exit 1
+          fi
+          if [ "$SKIP" = true ] && [ "$RESULT" = skipped ]; then
+            echo "e2e skipped by path: $CLASS"
+            echo "e2e-application: skipped by path: $CLASS" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$RESULT" != success ]; then
+            echo "::error::e2e-application finished as ${RESULT:-unknown}"
+            exit 1
+          fi
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Build Artifacts: compile gate, one build per OS. Nothing downloads or
@@ -46,6 +91,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-artifacts:
     name: build-artifacts (${{ matrix.platform }})
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_host != 'true' }}
     strategy:
       fail-fast: false
       matrix:
