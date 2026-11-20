@@ -16,10 +16,14 @@ import {
   type TabsStore,
 } from '../../shell';
 import { openable } from '../contract/admit';
-import type { SidebarNodeV1 } from '../contract/v1';
+import type { ContributionV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { connectionOf, routeKey, type PluginSource } from './contributions';
+import { commandOf, providersOf, runCommand } from './paletteProviders';
+import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
 import { DEFAULT_RAIL_ICON, failedOf, railOf } from './rail';
+
+type Ready = Extract<PluginEntry, { readonly phase: 'ready' }>;
 
 // The host's side of the command palette (ui-next/shell/core/palette is the model, ui-next/shell/palette draws it): the sources the host registers, the commands it can run, what the palette opens
 // with, and what it keeps up to date while the window lives. The model is plugin-agnostic and so is this: what a plugin is called, where its pages are and whether a route can open all come from
@@ -31,6 +35,8 @@ import { DEFAULT_RAIL_ICON, failedOf, railOf } from './rail';
 //   Pages     the home of each plugin, whatever state it is in, and a row for each page of a plugin that is ready that its sidebar opens (section Go to).
 //   Tabs      the open tabs, in the strip's order (section Tabs).
 //   Commands  what the host can do from here, each with the reason it cannot when it cannot (section Commands).
+// And one more for each provider a plugin that is ready declares (contract/v1.ts, `palette`; `paletteProviders.ts` makes them): registered when the plugin is ready and taken away, with its pending requests and its rows,
+// when it is not (PO1). A plugin's rows open through the tab model exactly as the host's own do, and a command a row names runs the plugin's own function, looked up again immediately before it runs.
 
 /** What the host hands the palette. */
 export type HostPaletteDeps = {
@@ -49,7 +55,14 @@ export type HostPaletteDeps = {
   readonly onCloseWindow: (() => void) | undefined;
   /** Where each plugin was last shown. A page of a plugin that is not on screen opens at the connection that plugin was last used in, as the entries of its own sidebar do. Absent: no connection is carried. */
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
+  /** What each plugin may ask of the bottom panel: handed to the plugin's commands as `context.panel`. Absent: the commands are given none. */
+  readonly panelHosts?: ((plugin: string) => PanelHostV1) | undefined;
+  /** Hears the rows a plugin's provider answered that were left out, and why: a problem for its author, said once for each. Default: the console. */
+  readonly report?: ((problem: PaletteProblem) => void) | undefined;
 };
+
+/** A thing a plugin's provider did that the palette did not take: which provider (`<plugin>:<its own id>`), and a sentence for the plugin's author. */
+export type PaletteProblem = { readonly provider: string; readonly message: string };
 
 /** What the shell is given (`PaletteBindings`), and what the host starts once the window is on screen. */
 export type HostPalette = PaletteBindings & {
@@ -353,13 +366,21 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     platform,
     // `windows` is not passed: the shell has no second window, so the footer does not say New window and Shift+Enter is refused with the reason, until a step builds one.
     // The command is looked up again, and checked against what is true now, immediately before it runs: the palette may have listed it a moment ago, and the host answers for the rest.
-    run: (command) => {
+    run: (command): PaletteCommandOutcome | Promise<PaletteCommandOutcome> => {
       const found = commandsOf(deps).find((candidate) => candidate.id === command.id);
-      if (found === undefined) {
+      if (found !== undefined) {
+        return found.unavailable === undefined ? found.run() : { ok: false, reason: found.unavailable };
+      }
+
+      // A command a plugin's row names, by the id the plugin and the command make together: the plugin may have left since the row was listed.
+      const plugin = commandOf(plugins.getSnapshot(), command.id);
+      if (plugin === undefined) {
         return { ok: false, reason: 'This command is not available.' };
       }
 
-      return found.unavailable === undefined ? found.run() : { ok: false, reason: found.unavailable };
+      return runCommand(plugin, command.arg, deps.panelHosts?.(plugin.plugin), (error) => {
+        console.error(`[palette] ${plugin.plugin}:${plugin.local} failed`, error);
+      });
     },
   });
 
@@ -381,6 +402,101 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
       throw new Error(`The palette refused the host's own source ${source.id}: ${registration.reason}`);
     }
   }
+
+  const report = deps.report ?? ((problem: PaletteProblem): void => {
+    console.warn(`[palette] ${problem.provider}: ${problem.message}`);
+  });
+
+  // The plugins' providers. What is registered is the contribution each plugin's providers were made of, so a plugin whose contribution is the same object as before is left alone, one that was replaced has its
+  // providers made again, and one that is not ready (or is gone) has none. `attached` counts the windows that keep the palette current: the providers stay until the last one is undone, and none are registered before the first.
+  // The model keeps sections that match equally in the order their providers were registered in, and what Enter opens is the first row: so the plugins are registered in the rail's order, which is the same on every run, and
+  // never in the order they happened to finish loading (a race between two plugins decided what a plain Enter opened, from one run to the next).
+  const registered = new Map<string, ContributionV1>();
+  const refused = new WeakSet<ContributionV1>();
+  let attached = 0;
+
+  const withdraw = (plugin: string): void => {
+    // The host's own sources are registered under this id too, and no plugin's leaving may take them.
+    if (registered.delete(plugin) && plugin !== OWN.plugin) {
+      store.removePlugin(plugin);
+    }
+  };
+
+  const syncProviders = (): void => {
+    if (attached === 0) {
+      return;
+    }
+
+    const entries = plugins.getSnapshot();
+    const rail = railOf(entries);
+    const place = (plugin: string): number => {
+      const index = rail.findIndex((candidate) => candidate.id === plugin);
+      return index < 0 ? rail.length : index;
+    };
+
+    const wanted: Ready[] = [];
+    for (const entry of entries) {
+      if (entry.phase !== 'ready' || entry.contribution.palette === undefined) {
+        continue;
+      }
+
+      if (entry.id === OWN.plugin) {
+        // A plugin called host would have its providers asked whatever the palette is narrowed to, and `removePlugin` would take the host's own sources with it.
+        if (!refused.has(entry.contribution)) {
+          refused.add(entry.contribution);
+          for (const local of Object.keys(entry.contribution.palette.providers ?? {})) {
+            report({ provider: `${entry.id}:${local}`, message: 'the plugin\'s id is "host", which names the palette\'s own sources: its providers are not registered' });
+          }
+        }
+
+        continue;
+      }
+
+      wanted.push(entry);
+    }
+
+    wanted.sort((a, b) => place(a.id) - place(b.id));
+
+    // A plugin that is gone, or no longer brings providers, leaves: the others keep their place.
+    const live = new Set(wanted.map((entry) => entry.id));
+    for (const plugin of [...registered.keys()]) {
+      if (!live.has(plugin)) {
+        withdraw(plugin);
+      }
+    }
+
+    // From the first plugin whose registration is not the one the rail's order puts there, the plugins are registered again in that order. A plugin that arrives behind the others (the usual case) is the only one
+    // registered; one that arrives ahead of others has them registered again after it, and their sections are asked once more.
+    const order = [...registered.keys()];
+    let kept = 0;
+    for (const entry of wanted) {
+      if (order[kept] !== entry.id || registered.get(entry.id) !== entry.contribution) {
+        break;
+      }
+
+      kept += 1;
+    }
+
+    for (const plugin of order.slice(kept)) {
+      withdraw(plugin);
+    }
+
+    for (const entry of wanted.slice(kept)) {
+      const icon = rail.find((candidate) => candidate.id === entry.id)?.icon;
+      const tell = (provider: string, message: string): void => {
+        report({ provider, message });
+      };
+
+      for (const source of providersOf(entry, { icon, report: tell })) {
+        const registration = store.registerProvider(source);
+        if (!registration.ok) {
+          report({ provider: source.id, message: registration.reason });
+        }
+      }
+
+      registered.set(entry.id, entry.contribution);
+    }
+  };
 
   /** The route on screen, and the chips that narrow the search to the tab's own plugin and scope when that plugin is ready (ch16 S69). */
   const opening = (): OpenPalette => {
@@ -413,6 +529,8 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
       }
     };
 
+    attached += 1;
+    syncProviders();
     let shown = activeRoute(tabs);
     remember(shown);
     const stops = [
@@ -428,6 +546,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
       }),
       // A place the plugins could not describe when it was remembered (a window restored before they had loaded) is remembered again once they do.
       plugins.subscribe(() => {
+        syncProviders();
         remember(activeRoute(tabs));
         refresh();
       }),
@@ -436,6 +555,13 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     return () => {
       for (const stop of stops) {
         stop();
+      }
+
+      attached -= 1;
+      if (attached === 0) {
+        for (const plugin of [...registered.keys()]) {
+          withdraw(plugin);
+        }
       }
 
       // A palette that is open when the window goes is closed with it: nothing of it outlives the subscriptions that kept it current.

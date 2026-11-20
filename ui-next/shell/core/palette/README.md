@@ -1,6 +1,6 @@
 # The command palette model
 
-The palette's state and its rules, as pure TypeScript: no React, no DOM (`purity.test.ts` fails the build if one is imported), no timer but the scheduler it is given. Rules come from the design lab: chapter 16 section D (S63 to S73), SE1, S142, and `shell-search.js` (the mock's matcher, runner and composition, ported). **Step C1a: logic and tests only. Nothing imports this folder; the `next` bundle does not change.** The UI step draws the snapshot and wires the seam below.
+The palette's state and its rules, as pure TypeScript: no React, no DOM (`purity.test.ts` fails the build if one is imported), no timer but the scheduler it is given. Rules come from the design lab: chapter 16 section D (S63 to S73), SE1, S142, and `shell-search.js` (the mock's matcher, runner and composition, ported). Step C1a wrote it as logic and tests; `../../palette/` draws it (C1b) and `../../plugins/host/palette.ts` wires the host's own sources and, since C1c, the providers the plugins declare (`../../plugins/contract/v1.ts`, `palette`).
 
 | File | What |
 | --- | --- |
@@ -13,7 +13,7 @@ The palette's state and its rules, as pure TypeScript: no React, no DOM (`purity
 | `recents.ts`, `saver.ts` | The last eight destinations, a versioned document with `migrate` (the tab model's), repaired on read; written by the shell's saver. |
 | `testing.ts` | Test support: a manual clock and the fixture. Nothing in the model imports it. |
 
-## The provider contract (to be added to the contribution contract in the UI step)
+## The provider contract (the plugin-facing form is `palette` in `contributionV1`: ../../plugins/contract/v1.ts)
 
 A provider is a source of results with an `id`, the `plugin` that owns it, a section, and **exactly one** way to answer:
 
@@ -27,6 +27,8 @@ search(query, scope, signal): Promise<Candidate[] | { rows, limited?, partial?, 
 A **candidate** is plain data: `id` (unique in the provider, stable: it keeps a row focused), `kind` (`tab page home scope type resource command setting tool`), `title`, `context`, `keywords`, `icon` and `tone` (the kit's `KindTile`), a `route` (and `reveal`, never part of the route) **or** a `command` (a registry id with plain `arg` and `target`, never code) **or** a `tab`, `into` (the step `→` takes inward), `unavailable` (a reason), `shortcut` (the host's chord: never invented, A9), `order`. A candidate that is not valid data is dropped and counted against its provider.
 
 An asynchronous provider's rows always form a section of its own (`{ id, title }`, prefixed with the plugin's id): a late answer must not move a row that is already actionable (S68). A plugin's providers are registered when it loads (`registerProvider`) and withdrawn when it leaves (`removePlugin`), together with its pending requests, its rows and the chips that narrowed the search to it (PO1).
+
+**The order of the plugins' sections is not the model's to decide.** Sections that match equally keep the order their providers were registered in (SE1), and what a plain Enter opens is the first row. The host registers the plugins' providers in the rail's order, whatever order the plugins finished loading in (`ui-next/plugins/host/palette.ts`, `syncProviders`): a plugin that arrives ahead of others in the rail has them registered again after it, and a plugin that leaves disturbs nobody's place. Without that, two plugins that load at the same time would take turns leading, and the same Enter would open a page of one plugin on one run and of the other on the next (found by the seam check of C1c, where it opened a tab beside the one on screen in some runs of a loaded machine, in either engine).
 
 **Failure is per provider.** A provider that throws, rejects, answers what is not a list, never answers (5 s) or answers in part is contained: the others answer, the palette stays usable, and the status band says which source failed (`runs`, a Retry where retry helps; more than three fold into `+N` and the Sources list).
 
@@ -44,7 +46,7 @@ The palette never holds the objects of a connection. A plugin does **not** regis
 
 ## What the host wires in the UI step
 
-`PaletteSeam`: `open` is the tab store's `open`, `activate` its `activate`, `availability` and `describe` the plugin host's `Contributions`, `announce` the live region, `run` the command registry (which revalidates). `refresh()` when tabs or health change; `record(route)` when a tab is switched to; `removePlugin` when a plugin leaves; recents are restored with `restoreRecents` and saved with `createPaletteSaver` through the session. The option `windows` says whether the host can open a window of its own (none can yet). The plugin-facing provider types join `ContributionV1` then (a `search` member beside `panel`: minor, an optional member).
+`PaletteSeam`: `open` is the tab store's `open`, `activate` its `activate`, `availability` and `describe` the plugin host's `Contributions`, `announce` the live region, `run` the command registry (which revalidates: the host's own commands, and a plugin's, looked up again immediately before they run). `refresh()` when tabs or health change; `record(route)` when a tab is switched to; recents are restored with `restoreRecents` and saved with `createPaletteSaver` through the session. The option `windows` says whether the host can open a window of its own (none can yet). A plugin's providers are registered when the plugin is ready and `removePlugin` takes them away, with their pending requests and rows, when it is loading again, failed or gone (`../../plugins/host/palette.ts`, `paletteProviders.ts`); what a plugin hands over is read by `../../plugins/contract/paletteRows.ts` row by row before the model sees a candidate.
 
 ## Tests, and the oracle
 
