@@ -107,6 +107,68 @@ describe('a session that is read back', () => {
   });
 });
 
+// A21: what a plugin's unload ended in a tool of the host is held, listed and readable until its tab closes. Held is a fact of this run: the panel saves what a session IS (its identity), never what it was doing or
+// what it had read, so a session that is held when the app quits is saved as every other session is, and comes back as every restored session does.
+describe('a session that its plugin\'s unload ended, and the saved panel (A21)', () => {
+  const held = () => {
+    const h = boot({ hostTools: [tool('logs', 'Logs', 20)], plugins: { acme: [], beta: [] } });
+    h.store.openSession(session('logs', 'acme', 'follows', { scope: 'dev', state: 'running', route: { plugin: 'acme', contribution: 'item', params: { name: 'worker' } } }));
+    h.store.openSession(session('logs', 'beta', 'stays', { state: 'running' }));
+    h.store.syncPlugins([{ id: 'beta', tools: [] }]);
+    return h;
+  };
+
+  it('is saved as every session is: its identity, with no mark that it is held, no state, no cause and no line', () => {
+    const h = held();
+    expect(h.snapshot().sessions.s1).toMatchObject({ held: true, state: 'ended' });
+    const document = h.store.serialise();
+    expect(document.sessions).toEqual([
+      { id: 's1', tool: 'logs', plugin: 'acme', title: 'follows', scope: 'dev', route: { plugin: 'acme', contribution: 'item', params: { name: 'worker' } } },
+      { id: 's2', tool: 'logs', plugin: 'beta', title: 'stays', scope: '' },
+    ]);
+    const text = JSON.stringify(document);
+    for (const word of ['held', 'ended', 'cause', 'since', 'unloaded']) {
+      expect(text).not.toContain(word);
+    }
+  });
+
+  it('comes back as a session of the last run does: ended with the words of a restart, not held, with no lines, hidden until its plugin has loaded, and then like any session of the host\'s tool', () => {
+    const result = restore(JSON.parse(JSON.stringify(held().store.serialise())));
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.state.sessions.s1).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE, since: NOW });
+    expect(result.state.sessions.s1?.held).toBeUndefined();
+    expect(result.state.live).toEqual([]);
+    const store = createPanelStore({ initial: result.state });
+    store.registerTool(tool('logs', 'Logs', 20));
+    expect(store.selectors.sessionIds(store.getSnapshot(), 'logs')).toEqual([]);
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    expect(store.selectors.sessionIds(store.getSnapshot(), 'logs')).toEqual(['s1']);
+    expect(store.getSnapshot().sessions.s1?.held).toBeUndefined();
+    // Once its plugin has loaded it is a session of the host's tool like any other: when the plugin leaves it stays as it was, with the words of the restart (A21: whatever the state).
+    store.syncPlugins([]);
+    expect(store.selectors.sessionIds(store.getSnapshot(), 'logs')).toEqual(['s1']);
+    expect(store.getSnapshot().sessions.s1).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE, held: true });
+    expect(checkInvariants(store.getSnapshot())).toEqual([]);
+  });
+
+  it('is not made held by a document that says it is: the flag is not read', () => {
+    const result = restore({ ...saved(), sessions: [{ ...entry('a'), held: true, state: 'running', cause: 'because' }] });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.state.sessions.a).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE });
+    expect(result.state.sessions.a?.held).toBeUndefined();
+    expect(result.repaired).toBe(false);
+    expect(checkInvariants(result.state)).toEqual([]);
+  });
+});
+
 describe('a saved panel that is damaged is repaired, not discarded (mock: "a bad value falls back to hidden")', () => {
   it('falls back to a hidden panel, with the tool and the height it can read', () => {
     const result = restore({ version: 1, open: 'sideways', height: 'tall', tool: 5, active: 'x', sessions: 'nope' });

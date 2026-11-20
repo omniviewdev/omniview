@@ -1,6 +1,6 @@
 import { sameItems } from '../tabs/json';
 import { SESSION_RULE, splitTitle } from '../title';
-import { effectiveSession, effectiveTool, own, sessionVisible, shownOf, visibleSessions, visibleTools } from './state';
+import { effectiveSession, effectiveTool, isLive, own, sessionVisible, shownOf, visibleSessions, visibleTools } from './state';
 import type { PanelState, Selectors, Session, SessionId, SessionItem, Shown, Tool, ToolId, ToolItem } from './types';
 
 // What the toggle, the tool strip, a session tab and a tool body each subscribe to. Every selector is a function of the snapshot. One that only reads a part of the state returns that
@@ -133,5 +133,9 @@ export function createSelectors(): Selectors {
       return shown;
     },
     isShown: (state, id) => shownOf(state)?.session === id,
+    pluginOff: (state, id) => {
+      const session = own(state.sessions, id);
+      return session !== undefined && !isLive(state, session.plugin);
+    },
   };
 }

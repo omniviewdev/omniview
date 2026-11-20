@@ -65,10 +65,13 @@ export function visibleTools(state: PanelState): Tool[] {
     .sort((a, b) => a.order - b.order || a.seq - b.seq);
 }
 
-/** A session shows while its plugin is live and its tool is registered and visible: with no tool there is nothing to draw its tab in. */
+/**
+ * A session shows while its tool is registered and visible (with no tool there is nothing to draw its tab in) and its plugin is live, or the session is held: what its plugin's unload ended in a tool of
+ * the host stays listed and mounted, ended, until its tab closes (A21). Nothing else of a plugin that is off shows (PO1).
+ */
 export function sessionVisible(state: PanelState, session: Session): boolean {
   const tool = own(state.tools, session.tool);
-  return tool !== undefined && toolVisible(state, tool) && isLive(state, session.plugin);
+  return tool !== undefined && toolVisible(state, tool) && (isLive(state, session.plugin) || session.held === true);
 }
 
 /** The visible sessions of a tool, in the order they were opened. */
@@ -152,6 +155,18 @@ export function checkInvariants(state: PanelState): string[] {
     if (!settled && session.cause !== '') {
       problems.push(`the session ${id} is ${session.state} and has a cause`);
     }
+
+    // A21: held is what a plugin's unload leaves listed. What it is, in words: a session of a tool of the host (a plugin's tool ids have a colon, the host's never do) that is over, ended or failed: what was
+    // running ended with the unload, and what was over before it stayed as it was, so a held session may say no cause.
+    if (session.held === true) {
+      if (!settled) {
+        problems.push(`the session ${id} is held and is not over`);
+      }
+
+      if (session.tool.includes(':')) {
+        problems.push(`the session ${id} is held in ${session.tool}, which is not a tool of the host`);
+      }
+    }
   }
 
   for (const [tool, id] of Object.entries(state.active)) {
@@ -170,6 +185,14 @@ export function checkInvariants(state: PanelState): string[] {
   });
   if (mountedHidden !== undefined) {
     problems.push(`${mountedHidden} is mounted and not visible`);
+  }
+
+  // The same rule from the other side, written out from `live` and `held` and not from `sessionVisible`: of a plugin that is off, only a held session may have its body mounted.
+  for (const id of state.mounted) {
+    const session = own(state.sessions, id);
+    if (session !== undefined && !isLive(state, session.plugin) && session.held !== true) {
+      problems.push(`${id} is mounted, its plugin is off and it is not held`);
+    }
   }
 
   if (state.height !== null && !(Number.isFinite(state.height) && state.height > 0)) {

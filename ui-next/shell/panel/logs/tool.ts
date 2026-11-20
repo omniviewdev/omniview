@@ -17,7 +17,7 @@ export const LOGS_TOOL: ToolInput = { id: LOGS_TOOL_ID, label: 'Logs', icon: LOG
 export const LOGS_EMPTY = { title: 'No log sessions', hint: 'Open the logs of a resource to follow them here.' } as const;
 
 /**
- * What the body of a session that has no stream says: the session is over and what it held is gone (it was restored from the last run, or its plugin was unloaded and came back; the host keeps no line
- * across either, which belongs to the buffer policy of row P1c), and the way to get logs again is the one that started it (decision A20).
+ * What the body of a session that has no stream says: the session is over and what it held is gone (it was restored from the last run: the host keeps no line across a restart, which belongs to the buffer
+ * policy of row P1c; the sessions of a plugin that unloads are kept with their lines, whatever their state, A21), and the way to get logs again is the one that started it (decision A20).
  */
 export const LOGS_GONE = { title: 'The earlier lines are gone', hint: 'Open logs from the resource to follow them again.' } as const;

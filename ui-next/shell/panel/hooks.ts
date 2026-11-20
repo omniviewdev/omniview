@@ -75,3 +75,9 @@ export function useSession(id: SessionId): Session | undefined {
   const { store } = usePanel();
   return usePanelSelector((state) => store.selectors.session(state, id));
 }
+
+/** Whether this session's plugin is off: only a session the unload ended and the panel kept (A21) is listed then, and what needs the plugin, the link back to its resource, cannot work until it returns. */
+export function usePluginOff(id: SessionId): boolean {
+  const { store } = usePanel();
+  return usePanelSelector((state) => store.selectors.pluginOff(state, id));
+}

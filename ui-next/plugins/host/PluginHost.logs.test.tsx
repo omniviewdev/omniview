@@ -96,6 +96,36 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** A stream that tells its listeners it ended as it closes, as the runtime's does: the view hears the end of a stream the host closed. */
+function closingFeed(): FakeFeed {
+  const feed: FakeFeed = fakeFeed({
+    state: 'streaming',
+    close: () => {
+      feed.set({ state: 'ended' });
+    },
+  });
+  return feed;
+}
+
+/** Opens a session on `feed` through the plugin's handle, and waits until the host's view has drawn `lines` lines of it. */
+async function follow(logs: PanelHostV1['logs'], feed: FakeFeed, lines: number): Promise<{ readonly session: LogSessionV1 | undefined; readonly log: HTMLElement }> {
+  let session: LogSessionV1 | undefined;
+  act(() => {
+    session = logs.open(target(feed));
+  });
+  const log = await screen.findByRole('group', { name: 'Log, alpha/app · north' });
+  await waitFor(() => {
+    expect(feed.reads()).toBeGreaterThan(0);
+  });
+  act(() => {
+    feed.push(lines);
+  });
+  await waitFor(() => {
+    expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe(String(lines + 1));
+  });
+  return { session, log };
+}
+
 describe('the Logs tool of the host', () => {
   it('is in the panel\'s strip without any plugin bringing it, and says how a session arrives: no button, no `+`', async () => {
     const { user } = mount({ plugins: () => [{ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution: acme() }] });
@@ -220,47 +250,93 @@ describe('a plugin that opens a Logs session', () => {
     expect(screen.getByText('No log sessions')).toBeInTheDocument();
   });
 
-  it('closes the streams of a plugin that goes away, and the panel hides its sessions and ends them (a plugin that is off contributes nothing); the host keeps no line of them', async () => {
+  // A21: what a plugin's unload ends in the host's Logs tool is kept. The stream is closed (the runtime drops what it held and tells its listeners it ended), the session stays ended with the cause, and the
+  // view keeps the lines it had read, in the very same view, until the tab closes.
+  it('closes the stream of a plugin that goes away and KEEPS the session: the tab stays, ended, and the same view keeps the lines it had read, saying the stream ended (A21)', async () => {
     const { seen, set, panel } = mount();
     const logs = (await handle(seen)).logs;
-    const feed = fakeFeed({ state: 'streaming' });
-    let session: LogSessionV1 | undefined;
-    act(() => {
-      session = logs.open(target(feed));
-    });
-    await screen.findByRole('group', { name: 'Log, alpha/app · north' });
-    act(() => {
-      feed.push(40);
-    });
+    const feed = closingFeed();
+    const { session, log } = await follow(logs, feed, 40);
     set([]);
-    expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: 'The plugin was unloaded.' });
+    expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: 'The plugin was unloaded.', held: true });
     expect(feed.closed()).toBe(1);
-    expect(screen.queryByRole('tab', { name: /alpha\/app/ })).toBeNull();
-    expect(screen.queryByRole('group', { name: 'Log, alpha/app · north' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'alpha/app · north, ended' })).toBeInTheDocument();
+    // Not a view made again over nothing: the same element, with its lines.
+    expect(screen.getByRole('group', { name: 'Log, alpha/app · north' })).toBe(log);
+    expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe('41');
+    expect(await within(log).findByText('Stream ended')).toBeInTheDocument();
+    expect(screen.queryByText('The earlier lines are gone')).toBeNull();
+  });
+
+  it('frees the stream and the view when the tab of a held session closes: nothing is closed twice, no listener is left, and the tool is empty again', async () => {
+    const { seen, set, panel, user } = mount();
+    const logs = (await handle(seen)).logs;
+    const feed = closingFeed();
+    await follow(logs, feed, 40);
+    set([]);
+    tab('alpha/app · north, ended').focus();
+    await user.keyboard('{Delete}');
+    expect(Object.keys(panel.getSnapshot().sessions)).toEqual([]);
+    // It was closed once, at the unload.
+    expect(feed.closed()).toBe(1);
     await waitFor(() => {
       expect(feed.listeners()).toBe(0);
     });
+    expect(feed.stats().held).toBe(0);
+    expect(screen.queryByRole('group', { name: 'Log, alpha/app · north' })).toBeNull();
+    expect(screen.getByText('No log sessions')).toBeInTheDocument();
   });
 
-  it('gives the session back when the plugin does, as it was left and honestly: ended, because the plugin was unloaded, with the earlier lines gone and the way to get logs again said in its body', async () => {
-    const { seen, set, first, panel } = mount();
+  it('keeps the held session, ended and with its lines, when the plugin comes back, and a new press of Logs opens a new session beside it with a stream of its own: nothing resumes', async () => {
+    const { seen, set, first, panel, user } = mount();
     const logs = (await handle(seen)).logs;
-    const feed = fakeFeed({ state: 'streaming' });
-    let session: LogSessionV1 | undefined;
-    act(() => {
-      session = logs.open(target(feed));
-    });
-    await screen.findByRole('group', { name: 'Log, alpha/app · north' });
+    const old = closingFeed();
+    const { session: heldSession } = await follow(logs, old, 40);
     set([]);
     set(first);
-    expect(await screen.findByRole('tab', { name: 'alpha/app · north, ended' })).toBeInTheDocument();
-    expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: 'The plugin was unloaded.' });
-    expect(screen.getByText('The earlier lines are gone')).toBeInTheDocument();
-    expect(screen.getByText('Open logs from the resource to follow them again.')).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: 'Log, alpha/app · north' })).toBeNull();
+    expect(panel.getSnapshot().sessions[heldSession?.id ?? '']).toMatchObject({ state: 'ended', held: true, cause: 'The plugin was unloaded.' });
+    expect(old.closed()).toBe(1);
+    // The press of Logs again: the plugin's page asks for the stream anew, through the handle it had.
+    const fresh = closingFeed();
+    let pressed: LogSessionV1 | undefined;
+    act(() => {
+      pressed = logs.open(target(fresh));
+    });
+    expect(pressed?.id).not.toBe(heldSession?.id);
+    expect(tab('alpha/app · north, ended')).toBeInTheDocument();
+    expect(tab('alpha/app (2) · north')).toHaveAttribute('aria-selected', 'true');
+    expect(panel.getSnapshot().sessions[pressed?.id ?? '']).toMatchObject({ state: 'running' });
+    expect(panel.getSnapshot().sessions[pressed?.id ?? '']?.held).toBeUndefined();
+    expect(fresh.closed()).toBe(0);
+    expect(fresh.listeners()).toBeGreaterThan(0);
+    // The old session still has its lines: choosing it shows them, ended; the new one goes on.
+    await user.click(tab('alpha/app · north, ended'));
+    const log = await screen.findByRole('group', { name: 'Log, alpha/app · north' });
+    expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe('41');
+    expect(await within(log).findByText('Stream ended')).toBeInTheDocument();
+    expect(old.closed()).toBe(1);
+  });
+
+  it('keeps a session that had ended on its own before the plugin left, exactly as it was: its tab stays with its own words and the same view keeps its lines (A21: whatever the state)', async () => {
+    const { seen, set, first, panel } = mount();
+    const logs = (await handle(seen)).logs;
+    const feed = closingFeed();
+    const { session, log } = await follow(logs, feed, 40);
+    act(() => {
+      feed.set({ state: 'ended' });
+    });
+    const before = panel.getSnapshot().sessions[session?.id ?? ''];
+    set([]);
+    expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: '', since: before?.since, held: true });
+    expect(screen.getByRole('tab', { name: 'alpha/app · north, ended' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Log, alpha/app · north' })).toBe(log);
+    expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe('41');
+    expect(feed.closed()).toBe(1);
+    set(first);
+    expect(screen.getByRole('group', { name: 'Log, alpha/app · north' })).toBe(log);
+    expect(screen.queryByText('The earlier lines are gone')).toBeNull();
     // Nothing started again for it.
     expect(feed.closed()).toBe(1);
-    expect(feed.listeners()).toBe(0);
   });
 
   it('works in a development build, which runs the host\'s effects twice: a session opens and closes as in a production one', async () => {

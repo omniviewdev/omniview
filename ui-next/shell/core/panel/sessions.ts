@@ -92,11 +92,19 @@ export function openSession(state: PanelState, input: SessionInput, ctx: Context
 
 export type StateChange = { readonly state: SessionState; readonly cause?: string | undefined };
 
-/** What a session came to. A change of state moves `since`; the cause comes with an end or a failure and is dropped by anything else. The same state and cause change nothing. */
+/**
+ * What a session came to. A change of state moves `since`; the cause comes with an end or a failure and is dropped by anything else. The same state and cause change nothing. A held session (A21) is
+ * over: it was ended by its plugin's unload and is kept as it is, so nothing it hears afterwards, from the stream that was closed or from its plugin when it returns, can start it again or give it
+ * another end.
+ */
 export function setSessionState(state: PanelState, id: SessionId, change: StateChange, now: number): Step<PanelResult> {
   const session = own(state.sessions, id);
   if (session === undefined) {
     return refuse(state, 'missing', `There is no session ${id}.`);
+  }
+
+  if (session.held === true) {
+    return refuse(state, 'held', `The session ${id} ended when its plugin was unloaded and is kept as it is until it is closed.`);
   }
 
   const cause = settled(change.state) ? text(change.cause) : '';

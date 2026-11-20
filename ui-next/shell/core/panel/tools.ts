@@ -61,8 +61,12 @@ export type PluginTools = { readonly id: string; readonly tools: readonly ToolIn
 
 /**
  * The plugins that are live now, and the tools each brings: the whole answer, in one transaction, so a plugin's tools and sessions go and return together (PO1, ch16 S114a). Every tool a
- * plugin brought before and brings no more is removed; a plugin that is no longer listed loses its tools, its sessions are hidden and the ones that were running end (the session is
+ * plugin brought before and brings no more is removed; a plugin that is no longer listed loses its tools, its sessions in them are hidden and the ones that were running end (the session is
  * a record of work that was running in the plugin, and the plugin is gone), and a plugin that returns has its sessions back, ended. The host's own tools are not touched.
+ *
+ * One thing is not hidden (A21, widened by the lead's ruling): the sessions a plugin has in a tool of the HOST are `held` when it leaves, whatever their state. They stay listed and mounted until their tab
+ * closes, whether the plugin is off or has come back, and nothing changes them. A session that was starting or running is ended with the same cause; one that had ended or failed on its own is kept AS IT
+ * WAS (its state, its cause and its time). A session in a tool that is not registered was never drawn and is hidden as before.
  */
 export function syncPlugins(state: PanelState, plugins: readonly PluginTools[], now: number, cause: string): Step<PanelResult> {
   const live = [...new Set(plugins.map((plugin) => plugin.id).filter((id) => id !== '' && id !== HOST))].sort();
@@ -98,11 +102,21 @@ export function syncPlugins(state: PanelState, plugins: readonly PluginTools[], 
   }
 
   const gone = new Set(state.live.filter((id) => !live.includes(id)));
-  // The sessions of a plugin that left and were running end in one copy of the dictionary: ending n of them is n entries written into the one new dictionary, not n copies of the old.
+  // The sessions of a plugin that left are rewritten in one copy of the dictionary: n of them are n entries written into the one new dictionary, not n copies of the old.
   const ended: Array<readonly [SessionId, Session]> = [];
   for (const id of state.order) {
     const session = own(state.sessions, id);
-    if (session !== undefined && gone.has(session.plugin) && (session.state === 'starting' || session.state === 'running')) {
+    if (session === undefined || !gone.has(session.plugin) || session.held === true) {
+      continue;
+    }
+
+    const running = session.state === 'starting' || session.state === 'running';
+    // A21: what a plugin has in a tool of the HOST is held, whatever its state: what was running ends with the cause, what was over stays as it was. What it has in a tool it brought is hidden with the
+    // plugin (and ended when it ran), and so is a session of a tool that is not registered (nothing drew it): PO1.
+    const held = own(state.tools, session.tool)?.owner === HOST;
+    if (held) {
+      ended.push([id, Object.freeze({ ...session, ...(running ? { state: 'ended' as const, since: now, cause } : {}), held: true as const })]);
+    } else if (running) {
       ended.push([id, Object.freeze({ ...session, state: 'ended' as const, since: now, cause })]);
     }
   }

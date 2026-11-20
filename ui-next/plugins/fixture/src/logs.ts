@@ -23,15 +23,27 @@ export type FixtureLogStats = { readonly emitted: number; readonly held: number;
 
 /**
  * What the counters offer besides the three numbers, as members that are NOT enumerable (`{ ...window.__fixtureLogs }` stays the three numbers a check compares): `stats()`, above, `stopSources()`, which makes
- * every source of a feed that is open go quiet: the feed stays open and listened to and emits nothing more (the negative control of the logs probe: a feed that is simply inactive), and `speak()`, which makes
- * the second source of every open feed that has one to give (the `late` session) list itself and write its first line, once: what the runtime's stream does when a container it had not heard of starts to write.
+ * every source of a feed that is open go quiet: the feed stays open and listened to and emits nothing more (the negative control of the logs probe: a feed that is simply inactive), `speak()`, which makes
+ * the second source of every open feed that has one to give (the `late` session) list itself and write its first line, once: what the runtime's stream does when a container it had not heard of starts to write,
+ * and `closeCalls`, how many times the host called `close()` on each feed it opened, in the order it opened them, repeats included (`closed` counts a feed once, so a stream closed twice is invisible to it).
  */
-export type FixtureLogHooks = { readonly stats: () => FixtureLogStats; readonly stopSources: () => void; readonly speak: () => void };
+export type FixtureLogHooks = {
+  readonly stats: () => FixtureLogStats;
+  readonly stopSources: () => void;
+  readonly speak: () => void;
+  readonly closeCalls: readonly number[];
+};
 
 const KEY = '__fixtureLogs';
 
 /** What the counters keep to tell `stats()`, on the object itself because every copy of this file on a page shares one set: the sources of the feeds that are open, and the totals of the ones that were closed. */
-type Shared = FixtureLogCounters & FixtureLogHooks & { readonly sources: Set<SyntheticFeed>; readonly speakers: Set<() => void>; readonly retired: { emitted: number; dropped: number } };
+type Shared = FixtureLogCounters &
+  Omit<FixtureLogHooks, 'closeCalls'> & {
+    readonly closeCalls: number[];
+    readonly sources: Set<SyntheticFeed>;
+    readonly speakers: Set<() => void>;
+    readonly retired: { emitted: number; dropped: number };
+  };
 
 /** The counters, made on first use: the plugin and its copy share one window, and so one set. */
 function counters(): Shared {
@@ -43,11 +55,13 @@ function counters(): Shared {
   const sources = new Set<SyntheticFeed>();
   const speakers = new Set<() => void>();
   const retired = { emitted: 0, dropped: 0 };
+  const closeCalls: number[] = [];
   const made: FixtureLogCounters = { opened: 0, closed: 0, listeners: 0 };
   Object.defineProperties(made, {
     sources: { value: sources },
     speakers: { value: speakers },
     retired: { value: retired },
+    closeCalls: { value: closeCalls },
     stats: {
       value: (): FixtureLogStats => {
         let { emitted, dropped } = retired;
@@ -115,6 +129,9 @@ function feedOf(spec: Spec): LogFeedV1 {
   const synthetic = new SyntheticFeed({ rate: spec.rate, seed: spec.seed, ...(spec.sources === undefined ? {} : { sources: spec.sources }) });
   const live = counters();
   live.opened += 1;
+  // The place of this feed among the ones the host opened, where the calls to its `close` are counted.
+  const place = live.closeCalls.length;
+  live.closeCalls.push(0);
   live.sources.add(synthetic);
   // What stops the moment the stream ends or fails on its own, while it has not happened yet.
   let cancel: (() => void) | undefined;
@@ -166,6 +183,8 @@ function feedOf(spec: Spec): LogFeedV1 {
     pause: synthetic.pause,
     resume: synthetic.resume,
     close: () => {
+      // Every call is counted, the repeats too: `closed` below counts a feed once.
+      live.closeCalls[place] = (live.closeCalls[place] ?? 0) + 1;
       if (closed) {
         return;
       }
@@ -182,6 +201,11 @@ function feedOf(spec: Spec): LogFeedV1 {
       if (state === 'starting' || state === 'streaming' || state === 'paused') {
         synthetic.setState('ended');
       }
+
+      // The runtime's stream empties its buffer when it closes, paused or not: one the host keeps after closing it (A21) holds no line, and the view over it keeps the ones it had read. A pause the reader never lifted
+      // keeps what a feed holds, so it is lifted first (the state, `ended` now, stays).
+      synthetic.resume();
+      synthetic.read(Number.MAX_SAFE_INTEGER);
 
       // The lines it made and dropped stay in the totals; what it still held goes with it.
       const { received, dropped } = synthetic.stats();

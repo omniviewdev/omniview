@@ -101,3 +101,64 @@ describe('what the plugin says wins, member by member', () => {
     expect(card).toMatchObject({ kind: 'Logs', state: { label: 'Running' }, facts: [] });
   });
 });
+
+// A21: the sessions of a tool of the host are kept while their plugin is off, whatever their state, and what needs the plugin cannot work: the way back to the resource is a page of that plugin. The reason is
+// always the unload's sentence, "The plugin was unloaded.": printed on the card (it is the session's own cause when the unload ended it, and the card adds it after the stream's own words when the session had
+// ended or failed on its own), and it is the reason of the button that opens the resource; the resource's name is text, as a resource with no route is.
+describe('a session whose plugin is off (a session of a tool of the host, kept: A21)', () => {
+  const UNLOADED = 'The plugin was unloaded.';
+  const held = (over: Partial<Session> = {}): Session => session({ state: 'ended', cause: UNLOADED, held: true, route, ...over });
+  const named: PanelCard = { resource: { label: 'Item worker', kind: 'Item', icon: 'layers', route } };
+
+  it('says why it ended and disables the way back to the resource with that reason: the name is not a link, and Open <resource> is unavailable for the same sentence', () => {
+    const card = cardOf(held(), tool, named, NOW, true);
+    expect(card.state).toMatchObject({ label: 'Ended', role: 'stopped', reason: UNLOADED });
+    expect(card.resource).toEqual({ label: 'Item worker', kind: 'Item', icon: 'layers', route, disabledReason: UNLOADED });
+    expect(card.actions).toEqual([{ label: 'Open Item', icon: undefined, onSelect: expect.any(Function), disabledReason: UNLOADED, opens: true }]);
+  });
+
+  it('works again when the plugin is back: the same session, the link and the button have no reason', () => {
+    const card = cardOf(held(), tool, named, NOW, false);
+    expect(card.state.reason).toBe(UNLOADED);
+    expect(card.resource?.disabledReason).toBeUndefined();
+    expect(card.actions[0]).toMatchObject({ label: 'Open Item', disabledReason: undefined, opens: true });
+  });
+
+  it('has the reason a card with no description of the plugin\'s gives too: the session\'s title is the resource, and it cannot be opened', () => {
+    const card = cardOf(held(), tool, undefined, NOW, true);
+    expect(card.resource).toMatchObject({ label: 'worker-7d8c6f49b', route, disabledReason: UNLOADED });
+    expect(card.actions).toEqual([expect.objectContaining({ label: 'Open resource', disabledReason: UNLOADED, opens: true })]);
+  });
+
+  it('disables nothing that was not a link: a resource with no route is text already and has no button, and the plugin\'s own buttons are the plugin\'s', () => {
+    const plain = cardOf(held({ route: undefined }), tool, { resource: { label: 'Item worker', kind: 'Item' } }, NOW, true);
+    expect(plain.resource?.disabledReason).toBeUndefined();
+    expect(plain.actions).toEqual([]);
+    const own = cardOf(held(), tool, { ...named, actions: [{ label: 'Copy', onSelect: noop }] }, NOW, true);
+    expect(own.actions.map((action) => [action.label, action.disabledReason])).toEqual([['Open Item', UNLOADED], ['Copy', undefined]]);
+  });
+
+  it('is disabled even when the session says nothing of why it ended: it had ended on its own, so the card says the plugin was unloaded while it is, and says nothing of it once it is back', () => {
+    const off = cardOf(held({ cause: '' }), tool, named, NOW, true);
+    expect(off.state.reason).toBe(UNLOADED);
+    expect(off.actions[0]?.disabledReason).toBe(UNLOADED);
+    expect(off.resource?.disabledReason).toBe(UNLOADED);
+    expect(cardOf(held({ cause: '' }), tool, named, NOW, false).state.reason).toBe('');
+  });
+
+  it('says what a session that had failed on its own says of itself, and then that the plugin was unloaded; the button is unavailable for the second sentence, and the first stands alone when the plugin is back', () => {
+    const failed = held({ state: 'failed', cause: 'The log stream stopped. The source did not answer.' });
+    const off = cardOf(failed, tool, named, NOW, true);
+    expect(off.state).toMatchObject({ label: 'Failed', role: 'error', reason: `The log stream stopped. The source did not answer. ${UNLOADED}` });
+    expect(off.actions[0]?.disabledReason).toBe(UNLOADED);
+    const back = cardOf(failed, tool, named, NOW, false);
+    expect(back.state.reason).toBe('The log stream stopped. The source did not answer.');
+    expect(back.actions[0]?.disabledReason).toBeUndefined();
+  });
+
+  it('changes nothing for a session whose plugin is live: it is never disabled', () => {
+    const card = cardOf(session({ route }), tool, named, NOW);
+    expect(card.resource?.disabledReason).toBeUndefined();
+    expect(card.actions[0]?.disabledReason).toBeUndefined();
+  });
+});

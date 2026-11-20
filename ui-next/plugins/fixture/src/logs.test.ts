@@ -158,6 +158,39 @@ describe('the fixture\'s Logs sessions', () => {
     expect(counters()).toMatchObject({ opened: 6, closed: 6 });
   });
 
+  it('drop what they held when they are closed, as the runtime\'s stream does: a stream the host keeps after closing it (A21) holds no line', () => {
+    const feed = logTargetsOf(ITEM)[3]?.open();
+    vi.advanceTimersByTime(1_000);
+    expect(feed?.stats().held).toBeGreaterThan(0);
+    void feed?.close();
+    expect(feed?.stats().held).toBe(0);
+    expect(feed?.read(100).lines).toEqual([]);
+  });
+
+  it('drop what they held when they are closed while paused too, and are still over: a pause the reader never lifted does not keep the lines of a stream the host holds after closing it', () => {
+    const feed = logTargetsOf(ITEM)[3]?.open();
+    vi.advanceTimersByTime(500);
+    feed?.pause();
+    vi.advanceTimersByTime(500);
+    expect(feed?.getSnapshot()).toMatchObject({ state: 'paused', paused: true });
+    expect(feed?.stats().held).toBeGreaterThan(0);
+    void feed?.close();
+    expect(feed?.stats().held).toBe(0);
+    expect(feed?.getSnapshot().state).toBe('ended');
+  });
+
+  it('count every call to close, per feed and in the order the feeds were opened, repeats included, where `closed` counts a feed once: a host that closes a stream twice is seen', () => {
+    const targets = logTargetsOf(ITEM);
+    const app = targets[0]?.open();
+    const ends = targets[1]?.open();
+    void app?.close();
+    void app?.close();
+    void ends?.close();
+    expect(counters()).toMatchObject({ opened: 2, closed: 2 });
+    expect([...hooks().closeCalls]).toEqual([2, 1]);
+    expect(Object.keys(counters())).toEqual(['opened', 'closed', 'listeners']);
+  });
+
   it('keep what happened to a stream that failed or ended on its own: closing it later is no new end', () => {
     const [, ends, fails] = logTargetsOf(ITEM);
     const over = ends?.open();
