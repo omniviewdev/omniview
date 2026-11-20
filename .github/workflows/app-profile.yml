@@ -140,6 +140,8 @@ jobs:
               exit 0
             fi
             echo "::warning::Playwright browser install attempt $attempt failed or timed out after 300 s"
+            # The killed attempt can leave its root apt-get running: let the retry wait for the dpkg lock instead of failing on it.
+            echo 'DPkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/99-dpkg-lock-timeout >/dev/null
           done
           echo "::error::Playwright browser install failed twice"
           exit 1

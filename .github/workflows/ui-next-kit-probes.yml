@@ -101,10 +101,12 @@ jobs:
         run: |
           # A hung browser download once held this step for 29 minutes: bound each attempt, retry once.
           for attempt in 1 2; do
-            if timeout --kill-after=15 720 pnpm exec playwright install --with-deps chromium webkit; then
+            if timeout --kill-after=15 900 pnpm exec playwright install --with-deps chromium webkit; then
               exit 0
             fi
-            echo "::warning::Playwright browser install attempt $attempt failed or timed out after 720 s"
+            echo "::warning::Playwright browser install attempt $attempt failed or timed out after 900 s"
+            # The killed attempt can leave its root apt-get running: let the retry wait for the dpkg lock instead of failing on it.
+            echo 'DPkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/99-dpkg-lock-timeout >/dev/null
           done
           echo "::error::Playwright browser install failed twice"
           exit 1
