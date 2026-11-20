@@ -26,6 +26,12 @@
 //      read, the streams closed once (the plugin counts it); the one that streamed ENDED, the one that had failed is AS IT WAS (its own words and time); each card says the plugin was unloaded and its resource link and
 //      Open button cannot be used; the bundle is let through and nothing resumed, the link works, and a new press of Logs opens a NEW session beside them; closing the tabs frees every listener and closes each stream
 //      once (SEAM_SHOTS=<dir> writes WebKit's pictures: before the unload, after it, after the reload; SEAM_CONTROL=<name> runs k alone with one perturbation that its named assertion must see)
+//   l  the plugins' providers in the command palette (C1c), on the real host with two plugins loaded from bundles built outside the host's tree: each declares a `match` provider and three `search` providers in its
+//      `contributionV1` (plugins/fixture/src/palette.ts), quiet until the check makes the page's control. With it: a typed item name finds the rows of both plugins, each plugin's section headed by its name, the fast
+//      provider's before the slow one's; Enter opens the plugin's page in the tab on screen, Command Enter in a background tab, Option Enter here (the tab goes to the other plugin's page), Command Shift Enter in a new
+//      tab; a plugin's command runs with its argument and the panel handle the host gave it; a provider that rejects is said in the band with a Retry (the plugin's words are not on screen); a plugin whose interface is
+//      unloaded while the palette is open and its slow request in flight loses its section, the request is told to stop, and the other plugin's section stays; when it is loaded again its section comes back with no key
+//      pressed; a plugin that fails to load loses its section the same way and gets it back with its bundle. SHOTS=<dir> writes `host-<engine>-providers.png` and `host-<engine>-providers-error.png`
 //
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
@@ -676,6 +682,184 @@ async function checkPalette(page, base, engine) {
   assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the palette wrote no page error`);
 }
 
+/** The plugin's `retry` on the window's plugin store, which is where the window keeps it (the hooks of `PluginHostScreen`, reached from any element React drew): what a reload of a plugin's interface is. The store's entry goes to `loading` at once. */
+async function reloadPlugin(page, id) {
+  const found = await page.evaluate((plugin) => {
+    const start = document.querySelector('[data-shell-part="window"]');
+    const key = start === null ? undefined : Object.keys(start).find((name) => name.startsWith('__reactFiber$'));
+    for (let fiber = key === undefined ? null : start[key]; fiber; fiber = fiber.return) {
+      for (let hook = fiber.memoizedState; hook !== null && typeof hook === 'object' && 'next' in hook; hook = hook.next) {
+        const value = hook.memoizedState;
+        if (value !== null && typeof value === 'object' && typeof value.retry === 'function' && typeof value.getSnapshot === 'function') {
+          const entry = value.getSnapshot().find((candidate) => candidate.id === plugin);
+          void value.retry({ id: plugin, name: entry.name });
+          return true;
+        }
+      }
+    }
+    return false;
+  }, id);
+  assert.equal(found, true, "the window's plugin store was found in its component's hooks");
+}
+
+/**
+ * l. The plugins' providers in the command palette (C1c), on the real host. Both fixture plugins that load (`fixture-a-ok` and its copy, built from one source and named alike inside their bundles) declare providers in
+ * their `contributionV1`; the check makes the page's control (`window.__fixturePalette`) and the palette asks them. The two plugins' sections read alike ("Seam Fixture · Items"), so each is told by the id its rows are
+ * named with (`fixture-a-ok:quick|...`): the model names a row `<section>|<provider>|<id>` and a section `<plugin id>:<its own>`.
+ */
+async function checkProviders(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  const mod = mac ? 'Meta' : 'Control';
+  const dialog = page.getByRole('dialog', { name: 'Search' });
+  const rows = (plugin, provider = '') => dialog.locator(`[data-palette-row^="${plugin}:${provider}"]`);
+  const headings = () => dialog.locator('[data-palette-part="label"]').allTextContents();
+  const strip = () => page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab');
+  const shot = async (state) => {
+    if (process.env.SHOTS === undefined) return;
+    await mkdir(process.env.SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SHOTS, `host-${engine}-${state}.png`) });
+  };
+  const ask = async (query) => {
+    await page.keyboard.press(`${mod}+KeyK`);
+    await dialog.waitFor();
+    await page.keyboard.type(query, { delay: 20 });
+  };
+  const close = async () => {
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+  };
+  const stats = () => page.evaluate(() => JSON.parse(JSON.stringify(Reflect.get(window, '__fixturePalette').stats)));
+
+  // The fixture's providers are quiet until the check makes the control: the plugins are loaded, their providers registered, and the palette asks none of them, so nothing of theirs is listed.
+  await ask('orders');
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  assert.equal(await dialog.locator('[data-palette-row^="fixture-"]').count(), 0, `${engine}: the fixture plugins' providers are quiet until a check asks for them`);
+  await close();
+  // The slow provider takes 800 ms here and not the probe's 300: a page call of the check takes tens of milliseconds on a loaded machine, and the order the rows arrive in must not depend on it.
+  await page.evaluate(() => {
+    Reflect.set(window, '__fixturePalette', { stats: {}, commands: [], quick: { delay: 0, size: 5 }, slow: { delay: 800, size: 5 }, big: { delay: 0, size: 0 } });
+  });
+
+  // A typed item name finds the rows of both plugins: each plugin's section is headed by its name, and the fast provider's rows are on screen before the slow provider's.
+  await ask('orders');
+  await rows('fixture-a-ok', 'quick|').first().waitFor();
+  assert.equal(await rows('fixture-a-ok', 'slow|').count(), 0, `${engine}: the fast provider's rows are on screen while the slow provider has not answered`);
+  assert.deepEqual((await headings()).slice(0, 2), ['Seam Fixture · Items', 'Seam Fixture · Items'], `${engine}: each plugin's section is headed by the plugin's name`);
+  assert.equal(await rows('fixture-b-dup', 'quick|').count(), 1, `${engine}: the other plugin's rows are there too`);
+  await rows('fixture-a-ok', 'slow|').first().waitFor();
+  await rows('fixture-b-dup', 'slow|').first().waitFor();
+  // The model orders a plugin's sections by the order its providers registered in, and the plugins by id: the first plugin's two, then the second's.
+  assert.deepEqual(await headings(), ['Seam Fixture · Items', 'Seam Fixture · Slow items', 'Seam Fixture · Items', 'Seam Fixture · Slow items'], `${engine}: the four sections, a plugin's together, the first plugin's before the second's`);
+  const first = dialog.getByRole('option').first();
+  assert.equal(await first.getAttribute('aria-label'), 'Resource: orders-api, Item · north-yard', `${engine}: a row says what it is, its words, and where it is`);
+  assert.equal(await first.getAttribute('aria-selected'), 'true', `${engine}: the first plugin's row is the active one`);
+  // The two plugins' rows read alike, so the order is told by the ids of the rows. The sections of plugins that match equally keep the rail's order, whichever plugin loaded first, so one input does one thing on every run.
+  const leading = (await dialog.getByRole('option').evaluateAll((options) => options.map((option) => option.getAttribute('data-palette-row')?.split('|')[0]))).filter((provider, index, all) => provider !== all[index - 1]);
+  assert.deepEqual(leading, ['fixture-a-ok:quick', 'fixture-a-ok:slow', 'fixture-b-dup:quick', 'fixture-b-dup:slow'], `${engine}: the first plugin's sections lead, the second's follow (the rail's order, not the order the plugins loaded in)`);
+  await shot('providers');
+
+  // Enter opens the plugin's page in the tab on screen (the same plugin: smart open).
+  await page.keyboard.press('Enter');
+  await dialog.waitFor({ state: 'detached' });
+  await page.getByRole('heading', { level: 1, name: 'orders-api' }).waitFor({ timeout: 15_000 });
+  assert.equal(await strip().count(), 1, `${engine}: the plugin's page opened in the tab on screen`);
+
+  // Command Enter opens a background tab, and the tab on screen stays; Option Enter opens here: the tab on screen goes to the other plugin's page; Command Shift Enter opens a new tab and shows it.
+  await ask('ledger');
+  await rows('fixture-a-ok', 'quick|').first().waitFor();
+  await page.keyboard.press(`${mod}+Enter`);
+  await dialog.waitFor({ state: 'detached' });
+  assert.equal(await strip().count(), 2, `${engine}: a background tab opened`);
+  assert.equal(await strip().first().getAttribute('aria-selected'), 'true', `${engine}: and the tab on screen stayed`);
+  await ask('vault');
+  const copy = rows('fixture-b-dup', 'quick|').first();
+  await copy.waitFor();
+  await copy.hover();
+  assert.equal(await copy.getAttribute('aria-selected'), 'true', `${engine}: the pointer moved the active row onto the other plugin's row`);
+  await page.keyboard.press('Alt+Enter');
+  await dialog.waitFor({ state: 'detached' });
+  await page.getByRole('heading', { level: 1, name: 'vault-keeper' }).waitFor({ timeout: 15_000 });
+  assert.equal(await strip().count(), 2, `${engine}: here opened no tab: the tab on screen went to the other plugin's page`);
+  await ask('ghost');
+  await rows('fixture-a-ok', 'quick|').first().waitFor();
+  await page.keyboard.press(`${mod}+Shift+Enter`);
+  await dialog.waitFor({ state: 'detached' });
+  assert.equal(await strip().count(), 3, `${engine}: a new tab opened`);
+  await page.getByRole('heading', { level: 1, name: 'ghost-service' }).waitFor({ timeout: 15_000 });
+
+  // A plugin's command, from its match provider: it runs with the argument its row carried and the panel handle the host gave the plugin, and the palette closes.
+  await ask('reset fixture');
+  const reset = dialog.getByRole('option', { name: 'Command: Reset fixture counters, Command' }).first();
+  await reset.waitFor();
+  await page.keyboard.press('Enter');
+  await dialog.waitFor({ state: 'detached' });
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, '__fixturePalette').commands), [{ arg: { owner: 'Seam Fixture' }, plugin: 'fixture-a-ok', panel: true }], `${engine}: the command ran with its argument and the plugin's panel handle`);
+
+  // A provider that rejects: said in the band with a Retry, and nothing of the plugin's own words is on screen; the others answer.
+  await page.evaluate(() => Object.assign(Reflect.get(window, '__fixturePalette').quick, { fail: 'reject' }));
+  await ask('orders');
+  const band = dialog.locator('[data-palette-part="band"]');
+  await band.getByText('Items: Unavailable').first().waitFor();
+  assert.ok((await band.getByRole('button').allTextContents()).concat(await band.getByRole('button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label') ?? ''))).some((text) => /^Retry/.test(text.trim())), `${engine}: the band offers a Retry`);
+  assert.ok(!(await dialog.innerText()).includes('rejected on purpose'), `${engine}: the plugin's own words are not on screen`);
+  await rows('fixture-a-ok', 'slow|').first().waitFor();
+  await shot('providers-error');
+  await close();
+  await page.evaluate(() => Object.assign(Reflect.get(window, '__fixturePalette').quick, { fail: '' }));
+
+  // A plugin that is unloaded while the palette is open and its slow request is in flight. The slow providers take four seconds, so the request is still going when the plugin leaves.
+  await page.evaluate(() => Object.assign(Reflect.get(window, '__fixturePalette').slow, { delay: 4000 }));
+  await ask('orders');
+  await rows('fixture-a-ok', 'quick|').first().waitFor();
+  await rows('fixture-b-dup', 'quick|').first().waitFor();
+  await page.waitForFunction(() => Reflect.get(window, '__fixturePalette').stats['Seam Fixture/slow']?.active === 1 && Reflect.get(window, '__fixturePalette').stats['Seam Fixture Copy/slow']?.active === 1, null, { timeout: 15_000 });
+  // The earlier steps told slow requests to stop too (each closed the palette on a request still going), so what the plugin's leaving does is read as the change from here.
+  const beforeLeaving = await stats();
+  const held = [];
+  let released = false;
+  await page.route(`**/_/plugins/${OK}/**`, (route) => {
+    if (released) void route.continue();
+    else held.push(route);
+  });
+  await reloadPlugin(page, OK);
+  await page.waitForFunction(() => document.querySelector('[data-palette-row^="fixture-a-ok:"]') === null, null, { timeout: 15_000 });
+  assert.ok(await rows('fixture-b-dup', 'quick|').count() > 0, `${engine}: the other plugin's section stays when a plugin leaves`);
+  assert.ok(await dialog.isVisible(), `${engine}: the palette stayed open, with its query`);
+  assert.equal(await dialog.getByRole('combobox').inputValue(), 'orders', `${engine}: and its query`);
+  await page.waitForFunction((count) => Reflect.get(window, '__fixturePalette').stats['Seam Fixture/slow']?.aborted === count + 1, beforeLeaving['Seam Fixture/slow'].aborted, { timeout: 15_000 });
+  const leaving = await stats();
+  assert.deepEqual(
+    [leaving['Seam Fixture/slow'].active, leaving['Seam Fixture Copy/slow'].active, leaving['Seam Fixture Copy/slow'].aborted - beforeLeaving['Seam Fixture Copy/slow'].aborted],
+    [0, 1, 0],
+    `${engine}: the leaving plugin's slow request was told to stop and the other plugin's was not`,
+  );
+  // Its bundle is let through: the plugin is back, and its section comes back with no key pressed.
+  released = true;
+  for (const route of held.splice(0)) await route.continue();
+  await rows('fixture-a-ok', 'quick|').first().waitFor({ timeout: 30_000 });
+  await page.unroute(`**/_/plugins/${OK}/**`);
+
+  // A plugin that does not load loses its section the same way, and gets it back with its bundle.
+  await page.route(`**/_/plugins/${OK}/**`, (route) => route.abort());
+  await reloadPlugin(page, OK);
+  await page.waitForFunction(() => document.querySelector('[data-palette-row^="fixture-a-ok:"]') === null, null, { timeout: 30_000 });
+  assert.ok(await rows('fixture-b-dup', 'quick|').count() > 0, `${engine}: the other plugin's section stays when a plugin fails`);
+  await page.unroute(`**/_/plugins/${OK}/**`);
+  await reloadPlugin(page, OK);
+  await rows('fixture-a-ok', 'quick|').first().waitFor({ timeout: 30_000 });
+  await close();
+
+  // A reload, a plugin whose bundle was cut and a page that went away report errors of the kind a cut request makes: they are the check's own doing, and nothing else is excused.
+  const cut = /access control checks|Load failed|Failed to fetch|NetworkError|network connection was lost/i;
+  assert.deepEqual(errors.filter((message) => !cut.test(message)), [], `${engine}: the providers wrote no page error`);
+}
+
 /**
  * k. A plugin's unload and the Logs sessions (P1b-3c, A21), in a page of its own. Two Logs sessions of the fixture plugin follow an item: `sync`, which fails on its own, and `app`, which streams. The plugin's
  * interface is unloaded (the window's plugin store takes it out of the live set, and the request for its bundle is held, so the window with the plugin off lasts as long as the check looks at it); both tabs STAY,
@@ -1073,6 +1257,16 @@ try {
   for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
     const browser = await engine.launch();
     try {
+      // SEAM_PROVIDERS_REPEAT=<n> runs scenario l alone, n times in a row, for a developer who is chasing a flake of it (the order of two plugins' sections that load together was found this way, on a loaded machine).
+      if (process.env.SEAM_PROVIDERS_REPEAT !== undefined) {
+        for (let run = 0; run < Number(process.env.SEAM_PROVIDERS_REPEAT); run += 1) {
+          await checkProviders(await freshPage(browser, host.base), host.base, name);
+          console.log(`providers ${name} run ${String(run)} ok`);
+        }
+
+        continue;
+      }
+
       if (CONTROL !== '') {
         // A negative control runs scenario k alone with one perturbation, and passes when the assertion it is named for saw it.
         try {
@@ -1099,6 +1293,7 @@ try {
       await checkPanel(await freshPage(browser, host.base), host.base, name);
       await checkLogs(await freshPage(browser, host.base), host.base, name);
       await checkPalette(await freshPage(browser, host.base), host.base, name);
+      await checkProviders(await freshPage(browser, host.base), host.base, name);
       await checkKept(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside)`);

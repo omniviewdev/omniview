@@ -1,4 +1,4 @@
-// Builds the fixture entries (fixture.html, host-fixture.html, palette-fixture.html) with the repository's own Vite configuration, so they are compiled and styled exactly as the channel's
+// Builds the fixture entries (fixture.html, host-fixture.html, palette-fixture.html, palette-plugins-fixture.html) with the repository's own Vite configuration, so they are compiled and styled exactly as the channel's
 // build is: the React Compiler, CSS Modules, the cascade layers. Run from the repository root with OMNIVIEW_UI=next:
 //   node ui-next/shell/probes/build-fixture.mjs <outDir> [development]
 // `development` builds with React's development build: a Profiler calls its `onRender` there and not in a production build, and the probe counts commits with one (the count of commits
@@ -19,7 +19,12 @@ await build(
     configFile: false,
     logLevel: 'warn',
     mode,
-    build: { outDir, emptyOutDir: true, ...(mode === 'development' ? { minify: false } : {}), rollupOptions: { input: [path.join(here, 'fixture.html'), path.join(here, 'host-fixture.html'), path.join(here, 'palette-fixture.html')] } },
+    build: {
+      outDir,
+      emptyOutDir: true,
+      ...(mode === 'development' ? { minify: false } : {}),
+      rollupOptions: { input: ['fixture.html', 'host-fixture.html', 'palette-fixture.html', 'palette-plugins-fixture.html'].map((name) => path.join(here, name)) },
+    },
   }),
 );
 console.log(`fixtures built in ${outDir} (${mode})`);

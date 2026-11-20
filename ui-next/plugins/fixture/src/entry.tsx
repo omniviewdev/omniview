@@ -3,6 +3,7 @@ import { useConnections } from '@omniviewdev/runtime/ui/v1';
 import { useEffect, useState } from 'react';
 import type { ContributionV1, SidebarContextV1, SidebarNodeV1 } from '../../contract/v1';
 import { itemPage } from './detail';
+import { createFixturePalette } from './palette';
 import { streamsTool } from './panel';
 import { crashPage, itemsPage } from './pages';
 
@@ -65,6 +66,12 @@ export const contributionV1 = {
   pages: { items: itemsPage, item: itemPage, crash: crashPage },
   home: 'items',
   panel: { tools: { streams: { ...streamsTool, label: FIXTURE_RAIL.tool } } },
+  // Providers of results for the command palette (C1c). Quiet until a check asks for them (palette.ts): the other checks search for the host's pages and commands.
+  palette: createFixturePalette(
+    FIXTURE_RAIL.label,
+    (name) => ({ page: 'item', params: { name } }),
+    { page: 'items', params: {} },
+  ),
 } satisfies ContributionV1;
 
 /** The shared modules as this bundle received them: the check compares them with the host's. */

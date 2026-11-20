@@ -71,6 +71,14 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // the HOST fills in, and a host that lacks it leaves it `undefined`, which a plugin that reads it without declaring a `null` count has nothing to be refused by (it tests for it). An approximate count is how the owner approved an estimate
 // to read: "~1,234", named "about 1,234"; the mock's own word for it in a footer is "About 120" (`H.count`, core.js:1879), for which the slot has no room.
 //
+// The palette's providers (C1c) are minor, on the terms of the panel: `palette` is a NEW optional member of the contribution. (1) Nothing that exists is removed, renamed or given another meaning. (2) Every bundle
+// written before it is admitted and drawn as before: a bundle with no `palette` registers no provider and the palette lists what it listed (`admit.test.ts` keeps one, and `PluginHost.palette.test.tsx` runs a window with
+// one). (3) Rule (3) cannot be kept by the letter for a new member, as for `panel`: an older host's admission has never refused a member it does not know, so it admits a bundle that has one and the palette has none of that
+// plugin's providers (`admit.test.ts` shows the member is the only difference: the same bundle without it is the older contract, and the two are assignable to each other in types). Admission refuses a malformed DECLARATION
+// by name, as it does a malformed `panel` (a provider of a kind this version does not know, a provider with no way to answer, a fifth provider), and reads the ROWS a provider answers one at a time while the palette runs
+// (`paletteRows.ts`): a row that is not valid is left out with a problem for its provider, and no other row, provider or plugin is affected. A row is DATA: words, a glyph from the kit's registry, and either a route to
+// one of the plugin's own pages or the id of one of its own commands. It never holds code that draws.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 
@@ -338,6 +346,118 @@ export type PanelHostV1 = {
   readonly logs: { readonly open: (target: LogTargetV1) => LogSessionV1 | undefined };
 };
 
+/** One chip of the chain that narrows a palette search under the plugin's own (ch16 S69): the connection, then a type, then an object. */
+export type PaletteChipV1 = {
+  readonly kind: 'scope' | 'type' | 'resource';
+  /** What the plugin knows the chip by (for a connection, the id a route's `connection` carries). */
+  readonly id: string;
+  readonly label: string;
+};
+
+/**
+ * What a palette provider is asked in: plain data, a copy the plugin may keep. The palette asks a plugin's providers when it is searching everywhere and when it is narrowed to that plugin, and never when it is narrowed to
+ * another (S69), so `plugin` is the plugin's own id or `null`. `kind` is the filter the user chose under the input: a provider is asked in All, Go to and Commands only.
+ */
+export type PaletteScopeV1 = {
+  /** The id of the plugin the palette is narrowed to, or `null` when it searches everywhere. */
+  readonly plugin: string | null;
+  /** The chips under the plugin's own, outermost first. Empty when the search is not narrowed below the plugin (or not at all). */
+  readonly chips: readonly PaletteChipV1[];
+  readonly kind: 'all' | 'goto' | 'commands';
+};
+
+/** What a command's argument is made of: JSON, and at most 1,024 characters of it. */
+export type PaletteJsonV1 = string | number | boolean | null | readonly PaletteJsonV1[] | { readonly [key: string]: PaletteJsonV1 };
+
+/**
+ * A result as data (C1c): what the palette draws and what choosing it does. A row opens ONE of two things: `route`, a page of this plugin (a list page with no parameters, or a detail page with the parameter that names
+ * its object: the route of a row of another plugin, or of a page the plugin does not have, is not valid), or `command`, one of the commands this plugin registers under `palette.commands`. The host reads each row when it is
+ * answered and leaves out one that is not valid, with a problem for its provider: no row is trusted for its type. The lengths are in characters; text is one line (it is trimmed and its white space collapses).
+ */
+export type PaletteRowV1 = {
+  /** Names the row in its provider and is the same each time the same thing is answered: it is what keeps a row focused while the list changes. At most 256 characters, unique in an answer. */
+  readonly id: string;
+  /** What the row is called, and what a query is matched against. At most 120 characters. */
+  readonly label: string;
+  /** The muted words after the label: where it is, what it is. They are matched too, by whole words, below the label. At most 160 characters. */
+  readonly secondary?: string | undefined;
+  /** Words a query also finds the row by that are never drawn (a short name, an alias). At most 200 characters. */
+  readonly keywords?: string | undefined;
+  /** The row's glyph, a name from the kit's registry. A name the host's kit does not have makes the row not valid. */
+  readonly icon: IconName;
+  /** A page of this plugin, in its own route space. A list page takes no parameters; a detail page takes the one that names its object. At most 8 parameters (names of 64 characters, values of 256). */
+  readonly route?: RouteV1 | undefined;
+  /** One of this plugin's commands, by the id it is registered under, with an argument the host copies. */
+  readonly command?: { readonly id: string; readonly arg?: PaletteJsonV1 | undefined } | undefined;
+};
+
+/**
+ * What a `search` provider answers instead of a bare list: the rows, in the provider's own order, and what it knows of the rest. `limited` is how many there are in all when it returns fewer ("first 20 of 5,000"); `partial`
+ * says a part of the source did not answer, and `message` (at most 160 characters) says why and what to do next, as a plain sentence the palette shows with the run.
+ */
+export type PaletteAnswerV1 = {
+  readonly rows: readonly PaletteRowV1[];
+  readonly limited?: number | undefined;
+  readonly partial?: boolean | undefined;
+  readonly message?: string | undefined;
+};
+
+type PaletteProviderBaseV1 = {
+  /** The heading of the provider's section, 40 characters at most. The palette puts the plugin's name before it ("Acme · Widgets") and calls the source by it in its status line. */
+  readonly section: string;
+  /** Which filter under the input shows the section besides All: Go to (default) or Commands. */
+  readonly filter?: 'goto' | 'commands' | undefined;
+  /** `false`: the provider has nothing to say in this scope and is not asked. It runs on the palette's own call and must be cheap; one that throws is asked. */
+  readonly supports?: ((scope: PaletteScopeV1) => boolean) | undefined;
+};
+
+/**
+ * A provider for a SMALL set the plugin already holds (its pages, its commands, its kinds): `match` answers the candidates that could answer, and the palette scores, filters and ranks them (a provider may answer its whole list and
+ * ignore the query). It runs synchronously on every keystroke while the palette is open and must be cheap; at most 1,000 rows are read. Its rows are pages (or commands, for a row that carries one).
+ */
+export type PaletteMatchProviderV1 = PaletteProviderBaseV1 & {
+  readonly kind: 'match';
+  readonly match: (query: string, scope: PaletteScopeV1) => readonly PaletteRowV1[];
+};
+
+/**
+ * A provider for a set too large to hold, or that lives elsewhere (the objects of a connection): `search` does its own matching and answers the best rows in order. The palette asks it 150 ms after the last keystroke, aborts
+ * `signal` when the query moves on or the palette closes (and drops the answer whether or not the provider honours it), gives up on it after 5 seconds, keeps 20 rows, and says how many there were when `limited` does. Its
+ * rows are resources (or commands, for a row that carries one), and they are not ranked again: the provider's order is the order shown.
+ */
+export type PaletteSearchProviderV1 = PaletteProviderBaseV1 & {
+  readonly kind: 'search';
+  readonly search: (query: string, scope: PaletteScopeV1, signal: AbortSignal) => Promise<readonly PaletteRowV1[] | PaletteAnswerV1>;
+};
+
+export type PaletteProviderV1 = PaletteMatchProviderV1 | PaletteSearchProviderV1;
+
+/** What a command's `run` may answer: `false`, or `{ ok: false, reason }` (a plain sentence of at most 160 characters), refuses; the palette stays open and says why. Anything else is done. */
+export type PaletteCommandResultV1 = { readonly ok?: boolean | undefined; readonly reason?: string | undefined };
+
+/** What a command is told: the plugin it belongs to, and, on a host that has it, what the plugin may ask of the bottom panel (as `ContextV1.panel`). */
+export type PaletteCommandContextV1 = {
+  readonly plugin: string;
+  readonly panel?: PanelHostV1 | undefined;
+};
+
+/**
+ * A command of the plugin, run when a palette row that names it is chosen (Enter, with any modifier: a command ignores them, S64). The host looks it up again immediately before it runs, so a plugin that has left, or a command
+ * it no longer has, is refused with a reason. A throw or a rejection is the command's failure: the palette stays open and says so in the host's words; the plugin's are in the console.
+ */
+export type PaletteCommandV1 = {
+  readonly run: (arg: PaletteJsonV1 | undefined, context: PaletteCommandContextV1) => void | boolean | PaletteCommandResultV1 | Promise<void | boolean | PaletteCommandResultV1>;
+};
+
+/**
+ * What a plugin brings to the command palette (C1c, minor: the rule is at the head of this file): providers of results, by id (no colon, at most 64 characters; at most four), and the commands their rows may name. A provider's
+ * section is the plugin's own: the palette never mixes two plugins' rows. Absent: nothing.
+ */
+export type PaletteV1 = {
+  readonly providers?: Readonly<Record<string, PaletteProviderV1>> | undefined;
+  readonly commands?: Readonly<Record<string, PaletteCommandV1>> | undefined;
+};
+
 export type ContributionV1 = {
   /** The plugin as the frame names it ("<name> workspace"), and the colour of the sidebar's glyphs. */
   readonly plugin: { readonly name: string; readonly accent?: ShellAccent | undefined };
@@ -350,4 +470,6 @@ export type ContributionV1 = {
   readonly home: string;
   /** What the plugin brings to the bottom panel: tools of its own, and the card of the sessions it opens in a tool of the host. Absent: nothing. */
   readonly panel?: PanelV1 | undefined;
+  /** What the plugin brings to the command palette: providers of results and the commands their rows may name. Absent: nothing. */
+  readonly palette?: PaletteV1 | undefined;
 };

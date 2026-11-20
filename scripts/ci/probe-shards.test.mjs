@@ -335,7 +335,8 @@ test('a probe that CI never ran before the split is listed by hand with the reas
 
 // The balance (N24 B1). Seconds of each unit (a probe with its negative controls), from the green runs of 2026-11-20 on the runner (`### Kit probes shard N` of the job summary): the median of runs 44798544094,
 // 44803451635, 44806908384, 44808922038, 44810769664 and 44818285854; the panel probe, the Logs probe and their controls from the last of them and run 44820580415 (main after #561), the only runs that have the sections P1b-3c (A21) added.
-// A unit that is not here fails the test below: measure it (the job summary of its first run) and add it.
+// A unit that is not here fails the test below: measure it (the job summary of its first run) and add it. The two of the plugins' providers probe (C1c) are the one local measurement of each (2026-11-20, a laptop at
+// a load of 59 to 84): the seconds of the first run's job summary replace them.
 const MEASURED_SECONDS = {
   'Probe the bottom panel against the pinned mock reference': 280,
   'Probe that the panel probe sees a panel that is wrong': 318,
@@ -354,6 +355,8 @@ const MEASURED_SECONDS = {
   'Probe the parts against the pinned mock reference': 172,
   'Probe the tab strip, the page host and the load against the pinned mock reference': 186,
   'Probe that the strip probe sees a label that gives way to a count': 26,
+  'Probe what the providers of a plugin do to the command palette': 181,
+  'Probe that the plugin providers probe sees a palette that is wrong': 117,
 };
 /** The seconds of every shard of a table, and the units no measurement is known for. */
 function balance(table, measured = MEASURED_SECONDS) {

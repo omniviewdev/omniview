@@ -1,8 +1,9 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, type PanelStore } from '../../shell';
-import { acme } from '../testing';
+import type { PaletteCommandV1, PaletteProviderV1, PaletteRowV1, PaletteV1 } from '../contract/v1';
+import { acme, startedOn } from '../testing';
 import * as palette from './palette';
 import { PluginHost } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
@@ -120,5 +121,258 @@ describe('the host\'s palette', () => {
     await user.click(screen.getByRole('button', { name: /^Search/ }));
 
     expect(made[0]?.palette.store.getSnapshot().open).toBe(true);
+  });
+});
+
+// What the plugins bring to the palette (C1c), through the real window: PluginHost over a plugin source the test changes, as the plugin store does when a plugin loads, is loaded again or does not load. The
+// palette's own parts are read in the DOM, as a person reads them. Each provider here is the plugin's own function: what the host does with it (registers it when the plugin is ready, takes it away with its
+// pending request when the plugin is not, reads its rows, runs its command) is what is under test; what the model does with candidates is the model's (shell/core/palette), and the rest of the host's wiring is palette.test.ts.
+describe('the providers of the plugins, through the window', () => {
+  type Source = {
+    readonly getSnapshot: () => readonly PluginEntry[];
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly set: (next: readonly PluginEntry[]) => void;
+  };
+
+  /** A plugin source the test changes: the plugin store's interface, with `set` for what a load, a reload or a failure does. */
+  function source(initial: readonly PluginEntry[]): Source {
+    let current = initial;
+    const heard = new Set<() => void>();
+    return {
+      getSnapshot: () => current,
+      subscribe: (listener) => {
+        heard.add(listener);
+        return () => {
+          heard.delete(listener);
+        };
+      },
+      set: (next) => {
+        current = next;
+        act(() => {
+          for (const listener of [...heard]) {
+            listener();
+          }
+        });
+      },
+    };
+  }
+
+  const widgetsRow = (id: string, label: string, secondary = 'Hardware', page = 'gadgets'): PaletteRowV1 => ({ id, label, secondary, icon: 'box', route: { page, params: {} } });
+  const matching = (rows: readonly PaletteRowV1[], section = 'Hardware'): PaletteProviderV1 => ({ kind: 'match', section, match: () => rows });
+  const bringing = (id: string, name: string, palette: PaletteV1 | undefined): PluginEntry => ({ id, name: `${name} plugin`, phase: 'ready', contribution: acme({ plugin: { name }, rail: true, palette }) });
+  const loading = (entry: PluginEntry): PluginEntry => ({ id: entry.id, name: entry.name, phase: 'loading' });
+  const failed = (entry: PluginEntry): PluginEntry => ({ id: entry.id, name: entry.name, phase: 'failed', failure: { kind: 'broken', message: 'The plugin\'s interface could not be loaded.' } });
+
+  function open(plugins: Source, view: Partial<Parameters<typeof PluginHost>[0]> = {}) {
+    const user = userEvent.setup();
+    const session = startedOn(plugins.getSnapshot());
+    const rendered = render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={session} {...view} />);
+    return { user, ...rendered };
+  }
+
+  const search = async (user: ReturnType<typeof userEvent.setup>, text: string) => {
+    await user.click(screen.getByRole('button', { name: /^Search/ }));
+    await user.keyboard(text);
+  };
+
+  const optionNames = () => screen.queryAllByRole('option').map((option) => option.getAttribute('aria-label'));
+  /** The tabs of the strip, left to right, and which is on screen. */
+  const strip = () => within(screen.getByRole('tablist', { name: 'Open tabs' })).getAllByRole('tab').map((tab) => `${tab.textContent ?? ''}${tab.getAttribute('aria-selected') === 'true' ? '*' : ''}`);
+
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  it('draws what a plugin that is ready brings in a section of its own, and opens a row in the tab on screen with Enter', async () => {
+    const plugins = source([bringing('acme', 'Acme', { providers: { things: matching([widgetsRow('s1', 'Sprocket box')]) } })]);
+    const { user } = open(plugins);
+    await search(user, 'sprocket');
+
+    await screen.findByRole('option', { name: 'Page: Sprocket box, Hardware' });
+    expect(screen.getByRole('option', { name: 'Page: Sprocket box, Hardware' })).toHaveAttribute('aria-selected', 'true');
+    expect(within(screen.getByRole('dialog', { name: 'Search' })).getByText('Acme · Hardware')).toBeInTheDocument();
+    await user.keyboard('{Enter}');
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(strip()).toEqual(['Gadgets*']);
+  });
+
+  it('opens the same row on every run, whichever of two plugins that bring equal rows loaded first: their sections follow the rail, so Enter stays in the plugin the rail puts first (a race between two loads decided it)', async () => {
+    const first = bringing('acme', 'Acme', { providers: { things: matching([widgetsRow('a1', 'Sprocket box')]) } });
+    const second = bringing('bolt', 'Bolt', { providers: { things: matching([widgetsRow('b1', 'Sprocket box')]) } });
+    // Bolt is ready first and Acme, which the rail puts before it, after it. The window starts on Acme's page, as a session left it.
+    const plugins = source([loading(first), second]);
+    const { user } = open(plugins, { session: startedOn([first, second]) });
+    plugins.set([first, second]);
+    await search(user, 'sprocket');
+
+    await screen.findAllByRole('option', { name: 'Page: Sprocket box, Hardware' });
+    expect(screen.getAllByRole('option').map((option) => option.getAttribute('data-palette-row')?.split('|')[0])).toEqual(['acme:things', 'bolt:things']);
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{Enter}');
+
+    expect(strip()).toEqual(['Gadgets*']);
+  });
+
+  it.each([
+    ['Alt Enter, here', '{Alt>}{Enter}{/Alt}', ['Gadgets*']],
+    ['Control Shift Enter, a new tab shown', '{Control>}{Shift>}{Enter}{/Shift}{/Control}', ['Widgets', 'Gadgets*']],
+    ['Control Enter, a background tab', '{Control>}{Enter}{/Control}', ['Widgets*', 'Gadgets']],
+  ])('opens a row as the host\'s own rows open: %s', async (_name, keys, wanted) => {
+    const plugins = source([bringing('acme', 'Acme', { providers: { things: matching([widgetsRow('s1', 'Sprocket box')]) } })]);
+    const { user } = open(plugins);
+    await search(user, 'sprocket');
+    await screen.findByRole('option', { name: 'Page: Sprocket box, Hardware' });
+
+    await user.keyboard(keys);
+
+    expect(strip()).toEqual(wanted);
+  });
+
+  it('asks a provider that answers on demand once the typing has been still, and shows its rows below the host\'s, as resources', async () => {
+    const lookup = vi.fn(async (query: string) => [widgetsRow('l1', `${query} found`, 'Lookup')]);
+    const plugins = source([bringing('acme', 'Acme', { providers: { lookups: { kind: 'search', section: 'Lookups', search: lookup } } })]);
+    const { user } = open(plugins);
+    await search(user, 'abc');
+
+    await screen.findByRole('option', { name: 'Resource: abc found, Lookup' });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith('abc', expect.objectContaining({ plugin: null }), expect.any(AbortSignal));
+  });
+
+  it.each([
+    ['is loaded again', loading],
+    ['does not load', failed],
+  ])('takes a plugin\'s section and its pending request away when the plugin %s, and the palette stays as it was for the rest', async (_name, leave) => {
+    let signal: AbortSignal | undefined;
+    const pending = bringing('acme', 'Acme', {
+      providers: {
+        things: matching([widgetsRow('s1', 'Sprocket box')]),
+        lookups: { kind: 'search', section: 'Lookups', search: async (_query, _scope, given) => {
+          signal = given; return new Promise<never>(() => undefined); 
+        } },
+      },
+    });
+    const other = bringing('beta', 'Beta', { providers: { things: matching([widgetsRow('b1', 'Sprocket crate', 'Storage')], 'Storage') } });
+    const plugins = source([pending, other]);
+    const { user } = open(plugins);
+    await search(user, 'sprocket');
+    await screen.findByRole('option', { name: 'Page: Sprocket box, Hardware' });
+    await waitFor(() => {
+      expect(signal).toBeDefined();
+    });
+    expect(signal?.aborted).toBe(false);
+
+    plugins.set([leave(pending), other]);
+
+    await waitFor(() => {
+      expect(optionNames()).not.toContain('Page: Sprocket box, Hardware');
+    });
+    expect(signal?.aborted).toBe(true);
+    expect(optionNames()).toContain('Page: Sprocket crate, Storage');
+    expect(screen.getByRole('dialog', { name: 'Search' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveValue('sprocket');
+  });
+
+  it('brings the section back when the plugin is ready again, without a keystroke', async () => {
+    const west = bringing('acme', 'Acme', { providers: { things: matching([widgetsRow('s1', 'Sprocket box')]) } });
+    const plugins = source([west]);
+    const { user } = open(plugins);
+    await search(user, 'sprocket');
+    await screen.findByRole('option', { name: 'Page: Sprocket box, Hardware' });
+
+    plugins.set([loading(west)]);
+    await waitFor(() => {
+      expect(optionNames()).not.toContain('Page: Sprocket box, Hardware');
+    });
+    plugins.set([bringing('acme', 'Acme', { providers: { things: matching([widgetsRow('s1', 'Sprocket box')]) } })]);
+
+    await screen.findByRole('option', { name: 'Page: Sprocket box, Hardware' });
+  });
+
+  it('says in the status band which source of a plugin did not answer, with a Retry, and the plugin\'s other providers and the host\'s rows are drawn', async () => {
+    let answers = 0;
+    const plugins = source([
+      bringing('acme', 'Acme', {
+        providers: {
+          lookups: {
+            kind: 'search',
+            section: 'Lookups',
+            search: async () => {
+              answers += 1;
+              if (answers === 1) {
+                throw new Error('secret detail');
+              }
+
+              return [widgetsRow('l1', 'lookup found', 'Lookup')];
+            },
+          },
+          things: matching([widgetsRow('s1', 'lookup box')]),
+        },
+      }),
+    ]);
+    const { user } = open(plugins);
+    await search(user, 'lookup');
+
+    const band = await screen.findByText('Lookups: Unavailable');
+    expect(optionNames()).toContain('Page: lookup box, Hardware');
+    expect(document.body.textContent).not.toContain('secret detail');
+    await user.click(within(band.closest('[data-palette-part="band"]')!).getByRole('button', { name: /^Retry/ }));
+
+    await screen.findByRole('option', { name: 'Resource: lookup found, Lookup' });
+    expect(answers).toBe(2);
+  });
+
+  it('runs a plugin\'s command from a row with Enter, with the argument the row carried and the panel the plugin was given', async () => {
+    const run = vi.fn<PaletteCommandV1['run']>();
+    const plugins = source([
+      bringing('acme', 'Acme', {
+        providers: { things: { kind: 'match', section: 'Hardware', filter: 'goto', match: () => [{ id: 'r1', label: 'Reset sprockets', icon: 'refresh', command: { id: 'reset', arg: { all: true } } }] } },
+        commands: { reset: { run } },
+      }),
+    ]);
+    const { user } = open(plugins);
+    await search(user, 'reset sprockets');
+    await screen.findByRole('option', { name: 'Command: Reset sprockets' });
+
+    await user.keyboard('{Enter}');
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0]?.[0]).toEqual({ all: true });
+    expect(run.mock.calls[0]?.[1]).toMatchObject({ plugin: 'acme', panel: { logs: { open: expect.any(Function) } } });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('still loads a plugin written before the palette, and draws the window as it always did: the palette lists the host\'s sources and no section of the plugin\'s', async () => {
+    const plugins = source([{ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution: acme() }]);
+    const { user } = open(plugins);
+    await search(user, 'gadgets');
+
+    await screen.findByRole('option', { name: /^Page: Gadgets/ });
+    expect(screen.queryAllByRole('group').map((group) => group.getAttribute('aria-labelledby')).filter((id) => id !== null)).toHaveLength(1);
+    expect(optionNames().filter((name) => name?.startsWith('Resource:'))).toEqual([]);
+    expect(strip()).toEqual(['Widgets*']);
+  });
+
+  it('registers a plugin\'s providers once when the window mounts twice, as React does while it is developed, and takes them away when the window goes', async () => {
+    const { made } = watch();
+    const match = vi.fn(() => [widgetsRow('s1', 'Sprocket box')]);
+    const plugins = source([bringing('acme', 'Acme', { providers: { things: { kind: 'match', section: 'Hardware', match } } })]);
+    const user = userEvent.setup();
+    const view = render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={startedOn(plugins.getSnapshot())} />, { reactStrictMode: true });
+    await search(user, 'sprocket');
+    await screen.findByRole('option', { name: 'Page: Sprocket box, Hardware' });
+    expect(screen.getAllByText('Acme · Hardware')).toHaveLength(1);
+
+    view.unmount();
+
+    // Whichever of the palettes React made was the window's, none of them has the plugin's providers now.
+    for (const { palette } of made) {
+      act(() => {
+        palette.store.open({ kind: 'goto' });
+        palette.store.setQuery('sprocket');
+      });
+      expect(palette.store.getSnapshot().sections.map((section) => section.id).filter((id) => id.includes(':'))).toEqual([]);
+    }
   });
 });

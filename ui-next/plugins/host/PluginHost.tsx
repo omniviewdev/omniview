@@ -122,6 +122,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const logs = createLogStreams(store);
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
   const routes = new Published<Route>();
+  const panelHosts = panelHostsOf(logs);
   return {
     frames,
     nodes,
@@ -135,11 +136,11 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     tabs,
     panel: store,
     logs,
-    panelHosts: panelHostsOf(logs),
+    panelHosts,
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin) }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
   };
 }
 

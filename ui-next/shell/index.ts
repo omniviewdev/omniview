@@ -15,7 +15,7 @@ export type { LogFeedHandle, LogOpened, LogStreams, LogTarget } from './panel/lo
 export { createRailChoice, loadSession, resolveWindowName, windowStorage } from './session';
 export type { LoadedSession, RailChoice, WindowState } from './session';
 export { createPaletteStore, seedChips } from './core/palette';
-export type { Candidate as PaletteCandidate, CommandOutcome as PaletteCommandOutcome, CommandRef as PaletteCommandRef, OpenPalette, PaletteSeam, PaletteStore, Provider as PaletteSource, SearchScope as PaletteScope } from './core/palette';
+export type { Candidate as PaletteCandidate, CommandOutcome as PaletteCommandOutcome, CommandRef as PaletteCommandRef, OpenPalette, PaletteSeam, PaletteStore, Provider as PaletteSource, ProviderAnswer as PaletteAnswer, SearchScope as PaletteScope } from './core/palette';
 export { createAnnouncer } from './palette/host';
 export type { Announcer, PaletteBindings } from './palette/host';
 export { togglePanel } from './panel/focus';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContractError } from '../loader/failure';
 import { admit, admitOrThrow, openable, CONTRIBUTION_EXPORT_V1 } from './admit';
-import type { SidebarNodeV1 } from './v1';
+import type { ContributionV1, SidebarNodeV1 } from './v1';
 
 // Admission reads what a bundle hands the host as `unknown`. Each test breaks one thing in an otherwise good contribution, and the problem must name it:
 // that is what a plugin author reads in the log. The names are invented (Acme, widgets); the host knows no plugin.
@@ -349,5 +349,114 @@ describe('admit: the panel (a minor addition to version 1)', () => {
   it('allows a plugin two tools of its own, and refuses a third (ch16 S114: a plugin-specific tool needs the owner\'s approval and stays under the limit of two; the mock\'s harness: "panelTools limit is 2")', () => {
     expect(problemsOf(withPanel({ tools: { a: tool(), b: tool() } }))).toEqual([]);
     expect(problemsOf(withPanel({ tools: { a: tool(), b: tool(), c: tool() } }))).toContain('panel.tools has 3 tools: a plugin brings at most 2');
+  });
+});
+
+// The palette's providers (C1c, a minor addition to version 1; the rule is at the head of `v1.ts`): providers of results a plugin brings to the command palette, and the commands their rows may name. Admission checks the
+// declaration the host registers from, and refuses a malformed one by name; the ROWS a provider answers are read while the palette runs (`paletteRows.test.ts`), not here.
+describe('admit: the palette providers (a minor addition to version 1)', () => {
+  const match = (patch: Loose = {}): Loose => ({ kind: 'match', section: 'Pages', match: () => [], ...patch });
+  const search = (patch: Loose = {}): Loose => ({ kind: 'search', section: 'Things', search: async () => [], ...patch });
+  const withPalette = (palette: unknown) => contribution({ palette });
+
+  it('admits a provider of each kind, with a filter and a scope test, a command, and a palette with nothing in it', () => {
+    for (const palette of [
+      { providers: { pages: match() } },
+      { providers: { things: search() } },
+      { providers: { pages: match({ filter: 'commands' }), things: search({ filter: 'goto', supports: () => true }) } },
+      { providers: { pages: match() }, commands: { reset: { run: () => undefined } } },
+      { commands: { reset: { run: async () => ({ ok: false, reason: 'No.' }) } } },
+      { providers: {} },
+      {},
+    ]) {
+      expect(problemsOf(withPalette(palette)), JSON.stringify(Object.keys(palette))).toEqual([]);
+    }
+  });
+
+  // Both directions of the contract. The older contract has no `palette`: a bundle written against it is admitted by this host, and is drawn as before. A bundle written against this one is the older contract and one member
+  // more, which a host that predates it never reads (its admission has never refused a member it does not know, so it admits the bundle and registers nothing of the palette).
+  describe('a plugin built against the older contract, and one built against this, load in either host', () => {
+    const older = (): Loose => {
+      const { palette: _palette, ...rest } = contribution({ palette: undefined });
+      return rest;
+    };
+
+    it('this host admits a bundle written before the palette, with no palette at all, and hands back its own object', () => {
+      const value = older();
+      expect(Object.hasOwn(value, 'palette')).toBe(false);
+      expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
+      expect(admit(exportsOf(withPalette(undefined))).ok).toBe(true);
+    });
+
+    it('a host that predates the palette admits a bundle that has one: what it reads is the same, member for member, and the palette is the only member it does not', () => {
+      const palette = { providers: { pages: match(), things: search() }, commands: { reset: { run: () => undefined } } };
+      const newer = contribution({ palette });
+      // The bundle as the older contract wrote it: the same object without the member, which is all a host that predates it sees. Its members are the six of the contract before this one.
+      const { palette: _palette, ...before } = newer;
+      const READ_BEFORE = ['plugin', 'rail', 'panel', 'sidebar', 'pages', 'home'];
+
+      expect(Object.keys(newer).filter((name) => !READ_BEFORE.includes(name))).toEqual(['palette']);
+      expect(Object.keys(before).filter((name) => !READ_BEFORE.includes(name))).toEqual([]);
+      for (const name of Object.keys(before)) {
+        expect(newer[name], name).toBe(before[name]);
+      }
+
+      expect(admit(exportsOf(before)).ok).toBe(true);
+      expect(admit(exportsOf(newer)).ok).toBe(true);
+      // The verdict on everything else does not depend on the member: a bundle that is wrong in an older way is wrong with it and without it, in the same words.
+      expect(problemsOf({ ...newer, home: 'nowhere' })).toEqual(problemsOf({ ...before, home: 'nowhere' }));
+    });
+
+    it('is the same in types, both ways: a bundle of the older contract is a contribution, and a contribution is a bundle of the older contract with a member more', () => {
+      type Older = Omit<ContributionV1, 'palette'>;
+      const sidebarOf: ContributionV1['sidebar'] = { label: 'Acme navigation', title: 'Acme', nodes: [{ id: 'widgets', label: 'Widgets', icon: 'box' }] };
+      const pageOf = {
+        kind: 'list',
+        definition: { title: 'Widgets', nouns: { one: 'Widget', other: 'Widgets' }, columns: [], lines: 1, getRowKey: () => 'k', searchText: () => 't' },
+        usePage: () => ({ frame: { tab: { title: 'Widgets', icon: 'box' }, path: [] }, source: { state: { kind: 'ready' }, rows: [], complete: true, refreshing: false, refresh: async () => undefined } }),
+      } satisfies ContributionV1['pages'][string];
+      const before: Older = { plugin: { name: 'Acme' }, sidebar: sidebarOf, pages: { widgets: pageOf }, home: 'widgets' };
+      const asNew: ContributionV1 = before;
+      const newer: ContributionV1 = { ...before, palette: { providers: { pages: { kind: 'match', section: 'Pages', match: () => [] } } } };
+      const asOlder: Older = newer;
+
+      expect(asNew.palette).toBeUndefined();
+      expect(asOlder.home).toBe('widgets');
+    });
+  });
+
+  it.each([
+    ['a palette that is not an object', 3, 'palette is not an object'],
+    ['a palette that is a list', [], 'palette is not an object'],
+    ['providers that are a list', { providers: [] }, 'palette.providers is not an object'],
+    ['a provider that is not an object', { providers: { pages: 3 } }, 'palette.providers.pages is not an object'],
+    ['a provider of a kind this version does not know', { providers: { pages: match({ kind: 'tree' }) } }, 'palette.providers.pages.kind is "tree", and this version draws "match" and "search" providers'],
+    ['a provider with no kind', { providers: { pages: match({ kind: undefined }) } }, 'palette.providers.pages.kind is "undefined", and this version draws "match" and "search" providers'],
+    ['a provider with no section', { providers: { pages: match({ section: ' ' }) } }, 'palette.providers.pages.section is not a non-empty string of at most 40 characters'],
+    ['a provider whose section is too long', { providers: { pages: match({ section: 'x'.repeat(41) }) } }, 'palette.providers.pages.section is not a non-empty string of at most 40 characters'],
+    ['a filter that is neither of the two', { providers: { pages: match({ filter: 'tabs' }) } }, 'palette.providers.pages.filter is neither "goto" nor "commands"'],
+    ['a scope test that is not a function', { providers: { pages: match({ supports: true }) } }, 'palette.providers.pages.supports is not a function'],
+    ['a match provider with no match', { providers: { pages: match({ match: undefined }) } }, 'palette.providers.pages.match is not a function'],
+    ['a match provider that also searches', { providers: { pages: match({ search: async () => [] }) } }, 'palette.providers.pages has both match and search: a provider answers one way'],
+    ['a search provider with no search', { providers: { things: search({ search: undefined }) } }, 'palette.providers.things.search is not a function'],
+    ['a search provider that also matches', { providers: { things: search({ match: () => [] }) } }, 'palette.providers.things has both match and search: a provider answers one way'],
+    ['a provider id with a colon (the palette makes the id it knows a provider by from the plugin\'s id and this one, joined with a colon)', { providers: { 'a:b': match() } }, 'palette.providers.a:b is not a provider id: no colon, not empty, at most 64 characters'],
+    ['a provider id that is too long', { providers: { [`p${'x'.repeat(64)}`]: match() } }, `palette.providers.p${'x'.repeat(64)} is not a provider id: no colon, not empty, at most 64 characters`],
+    ['commands that are a list', { commands: [] }, 'palette.commands is not an object'],
+    ['a command that is not an object', { commands: { reset: 3 } }, 'palette.commands.reset is not an object'],
+    ['a command that cannot run', { commands: { reset: {} } }, 'palette.commands.reset.run is not a function'],
+    ['a command id with a colon', { commands: { 'a:b': { run: () => undefined } } }, 'palette.commands.a:b is not a command id: no colon, not empty, at most 64 characters'],
+  ])('refuses %s, and names it', (_name, palette, expected) => {
+    expect(problemsOf(withPalette(palette))).toContain(expected);
+  });
+
+  it('allows a plugin four providers, and refuses a fifth: the palette asks at most eight asynchronous providers for all the plugins together', () => {
+    const four = { a: match(), b: match(), c: search(), d: search() };
+    expect(problemsOf(withPalette({ providers: four }))).toEqual([]);
+    expect(problemsOf(withPalette({ providers: { ...four, e: search() } }))).toContain('palette.providers has 5 providers: a plugin brings at most 4');
+  });
+
+  it('is not made refuse by what it does not read: another member beside the palette, written by a newer contract, is not its business', () => {
+    expect(problemsOf(contribution({ palette: { providers: { pages: match() }, somethingNewer: 1 } }))).toEqual([]);
   });
 });

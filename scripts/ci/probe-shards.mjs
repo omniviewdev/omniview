@@ -21,9 +21,13 @@
 //   shard 3  rail 16, detail 10, logs 282 + 111                                                    = 419
 //   shard 4  fonts 43, parts 172, strip 186 + 26                                                   = 427
 //   shard 5  tooltip 152, log view 195 + 114                                                       = 461
+//   shard 6  plugin providers 181, its controls 117 (C1c: measured on a laptop at a load of 59 to 84, not on a runner)  = 298
 // The panel probe with its ten controls is the longest unit and cannot be split without parting a probe from its controls: it is the floor of the job (about 600 s), alone in its shard, and a sixth shard would not
 // make the job shorter. What the assignment does is keep the other four between 419 and 461 s, 137 s or more under the panel's (the best split of the rest into four, found exhaustively, has a longest shard of 461 s).
 // Before it, the Logs probe, which P1b-3c (A21) lengthened by 72 s, sat in a shard of 546 s, 52 s under the panel's, and a slow run of that shard could have made it the job.
+// Shard 6 is C1c's: what a plugin's palette providers do to the palette is four pairs of an engine and a viewport (about 150 s) and seven controls (about 120 s), which no other shard has room for (the four are within
+// 9 to 51 s of the test's limit): it is a job of its own, with the setup of one (about 80 s), and it is shorter than the panel's, so the job's wall time does not move. The seconds are the one local measurement
+// of each unit; the first run's job summary has the runner's.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -171,6 +175,26 @@ export const TABLE = {
           script: 'packages/kit/probes/log-probe.mjs',
           env: { DIST: '$PROBE_DIST' },
           controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
+        },
+      ],
+    },
+    {
+      id: '6',
+      units: [
+        // What the providers a plugin brings do to the command palette (C1c): the host's own wiring of the fixture plugin's providers (ui-next/shell/probes/palette-plugins-fixture.tsx: the real shell, palette and tab model)
+        // in WebKit and Chromium at 1440 x 900 and 1280 x 800. What is judged does not depend on how fast the machine is: the order things happen in (the input shows its text before a slow provider answers, the fast
+        // provider's rows before the slow one's, the active row where the user left it when a late section arrives), what a key costs a page that a provider holds, the commits of a key and of an answer, nothing outside the
+        // palette moving, a closed palette doing no provider work, and the states (a provider that throws, never answers or answers after it was told to stop; a plugin that leaves while the palette is open), with axe.
+        // It builds its own fixtures, so it does not read PROBE_DIST.
+        { name: 'Probe what the providers of a plugin do to the command palette', script: 'ui-next/shell/probes/palette-plugins-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/palette-plugins-probe.json' } },
+
+        // The negative controls of that probe: each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
+        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop) and passes only when that assertion sees it. Each runs the part it perturbs.
+        {
+          name: 'Probe that the plugin providers probe sees a palette that is wrong',
+          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
+          env: { FONT_DELAY_MS: '40' },
+          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown'],
         },
       ],
     },

@@ -1,7 +1,7 @@
 import { isIconName } from '@omniviewdev/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, createTabsStore, seedChips, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
-import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
+import type { FrameV1, PaletteCommandV1, PaletteJsonV1, PaletteMatchProviderV1, PaletteRowV1, PaletteSearchProviderV1, PaletteV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, widgetPage } from '../testing';
 import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
 import { createHostPalette, type HostPalette } from './palette';
@@ -122,6 +122,10 @@ type Setup = {
   readonly remembered?: (plugin: string) => Route | undefined;
   /** Replaces what the palette is given as the tab store: a test that needs an answer the real one cannot give. */
   readonly tabs?: (real: TabsStore) => TabsStore;
+  /** Hears the rows a plugin's provider answered that were left out, and why. */
+  readonly report?: (problem: { readonly provider: string; readonly message: string }) => void;
+  /** What each plugin may ask of the bottom panel. */
+  readonly panelHosts?: (plugin: string) => PanelHostV1;
 };
 
 /** What a test holds of the palette it built: the palette and its store, the tab store, what the plugins and the published values are, and the handles that change them. */
@@ -165,7 +169,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts });
   return {
     palette,
     store: palette.store,
@@ -1054,5 +1058,577 @@ describe('what the host keeps of the palette as the window changes', () => {
     w.tabs.activate(first);
     expect(recent()).toEqual(['gadgets']);
     stop();
+  });
+});
+
+// What the plugins bring to the palette (C1c): the providers each declares, registered when the plugin is ready and taken away, with their pending requests and rows, when it is not. The provider's own behaviour is
+// tested in paletteProviders.test.ts; what is tested here is what the host does with the plugins: when it registers, when it removes, what is asked of whom, how a row opens and how a command runs.
+describe('the providers the plugins bring', () => {
+  const widgetsRow = (id: string, label = id, page = 'widgets'): PaletteRowV1 => ({ id, label, icon: 'box', route: { page, params: {} } });
+  const matching = (rows: readonly PaletteRowV1[], patch: Partial<Omit<PaletteMatchProviderV1, 'kind'>> = {}): PaletteMatchProviderV1 => ({ kind: 'match', section: 'Things', match: () => rows, ...patch });
+  const searching = (answer: (query: string, signal: AbortSignal) => Promise<readonly PaletteRowV1[]>, patch: Partial<Omit<PaletteSearchProviderV1, 'kind'>> = {}): PaletteSearchProviderV1 => ({
+    kind: 'search',
+    section: 'Lookups',
+    search: async (query, _scope, signal) => answer(query, signal),
+    ...patch,
+  });
+  /** A plugin that is ready with `palette`. */
+  const bringing = (id: string, name: string, palette: PaletteV1 | undefined, patch: Parameters<typeof acme>[0] = {}): PluginEntry => ready(id, name, { plugin: { name }, palette, ...patch });
+
+  const sectionOf = (w: World, id: string) => w.store.getSnapshot().sections.find((candidate) => candidate.id === id);
+  /** The sections plugins bring: the model names each `<plugin>:<section>`, and its own sections have no colon. */
+  const idsOf = (w: World): string[] => w.store.getSnapshot().sections.map((candidate) => candidate.id).filter((id) => id.includes(':'));
+
+  describe('when they are registered', () => {
+    it('are the providers of every plugin that is ready and has a palette, in a section of its own after the host\'s, headed by the plugin\'s name; a plugin that is loading, failed or brings none has none', () => {
+      const w = build({ entries: [GAMMA, DELTA, bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one')]) } }), BETA, bringing('east', 'East', { providers: { things: matching([widgetsRow('e1', 'east one')], { section: 'Items' }) } })] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+
+      // The sections of plugins that match equally keep the rail's order (East before West: the rail orders by name), whatever order the plugins were listed in.
+      expect(idsOf(w)).toEqual(['east:things', 'west:things']);
+      expect(w.store.getSnapshot().sections.map((section) => [section.title, section.rows.map((row) => row.title.text)])).toEqual([
+        ['East · Items', ['east one']],
+        ['West · Things', ['west one']],
+      ]);
+      stop();
+    });
+
+    it('keeps the sections of plugins that match equally in the rail\'s order, whichever of them turned ready first: what Enter opens does not depend on which plugin loaded first', () => {
+      const loading = (id: string, name: string): PluginEntry => ({ id, name, phase: 'loading' });
+      const west = bringing('west', 'West', { providers: { things: matching([widgetsRow('same-w', 'same one')]) } });
+      const east = bringing('east', 'East', { providers: { things: matching([widgetsRow('same-e', 'same one')]) } });
+      const w = build({ entries: [loading('west', 'West'), loading('east', 'East')] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('same');
+      expect(idsOf(w)).toEqual([]);
+
+      // West loads first and has its section; East, which the rail puts before it, loads next.
+      w.set([west, loading('east', 'East')]);
+      expect(idsOf(w)).toEqual(['west:things']);
+      w.set([west, east]);
+      expect(idsOf(w)).toEqual(['east:things', 'west:things']);
+      expect(w.store.getSnapshot().rows[w.store.getSnapshot().activeIndex]?.title.text).toBe('same one');
+      expect(w.store.getSnapshot().rows[w.store.getSnapshot().activeIndex]?.id).toContain('east:things');
+
+      // The other way round, from the start.
+      w.set([loading('west', 'West'), loading('east', 'East')]);
+      expect(idsOf(w)).toEqual([]);
+      w.set([loading('west', 'West'), east]);
+      w.set([west, east]);
+      expect(idsOf(w)).toEqual(['east:things', 'west:things']);
+      stop();
+    });
+
+    it('leaves the order of the others as it was when a plugin leaves, and puts a plugin that reloads back where the rail has it', () => {
+      const make = (id: string, name: string): PluginEntry => bringing(id, name, { providers: { things: matching([widgetsRow(`same-${id}`, 'same one')]) } });
+      const [north, east, west] = [make('north', 'North'), make('east', 'East'), make('west', 'West')];
+      const w = build({ entries: [west, north, east] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('same');
+      expect(idsOf(w)).toEqual(['east:things', 'north:things', 'west:things']);
+
+      w.set([west, east]);
+      expect(idsOf(w)).toEqual(['east:things', 'west:things']);
+      w.set([west, make('north', 'North'), east]);
+      expect(idsOf(w)).toEqual(['east:things', 'north:things', 'west:things']);
+      stop();
+    });
+
+    it('registers nothing until the palette is attached: a palette nobody attached lists the host\'s sources and no plugin\'s', () => {
+      const w = build({ entries: [bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one')]) } })] });
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+
+      expect(idsOf(w)).toEqual([]);
+    });
+
+    it('registers a plugin that turns ready later, and asks it at once when the palette is open: its section comes without a keystroke', async () => {
+      const lookup = vi.fn(async () => [widgetsRow('l1', 'lookup one')]);
+      const w = build({ entries: [{ id: 'west', name: 'West plugin', phase: 'loading' }] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(400);
+      expect(idsOf(w)).toEqual([]);
+
+      w.set([bringing('west', 'West', { providers: { lookups: searching(lookup) } })]);
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(lookup).toHaveBeenCalledTimes(1);
+      expect(sectionOf(w, 'west:lookups')?.rows.map((row) => row.title.text)).toEqual(['lookup one']);
+      stop();
+    });
+
+    it('refuses to register the providers of a plugin that is called host: that is the name of the palette\'s own sources, which are asked whatever the palette is narrowed to', () => {
+      const problems: Array<{ provider: string; message: string }> = [];
+      const w = build({ entries: [bringing('host', 'Host', { providers: { things: matching([widgetsRow('h1', 'host one')]) } })], report: (problem) => problems.push(problem) });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+
+      expect(idsOf(w)).toEqual([]);
+      expect(problems).toEqual([{ provider: 'host:things', message: 'the plugin\'s id is "host", which names the palette\'s own sources: its providers are not registered' }]);
+      stop();
+    });
+
+    it('is attached twice at once and undone one at a time: the providers stay until the last is undone, and none outlives it', () => {
+      const w = build({ entries: [bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one')]) } })] });
+      const one = w.palette.attach();
+      const two = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      expect(idsOf(w)).toEqual(['west:things']);
+
+      one();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      expect(idsOf(w)).toEqual(['west:things']);
+      two();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      expect(idsOf(w)).toEqual([]);
+
+      const again = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      expect(idsOf(w)).toEqual(['west:things']);
+      again();
+    });
+  });
+
+  describe('when they are removed', () => {
+    const slow = () => {
+      const state = { asked: 0, signal: undefined as AbortSignal | undefined, release: (_rows: readonly PaletteRowV1[]): void => undefined };
+      const provider = searching(async (_query, signal) => {
+        state.asked += 1;
+        state.signal = signal;
+        return new Promise((resolve) => {
+          state.release = resolve;
+        });
+      });
+      return { state, provider };
+    };
+
+    it.each([
+      ['turns into a plugin that is loading again (an upgrade, a retry)', (entry: PluginEntry): PluginEntry => ({ id: entry.id, name: entry.name, phase: 'loading' })],
+      ['fails', (entry: PluginEntry): PluginEntry => ({ id: entry.id, name: entry.name, phase: 'failed', failure: { kind: 'broken', message: 'The plugin\'s interface could not be loaded.' } })],
+    ])('takes a plugin\'s providers, its rows and its pending request away together, in the change in which it %s; the host\'s rows and the other plugins\' stay', async (_name, leave) => {
+      const { state, provider } = slow();
+      const west = bringing('west', 'West', { providers: { lookups: provider, things: matching([widgetsRow('w1', 'west one')]) } });
+      const east = bringing('east', 'East', { providers: { things: matching([widgetsRow('e1', 'east one')]) } });
+      const w = build({ entries: [west, east] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(200);
+      expect(state.asked).toBe(1);
+      expect(idsOf(w)).toEqual(['east:things', 'west:things']);
+      expect(w.store.getSnapshot().searching).toBe(true);
+      const changes: number[] = [];
+      w.store.subscribe(() => changes.push(w.store.getSnapshot().sections.length));
+
+      w.set([leave(west), east]);
+
+      expect(state.signal?.aborted).toBe(true);
+      expect(idsOf(w)).toEqual(['east:things']);
+      expect(w.store.getSnapshot().searching).toBe(false);
+      expect(w.store.getSnapshot().sources.map((source) => source.id)).not.toContain('west:lookups');
+      // One change, not one for each thing it took: the plugin is gone from the list in the very notification that said it left.
+      expect(changes).toEqual([1]);
+      // Its answer, if it comes, is not shown, and the plugin is asked nothing again.
+      state.release([widgetsRow('late')]);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(idsOf(w)).toEqual(['east:things']);
+      expect(state.asked).toBe(1);
+      stop();
+    });
+
+    it('takes a plugin away that is no longer in the list of plugins at all', async () => {
+      const west = bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one')]) } });
+      const w = build({ entries: [west, BETA] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      expect(idsOf(w)).toEqual(['west:things']);
+
+      w.set([BETA]);
+
+      expect(idsOf(w)).toEqual([]);
+      stop();
+    });
+
+    it('takes the chips that narrowed the search to a plugin away with it: the palette goes back to searching everywhere', async () => {
+      const west = bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one')]) } });
+      const w = build({ entries: [west, BETA] });
+      const stop = w.palette.attach();
+      w.open(at('west', 'widgets', 'north'));
+      w.store.open(w.palette.opening());
+      expect(w.store.getSnapshot().chips.map((chip) => chip.plugin)).toEqual(['west', 'west']);
+
+      w.set([{ id: 'west', name: 'West plugin', phase: 'loading' }, BETA]);
+
+      expect(w.store.getSnapshot().chips).toEqual([]);
+      expect(w.store.getSnapshot().open).toBe(true);
+      stop();
+    });
+
+    it('asks a plugin whose contribution was replaced (a reload) for its new providers only: the old ones go with their rows and their request', async () => {
+      const { state, provider } = slow();
+      const before = bringing('west', 'West', { providers: { lookups: provider, things: matching([widgetsRow('w1', 'west one')]) } });
+      const after = bringing('west', 'West', { providers: { things: matching([widgetsRow('w2', 'west two one')]) } });
+      const w = build({ entries: [before] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(200);
+
+      w.set([after]);
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(state.signal?.aborted).toBe(true);
+      expect(w.store.getSnapshot().sections.map((section) => [section.id, section.rows.map((row) => row.title.text)])).toEqual([['west:things', ['west two one']]]);
+      stop();
+    });
+
+    it('leaves a plugin\'s providers as they are when something else changes: the same registration, not asked again', async () => {
+      const match = vi.fn(() => [widgetsRow('w1', 'west one')]);
+      const west = bringing('west', 'West', { providers: { things: matching([], { match }) } });
+      const w = build({ entries: [west, BETA] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      const before = match.mock.calls.length;
+
+      w.set([west, { ...BETA, name: 'Beta renamed' }]);
+      expect(match.mock.calls.length).toBe(before + 1);
+      expect(idsOf(w)).toEqual(['west:things']);
+      stop();
+    });
+
+    it('takes every plugin\'s providers away when it is undone, with the pending requests and the rows: nothing of the plugins outlives the subscriptions', async () => {
+      const { state, provider } = slow();
+      const w = build({ entries: [bringing('west', 'West', { providers: { lookups: provider, things: matching([widgetsRow('w1', 'west one')]) } })] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(200);
+      expect(state.asked).toBe(1);
+
+      stop();
+
+      expect(state.signal?.aborted).toBe(true);
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(400);
+      expect(idsOf(w)).toEqual([]);
+      expect(state.asked).toBe(1);
+    });
+  });
+
+  describe('what is asked of whom', () => {
+    it('asks only the providers of the plugin the palette is narrowed to, and the host\'s: another plugin\'s providers are not called', () => {
+      const westMatch = vi.fn(() => [widgetsRow('w1', 'west one')]);
+      const eastMatch = vi.fn(() => [widgetsRow('e1', 'east one')]);
+      const w = build({
+        entries: [bringing('west', 'West', { providers: { things: matching([], { match: westMatch }) } }), bringing('east', 'East', { providers: { things: matching([], { match: eastMatch }) } })],
+      });
+      const stop = w.palette.attach();
+      w.open(at('west', 'widgets', 'north'));
+      w.store.open(w.palette.opening());
+      w.store.setQuery('one');
+
+      expect(westMatch).toHaveBeenCalled();
+      expect(eastMatch).not.toHaveBeenCalled();
+      expect(idsOf(w)).toEqual(['west:things']);
+      stop();
+    });
+
+    it('honours a provider\'s own scope test: a provider that has nothing to say in this scope is not asked', () => {
+      const match = vi.fn(() => [widgetsRow('w1', 'west one')]);
+      const w = build({ entries: [bringing('west', 'West', { providers: { things: matching([], { match, supports: (scope: { readonly plugin: string | null }) => scope.plugin === 'west' }) } })] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      expect(match).not.toHaveBeenCalled();
+      expect(idsOf(w)).toEqual([]);
+
+      w.store.close();
+      w.open(at('west', 'widgets', 'north'));
+      w.store.open(w.palette.opening());
+      w.store.setQuery('one');
+      expect(match).toHaveBeenCalled();
+      expect(idsOf(w)).toEqual(['west:things']);
+      stop();
+    });
+  });
+
+  describe('opening a row', () => {
+    /** The window as a person has it: a tab of the first plugin on screen, the palette open on a query that finds one row of each plugin. */
+    function setup() {
+      const w = build({
+        entries: [
+          bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one', 'gadgets')]) } }),
+          bringing('east', 'East', { providers: { things: matching([widgetsRow('e1', 'east one', 'gadgets')]) } }),
+        ],
+      });
+      const stop = w.palette.attach();
+      w.open(at('west', 'widgets', 'north'));
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      const row = (plugin: string) => w.store.getSnapshot().rows.find((candidate) => candidate.plugin === plugin);
+      return { w, row, stop };
+    }
+
+    it('opens a page of the plugin the tab on screen is of in that tab, as a host row does, at the connection the tab has', () => {
+      const { w, row, stop } = setup();
+      const before = w.tabs.getSnapshot().order;
+
+      expect(w.store.activate(row('west')?.id)).toMatchObject({ status: 'opened' });
+
+      expect(w.tabs.getSnapshot().order).toEqual(before);
+      expect(stripOf(w)).toEqual(['west/gadgets']);
+      expect(w.tabs.getSnapshot().tabs[before[0] ?? '']?.location.route.params).toEqual({ connection: 'north' });
+      expect(w.store.getSnapshot().open).toBe(false);
+      stop();
+    });
+
+    it('opens a page of another plugin in a tab of its own', () => {
+      const { w, row, stop } = setup();
+
+      w.store.activate(row('east')?.id);
+
+      expect(stripOf(w)).toEqual(['west/widgets', 'east/gadgets']);
+      expect(w.tabs.getSnapshot().active).toBe(w.tabs.getSnapshot().order[1]);
+      stop();
+    });
+
+    it('opens it here with Alt Enter: the tab on screen goes to the page, whatever plugin it is of', () => {
+      const { w, row, stop } = setup();
+
+      w.store.activate(row('east')?.id, { altKey: true });
+
+      expect(stripOf(w)).toEqual(['east/gadgets']);
+      stop();
+    });
+
+    it('opens it in a new tab and shows it with Command Shift Enter, even when the tab on screen already is the page', () => {
+      const { w, row, stop } = setup();
+
+      w.store.activate(row('west')?.id, { metaKey: true, shiftKey: true });
+
+      expect(stripOf(w)).toEqual(['west/widgets', 'west/gadgets']);
+      expect(w.tabs.getSnapshot().active).toBe(w.tabs.getSnapshot().order[1]);
+      stop();
+    });
+
+    it('opens it in a background tab with Command Enter: the tab on screen stays', () => {
+      const { w, row, stop } = setup();
+      const shown = w.tabs.getSnapshot().active;
+
+      w.store.activate(row('east')?.id, { metaKey: true });
+
+      expect(stripOf(w)).toEqual(['west/widgets', 'east/gadgets']);
+      expect(w.tabs.getSnapshot().active).toBe(shown);
+      stop();
+    });
+
+    it('remembers where it went in Recent, as a host row does', () => {
+      const { w, row, stop } = setup();
+
+      w.store.activate(row('east')?.id);
+
+      expect(w.store.getSnapshot().recents.map((recent) => [recent.route.plugin, recent.route.contribution])).toEqual([['east', 'gadgets'], ['west', 'widgets']]);
+      stop();
+    });
+  });
+
+  describe('running a command a row names', () => {
+    const commandRow = (id: string, label: string, command: string, arg?: PaletteJsonV1): PaletteRowV1 => ({ id, label, icon: 'refresh', command: { id: command, ...(arg === undefined ? {} : { arg }) } });
+
+    function setup(run: PaletteCommandV1['run'], over: { readonly panelHosts?: (plugin: string) => PanelHostV1 } = {}) {
+      const west = bringing('west', 'West', { providers: { things: matching([commandRow('c1', 'Reset west', 'reset', { all: true })], { filter: 'commands' }) }, commands: { reset: { run } } });
+      const w = build({ entries: [west], ...over });
+      const stop = w.palette.attach();
+      w.open(at('west', 'widgets', 'north'));
+      w.store.open({ kind: 'commands' });
+      w.store.setQuery('reset west');
+      return { w, west, stop };
+    }
+
+    it('runs the plugin\'s own function with the argument the row carried, and what the plugin may use of the host, and closes the palette: a command ignores the modifiers', () => {
+      const run = vi.fn<PaletteCommandV1['run']>(() => undefined);
+      const panel: PanelHostV1 = { logs: { open: vi.fn() } };
+      const { w, stop } = setup(run, { panelHosts: (plugin) => (plugin === 'west' ? panel : { logs: { open: vi.fn() } }) });
+      const row = w.store.getSnapshot().rows[0];
+      expect(row).toMatchObject({ kind: 'command', title: { text: 'Reset west' } });
+
+      expect(w.store.activate(row?.id, { metaKey: true, shiftKey: true })).toMatchObject({ status: 'ran', outcome: 'done' });
+
+      expect(run).toHaveBeenCalledWith({ all: true }, { plugin: 'west', panel });
+      expect(w.store.getSnapshot().open).toBe(false);
+      expect(stripOf(w)).toEqual(['west/widgets']);
+      stop();
+    });
+
+    it('keeps the palette open and says why when the command refuses, in the plugin\'s sentence', () => {
+      const { w, stop } = setup(() => ({ ok: false, reason: 'Nothing is selected.' }));
+
+      expect(w.store.activate()).toMatchObject({ status: 'ran', outcome: 'refused' });
+      expect(w.store.getSnapshot().open).toBe(true);
+      expect(w.store.getSnapshot().notice).toBe('Reset west: Nothing is selected.');
+      stop();
+    });
+
+    it('says the command failed, in the host\'s words, when it throws, and keeps the plugin\'s own in the console', () => {
+      const boom = new Error('private detail');
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { w, stop } = setup(() => {
+        throw boom;
+      });
+
+      expect(w.store.activate()).toMatchObject({ status: 'ran', outcome: 'refused' });
+      expect(w.store.getSnapshot().notice).toBe('Reset west: This command failed.');
+      expect(JSON.stringify(w.store.getSnapshot())).not.toContain('private detail');
+      expect(error.mock.calls.flat()).toContain(boom);
+      stop();
+    });
+
+    it('looks the command up again immediately before it runs: a command the plugin removed from its own registry after the row was listed is not run, and the palette says so', () => {
+      const run = vi.fn<PaletteCommandV1['run']>();
+      const { w, west, stop } = setup(run);
+      const row = w.store.getSnapshot().rows[0];
+      // The plugin changes its own registry; the list on screen is the one it was before.
+      const commands = (west as Extract<PluginEntry, { phase: 'ready' }>).contribution.palette?.commands as Record<string, PaletteCommandV1>;
+      Reflect.deleteProperty(commands, 'reset');
+
+      expect(w.store.activate(row?.id)).toMatchObject({ status: 'ran', outcome: 'refused' });
+      expect(w.store.getSnapshot().notice).toBe('Reset west: This command is not available.');
+      expect(run).not.toHaveBeenCalled();
+      stop();
+    });
+
+    it('does not offer a row whose command the plugin does not have: it is left out at the plugin\'s answer, with a problem, and no other row is lost', () => {
+      const problems: Array<{ provider: string; message: string }> = [];
+      const west = bringing('west', 'West', { providers: { things: matching([commandRow('c1', 'Reset west', 'launch'), widgetsRow('w1', 'west one')], { filter: 'commands' }) }, commands: { reset: { run: () => undefined } } });
+      const w = build({ entries: [west], report: (problem) => problems.push(problem) });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'commands' });
+      w.store.setQuery('west');
+
+      expect(titlesOf(w, 'west:things')).toEqual(['west one']);
+      expect(problems).toEqual([{ provider: 'west:things', message: 'row "c1": command.id "launch" is not one of the plugin\'s commands' }]);
+      stop();
+    });
+  });
+
+  describe('what a provider that fails does to the palette', () => {
+    it('says which source did not answer in a line of its own, with a Retry, while the other providers answer: a match that throws, a search that rejects', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const west = bringing('west', 'West', {
+        providers: {
+          broken: matching([], { section: 'Broken', match: () => {
+            throw new Error('connect ECONNREFUSED'); 
+          } }),
+          rejected: searching(async () => {
+            throw new Error('403'); 
+          }, { section: 'Rejected' }),
+          fine: matching([widgetsRow('w1', 'west one')], { section: 'Fine' }),
+        },
+      });
+      const w = build({ entries: [west] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(w.store.getSnapshot().runs.map((run) => [run.label, run.retry])).toEqual([['Broken: Unavailable', true], ['Rejected: Unavailable', true]]);
+      expect(titlesOf(w, 'west:fine')).toEqual(['west one']);
+      expect(JSON.stringify(w.store.getSnapshot())).not.toMatch(/ECONNREFUSED|403/);
+      expect(error).toHaveBeenCalled();
+      stop();
+    });
+
+    it('says a provider that never answers has failed five seconds after it was asked, and the other providers have answered meanwhile', async () => {
+      const west = bringing('west', 'West', { providers: { lookups: searching(async () => new Promise<never>(() => undefined)), fine: matching([widgetsRow('w1', 'west one')], { section: 'Fine' }) } });
+      const w = build({ entries: [west] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      // The request starts after the typing has been still for 150 ms, and has five seconds from then.
+      await vi.advanceTimersByTimeAsync(150 + 4999);
+      expect(w.store.getSnapshot().runs).toEqual([]);
+      await vi.advanceTimersByTimeAsync(2);
+
+      expect(w.store.getSnapshot().runs.map((run) => [run.label, run.message])).toEqual([['Lookups: Timed out', 'Lookups didn\'t answer in 5 seconds.']]);
+      expect(titlesOf(w, 'west:fine')).toEqual(['west one']);
+      stop();
+    });
+  });
+
+  describe('what it tells of the rows it left out', () => {
+    it('tells the problem to the host\'s report once, with the provider\'s id, and shows the rows that are valid', () => {
+      const problems: Array<{ provider: string; message: string }> = [];
+      const bad = { id: 'b', label: 'bad one', icon: 'no-such-glyph', route: { page: 'widgets', params: {} } } as unknown as PaletteRowV1;
+      const w = build({ entries: [bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one'), bad]) } })], report: (problem) => problems.push(problem) });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      w.store.setQuery('on');
+      w.store.setQuery('one');
+
+      expect(titlesOf(w, 'west:things')).toEqual(['west one']);
+      expect(problems).toEqual([{ provider: 'west:things', message: 'row "b": the glyph "no-such-glyph" is not one the kit has' }]);
+      stop();
+    });
+
+    it('says it to the console when the host was given no report of its own', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const bad = { id: 'b', label: 'bad one', icon: 'box' } as unknown as PaletteRowV1;
+      const w = build({ entries: [bringing('west', 'West', { providers: { things: matching([bad]) } })] });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('bad');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toBe('[palette] west:things: row "b": it opens neither a route nor a command');
+      stop();
+    });
+  });
+
+  describe('a closed palette', () => {
+    it('does no provider work at all: no provider is called, no request is made and no timer is held, however often the plugins change, a plugin leaves or one arrives', async () => {
+      const match = vi.fn(() => [widgetsRow('w1', 'west one')]);
+      const lookup = vi.fn(async () => [widgetsRow('l1', 'lookup one')]);
+      const west = bringing('west', 'West', { providers: { things: matching([], { match }), lookups: searching(lookup) } });
+      const w = build({ entries: [west] });
+      const stop = w.palette.attach();
+      w.set([west, BETA]);
+      w.set([{ id: 'west', name: 'West plugin', phase: 'loading' }, BETA]);
+      w.set([west, BETA]);
+      w.open(at('west', 'widgets'));
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(match).not.toHaveBeenCalled();
+      expect(lookup).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('one');
+      await vi.advanceTimersByTimeAsync(200);
+      expect(match).toHaveBeenCalled();
+      expect(lookup).toHaveBeenCalledTimes(1);
+      w.store.close();
+      const [matched, looked] = [match.mock.calls.length, lookup.mock.calls.length];
+      w.set([west, { ...BETA, name: 'Beta renamed' }]);
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect([match.mock.calls.length, lookup.mock.calls.length]).toEqual([matched, looked]);
+      expect(vi.getTimerCount()).toBe(0);
+      stop();
+    });
   });
 });
