@@ -2,7 +2,7 @@
 // seed, so a run is the same run; it keeps the contract of a real feed (consumer-paced `read`, a bound that drops the oldest and counts them, a local
 // pause, one wake-up between two reads) and nothing more. It is development and documentation only: it is reached through the examples entry and never
 // through the root entry.
-import type { LogFeed, LogFeedBatch, LogFeedCause, LogFeedLevel, LogFeedLine, LogFeedSnapshot, LogFeedState, LogFeedStats } from '../../log/types';
+import type { LogFeed, LogFeedBatch, LogFeedCause, LogFeedLevel, LogFeedLine, LogFeedSnapshot, LogFeedSource, LogFeedState, LogFeedStats } from '../../log/types';
 
 export type SyntheticFeedOptions = {
   /** Lines a second while `start()` has been called. Default 20. */
@@ -15,6 +15,11 @@ export type SyntheticFeedOptions = {
   readonly state?: LogFeedState | undefined;
   /** The clock, in ms since the epoch, for the lines' timestamps. Default `Date.now`. */
   readonly clock?: (() => number) | undefined;
+  /**
+   * The sources the made lines come from, in turn: line `seq` is of source `seq - 1` modulo the count, with no random number drawn, so the text and levels of a seed do not depend on them. A source is an id, or
+   * an id with the label the view shows for it. The feed lists what it is given in its status, as the runtime's stream lists the sources it has heard of. Default: one, `source/main`, and none listed.
+   */
+  readonly sources?: ReadonlyArray<string | LogFeedSource> | undefined;
 };
 
 /** A small seeded generator (mulberry32): a number in [0, 1). */
@@ -39,6 +44,8 @@ const RESET = '\u001b[0m';
 export class SyntheticFeed implements LogFeed {
   private readonly random: () => number;
   private readonly clock: () => number;
+  private readonly sourceIds: readonly string[];
+  private listed: readonly LogFeedSource[] | undefined;
   private readonly rate: number;
   private readonly maxHeld: number;
   private readonly listeners = new Set<() => void>();
@@ -66,8 +73,10 @@ export class SyntheticFeed implements LogFeed {
     this.clock = options.clock ?? (() => Date.now());
     this.rate = options.rate ?? 20;
     this.maxHeld = Math.max(0, Math.floor(options.maxHeld ?? 100_000));
+    this.listed = options.sources?.map((source) => (typeof source === 'string' ? { id: source } : source));
+    this.sourceIds = this.listed === undefined || this.listed.length === 0 ? ['source/main'] : this.listed.map((source) => source.id);
     const state = options.state ?? 'streaming';
-    this.status = { state, paused: state === 'paused', cause: undefined };
+    this.status = this.statusOf(state, state === 'paused', undefined);
   }
 
   // ---- the LogFeed contract ----
@@ -245,10 +254,10 @@ export class SyntheticFeed implements LogFeed {
     this.droppedTotal += count;
   }
 
-  /** A line of text the caller chose, with a level; numbered and stamped as a made one. */
-  line(text: string, level?: LogFeedLevel): LogFeedLine {
+  /** A line of text the caller chose, with a level and the source that wrote it (default: the first source the feed has); numbered and stamped as a made one. */
+  line(text: string, level?: LogFeedLevel, source?: string): LogFeedLine {
     this.seq += 1;
-    return { seq: this.seq, source: 'source/main', timestamp: new Date(this.clock()).toISOString(), text, level };
+    return { seq: this.seq, source: source ?? this.sourceIds[0] ?? 'source/main', timestamp: new Date(this.clock()).toISOString(), text, level };
   }
 
   /**
@@ -256,7 +265,17 @@ export class SyntheticFeed implements LogFeed {
    * ends or fails while paused stays paused, "whatever `state` says", and holds its lines until a reader lifts the pause.
    */
   setState(state: LogFeedState, cause?: LogFeedCause): void {
-    this.set({ state, paused: state === 'paused' ? true : this.status.paused, cause });
+    this.set(this.statusOf(state, state === 'paused' ? true : this.status.paused, cause));
+  }
+
+  /** The feed lists other sources: a new status, and every listener is told. What lines it makes is not changed by it. */
+  setSources(sources: readonly LogFeedSource[]): void {
+    this.listed = sources;
+    this.set({ ...this.status, sources });
+  }
+
+  private statusOf(state: LogFeedState, paused: boolean, cause: LogFeedCause | undefined): LogFeedSnapshot {
+    return this.listed === undefined ? { state, paused, cause } : { state, paused, cause, sources: this.listed };
   }
 
   /**
@@ -344,6 +363,6 @@ export class SyntheticFeed implements LogFeed {
       level = 'info';
     }
 
-    return { seq: this.seq, source: 'source/main', timestamp: new Date(at).toISOString(), text, level };
+    return { seq: this.seq, source: this.sourceIds[(this.seq - 1) % this.sourceIds.length] ?? 'source/main', timestamp: new Date(at).toISOString(), text, level };
   }
 }

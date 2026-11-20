@@ -233,3 +233,38 @@ describe('the end of a session', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('the source of a line (L2)', () => {
+  // The body hands the stream to the kit's view as it is, so the source a line names and the sources the stream lists reach the Source column with nothing in between to map.
+  const heads = () => screen.getAllByRole('columnheader').map((head) => head.textContent);
+  const dataRows = () => screen.queryAllByRole('row').filter((row) => row.getAttribute('data-n') !== null);
+  const cells = (row: HTMLElement) => [...row.querySelectorAll('[role="gridcell"]')].map((cell) => cell.textContent);
+
+  it('draws nothing extra for a stream with one source', () => {
+    const { feed } = mount();
+    feed.push(6, 'item/app');
+    frames();
+    expect(heads()).toEqual(['Time', 'Level', 'Message']);
+    expect(dataRows().map((row) => cells(row).length)).toEqual([3, 3, 3, 3, 3, 3]);
+  });
+
+  it('draws a Source column, with each line\'s source by name, as soon as the stream has more than one', () => {
+    const { feed } = mount();
+    feed.push(2, 'item/app');
+    frames();
+    expect(heads()).toEqual(['Time', 'Level', 'Message']);
+    feed.push(2, 'item/worker');
+    frames();
+    expect(heads()).toEqual(['Time', 'Level', 'Source', 'Message']);
+    expect(dataRows().map((row) => cells(row)[2])).toEqual(['item/app', 'item/app', 'item/worker', 'item/worker']);
+  });
+
+  it('names a source by the label the stream lists for it', () => {
+    const { feed } = mount();
+    feed.set({ sources: [{ id: 'item/app', label: 'app' }, { id: 'item/worker', label: 'worker' }] });
+    feed.push(2, 'item/worker');
+    frames();
+    expect(heads()).toEqual(['Time', 'Level', 'Source', 'Message']);
+    expect(dataRows().map((row) => cells(row)[2])).toEqual(['worker', 'worker']);
+  });
+});

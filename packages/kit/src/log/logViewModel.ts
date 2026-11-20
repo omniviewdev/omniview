@@ -21,6 +21,7 @@ import { makeLineEntry } from './entry';
 import { LineBuffer } from './lineBuffer';
 import { LineSearch, type SearchOptions, type SearchStatus } from './lineSearch';
 import { LineView } from './lineView';
+import { LogSources, type SourceTag } from './sources';
 import { formatClock } from './time';
 import type { LogEntry, LogFeed } from './types';
 import { windowOf, type RowWindow } from './window';
@@ -82,7 +83,12 @@ export type SearchSnapshot = {
 };
 
 /** One row of the window: the entry, and whether the search found a match in it. Made when the snapshot is, so a render reads no mutable state. */
-export type ViewRow = { readonly entry: LogEntry; readonly hit: boolean };
+export type ViewRow = {
+  readonly entry: LogEntry;
+  readonly hit: boolean;
+  /** The tag of the line's source while the view has a source column; undefined without one, and for a line that names none and a marker. The same object for a source until its label changes (HLT-2). */
+  readonly source: SourceTag | undefined;
+};
 
 export type ViewSnapshot = {
   /** A number that rises with every snapshot. */
@@ -104,6 +110,8 @@ export type ViewSnapshot = {
   /** The latest command; the list applies it once, by its id. */
   readonly scroll: ScrollCommand | undefined;
   readonly minRank: number;
+  /** The view has heard of more than one source (a line named it, or the feed lists it): every row draws its source. Once true it stays true, so the shape of the log never changes under a reader. */
+  readonly sourceColumn: boolean;
 };
 
 /** What the strip says. A new object only when a number changed. */
@@ -166,13 +174,20 @@ function sameStats(a: StatsSnapshot, b: StatsSnapshot): boolean {
   );
 }
 
-/** The text of an entry as it is copied: the clock, the level, the text; a marker as its own sentence. */
-export function entryText(entry: LogEntry): string {
+/**
+ * The text of an entry as it is copied: the clock, the level, the text; a marker as its own sentence. With a source `label` (a view that shows its source column) the label comes after the level and two
+ * spaces set it off from the text, as the mock copies a line (shell-panel.js 2062 `lineText`: the clock, the level padded to five, the label, two spaces, the message).
+ */
+export function entryText(entry: LogEntry, label?: string): string {
   if (entry.kind === 'gap') {
     return `-- ${entry.dropped.toLocaleString('en-US')} ${entry.dropped === 1 ? 'line' : 'lines'} dropped --`;
   }
 
   const clock = formatClock(entry.timestamp);
+  if (label !== undefined && label !== '') {
+    return `${clock === '' ? '' : `${clock} `}${(entry.level?.toUpperCase() ?? '').padEnd(5)} ${label}  ${entry.text}`;
+  }
+
   return [clock, entry.level?.toUpperCase() ?? '', entry.text].filter((part, index) => part !== '' || index === 2).join(' ');
 }
 
@@ -181,6 +196,7 @@ export class LogViewModel {
   private readonly buffer: LineBuffer;
   private readonly view: LineView;
   private readonly search: LineSearch;
+  private readonly sources = new LogSources();
   private readonly now: () => number;
   private readonly schedule: (callback: () => void) => () => void;
   private readonly timer: (callback: () => void, ms: number) => () => void;
@@ -233,6 +249,7 @@ export class LogViewModel {
     this.timer = options.timer ?? defaultTimer;
     this.searchSnapshot = this.makeSearchSnapshot();
     this.sample(true);
+    this.sources.learn(this.stream.getSnapshot().sources);
     this.stats = this.computeStats();
     this.snapshot = this.makeSnapshot();
   }
@@ -514,8 +531,10 @@ export class LogViewModel {
     const low = Math.min(selection.anchor, selection.focus);
     const high = Math.max(selection.anchor, selection.focus);
     const lines: string[] = [];
+    const column = this.sources.count > 1;
     for (let index = this.view.lowerBound(low); index < this.view.length && this.view.ordinalAt(index) <= high; index += 1) {
-      lines.push(entryText(this.view.at(index)));
+      const entry = this.view.at(index);
+      lines.push(entryText(entry, column && entry.kind === 'line' ? this.sources.tag(entry.source)?.label : undefined));
     }
 
     return lines.length === 0 ? undefined : lines.join('\n');
@@ -541,7 +560,9 @@ export class LogViewModel {
 
   private frame(): void {
     const started = this.now();
-    let changed = false;
+    // What the feed lists of its sources is read first: a listing and the lines that came with it are one snapshot, and the series follows the listing's order. It is read here and not in a listener, because
+    // the frame is the one place the view changes.
+    let changed = this.sources.learn(this.stream.getSnapshot().sources);
     let again = false;
 
     // A feed that is over while it is paused still holds lines (`paused` stays true "whatever `state` says"), and they are the last the reader will get: the error before a
@@ -565,6 +586,7 @@ export class LogViewModel {
         }
 
         for (const line of batch.lines) {
+          this.sources.note(line.source);
           shift += this.append(makeLineEntry(line, this.buffer.next));
         }
 
@@ -767,10 +789,12 @@ export class LogViewModel {
   private makeSnapshot(): ViewSnapshot {
     const window = this.computeWindow();
     const pattern = this.searchSnapshot.pattern;
+    const sourceColumn = this.sources.count > 1;
     const rows: ViewRow[] = [];
     for (let index = window.start; index < window.end; index += 1) {
       const entry = this.view.at(index);
-      rows.push({ entry, hit: entry.kind === 'line' && pattern !== null && this.search.hit(entry.n) });
+      const line = entry.kind === 'line';
+      rows.push({ entry, hit: line && pattern !== null && this.search.hit(entry.n), source: sourceColumn && line ? this.sources.tag(entry.source) : undefined });
     }
 
     return {
@@ -784,6 +808,7 @@ export class LogViewModel {
       search: this.searchSnapshot,
       scroll: this.command,
       minRank: this.view.rank,
+      sourceColumn,
     };
   }
 

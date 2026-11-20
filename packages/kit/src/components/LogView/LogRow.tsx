@@ -1,8 +1,10 @@
 import { memo } from 'react';
 import { formatClock } from '../../log/time';
 import { matchRanges, rowRuns, type RowRun } from '../../log/runs';
+import type { SourceTag } from '../../log/sources';
 import type { LogEntry, LogLevel, PaintedRun } from '../../log/types';
 import { Icon, type IconName } from '../Icon';
+import { MiddleEllipsis } from '../MiddleEllipsis';
 import { MissingValue } from '../MissingValue';
 import styles from './LogView.module.css';
 
@@ -28,6 +30,10 @@ export type LogRowProps = {
   readonly current: boolean;
   /** The pattern to mark matches with. Given only to a line that HAS a match, so a keystroke renders those rows and no other (HLT-12). */
   readonly pattern: RegExp | undefined;
+  /** The log has a source column (it has more than one source): every row has a cell for it, and a marker spans one more column. Without one a row is what it was before the column existed. */
+  readonly sourceColumn: boolean;
+  /** The source of the line, drawn in its cell; undefined for a line that names none. The same object for a source until its label changes, so it widens the memo's comparison without adding a render (HLT-2). */
+  readonly source: SourceTag | undefined;
 };
 
 /** One piece of a row's text: bare text when it has no paint and no mark, one span when it has. */
@@ -55,14 +61,15 @@ function Text({ text, runs, current, pattern }: { readonly text: string; readonl
 
 /**
  * One line of the log, or the marker where the feed dropped lines. Memoised on what it draws: the entry (immutable, made once at ingest), whether it is
- * selected or current, and the pattern when it has a match. A flush that appends lines renders none of the rows that were already there (HLT-2, MNR-L3).
- * A plain row is the row, three cells, the level's glyph and its text: no per-row style, no per-row handler (HLT-3, T-07).
+ * selected or current, the pattern when it has a match, and its source when the log has a source column. A flush that appends lines renders none of the rows that
+ * were already there (HLT-2, MNR-L3). A plain row is the row, three cells, the level's glyph and its text: no per-row style, no per-row handler (HLT-3, T-07); with a
+ * source column it has a cell more, the source's name in a chip whose swatch takes the hue of its place in the series (the mock's `chipOf`).
  */
-export const LogRow = memo(function LogRow({ entry, id, position, selected, current, pattern }: LogRowProps) {
+export const LogRow = memo(function LogRow({ entry, id, position, selected, current, pattern, sourceColumn, source }: LogRowProps) {
   if (entry.kind === 'gap') {
     return (
       <div role="row" id={id} aria-rowindex={position} aria-selected={selected ? 'true' : undefined} className={styles.marker} data-n={entry.n} data-ov-kind="gap">
-        <span role="gridcell" aria-colspan={3} className={styles.markerCell}>
+        <span role="gridcell" aria-colspan={sourceColumn ? 4 : 3} className={styles.markerCell}>
           <Icon name="status-info" />
           {`${NUMBER.format(entry.dropped)} ${entry.dropped === 1 ? 'line' : 'lines'} dropped`}
         </span>
@@ -95,6 +102,15 @@ export const LogRow = memo(function LogRow({ entry, id, position, selected, curr
           </>
         )}
       </span>
+      {sourceColumn ? (
+        <span role="gridcell" className={styles.source}>
+          {source === undefined ? null : (
+            <span className={styles.chip} data-ov-hue={source.hue}>
+              <MiddleEllipsis>{source.label}</MiddleEllipsis>
+            </span>
+          )}
+        </span>
+      ) : null}
       <span role="gridcell" className={styles.text}>
         <Text text={entry.text} runs={entry.runs} current={current} pattern={pattern} />
       </span>

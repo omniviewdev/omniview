@@ -11,7 +11,10 @@ export type LogFeedLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fata
 export type LogFeedLine = {
   /** The line's number in its stream, from 1, in arrival order. A jump is a gap: the feed dropped the lines between. */
   readonly seq: number;
-  /** The id of the source the line came from; '' when it names none. */
+  /**
+   * The id of the source the line came from (`orders-api/app`: the thing and the part of it that wrote the line); '' when it names none. The same string for every line of a source. The view tells sources
+   * apart, with a column and a hue, only when it has heard of more than one; a line that names none is no source.
+   */
   readonly source: string;
   /** When the line was written, as the RFC 3339 text the backend sent; '' when it has no time for it. */
   readonly timestamp: string;
@@ -23,7 +26,11 @@ export type LogFeedLine = {
 
 /** What one `read` returns. */
 export type LogFeedBatch = {
-  /** At most the `max` asked for, oldest first. Empty while the feed is paused or closed, or when nothing is held. */
+  /**
+   * At most the `max` asked for, oldest first: in the order the feed ACCEPTED them, which is arrival order. With several sources that is not clock order (a line may carry an earlier timestamp than the
+   * one before it, as a command-line tool prints the output of several streams followed at once), and the view never sorts: a live tail cannot wait for a line that may not come. Empty while the feed
+   * is paused or closed, or when nothing is held.
+   */
   readonly lines: readonly LogFeedLine[];
   /** How many lines the feed dropped for want of room, between the previous batch and `lines[0]`. */
   readonly dropped: number;
@@ -43,6 +50,14 @@ export type LogFeedCause = {
   readonly message: string;
 };
 
+/** A source a feed follows, as the feed lists it. */
+export type LogFeedSource = {
+  /** What a line's `source` says. */
+  readonly id: string;
+  /** What the view says for the source: a name that is text and is cut from its start when it does not fit (`app`, `sidecar`). The id when the feed gives none. */
+  readonly label?: string | undefined;
+};
+
 /** The status of a feed. The SAME object until something in it changes: it is what `useSyncExternalStore` compares. */
 export type LogFeedSnapshot = {
   readonly state: LogFeedState;
@@ -50,6 +65,11 @@ export type LogFeedSnapshot = {
   readonly paused: boolean;
   /** Why the feed failed; undefined unless `state` is `failed`. */
   readonly cause: LogFeedCause | undefined;
+  /**
+   * The sources the feed has heard of, in the order it heard of them. A feed that follows several lists them here, so the view has the column before a second source speaks; a feed that lists none is
+   * read from its lines. The runtime's stream lists them (`LogStreamSnapshot.sources`), and what it lists satisfies this as it is.
+   */
+  readonly sources?: readonly LogFeedSource[] | undefined;
 };
 
 /** The feed's counters. They change with every batch and are not part of the snapshot. */

@@ -1,0 +1,113 @@
+// Measures the design mock's Source column in a log session that follows several sources (L2): what `MOCK_SOURCE` of ui-next/shell/probes/logs-probe.mjs and the CSS of the kit's LogView (the `.source` cell and its
+// `.chip`) are made from. It is a dev tool, kept with a `.txt` suffix so that no tool compiles or lints it: copy it without the suffix beside itself and run it from the repository root.
+//
+//   cp docs/ui-next/status/L2/mock-sources-measure.mjs.txt docs/ui-next/status/L2/mock-sources-measure.mjs && node docs/ui-next/status/L2/mock-sources-measure.mjs
+//   MOCK_DIR=<the mock's directory>   default: ~/Repos/omniviewdev/aws-wails-native-lab/app/OmniviewNativeLab/frontend/mock (tree c8e44a44, read only)
+//   OUT=<file>                        default: docs/ui-next/status/L2/mock-sources.json
+//
+// The mock is served from a CommonJS copy of its own server.js (as packages/kit/probes/mock-log-measure.mjs does). A producer with eight sources is registered through `Shell.panel.producers`, 24 lines are fed (a source
+// each in turn, the first of them `app`, the second a name too long for the cell), and the table of the Logs tool is read in WebKit and Chromium at 1440 x 900, in UTC and en-US, with the UI font normalised as the other
+// probes do. Rectangles are [x, y, w, h] in px, relative to the top-left of `.plog__table`.
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import path from 'node:path';
+import { ENGINES, launch, normalizeFont, sleep } from '../../../../packages/kit/probes/probe-lib.mjs';
+
+const MOCK_DIR = process.env.MOCK_DIR ?? path.join(homedir(), 'Repos/omniviewdev/aws-wails-native-lab/app/OmniviewNativeLab/frontend/mock');
+const OUT = process.env.OUT ?? 'docs/ui-next/status/L2/mock-sources.json';
+const copy = path.join(mkdtempSync(path.join(tmpdir(), 'l2-mock-')), 'server.cjs');
+writeFileSync(copy, readFileSync(path.join(MOCK_DIR, 'server.js'), 'utf8').replace('const root=__dirname', `const root=${JSON.stringify(MOCK_DIR)}`));
+const server = spawn(process.execPath, [copy], { env: { ...process.env, PORT: '49477' }, stdio: 'ignore' });
+const url = 'http://127.0.0.1:49477/';
+await sleep(1500);
+
+/** Page side: the probe's producer, with eight sources, running at once. */
+function install() {
+  Shell.panel.producers.register({
+    id: 'probe.two', kinds: ['logs'],
+    start: async ({ sink }) => {
+      sink.sources([
+        { id: 'pod/app', label: 'app', detail: 'node-1 · 10.0.0.4' },
+        { id: 'pod/sidecar-with-a-long-name', label: 'sidecar-with-a-long-name', detail: 'node-1 · init container' },
+        ...['third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'].map((name) => ({ id: `pod/${name}`, label: name, detail: '' })),
+      ]);
+      sink.state({ state: 'running' });
+      return { ok: true };
+    },
+    stop: async () => ({ acknowledged: true }), reconnect: async () => ({ ok: true }), dispose: async () => undefined,
+  });
+}
+
+/** Page side: the Logs tool's table, read in one task. */
+const MEASURE = () => {
+  const r2 = (value) => Math.round(value * 100) / 100;
+  const tool = [...document.querySelectorAll('#shell-panel .ptool')].find((el) => el.getClientRects().length > 0);
+  const table = tool.querySelector('.plog__table');
+  const to = table.getBoundingClientRect();
+  const rel = (el) => { if (!el || el.getClientRects().length === 0) return null; const b = el.getBoundingClientRect(); return [r2(b.x - to.x), r2(b.y - to.y), r2(b.width), r2(b.height)]; };
+  const pick = (el, props) => { if (!el) return null; const cs = getComputedStyle(el); return Object.fromEntries(props.map((p) => [p, cs[p]])); };
+  const CHIP = ['display', 'boxSizing', 'paddingLeft', 'paddingRight', 'columnGap', 'borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderTopLeftRadius', 'backgroundColor', 'color', 'fontSize', 'lineHeight', 'overflow'];
+  const rows = [...table.querySelectorAll('tbody > tr[data-n]')].slice(0, 10).map((tr) => {
+    const tds = [...tr.children];
+    const src = tds[2];
+    const chip = src.querySelector('.chip');
+    const swatch = src.querySelector('.swatch');
+    const name = src.querySelector('.pmid, .pclip');
+    return {
+      n: Number(tr.dataset.n),
+      rect: rel(tr),
+      cells: tds.map(rel),
+      source: src.textContent.replace(/\s+/g, ' ').trim(),
+      cell: pick(src, ['paddingLeft', 'paddingRight', 'overflow', 'textOverflow', 'whiteSpace', 'verticalAlign', 'height']),
+      chip: chip ? { rect: rel(chip), hue: chip.getAttribute('style'), style: pick(chip, CHIP) } : null,
+      swatch: swatch ? { rect: rel(swatch), style: pick(swatch, ['backgroundColor', 'width', 'height', 'borderTopLeftRadius']) } : null,
+      name: name ? { cls: name.className, rect: rel(name), tip: name.getAttribute('data-tooltip'), full: name.getAttribute('data-full'), cut: name.scrollWidth > name.clientWidth } : null,
+    };
+  });
+  const root = getComputedStyle(document.documentElement);
+  return {
+    toolRect: tool.getBoundingClientRect().toJSON(),
+    badges: tool.querySelector('.plog__scroll')?.dataset.badges,
+    table: rel(table),
+    heads: [...table.querySelectorAll('thead th')].map((th) => ({ text: th.textContent.trim(), rect: rel(th), display: getComputedStyle(th).display })),
+    rows,
+    hues: Object.fromEntries(['blue', 'green', 'amber', 'purple', 'cyan', 'red'].map((c) => [c, root.getPropertyValue(`--${c}`).trim()])),
+    mutedForeground: root.getPropertyValue('--int-fg-muted').trim(),
+  };
+};
+
+const out = {
+  note: 'The design mock\'s Source column, measured by docs/ui-next/status/L2/mock-sources-measure.mjs.txt (L2). The mock tree is c8e44a44; both engines at 1440 x 900.',
+  mockDir: MOCK_DIR,
+};
+try {
+  for (const engineName of Object.keys(ENGINES)) {
+    const browser = await launch(engineName);
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'UTC', locale: 'en-US' });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'load' });
+    await sleep(3000);
+    await page.waitForFunction(() => typeof Shell !== 'undefined' && Shell.panel?.show !== undefined && Shell.panel.logs !== undefined);
+    await sleep(1500);
+    await normalizeFont(page, { rootVar: '--int-font-ui' });
+    await page.evaluate(install);
+    await page.evaluate(async () => {
+      const sid = Shell.panel.logs.open({ id: 'probe/two', producer: 'probe.two', kind: 'probe', label: 'two sources', title: 'two sources' });
+      for (let i = 0; i < 100 && Shell.panel.sessions.get(sid)?.state !== 'running'; i++) await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 400));
+      const ids = ['pod/app', 'pod/sidecar-with-a-long-name', 'pod/third', 'pod/fourth', 'pod/fifth', 'pod/sixth', 'pod/seventh', 'pod/eighth'];
+      const base = Date.UTC(2026, 0, 15, 10, 0, 0);
+      Shell.panel.logs.feed(sid, Array.from({ length: 24 }, (_, i) => ({ time: base + i * 1013, level: ['info', 'warn', 'error', 'info'][i % 4], source: ids[i % 8], message: `line ${i} from ${ids[i % 8]}` })));
+    });
+    await sleep(3800);
+    out[engineName] = await page.evaluate(MEASURE);
+    await context.close();
+    await browser.close();
+  }
+} finally {
+  server.kill();
+}
+
+writeFileSync(OUT, `${JSON.stringify(out, null, 1)}\n`);
+console.log(`written ${OUT}`);

@@ -181,6 +181,23 @@ export const LongLines = () => (
   </Stage>
 );
 
+const makeSources = () =>
+  made(200, {
+    sources: [
+      { id: 'orders-7d8c6f49b-f8q4m/app', label: 'app' },
+      { id: 'orders-7d8c6f49b-f8q4m/sidecar', label: 'sidecar' },
+      // No label: the id is the name, and it is cut from its start so that the end, which tells it from the others, stays.
+      { id: 'orders-7d8c6f49b-f8q4m/init-migrations' },
+    ],
+  });
+
+/** A session that follows several sources (an application's processes): a Source column says which one wrote each line, in a chip whose swatch has the hue of the source's place in a series of seven. The lines are in the order they arrived, not sorted by their clocks. */
+export const Sources = () => (
+  <Stage>
+    <Session make={makeSources}>{(feed) => <LogView label="orders · all containers" feed={feed} />}</Session>
+  </Stage>
+);
+
 const makeMany = () => made(20_000);
 
 /** 20,000 lines: the list mounts the rows in view and a few more, whatever the log holds. */

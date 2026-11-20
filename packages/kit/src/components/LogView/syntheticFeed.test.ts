@@ -302,3 +302,62 @@ describe('whenDrained: the example that must begin once the reader has what the 
     }
   });
 });
+
+describe('sources (L2)', () => {
+  const sourcesOf = (feed: SyntheticFeed) => feed.read(1000).lines.map((line) => line.source);
+
+  it('has one source, `source/main`, and lists none, unless it is given some: the lines and the status are what they were', () => {
+    const feed = new SyntheticFeed({ seed: 3 });
+    feed.emit(5);
+    expect(new Set(sourcesOf(feed))).toEqual(new Set(['source/main']));
+    expect(feed.getSnapshot()).toEqual({ state: 'streaming', paused: false, cause: undefined });
+    expect('sources' in feed.getSnapshot()).toBe(false);
+  });
+
+  it('makes its lines in turn from the sources it is given, and lists them with their labels, as the runtime\'s stream lists what it has heard of', () => {
+    const feed = new SyntheticFeed({ sources: [{ id: 'item/app', label: 'app' }, 'item/worker', { id: 'item/audit' }] });
+    feed.emit(7);
+    expect(sourcesOf(feed)).toEqual(['item/app', 'item/worker', 'item/audit', 'item/app', 'item/worker', 'item/audit', 'item/app']);
+    expect(feed.getSnapshot().sources).toEqual([{ id: 'item/app', label: 'app' }, { id: 'item/worker' }, { id: 'item/audit' }]);
+  });
+
+  it('makes the same text and levels whatever sources it has: the seed decides them, not the sources', () => {
+    const plain = new SyntheticFeed({ seed: 9 });
+    const several = new SyntheticFeed({ seed: 9, sources: ['a', 'b'] });
+    plain.emit(40);
+    several.emit(40);
+    expect(several.read(100).lines.map((line) => [line.text, line.level])).toEqual(plain.read(100).lines.map((line) => [line.text, line.level]));
+  });
+
+  it('keeps the list of sources through a change of state, a pause and a resume, and gives a new status object for each', () => {
+    const feed = new SyntheticFeed({ sources: ['a', 'b'] });
+    const listed = feed.getSnapshot().sources;
+    feed.pause();
+    feed.resume();
+    feed.setState('failed', cause);
+    expect(feed.getSnapshot().sources).toBe(listed);
+    expect(feed.getSnapshot()).toEqual({ state: 'failed', paused: false, cause, sources: [{ id: 'a' }, { id: 'b' }] });
+  });
+
+  it('names the source of a line it was told to write, and `source/main` (or its first source) for one it was not', () => {
+    const plain = new SyntheticFeed();
+    expect(plain.line('x').source).toBe('source/main');
+    expect(plain.line('x', 'info', 'svc/sidecar').source).toBe('svc/sidecar');
+    const several = new SyntheticFeed({ sources: ['a', 'b'] });
+    expect(several.line('x').source).toBe('a');
+  });
+
+  it('lists other sources when it is told to: a new status, and the listener is told', () => {
+    const feed = new SyntheticFeed();
+    const listener = vi.fn();
+    feed.subscribe(listener);
+    const before = feed.getSnapshot();
+    feed.setSources([{ id: 'a' }, { id: 'b', label: 'Bee' }]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(feed.getSnapshot()).not.toBe(before);
+    expect(feed.getSnapshot().sources).toEqual([{ id: 'a' }, { id: 'b', label: 'Bee' }]);
+    // The lines it makes are what they were: the sources it lists are not the ones it writes for.
+    feed.emit(2);
+    expect(sourcesOf(feed)).toEqual(['source/main', 'source/main']);
+  });
+});

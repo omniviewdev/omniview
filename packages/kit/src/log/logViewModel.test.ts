@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SEARCH_CHUNK_LINES } from './lineSearch';
 import { LogViewModel, READ_SLICE_LINES, SEARCH_SLICE_MS, type ViewModelOptions } from './logViewModel';
 import { MAX_MATCH_COUNT, SEARCH_TIME_BUDGET_MS } from './regexSafety';
-import type { LogFeed, LogFeedBatch, LogFeedCause, LogFeedLevel, LogFeedLine, LogFeedSnapshot, LogFeedState } from './types';
+import type { LogFeed, LogFeedBatch, LogFeedCause, LogFeedLevel, LogFeedLine, LogFeedSnapshot, LogFeedSource, LogFeedState } from './types';
 import { countText } from './words';
 
 const ROW = 24;
@@ -107,6 +107,22 @@ class FakeFeed implements LogFeed {
 
     this.received += texts.length;
     this.wake();
+  }
+
+  /** Lines of one source arrive, each with the clock the test gives it (default: the same instant for every line); the listener is told once. */
+  pushFrom(source: string, texts: readonly string[], level?: LogFeedLevel, timestamp = '2024-01-15T10:30:00.000Z'): void {
+    for (const text of texts) {
+      this.seq += 1;
+      this.lines.push({ seq: this.seq, source, timestamp, text, level });
+    }
+
+    this.received += texts.length;
+    this.wake();
+  }
+
+  /** The feed lists its sources (what the runtime's stream does as it hears of them): a new status, and every listener is told. */
+  list(sources: readonly LogFeedSource[]): void {
+    this.set({ ...this.status, sources });
   }
 
   /** Like the runtime's stream: lines it had to drop were accepted first, so they are counted as received, and the next read tells of them. */
@@ -1332,5 +1348,223 @@ describe('detaching', () => {
     frames.frame();
     expect(model.getSnapshot().count).toBe(0);
     vi.useRealTimers();
+  });
+});
+
+describe('the sources of the log (L2)', () => {
+  const texts = (model: LogViewModel) => model.getSnapshot().rows.map((row) => (row.entry.kind === 'line' ? row.entry.text : `-- ${String(row.entry.dropped)} --`));
+  const labels = (model: LogViewModel) => model.getSnapshot().rows.map((row) => row.source?.label);
+
+  it('has no source column while one source speaks or the lines name none: the snapshot says so, and no row carries a source', () => {
+    const { frames, feed, model } = setup();
+    expect(model.getSnapshot().sourceColumn).toBe(false);
+    feed.pushFrom('svc/app', numbered(5));
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(false);
+    expect(model.getSnapshot().rows.every((row) => row.source === undefined)).toBe(true);
+    // A line that names no source is no source: it is not a second one.
+    feed.pushFrom('', numbered(3, 6));
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(false);
+  });
+
+  it('shows the column in the very snapshot that carries the second source\'s first line: one frame, one snapshot, and every row of the window already has its tag', () => {
+    const { frames, feed, model, published } = setup();
+    feed.pushFrom('svc/app', numbered(5));
+    frames.settle();
+    const before = published.length;
+    feed.pushFrom('svc/sidecar', ['hello']);
+    frames.frame();
+    expect(published.length).toBe(before + 1);
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+    expect(labels(model)).toEqual(['svc/app', 'svc/app', 'svc/app', 'svc/app', 'svc/app', 'svc/sidecar']);
+  });
+
+  it('has the column from the first snapshot when two sources speak in the first frame', () => {
+    const { frames, feed, model, published } = setup();
+    feed.pushFrom('a', ['one']);
+    feed.pushFrom('b', ['two']);
+    frames.frame();
+    expect(published.length).toBe(1);
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+    expect(labels(model)).toEqual(['a', 'b']);
+  });
+
+  it('keeps the column once it shows: the lines of the second source may leave the buffer, and the log does not change shape under the reader', () => {
+    const { frames, feed, model } = setup({ maxLines: 10 });
+    feed.pushFrom('a', numbered(3));
+    feed.pushFrom('b', ['only b line']);
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+    feed.pushFrom('a', numbered(40, 4));
+    frames.settle();
+    expect(texts(model)).not.toContain('only b line');
+    expect(new Set(labels(model))).toEqual(new Set(['a']));
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+  });
+
+  it('shows the column when the feed lists two sources before either has spoken, and not when it lists one', () => {
+    const { frames, feed, model, published } = setup();
+    feed.list([{ id: 'a' }]);
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(false);
+    const before = published.length;
+    feed.list([{ id: 'a' }, { id: 'b' }]);
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+    // One snapshot for the change, and the same listing read again makes none.
+    expect(published.length).toBe(before + 1);
+    feed.list([{ id: 'a' }, { id: 'b' }]);
+    frames.settle();
+    expect(published.length).toBe(before + 1);
+  });
+
+  it('has the column from the first snapshot when the feed already lists two sources when the view is made: nothing is drawn before it', () => {
+    const frames = new Frames();
+    const feed = new FakeFeed();
+    feed.list([{ id: 'a' }, { id: 'b' }]);
+    const model = new LogViewModel(feed, { maxLines: 1000, now: () => frames.now, schedule: frames.schedule, timer: () => () => undefined });
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+  });
+
+  it('gives every row of a source the same tag in every snapshot, so a flush that appends lines changes no existing row\'s props (HLT-2)', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('a', numbered(3));
+    feed.pushFrom('b', numbered(3, 4));
+    frames.settle();
+    const first = model.getSnapshot().rows;
+    feed.pushFrom('a', numbered(2, 7));
+    feed.pushFrom('b', numbered(2, 9));
+    frames.settle();
+    const later = model.getSnapshot().rows;
+    let shared = 0;
+    for (const row of later) {
+      const was = first.find((candidate) => candidate.entry === row.entry);
+      if (was !== undefined) {
+        shared += 1;
+        expect(row.source).toBeDefined();
+        expect(row.source).toBe(was.source);
+      }
+    }
+
+    expect(shared).toBe(first.length);
+    expect(later.length).toBeGreaterThan(first.length);
+  });
+
+  it('names a source by the label the feed lists for it, and a label that comes later changes the tags of that source only, in one snapshot', () => {
+    const { frames, feed, model, published } = setup();
+    feed.pushFrom('a', ['one']);
+    feed.pushFrom('b', ['two']);
+    frames.settle();
+    expect(labels(model)).toEqual(['a', 'b']);
+    const [a, b] = model.getSnapshot().rows.map((row) => row.source);
+    const before = published.length;
+    feed.list([{ id: 'a' }, { id: 'b', label: 'worker' }]);
+    frames.settle();
+    expect(published.length).toBe(before + 1);
+    const [nextA, nextB] = model.getSnapshot().rows.map((row) => row.source);
+    expect(nextA).toBe(a);
+    expect(nextB).not.toBe(b);
+    expect(nextB).toMatchObject({ id: 'b', label: 'worker', hue: 'green' });
+  });
+
+  it('says the name the latest listing gives: a label that goes away is the id again in the rows, as it is on the host\'s card, which reads the same listing', () => {
+    const { frames, feed, model } = setup();
+    feed.list([{ id: 'a', label: 'app' }, { id: 'b', label: 'worker' }]);
+    feed.pushFrom('a', ['x']);
+    feed.pushFrom('b', ['y']);
+    frames.settle();
+    expect(labels(model)).toEqual(['app', 'worker']);
+    feed.list([{ id: 'a' }, { id: 'b', label: 'worker' }]);
+    frames.settle();
+    expect(labels(model)).toEqual(['a', 'worker']);
+  });
+
+  it('does not sort: lines come out in the order they arrived, whatever their clocks say', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('a', ['arrived first, clock later'], 'info', '2024-01-15T10:30:05.000Z');
+    feed.pushFrom('b', ['arrived second, clock earlier'], 'info', '2024-01-15T10:30:01.000Z');
+    feed.pushFrom('a', ['arrived third'], 'info', '2024-01-15T10:30:06.000Z');
+    frames.settle();
+    expect(texts(model)).toEqual(['arrived first, clock later', 'arrived second, clock earlier', 'arrived third']);
+    expect(model.getSnapshot().rows.map((row) => row.entry.n)).toEqual([1, 2, 3]);
+  });
+
+  it('asks the list to go nowhere because a column appeared: scrolled back, the snapshot keeps the command it had and the reader\'s place; following, the one pin to the end every flush gets', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('a', numbered(2000));
+    frames.settle();
+    const pinned = model.getSnapshot().scroll;
+    feed.pushFrom('b', ['the second source speaks']);
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(true);
+    expect(model.getSnapshot().scroll).toMatchObject({ top: 'end', id: (pinned?.id ?? 0) + 1 });
+
+    // Scrolled back, a listing that makes a column appear (no line comes with it) moves nothing.
+    const scrolled = setup();
+    scrolled.feed.pushFrom('a', numbered(2000));
+    scrolled.frames.settle();
+    scrolled.model.followOff();
+    scrolled.model.onScroll(24 * 500);
+    const before = scrolled.model.getSnapshot();
+    scrolled.feed.list([{ id: 'a' }, { id: 'b' }]);
+    scrolled.frames.settle();
+    const after = scrolled.model.getSnapshot();
+    expect(after.sourceColumn).toBe(true);
+    expect(after.scroll).toBe(before.scroll);
+    expect(after.following).toBe(false);
+    expect(after.window).toEqual(before.window);
+    // And a line of the second source arriving while the reader is back there moves nothing either.
+    scrolled.feed.pushFrom('b', ['late']);
+    scrolled.frames.settle();
+    expect(scrolled.model.getSnapshot().scroll).toBe(before.scroll);
+    expect(scrolled.model.getSnapshot().window).toEqual(before.window);
+  });
+
+  it('copies each line as it is shown: with a source column the label comes after the level and two spaces set it off from the text (the mock\'s `lineText`), without one the text is what it was', () => {
+    const clock = (text: string) => text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, 'HH:MM:SS.mmm');
+    const one = setup();
+    one.feed.pushFrom('svc/app', ['first', 'second'], 'info');
+    one.frames.settle();
+    one.model.selectAll();
+    expect(one.model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO first', 'HH:MM:SS.mmm INFO second']);
+
+    const { frames, feed, model } = setup();
+    feed.pushFrom('svc/app', ['first'], 'info');
+    feed.pushFrom('svc/sidecar', ['second'], 'error');
+    feed.pushFrom('svc/app', ['third']);
+    frames.settle();
+    model.selectAll();
+    expect(model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  svc/app  first', 'HH:MM:SS.mmm ERROR svc/sidecar  second', 'HH:MM:SS.mmm       svc/app  third']);
+  });
+
+  it('copies the label the feed gave, and a marker as its own sentence', () => {
+    const { frames, feed, model } = setup();
+    feed.list([{ id: 'a', label: 'app' }, { id: 'b', label: 'worker' }]);
+    feed.pushFrom('b', ['x'], 'warn');
+    frames.settle();
+    feed.drop(2);
+    feed.pushFrom('a', ['y'], 'warn');
+    frames.settle();
+    model.selectAll();
+    const lines = model.copyText()?.split('\n') ?? [];
+    expect(lines[0]).toMatch(/^\d\d:\d\d:\d\d\.\d{3} WARN  worker {2}x$/);
+    expect(lines[1]).toBe('-- 2 lines dropped --');
+    expect(lines[2]).toMatch(/^\d\d:\d\d:\d\d\.\d{3} WARN  app {2}y$/);
+  });
+
+  it('does not search the source, as the mock does not (shell-panel.js 1668 and 1953 test the message only): a query that is in a label and in no text finds nothing', () => {
+    const { frames, feed, model } = setup();
+    feed.list([{ id: 'a', label: 'sidecar' }, { id: 'b', label: 'app' }]);
+    feed.pushFrom('a', ['one', 'two']);
+    feed.pushFrom('b', ['the sidecar said so']);
+    frames.settle();
+    model.setSearch({ query: 'sidecar', regex: false, caseSensitive: false });
+    frames.settle();
+    const search = model.getSnapshot().search;
+    expect(search.count).toBe(1);
+    expect(search.status).toBe('done');
+    const hit = model.getSnapshot().rows.filter((row) => row.hit).map((row) => (row.entry.kind === 'line' ? row.entry.text : ''));
+    expect(hit).toEqual(['the sidecar said so']);
   });
 });

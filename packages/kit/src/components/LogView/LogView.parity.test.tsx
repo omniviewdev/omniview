@@ -31,3 +31,54 @@ describe('the cells of the list (the mock\'s table cells: base.css 1222-1235)', 
     expect(rule('.text').color).toBeUndefined();
   });
 });
+
+describe('the Source column (the mock\'s Logs table of a session with more than one source: shell-panel.css 103, base.css 1368 and 1585, shell-panel.js 332 and 1702)', () => {
+  // Measured in the mock at 1440 x 900, both engines (L2): Time x 0 w 112, Level x 112 w 96, Source x 208 w 168, Message x 376; a head 25 px high, its cells 24 px; the chip 18 px high at the cell's 10 px
+  // inset (x 218) and 3 px under the row's top, its swatch 8 x 8 at 7 px into the chip (1 px edge and 6 px inset), the name 4 px after it; a name too long for the cell fills it (148 px of chip).
+  it('is 168 px wide with the 10 px inset of every cell, in the head as in the rows, and takes no more or less room than that', () => {
+    expect(rule('.root')['--_source']).toBe('168px');
+    expect(rule('.source').flex).toBe('0 0 var(--_source)');
+    expect(rule('.source')['padding-inline']).toBe('10px');
+    expect(rule('.source')['box-sizing']).toBe('border-box');
+    expect(rule('.head[data-ov-column=\'source\']')['flex-basis']).toBe('var(--_source)');
+  });
+
+  it('draws the chip as the mock\'s `.chip`: 12/16 muted type, a 1 px subtle edge, the control radius, a 6 px inset, a 4 px gap, one line that gives way to the cell', () => {
+    const chip = rule('.chip');
+    expect(chip['font-size']).toBe('var(--ov-fs-12)');
+    expect(chip['line-height']).toBe('var(--ov-lh-16)');
+    expect(chip.color).toBe('var(--ov-fg-muted)');
+    expect(chip.border).toBe('1px solid var(--ov-border-subtle)');
+    expect(chip['border-radius']).toBe('var(--ov-radius-control)');
+    expect(chip.padding).toBe('0 var(--ov-spacing-6)');
+    expect(chip.gap).toBe('var(--ov-spacing-4)');
+    expect(chip['white-space']).toBe('nowrap');
+    expect(chip['max-width']).toBe('100%');
+    expect(chip['min-width']).toBe('0');
+    // The mock's chip has no fill.
+    expect(chip['background-color']).toBeUndefined();
+  });
+
+  it('draws the swatch as the mock\'s `.swatch`: an 8 px square with the mark radius (2 px), in the hue of the source', () => {
+    const swatch = rule('.chip::before');
+    expect(swatch.width).toBe('8px');
+    expect(swatch.height).toBe('8px');
+    expect(swatch.flex).toBe('0 0 8px');
+    expect(swatch['border-radius']).toBe('var(--ov-radius-mark)');
+    expect(swatch['background-color']).toBe('var(--_accent)');
+  });
+
+  // The mock's `dataHues` (core.js 253) are `--blue`, `--green`, `--amber`, `--purple`, `--cyan`, `--red` and the muted foreground; the kit's roles carry the same values in its default theme
+  // (#71A1FE, #6DB083, #D59637, #A894F6, #6AAEA6, #F57E84 and #9FA2A8), and are the roles the hues of an ANSI span already take (`.plog__a`).
+  it('maps the seven hues of the series to the roles the hues of an ANSI span take, so a chip and a coloured span of one hue agree', () => {
+    const roles = { blue: '--ov-link', green: '--ov-success-fg', amber: '--ov-warning-fg', purple: '--ov-chart-purple', cyan: '--ov-chart-teal', red: '--ov-error-fg', gray: '--ov-fg-muted' } as const;
+    for (const [hue, role] of Object.entries(roles)) {
+      expect(rule(`.chip[data-ov-hue='${hue}']`)['--_accent'], hue).toBe(`var(${role})`);
+      expect(rule(`.text [data-ov-hue='${hue}']`).color, hue).toBe(`var(${role})`);
+    }
+  });
+
+  it('is not the reader\'s to select, as the clock and the level are not (the old viewer: badges and timestamps `user-select: none`, HLT-18)', () => {
+    expect(rule('.source')['user-select']).toBe('none');
+  });
+});

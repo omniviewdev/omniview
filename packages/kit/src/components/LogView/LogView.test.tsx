@@ -1203,3 +1203,227 @@ describe('lines the feed dropped before the view read them (L1)', () => {
     expect(stripOf(view).textContent).toContain('5 lines');
   });
 });
+
+describe('the source of a line (L2)', () => {
+  // The mock shows a Source column when a session has more than one source (shell-panel.js 2663 `badgesOn`): a chip per row, with the hue of the source's place in a series of seven and its
+  // name as text. With one source the log is what it was. The column appears when the view has heard of a second source, in the one commit that carries it.
+  const cellsOf = (element: Element) => [...element.querySelectorAll('[role="gridcell"]')] as HTMLElement[];
+  const headsOf = (view: RenderResult) => within(view.getByRole('grid')).getAllByRole('columnheader').map((head) => head.textContent);
+  const sourceOf = (element: Element) => cellsOf(element)[2];
+  const PAIR = [
+    { id: 'item/orders-api/app', label: 'app' },
+    { id: 'item/orders-api/worker', label: 'worker' },
+  ] as const;
+  const pair = () => new SyntheticFeed({ rate: 0, sources: PAIR });
+
+  it('draws nothing for one source: three column heads, three cells in a row, no chip, the same elements a row had before the column existed', () => {
+    const { view } = mount({ lines: 30 });
+    expect(headsOf(view)).toEqual(['Time', 'Level', 'Message']);
+    expect(view.getByRole('grid').getAttribute('aria-colcount')).toBe('3');
+    for (const row of rowsOf(view)) {
+      expect(cellsOf(row)).toHaveLength(3);
+      expect(row.querySelector('[data-ov-clip]')).toBeNull();
+    }
+
+    // The elements of a plain row are pinned by the HLT-3 test above: the row, three cells and the glyph (1 + 3 + 3 for info).
+    const info = rowsOf(view).find((row) => row.getAttribute('data-ov-level') === 'info');
+    expect(info === undefined ? 0 : elementsIn(info)).toBe(1 + 3 + 3);
+  });
+
+  it('draws a Source column for two sources: a head, four columns in the grid, a cell in every row that says the source by name', () => {
+    const feed = pair();
+    const { view } = mount({ feed, lines: 30 });
+    expect(headsOf(view)).toEqual(['Time', 'Level', 'Source', 'Message']);
+    expect(view.getByRole('grid').getAttribute('aria-colcount')).toBe('4');
+    const rows = rowsOf(view);
+    expect(rows.length).toBeGreaterThan(20);
+    for (const row of rows) {
+      const cells = cellsOf(row);
+      expect(cells).toHaveLength(4);
+      // Time, level, source, message: the message is still the last cell.
+      expect(cells[3]?.textContent).not.toBe(cells[2]?.textContent);
+    }
+
+    // The names are the feed's, line by line: the lines took the sources in turn, from the first.
+    expect(rows.map((row) => sourceOf(row)?.textContent)).toEqual(rows.map((row) => (Number(row.getAttribute('data-n')) % 2 === 1 ? 'app' : 'worker')));
+    expect(within(row(rows, 0)).getByRole('gridcell', { name: 'app' })).toBe(sourceOf(row(rows, 0)));
+  });
+
+  it('gives each source the hue of its place in the series, the same on every row of it, and two sources two hues; the hue is never all the cell says', () => {
+    const { view } = mount({ feed: pair(), lines: 30 });
+    const hues = new Map<string, Set<string | null>>();
+    for (const row of rowsOf(view)) {
+      const cell = sourceOf(row);
+      const hue = cell?.querySelector('[data-ov-hue]')?.getAttribute('data-ov-hue') ?? null;
+      hues.set(cell?.textContent ?? '', (hues.get(cell?.textContent ?? '') ?? new Set()).add(hue));
+    }
+
+    expect([...hues.keys()].sort()).toEqual(['app', 'worker']);
+    expect(hues.get('app')).toEqual(new Set(['blue']));
+    expect(hues.get('worker')).toEqual(new Set(['green']));
+  });
+
+  it('cuts a long name from its start and keeps its end whole, with the whole name as the tip while it is cut (the kit\'s tooltip rule), and puts no title on the cell', () => {
+    const long = 'checkout-7d8c6f49b-f8q4m/sidecar';
+    const feed = new SyntheticFeed({ rate: 0, sources: [{ id: 'one', label: long }, { id: 'two' }] });
+    const { view } = mount({ feed, lines: 4 });
+    const clipped = view.container.querySelector(`[role="gridcell"] [data-ov-clip][data-ov-full="${long}"]`);
+    expect(clipped).not.toBeNull();
+    // The name is real text once, whole: what a reader of the screen and a copy of the page meet.
+    expect(within(clipped as HTMLElement).getByText(long)).toBeTruthy();
+    for (const row of rowsOf(view)) {
+      expect(row.querySelector('[title]')).toBeNull();
+    }
+  });
+
+  it('draws a cell with no chip for a line that names no source in a log that has more than one', () => {
+    const feed = new SyntheticFeed({ rate: 0 });
+    feed.push([feed.line('from a', 'info', 'a'), feed.line('from b', 'info', 'b'), feed.line('from nobody', 'info', '')]);
+    const { view } = mount({ feed });
+    const rows = rowsOf(view);
+    expect(rows.map((row) => cellsOf(row).length)).toEqual([4, 4, 4]);
+    expect(rows.map((row) => sourceOf(row)?.textContent)).toEqual(['a', 'b', '']);
+    expect(sourceOf(row(rows, 2))?.querySelector('[data-ov-hue]')).toBeNull();
+  });
+
+  it('puts the column in the one commit that carries the second source\'s first line: every row on screen has the cell then, and the frame is one commit', () => {
+    let commits = 0;
+    const feed = new SyntheticFeed({ rate: 0 });
+    const { view } = mount({ feed, onCommit: () => (commits += 1) });
+    run(() => {
+      feed.push(Array.from({ length: 30 }, (_, index) => feed.line(`from the app ${index}`, 'info', 'item/app')));
+    });
+    expect(headsOf(view)).toEqual(['Time', 'Level', 'Message']);
+    expect(rowsOf(view).every((row) => cellsOf(row).length === 3)).toBe(true);
+    commits = 0;
+    run(() => {
+      feed.push([feed.line('the sidecar speaks', 'info', 'item/sidecar')]);
+    });
+    expect(commits).toBe(1);
+    expect(headsOf(view)).toEqual(['Time', 'Level', 'Source', 'Message']);
+    const rows = rowsOf(view);
+    expect(rows).toHaveLength(31);
+    expect(rows.every((row) => cellsOf(row).length === 4)).toBe(true);
+    expect(rows.map((row) => sourceOf(row)?.textContent)).toEqual([...Array.from({ length: 30 }, () => 'item/app'), 'item/sidecar']);
+  });
+
+  it('touches each row on screen once for the column, in the commit that brings it, and then no row that was there when more lines are appended (HLT-2)', () => {
+    const feed = new SyntheticFeed({ rate: 0 });
+    feed.push(Array.from({ length: 5000 }, (_, index) => feed.line(`line ${index}`, 'info', 'item/app')));
+    const { view, scroll } = mount({ feed });
+    scroll.setContent(5000 * 24 + 25);
+    scroll.scrollTo(24 * 2000);
+    const before = rowsOf(view);
+    const touched = mutatedRows(view, () => {
+      run(() => {
+        feed.push([feed.line('the sidecar speaks', 'info', 'item/sidecar')]);
+      });
+    });
+    // The reader is scrolled back and the new line is below the window: the rows on screen are the same elements, and each got its cell.
+    expect(rowsOf(view)).toHaveLength(before.length);
+    rowsOf(view).forEach((current, index) => {
+      expect(current).toBe(before[index]);
+    });
+    expect(touched).toEqual(new Set(before.map((current) => current.getAttribute('data-n'))));
+    // From here on a flush that appends lines changes none of them, the column being on.
+    const later = mutatedRows(view, () => {
+      run(() => {
+        feed.push(Array.from({ length: 100 }, (_, index) => feed.line(`more ${index}`, 'info', index % 2 === 0 ? 'item/app' : 'item/sidecar')));
+      });
+    });
+    expect(later.size).toBe(0);
+  });
+
+  it('moves nothing when the column appears: the reader scrolled back keeps the place and the rows on screen, and nothing is measured again', () => {
+    const feed = new SyntheticFeed({ rate: 0 });
+    feed.push(Array.from({ length: 5000 }, (_, index) => feed.line(`line ${index}`, 'info', 'item/app')));
+    const { view, scroll } = mount({ feed });
+    scroll.setContent(5000 * 24 + 25);
+    scroll.scrollTo(24 * 2000);
+    const first = rowsOf(view)[0]?.getAttribute('data-n');
+    const top = scroll.top();
+    const measure = vi.spyOn(Element.prototype, 'getBoundingClientRect');
+    run(() => {
+      feed.push([feed.line('the sidecar speaks', 'info', 'item/sidecar')]);
+    });
+    expect(headsOf(view)).toEqual(['Time', 'Level', 'Source', 'Message']);
+    expect(scroll.top()).toBe(top);
+    expect(rowsOf(view)[0]?.getAttribute('data-n')).toBe(first);
+    expect(measure).not.toHaveBeenCalled();
+    measure.mockRestore();
+  });
+
+  it('keeps following when the column appears: the one pin to the end of every flush, and the last line on screen', () => {
+    const feed = new SyntheticFeed({ rate: 0 });
+    feed.push(Array.from({ length: 200 }, (_, index) => feed.line(`line ${index}`, 'info', 'item/app')));
+    const { view, list, scroll } = mount({ feed, clampScroll: true });
+    scroll.setContent(200 * 24 + 25);
+    run(() => {
+      feed.push([feed.line('the sidecar speaks', 'info', 'item/sidecar')]);
+    });
+    expect(headsOf(view)).toEqual(['Time', 'Level', 'Source', 'Message']);
+    expect(rowsOf(view).at(-1)?.getAttribute('data-n')).toBe('201');
+    expect(list.scrollTop).toBeGreaterThan(0);
+  });
+
+  it('lists the sources the feed has heard of before they speak, so the column is there when the first line is drawn, and does not draw it for a feed that lists one', () => {
+    const quiet = new SyntheticFeed({ rate: 0, sources: ['only/one'] });
+    const one = mount({ feed: quiet, lines: 10 });
+    expect(headsOf(one.view)).toEqual(['Time', 'Level', 'Message']);
+    one.view.unmount();
+    const listed = new SyntheticFeed({ rate: 0 });
+    const two = mount({ feed: listed });
+    expect(headsOf(two.view)).toEqual(['Time', 'Level', 'Message']);
+    act(() => {
+      listed.setSources([{ id: 'a' }, { id: 'b' }]);
+    });
+    frame();
+    expect(headsOf(two.view)).toEqual(['Time', 'Level', 'Source', 'Message']);
+  });
+
+  it('draws the marker of dropped lines across every column of a log that has a source column', () => {
+    const feed = pair();
+    feed.emit(5);
+    const { view } = mount({ feed });
+    run(() => {
+      feed.drop(10);
+      feed.emit(2);
+    });
+    const marker = view.container.querySelector('[data-ov-kind="gap"] [role="gridcell"]');
+    expect(marker?.getAttribute('aria-colspan')).toBe('4');
+  });
+
+  it('copies the selected lines with their source named after the level, and with one source copies what it always did', () => {
+    const feed = pair();
+    const { view, list } = mount({ feed, lines: 6 });
+    fireEvent.keyDown(list, { key: 'a', ctrlKey: true });
+    const setData = vi.fn();
+    fireEvent.copy(list, { clipboardData: { setData } });
+    const text = String(setData.mock.calls[0]?.[1]);
+    const lines = text.split('\n');
+    expect(lines).toHaveLength(6);
+    lines.forEach((line, index) => {
+      expect(line).toMatch(new RegExp(`^\\d\\d:\\d\\d:\\d\\d\\.\\d{3} (?:INFO |WARN |ERROR|DEBUG|     ) ${index % 2 === 0 ? 'app' : 'worker'} {2}`));
+    });
+    view.unmount();
+
+    const single = mount({ lines: 6 });
+    fireEvent.keyDown(single.list, { key: 'a', ctrlKey: true });
+    const one = vi.fn();
+    fireEvent.copy(single.list, { clipboardData: { setData: one } });
+    for (const line of String(one.mock.calls[0]?.[1]).split('\n')) {
+      expect(line).not.toContain('source/main');
+    }
+  });
+
+  it('does not search the source: the matches are in the text cell, and a query that is only a name finds no row', () => {
+    const feed = pair();
+    const { view } = mount({ feed, lines: 20, defaultQuery: 'worker' });
+    frame(2);
+    for (const row of rowsOf(view)) {
+      expect(row.querySelector('[data-ov-mark]')).toBeNull();
+    }
+
+    expect(within(view.getByRole('group', { name: 'Log filters' })).getByText('No results')).toBeTruthy();
+  });
+});

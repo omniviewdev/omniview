@@ -47,6 +47,18 @@ describe('the card of a Logs session', () => {
     ).toEqual([['Sources', 'a, b, c and 2 more']]);
   });
 
+  it('names a source by the label the feed gave it, as the log\'s rows do, and by its id when it gave none', () => {
+    const sources = [{ id: 'orders-api/app', label: 'app' }, { id: 'orders-api/worker', label: '' }, { id: 'orders-api/audit' }];
+    expect(logCardOf(session(), record({ snapshot: { state: 'streaming', paused: false, cause: undefined, sources } })).facts).toEqual([['Sources', 'app, orders-api/worker, orders-api/audit']]);
+  });
+
+  it('says after a listing update what the rows of the log say: the label the latest listing gives, and the id when it gives none', () => {
+    const listed = (sources: ReadonlyArray<{ readonly id: string; readonly label?: string }>) => logCardOf(session(), record({ snapshot: { state: 'streaming', paused: false, cause: undefined, sources } })).facts;
+    expect(listed([{ id: 'orders-api/app', label: 'app' }])).toEqual([['Source', 'app']]);
+    expect(listed([{ id: 'orders-api/app' }])).toEqual([['Source', 'orders-api/app']]);
+    expect(listed([{ id: 'orders-api/app', label: '' }])).toEqual([['Source', 'orders-api/app']]);
+  });
+
   it('says nothing of sources a feed does not list: a fact with no text is left out', () => {
     expect(logCardOf(session(), record()).facts).toEqual([]);
     expect(logCardOf(session(), record({ snapshot: { state: 'streaming', paused: false, cause: undefined, sources: [] } })).facts).toEqual([]);

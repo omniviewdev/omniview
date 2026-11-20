@@ -16,7 +16,7 @@
 //   ?session=one      the session the window starts from (S3a), kept in the page's own session storage so a reload restores what was written: `one` (a tab on `alpha`'s page `widgets`, the default),
 //                     `two` (that tab and one on `beta`'s, which is on screen), `gone` (a tab of a plugin that is never installed), `none` (nothing was saved: the empty window), `bad` (a text that cannot
 //                     be used). `window.__sessionNotes` lists what the session said on the console; a text kept aside is a key `host-fixture-session:session.invalid.<time>` of the session storage
-//   ?logs=1           `window.__logs` opens the fixture plugin's Logs sessions (../../plugins/fixture/src/logs.ts: 0 `app` streams, 1 `migrate` ends, 2 `sync` fails, 3 `audit` makes 10,000 lines a second) through
+//   ?logs=1           `window.__logs` opens the fixture plugin's Logs sessions (../../plugins/fixture/src/logs.ts: 0 `app` streams, 1 `migrate` ends, 2 `sync` fails, 3 `audit` makes 10,000 lines a second, 4 `pair` follows two sources) through
 //                     the `ctx.panel` a plugin's page was given (`open(index, plugin = 'alpha')`, `close(n)` the n-th session opened, `ready()`); `window.__fixtureLogs` counts what the host opened, closed and listens to
 //
 // `window.__ticks` counts the timer of the page `clock` per plugin: a page that is hidden must not run it. `window.__commits` lists every commit of the tree (React's profiler; the probe builds

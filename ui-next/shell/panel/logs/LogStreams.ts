@@ -1,5 +1,6 @@
+import type { LogFeedSnapshot } from '@omniviewdev/kit';
 import type { PanelStore, SessionId } from '../../core/panel';
-import type { LogFeedHandle, LogFeedHandleSnapshot, LogTarget } from './feed';
+import type { LogFeedHandle, LogTarget } from './feed';
 import { sessionStateOf } from './state';
 import { LOGS_TOOL_ID } from './tool';
 
@@ -26,7 +27,7 @@ export type LogSessionRecord = {
   readonly id: string;
   readonly plugin: string;
   readonly resource: LogTarget['resource'];
-  readonly snapshot: LogFeedHandleSnapshot;
+  readonly snapshot: LogFeedSnapshot;
 };
 
 export type LogStreamsOptions = {
@@ -60,7 +61,7 @@ type Entry = {
   readonly feed: LogFeedHandle;
   stop: () => void;
   /** The status the registry last copied to the session. */
-  last: LogFeedHandleSnapshot;
+  last: LogFeedSnapshot;
 };
 
 const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'stats', 'pause', 'resume', 'close'] as const;
@@ -202,7 +203,7 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
 
       // The registry knows the session before the panel does, so nothing that hears of the new session (a render, a listener) can find it without its stream.
       const id = newId();
-      let first: LogFeedHandleSnapshot;
+      let first: LogFeedSnapshot;
       try {
         first = feed.getSnapshot();
       } catch (error) {

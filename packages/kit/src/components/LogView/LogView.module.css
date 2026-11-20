@@ -6,6 +6,7 @@
     --_row: max(var(--ov-row-height), calc(var(--ov-lh-18) + var(--ov-spacing-4)));
     --_time: 112px;
     --_level: 96px;
+    --_source: 168px;
 
     display: flex;
     flex-direction: column;
@@ -251,6 +252,78 @@
     color: var(--ov-icon);
   }
 
+  /* The Source column of a log that follows more than one source (the mock's `.plog__table th:nth-child(3), td:nth-child(3) { width: 168px }`, shell-panel.css 103), between the level and the
+     message, with the 10 px inset of every cell. It holds a chip, the mock's `.chip` (base.css 1368): 12/16 type in the muted colour, a 1 px subtle edge, the control radius, a 6 px inset and a 4 px gap,
+     18 px high in a 24 px row, that gives way to the cell (`max-width: 100%`); its swatch is the 8 px square of `.swatch` (base.css 1585) in the hue of the source's place in the series. The name is
+     text, so the swatch is never what says which source it is. */
+  .source {
+    display: flex;
+    flex: 0 0 var(--_source);
+    align-items: center;
+    box-sizing: border-box;
+    min-width: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset (see the clock above) */
+    padding-inline: 10px;
+    user-select: none;
+  }
+
+  .chip {
+    --_accent: var(--ov-fg-muted);
+
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    max-width: 100%;
+    padding: 0 var(--ov-spacing-6);
+    border: 1px solid var(--ov-border-subtle);
+    border-radius: var(--ov-radius-control);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+    overflow: clip;
+  }
+
+  .chip::before {
+    content: '';
+    flex: 0 0 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--_accent);
+  }
+
+  /* The series of seven, in the mock's order (`SRC_COLORS`, shell-panel.js 332), each a role of the theme as the hues of an ANSI span are (`.plog__a`): in the default theme they are the mock's own values. */
+  .chip[data-ov-hue='blue'] {
+    --_accent: var(--ov-link);
+  }
+
+  .chip[data-ov-hue='green'] {
+    --_accent: var(--ov-success-fg);
+  }
+
+  .chip[data-ov-hue='amber'] {
+    --_accent: var(--ov-warning-fg);
+  }
+
+  .chip[data-ov-hue='purple'] {
+    --_accent: var(--ov-chart-purple);
+  }
+
+  .chip[data-ov-hue='cyan'] {
+    --_accent: var(--ov-chart-teal);
+  }
+
+  .chip[data-ov-hue='red'] {
+    --_accent: var(--ov-error-fg);
+  }
+
+  .chip[data-ov-hue='gray'] {
+    --_accent: var(--ov-fg-muted);
+  }
+
   .text {
     flex: 1 0 auto;
     /* stylelint-disable-next-line declaration-property-value-allowed-list -- the 10 px cell inset (see the clock above); the last cell of a row takes the table's 12 px edge */
@@ -278,6 +351,10 @@
 
   .head[data-ov-column='level'] {
     flex-basis: var(--_level);
+  }
+
+  .head[data-ov-column='source'] {
+    flex-basis: var(--_source);
   }
 
   .head[data-ov-column='message'] {
