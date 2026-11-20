@@ -8444,3 +8444,5 @@ snapshots:
   zod@4.6.7: {}
 
   zwitch@2.0.4: {}
+
+# path filter proof: the lock is current, so nothing is built
