@@ -1,0 +1,30 @@
+// E0-1: what the page makes of the JSON the host sends. Feeds the exact AppError JSON for the four
+// cases to the real parseAppError.ts, as Wails delivers it (RuntimeError: message = the Error() string,
+// cause = the same object). Only the activePageNavigator import is stubbed.
+//
+//   cp parse-probe.ts.txt parse-probe.ts && bun parse-probe.ts evidence-after.txt; rm parse-probe.ts
+//
+// Run it from this directory. It is stored as .txt so that lint and tsc skip it. The input is the
+// `message:` lines of evidence-before.txt / evidence-after.txt, written by evidence-test.go.txt.
+import { plugin } from 'bun';
+
+plugin({
+  name: 'stub-navigator',
+  setup(build) {
+    build.onResolve({ filter: /activePageNavigator$/ }, () => ({ path: 'stub-navigator', namespace: 'stub' }));
+    build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export const navigateActivePage = () => {};', loader: 'js' }));
+  },
+});
+
+const { parseAppError } = await import(new URL('../../../../packages/omniviewdev-runtime/src/errors/parseAppError.ts', import.meta.url).pathname);
+const lines = (await Bun.file(process.argv[2]).text()).split('\n');
+for (let i = 0; i < lines.length; i++) {
+  const m = lines[i].match(/^EVIDENCE (\S+) (\S+) (\S+)/);
+  if (!m) continue;
+  const json = lines[i + 1].replace(/^\s*message: /, '');
+  const err: any = new Error(json);
+  err.name = 'RuntimeError';
+  err.cause = JSON.parse(json);
+  const parsed = parseAppError(err);
+  console.log(`${m[1]} ${m[2]} ${m[3]}: title=${JSON.stringify(parsed.title)} detail=${JSON.stringify(parsed.detail)} code=${parsed.code} recovery=${parsed.recovery}`);
+}

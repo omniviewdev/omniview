@@ -1,0 +1,37 @@
+package resource
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"testing"
+
+	"google.golang.org/grpc"
+)
+
+var reqID = regexp.MustCompile(`"requestId":"[^"]*"`)
+
+// throwaway: prints what the UI receives (Wails: message = Error(), cause = the marshalled struct) for four cases.
+func TestZZEvidence(t *testing.T) {
+	label := os.Getenv("E0_EVIDENCE_LABEL")
+	sentences := map[string]string{}
+	for _, k := range kubernetesErrors {
+		sentences[k.code] = k.message
+	}
+	for _, wire := range []string{"old-plugin", "new-plugin"} {
+		for _, k := range kubernetesErrors {
+			if k.code != "NOT_FOUND" && k.code != "FORBIDDEN" && k.code != "CONFLICT" && k.code != "TIMEOUT" {
+				continue
+			}
+			var opts []grpc.ServerOption
+			if wire == "new-plugin" {
+				opts = append(opts, grpc.UnaryInterceptor(carryTheSentence(sentences)))
+			}
+			app := catalogFailure(t, k.code, k.title, k.message, opts...)
+			cause, _ := json.Marshal(app)
+			same := string(cause) == app.Error()
+			fmt.Printf("EVIDENCE %s %s %s causeEqualsMessage=%v\n  message: %s\n", label, wire, k.code, same, reqID.ReplaceAllString(app.Error(), `"requestId":"<uuid>"`))
+		}
+	}
+}

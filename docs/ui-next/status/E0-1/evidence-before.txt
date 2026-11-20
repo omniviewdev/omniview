@@ -1,0 +1,16 @@
+EVIDENCE before old-plugin NOT_FOUND causeEqualsMessage=true
+  message: {"type":"omniview:resource/not-found","title":"Not found","status":404,"detail":"resource operation failed","code":"NOT_FOUND","requestId":"<uuid>","recovery":"none"}
+EVIDENCE before old-plugin FORBIDDEN causeEqualsMessage=true
+  message: {"type":"omniview:resource/forbidden","title":"Access denied","status":403,"detail":"The operation is not permitted.","code":"FORBIDDEN","requestId":"<uuid>","recovery":"none"}
+EVIDENCE before old-plugin CONFLICT causeEqualsMessage=true
+  message: {"type":"omniview:resource/conflict","title":"Conflict","status":409,"detail":"resource operation failed","code":"CONFLICT","requestId":"<uuid>","recovery":"refreshContract"}
+EVIDENCE before old-plugin TIMEOUT causeEqualsMessage=true
+  message: {"type":"omniview:resource/timeout","title":"Timed out","status":408,"detail":"resource operation failed","code":"TIMEOUT","requestId":"<uuid>","recovery":"none"}
+EVIDENCE before new-plugin NOT_FOUND causeEqualsMessage=true
+  message: {"type":"omniview:resource/not-found","title":"Not found","status":404,"detail":"resource operation failed","code":"NOT_FOUND","requestId":"<uuid>","recovery":"none"}
+EVIDENCE before new-plugin FORBIDDEN causeEqualsMessage=true
+  message: {"type":"omniview:resource/forbidden","title":"Access denied","status":403,"detail":"The operation is not permitted.","code":"FORBIDDEN","requestId":"<uuid>","recovery":"none"}
+EVIDENCE before new-plugin CONFLICT causeEqualsMessage=true
+  message: {"type":"omniview:resource/conflict","title":"Conflict","status":409,"detail":"resource operation failed","code":"CONFLICT","requestId":"<uuid>","recovery":"refreshContract"}
+EVIDENCE before new-plugin TIMEOUT causeEqualsMessage=true
+  message: {"type":"omniview:resource/timeout","title":"Timed out","status":408,"detail":"resource operation failed","code":"TIMEOUT","requestId":"<uuid>","recovery":"none"}

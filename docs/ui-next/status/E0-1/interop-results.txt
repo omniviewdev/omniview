@@ -1,0 +1,20 @@
+=== plugin built on SDK: old   host built on SDK: old
+NOT_FOUND class=NOT_FOUND message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=1
+FORBIDDEN class=FORBIDDEN message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=1
+CONFLICT  class=CONFLICT  message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=1
+TIMEOUT   class=TIMEOUT   message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=1
+=== plugin built on SDK: new   host built on SDK: old
+NOT_FOUND class=NOT_FOUND message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=2
+FORBIDDEN class=FORBIDDEN message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=2
+CONFLICT  class=CONFLICT  message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=2
+TIMEOUT   class=TIMEOUT   message="resource operation failed" title="" suggestions=0 statusText="resource operation failed" details=2
+=== plugin built on SDK: old   host built on SDK: new
+NOT_FOUND class=NOT_FOUND message="" title="" suggestions=0 statusText="resource operation failed" details=1
+FORBIDDEN class=FORBIDDEN message="" title="" suggestions=0 statusText="resource operation failed" details=1
+CONFLICT  class=CONFLICT  message="" title="" suggestions=0 statusText="resource operation failed" details=1
+TIMEOUT   class=TIMEOUT   message="" title="" suggestions=0 statusText="resource operation failed" details=1
+=== plugin built on SDK: new   host built on SDK: new
+NOT_FOUND class=NOT_FOUND message="The requested resource or API group was not found." title="" suggestions=0 statusText="resource operation failed" details=2
+FORBIDDEN class=FORBIDDEN message="You do not have permission to perform this resource operation." title="" suggestions=0 statusText="resource operation failed" details=2
+CONFLICT  class=CONFLICT  message="The resource operation conflicts with the current cluster state." title="" suggestions=0 statusText="resource operation failed" details=2
+TIMEOUT   class=TIMEOUT   message="The cluster did not complete the request in time." title="" suggestions=0 statusText="resource operation failed" details=2

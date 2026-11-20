@@ -3,9 +3,9 @@ package apperror
 import (
 	"context"
 	"errors"
-	"unicode/utf8"
 
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -112,6 +112,12 @@ func codeFromType(e *AppError) string {
 
 // ForResource normalizes a resource-boundary failure. It never trusts an error's
 // Go concrete type as proof of safe provider fields. Correlation is host-owned.
+//
+// The class decides the title and the sentence the user reads. For a class that may
+// show provider text the provider's own sentence replaces the class's, after
+// PublicText has cleaned it, and the class's stays when there is none or it is
+// refused. FORBIDDEN, UNAUTHORIZED, INTERNAL, PROVIDER_ERROR and CANCELLED always
+// use the class's text.
 func ForResource(err error, requestID string) *AppError {
 	if err == nil {
 		return nil
@@ -127,7 +133,7 @@ func ForResource(err error, requestID string) *AppError {
 	case errors.Is(err, context.DeadlineExceeded):
 		code = "TIMEOUT"
 	case errors.As(err, &roe):
-		code, title, detail, suggestions = roe.Code, roe.Title, roe.Message, roe.Suggestions
+		code, title, detail, suggestions = roe.Code, roe.Title, providerSentence(err, roe), roe.Suggestions
 	case errors.As(err, &app):
 		code, title, detail, suggestions = codeFromType(app), app.Title, app.Detail, app.Suggestions
 	default:
@@ -161,20 +167,21 @@ func ForResource(err error, requestID string) *AppError {
 	code, c := classifyResource(code)
 	out := &AppError{Err: err, Type: c.uri, Status: c.status, Code: code, Title: c.title, Detail: c.detail, Recovery: c.recovery, RequestID: requestID}
 	// These explicitly structured classifications may carry provider-declared
-	// public-safe diagnostics. Denial/internal/raw paths always use fixed text.
+	// public-safe diagnostics, each admitted by PublicText: a sentence it refuses
+	// leaves the class's own. Denial/internal/raw paths always use fixed text.
 	if code != "FORBIDDEN" && code != "UNAUTHORIZED" && code != "INTERNAL" && code != "PROVIDER_ERROR" && code != "CANCELLED" {
-		if publicText(title, 256) {
-			out.Title = title
+		if text, ok := PublicText(title, 256); ok {
+			out.Title = text
 		}
-		if publicText(detail, 4096) {
-			out.Detail = detail
+		if text, ok := PublicText(detail, 512); ok {
+			out.Detail = text
 		}
 		for _, s := range suggestions {
 			if len(out.Suggestions) == 8 {
 				break
 			}
-			if publicText(s, 512) {
-				out.Suggestions = append(out.Suggestions, s)
+			if text, ok := PublicText(s, 512); ok {
+				out.Suggestions = append(out.Suggestions, text)
 			}
 		}
 		// Preserve an existing host domain URI only for known non-sensitive
@@ -188,6 +195,37 @@ func ForResource(err error, requestID string) *AppError {
 	}
 	return out
 }
-func publicText(value string, max int) bool {
-	return value != "" && len(value) <= max && utf8.ValidString(value)
+
+// sdkPlaceholders are the texts the SDK's client puts in Message when the status it
+// read carried no sentence (plugin-sdk, resource/v2/plugin: codec.go for a call,
+// ancillary_stream.go for an action event). They stand for "no text": taken as a
+// sentence they would replace the class's own, which says more.
+var sdkPlaceholders = map[string]bool{"resource operation failed": true, "action operation failed": true}
+
+// providerSentence returns the sentence a provider attached to its error, or "".
+// Two generations of SDK client reach this host. One restores the sentence into
+// Message and leaves Message empty when there was none. The older one puts a
+// placeholder in Message and keeps the status, with the sentence if the plugin
+// sent one, in Err; the sentence is then read from the status here.
+func providerSentence(err error, roe *resource.ResourceOperationError) string {
+	if !sdkPlaceholders[roe.Message] {
+		return roe.Message
+	}
+	return statusSentence(err)
+}
+
+// statusSentence returns the English LocalizedMessage a plugin built on an SDK that
+// carries provider sentences (plugin-sdk, resource/v2/plugin: codec.go) attached to
+// the gRPC status behind err, or "".
+func statusSentence(err error) string {
+	st, ok := status.FromError(err)
+	if !ok {
+		return ""
+	}
+	for _, detail := range st.Details() {
+		if message, ok := detail.(*errdetails.LocalizedMessage); ok && message.GetLocale() == "en" {
+			return message.GetMessage()
+		}
+	}
+	return ""
 }
