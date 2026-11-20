@@ -127,22 +127,30 @@ func (s *autoConnectScenario) failFirstAttempt(t *testing.T) {
 // host records "attempted" in autoConnectAttempts before it knows the outcome
 // and never looks at the outcome (controller.go shouldAttemptAutoConnect). Under
 // retry NONE any later attempt is refused; under ON_CHANGE it is refused unless
-// the public configuration hash differs. A connection whose first start failed
+// the public configuration hash (name, description, avatar, data, labels,
+// lifecycle; never private data) differs. A connection whose first start failed
 // for an external, transient reason therefore stays failed after the cause is
-// gone. Today only these retry: a restart of the same plugin (the record is
-// cleared in onPluginStart), and, for ON_CHANGE, a PLUGIN_START or
-// CONNECTION_DISCOVERED event that carries a different public configuration.
+// gone.
+//
+// Today a failed connection is offered another attempt only by: a restart of
+// the same plugin (onPluginStart clears the plugin's records; both policies);
+// for ON_CHANGE, a CONNECTION_DISCOVERED watch event whose re-fetched
+// inventory has a different public configuration; and, for ON_CHANGE, the one
+// PLUGIN_START re-offer made by PromoteDependencyStart. Saving a profile,
+// reloading connections, another plugin starting, and a watch event with an
+// unchanged configuration do not.
 //
 // This test covers the connection watch republishing the inventory with the
 // same configuration (CONNECTION_DISCOVERED, for example a source file touched
 // without a content change).
 //
 // Fixed looks like: once the cause is gone, the next discovery event for the
-// failed connection gives it another attempt, whatever the retry policy and
-// even though the configuration is unchanged (the exact policy for retry NONE is
-// a product decision; the retry=NONE row documents that NONE cannot recover
-// today). The control must keep passing: ON_CHANGE retries after a changed
-// configuration.
+// failed connection gives it another attempt even though the configuration is
+// unchanged. The retry=NONE row conflicts with the documented contract of NONE
+// (plugin-sdk types.ConnectionAutoConnectRetryNone: no automatic retries after
+// failure) and with TestScheduleAutoConnect_RetryNoneAttemptsOnce; it documents
+// that NONE cannot recover today, and is dropped if NONE stays strict. The
+// control must keep passing: ON_CHANGE retries after a changed configuration.
 func TestAutoConnectFailureIsRetriedWhenConnectionWatchRepublishesUnchangedConfiguration(t *testing.T) {
 	for _, retry := range []types.ConnectionAutoConnectRetry{types.ConnectionAutoConnectRetryNone, types.ConnectionAutoConnectRetryOnChange} {
 		t.Run("retry="+string(retry), func(t *testing.T) {
