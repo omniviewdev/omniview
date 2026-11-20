@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# SEC1: the whole proof on a fresh cluster (docs/ui-next/status/SEC1.md, "Dev tools"). Copy this file, sec1-proof.mjs.txt and sec1-secrets.yaml into one directory (drop the `.txt` of the script), then:
+#
+#   HOST=<host checkout> PLUGIN=<plugin checkout> [BASE=<plugin checkout before the fix>] bash redo.sh
+#
+#   HOST     a checkout of omniviewdev/omniview, `pnpm install` done and built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used (WebKit and Chromium installed)
+#   PLUGIN   a checkout of omniviewdev/omniview-plugin-kubernetes at the commit under test (the SEC1 commit of feature/ui-next or later): hack/package.sh builds it
+#   BASE     optional: a checkout of the plugin at the commit before the fix (76e65da, the K2b-1 merge). It is the control: the same scan on the plugin that sends values must find them
+#   WORK     optional: a scratch directory (default: a new one under $TMPDIR); holds the kubeconfig and the chart
+#   OUT      optional: where the log, the report JSON and the raw captures go (default: $WORK/out)
+#   ENGINES  optional: default chromium,webkit
+#
+# Needs docker, kind, kubectl, helm, go, pnpm and node; about four minutes. It reads and writes no kubeconfig but the one it makes in $WORK, and the cluster is deleted at the end, whatever happens.
+# Exit status: 0 when every check of the proof passes.
+set -euo pipefail
+
+: "${HOST:?HOST is required: a host checkout with bin/Omniview-server built}"
+: "${PLUGIN:?PLUGIN is required: a plugin checkout}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/sec1-proof.XXXXXX")}"
+OUT="${OUT:-$WORK/out}"
+NAME="sec1-$$"
+KUBECONFIG_PATH="$WORK/kubeconfig"
+mkdir -p "$WORK" "$OUT"
+test -x "$HOST/bin/Omniview-server" || { echo "missing $HOST/bin/Omniview-server: run OMNIVIEW_UI=next task build:server in $HOST" >&2; exit 1; }
+test -f "$HERE/sec1-proof.mjs" || { echo "missing $HERE/sec1-proof.mjs: copy sec1-proof.mjs.txt next to this file, without the .txt" >&2; exit 1; }
+test -f "$HERE/sec1-secrets.yaml" || { echo "missing $HERE/sec1-secrets.yaml" >&2; exit 1; }
+
+case "$(uname -s)_$(uname -m)" in
+  Darwin_arm64) PLATFORM=darwin_arm64 ;;
+  Darwin_x86_64) PLATFORM=darwin_amd64 ;;
+  Linux_x86_64) PLATFORM=linux_amd64 ;;
+  Linux_aarch64 | Linux_arm64) PLATFORM=linux_arm64 ;;
+  *) echo "no plugin platform for $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+
+cleanup() {
+  (unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" 2>&1 | tail -n 1) || true
+}
+trap cleanup EXIT
+
+echo "== cluster $NAME: kind, node v1.35.0 (the image the host's CI pins)"
+(unset KUBECONFIG; kind create cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" --wait 240s \
+  --image 'kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661' 2>&1 | tail -n 1)
+export KUBECONFIG="$KUBECONFIG_PATH"
+
+echo "== the Secrets and ConfigMaps: applied with \`kubectl apply\` (which keeps the manifest in an annotation), made from files (binary, empty, 512 KiB), a Helm release"
+kubectl apply -f "$HERE/sec1-secrets.yaml" >/dev/null
+printf '\xff\x00\xfe\x80SEC1-binary-blob-8c27d1f0\x00\xff\x81' >"$WORK/blob.bin"
+kubectl -n sec1 create secret generic binary --from-file=blob="$WORK/blob.bin" >/dev/null
+kubectl -n sec1 create secret generic blank-value --from-literal=empty= >/dev/null
+{ head -c 524288 /dev/urandom; printf 'SEC1-large-value-marker-9a3e'; } >"$WORK/large.bin"
+kubectl -n sec1 create secret generic large --from-file=blob="$WORK/large.bin" >/dev/null
+python3 -c "import sys; sys.stdout.write(('lorem ipsum dolor sit amet, configuration is not secret but can be large. ' * 4000)[:300000])" >"$WORK/big-config.txt"
+kubectl -n sec1 create configmap large --from-file=blob="$WORK/big-config.txt" >/dev/null
+mkdir -p "$WORK/chart/templates"
+printf 'apiVersion: v2\nname: sec1chart\nversion: 0.1.0\nappVersion: "1.0"\n' >"$WORK/chart/Chart.yaml"
+printf 'apiToken: unset\n' >"$WORK/chart/values.yaml"
+printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: {{ .Release.Name }}-credentials\ntype: Opaque\nstringData:\n  token: {{ .Values.apiToken | quote }}\n' >"$WORK/chart/templates/secret.yaml"
+helm install sec1rel "$WORK/chart" -n sec1 --set apiToken=SEC1-helm-values-token-5e66a2c4 >/dev/null
+# The token controller fills in the three keys of the service account token Secret.
+for _ in $(seq 1 30); do
+  [ -n "$(kubectl -n sec1 get secret sa-token -o jsonpath='{.data.token}')" ] && break
+  sleep 2
+done
+test -n "$(kubectl -n sec1 get secret sa-token -o jsonpath='{.data.token}')" || { echo "the service account token Secret was not filled in 60 s" >&2; exit 1; }
+echo "objects: $(kubectl get secrets -A --no-headers | wc -l | tr -d ' ') Secrets, $(kubectl get configmaps -A --no-headers | wc -l | tr -d ' ') ConfigMaps"
+
+package() {
+  local checkout="$1" archive_dir="$2" version
+  version="$(sed -n 's/^version: //p' "$checkout/plugin.yaml" | head -n 1)"
+  (cd "$checkout" && GOTOOLCHAIN="${GOTOOLCHAIN:-local}" hack/package.sh "$version" "$PLATFORM" >"$WORK/package-$archive_dir.log" 2>&1) || { tail -n 30 "$WORK/package-$archive_dir.log" >&2; exit 1; }
+  mkdir -p "$WORK/$archive_dir"
+  cp "$checkout/dist/kubernetes-$PLATFORM.tar.gz" "$WORK/$archive_dir/"
+  mkdir -p "$WORK/$archive_dir/x"
+  tar -xzf "$WORK/$archive_dir/kubernetes-$PLATFORM.tar.gz" -C "$WORK/$archive_dir/x"
+  echo "$archive_dir: plugin commit $(git -C "$checkout" rev-parse HEAD), assets/entry.js $(wc -c <"$WORK/$archive_dir/x/assets/entry.js" | tr -d ' ') bytes, sha256 $(node -e 'console.log(require("node:crypto").createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"))' "$WORK/$archive_dir/x/assets/entry.js")"
+}
+echo "== the plugins, packaged ($PLATFORM)"
+package "$PLUGIN" fixed
+if [ -n "${BASE:-}" ]; then package "$BASE" base; fi
+
+echo "== the proof: the Secrets page against kubectl, live changes, and every byte the page receives scanned for every Secret value, in the fixed plugin and in the plugin before the fix"
+status=0
+(cd "$OUT" && env OMNIVIEW_HOST_ROOT="$HOST" ARCHIVE_FIXED="$WORK/fixed/kubernetes-$PLATFORM.tar.gz" ${BASE:+"ARCHIVE_BASE=$WORK/base/kubernetes-$PLATFORM.tar.gz"} KUBECONFIG_PATH="$KUBECONFIG_PATH" OUT="$OUT" ENGINES="${ENGINES:-chromium,webkit}" FIXTURE="$HERE/sec1-secrets.yaml" node "$HERE/sec1-proof.mjs") >"$OUT/sec1-proof-run.log" 2>&1 || status=1
+tail -n 1 "$OUT/sec1-proof-run.log"
+grep -E '^FAIL' "$OUT/sec1-proof-run.log" | cut -c1-300 || true
+echo "log, report and raw captures: $OUT"
+exit "$status"
