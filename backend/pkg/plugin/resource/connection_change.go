@@ -10,8 +10,10 @@ import (
 )
 
 // SetConnectionChangeHook is native composition only, not a frontend capability.
-// Registration occurs before plugin loading. profilesMu also serializes mutation
-// transactions so a route cannot be unblocked by an earlier overlapping change.
+// Registration occurs before plugin loading. profilesMu serializes mutation
+// transactions, and connection starts and stops are serialized per connection
+// (see beginConnectionCall), so a route cannot be unblocked by an earlier
+// overlapping change.
 func (c *controller) SetConnectionChangeHook(begin func(pluginID, connectionID string) func()) {
 	c.profilesMu.Lock()
 	defer c.profilesMu.Unlock()
@@ -30,7 +32,12 @@ func (c *controller) retireConnectionCalls(pluginID, connectionID string) {
 	}
 }
 
-// Caller holds profilesMu; callbacks must never run under pluginsMu.
+// Caller holds profilesMu, which also guards the hook field: StartConnection and
+// StopConnection call this before releaseProfiles, and every transaction calls
+// it from beginConfigurationChanges. Callbacks must never run under pluginsMu.
+// The release function it returns is a captured value, never a read of the
+// field again, and a start or stop runs it after profilesMu is released but
+// before its connection is released.
 func (c *controller) beginMetricConnectionChange(pluginID, connectionID string) func() {
 	if c.connectionChangeHook == nil {
 		return nil
@@ -151,7 +158,9 @@ func profileConnectionChanges(current, native []types.Connection, next desiredCo
 // Native discovery may mutate existing configurations. Fence every admitted
 // route before loading, then retire only meaningful changes while still blocked.
 func (c *controller) loadConfiguredConnections(ctx context.Context, pluginID string) (_result []types.Connection, retErr error) {
-	c.profilesMu.Lock()
+	if err := c.lockProfilesQuiescent(ctx, pluginID); err != nil {
+		return nil, err
+	}
 	var generation *pluginState
 	var release, addedRelease func()
 	defer func() {
@@ -263,7 +272,9 @@ func (c *controller) publishProfileConnections(ctx context.Context, pluginID str
 
 func (c *controller) refreshWatchedConnections(ctx context.Context, pluginID string, provider resourcev2.ConnectionBrowser, generation *pluginState) ([]types.Connection, error) {
 	defer c.notifyInventory()
-	c.profilesMu.Lock()
+	if err := c.lockProfilesQuiescent(ctx, pluginID); err != nil {
+		return nil, err
+	}
 	defer c.profilesMu.Unlock()
 	c.pluginsMu.RLock()
 	current := generation != nil && c.plugins[pluginID] == generation && generation.ctx.Err() == nil

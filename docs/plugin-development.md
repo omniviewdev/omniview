@@ -895,10 +895,33 @@ unsupported rather than fabricated.
 Host configuration changes block affected routes **before** source mutation and
 keep them blocked through durable save and any rollback. Actual endpoint/auth or
 source-membership changes retire captured work; display-only renames preserve
-authority. Serialized start/stop/profile/host-triggered discovery transactions also retire
-the exact native metric lane before mutation and unblock it only after the
-transaction, without calling external hooks under the plugin-state lock.
+authority. Start/stop/profile/host-triggered discovery transactions on one
+connection run one at a time, and a profile or discovery transaction also waits
+for every in-flight start or stop of its plugin. Starts and stops of different
+connections may overlap, and a start or stop does not hold the profile lock
+across its plugin calls. Each transaction also retires the exact native metric
+lane before mutation and unblocks it only after the transaction, without calling
+external hooks under the plugin-state lock.
 Rollback never restores a retired authority or old source epoch.
+
+Code that runs inside a provider's start or stop of a connection, such as a
+callback into the host made while the start is in flight, may use reads and
+plain-lock paths only. These return while the call is in flight: the connection
+and state reads (`GetConnection`, `ListConnections`, `ListAllConnections`,
+`GetAllConnectionStates`, `BorrowableConnections`), `ListConnectionProfiles`,
+the catalog and resource reads, and the start or stop of another connection or
+of another plugin. These wait for the in-flight calls of the same plugin, so
+from inside one of them they would wait for the call they are inside:
+`LoadConnections`, `SaveConnectionProfile`, `ImportConnectionProfile`,
+`ResetConnectionProfile`, `RemoveConnection`, the connection watch refresh, and
+`StartConnection` or `StopConnection` of the same connection. They fail at once
+with `INVALID_REQUEST` when their context is marked with the call. The host
+marks the context it gives the provider, which is all an in-process provider
+needs. A callback served from the plugin process arrives on a context of its
+own: the server that handles it must mark that context with
+`resource.WithinConnectionCall(ctx, pluginID, connectionID)`, for the plugin it
+serves and the connection the callback was made for, before it calls into the
+controller. Without a mark such a path waits until its own context ends.
 
 Graph queries take `(pluginID, reference, route, ...)`, never namespace/name
 tuples. Each returned graph node carries its canonical reference, independent
