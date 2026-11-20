@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants, createPanelStore, HOST, restorePanel, type PanelState, type PanelStore } from './index';
-import { generator, tool } from './testing';
+import { generator, tabProblems, tool } from './testing';
 
 // Thousands of random operations against the store, with the invariants of `checkInvariants` checked after each, and the saved session checked to come back whole. Deterministic: a seeded
-// generator, and a failure names its seed and step. The same shape as the tab model's fuzz (../tabs/fuzz.test.ts).
+// generator, and a failure names its seed and step. The same shape as the tab model's fuzz (../tabs/fuzz.test.ts). The tabs of every strip are checked too (`tabProblems`, written from the words of the
+// rule): the scope a tab draws, the ordinal of a twin and the name, which no two tabs of a tool share.
 
 const TOOLS = ['terminal', 'logs', 'acme:one', 'beta:two', 'constructor'];
 const PLUGINS = ['acme', 'beta', 'host', 'gone'];
 /** Ids a session may be given that every object already has a member for: the model's dictionaries must not take them for entries that are there. */
 const ODD_IDS = ['constructor', '__proto__', 'toString'];
 const STATES = ['starting', 'running', 'ended', 'failed'] as const;
+/** Few titles and scopes, so that twins of every kind come up: one title in two scopes and in one, and a title that looks like the ordinal of another (`t1 (2)`): no two tabs may share a name even then. */
+const TITLES = ['t0', 't1', 't1 (2)', 't2'];
+const SCOPES = ['', 'dev', 'prod'];
 
 /** What a run did, by operation and by state drawn: the test asserts that every branch ran, so a generator that stops mixing its bits fails loudly. */
 type Tally = Map<string, number>;
@@ -58,7 +62,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
     case 5:
     case 6:
       store.openSession(
-        { tool: pick(TOOLS), plugin: pick(PLUGINS), title: `t${String(next() % 4)}`, scope: next() % 3 === 0 ? 'dev' : '', state: pickState(), ...(next() % 5 === 0 ? { id: pick(ODD_IDS) } : {}) },
+        { tool: pick(TOOLS), plugin: pick(PLUGINS), title: pick(TITLES), scope: pick(SCOPES), state: pickState(), ...(next() % 5 === 0 ? { id: pick(ODD_IDS) } : {}) },
         { reveal: next() % 3 !== 0 },
       );
       name = 'openSession';
@@ -142,7 +146,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
         break;
       }
 
-      store.openSession({ tool: pick(hostTools).id, plugin: opener, title: `f${String(next() % 3)}`, scope: next() % 2 === 0 ? 'dev' : '', state: next() % 2 === 0 ? 'running' : 'starting' }, { reveal: next() % 3 !== 0 });
+      store.openSession({ tool: pick(hostTools).id, plugin: opener, title: pick(TITLES), scope: pick(SCOPES), state: next() % 2 === 0 ? 'running' : 'starting' }, { reveal: next() % 3 !== 0 });
       name = 'openFromPlugin';
       break;
     }
@@ -193,6 +197,30 @@ describe('the panel under random operations', () => {
           expect(strip.every((one) => store.selectors.session(state, one) !== undefined)).toBe(true);
           const on = store.selectors.activeSession(state, id);
           expect(on === null || strip.includes(on)).toBe(true);
+        }
+
+        // The tabs of every strip, from the words of the rule (SCT1, TI1): the scope a tab draws only for a twin of another scope, the ordinal of a twin of its own scope, and a name of its own for every tab.
+        expect(tabProblems(state, store.selectors), `seed ${String(seed)}, operation ${String(operation)} (${name}): the tabs`).toEqual([]);
+        for (const id of tools) {
+          const strip = store.selectors.sessionIds(state, id);
+          for (const one of strip) {
+            const item = store.selectors.sessionItem(state, one);
+            const mine = state.sessions[one];
+            if (item === undefined || mine === undefined) {
+              continue;
+            }
+
+            const twins = strip.filter((other) => state.sessions[other]?.title === mine.title && state.sessions[other]?.scope === mine.scope).length;
+            // What the tab draws after the title is its ordinal (a title can end in `(2)` by itself).
+            const ordinal = (item.head + item.tail).slice(mine.title.length);
+            const number = ordinal === '' ? 1 : Number(/\((\d+)\)/.exec(ordinal)?.[1]);
+            count(tally, item.scope === '' ? 'tab:no scope' : 'tab:scope');
+            count(tally, number === 1 ? 'tab:no ordinal' : 'tab:ordinal');
+            if (number > twins) {
+              // A number skipped so that no two tabs have one name: a title that looks like another's ordinal.
+              count(tally, 'tab:skipped');
+            }
+          }
         }
 
         // A21, in words: a session is listed exactly when its tool is registered and visible and (its plugin is live, or it is held): a held session of a plugin that is off is listed, and nothing else of one is.
@@ -260,6 +288,13 @@ describe('the panel under random operations', () => {
     for (const event of ['held:made', 'held:returned', 'held:closed']) {
       expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(100);
     }
+
+    // The tabs are what this part is for: a run in which no tab ever drew a scope, an ordinal, or a skipped number, or in which every tab did, proves nothing about the rule.
+    for (const event of ['tab:scope', 'tab:no scope', 'tab:ordinal', 'tab:no ordinal']) {
+      expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(300);
+    }
+
+    expect(tally.get('tab:skipped') ?? 0, 'event tab:skipped').toBeGreaterThan(10);
   });
 
   // A wall-clock bound is the runner's, not the model's (a loaded CI job took twice the time a laptop does), so what is checked is what React reads: with 500 sessions, a state change leaves the

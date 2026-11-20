@@ -34,14 +34,27 @@ afterEach(() => {
 });
 
 describe('the fixture\'s Logs sessions', () => {
-  it('are six targets of one item: an id and a title of their own, the item\'s group as the scope, and the item as the resource a card links to', () => {
+  it('are seven targets of one item: an id of their own, the item\'s group as the scope but for the last, and the item as the resource a card links to', () => {
     const targets = logTargetsOf(ITEM);
-    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late']);
-    expect(new Set(targets.map((target) => target.id)).size).toBe(6);
+    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late', 'orders-api/app']);
+    expect(new Set(targets.map((target) => target.id)).size).toBe(7);
+    expect(targets.slice(0, 6).map((target) => target.scope)).toEqual(Array<string>(6).fill('north-yard'));
     for (const target of targets) {
-      expect(target.scope).toBe('north-yard');
       expect(target.resource).toMatchObject({ label: 'Item orders-api', kind: 'Item', route: { page: 'item', params: { name: 'orders-api', group: 'north-yard' } } });
     }
+  });
+
+  it('has a twin of the first: its title and another id and another yard as its scope, so the strip has two tabs of one title and each says which yard it is (TI1)', () => {
+    const [app, , , , , , twin] = logTargetsOf(ITEM);
+    expect(twin?.title).toBe(app?.title);
+    expect(twin?.id).not.toBe(app?.id);
+    expect(twin).toMatchObject({ id: 'item/orders-api/app@south-yard', scope: 'south-yard' });
+    expect(app?.scope).toBe('north-yard');
+    // Opened by the same press as any other: its own stream, which goes on.
+    const feed = twin?.open();
+    vi.advanceTimersByTime(1_000);
+    expect(feed?.getSnapshot().state).toBe('streaming');
+    void feed?.close();
   });
 
   it('has one session that follows two sources: it lists them with their labels and its lines take them in turn; the others follow one and list none', () => {
@@ -154,8 +167,8 @@ describe('the fixture\'s Logs sessions', () => {
     }
 
     expect(vi.getTimerCount()).toBe(0);
-    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(['ended', 'ended', 'ended', 'ended', 'ended', 'ended']);
-    expect(counters()).toMatchObject({ opened: 6, closed: 6 });
+    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(Array<string>(7).fill('ended'));
+    expect(counters()).toMatchObject({ opened: 7, closed: 7 });
   });
 
   it('drop what they held when they are closed, as the runtime\'s stream does: a stream the host keeps after closing it (A21) holds no line', () => {

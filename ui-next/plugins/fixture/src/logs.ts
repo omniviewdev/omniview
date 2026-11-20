@@ -3,10 +3,11 @@ import type { LogFeedV1, LogTargetV1, PanelHostV1 } from '../../contract/v1';
 // eslint-disable-next-line no-restricted-imports -- the lines come from the kit's synthetic feed, which no entry of the kit exports (it is development and documentation only); build.mjs lets this one file into the bundle (docs/ui-next/status/P1b-3a.md, "Fixture plugin")
 import { SyntheticFeed } from '../../../../packages/kit/src/components/LogView/syntheticFeed';
 
-// The fixture's Logs sessions: the proof of `ctx.panel.logs.open` from outside the host's bundle. Six targets of one item, each over a synthetic feed (neutral lines, the same run every time), one for
+// The fixture's Logs sessions: the proof of `ctx.panel.logs.open` from outside the host's bundle. Seven targets of one item, each over a synthetic feed (neutral lines, the same run every time), one for
 // every state of a log the host draws: one that streams and goes on, one that ends, one that fails with a cause, one at 10,000 lines a second (what a hidden session must cost nothing for), one that follows
-// TWO sources (the log's Source column, L2: its lines take the two in turn, odd lines the first), and one that follows ONE until a check says its second source speaks (`speak()`: the column appears while
-// the session is open). The item's detail page lists them as commands in its menu, so opening one is what a plugin's resource view does and no header moves.
+// TWO sources (the log's Source column, L2: its lines take the two in turn, odd lines the first), one that follows ONE until a check says its second source speaks (`speak()`: the column appears while
+// the session is open), and a TWIN of the first (its title, another id and another yard as its scope: two tabs of one title, which the strip tells apart by their scope, P1b-3d). The item's detail page lists
+// them as commands in its menu, so opening one is what a plugin's resource view does and no header moves. Pressing a command again is a press for the session it opened: the host shows it (P1b-3d).
 
 /**
  * What a check reads on `window.__fixtureLogs`: how many feeds the host opened, how many it closed, and how many listeners are on the feeds it opened right now (a listener the host or its view did
@@ -109,6 +110,10 @@ type Spec = {
   readonly sources?: readonly LogFeedSource[] | undefined;
   /** A source the stream has not heard of at the start: `speak()` lists it with the others and writes its first line (once). The lines the feed makes are still the first sources'. */
   readonly later?: LogFeedSource | undefined;
+  /** The yard the session says it is in, when it is not the item's own group: a target that has the title of another and another scope, which the strip tells apart by it (TI1). Absent: the item's group. */
+  readonly scope?: string | undefined;
+  /** What the target's id and its command's id end with, when the source's name does not tell the target apart: two targets of one title and one scope are two sessions only by their id (P1b-3d: the plugin and the id are the session). Absent: nothing. */
+  readonly idSuffix?: string | undefined;
 };
 
 const CAUSE: LogFeedCause = { stage: 'source', message: 'The source did not answer' };
@@ -122,6 +127,9 @@ const SPECS: readonly Spec[] = [
   { source: 'pair', command: 'Logs: two sources (app and worker)', rate: 20, seed: 15, sources: [{ id: 'pair/app', label: 'app' }, { id: 'pair/worker', label: 'worker' }] },
   // The second source's name is a container's, as a real stream has them: 13 characters or more, so the view draws it in two halves and cuts it from its start (the full name is its tip).
   { source: 'late', command: 'Logs: a second source speaks later (init-migrations)', rate: 200, seed: 16, sources: [{ id: 'late/app' }], later: { id: 'late/orders-7d8c6f49b-f8q4m/init-migrations' } },
+  // The same name in another yard: the title of `app`, an id of its own and the south yard as its scope, so the strip has two tabs of one title and each says which yard it is. Last, so the indexes of the others
+  // (`window.__logs.open(0)` of the probes) are what they were; its label contains no `Logs: app`.
+  { source: 'app', command: 'Logs: its twin in the south yard', rate: 20, seed: 17, scope: 'south-yard', idSuffix: '@south-yard' },
 ];
 
 /** A stream over a synthetic feed: what the host reads (`subscribe`, `read` and the rest are the feed's own) and what it closes. */
@@ -223,21 +231,21 @@ export type LogItem = { readonly name: string; readonly group: string };
 /** The sessions of an item, as the targets the host opens: the tab says `<item>/<source>`, the card links to the item. */
 export function logTargetsOf(item: LogItem): readonly LogTargetV1[] {
   return SPECS.map((spec) => ({
-    id: `item/${item.name}/${spec.source}`,
+    id: `item/${item.name}/${spec.source}${spec.idSuffix ?? ''}`,
     title: `${item.name}/${spec.source}`,
-    scope: item.group,
+    scope: spec.scope ?? item.group,
     resource: { label: `Item ${item.name}`, kind: 'Item', route: { page: 'item', params: { name: item.name, group: item.group } } },
     open: () => feedOf(spec),
   }));
 }
 
 /**
- * The commands of an item's menu that open its four sessions. A host that has no panel handle (one that predates `ctx.panel`) cannot show them: the commands say so, as a plugin's must (P1b-3b's spec).
+ * The commands of an item's menu that open its sessions. A host that has no panel handle (one that predates `ctx.panel`) cannot show them: the commands say so, as a plugin's must (P1b-3b's spec).
  */
 export function logCommandsOf(item: LogItem, panel: PanelHostV1 | undefined): ReadonlyArray<{ readonly id: string; readonly label: string; readonly onSelect: () => void; readonly disabledReason: string | undefined }> {
   const targets = logTargetsOf(item);
   return SPECS.map((spec, index) => ({
-    id: `logs-${spec.source}`,
+    id: `logs-${spec.source}${spec.idSuffix ?? ''}`,
     label: spec.command,
     onSelect: () => {
       const target = targets[index];

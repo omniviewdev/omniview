@@ -187,6 +187,86 @@ describe('the session strip', () => {
   });
 });
 
+/**
+ * Whether a tab's accessible name holds the text the tab draws (WCAG 2.5.3; axe's `label-content-name-mismatch`, which the panel probe runs in a real engine, and ACT rule "visible label is part of accessible name"). Both
+ * are read as those rules read them: lower case, a parenthesis and what is in it left out, anything that is not a letter or a number a space, then the words; the drawn words must be a run of the name's. The
+ * drawn text is the tab's own, its parts joined as the DOM joins them: a muted scope that touches the name in the DOM is one word with it.
+ */
+const words = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\([^()]*\)/g, ' ')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word !== '');
+const holdsDrawnText = (name: string, drawn: string): boolean => {
+  const have = words(name);
+  const want = words(drawn);
+  return want.length === 0 || have.some((_, at) => want.every((word, offset) => have[at + offset] === word));
+};
+
+describe('what a session tab draws, and is named by (SCT1, TI1, WCAG 2.5.3)', () => {
+  const session = (title: string, scope: string, extra: Partial<StaticSession> = {}): StaticSession => ({ tool: 'terminal', title, scope, state: 'running', ...extra });
+  const tabs = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-shell-part="sessionTab"] [role="tab"]')];
+  const scopes = (): string[] => [...document.querySelectorAll('[data-shell-part="sessionScope"]')].map((one) => one.textContent ?? '');
+
+  it('draws no scope on a session that has no twin: its tab is its title, and its name is its title', () => {
+    mount({ open: true, sessions: [session('orders-api/app', 'north-yard')] });
+    expect(scopes()).toEqual([]);
+    expect(tabs().map((one) => [one.textContent, one.getAttribute('aria-label')])).toEqual([['orders-api/app', 'orders-api/app']]);
+  });
+
+  it('draws the scope of each of two sessions that share a title and not a scope, after the name, and names each by the words it draws', () => {
+    mount({ open: true, sessions: [session('orders-api/app', 'north-yard'), session('orders-api/app', 'south-yard')] });
+    expect(scopes()).toEqual(['north-yard', 'south-yard']);
+    expect(tabs().map((one) => one.getAttribute('aria-label'))).toEqual(['orders-api/app · north-yard', 'orders-api/app · south-yard']);
+    // The DOM keeps the name and the scope apart with a space the layout does not draw, so the words a tab draws are the words its name says.
+    expect(tabs().map((one) => one.textContent)).toEqual(['orders-api/app north-yard', 'orders-api/app south-yard']);
+  });
+
+  it('draws an ordinal, and no scope, on the second of two sessions of one title and one scope', () => {
+    mount({ open: true, sessions: [session('zsh', 'dev'), session('zsh', 'dev')] });
+    expect(scopes()).toEqual([]);
+    expect(tabs().map((one) => [one.textContent, one.getAttribute('aria-label')])).toEqual([
+      ['zsh', 'zsh'],
+      ['zsh (2)', 'zsh (2)'],
+    ]);
+  });
+
+  it('takes the scope off the tab that is left when its twin closes', async () => {
+    const { user, store } = mount({ open: true, sessions: [session('orders-api/app', 'north-yard'), session('orders-api/app', 'south-yard')] });
+    focused(tab('orders-api/app · south-yard'));
+    await user.keyboard('{Delete}');
+    expect(Object.values(store.getSnapshot().sessions).map((one) => one.scope)).toEqual(['north-yard']);
+    expect(scopes()).toEqual([]);
+    expect(tabs().map((one) => one.getAttribute('aria-label'))).toEqual(['orders-api/app']);
+  });
+
+  it('names every tab by a run of the words it draws, whatever its scope, its ordinal and its state (WCAG 2.5.3: the visible text is part of the accessible name)', () => {
+    mount({
+      open: true,
+      sessions: [
+        session('orders-api/app', 'north-yard'),
+        session('orders-api/app', 'south-yard', { state: 'ended' }),
+        session('orders-api/app', 'north-yard', { state: 'failed' }),
+        session('cart-api-7d8c6f49b-f8q4m', 'north-yard'),
+        session('zsh', ''),
+      ],
+    });
+    expect(tabs()).toHaveLength(5);
+    for (const one of tabs()) {
+      const name = one.getAttribute('aria-label') ?? '';
+      expect(holdsDrawnText(name, one.textContent ?? ''), `the tab draws ${JSON.stringify(one.textContent)} and is named ${JSON.stringify(name)}`).toBe(true);
+    }
+  });
+
+  it('has a name of its own for every tab: two tabs are never named alike', () => {
+    mount({ open: true, sessions: [session('a', 'x'), session('a', 'x'), session('a', 'y'), session('a (2)', 'x'), session('b', 'x')] });
+    const names = tabs().map((one) => one.getAttribute('aria-label'));
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
+
 describe('the empty state of a tool', () => {
   it('says the generic words, and offers the button that starts a session, when the owner of the tool has a way to start one', () => {
     mount({ open: true });

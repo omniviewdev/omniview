@@ -26,6 +26,10 @@
 //      read, the streams closed once (the plugin counts it); the one that streamed ENDED, the one that had failed is AS IT WAS (its own words and time); each card says the plugin was unloaded and its resource link and
 //      Open button cannot be used; the bundle is let through and nothing resumed, the link works, and a new press of Logs opens a NEW session beside them; closing the tabs frees every listener and closes each stream
 //      once (SEAM_SHOTS=<dir> writes WebKit's pictures: before the unload, after it, after the reload; SEAM_CONTROL=<name> runs k alone with one perturbation that its named assertion must see)
+//   l  a Logs session is its plugin and its target (P1b-3d, A22): pressing the command of a session that streams shows it and the plugin is asked for no second feed (it counts them); a target with the title of another and
+//      another scope (the fixture's `app` and its twin in the south yard) is a second tab, each of the two draws its scope, and the tab that is left draws none when the other closes (a lone session draws no scope); a
+//      session that ended on its own and one that failed are not shown again, a press opens a NEW session beside each, told by its ordinal, and no two tabs are named alike; closing every tab frees every listener and closes
+//      each feed once (SEAM_SHOTS=<dir> writes WebKit's `identity-one-session.png` and `identity-twins.png`; SEAM_CONTROL=<name> runs l alone with one perturbation that its named assertion must see)
 //
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
@@ -48,14 +52,21 @@ const DUP = 'fixture-b-dup';
 const OLD = 'fixture-c-old';
 const MISSING = 'fixture-d-missing';
 
-// The negative controls of scenario k: SEAM_CONTROL=<name> runs k alone, with one perturbation made just before the assertion that must see it and undone just after it, and passes (exit 0) when that assertion failed.
+// The negative controls of scenarios k and l: SEAM_CONTROL=<name> runs the scenario the control belongs to alone, with one perturbation made just before the assertion that must see it and undone just after it, and passes (exit 0) when that assertion failed.
 const CONTROLS = {
   'double-close': /the plugin's feeds were closed once each/,
   'new-view': /it is the same view/,
   'failed-ended': /the failed session stays failed/,
   'close-twice': /close was asked of each feed once \(the calls are counted/,
   'page-error': /the unload and the return wrote no page error/,
+  // Scenario l, the identity of a Logs session (P1b-3d).
+  'second-stream': /the second press of Logs: app showed the session and started no second stream/,
+  'scope-lone': /a session with no twin draws no scope part/,
+  'scope-kept': /the tab that is left when its twin closes draws no scope part/,
+  'same-name': /no two session tabs are named alike/,
 };
+/** The controls that belong to scenario l; every other one runs scenario k. */
+const IDENTITY_CONTROLS = ['second-stream', 'scope-lone', 'scope-kept', 'same-name'];
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 if (CONTROL !== '' && CONTROLS[CONTROL] === undefined) throw new Error(`SEAM_CONTROL must be one of ${Object.keys(CONTROLS).join(', ')}`);
 
@@ -447,7 +458,7 @@ async function checkPanel(page, base, engine) {
   for (let opened = 0; opened < 3; opened += 1) await add.click();
   const sessions = page.getByRole('tablist', { name: 'Streams sessions' }).getByRole('tab');
   await page.waitForFunction(() => document.querySelectorAll('[data-shell-part="sessionTab"]').length === 3);
-  assert.deepEqual(await sessions.evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))), ['stream-alpha · north-yard', 'stream-beta · north-yard, ended', 'stream-gamma · south-yard, failed'], `${engine}: the three sessions, with the state of each in its name`);
+  assert.deepEqual(await sessions.evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label'))), ['stream-alpha', 'stream-beta, ended', 'stream-gamma, failed'], `${engine}: the three sessions, with the state of each in its name and no scope (none has a twin)`);
   assert.equal(await sessions.last().getAttribute('aria-selected'), 'true', `${engine}: the last one opened is on screen`);
   await page.locator('[data-fixture="stream"][data-visible="true"]').filter({ hasText: 'stream-gamma · failed' }).waitFor();
   // The plugin's body of the running stream counts lines while it is not on screen: a session body is kept while another is shown, and while the panel is hidden.
@@ -505,7 +516,7 @@ async function checkLogs(page, base, engine) {
   assert.ok(box.body.every((value, index) => Math.abs(value - box.view[index]) <= 1), `${engine}: the log view fills the panel's body (${JSON.stringify(box)})`);
   assert.deepEqual(await page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') })), { opened: 1, closed: 0, listeners: 3 }, `${engine}: one feed opened; the registry and the view (two) listen to it`);
   // The card is the host's: the kind, the item as a link, the state in a log's words.
-  const tab = page.getByRole('tab', { name: 'orders-api/app · north-yard' });
+  const tab = page.getByRole('tab', { name: 'orders-api/app', exact: true });
   await tab.hover();
   const card = page.locator('[popover]:popover-open');
   await card.waitFor();
@@ -681,7 +692,7 @@ async function checkPalette(page, base, engine) {
  * interface is unloaded (the window's plugin store takes it out of the live set, and the request for its bundle is held, so the window with the plugin off lasts as long as the check looks at it); both tabs STAY,
  * each in the same view with the lines it had read, the streams closed once and the plugin's counters saying so: `app` ENDED, `sync` is AS IT WAS (failed, with its own words and time); the card of each says the
  * plugin was unloaded, its resource is no link and its Open button is unavailable. The bundle is let through: the plugin is back and nothing resumed, the card's link and button work; a new press of Logs opens a
- * NEW session beside them, a twin; closing the tabs frees every listener and closes each stream once. Nothing in the product unloads a ready plugin yet (`PluginStore` only adds, `retry` is offered for a plugin
+ * NEW session beside them, told by its ordinal; closing the tabs frees every listener and closes each stream once. Nothing in the product unloads a ready plugin yet (`PluginStore` only adds, `retry` is offered for a plugin
  * that failed), so the check takes the store from where the window keeps it (the hooks of `PluginHostScreen`, reached from any element React drew) and does what a reload of a plugin's interface is: `retry`.
  * SEAM_SHOTS=<dir> writes the pictures of WebKit. SEAM_CONTROL=<name> makes one perturbation that one assertion must see (see CONTROLS).
  */
@@ -702,8 +713,8 @@ async function checkKept(page, base, engine) {
     await page.getByRole('menuitem', { name: command }).click();
   };
   const counters = () => page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') }));
-  const kept = page.getByRole('tab', { name: 'orders-api/app · north-yard, ended' });
-  const failed = page.getByRole('tab', { name: 'orders-api/sync · north-yard, failed' });
+  const kept = page.getByRole('tab', { name: 'orders-api/app, ended' });
+  const failed = page.getByRole('tab', { name: 'orders-api/sync, failed' });
   const card = page.locator('[popover]:popover-open');
   /** What the card of a tab says, in one line, and the mouse away again. */
   const cardOf = async (tab) => {
@@ -814,15 +825,15 @@ async function checkKept(page, base, engine) {
   // The session that had failed on its own stays as it was: the same tab (failed, not ended), the same view and lines, and the card says its own words and time, and then that the plugin was unloaded.
   // The negative control `failed-ended`: its tab's name says ended, as if the unload had ended it.
   if (CONTROL === 'failed-ended') {
-    await page.locator('[role=tab][aria-label^="orders-api/sync "]').evaluate((element) => {
-      element.setAttribute('aria-label', 'orders-api/sync · north-yard, ended');
+    await page.locator('[role=tab][aria-label^="orders-api/sync"]').evaluate((element) => {
+      element.setAttribute('aria-label', 'orders-api/sync, ended');
     });
   }
 
   assert.equal(await failed.count(), 1, `${engine}: the failed session stays failed`);
   if (CONTROL === 'failed-ended') {
-    await page.locator('[role=tab][aria-label^="orders-api/sync "]').evaluate((element) => {
-      element.setAttribute('aria-label', 'orders-api/sync · north-yard, failed');
+    await page.locator('[role=tab][aria-label^="orders-api/sync"]').evaluate((element) => {
+      element.setAttribute('aria-label', 'orders-api/sync, failed');
     });
   }
 
@@ -854,7 +865,7 @@ async function checkKept(page, base, engine) {
 
   // A new press of Logs: a new session beside the held ones, with a stream of its own.
   await press('Logs: app');
-  await page.getByRole('tab', { name: 'orders-api/app (2) · north-yard' }).waitFor({ timeout: 15_000 });
+  await page.getByRole('tab', { name: 'orders-api/app (2)' }).waitFor({ timeout: 15_000 });
   assert.equal(await kept.count(), 1, `${engine}: the held session is still there, ended`);
   // The new session is on screen and the held ones are not: a hidden view holds no listener (the registry's one and the new view's two are the three), and the held streams are closed, once each.
   assert.deepEqual(await counters(), { opened: 3, closed: 2, listeners: 3 }, `${engine}: a third feed opened; the held ones are untouched`);
@@ -868,8 +879,8 @@ async function checkKept(page, base, engine) {
   await page.keyboard.press('Delete');
   await page.waitForFunction(() => Reflect.get(window, '__fixtureLogs')?.listeners === 3);
   assert.deepEqual(await counters(), { opened: 3, closed: 2, listeners: 3 }, `${engine}: closing the held tab closed nothing twice and freed its view's listeners`);
-  // The session that is left of its name is the first of its name now: closing a twin gives the other its name back (no ordinal).
-  await page.getByRole('tab', { name: 'orders-api/app · north-yard', exact: true }).focus();
+  // The session that is left of its name is the first of its name now: closing one of two sessions of a title gives the other its name back (no ordinal).
+  await page.getByRole('tab', { name: 'orders-api/app', exact: true }).focus();
   await page.keyboard.press('Delete');
   await failed.focus();
   await page.keyboard.press('Delete');
@@ -890,6 +901,170 @@ async function checkKept(page, base, engine) {
 
   // No request is interrupted in this scenario (the plugin's bundle is held and then let through, never aborted), so no page error is excused: any one is the plugin's or the host's, and is reported.
   assert.deepEqual(errors, [], `${engine}: the unload and the return wrote no page error`);
+}
+
+/**
+ * l. A Logs session is its plugin and its target (P1b-3d, A22), in a page of its own, pressed from the item's menu as a person does. The fixture's item has a target that streams (`app`), the same title in another yard
+ * (its twin: a target of its own, with the south yard for its scope) and two that stop by themselves, one that ends and one that fails (`migrate`, `sync`). Pressing the command of a session that streams shows it and
+ * opens no second feed (the plugin counts the feeds it was asked for); the twins are two tabs and each draws its scope, and the tab that is left draws none once the other has closed (a session with no twin draws no
+ * scope); a session that ended and one that failed are not shown again: a press opens a NEW one beside each, which the strip tells by its ordinal, and no two tabs are named alike; closing every tab frees every listener
+ * and closes each feed once. SEAM_SHOTS=<dir> writes the pictures of WebKit (`identity-one-session.png`, `identity-twins.png`). SEAM_CONTROL=<name> makes one perturbation that one assertion must see (see CONTROLS).
+ */
+async function checkIdentity(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const shot = async (name) => {
+    if (process.env.SEAM_SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(process.env.SEAM_SHOTS, `${name}.png`) });
+  };
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  await page.getByRole('link', { name: 'orders-api' }).click();
+  await page.getByRole('heading', { level: 1, name: 'orders-api' }).waitFor();
+  const press = async (command) => {
+    await page.getByRole('button', { name: 'More actions for orders-api' }).click();
+    await page.getByRole('menuitem', { name: command }).click();
+  };
+  const counters = () => page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') }));
+  const calls = () => page.evaluate(() => [...Reflect.get(window, '__fixtureLogs').closeCalls]);
+  /** What the plugin counted of the feeds, the listeners left out: they come and go with the views, which mount and let go a moment after the panel shows or hides them. */
+  const fed = async () => {
+    const { opened, closed } = await counters();
+    return { opened, closed };
+  };
+  /** Waits until `count` listeners are on the plugin's feeds; when they never are, the assertion that reads the counters next says what they were. */
+  const settle = async (count) => {
+    await page.waitForFunction((wanted) => Reflect.get(window, '__fixtureLogs')?.listeners === wanted, count, { timeout: 10_000 }).catch(() => undefined);
+  };
+  const strip = page.getByRole('tablist', { name: 'Logs sessions' });
+  const tabs = strip.getByRole('tab');
+  const scopeParts = strip.locator('[data-shell-part="sessionScope"]');
+  /** The accessible name of each session tab of the Logs tool, in the strip's order. */
+  const names = () => tabs.evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-label')));
+  /** The scope each tab draws, in the same order: its words, or `null` for a tab that draws none. */
+  const scopesOf = () => tabs.evaluateAll((elements) => elements.map((element) => element.querySelector('[data-shell-part="sessionScope"]')?.textContent?.trim() ?? null));
+  /** A session's view is on screen with lines in it. The view is named for its session's own title and scope, whatever its tab draws. */
+  const viewed = async (label) => {
+    await page.getByRole('group', { name: `Log, ${label}` }).getByRole('grid').waitFor();
+    await page.waitForFunction((name) => Number(document.querySelector(`[role=group][aria-label="${name}"] [role=grid]`)?.getAttribute('aria-rowcount') ?? 0) > 20, `Log, ${label}`, { timeout: 15_000 });
+  };
+  // A scope part the shell did not draw, put into the first tab and taken out again: what the controls `scope-lone` and `scope-kept` do.
+  const putScope = () =>
+    tabs.first().evaluate((tab) => {
+      tab.querySelector('[data-shell-part="sessionLabel"]').insertAdjacentHTML('beforeend', '<span data-shell-part="sessionScope" data-seam-fake="">north-yard</span>');
+    });
+  const takeScope = () =>
+    page.evaluate(() => {
+      for (const part of document.querySelectorAll('[data-seam-fake]')) part.remove();
+    });
+
+  // 1. Pressing Logs: app twice. Another tool is chosen between the two presses, so the second has something to show: the Logs tool comes back with the session, and the plugin is asked for no second feed.
+  await press('Logs: app');
+  await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
+  await viewed('orders-api/app · north-yard');
+  await page.getByRole('tab', { name: 'Streams', exact: true }).click();
+  await page.getByRole('group', { name: 'Log, orders-api/app · north-yard' }).waitFor({ state: 'hidden' });
+  await press('Logs: app');
+  await viewed('orders-api/app · north-yard');
+  assert.equal(await page.getByRole('tab', { name: 'Logs', exact: true }).getAttribute('aria-selected'), 'true', `${engine}: the second press chose the Logs tool again`);
+  assert.deepEqual(await names(), ['orders-api/app'], `${engine}: two presses of Logs: app leave ONE session tab, named by its title alone`);
+  // The negative control `scope-lone`: a scope part the shell did not draw is put into the tab.
+  if (CONTROL === 'scope-lone') await putScope();
+  assert.equal(await scopeParts.count(), 0, `${engine}: a session with no twin draws no scope part`);
+  if (CONTROL === 'scope-lone') await takeScope();
+  await settle(3);
+  // The negative control `second-stream`: the plugin's count of the feeds it opened is one more, as if the second press had started a second stream.
+  if (CONTROL === 'second-stream') {
+    await page.evaluate(() => {
+      Reflect.get(window, '__fixtureLogs').opened += 1;
+    });
+  }
+
+  assert.deepEqual(await counters(), { opened: 1, closed: 0, listeners: 3 }, `${engine}: the second press of Logs: app showed the session and started no second stream (one feed opened; the registry and the view (two) listen to it)`);
+  if (CONTROL === 'second-stream') {
+    await page.evaluate(() => {
+      Reflect.get(window, '__fixtureLogs').opened -= 1;
+    });
+  }
+
+  await page.mouse.move(2, 2);
+  await shot('identity-one-session');
+
+  // 2. The same title in the south yard is a target of its own, so a second session: two tabs of one title and two scopes, and each draws its scope to tell the two apart.
+  await press('Logs: its twin in the south yard');
+  await viewed('orders-api/app · south-yard');
+  assert.deepEqual(await names(), ['orders-api/app · north-yard', 'orders-api/app · south-yard'], `${engine}: the twin opens a second tab, and each of the two is named by its title and its scope`);
+  assert.deepEqual(await scopesOf(), ['north-yard', 'south-yard'], `${engine}: each of the two draws its own scope`);
+  assert.deepEqual(await fed(), { opened: 2, closed: 0 }, `${engine}: a second feed opened, for the twin`);
+  await page.mouse.move(2, 2);
+  await shot('identity-twins');
+  // A press of either command shows its session's tab and starts nothing: the first tab is chosen by hand, then each command chooses its own.
+  await tabs.first().click();
+  await press('Logs: its twin in the south yard');
+  await page.getByRole('tab', { name: 'orders-api/app · south-yard', exact: true, selected: true }).waitFor();
+  await press('Logs: app');
+  await page.getByRole('tab', { name: 'orders-api/app · north-yard', exact: true, selected: true }).waitFor();
+  assert.deepEqual(await names(), ['orders-api/app · north-yard', 'orders-api/app · south-yard'], `${engine}: pressing either command again shows its own tab and leaves the same two`);
+  assert.deepEqual(await fed(), { opened: 2, closed: 0 }, `${engine}: and opens no third feed`);
+
+  // 3. The south tab closes: the tab that is left has no twin now, and draws no scope.
+  await page.getByRole('tab', { name: 'orders-api/app · south-yard', exact: true }).focus();
+  await page.keyboard.press('Delete');
+  await page.getByRole('tab', { name: 'orders-api/app', exact: true }).waitFor();
+  assert.deepEqual(await names(), ['orders-api/app'], `${engine}: the tab that is left is named by its title alone`);
+  // The negative control `scope-kept`: a scope part the shell did not draw is put into the tab that is left.
+  if (CONTROL === 'scope-kept') await putScope();
+  assert.equal(await scopeParts.count(), 0, `${engine}: the tab that is left when its twin closes draws no scope part`);
+  if (CONTROL === 'scope-kept') await takeScope();
+  await settle(3);
+  assert.deepEqual(await counters(), { opened: 2, closed: 1, listeners: 3 }, `${engine}: closing the twin closed its feed once and released its listeners`);
+
+  // 4. A session that ended on its own is not shown again: a press opens a new session beside it, which the strip tells by its ordinal, and the ended one stays. So does one that failed.
+  await press('Logs: migrate (ends)');
+  await page.getByRole('tab', { name: 'orders-api/migrate, ended', exact: true }).waitFor({ timeout: 15_000 });
+  await press('Logs: migrate (ends)');
+  await page.getByRole('tab', { name: /^orders-api\/migrate \(2\)/ }).waitFor();
+  assert.deepEqual(await fed(), { opened: 4, closed: 1 }, `${engine}: a press of a session that ended opened a new feed (the ended one is not shown again)`);
+  // The new session ends by itself, too: the names are read when nothing changes any more.
+  await page.getByRole('tab', { name: 'orders-api/migrate (2), ended', exact: true }).waitFor({ timeout: 15_000 });
+  assert.deepEqual(await names(), ['orders-api/app', 'orders-api/migrate, ended', 'orders-api/migrate (2), ended'], `${engine}: the new session is a tab beside the ended one, told by its ordinal, and the ended one stays`);
+  // The negative control `same-name`: the new tab's name is set to the name of the ended one.
+  if (CONTROL === 'same-name') {
+    await tabs.last().evaluate((tab) => {
+      tab.setAttribute('aria-label', 'orders-api/migrate, ended');
+    });
+  }
+
+  const named = await names();
+  assert.equal(new Set(named).size, named.length, `${engine}: no two session tabs are named alike (${JSON.stringify(named)})`);
+  if (CONTROL === 'same-name') {
+    await tabs.last().evaluate((tab) => {
+      tab.setAttribute('aria-label', 'orders-api/migrate (2), ended');
+    });
+  }
+
+  await press('Logs: sync (fails)');
+  await page.getByRole('tab', { name: 'orders-api/sync, failed', exact: true }).waitFor({ timeout: 15_000 });
+  await press('Logs: sync (fails)');
+  await page.getByRole('tab', { name: /^orders-api\/sync \(2\)/ }).waitFor();
+  assert.deepEqual(await fed(), { opened: 6, closed: 1 }, `${engine}: a press of a session that failed opened a new feed (the failed one is not shown again)`);
+  await page.getByRole('tab', { name: 'orders-api/sync (2), failed', exact: true }).waitFor({ timeout: 15_000 });
+  assert.deepEqual(await names(), ['orders-api/app', 'orders-api/migrate, ended', 'orders-api/migrate (2), ended', 'orders-api/sync, failed', 'orders-api/sync (2), failed'], `${engine}: the failed session stays, and the new one is told by its ordinal`);
+  assert.equal(await scopeParts.count(), 0, `${engine}: sessions of one title and one scope are told by their ordinal, and draw no scope part`);
+
+  // 5. Closing every tab frees every listener and closes each feed once.
+  for (let left = await tabs.count(); left > 0; left -= 1) {
+    await tabs.first().focus();
+    await page.keyboard.press('Delete');
+    await page.waitForFunction((count) => document.querySelectorAll('[data-shell-part="sessionTab"]').length === count, left - 1);
+  }
+
+  await page.getByText('No log sessions').waitFor();
+  await settle(0);
+  assert.deepEqual(await counters(), { opened: 6, closed: 6, listeners: 0 }, `${engine}: every feed that was opened was closed, and no listener is left`);
+  assert.deepEqual(await calls(), [1, 1, 1, 1, 1, 1], `${engine}: and each feed's close was asked for once`);
+  assert.deepEqual(errors, [], `${engine}: pressing the commands and closing the sessions wrote no page error`);
 }
 
 /**
@@ -1074,9 +1249,10 @@ try {
     const browser = await engine.launch();
     try {
       if (CONTROL !== '') {
-        // A negative control runs scenario k alone with one perturbation, and passes when the assertion it is named for saw it.
+        // A negative control runs the scenario it belongs to (k or l) alone with one perturbation, and passes when the assertion it is named for saw it.
+        const scenario = IDENTITY_CONTROLS.includes(CONTROL) ? checkIdentity : checkKept;
         try {
-          await checkKept(await freshPage(browser, host.base), host.base, name);
+          await scenario(await freshPage(browser, host.base), host.base, name);
           console.error(`NEGATIVE CONTROL "${CONTROL}": NOT DETECTED in ${name}`);
           process.exitCode = 1;
         } catch (error) {
@@ -1100,6 +1276,7 @@ try {
       await checkLogs(await freshPage(browser, host.base), host.base, name);
       await checkPalette(await freshPage(browser, host.base), host.base, name);
       await checkKept(await freshPage(browser, host.base), host.base, name);
+      await checkIdentity(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside)`);
     } finally {

@@ -16,8 +16,9 @@
 //   ?session=one      the session the window starts from (S3a), kept in the page's own session storage so a reload restores what was written: `one` (a tab on `alpha`'s page `widgets`, the default),
 //                     `two` (that tab and one on `beta`'s, which is on screen), `gone` (a tab of a plugin that is never installed), `none` (nothing was saved: the empty window), `bad` (a text that cannot
 //                     be used). `window.__sessionNotes` lists what the session said on the console; a text kept aside is a key `host-fixture-session:session.invalid.<time>` of the session storage
-//   ?logs=1           `window.__logs` opens the fixture plugin's Logs sessions (../../plugins/fixture/src/logs.ts: 0 `app` streams, 1 `migrate` ends, 2 `sync` fails, 3 `audit` makes 10,000 lines a second, 4 `pair` follows two sources) through
-//                     the `ctx.panel` a plugin's page was given (`open(index, plugin = 'alpha')`, `close(n)` the n-th session opened, `ready()`); `window.__fixtureLogs` counts what the host opened, closed and listens to
+//   ?logs=1           `window.__logs` opens the fixture plugin's Logs sessions (../../plugins/fixture/src/logs.ts: 0 `app` streams, 1 `migrate` ends, 2 `sync` fails, 3 `audit` makes 10,000 lines a second, 4 `pair` follows two sources,
+//                     5 `late` hears of a second source, 6 is the twin of `app`: its title, another id and the south yard as its scope) through the `ctx.panel` a plugin's page was given (`open(index, plugin = 'alpha')`: a press, and
+//                     the id of the session it opened or showed; `close(n)` the session the n-th press answered, which a repeated press shares; `ready()`); `window.__fixtureLogs` counts what the host opened, closed and listens to
 //   ?counts=late      the skeleton declares no count slot (the entries' counts arrive in a row that had none): the probe's negative control for a plugin that does not hold the slot
 //
 // `window.__plugin.unload(id = 'alpha')` takes a plugin's interface out of the live set (the store's `retry`: it is `loading` until its bundle is imported again, which is the plugin leaving as far as the panel

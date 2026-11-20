@@ -88,3 +88,21 @@ export function activateSession(state: PanelState, id: SessionId): Step<PanelRes
 
   return { state: settle(patch(state, { tool: session.tool, active: Object.freeze({ ...state.active, [session.tool]: id }) })), result: DONE };
 }
+
+/**
+ * Shows a session: the panel opens, its tool comes on screen and the session is its tool's, in one change, with its body mounted. What a press of the command that opened a session does when that session is
+ * already there (the mock's `openLogsFor`, shell-panel.js:2565: `setActive` and `Shell.panel.show('logs', { focus: false })`): it is shown as a session the user starts is (S116), moves no focus (the model has
+ * none: the caller decides), and starts nothing. A session that is hidden, or not there, is refused, as `activateSession` refuses it.
+ */
+export function revealSession(state: PanelState, id: SessionId): Step<PanelResult> {
+  const session = own(state.sessions, id);
+  if (session === undefined || !sessionVisible(state, session)) {
+    return refuse(state, 'missing', `There is no session ${id}.`);
+  }
+
+  if (state.open && state.tool === session.tool && own(state.active, session.tool) === id) {
+    return unchanged(state);
+  }
+
+  return { state: settle(patch(state, { open: true, tool: session.tool, active: Object.freeze({ ...state.active, [session.tool]: id }) })), result: DONE };
+}

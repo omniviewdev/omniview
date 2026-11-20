@@ -15,15 +15,21 @@
 //   - card:     on `sessions`, the session card of the first session (hovered) and of the third, the selected one (focused with a Shift key press, as the keyboard reaches it): the card and its head, its
 //               list of facts and each row, its actions and each button.
 //   - facts:    the resting aria-*/role facts the shell side asserts on (read at 1440x900; the two engines must agree, else they are kept per engine under webkit and chromium).
+//   - twins:    the LOGS tool with three sessions of one title, `cart-api`, opened in this order through Shell.panel.logs.open (a producer of the probe's own, `probe.twins`, that runs at once): context
+//               `north-yard`, `south-yard`, `north-yard` (no other qualifier), each stopped (Shell.panel.sessions.stop) and read once every lead reports exited. The mock's labelParts draws the scope (the context) on a tab only because another open session shares its title and
+//               differs in scope, so all three tabs draw `.toolheader__sessionscope`, and the third, a twin of the first, gets the ordinal ` (2)` in `.toolheader__sessiontail`. Per item the reading also holds
+//               `texts: { aria, head, tail, scope }`: the tab's aria-label and the text of the three parts (null when a part is absent). The last opened session is the selected one.
 //
 // Serve the mock first: a CommonJS copy of its server.js with `root` set to the mock directory (see mock-strip-measure.mjs), e.g.
 //   sed 's#const root=__dirname#const root="<mock dir>"#' <mock dir>/server.js > /tmp/server.cjs && PORT=49471 node /tmp/server.cjs
 // Without MOCK_URL the script serves the mock itself (MOCK_DIR, default: the lab's frontend/mock) on port 49474.
 // Run:  MOCK_URL=http://127.0.0.1:49471/ node ui-next/shell/probes/mock-panel-measure.mjs
 // Writes mock-panel.json. Exits non-zero when a scenario misses its panel, tabs or sessions.
+// SCENARIO=twins measures ONLY that scenario (in each engine and viewport) and MERGES it into the existing mock-panel.json as data.<engine>.<viewport>.twins: every other value is read and written back
+// as it was (the file is one line of compact JSON, so it stays one line). A full run (no SCENARIO) measures every scenario, twins included.
 //
 // mock-panel.json: { mockTree, viewports, note,
-//   data:   { <engine>: { <viewport>: { hidden, empty, sessions, states, many, card } } },       card: { hover, focus }: the session card (see `CARD` below), read in `sessions`'s page
+//   data:   { <engine>: { <viewport>: { hidden, empty, sessions, states, many, card, twins } } },       card: { hover, focus }: the session card (see `CARD` below), read in `sessions`'s page
 //   shift:  { <engine>: { <viewport>: { <region>: { before, after } } } },                  region: topbar | tabstrip | scroller | rail | sidebar | lane | island | mainscroll | statusbar
 //   states: { <engine>: { <viewport>: { <part>: { rest, hover, focus } } } },               part: toolTabSelected | toolTabOther | sessionSelected | sessionOther | sessionClose | addButton | hideButton | handle | toggleOff | toggleOn
 //   facts:  { toggle, handle, panel, header, toolTablist, sessionTablist, addGroup, actions, toolTabs, sessionTabs, body } }
@@ -47,7 +53,11 @@ import { ENGINES, launch, normalizeFont, sleep } from '../../../packages/kit/pro
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MOCK_TREE = 'c8e44a445bdbec07ad81d5ec036dd26cc0a8bef0';
 const VIEWPORTS = { '1440x900': { width: 1440, height: 900 }, '1280x800': { width: 1280, height: 800 } };
-const SCENARIOS = ['hidden', 'empty', 'sessions', 'states', 'many'];
+const SCENARIOS = ['hidden', 'empty', 'sessions', 'states', 'many', 'twins'];
+// The scenarios SCENARIO=<name> can measure alone: those that are one reading and nothing else (no facts, parts or card to merge).
+const MERGEABLE = ['twins'];
+const ONLY = process.env.SCENARIO;
+if (ONLY !== undefined && !MERGEABLE.includes(ONLY)) throw new Error(`SCENARIO=${ONLY}: only ${MERGEABLE.join(', ')} can be measured alone`);
 const MANY = 14;
 const started = Date.now();
 
@@ -304,6 +314,41 @@ async function readScenario(page, name, withExtras) {
     result.facts = await page.evaluate(FACTS);
     result.reading = await page.evaluate(READ);
     if (withExtras) result.parts = await readParts(page, ['toggleOff']);
+  } else if (name === 'twins') {
+    // Logs sessions of a producer of the probe's own (the runner only starts the targets the mock registered itself, and a session it cannot start ends `failed`): it runs at once, and each session is
+    // then stopped (Shell.panel.sessions.stop), so every tab ends `exited` and the run is deterministic.
+    const ids = await page.evaluate(async (contexts) => {
+      const ids = [];
+      Shell.panel.producers.register({
+        id: 'probe.twins', kinds: ['logs'],
+        start: async ({ sink }) => { sink.state({ state: 'running', certainty: 'known' }); return { twins: true }; },
+        stop: async () => ({ acknowledged: true }), reconnect: async () => ({ twins: true }), dispose: async () => undefined,
+      });
+      contexts.forEach((context, i) => {
+        const id = Shell.panel.logs.open({
+          id: `item/cart-api/${i + 1}`, label: 'cart-api', title: 'cart-api', plugin: 'host', kind: 'logs', producer: 'probe.twins', detail: 'Item',
+          presentation: { operation: 'Logs', context, resource: 'Item cart-api', container: '' },
+        });
+        if (typeof id !== 'string') throw new Error('Shell.panel.logs.open did not return a session id');
+        ids.push(id);
+      });
+      for (const id of ids) await Shell.panel.sessions.stop(id, { reason: 'user' });
+      return ids;
+    }, ['north-yard', 'south-yard', 'north-yard']);
+    result.ids = ids;
+    await page.waitForFunction((count) => {
+      const leads = [...document.querySelectorAll('#shell-panel .toolheader__sessionlist > .tab-item .toolheader__lead')];
+      return leads.length === count && leads.every((lead) => lead.getAttribute('data-state') === 'exited');
+    }, ids.length, { timeout: 15000 });
+    await sleep(600);
+    result.reading = await page.evaluate(READ);
+    // The words of each tab, as drawn: its accessible name and the text of the head, the tail and the scope (null when a part is absent).
+    const texts = await page.evaluate(() => [...document.querySelectorAll('#shell-panel .toolheader__sessionlist > .tab-item')].map((item) => {
+      const text = (selector) => item.querySelector(selector)?.textContent.trim() ?? null;
+      return { aria: item.querySelector('[role=tab]')?.getAttribute('aria-label') ?? null, head: text('.toolheader__sessionhead'), tail: text('.toolheader__sessiontail'), scope: text('.toolheader__sessionscope') };
+    }));
+    result.reading.sessions.items.forEach((item, i) => { item.texts = texts[i]; });
+    result.selectedTool = await page.evaluate(() => document.querySelector('#shell-panel .toolheader__tablist > [role=tab][aria-selected="true"]')?.textContent.trim() ?? null);
   } else {
     await page.evaluate(() => { Shell.panel.show('terminal'); });
     await sleep(700);
@@ -381,7 +426,52 @@ const checks = {
   sessions: (r) => r.reading.panel === null || r.reading.sessions.items.length !== 3 || r.reading.sessions.items.some((i) => i.tab === null || i.lead === null || i.close === null) ? 'misses its three sessions' : r.card === undefined || r.card.hover === null || r.card.focus === null || r.card.hover.rows.length !== 3 ? 'misses its session cards' : null,
   states: (r) => r.reading.sessions.items.map((i) => i.state).join() !== ',exited,failed,expired' || r.reading.connecting.state !== 'connecting' ? `states are ${r.reading.sessions.items.map((i) => i.state)} and ${r.reading.connecting.state}` : null,
   many: (r) => r.reading.sessions.items.length !== MANY || !(r.reading.scroll.list.width > r.reading.scroll.list.client) ? 'misses its 14 sessions or the list does not scroll' : null,
+  twins: (r) => {
+    const items = r.reading.sessions.items;
+    if (r.reading.panel === null || r.reading.panelState === 'hidden') return 'the panel is hidden';
+    if (items.length !== 3 || items.some((i) => i.tab === null || i.lead === null || i.scope === null || i.state !== 'exited')) return 'misses its three exited sessions with a scope';
+    if (items.map((i) => i.selected).join() !== 'false,false,true') return `selected is ${items.map((i) => i.selected)}`;
+    if (r.selectedTool !== 'Logs') return `the selected tool tab is ${r.selectedTool}`;
+    return null;
+  },
 };
+
+/** SCENARIO=<name>: measure that one scenario in each engine and viewport and set it under data.<engine>.<viewport>.<name> of the existing mock-panel.json; nothing else of the file is touched. */
+async function mergeOnly(name) {
+  const file = path.join(here, 'mock-panel.json');
+  const reference = JSON.parse(readFileSync(file, 'utf8'));
+  if (reference.mockTree !== MOCK_TREE) throw new Error(`mock-panel.json was measured on ${reference.mockTree}, this script on ${MOCK_TREE}`);
+  let missed = false;
+  for (const engineName of Object.keys(ENGINES)) {
+    const browser = await launch(engineName);
+    try {
+      for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
+        const result = await scenario(browser, viewport, name, false);
+        const problem = checks[name](result);
+        if (problem !== null) { console.log('MISSING', engineName, viewportName, name, problem); missed = true; }
+        reference.data[engineName][viewportName][name] = result.reading;
+        console.log(engineName, viewportName, name, problem === null ? 'ok' : 'FAILED');
+      }
+    } finally {
+      await browser.close();
+    }
+  }
+  const text = `${JSON.stringify(reference)}\n`;
+  if (text.length > 150_000) { console.log('FAILED: the file is over 150 kB'); missed = true; }
+  const out = missed ? path.join(tmpdir(), 'mock-panel.failed.json') : file;
+  writeFileSync(out, text);
+  console.log('wrote', out, statSync(out).size, 'bytes', Math.round((Date.now() - started) / 1000), 's');
+  if (missed) { console.log('FAILED: mock-panel.json is unchanged'); process.exitCode = 1; }
+}
+
+if (ONLY !== undefined) {
+  try {
+    await mergeOnly(ONLY);
+  } finally {
+    server?.kill();
+  }
+  process.exit(process.exitCode ?? 0);
+}
 
 const data = {};
 const shift = {};
