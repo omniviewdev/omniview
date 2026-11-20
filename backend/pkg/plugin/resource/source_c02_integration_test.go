@@ -36,6 +36,15 @@ func sourceFileObservation(client *sourceFileClient, target resourcev2.ReadTarge
 	return resourcev2.SourceObservation{Record: resourcev2.CompactSourceRecord(record), Metadata: &resourcev2.ResourceMetadata{Labels: map[string]string{"value": value}}}, nil
 }
 
+// TestC02SourceViewLifecycle follows a native file source through a source view: snapshot, one change, close.
+//
+// A client attaches to a view and then syncs it (packages/omniviewdev-runtime/src/resource/v2/sourceView.ts), and it cannot know
+// whether the source session already holds its first snapshot when the sync arrives. Both orders are legal and the host answers
+// them differently. Before the snapshot, the sync has nothing to send and the snapshot starts the view's only generation. After
+// it, the session has already pushed that snapshot to the view, so the sync resets the view and starts a second generation, and
+// a change carries that one. The test used to leave the order to a race between its own goroutine and the source stream; on a
+// loaded runner it lost, and the change carried the second generation while the test still held the first. The provider now
+// holds its first snapshot until the test lets it go, so each order runs on purpose.
 func TestC02SourceViewLifecycle(t *testing.T) {
 	t.Run("sync before the first snapshot", func(t *testing.T) { runC02SourceViewLifecycle(t, false) })
 	t.Run("sync after the first snapshot", func(t *testing.T) { runC02SourceViewLifecycle(t, true) })
@@ -138,26 +147,42 @@ func runC02SourceViewLifecycle(t *testing.T, syncAfterSnapshot bool) {
 	opened, err := ctrl.OpenSourceView(ctx, "proof", HostSourceViewRequest{TargetID: resolved.TargetID, Target: resolved.Target, Updates: "ifSupported"})
 	require.NoError(t, err)
 	require.Equal(t, resourcev2.SourceModeSnapshotAndUpdates, opened.Mode)
-	if syncAfterSnapshot {
-		close(publish)
-		waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
-			return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
-		})
-	}
-	require.NoError(t, ctrl.SyncSourceView(ctx, "proof", opened.ViewID))
 	if !syncAfterSnapshot {
-		close(publish)
+		// The source has not published, so the session holds no snapshot: this sync sends nothing, and the snapshot that follows
+		// starts the view's one generation.
+		require.NoError(t, ctrl.SyncSourceView(ctx, "proof", opened.ViewID))
 	}
+	close(publish)
 	initial := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "snapshot" && len(event.Records) != 0 })
 	require.Equal(t, "first", initial.Records[0].Record.Body.Map["value"].String)
 	end := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
 		return event.Kind == "snapshotEnd" && event.Status != nil && event.Status.State == "following"
 	})
 	require.Equal(t, initial.ViewGeneration, end.ViewGeneration)
+	live := end
+	if syncAfterSnapshot {
+		// The session pushed its snapshot to the view before this sync arrived. The host resets the view, naming the generation that
+		// ends, and sends the snapshot again under a new one: the generation that a change belongs to.
+		require.NoError(t, ctrl.SyncSourceView(ctx, "proof", opened.ViewID))
+		reset := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
+			return event.Kind == "reset" && event.Reset != nil && event.Reset.Reason == "resync"
+		})
+		require.Equal(t, end.ViewGeneration, reset.ViewGeneration)
+		again := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
+			return event.Kind == "snapshot" && event.ViewGeneration != end.ViewGeneration && len(event.Records) != 0
+		})
+		require.Equal(t, "first", again.Records[0].Record.Body.Map["value"].String)
+		live = waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool {
+			return event.Kind == "snapshotEnd" && event.ViewGeneration == again.ViewGeneration && event.Status != nil && event.Status.State == "following"
+		})
+	}
 	writeFile("second")
 	change := waitSourceView(t, emitter, opened.Topic, func(event HostSourceViewEvent) bool { return event.Kind == "changes" && len(event.Upserts) != 0 })
 	require.Equal(t, "second", change.Upserts[0].Record.Body.Map["value"].String)
-	require.Equal(t, end.ViewGeneration, change.ViewGeneration)
+	require.Equal(t, live.ViewGeneration, change.ViewGeneration)
+	if !syncAfterSnapshot {
+		require.Zero(t, sourceViewEventCount(emitter, opened.Topic, "reset"), "the one generation was never reset")
+	}
 	require.NoError(t, ctrl.CloseSourceView(ctx, "proof", opened.ViewID))
 	require.NoError(t, ctrl.CloseSourceView(ctx, "proof", opened.ViewID))
 	select {
@@ -167,4 +192,18 @@ func runC02SourceViewLifecycle(t *testing.T, syncAfterSnapshot bool) {
 	}
 	_, err = ctrl.StopConnection(ctx, "proof", "local")
 	require.NoError(t, err)
+}
+
+// sourceViewEventCount counts the events of one kind that a view has emitted so far.
+func sourceViewEventCount(emitter *recordingEmitter, topic, kind string) int {
+	count := 0
+	for _, emitted := range emitter.EventsWithKey(topic) {
+		if len(emitted.Data) != 1 {
+			continue
+		}
+		if event, ok := emitted.Data[0].(HostSourceViewEvent); ok && event.Kind == kind {
+			count++
+		}
+	}
+	return count
 }
