@@ -1,7 +1,7 @@
 import { Text, useTheme } from '@omniviewdev/kit';
 import { useConnections } from '@omniviewdev/runtime/ui/v1';
 import { useEffect, useState } from 'react';
-import type { ContributionV1, SidebarNodeV1 } from '../../contract/v1';
+import type { ContributionV1, SidebarContextV1, SidebarNodeV1 } from '../../contract/v1';
 import { itemPage } from './detail';
 import { streamsTool } from './panel';
 import { crashPage, itemsPage } from './pages';
@@ -9,33 +9,41 @@ import { crashPage, itemsPage } from './pages';
 // A plugin's new-UI bundle, as small as one can be and still be the real thing: it exports `contributionV1` and nothing else is the host's business
 // (`imports` below is for the check that reads it, not part of the contract). Its only imports are React and the kit, which the host serves.
 
+// The entry that will have a count declares the slot with `null` (Q2a): the slot is held at the width of a count from the first frame, so the count that arrives moves nothing. `Crash` has no count and no slot.
 const SKELETON: readonly SidebarNodeV1[] = [
   {
     id: 'things',
     label: 'Things',
     icon: 'layers',
     children: [
-      { id: 'items', label: 'Items', icon: 'box' },
+      { id: 'items', label: 'Items', icon: 'box', count: null },
       { id: 'crash', label: 'Crash', icon: 'status-error' },
     ],
   },
 ];
 
+// An estimate: "~5", named "about 5".
 const WITH_COUNTS: readonly SidebarNodeV1[] = [
   {
     id: 'things',
     label: 'Things',
     icon: 'layers',
     children: [
-      { id: 'items', label: 'Items', icon: 'box', count: 5 },
+      { id: 'items', label: 'Items', icon: 'box', count: { value: 5, approximate: true } },
       { id: 'crash', label: 'Crash', icon: 'status-error' },
     ],
   },
 ];
 
-/** What a plugin reads once it has data: here a timer stands for the read, and the skeleton stands until it fires. */
-function useCounts(): readonly SidebarNodeV1[] | undefined {
+/**
+ * What a plugin reads once it has data: here a timer stands for the read, and the skeleton stands until it fires. The groups the host says are open are what a real plugin would read counts for: the fixture
+ * keeps the last list it was told in `window.__fixtureSidebar`, for the seam check to read (the check proves, in a real engine, that the host tells the hook which groups are open on screen).
+ */
+function useCounts({ open }: SidebarContextV1): readonly SidebarNodeV1[] | undefined {
   const [ready, setReady] = useState(false);
+  useEffect(() => {
+    Reflect.set(window, '__fixtureSidebar', { open });
+  }, [open]);
   useEffect(() => {
     const timer = setTimeout(() => {
       setReady(true);

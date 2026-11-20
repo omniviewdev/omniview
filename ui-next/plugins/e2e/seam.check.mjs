@@ -181,8 +181,19 @@ async function checkHealthy(page, base, engine) {
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
   await page.getByRole('treeitem', { name: 'Items', selected: true }).waitFor();
   for (const name of ['orders-api', 'ledger-sync', 'ghost-service', 'vault-keeper', 'flaky-gateway']) await page.getByRole('link', { name }).waitFor();
-  // The sidebar's hook answers 150 ms after it mounts: the skeleton gives way to the entries with their count.
-  await page.getByRole('treeitem', { name: 'Items 5' }).waitFor();
+  // The sidebar's hook answers 150 ms after it mounts: the skeleton gives way to the entries with their count. The entry declares its count slot in the skeleton (`count: null`) and the hook answers an estimate
+  // (`{ value: 5, approximate: true }`), which the shell draws as "~5" and names "about 5" (Q2a).
+  await page.getByRole('treeitem', { name: 'Items about 5' }).waitFor();
+  assert.equal(await page.getByRole('treeitem', { name: 'Items about 5' }).locator('[data-shell-part="count"] [aria-hidden="true"]').innerText(), '~5', `${engine}: an estimate is drawn with a tilde`);
+  // The host tells the plugin's hook which groups of its tree are open on screen: the group of the page on screen is open when the tree mounts, and the list follows the user's clicks on it (Q2a).
+  const told = () => page.evaluate(() => window.__fixtureSidebar?.open ?? null);
+  assert.deepEqual(await told(), ['things'], `${engine}: the hook was told that the group of the page on screen is open`);
+  await page.getByRole('treeitem', { name: 'Things' }).click();
+  await page.waitForFunction(() => JSON.stringify(window.__fixtureSidebar?.open) === '[]');
+  assert.equal(await page.getByRole('treeitem', { name: 'Items about 5' }).count(), 0, `${engine}: the entries of a closed group are not on screen`);
+  await page.getByRole('treeitem', { name: 'Things' }).click();
+  await page.waitForFunction(() => JSON.stringify(window.__fixtureSidebar?.open) === '["things"]');
+  await page.getByRole('treeitem', { name: 'Items about 5' }).waitFor();
   await page.getByRole('navigation', { name: 'Seam Fixture navigation' }).waitFor();
   await page.getByRole('main', { name: 'Seam Fixture workspace' }).waitFor();
   assert.equal(await page.evaluate(() => location.hash), '', `${engine}: the window opened with no hash`);

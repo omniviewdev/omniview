@@ -18,6 +18,7 @@
 //                     be used). `window.__sessionNotes` lists what the session said on the console; a text kept aside is a key `host-fixture-session:session.invalid.<time>` of the session storage
 //   ?logs=1           `window.__logs` opens the fixture plugin's Logs sessions (../../plugins/fixture/src/logs.ts: 0 `app` streams, 1 `migrate` ends, 2 `sync` fails, 3 `audit` makes 10,000 lines a second, 4 `pair` follows two sources) through
 //                     the `ctx.panel` a plugin's page was given (`open(index, plugin = 'alpha')`, `close(n)` the n-th session opened, `ready()`); `window.__fixtureLogs` counts what the host opened, closed and listens to
+//   ?counts=late      the skeleton declares no count slot (the entries' counts arrive in a row that had none): the probe's negative control for a plugin that does not hold the slot
 //
 // `window.__ticks` counts the timer of the page `clock` per plugin: a page that is hidden must not run it. `window.__commits` lists every commit of the tree (React's profiler; the probe builds
 // this entry with the profiling build of React DOM). `window.__host` is the `PluginStore`.
@@ -26,7 +27,7 @@ import '../../global.css';
 import { ThemeProvider, type IconName } from '@omniviewdev/kit';
 import { Profiler, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { ContextV1, ContributionV1, ListPageViewV1, PageV1, PanelHostV1, SidebarNodeV1 } from '../../plugins/contract/v1';
+import type { ContextV1, ContributionV1, ListPageViewV1, PageV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../../plugins/contract/v1';
 import { logTargetsOf } from '../../plugins/fixture/src/logs';
 import { streamsTool } from '../../plugins/fixture/src/panel';
 import { PluginHost } from '../../plugins/host/PluginHost';
@@ -178,35 +179,43 @@ function clockPage(plugin: string): PageV1 {
   });
 }
 
+// The entries that will have a count declare the slot in the skeleton (`count: null`, Q2a): it is held at the width of a count from the first frame, so a count that arrives moves nothing. `Clock` has no count and no slot.
+// `?counts=late` puts the slot in the skeleton of no entry: the probe's perturbation, the sidebar a plugin would have if the host did not hold the slot (a count then widens a row that had none, and its label gives way).
+const SLOT = params.get('counts') === 'late' ? undefined : null;
 const SKELETON: readonly SidebarNodeV1[] = [
   {
     id: 'group',
     label: 'Group',
     icon: 'layers',
     children: [
-      { id: 'widgets', label: 'Widgets', icon: 'box' },
-      { id: 'gadgets', label: 'Gadgets', icon: 'box' },
+      { id: 'widgets', label: 'Widgets', icon: 'box', ...(SLOT === null ? { count: null } : {}) },
+      { id: 'gadgets', label: 'Gadgets', icon: 'box', ...(SLOT === null ? { count: null } : {}) },
       { id: 'clock', label: 'Clock', icon: 'clock' },
     ],
   },
 ];
 
+// A real count has both shapes: an estimate for the list that has more than it read (`~25`), an exact number for the one it holds whole.
 const WITH_COUNTS: readonly SidebarNodeV1[] = [
   {
     id: 'group',
     label: 'Group',
     icon: 'layers',
     children: [
-      { id: 'widgets', label: 'Widgets', icon: 'box', count: ROWS },
+      { id: 'widgets', label: 'Widgets', icon: 'box', count: { value: ROWS, approximate: true } },
       { id: 'gadgets', label: 'Gadgets', icon: 'box', count: 1 },
       { id: 'clock', label: 'Clock', icon: 'clock' },
     ],
   },
 ];
 
-/** The sidebar's data hook: the skeleton stands until it answers. */
-function useCounts(): readonly SidebarNodeV1[] | undefined {
+/** The sidebar's data hook: the skeleton stands until it answers. `window.__sidebarOpen` lists what the host told it, in order: the groups of its tree that were open on screen (Q2a). */
+function useCounts({ open }: SidebarContextV1): readonly SidebarNodeV1[] | undefined {
   const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const told = (Reflect.get(window, '__sidebarOpen') as unknown[] | undefined) ?? [];
+    Reflect.set(window, '__sidebarOpen', [...told, open]);
+  }, [open]);
   useEffect(() => {
     const timer = setTimeout(() => {
       setReady(true);

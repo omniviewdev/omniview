@@ -36,6 +36,11 @@ export type ShellProps = {
    */
   readonly onChoose?: ((id: string, event: ModifierEvent | undefined) => void) | undefined;
   /**
+   * The groups of the sidebar's tree that are open on screen, and the rail entry whose tree it is (the owner): told when the tree mounts, each time the user opens or closes a group, and as none when the tree goes away.
+   * The host tells the plugin's sidebar hook, which asks for the counts of the entries that are on screen. Absent: nobody listens.
+   */
+  readonly onSidebarOpen?: ((owner: string | undefined, open: readonly string[]) => void) | undefined;
+  /**
    * An entry of the rail was chosen: its id. As with the tree, the shell does not switch anything itself: the host shows that entry's sidebar by registering it as `current`, and only then
    * is it selected. Choosing one closes no tab: tabs of several places stay open together.
    */
@@ -64,7 +69,7 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelectRail, onNewTab, onCloseWindow, panel, palette }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
@@ -84,7 +89,7 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSelec
         <TopRow prefix={prefix} panelId={panelId} onNewTab={onNewTab} />
         <div className={styles.frame} data-shell-part="frame" data-rail={hasRail ? '' : undefined} data-sidebar={hasSidebar ? '' : undefined}>
           {hasRail ? <Rail rail={rail} onSelect={onSelectRail} /> : null}
-          {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} /> : null}
+          {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} onOpen={onSidebarOpen} /> : null}
           <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
             {hasLane ? <ScopeLane label={scope === undefined || scope.length === 0 ? undefined : `${plugin.name} scope`} faces={scope ?? []} /> : null}
             {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text

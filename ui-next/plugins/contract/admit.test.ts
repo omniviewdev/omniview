@@ -106,10 +106,46 @@ describe('admit', () => {
     );
   });
 
-  it('refuses a count that is not a number', () => {
-    const value = contribution({ sidebar: sidebar({ nodes: [{ id: 'widgets', label: 'Widgets', icon: 'box', count: '3' }] }) });
+  // The count of an entry (Q2a, a minor addition to version 1, decided on the terms the contract's own comment gives): a plain number as it always was, an approximate count, and `null` for an entry that
+  // has a count slot and no number yet. Each is admitted in the static skeleton, where a bundle's sidebar is read before it runs; a host that predates the last two refuses them by name, for it
+  // reads a count as a number only, and so never draws a count of a shape it does not know.
+  it.each([
+    ['a number', 3],
+    ['zero', 0],
+    ['an approximate count', { value: 326, approximate: true }],
+    ['a slot with no number yet', null],
+  ])('admits %s as the count of an entry', (_name, count) => {
+    const value = contribution({ sidebar: sidebar({ nodes: [{ id: 'widgets', label: 'Widgets', icon: 'box', count }] }) });
 
-    expect(problemsOf(value)).toContain('sidebar.nodes[0].count is not a number');
+    expect(problemsOf(value)).toEqual([]);
+  });
+
+  it.each([
+    ['a text', '3'],
+    ['a boolean', true],
+    ['a list', [3]],
+    ['an object with no value', { approximate: true }],
+    ['an approximate count whose value is not a number', { value: '3', approximate: true }],
+    ['a count that says it is not approximate', { value: 3, approximate: false }],
+    ['a count that does not say whether it is approximate', { value: 3 }],
+  ])('refuses %s as the count of an entry, and says what a count may be', (_name, count) => {
+    const value = contribution({ sidebar: sidebar({ nodes: [{ id: 'widgets', label: 'Widgets', icon: 'box', count }] }) });
+
+    expect(problemsOf(value)).toContain('sidebar.nodes[0].count is not a number, null, or { value, approximate: true }');
+  });
+
+  it('admits a contribution written before the count had these shapes: a plain number on an entry, a hook that reads only the context every hook gets', () => {
+    // The bundle an older plugin ships: numbers only, and a sidebar hook of one parameter that knows nothing of the open groups.
+    const older = contribution({
+      sidebar: {
+        label: 'Acme navigation',
+        title: 'Acme',
+        nodes: [{ id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', count: 3 }] }],
+        useNodes: (context: { readonly plugin: string }) => (context.plugin === '' ? undefined : []),
+      },
+    });
+
+    expect(problemsOf(older)).toEqual([]);
   });
 
   it('reports at most eight problems, enough to fix a bundle', () => {

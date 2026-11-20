@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ContextV1, SidebarNodeV1 } from '../contract/v1';
+import type { ContextV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
@@ -511,6 +511,110 @@ describe('the sidebar\'s hook', () => {
 
     await user.click(screen.getByRole('button', { name: 'New tab' }));
     expect(hook).not.toHaveBeenCalled();
+  });
+});
+
+describe('the sidebar hook is told which groups are open, and what an entry may count', () => {
+  const base = acme().sidebar;
+  /** The hook of a sidebar that records what the host tells it: every context it was called with, in order. */
+  const recording = (answer: (context: SidebarContextV1) => readonly SidebarNodeV1[] | undefined = () => undefined) => {
+    const seen: SidebarContextV1[] = [];
+    const use = (context: SidebarContextV1) => {
+      seen.push(context);
+      return answer(context);
+    };
+
+    return { seen, contribution: acme({ sidebar: { ...base, useNodes: use } }) };
+  };
+
+  const group = (children: readonly SidebarNodeV1[]): readonly SidebarNodeV1[] => [{ id: 'group', label: 'Group', icon: 'layers', children }];
+
+  it('tells it the groups that are open on screen: the group of the page on screen is open when the tree mounts', () => {
+    const { seen, contribution } = recording();
+    mount([ready(contribution)]);
+
+    expect(seen.at(-1)?.open).toEqual(['group']);
+    expect(seen.at(-1)).toMatchObject({ plugin: 'acme', route: { page: 'widgets' } });
+  });
+
+  it('tells it again when the user closes the group, and when the user opens it', async () => {
+    const { seen, contribution } = recording();
+    const { user } = mount([ready(contribution)]);
+
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    expect(seen.at(-1)?.open).toEqual([]);
+
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    expect(seen.at(-1)?.open).toEqual(['group']);
+  });
+
+  it('gives it the same context, and the same list of groups, for as long as nothing it was told has changed: a render of the host is not a change', async () => {
+    const { seen, contribution } = recording();
+    const { again, user } = mount([ready(contribution)]);
+    const settled = seen.at(-1);
+    const calls = seen.length;
+
+    again({});
+    again({});
+
+    expect(seen.length).toBeGreaterThan(calls);
+    expect(seen.at(-1)).toBe(settled);
+    expect(seen.at(-1)?.open).toBe(settled?.open);
+
+    // A change of the groups is a change of the context, and nothing else is.
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    expect(seen.at(-1)).not.toBe(settled);
+    expect(seen.at(-1)?.open).not.toBe(settled?.open);
+    expect(seen.at(-1)).toMatchObject({ plugin: settled?.plugin, route: settled?.route });
+  });
+
+  it('tells it the groups sorted, so that the same groups opened in another order are the same list', async () => {
+    // The page on screen is in group `b`, so `b` is open first; the user then opens `a`. The list is not in the order they were opened in.
+    const seen: SidebarContextV1[] = [];
+    const nodes: readonly SidebarNodeV1[] = [
+      { id: 'a', label: 'A', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }] },
+      { id: 'b', label: 'B', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box' }] },
+    ];
+    const useNodes = (context: SidebarContextV1): undefined => {
+      seen.push(context);
+      return undefined;
+    };
+
+    const { user } = mount([ready(acme({ sidebar: { ...base, nodes, useNodes } }))]);
+    expect(seen.at(-1)?.open).toEqual(['b']);
+
+    await user.click(screen.getByRole('treeitem', { name: 'A' }));
+    expect(seen.at(-1)?.open).toEqual(['a', 'b']);
+  });
+
+  it('draws what the hook answers for an entry: a number, an approximate count, and a slot that has no number yet', () => {
+    const { contribution } = recording(() =>
+      group([
+        { id: 'widgets', label: 'Widgets', icon: 'box', count: 2 },
+        { id: 'gadgets', label: 'Gadgets', icon: 'box', count: { value: 1234, approximate: true } },
+      ]),
+    );
+    mount([ready(contribution)]);
+
+    expect(screen.getByRole('treeitem', { name: 'Widgets 2' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Gadgets about 1,234' })).toBeInTheDocument();
+  });
+
+  it('holds the slot of an entry whose count is null, and draws nothing in it', () => {
+    const { contribution } = recording(() => group([{ id: 'widgets', label: 'Widgets', icon: 'box', count: null }, { id: 'gadgets', label: 'Gadgets', icon: 'box' }]));
+    mount([ready(contribution)]);
+
+    expect(screen.getByRole('treeitem', { name: 'Widgets' }).querySelector('[data-shell-part="count"]')).toBeEmptyDOMElement();
+    expect(screen.getByRole('treeitem', { name: 'Gadgets' }).querySelector('[data-shell-part="count"]')).toBeNull();
+  });
+
+  it('still loads a plugin written before there were open groups and approximate counts: its hook ignores the new member and its plain numbers draw as they did', () => {
+    // A hook typed for the context every hook gets, as a plugin built against the first shape of this contract writes it.
+    const older = (context: ContextV1): readonly SidebarNodeV1[] | undefined => (context.plugin === 'acme' ? group([{ id: 'widgets', label: 'Widgets', icon: 'box', count: 12 }]) : undefined);
+    mount([ready(acme({ sidebar: { ...base, useNodes: older } }))]);
+
+    expect(screen.getByRole('treeitem', { name: 'Widgets 12' })).toBeInTheDocument();
+    expect(screen.getByText('alpha')).toBeInTheDocument();
   });
 });
 

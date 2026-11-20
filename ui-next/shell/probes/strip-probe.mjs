@@ -22,6 +22,12 @@
 //              reads 0; then with two plugins, the second of which registers 700 ms after the first and sorts after it or before it: the rail and the sidebar wait for every plugin (`held`), so no region
 //              and no entry of the rail moves (0 px), a tab already open included; a session of two tabs, the plugin of the one on screen registering late; the window with no session (the empty window,
 //              with no lane reserved for a tab that is not coming); a tab whose plugin is never installed (it stays and says so); and a text that cannot be used (kept aside, the window empty)
+//   arrival    a count that arrives in the sidebar moves nothing (Q2a, ch12 SB1: every collection row has a count slot): the entries declare the slot in the skeleton, and when the counts come (an estimate
+//              as "~25", an exact number as "1") every row's rectangle, its glyph's, its label's and the label's text are the ones they were, no label is cut that was not, the slot is where it was, and
+//              the layout-shift observer where the engine has one reads 0 over the arrival; the host tells the plugin's hook which groups of its tree are open on screen, and follows the user's clicks on one
+//   controls   NEGATIVE_CONTROL=<name> runs only `arrival` (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise) with one perturbation, which the probe must see: the exit code is 0 when it did.
+//              slot-width: the slot of a count holds no width (`min-inline-size: 0`, as a tree that does not hold it); slot-undeclared: the plugin's skeleton declares no slot (`?counts=late`). Without the
+//              assertions for a label's and a slot's rectangle neither is seen: every other check agrees with the perturbed page (the layout-shift observer reads 0 for both, the row and the glyph stand, and the digits are where the mock puts them)
 // Exit code 1 when anything differs.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -31,13 +37,20 @@ import { AXE, NATIVE_VIEWPORTS, SAMPLER, buildFixtures, open, serveFixtures, sle
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const reference = JSON.parse(readFileSync(path.join(here, 'mock-strip.json'), 'utf8'));
-const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
-const viewportNames = (process.env.VIEWPORTS ?? Object.keys(NATIVE_VIEWPORTS).join(',')).split(',');
+// The negative controls: one perturbation of what the sidebar does when its counts arrive, which the probe must see. With NEGATIVE_CONTROL the exit code is 0 when it did.
+const PERTURBATIONS = {
+  'slot-width': { expected: /^arrival .*: the label of "widgets" moved or was cut/ },
+  'slot-undeclared': { expected: /^arrival .*: the label of "widgets" moved or was cut/ },
+};
+const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
+if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
+const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
+const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(NATIVE_VIEWPORTS).join(',') : '1440x900')).split(',');
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const failures = [];
-const report = { parity: {}, states: {}, keyboard: {}, a11y: {}, counts: {}, keepAlive: {}, switchTimes: {}, load: {}, notes: [] };
+const report = { parity: {}, states: {}, keyboard: {}, a11y: {}, counts: {}, keepAlive: {}, switchTimes: {}, load: {}, arrival: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 
 const fixtureUrl = (origin, query) => `${origin}/shell/probes/fixture.html?${query}`;
@@ -539,6 +552,103 @@ async function load(browser, engine, viewportName, viewport, origin, query, labe
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+/** What the sidebar's rows are, by the id of their entry: the row, its glyph, its label and the label's text, the count slot and the digits in it, and whether the label is cut. Code that runs in the page. */
+const READ_ROWS = () => {
+  const r2 = (value) => Math.round(value * 100) / 100;
+  const rect = (el) => {
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    return [r2(box.x), r2(box.y), r2(box.width), r2(box.height)];
+  };
+  return Object.fromEntries(
+    [...document.querySelectorAll('[role=treeitem]')].map((row) => {
+      const label = row.children[1];
+      const slot = row.querySelector('[data-shell-part="count"]');
+      return [row.getAttribute('data-id'), { row: rect(row), glyph: rect(row.children[0]), label: rect(label), labelText: rect(label?.firstElementChild), slot: rect(slot), digits: rect(slot?.firstElementChild), text: slot === null ? null : (slot.querySelector('[aria-hidden="true"]') ?? slot).textContent, cut: label ? label.scrollWidth > label.clientWidth : false }];
+    }),
+  );
+};
+
+/**
+ * A count that arrives in the sidebar moves nothing (Q2a). The host fixture's plugin declares the slot of two entries in its skeleton (`count: null`) and answers `nodesMs` later with an estimate for one ("~25") and an exact
+ * number for the other ("1"); the third entry has no count and no slot. The rows are read before and after: the row, the glyph, the label and the label's text are the rectangles they were (0.01 px), the label is cut or not
+ * as it was, the slot is where it was, the layout-shift observer (Chromium) reads 0 over the arrival, and the digits end where the mock's count ends (7 px inside the row's end). The host's own report is read too: the
+ * groups of the tree that are open on screen are what the plugin's hook was told, and they follow the user's clicks on the group.
+ */
+async function arrival(browser, engine, viewportName, viewport, origin) {
+  const where = `arrival ${engine} ${viewportName}`;
+  const query = `nodesMs=1500&dataMs=50&loadMs=50&inventoryMs=20${CONTROL === 'slot-undeclared' ? '&counts=late' : ''}`;
+  const { page, context, errors } = await open(browser, hostUrl(origin, query), viewport, { init: `${SAMPLER}; window.__probeFrames = 600;` });
+  await page.waitForSelector('[role=treeitem][data-id="widgets"]');
+  // The perturbation of a tree that does not hold the slot, laid over the page once the entries are there.
+  if (CONTROL === 'slot-width') await page.addStyleTag({ content: '[data-shell-part="count"] { min-inline-size: 0 !important; }' });
+  await sleep(150);
+  const before = await page.evaluate(READ_ROWS);
+  if (before.widgets?.text !== '' && before.widgets?.text !== null) {
+    fail(where, `the counts had arrived (${JSON.stringify(before.widgets?.text)}) before the skeleton was read: the probe measured nothing`);
+    await context.close();
+    return;
+  }
+  await page.evaluate(() => {
+    window.__probe.layoutShift = window.__probe.layoutShift === null ? null : 0;
+    window.__probe.shiftSources = [];
+  });
+  await page.waitForFunction(() => (document.querySelector('[role=treeitem][data-id="widgets"] [data-shell-part="count"]')?.textContent ?? '') !== '', null, { timeout: 15_000 });
+  await sleep(400);
+  const after = await page.evaluate(READ_ROWS);
+  const shift = await page.evaluate(() => ({ layoutShift: window.__probe.layoutShift, shiftSources: window.__probe.shiftSources }));
+  report.arrival[`${engine} ${viewportName}`] = { before, after, ...shift };
+
+  const same = (a, b) => a !== null && b !== null && a.every((value, index) => Math.abs(value - b[index]) <= 0.01);
+  for (const id of ['widgets', 'gadgets', 'clock']) {
+    const was = before[id];
+    const now = after[id];
+    if (was === undefined || now === undefined) {
+      fail(where, `the entry "${id}" is not in the sidebar (${was === undefined ? 'before' : 'after'} its count arrived)`);
+      continue;
+    }
+    for (const part of ['row', 'glyph']) if (!same(was[part], now[part])) fail(where, `the ${part} of "${id}" moved when its count arrived: ${JSON.stringify(was[part])} then ${JSON.stringify(now[part])}`);
+    if (!same(was.label, now.label) || !same(was.labelText, now.labelText) || was.cut !== now.cut) {
+      fail(where, `the label of "${id}" moved or was cut when its count arrived: label ${JSON.stringify(was.label)} then ${JSON.stringify(now.label)}, its text ${JSON.stringify(was.labelText)} then ${JSON.stringify(now.labelText)}, cut ${String(was.cut)} then ${String(now.cut)}`);
+    }
+    if ((was.slot === null) !== (now.slot === null) || (was.slot !== null && now.slot !== null && !same(was.slot, now.slot))) fail(where, `the count slot of "${id}" moved or was resized when its count arrived: ${JSON.stringify(was.slot)} then ${JSON.stringify(now.slot)}`);
+  }
+  // What was drawn: "~25" (an estimate: the tilde is drawn, the digits are the grouped number), "1", and nothing for the entry that has no slot.
+  const wanted = { widgets: '~25', gadgets: '1', clock: null };
+  if (CONTROL === '') {
+    for (const [id, text] of Object.entries(wanted)) if (after[id]?.text !== text) fail(where, `the count of "${id}" reads ${JSON.stringify(after[id]?.text)}, wanted ${JSON.stringify(text)}`);
+    if (before.widgets?.slot === null || before.gadgets?.slot === null) fail(where, 'the slot was not there before the count arrived: the skeleton declares it and the host holds it from the first frame');
+    if (before.clock?.slot !== null || after.clock?.slot !== null) fail(where, 'an entry that declares no count has a slot');
+    // The digits end where the mock's count ends: the mock's row ends 7 px after its count (row padding), and so does this row (its last track).
+    for (const id of ['widgets', 'gadgets']) {
+      const row = after[id]?.row;
+      const digits = after[id]?.digits;
+      if (row === null || row === undefined || digits === null || digits === undefined || Math.abs(row[0] + row[2] - 7 - (digits[0] + digits[2])) > 1) fail(where, `the digits of "${id}" do not end 7 px inside the row: row ${JSON.stringify(row)}, digits ${JSON.stringify(digits)}`);
+    }
+    if (shift.layoutShift !== null && shift.layoutShift > 0) fail(where, `layout shift ${shift.layoutShift} from ${shift.shiftSources.join(', ')} while the counts arrived`);
+    if (shift.layoutShift === null) report.notes.push(`${where}: no layout-shift observer in this engine; the rectangles above are what it checks`);
+  }
+
+  // The host tells the plugin's hook which groups are open on screen, and follows the user: the group of the page on screen is open when the tree mounts, a click on it closes it, a second opens it. The list
+  // changes only when the groups do (a render of the host is not a change): no list is told twice in a row.
+  if (CONTROL === '') {
+    const told = () => page.evaluate(() => window.__sidebarOpen ?? []);
+    const waitFor = (list) => page.waitForFunction((wanted) => JSON.stringify((window.__sidebarOpen ?? []).at(-1)) === wanted, JSON.stringify(list), { timeout: 5000 }).then(() => true, () => false);
+    if (!(await waitFor(['group']))) fail(where, `the hook was not told that the group of the page on screen is open: ${JSON.stringify(await told())}`);
+    await page.getByRole('treeitem', { name: 'Group' }).click();
+    if (!(await waitFor([]))) fail(where, `the hook was not told that the group was closed: ${JSON.stringify(await told())}`);
+    if ((await page.locator('[role=treeitem][data-id="widgets"]').count()) !== 0) fail(where, 'the entries of a closed group are on screen');
+    await page.getByRole('treeitem', { name: 'Group' }).click();
+    if (!(await waitFor(['group']))) fail(where, `the hook was not told that the group was opened again: ${JSON.stringify(await told())}`);
+    const list = await told();
+    report.arrival[`${engine} ${viewportName}`].told = list;
+    if (list.some((open, index) => index > 0 && JSON.stringify(open) === JSON.stringify(list[index - 1]))) fail(where, `the hook was told the same groups twice in a row: ${JSON.stringify(list)}`);
+  }
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 const production = await serveFixtures(buildFixtures('production'));
 const development = await serveFixtures(buildFixtures('development'));
 const axe = readFileSync(AXE, 'utf8');
@@ -547,6 +657,10 @@ for (const engineName of engineNames) {
   const browser = await (engineName === 'chromium' ? ENGINES.chromium.launch({ args: ['--font-render-hinting=none'] }) : ENGINES[engineName].launch());
   for (const viewportName of viewportNames) {
     const viewport = NATIVE_VIEWPORTS[viewportName];
+    if (CONTROL !== '') {
+      await arrival(browser, engineName, viewportName, viewport, production.origin);
+      continue;
+    }
     await parity(browser, engineName, viewportName, viewport, production.origin);
     await states(browser, engineName, viewportName, viewport, production.origin);
     await keyboard(browser, engineName, viewportName, viewport, production.origin);
@@ -554,6 +668,7 @@ for (const engineName of engineNames) {
     await counts(browser, engineName, viewportName, viewport, development.origin);
     await keepAlive(browser, engineName, viewportName, viewport, production.origin);
     await switchTimes(browser, engineName, viewportName, viewport, production.origin);
+    await arrival(browser, engineName, viewportName, viewport, production.origin);
     const here = (query, label, expected) => load(browser, engineName, viewportName, viewport, production.origin, query, label, expected);
     // A window restored from a session with one tab (the host fixture's default): the tab is in the strip in the first frame, and the plugin loads after it.
     await here('', 'a frame with a lane', { rail: ['Alpha*'], sidebar: 'Alpha navigation' });
@@ -578,6 +693,12 @@ production.server.close();
 development.server.close();
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({ counts: report.counts, switchTimes: report.switchTimes, parityWorst: Object.fromEntries(Object.entries(report.parity).map(([key, value]) => [key, value.worst])), notes: report.notes.slice(0, 12) }, null, 1));
+if (CONTROL !== '') {
+  const detected = failures.filter((line) => PERTURBATIONS[CONTROL].expected.test(line));
+  console.log(`\nwhat the probe saw with the perturbation "${CONTROL}": ${failures.length} differences\n${failures.map((line) => `  ${line}`).join('\n')}`);
+  console.log(detected.length > 0 ? `\nNEGATIVE CONTROL "${CONTROL}": detected (${detected.length} differences, e.g. ${detected[0]})` : `\nNEGATIVE CONTROL "${CONTROL}": NOT DETECTED (${failures.length} other failures)`);
+  process.exit(detected.length > 0 ? 0 : 1);
+}
 if (failures.length > 0) {
   console.error(`\n${failures.length} failures:\n${failures.map((line) => `  ${line}`).join('\n')}`);
   process.exit(1);

@@ -31,7 +31,7 @@ import {
   type TabsStore,
 } from '../../shell';
 import { openable } from '../contract/admit';
-import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
+import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { ContributionBoundary } from './ContributionBoundary';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
 import { createLinkHandler } from './links';
@@ -86,6 +86,10 @@ export type PluginHostProps = {
 type Host = {
   readonly frames: Published<FrameV1>;
   readonly nodes: Published<readonly SidebarNodeV1[] | null>;
+  /** The groups of each plugin's sidebar that are open on screen, by plugin: what the plugin's sidebar hook is told (`SidebarContextV1.open`). Nothing is held for a plugin whose tree is not on screen. */
+  readonly sidebarOpen: Published<readonly string[]>;
+  /** What the shell's tree tells the host: the rail entry whose tree it is, and the groups of it that are open on screen. */
+  readonly reportSidebarOpen: (owner: string | undefined, open: readonly string[]) => void;
   /** The route each plugin was last shown at, by plugin: where its sidebar picks up when the rail shows it while another plugin's tab is on screen. */
   readonly routes: Published<Route>;
   readonly tabs: TabsStore;
@@ -111,6 +115,7 @@ type Host = {
 function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
+  const sidebarOpen = new Published<readonly string[]>();
   const contributions = createContributions({ plugins, frames });
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
@@ -120,6 +125,12 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   return {
     frames,
     nodes,
+    sidebarOpen,
+    reportSidebarOpen: (owner, open) => {
+      if (owner !== undefined) {
+        sidebarOpen.publish(owner, open);
+      }
+    },
     routes,
     tabs,
     panel: store,
@@ -412,17 +423,27 @@ function HostPage({ entries, route, pluginName, frames, tabs, platform, inventor
 type NodesProps = {
   readonly plugin: string;
   readonly route: Route;
-  readonly useNodes: (context: ContextV1) => readonly SidebarNodeV1[] | undefined;
+  readonly useNodes: (context: SidebarContextV1) => readonly SidebarNodeV1[] | undefined;
   readonly nodes: Published<readonly SidebarNodeV1[] | null>;
+  /** The groups of each plugin's sidebar that are open on screen: the plugin's own are what its hook is told. */
+  readonly open: Published<readonly string[]>;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
 };
 
-/** Runs the sidebar's data hook for the plugin on the rail, and publishes what it answers: nothing until it answers, and the skeleton stands. It draws nothing. */
-function NodesSource({ plugin, route, useNodes, nodes, panelHost }: NodesProps) {
+/** The groups open on screen while the tree has told the host none, and before it has: no group is open, and the entries of no group are on screen. One list, so that nothing that reads it sees a change. */
+const NONE_OPEN: readonly string[] = [];
+
+/**
+ * Runs the sidebar's data hook for the plugin on the rail, and publishes what it answers: nothing until it answers, and the skeleton stands. It draws nothing. The hook is told the context every hook of the plugin
+ * gets and, as well, which groups of its tree are open on screen (the entries of a group that is closed are not on screen, and the hook has no reason to ask for what they count). The context is the same object for as long
+ * as the plugin, the page, the connection and the open groups are the same, and the open groups are the same list until the set of them changes, so a hook may use either as a dependency.
+ */
+function NodesSource({ plugin, route, useNodes, nodes, open, panelHost }: NodesProps) {
   const page = route.contribution;
   const connection = connectionOf(route);
-  const answer = useNodes(useMemo<ContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS }, panel: panelHost }), [plugin, page, connection, panelHost]));
+  const expanded = useSyncExternalStore(open.subscribe, () => open.get(plugin) ?? NONE_OPEN);
+  const answer = useNodes(useMemo<SidebarContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS }, panel: panelHost, open: expanded }), [plugin, page, connection, panelHost, expanded]));
   useLayoutEffect(() => {
     nodes.publish(plugin, answer ?? null);
   }, [nodes, plugin, answer]);
@@ -650,7 +671,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     <>
       {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
         <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={nodes} />}>
-          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} panelHost={panelHosts(shown.id)} />
+          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id)} />
         </ContributionBoundary>
       ) : null}
       <Shell
@@ -672,6 +693,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         )}
         empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open })}
         onChoose={choose}
+        onSidebarOpen={host.reportSidebarOpen}
         onSelectRail={selectRail}
         onNewTab={newTab}
         onCloseWindow={onCloseWindow}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { press, revealed, stopOf, toggled, visibleRows, type TreeLike } from './tree';
+import { expandedIds, press, revealed, stopOf, toggled, visibleRows, type TreeLike } from './tree';
 
 // Two groups and a lone entry, one level of nesting deeper in the second group: enough shape for every rule, none of a real screen.
 const nodes: readonly TreeLike[] = [
@@ -40,6 +40,26 @@ describe('visibleRows', () => {
   it('treats a group with no children as an entry', () => {
     const rows = visibleRows([{ id: 'empty', children: [] }], set('empty'));
     expect(rows).toEqual([expect.objectContaining({ id: 'empty', expandable: false, expanded: false })]);
+  });
+});
+
+describe('expandedIds (the groups on screen that are open)', () => {
+  const expanded = (open: ReadonlySet<string>) => expandedIds(visibleRows(nodes, open));
+
+  it('lists the groups that are open, sorted: the same groups are the same list in whatever order they were opened', () => {
+    expect(expanded(set())).toEqual([]);
+    expect(expanded(set('gamma', 'alpha'))).toEqual(['alpha', 'gamma']);
+    expect(expanded(set('alpha', 'gamma'))).toEqual(['alpha', 'gamma']);
+  });
+
+  it('does not list a group that is open inside a group that is closed: none of its entries is on screen', () => {
+    expect(expanded(set('gamma-1'))).toEqual([]);
+    expect(expanded(set('alpha', 'gamma-1'))).toEqual(['alpha']);
+    expect(expanded(set('gamma', 'gamma-1'))).toEqual(['gamma', 'gamma-1']);
+  });
+
+  it('does not list an entry that has no children, whatever the open set says', () => {
+    expect(expanded(set('beta', 'alpha-1'))).toEqual([]);
   });
 });
 
