@@ -96,8 +96,9 @@ The host workspace includes its packages and E2E tooling; host TypeScript projec
 For standalone frontend checks, build providers, runtime, then the Vite plugin
 before type-aware linting; workspace imports need the runtime's declarations.
 The host declares its own interaction-test dependencies rather than relying on
-the UI repository's managed install. The existing UI checks job runs component
-tests after build, lint, and typechecks, reusing its runner and frozen install.
+the UI repository's managed install. The `UI checks` check aggregates parallel
+jobs; component tests run in the job `UI component tests`, which has its own
+frozen install and builds the workspace packages first.
 
 Workspace Probe's independent bootstrap pins select published base-ui `0.15.0`
 and runtime/Vite plugin `0.30.2`. Regenerate its manifest and lock together only
@@ -712,8 +713,10 @@ unchanged; an explicit cache override must be nonempty and absolute.
 
 Linux development headers remain required by the pinned Wails transitive cgo
 dependencies even for server builds. Linux native CI jobs use the prebuilt
-`ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1` container, refreshed weekly by
-`ci-image.yml`. E2E verifies the image's native and Chromium OS dependencies
+`ghcr.io/omniviewdev/omniview-ci` container: most still pull the tag
+`ubuntu24-v1`, which is no longer rebuilt, and the kit probe shards pull the
+digest in `.github/ci/image.lock`. `ci-image.yml` rebuilds the image weekly and
+when its inputs change. E2E verifies the image's native and Chromium OS dependencies
 without running APT. Browser binaries retain their exact-version payload cache.
 See [native toolchain maintenance](development-native-toolchain.md#ci-image-maintenance-and-runner-choice)
 for image updates, bootstrap requirements and runner security tradeoffs.

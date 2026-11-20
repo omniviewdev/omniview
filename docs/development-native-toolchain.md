@@ -30,7 +30,7 @@ generation or build Vite-plugin shims before the runtime package.
 ## Canonical Linux E2E prerequisites and payloads
 
 Linux native CI jobs run on fresh GitHub-hosted Ubuntu 24.04 runners inside
-`ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1`. The image contains GTK4, WebKit6,
+`ghcr.io/omniviewdev/omniview-ci`. Most jobs still pull the mutable tag `ubuntu24-v1`, which is no longer rebuilt; the current image is the digest in `.github/ci/image.lock` (tag `ubuntu24-<yyyymmdd>-<sha7>`), which the kit probe shards pull. The image contains GTK4, WebKit6,
 Wayland development headers, build tools, and the pinned Playwright Chromium OS
 dependencies. Jobs pull installed filesystem layers rather than downloading,
 validating and unpacking APT archives on each run.
@@ -173,7 +173,7 @@ Docker's `--init` reaps orphaned compiler/browser children. Without it, the
 runner's keepalive process becomes PID 1 and zombie processes can keep owned
 process groups present after teardown. Do not weaken group-exit assertions.
 
-The versioned `ubuntu24-v1` tag accepts weekly security refreshes. Job setup logs
+The tag `ubuntu24-v1` is no longer rebuilt. New images carry an immutable tag `ubuntu24-<yyyymmdd>-<sha7>`, are rebuilt weekly and when their inputs change (`.github/workflows/ci-image.yml`), and `.github/ci/image.lock` records the digest in use. Job setup logs
 record the resolved digest; retain that digest when comparing timings or
 diagnosing image regressions. Change the major image tag for incompatible
 toolchain changes. Update the image's Playwright pin with `e2e/package.json`;
@@ -217,7 +217,7 @@ Plain Go commands do not automatically select an unpublished companion SDK or co
 
 Implementation ownership: `main.go` composes startup and retains profile-lock ordering; `internal/hostruntime` owns Wails/platform configuration, native-store removal and server asset policy; `internal/devcontrol/host` owns control-service registration, lifecycle and observed endpoints. `internal/instance` remains native-independent so the workspace CLI can share profile policy. The frontend-bound `AppService` stays in `app.go`; control receives private snapshot callbacks rather than an exported mutation API.
 
-macOS PR and release artifacts share `build/darwin/build-universal.sh`: it builds CGO-enabled arm64 and amd64 executables, combines them, and verifies both slices before publishing the output. Bundle metadata is stamped in the staged app before signing: the numeric SemVer core becomes `CFBundleShortVersionString`, and the workflow run number becomes Apple-valid `CFBundleVersion`. Source plists are not rewritten by CI.
+macOS release artifacts and the `Main macOS universal` run on every push to `main` share `build/darwin/build-universal.sh`; the per-PR macOS build is a thin arm64 build on `macos-15` and does not use it. The script builds CGO-enabled arm64 and amd64 executables, combines them, and verifies both slices before publishing the output. Bundle metadata is stamped in the staged app before signing: the numeric SemVer core becomes `CFBundleShortVersionString`, and the workflow run number becomes Apple-valid `CFBundleVersion`. Source plists are not rewritten by CI.
 
 Homebrew publication uses named macOS release symbols, such as
 `depends_on macos: :monterey`, rather than deprecated comparison strings.
