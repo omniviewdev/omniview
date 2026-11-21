@@ -4,6 +4,7 @@ import type { ContextV1, DetailPageV1, DetailPageViewV1, DetailSection, DetailSo
 import { restartItem } from './failure';
 import styles from './fixture.module.css';
 import { modeOf, READ_MS } from './items';
+import { laneOf } from './lane';
 import { logCommandsOf } from './logs';
 
 // The fixture's detail page: one item, read by a hook that answers the state each item is built to be in (items.ts): loading for ever, not found, denied, an error that a Retry
@@ -189,7 +190,7 @@ function useItem(context: ContextV1): DetailPageViewV1 {
   };
 
   const source = (state: DetailSource['state'], view: DetailView | undefined): DetailSource => ({ state, view, refreshing: false, refresh });
-  const scope = [{ label: 'Connection', icon: 'server' as const, text: context.route.connection ?? 'none' }];
+  const scope = laneOf(context.route.connection);
   if (!settled || mode === 'loading') {
     return { scope, source: source({ kind: 'loading' }, undefined) };
   }

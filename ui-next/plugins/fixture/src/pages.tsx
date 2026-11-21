@@ -5,6 +5,7 @@ import type { ContextV1, ListPageV1, ListPageViewV1, ListSource } from '../../co
 import { ItemLink } from './detail';
 import styles from './fixture.module.css';
 import { ITEMS, type Item } from './items';
+import { laneOf } from './lane';
 
 // The fixture's list pages. A plugin written the way a real one is: React, the kit and the runtime's curated entry from the host, its own CSS Module, its data hook in the page.
 // `items` lists the five items (items.ts), the name of each a link to its detail page (detail.tsx); its Theme column is the proof of one kit: `useTheme()` throws unless the plugin's kit
@@ -46,7 +47,7 @@ const COLUMNS: ReadonlyArray<DataTableColumn<Item>> = [
 const itemsFrame = (context: ContextV1): ListPageViewV1<Item>['frame'] => ({
   tab: { title: 'Items', icon: 'box' },
   path: ['Seam Fixture', 'Items'],
-  scope: [{ label: 'Connection', icon: 'server', text: context.route.connection ?? 'none' }],
+  scope: laneOf(context.route.connection),
 });
 
 /** The data hook of the page: React state, in the plugin, running in the host's React. */

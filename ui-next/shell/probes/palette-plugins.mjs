@@ -20,6 +20,9 @@
 //   aliases    (C1e, `?aliases=1`: the plugin's own providers stay quiet, so what answers is the host's pages source) a page found by the keyword its sidebar entry carries: `gz` is the keyword of Gadgets, and Gazebo is a
 //              decoy whose title holds its letters in one word. The page is in the list, it is the FIRST row (a loose match in a title used to outrank a keyword), nothing of the keyword is drawn on a row, and a plain Enter
 //              opens it in the tab on screen. The negative controls: `alias-ignored` (the host does not read the keyword) and `alias-loose` (the keyword ranks as a plain keyword did, below the decoy).
+//   connection (C1f, `?connection=1`: the plugin's own providers stay quiet) the connection a row says. The tab on screen is the detail page of an item read in a connection whose KEY is `north-57a082bd74`, and its scope lane
+//              says the NAME, `north`: the chips that narrow the palette say the name, the rows of Go to say `north · Group` and (a page in no group) `north`, the Tabs row says `north · Current tab`, and the key is in nothing
+//              the palette draws in any of those states: no text and no accessible name. The negative control: `connection-key` (a source of the host's own that says the key).
 //
 // The numbers go to `report.plugins["<engine> <viewport>"]`; `fail(where, what)` records what must hold and is never thrown.
 import { normalizeFont } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -116,7 +119,7 @@ const marked = (...names) => names;
 
 export async function plugins({ browser, engine, viewportName, viewport, production, development, report, fail, control, only, axe, shots }) {
   const where = `${engine} ${viewportName}`;
-  const result = { timeline: null, typing: null, focus: null, commits: null, shift: null, closed: null, states: null, aliases: null, seconds: {} };
+  const result = { timeline: null, typing: null, focus: null, commits: null, shift: null, closed: null, states: null, aliases: null, connection: null, seconds: {} };
   report.plugins ??= {};
   report.plugins[where] = result;
 
@@ -600,5 +603,45 @@ export async function plugins({ browser, engine, viewportName, viewport, product
     });
     result.aliases = { ...result.aliases, went };
     if (went.page !== 'gadgets' || went.tabs !== 1) fail(where, `plugins aliases: a plain Enter on the page a keyword names did not open it in the tab on screen: ${JSON.stringify(went)}`);
+  });
+
+  // 9. The connection a row says (C1f), through the host's own wiring (`?connection=1`). The tab on screen is the detail page of an item read in a connection whose KEY is `north-57a082bd74`, and its scope lane says the NAME,
+  // `north`. The palette says the name (its chips, the rows of Go to, the row of Tabs) and the key is in nothing it draws in any of those states: no text and no accessible name (the negative control `connection-key`: a
+  // source of the host's own that says the key).
+  await part('connection', production.origin, 'connection=1', {}, async (page) => {
+    const KEY = 'north-57a082bd74';
+    if (control === 'connection-key') await page.evaluate(() => window.__connectionFault());
+    /** Everything the dialog draws, and every accessible name in it. */
+    const drawn = () =>
+      page.evaluate(() => {
+        const dialog = document.querySelector('dialog');
+        return dialog === null ? [] : [dialog.innerText, ...[...dialog.querySelectorAll('[aria-label]')].map((node) => node.getAttribute('aria-label') ?? '')];
+      });
+    const kind = async (name) => {
+      await page.locator('dialog').getByRole('tab', { name, exact: true }).click();
+      await sleep(300);
+    };
+    const seen = [];
+    await openPalette(page);
+    const chips = await page.evaluate(() => document.querySelector('dialog [data-palette-part="chips"]')?.textContent ?? '');
+    seen.push(...(await drawn()));
+    if (!/north/.test(chips)) fail(where, `plugins connection: the chip that narrows the palette to the connection does not say its name: ${JSON.stringify(chips)}`);
+    // Without the chips the rows say the connection.
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Backspace');
+    await kind('Go to');
+    const places = (await listOf(page)).names;
+    seen.push(...(await drawn()));
+    for (const want of ['Page: Gadgets, north · Group', 'Page: Overview, north']) {
+      if (!places.includes(want)) fail(where, `plugins connection: no row of Go to says "${want}": ${JSON.stringify(places)}`);
+    }
+
+    await kind('Tabs');
+    const tabs = (await listOf(page)).names;
+    seen.push(...(await drawn()));
+    if (!tabs.some((name) => name?.startsWith('Tab: ') && name.endsWith('north · Current tab'))) fail(where, `plugins connection: the row of the tab on screen does not say the connection once, by its name: ${JSON.stringify(tabs)}`);
+    result.connection = { chips, places, tabs };
+    const keyed = seen.filter((text) => text.includes(KEY));
+    if (keyed.length > 0) fail(where, `plugins connection: the key of the connection is drawn (a text or an accessible name): ${JSON.stringify(keyed.map((text) => text.slice(0, 120)))}`);
   });
 }

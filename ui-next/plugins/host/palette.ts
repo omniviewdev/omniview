@@ -6,6 +6,7 @@ import {
   toggleChordText,
   togglePanel,
   type Contributions,
+  type Description,
   type OpenPalette,
   type PaletteBindings,
   type PaletteCandidate,
@@ -18,7 +19,7 @@ import {
 } from '../../shell';
 import { openable } from '../contract/admit';
 import { readKeywords } from '../contract/sidebarKeywords';
-import type { ContributionV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
+import type { ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { connectionOf, routeKey, type PluginSource } from './contributions';
 import { commandOf, providersOf, runCommand } from './paletteProviders';
 import type { PluginEntry } from './pluginStore';
@@ -58,6 +59,11 @@ export type HostPaletteDeps = {
   readonly onCloseWindow: (() => void) | undefined;
   /** Where each plugin was last shown. A page of a plugin that is not on screen opens at the connection that plugin was last used in, as the entries of its own sidebar do. Absent: no connection is carried. */
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
+  /**
+   * What each mounted page published for the frame around it, by `routeKey` (the host's `frames`): the scope lane is where the shell knows the NAME of a connection. A route carries a connection by its key, which is not for
+   * reading; the palette says the text of the lane's face labelled Connection, and no connection when none is known. Absent: no name is known, so no row says a connection.
+   */
+  readonly frames?: Published<FrameV1> | undefined;
   /** What each plugin may ask of the bottom panel: handed to the plugin's commands as `context.panel`. Absent: the commands are given none. */
   readonly panelHosts?: ((plugin: string) => PanelHostV1) | undefined;
   /** Hears the rows a plugin's provider answered that were left out, and why: a problem for its author, said once for each. Default: the console. */
@@ -192,13 +198,13 @@ function tellApart(rows: PaletteCandidate[], owners: ReadonlyMap<number, string>
  * not the plugin's name again. The sidebar's entry for the home is not a second row: its label is said by the home instead, when the home had nothing to say, and found by it, and so are its keywords.
  *
  * A page's row says where it is as the design lab's kind rows do (`shell-search.js`, `connectionRows`: `where(place)` is the connection and a place, or the place alone): the groups it sits in ("Workloads"), with the
- * connection it opens in before them unless a chip has narrowed the palette to that connection (it says it); a page that sits in no group says the connection alone, chip or none (the design lab says "Cluster" there: a group
- * only its plugin can name, so the host makes none up), and the plugin's name only for a page with neither. Rows of different plugins that would read alike are told apart (`tellApart`). One route is one row, as in the design lab
+ * connection it opens in before them, by its NAME (`connectionNameOf`: never the key the route carries), unless a chip has narrowed the palette to that connection (it says it); a page that sits in no group says the connection
+ * alone, chip or none (the design lab says "Cluster" there: a group only its plugin can name, so the host makes none up), and the plugin's name only for a page with neither. A connection no lane names is not said. Rows of different plugins that would read alike are told apart (`tellApart`). One route is one row, as in the design lab
  * (`gotoCandidates`: "the same destination offered twice is one row that keeps the context and the keywords either one gave"): an entry the sidebar names twice is listed once, with the keywords and the group names of both and the first group there was to say. The open tab
  * of a page is a row of the tabs source besides, and not this one's business. The keywords of an entry are the other names its page is known by (`contract/sidebarKeywords.ts`): the row's aliases, which the model
  * ranks as names and never draws.
  */
-function pagesOf({ tabs, plugins, contributions, nodes, remembered }: HostPaletteDeps, scope: PaletteScope, tell: Tell): PaletteCandidate[] {
+function pagesOf({ tabs, plugins, contributions, nodes, frames, remembered }: HostPaletteDeps, scope: PaletteScope, tell: Tell): PaletteCandidate[] {
   const only = scope.plugin;
   const entries = plugins.getSnapshot();
   const rail = railOf(entries);
@@ -213,10 +219,13 @@ function pagesOf({ tabs, plugins, contributions, nodes, remembered }: HostPalett
     // A page of a plugin that is not on screen opens at the connection that plugin was last used in (the tab model gives a page the connection of the tab it is opened from, and that tab is another plugin's).
     const last = onScreen === entry.id ? undefined : remembered?.(entry.id);
     const connection = last === undefined ? undefined : connectionOf(last);
-    // The connection the page opens in (the tab on screen's, when the plugin is on screen). A row says it before its groups unless a chip has narrowed the palette to that connection and says it already (a palette keeps its
-    // chips when the tab moves on, so a chip of another connection does not say it); a page that sits in no group says it whatever the chip says, as there is nothing else for it to say.
-    const opensIn = onScreen === entry.id && active !== undefined ? connectionOf(active) : connection;
-    const said = scope.scope !== null && scope.scope.id === opensIn ? undefined : opensIn;
+    // The route the page opens from: the tab on screen's when the plugin is on screen, else the one the plugin was last shown at. Its connection is a KEY, which a chip may already name (the chip's id); what a row says is the NAME the
+    // page's lane gave it, and no connection when none is known. A row says it before its groups unless a chip has narrowed the palette to that connection and says it already (a palette keeps its chips when the tab moves on,
+    // so a chip of another connection does not say it); a page that sits in no group says it whatever the chip says, as there is nothing else for it to say.
+    const from = onScreen === entry.id ? active : last;
+    const opensIn = from === undefined ? undefined : connectionOf(from);
+    const opensAs = connectionNameOf(frames, from);
+    const said = scope.scope !== null && scope.scope.id === opensIn ? undefined : opensAs;
     const name = entry.phase === 'ready' ? entry.contribution.plugin.name : entry.name;
     const input = contributions.home?.(entry.id);
     const home = input === undefined ? undefined : normaliseRoute(input);
@@ -267,7 +276,7 @@ function pagesOf({ tabs, plugins, contributions, nodes, remembered }: HostPalett
         icon: node.icon,
         tone: 'neutral',
         route,
-        context: groups.length === 0 ? (opensIn ?? name) : placesOf([said ?? '', groups.join(' › ')]) || name,
+        context: groups.length === 0 ? (opensAs ?? name) : placesOf([said ?? '', groups.join(' › ')]) || name,
         keywords: wordsOf([name, ...places]),
         aliases: wordsOf(words),
         order: rows.length,
@@ -279,11 +288,33 @@ function pagesOf({ tabs, plugins, contributions, nodes, remembered }: HostPalett
 }
 
 /**
+ * The name a person knows the connection of a route by, as the shell already has it: the text of the face labelled Connection in the scope lane the page at `route` published (`frames`; `FrameV1.scope`, the lane the shell draws above
+ * the page). A route carries a connection by its KEY, a plugin's own id for it (`kind-kind-57a082bd74`), which is not for reading and which the palette never says. The contract does not say which face is the connection, so it is the one
+ * the plugins label Connection (the design lab's lane does); a plugin whose lane labels it otherwise has no name here. `undefined` when none is known: the page published no lane, or none of its faces says a connection, or it was
+ * never drawn in this window. A row then says no connection.
+ */
+function connectionNameOf(frames: Published<FrameV1> | undefined, route: Route | undefined): string | undefined {
+  const lane: unknown = route === undefined ? undefined : frames?.get(routeKey(route))?.scope;
+  if (!Array.isArray(lane)) {
+    return undefined;
+  }
+
+  for (const face of lane as readonly unknown[]) {
+    if (typeof face === 'object' && face !== null && 'label' in face && 'text' in face && typeof face.label === 'string' && typeof face.text === 'string' && face.label.trim().toLowerCase() === 'connection') {
+      const text = face.text.trim();
+      return text === '' ? undefined : text;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * The rows of the tabs source: each open tab in the strip's order, naming the tab as the tab model does and carrying its route, so a tab of a plugin that did not load is Degraded. Where it is
  * reads as the design lab's does: the crumbs of its path between the plugin's name and the page's own title, then its scope, and the tab on screen is marked. The mark is drawn and never
  * matched, so a search for those words does not find the one tab that holds them.
  */
-function tabsOf({ tabs, plugins }: HostPaletteDeps, only: string | null): PaletteCandidate[] {
+function tabsOf({ tabs, plugins, frames }: HostPaletteDeps, only: string | null): PaletteCandidate[] {
   const state = tabs.getSnapshot();
   const rows: PaletteCandidate[] = [];
   const installed = new Set(plugins.getSnapshot().map((entry) => entry.id));
@@ -296,12 +327,15 @@ function tabsOf({ tabs, plugins }: HostPaletteDeps, only: string | null): Palett
 
     const { route } = tab.location;
     const { pluginName } = tab.face;
-    const above = identity.path.slice(0, -1).map((crumb) => crumb.label);
+    // The tab model makes the scope's label and, for a detail page, a crumb of the path from the route, so both hold the connection's KEY. The row says the connection by the NAME the page's lane gave, once, or says none.
+    const key = connectionOf(route);
+    const named = connectionNameOf(frames, route);
+    const above = identity.path.slice(0, -1).flatMap((crumb) => (key !== undefined && crumb.label === key ? (named === undefined ? [] : [named]) : [crumb.label]));
     if (above[0]?.toLowerCase() === pluginName.toLowerCase()) {
       above.shift();
     }
 
-    const where = placesOf([above.join(' › '), tab.face.scope?.label ?? '']);
+    const where = placesOf([above.join(' › '), named ?? '']);
     rows.push({
       id,
       kind: 'tab',
@@ -416,7 +450,35 @@ function activeRoute(tabs: TabsStore): Route | undefined {
  * calls `attach` once it is on screen.
  */
 export function createHostPalette(deps: HostPaletteDeps): HostPalette {
-  const { tabs, plugins, contributions, nodes, platform } = deps;
+  const { tabs, plugins, contributions, nodes, frames, platform } = deps;
+  /**
+   * What the model is told of a place when it lists Recent: the plugin's description, with the connection said by its NAME. The tab model makes the description's scope, and a detail page's path crumb, from the route, so they hold
+   * the connection's KEY; here they say the name the page's lane gave, and nothing when none is known. A route that carries no key has nothing made from one, but its page's lane still says which connection it is read in, as Go to
+   * and Tabs say it: Recent says it too, in a scope that has no key (there is none to give).
+   */
+  const described = (route: Route): Description | undefined => {
+    const description = contributions.describe(route);
+    if (description === undefined) {
+      return undefined;
+    }
+
+    const key = connectionOf(route);
+    const named = connectionNameOf(frames, route);
+    if (key === undefined) {
+      return named === undefined ? description : { ...description, scope: { id: '', label: named } };
+    }
+
+    const path = description.path?.flatMap((crumb) => {
+      const label = typeof crumb === 'string' ? crumb : crumb.label;
+      if (label !== key) {
+        return [crumb];
+      }
+
+      return named === undefined ? [] : [typeof crumb === 'string' ? named : { ...crumb, label: named }];
+    });
+    return { ...description, path, scope: named === undefined ? undefined : { id: key, label: named } };
+  };
+
   const announcer = createAnnouncer();
   const store = createPaletteStore({
     // What the tab model made of the open (the route with the connection the tab was given) is what is remembered, whichever tab it opened, so a place is remembered as it was reached and not as its row named it.
@@ -434,7 +496,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     recordOpens: false,
     activate: tabs.activate,
     availability: contributions.availability,
-    describe: contributions.describe,
+    describe: described,
     announce: announcer.announce,
     platform,
     // `windows` is not passed: the shell has no second window, so the footer does not say New window and Shift+Enter is refused with the reason, until a step builds one.
@@ -598,7 +660,11 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     }
 
     const pluginIcon = railOf(entries).find((candidate) => candidate.id === entry.id)?.icon;
-    return { current: tab.location.route, scope: seedChips({ plugin: entry.id, pluginName: entry.contribution.plugin.name, pluginIcon, scope: tab.face.scope }) };
+    const { scope } = tab.face;
+    // The chips say the connection by its name; its key stays the chip's id, which is what a plugin's provider is asked with. With no name known the palette is narrowed to the plugin alone: a chip would have to say the key.
+    const named = connectionNameOf(frames, tab.location.route);
+    const chips = seedChips({ plugin: entry.id, pluginName: entry.contribution.plugin.name, pluginIcon, scope: scope === undefined ? undefined : { id: scope.id, label: named ?? scope.label } });
+    return { current: tab.location.route, scope: named === undefined ? chips.slice(0, 1) : chips };
   };
 
   const attach = (): (() => void) => {
@@ -636,6 +702,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
         refresh();
       }),
       nodes.subscribe(refresh),
+      ...(frames === undefined ? [] : [frames.subscribe(refresh)]),
     ];
     return () => {
       for (const stop of stops) {

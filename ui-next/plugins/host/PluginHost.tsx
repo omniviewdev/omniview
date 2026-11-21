@@ -145,7 +145,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
     notices,
   };
 }

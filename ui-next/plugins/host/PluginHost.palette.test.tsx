@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, type PanelStore } from '../../shell';
-import type { PaletteCommandV1, PaletteProviderV1, PaletteRowV1, PaletteV1, SidebarNodeV1 } from '../contract/v1';
+import type { ContextV1, PaletteCommandV1, PaletteProviderV1, PaletteRowV1, PaletteV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, startedOn, widgetPage } from '../testing';
 import * as palette from './palette';
 import { PluginHost } from './PluginHost';
@@ -445,5 +445,45 @@ describe('the keywords of a plugin\'s sidebar, through the window', () => {
     await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
     const said = warn.mock.calls.map((call) => String(call[0]));
     expect(said).toEqual(['[palette] acme:sidebar: sidebar entry "gadgets": keyword 1 is not a word of 1 to 32 characters, with no white space in it: it is left out']);
+  });
+});
+
+// The connection a row says (C1f), through the real window: the host hands the palette the frames its pages published, so a page whose lane names the connection `north` makes the palette say `north` for a route that carries the key.
+describe('the connection a row says, through the window', () => {
+  it('says the name the page\'s lane gives, in its chips and its rows, and the key the route carries is in nothing the palette draws', async () => {
+    const key = 'north-57a082bd74';
+    const named = (context: ContextV1) => {
+      const view = answering([], 'Gadgets')(context);
+      return { ...view, frame: { ...view.frame, scope: [{ label: 'Connection', icon: 'server' as const, text: 'north' }] } };
+    };
+
+    const plugin: PluginEntry = {
+      id: 'acme',
+      name: 'Acme plugin',
+      phase: 'ready',
+      contribution: acme({
+        sidebar: { label: 'Acme navigation', title: 'Acme', nodes: [{ id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box' }, { id: 'gadgets', label: 'Gadgets', icon: 'box' }] }] },
+        pages: { ...acme().pages, widgets: widgetPage('Widgets', named), gadgets: widgetPage('Gadgets', named) },
+      }),
+    };
+    const user = userEvent.setup();
+    const list = [plugin];
+    const source = { getSnapshot: () => list, subscribe: () => () => undefined };
+    render(<PluginHost plugins={source} inventory="ready" link={{ plugin: 'acme', page: 'gadgets', connection: key, params: {} }} onRetry={() => undefined} onRetryInventory={() => undefined} session={startedOn([plugin])} />);
+    await within(await screen.findByRole('group', { name: 'Acme scope' })).findByText('north');
+
+    await user.click(screen.getByRole('button', { name: /^Search/ }));
+    const drawn = (): string => {
+      const open = screen.getByRole('dialog');
+      return [open.textContent ?? '', ...[...open.querySelectorAll('[aria-label]')].map((node) => node.getAttribute('aria-label') ?? '')].join('\n');
+    };
+
+    expect(screen.getByRole('group', { name: 'Search scope' })).toHaveTextContent('north');
+    expect(drawn()).not.toContain(key);
+
+    // Without the chips the rows say the connection, by its name.
+    await user.keyboard('{Backspace}{Backspace}gadgets');
+    await screen.findByRole('option', { name: 'Page: Gadgets, north · Group' });
+    expect(drawn()).not.toContain(key);
   });
 });

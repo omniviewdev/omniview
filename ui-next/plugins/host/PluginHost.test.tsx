@@ -759,7 +759,7 @@ describe('a plugin that is not ready', () => {
     expect(container.querySelector('[data-shell-region="sidebar"]')).toBe(sidebar);
     expect(screen.getByRole('navigation', { name: 'Acme navigation' })).not.toHaveAttribute('aria-busy');
     expect(screen.getByRole('tree', { name: 'Acme navigation' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Acme scope' })).toHaveTextContent('Connection: none');
+    expect(screen.getByRole('group', { name: 'Acme scope' })).toHaveTextContent('Scope: none');
     expect(container.querySelector('[data-shell-part="lane"]')).not.toHaveAttribute('aria-hidden');
   });
 

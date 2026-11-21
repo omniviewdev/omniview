@@ -830,6 +830,42 @@ async function checkTwins(page, base, engine) {
   assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the twins wrote no page error`);
 }
 
+/**
+ * j3. The connection a row says (C1f), on the real host. The window is opened by an address that names a connection by its KEY (`#/fixture-a-ok/items?connection=north-57a082bd74`: the way a link does, in the shape the host's own keys
+ * have), and the fixture's page says its NAME in its scope lane (`north`, laneOf in the fixture). The palette says the name, in its chips and, once they are removed, in the rows of Go to and their accessible names, and the key is in
+ * nothing it draws: no text and no accessible name.
+ */
+async function checkConnection(page, base, engine) {
+  const key = 'north-57a082bd74';
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await open(page, base, `#/${OK}/items?connection=${key}`);
+  await page.getByRole('tab', { name: /^Items/ }).waitFor({ timeout: 30_000 });
+  // The lane is the page's: the palette is opened once it says the name.
+  await page.locator('[data-shell-part="lane"]').getByText('north', { exact: true }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  const dialog = page.getByRole('dialog', { name: 'Search' });
+  /** Everything the dialog draws and every accessible name in it. */
+  const drawn = () => dialog.evaluate((element) => [element.innerText, ...[...element.querySelectorAll('[aria-label]')].map((node) => node.getAttribute('aria-label') ?? '')].join('\n'));
+  await page.keyboard.press(`${mac ? 'Meta' : 'Control'}+KeyK`);
+  await dialog.waitFor();
+  const chips = dialog.locator('[data-palette-part="chips"]');
+  await chips.waitFor();
+  assert.match(await chips.innerText(), /north/, `${engine}: the chip that narrows the palette to the connection says its name`);
+  assert.ok(!(await drawn()).includes(key), `${engine}: the key of the connection is in nothing the palette draws with its chips: no text and no accessible name`);
+  // Without the chips the rows say the connection: by its name, and the key nowhere.
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('crash', { delay: 20 });
+  const crash = dialog.locator(`[data-palette-row*="${OK}:crash"]`);
+  await crash.waitFor();
+  assert.equal(await crash.getAttribute('aria-label'), 'Page: Crash, north · Things', `${engine}: a page row says the connection by its name`);
+  assert.ok(!(await drawn()).includes(key), `${engine}: and the key of the connection is in no row text and no accessible name`);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the connection scenario wrote no page error`);
+}
+
 /** The plugin's `retry` on the window's plugin store, which is where the window keeps it (the hooks of `PluginHostScreen`, reached from any element React drew): what a reload of a plugin's interface is. The store's entry goes to `loading` at once. */
 async function reloadPlugin(page, id) {
   const found = await page.evaluate((plugin) => {
@@ -2423,6 +2459,7 @@ try {
       await checkLogs(await freshPage(browser, host.base), host.base, name);
       await checkPalette(await freshPage(browser, host.base), host.base, name);
       await checkTwins(await freshPage(browser, host.base), host.base, name);
+      await checkConnection(await freshPage(browser, host.base), host.base, name);
       await checkProviders(await freshPage(browser, host.base), host.base, name);
       await checkKept(await freshPage(browser, host.base), host.base, name);
       await checkIdentity(await freshPage(browser, host.base), host.base, name);

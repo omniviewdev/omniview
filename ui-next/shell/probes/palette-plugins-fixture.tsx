@@ -9,6 +9,8 @@
 //   ?aliases=1   the plugin's sidebar is Group > Widgets, Gadgets (the keyword `gz`) and Gazebo (a title that holds the keyword's letters in one word), and the plugin's own providers stay quiet: what answers is the
 //                host's pages source, from the sidebar's keywords (C1e). `window.__aliasFault('ignored' | 'loose')` is the probe's negative control: the keyword is not the host's to read, or it ranks as a keyword did before
 //                an alias was a name (a source of the host's own that holds the same word as a keyword, below a loose match in a title)
+//   ?connection=1  (C1f; the plugin's own providers stay quiet) the tab on screen is the detail page of an item read in a connection whose KEY is `north-57a082bd74` (the shape the host's own keys have) and whose NAME, in the scope lane its
+//                page published, is `north`; the sidebar has a page in a group and a page in none. `window.__connectionFault()` is the probe's negative control: a source of the host's own that says the key
 //
 // `window.__palette` is the model's store; `window.__tabs` the tab model; `window.__plugin` takes a plugin's interface out of the live set (`unload(id)`, `fail(id)`) and brings it back (`reload(id)`, a new contribution, as a
 // reload of its bundle makes); `window.__commits` lists every commit of the tree (React's profiler: the probe builds this entry with the development build of React DOM for the counts); `window.__announced` lists what the
@@ -20,7 +22,7 @@ import { Profiler } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ContributionV1, DetailPageV1, FrameV1, SidebarNodeV1 } from '../../plugins/contract/v1';
 import { createFixturePalette } from '../../plugins/fixture/src/palette';
-import { createContributions, type PluginSource } from '../../plugins/host/contributions';
+import { createContributions, routeKey, type PluginSource } from '../../plugins/host/contributions';
 import { createHostPalette } from '../../plugins/host/palette';
 import type { PluginEntry } from '../../plugins/host/pluginStore';
 import { Published } from '../../plugins/host/published';
@@ -31,10 +33,14 @@ import { StaticShell, STATIC_RAIL } from '../testing';
 const params = new URLSearchParams(window.location.search);
 const number = (name: string, fallback: number): number => Number(params.get(name) ?? fallback);
 const ALIASES = params.get('aliases') === '1';
+const CONNECTION = params.get('connection') === '1';
+/** A connection as `?connection=1` has it: the key a route carries, and the name its page's lane says. */
+const KEY = 'north-57a082bd74';
+const NAME = 'north';
 
 // What the fixture's providers cost, and what they did: the control the plugin reads (plugins/fixture/src/palette.ts). Quiet providers are not asked until it exists, and here it exists from the first frame
 // (but with `?aliases=1`, where the plugin's providers stay quiet, so nothing answers but the host's own sources).
-if (!ALIASES) {
+if (!ALIASES && !CONNECTION) {
   Reflect.set(window, '__fixturePalette', {
     stats: {},
     commands: [],
@@ -65,11 +71,31 @@ const ALIAS_NODES: readonly SidebarNodeV1[] = [
   },
 ];
 
+/** The sidebar of `?connection=1`: a page in a group, and a page that sits in none (the design lab says "Cluster" for it; the host says the connection). */
+const CONNECTION_NODES: readonly SidebarNodeV1[] = [
+  { id: 'overview', label: 'Overview', icon: 'layers' },
+  {
+    id: 'group',
+    label: 'Group',
+    icon: 'layers',
+    children: [
+      { id: 'widgets', label: 'Widgets', icon: 'box' },
+      { id: 'gadgets', label: 'Gadgets', icon: 'box' },
+    ],
+  },
+];
+
 const contributionOf = (name: string): ContributionV1 =>
   acme({
     plugin: { name },
-    pages: { ...acme().pages, item: itemPage, ...(ALIASES ? { gazebo: widgetPage('Gazebo', answering([], 'Gazebo')) } : {}) },
+    pages: {
+      ...acme().pages,
+      item: itemPage,
+      ...(ALIASES ? { gazebo: widgetPage('Gazebo', answering([], 'Gazebo')) } : {}),
+      ...(CONNECTION ? { overview: widgetPage('Overview', answering([], 'Overview')) } : {}),
+    },
     ...(ALIASES ? { sidebar: { label: `${name} navigation`, title: name, nodes: ALIAS_NODES } } : {}),
+    ...(CONNECTION ? { sidebar: { label: `${name} navigation`, title: name, nodes: CONNECTION_NODES } } : {}),
     palette: createFixturePalette(name, (item) => ({ page: 'item', params: { name: item } }), { page: 'widgets', params: {} }),
   });
 
@@ -120,14 +146,33 @@ const frames = new Published<FrameV1>();
 const nodes = new Published<readonly SidebarNodeV1[] | null>();
 const contributions = createContributions({ plugins, frames });
 const tabs = createTabsStore({ contributions });
-tabs.open({ route: { plugin: WEST.id, contribution: 'widgets', params: params.get('scoped') === '1' ? { connection: 'north' } : {} } }, { how: 'new' });
+/** The page on screen: with `?connection=1` the detail page of an item read in the connection, else a list page, in a connection with `?scoped=1`. */
+const ON_SCREEN = CONNECTION
+  ? { plugin: WEST.id, contribution: 'item', params: { name: 'orders-api', connection: KEY } }
+  : { plugin: WEST.id, contribution: 'widgets', params: params.get('scoped') === '1' ? { connection: 'north' } : {} };
+tabs.open({ route: ON_SCREEN }, { how: 'new' });
 Reflect.set(window, '__tabs', tabs);
+if (CONNECTION) {
+  // What the detail page of the host publishes once it is drawn (PluginHost's DetailContribution), under the route of the tab it is drawn for: the tab, the path the host made from the route (it holds the key) and the lane the
+  // plugin's hook answered, which names the connection.
+  const state = tabs.getSnapshot();
+  const shown = state.active === null ? undefined : state.tabs[state.active]?.location.route;
+  if (shown !== undefined) {
+    const face = contributions.describe(shown);
+    frames.publish(routeKey(shown), {
+      tab: { title: face?.title ?? 'Item', icon: 'box' },
+      path: (face?.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)),
+      scope: [{ label: 'Connection', icon: 'server', text: NAME }],
+    });
+  }
+}
 
 const host = createHostPalette({
   tabs,
   plugins,
   contributions,
   nodes,
+  frames,
   panel: undefined,
   platform: platformOf(navigator),
   onCloseWindow: undefined,
@@ -158,6 +203,21 @@ Reflect.set(window, '__aliasFault', (fault: 'ignored' | 'loose'): void => {
       match: () => [{ id: 'gadgets', kind: 'page', title: 'Gadgets', context: 'Group', keywords: 'gadget gz', route: { plugin: WEST.id, contribution: 'gadgets' } }],
     });
   }
+});
+
+/**
+ * The probe's negative control for the connection a row says (`?connection=1`): a palette that says the key. A source of the host's own whose row for a page carries the route's connection parameter where the name belongs,
+ * which is what the pages source did before it read the name from the page's lane.
+ */
+Reflect.set(window, '__connectionFault', (): void => {
+  host.store.registerProvider({
+    id: 'probe:key',
+    plugin: 'host',
+    pluginName: 'Omniview',
+    title: 'Pages',
+    section: 'goto',
+    match: () => [{ id: 'gadgets', kind: 'page', title: 'Gadgets', context: `${KEY} · Group`, route: { plugin: WEST.id, contribution: 'gadgets', params: { connection: KEY } } }],
+  });
 });
 
 const announced: string[] = [];
