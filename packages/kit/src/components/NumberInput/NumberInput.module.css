@@ -1,0 +1,113 @@
+/* The number field (the mock's `.stepper.inp-group`, base.css 1802 to 1819, and `.inp-group`, 1803 to 1814): one face of the control height that holds
+   a decrease step, the field, the unit and an increase step, 4 px apart and 2 px inside the edge. The field is as wide as 20 characters of its
+   own face (the mock's is the default width of an input: 180 px in both engines, scaled with the text), so the group is as wide as its unit
+   needs and no more. The face is painted on the group: the ring is the group's while the field has the focus. */
+@layer ov.components {
+  .group {
+    --_border: var(--ov-border-control);
+    --_bg: var(--ov-bg-island);
+    --_fg: var(--ov-fg);
+    --_ring: var(--ov-accent);
+
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    width: fit-content;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--ov-control-height);
+    padding-inline: var(--ov-spacing-2);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_bg);
+    color: var(--_fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .group:focus-within {
+    --_border: var(--ov-bg-island);
+
+    outline: 2px solid var(--_ring);
+    outline-offset: 0;
+  }
+
+  .group:has([aria-invalid='true']) {
+    --_border: var(--ov-error-control-inactive);
+  }
+
+  .group:has([aria-invalid='true']):focus-within {
+    --_border: var(--ov-bg-island);
+    --_ring: var(--ov-error-control);
+  }
+
+  /* A read-only field and an unavailable one sit on the inline surface with a quiet edge (the mock's `:has(> input:is([readonly], [aria-disabled]))`);
+     an unavailable one dims its text as well. */
+  .group:has(> input[readonly]) {
+    --_bg: var(--ov-bg-inline);
+    --_border: var(--ov-border-subtle);
+  }
+
+  .group:has(> input[aria-disabled='true']) {
+    --_fg: var(--ov-fg-disabled);
+  }
+
+  /* The field itself has no face: the group has it. 20 characters of the code face, in tabular figures, centred, without the browser's spin buttons. */
+  .field {
+    flex: 0 1 auto;
+    box-sizing: border-box;
+    width: calc(180px * var(--ov-text-scale));
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--_fg);
+    font-family: var(--ov-font-code);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-variant-ligatures: none;
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: center;
+    outline: 0;
+    appearance: textfield;
+  }
+
+  .field::placeholder {
+    color: var(--ov-fg-muted);
+    opacity: 1;
+  }
+
+  .field::-webkit-inner-spin-button,
+  .field::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+
+  /* The steps are 24 px square whatever the density (the mock fixes them at 24 px; they are not row targets). */
+  .group > [data-ov-slot='decrease'],
+  .group > [data-ov-slot='increase'] {
+    flex: 0 0 24px;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    padding: 0;
+  }
+
+  .unit {
+    flex: 0 0 auto;
+    color: var(--ov-fg-muted);
+    white-space: nowrap;
+  }
+}

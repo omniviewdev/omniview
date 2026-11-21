@@ -25,9 +25,12 @@ const KIND_GLYPHS = [
 // P1b-4a: the Logs tool's toolbar adds the mock's pause (Int UI) and eraser (Lucide).
 const LOG_TOOLBAR_GLYPHS = ['eraser', 'pause'];
 
+// FM2a: the form parts add the number field's decrease step (Int UI), and the secret field's show and hide of the TYPED text (Int UI and Lucide).
+const FORM_GLYPHS = ['eye', 'eye-off', 'minus'];
+
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
-    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS].sort());
+    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS].sort());
   });
 
   it('is plain data: nothing in it is a function, a markup string or an element', () => {
@@ -96,7 +99,7 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 15,550: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs)', () => {
+  it('stays within its byte budget (one glyph 800 bytes, the registry 16,300: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -104,7 +107,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(15550);
+    expect(total).toBeLessThanOrEqual(16300);
   });
 
   it('draws the per-kind glyphs as the Lucide family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke', () => {

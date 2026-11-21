@@ -47,6 +47,8 @@ export type IconName =
   | 'database'
   | 'ellipsis'
   | 'eraser'
+  | 'eye'
+  | 'eye-off'
   | 'file-cog'
   | 'folder-tree'
   | 'gauge'
@@ -60,6 +62,7 @@ export type IconName =
   | 'list-ordered'
   | 'loader'
   | 'loader-circle'
+  | 'minus'
   | 'network'
   | 'panel-bottom'
   | 'pause'
@@ -165,6 +168,10 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   ellipsis: { box: 16, layers: [{ d: 'M2 8A1 1 0 1 0 4 8A1 1 0 1 0 2 8ZM7 8A1 1 0 1 0 9 8A1 1 0 1 0 7 8ZM12 8A1 1 0 1 0 14 8A1 1 0 1 0 12 8Z', fill: 'ink' }] },
   /* Lucide eraser (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuEraser. */
   eraser: { box: 24, layers: [{ d: 'M7 21l-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21M22 21H7M5 11l9 9', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Int UI general/show_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuEye. */
+  eye: { box: 16, layers: [{ d: 'M5.5 8A2.5 2.5 0 1 0 10.5 8A2.5 2.5 0 1 0 5.5 8ZM3.348 11.464C2.033 10.55 1.014 9.319 .53 8C1.014 6.681 2.033 5.45 3.348 4.535C4.714 3.585 6.366 3 8 3C9.634 3 11.286 3.585 12.652 4.535C13.967 5.45 14.986 6.681 15.47 8C14.986 9.319 13.967 10.55 12.652 11.464C11.286 12.415 9.634 13 8 13C6.366 13 4.714 12.415 3.348 11.464Z', stroke: 'ink' }] },
+  /* Lucide eye-off (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuEyeOff (the Int UI set has no closed eye). */
+  'eye-off': { box: 24, layers: [{ d: 'M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49M14.084 14.158a3 3 0 0 1-4.242-4.242M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143M2 2l20 20', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide file-cog (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuFileCog. */
   'file-cog': { box: 24, layers: [{ d: 'M14 2v4a2 2 0 0 0 2 2h4M3.2 12.9l-.9-.4M3.2 15.1l-.9.4M4.677 21.5a2 2 0 0 0 1.313.5H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v2.5M4.9 11.2l-.4-.9M4.9 16.8l-.4.9M7.5 10.3l-.4.9M7.5 17.7l-.4-.9M9.7 12.5l-.9.4M9.7 15.5l-.9-.4M3 14A3 3 0 1 0 9 14A3 3 0 1 0 3 14Z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide folder-tree (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuFolderTree. */
@@ -191,6 +198,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   loader: { box: 24, layers: [{ d: 'M12 2v4M16.2 7.8l2.9-2.9M18 12h4M16.2 16.2l2.9 2.9M12 18v4M4.9 19.1l2.9-2.9M2 12h4M4.9 4.9l2.9 2.9', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide loader-circle (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuLoaderCircle. */
   'loader-circle': { box: 24, layers: [{ d: 'M21 12a9 9 0 1 1-6.219-8.56', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Int UI general/remove_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuMinus. */
+  minus: { box: 16, layers: [{ d: 'M1 7.5C1 7.776 1.224 8 1.5 8L13.5 8C13.776 8 14 7.776 14 7.5C14 7.224 13.776 7 13.5 7L1.5 7C1.224 7 1 7.224 1 7.5Z', fill: 'ink', evenodd: true }] },
   /* Lucide network (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuNetwork. */
   network: { box: 24, layers: [{ d: 'M17 16H21A1 1 0 0 1 22 17V21A1 1 0 0 1 21 22H17A1 1 0 0 1 16 21V17A1 1 0 0 1 17 16ZM3 16H7A1 1 0 0 1 8 17V21A1 1 0 0 1 7 22H3A1 1 0 0 1 2 21V17A1 1 0 0 1 3 16ZM10 2H14A1 1 0 0 1 15 3V7A1 1 0 0 1 14 8H10A1 1 0 0 1 9 7V3A1 1 0 0 1 10 2ZM5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide panel-bottom (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPanelBottom. */

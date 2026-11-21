@@ -26,8 +26,8 @@ export const Status = () => (
 const ALL: readonly IconName[] = [
   'activity', 'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-up-wide-narrow', 'blocks', 'box', 'brick-wall', 'calendar-clock',
   'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle', 'circle-minus', 'clipboard-check', 'clock', 'close', 'columns', 'copy', 'cpu',
-  'database', 'ellipsis', 'eraser', 'file-cog', 'folder-tree', 'gauge', 'globe', 'hard-drive', 'hard-drive-download', 'hourglass', 'key-round', 'layers', 'layout-template',
-  'list-ordered', 'loader', 'loader-circle', 'network', 'panel-bottom', 'pause', 'play', 'plus', 'refresh', 'regex', 'repeat', 'rocket', 'ruler', 'scaling', 'scroll-text',
+  'database', 'ellipsis', 'eraser', 'eye', 'eye-off', 'file-cog', 'folder-tree', 'gauge', 'globe', 'hard-drive', 'hard-drive-download', 'hourglass', 'key-round', 'layers', 'layout-template',
+  'list-ordered', 'loader', 'loader-circle', 'minus', 'network', 'panel-bottom', 'pause', 'play', 'plus', 'refresh', 'regex', 'repeat', 'rocket', 'ruler', 'scaling', 'scroll-text',
   'search', 'search-x', 'server', 'server-cog', 'settings-2', 'shield', 'shield-check', 'split', 'status-error', 'status-info', 'status-success', 'status-warning',
   'target', 'umbrella', 'waypoints',
 ];

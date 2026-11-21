@@ -1,0 +1,86 @@
+/* The switch (the mock's `.switch-button` around `.sw`, base.css 1148 and 1674 to 1677): a transparent 34 by 24 px target that takes the
+   toolbar hover, around a 26 by 16 px pill. The knob moves by a transform, so a change moves no layout; there is no transition (design 04
+   section 9.4: no geometry transition anywhere). */
+@layer ov.components {
+  .root {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 34px;
+    min-width: 34px;
+    height: 24px;
+    min-height: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+
+  .root:not([aria-disabled='true']):hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .root:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* Unavailable for a reason: the disabled roles on the track and the knob; the switch stays focusable. */
+  .root[aria-disabled='true'] {
+    cursor: default;
+  }
+
+  /* Read-only is a fact (design 14 F-4): as legible as an enabled switch. Only the pointer says it cannot change. */
+  .root[aria-readonly='true'] {
+    cursor: default;
+  }
+
+  .root[aria-readonly='true']:hover {
+    background-color: transparent;
+  }
+
+  .track {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 26px;
+    height: 16px;
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-border-control);
+    pointer-events: none;
+  }
+
+  .track::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-start: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--ov-icon);
+  }
+
+  .root[aria-checked='true'] .track {
+    background-color: var(--ov-accent);
+  }
+
+  /* The knob moves by 10 px (the track less the knob, less its two edges) by transform. */
+  .root[aria-checked='true'] .track::after {
+    background-color: var(--ov-fg-over-accent);
+    transform: translateX(10px);
+  }
+
+  .root[aria-disabled='true'] .track {
+    background-color: var(--ov-border-disabled);
+  }
+
+  .root[aria-disabled='true'] .track::after {
+    background-color: var(--ov-icon-disabled);
+  }
+}

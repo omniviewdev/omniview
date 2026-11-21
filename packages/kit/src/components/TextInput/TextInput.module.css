@@ -1,0 +1,24 @@
+/* The width of a text field (the mock's `.settings-input`, shell-page-settings.css 45 to 47): 112, 280 and 320 px in a settings row, or the
+   width of its place, never wider than that place. A field in a grid cell does not stretch by itself, so `fill` says it. The face is the
+   shared one (../FormControl/control.module.css). */
+@layer ov.components {
+  .input {
+    max-width: 100%;
+  }
+
+  .input[data-ov-width='short'] {
+    width: 112px;
+  }
+
+  .input[data-ov-width='normal'] {
+    width: 280px;
+  }
+
+  .input[data-ov-width='wide'] {
+    width: 320px;
+  }
+
+  .input[data-ov-width='fill'] {
+    width: 100%;
+  }
+}

@@ -7,6 +7,7 @@ import * as collectionFooterModule from '../components/CollectionFooter/Collecti
 import * as dataTableModule from '../components/DataTable/DataTable.examples';
 import * as dataTableParityModule from '../components/DataTable/DataTable.parity.examples';
 import * as dataViewModule from '../components/DataView/DataView.examples';
+import * as fieldModule from '../components/Field/Field.examples';
 import * as hoverCardModule from '../components/HoverCard/HoverCard.examples';
 import * as iconModule from '../components/Icon/Icon.examples';
 import * as iconButtonModule from '../components/IconButton/IconButton.examples';
@@ -18,16 +19,21 @@ import * as logViewModule from '../components/LogView/LogView.examples';
 import * as logViewParityModule from '../components/LogView/LogView.parity.examples';
 import * as middleEllipsisModule from '../components/MiddleEllipsis/MiddleEllipsis.examples';
 import * as missingValueModule from '../components/MissingValue/MissingValue.examples';
+import * as numberInputModule from '../components/NumberInput/NumberInput.examples';
 import * as pageHeaderModule from '../components/PageHeader/PageHeader.examples';
 import * as quickFiltersModule from '../components/QuickFilters/QuickFilters.examples';
 import * as rovingGroupModule from '../components/RovingGroup/RovingGroup.examples';
 import * as rowMenuModule from '../components/RowMenu/RowMenu.examples';
 import * as searchFieldModule from '../components/SearchField/SearchField.examples';
+import * as secretInputModule from '../components/SecretInput/SecretInput.examples';
 import * as sectionCardModule from '../components/SectionCard/SectionCard.examples';
+import * as selectModule from '../components/Select/Select.examples';
 import * as statusModule from '../components/Status/Status.examples';
 import * as statusSummaryModule from '../components/StatusSummary/StatusSummary.examples';
 import * as tabsModule from '../components/Tabs/Tabs.examples';
 import * as tagListModule from '../components/TagList/TagList.examples';
+import * as textInputModule from '../components/TextInput/TextInput.examples';
+import * as toggleModule from '../components/Toggle/Toggle.examples';
 import * as tooltipHostModule from '../components/TooltipHost/TooltipHost.examples';
 import * as workspaceToolbarModule from '../components/WorkspaceToolbar/WorkspaceToolbar.examples';
 
@@ -39,6 +45,7 @@ export const partExamples = {
   DataTable: dataTableModule,
   DataTableParity: dataTableParityModule,
   DataView: dataViewModule,
+  Field: fieldModule,
   HoverCard: hoverCardModule,
   Icon: iconModule,
   IconButton: iconButtonModule,
@@ -50,16 +57,21 @@ export const partExamples = {
   LogViewParity: logViewParityModule,
   MiddleEllipsis: middleEllipsisModule,
   MissingValue: missingValueModule,
+  NumberInput: numberInputModule,
   PageHeader: pageHeaderModule,
   QuickFilters: quickFiltersModule,
   RovingGroup: rovingGroupModule,
   RowMenu: rowMenuModule,
   SearchField: searchFieldModule,
+  SecretInput: secretInputModule,
   SectionCard: sectionCardModule,
+  Select: selectModule,
   Status: statusModule,
   StatusSummary: statusSummaryModule,
   Tabs: tabsModule,
   TagList: tagListModule,
+  TextInput: textInputModule,
+  Toggle: toggleModule,
   TooltipHost: tooltipHostModule,
   WorkspaceToolbar: workspaceToolbarModule,
 };
