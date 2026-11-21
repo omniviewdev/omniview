@@ -393,14 +393,38 @@ again (a new installation would inherit what was not erased). A marker whose
 disposal had not begun can still be rolled back, so nothing is erased for it. `plugin dev unlink` is the same transaction, so it erases the plugin's
 stored credentials too: linking the plugin again asks for them again.
 
-The erase covers the live settings database. bbolt is copy-on-write and does not
-zero the pages it frees, so an erased value may stay readable in the file until a
-later write reuses its page. Copies of the database are not touched:
-`settings.db.corrupt.<unix>`, made when the database is found corrupt and never
-pruned, and the copy a channel switch makes with "copy current data", hold every
-plugin's settings. The plugin process log, the activity history, the filesystem and
-backups are outside the erase as well. Compacting the database on its next open and
-pruning the corrupt copies are separate changes.
+The erase reaches the settings file, not only the live database. bbolt is
+copy-on-write and does not zero the pages it frees, so a deleted value would stay
+readable in the file until a later write happened to reuse its page, which may be
+never (a value that spans pages survived 300 unrelated writes in a test). The
+transaction that erases a credential, or that a user's clearing or replacing of a
+Password or Sensitive setting commits (a plugin's, or the host's own telemetry
+credentials), therefore marks the database. The host then replaces the file with a
+compacted copy that holds only what is live, and overwrites the old file with
+zeros before removing it (`internal/settings/store`, `scrub.go`). The replacement
+is crash-safe: a crash leaves the old file or the new one, never neither, and the
+mark lives in the file, so the next start finishes what a crash cut short. A scrub
+that cannot finish makes the uninstall incomplete and is retried like a failed
+erase; for a plain setting change it is logged and retried at the next erase or
+start. On a file system that cannot flush a directory the replaced file is
+overwritten at the next start instead, because nothing proves the renames reached
+the disk. Corrupt-database copies (`settings.db.corrupt.<unix>`) exist for a person to
+recover from, so they are kept for a week at most, only the newest one, and are
+overwritten and removed at the next start after that; the `settings.gob.bak`
+backup of a migrated legacy settings file goes a week after its migration the same
+way.
+
+What this does not reach, and no application can: a file system that does not
+overwrite in place (APFS, ZFS, btrfs, ReFS) keeps the older block after the
+overwrite, and so does an SSD that remaps blocks, whatever the file system on it
+(NTFS and ext4 overwrite in place on a hard disk, where the overwrite works);
+a snapshot or a backup (Time Machine, shadow copies, cloud sync) keeps older
+versions of the file. Full-disk encryption makes those blocks unreadable without
+the key. The copy a channel switch
+makes with "copy current data" is another profile's. The plugin process log, the
+activity history and the files a plugin writes itself are outside the erase as
+well, and the connection-credential files under the plugin's `store/` directory
+are unlinked with the directory, not overwritten.
 
 Managed development workspaces also require host-owned fixed-SDK build evidence
 for backend archives. Build the plugin through the selected workspace's normal

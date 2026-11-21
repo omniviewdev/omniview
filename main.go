@@ -398,10 +398,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Open bbolt settings store.
+	// Open bbolt settings store. The store learns which core settings are
+	// credentials from their definitions, so that clearing or replacing one removes
+	// its old bytes from the database file.
 	logDir := stateDir.Logs().ResolvePath("")
 
-	settingsStore, err := settingsstore.Open(stateDir.RootDir().ResolvePath("settings.db"))
+	coreDefinitions := coresettings.Definitions(version.IsDevelopment())
+	settingsStore, err := settingsstore.Open(stateDir.RootDir().ResolvePath("settings.db"),
+		settingsstore.WithCredentialSettings(coreDefinitions))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to open settings store: %v\n", err)
 	}
@@ -412,7 +416,6 @@ func main() {
 		}
 	}
 
-	coreDefinitions := coresettings.Definitions(version.IsDevelopment())
 	coreSettings, err := settingsservice.Initialize(settingsservice.Options{
 		Store:      settingsStore,
 		Categories: coreDefinitions,
