@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -107,6 +108,10 @@ func TestAReloadTellsTheWindowTheInterfaceIsGoneBeforeThePluginIsBack(t *testing
 }
 
 func TestAnUpdateOrAReinstallTellsTheWindowTheInterfaceIsGone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// WINDOWS DEFECT: CI5-W1.
+		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
+	}
 	pm, recorder := loadedPlugin(t, "acme")
 	archive := writeTestTarball(t, []tarEntry{
 		{name: "plugin.yaml", mode: 0o644, body: "id: acme\nversion: 0.4.0\ncapabilities: [ui]\n"},
@@ -126,6 +131,10 @@ func TestAnUpdateOrAReinstallTellsTheWindowTheInterfaceIsGone(t *testing.T) {
 }
 
 func TestUninstallingTellsTheWindowThePluginIsGone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// WINDOWS DEFECT: CI5-W1.
+		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
+	}
 	pm, recorder := loadedPlugin(t, "acme")
 
 	_, err := pm.UninstallPlugin("acme")

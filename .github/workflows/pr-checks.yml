@@ -98,7 +98,7 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.skip_host != 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v7
@@ -130,6 +130,35 @@ jobs:
         env:
           GOWORK: "off"
           GOFLAGS: ""
+      # CI5 (docs/ui-next/status/CI5.md): packages whose behaviour differs on Windows. A test that cannot pass there is skipped in the test with its reason (`WINDOWS DEFECT <id>` for a
+      # product defect, a plain reason when the test is Unix-only by nature); the step after them lists every skip with its reason in the job summary, so a skip is never silent.
+      - name: Test cached plugin roots, the settings file and plugin settings on Windows
+        shell: bash
+        run: go test -v -count=1 ./internal/appstate ./internal/settings/store ./backend/pkg/plugin/settings 2>&1 | tee "$RUNNER_TEMP/windows-packages.log"
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: Test plugin uninstall, reinstall and update, and the channel mTLS tests, on Windows
+        shell: bash
+        run: |
+          go test -v -count=1 ./backend/pkg/plugin \
+            -run 'Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate|TestCreateBackendEnablesChannelAuthentication|TestCreateBackendChannelIsMutuallyAuthenticated|TestCreateBackendRefusesPluginThatIgnoresChannelCertificate|TestChannelRejectsClientWithoutHostCertificate' \
+            2>&1 | tee "$RUNNER_TEMP/windows-plugin-lifecycle.log"
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: List the tests Windows skipped, with their reasons
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          {
+            echo "### Tests skipped on Windows (CI5)"
+            echo
+            echo "| Test | Reason |"
+            echo "|---|---|"
+            cat "$RUNNER_TEMP"/windows-packages.log "$RUNNER_TEMP"/windows-plugin-lifecycle.log 2>/dev/null |
+              awk '/^=== (RUN|CONT) +/{cur=$3; next} /^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /{r=$0; sub(/^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /,"",r); sub(/: rename C:.*/,"",r); if (!(cur in why)) why[cur]=r; next} /^ *--- SKIP: /{n=$3; r=why[n]; if (r=="") r="(no reason logged)"; gsub(/\|/,"\\|",r); print "| " n " | " r " |"}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   go-checks:
     name: Go checks
