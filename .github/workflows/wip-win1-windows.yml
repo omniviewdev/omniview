@@ -23,6 +23,6 @@ jobs:
           cache: true
       - name: go version
         run: go version
-      - name: probe handle flavours
+      - name: B4 tests on main (before any fix)
         continue-on-error: true
-        run: go test ./internal/appstate -run 'TestWin1Probe' -count=1 -v 2>&1 | grep -E 'PROBE|^(---|===|ok|FAIL|PASS)' | grep -v '^=== '
+        run: go test ./backend/pkg/plugin -run 'TestHostChannelSyncInstallsSignedFeatureArchive|TestChannelInstallsAndHostSyncSerialize' -count=1 -v -timeout 5m 2>&1 | head -150
