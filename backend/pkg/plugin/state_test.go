@@ -205,8 +205,6 @@ func installPluginFixtureAt(t *testing.T, pluginsDir string, id string, caps []s
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(content), 0644))
 
 	if withBinary {
-		binDir := filepath.Join(dir, "bin")
-		require.NoError(t, os.MkdirAll(binDir, 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("#!/bin/sh\n"), 0755))
+		writePluginFixture(t, filepath.Join(dir, "bin"), nil)
 	}
 }

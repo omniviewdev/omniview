@@ -19,11 +19,9 @@ import (
 // itself is inspected in loader_channel_mtls_test.go.
 func TestCreateBackendEnablesChannelAuthentication(t *testing.T) {
 	pm := newTestManager(t)
-	root := channelWrapperFor(t, "TestActivityBrokerChildProcess", `if [ -n "$PLUGIN_CLIENT_CERT" ]; then
-  printf 'set' > "$CHANNEL_TEST_ENV_FILE"
-else
-  printf 'unset' > "$CHANNEL_TEST_ENV_FILE"
-fi`)
+	root := channelWrapperFor(t, "TestActivityBrokerChildProcess", &pluginFixtureBehaviour{Records: []pluginFixtureRecord{
+		{File: "${CHANNEL_TEST_ENV_FILE}", Text: "${PLUGIN_CLIENT_CERT:+set:-unset}"},
+	}})
 	file := filepath.Join(t.TempDir(), "environment")
 	t.Setenv("CHANNEL_TEST_ENV_FILE", file)
 	t.Setenv(activityBrokerChildEnv, "normal")

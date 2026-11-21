@@ -3,9 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -38,11 +36,8 @@ func TestTheCauseOfAFailureIsReadFromWhatTimedOutAndNotFromItsText(t *testing.T)
 // slowPlugin is a plugin whose process starts and never says anything: it neither completes its handshake nor ends, so the only thing that ends its load is the loader's own start timeout.
 func slowPlugin(t *testing.T, pm *pluginManager, id string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the fixture process is a Unix shell script")
-	}
 	installPluginFixture(t, pm, id, []string{"resource"}, true)
-	require.NoError(t, os.WriteFile(filepath.Join(pm.pluginsRoot.ResolvePath(id), "bin", "plugin"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o755))
+	writePluginFixture(t, filepath.Join(pm.pluginsRoot.ResolvePath(id), "bin"), &pluginFixtureBehaviour{SleepSeconds: 30})
 }
 
 func TestAProcessThatDoesNotAnswerWithinTheLoadersStartTimeoutEndsTheLoadAsTimedOut(t *testing.T) {
@@ -67,11 +62,8 @@ func TestAProcessThatEndsAtOnceIsNotATimeout(t *testing.T) {
 	pm := newTestManager(t)
 	recorder := &testRecordingEmitter{}
 	pm.emitter = recorder
-	if runtime.GOOS == "windows" {
-		t.Skip("the fixture process is a Unix shell script")
-	}
 	installPluginFixture(t, pm, "acme", []string{"resource"}, true)
-	require.NoError(t, os.WriteFile(filepath.Join(pm.pluginsRoot.ResolvePath("acme"), "bin", "plugin"), []byte("#!/bin/sh\nexit 3\n"), 0o755))
+	writePluginFixture(t, filepath.Join(pm.pluginsRoot.ResolvePath("acme"), "bin"), &pluginFixtureBehaviour{ExitCode: 3})
 	pm.startTimeout = 30 * time.Second
 
 	started := time.Now()
