@@ -5,7 +5,7 @@
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
-//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says; the Logs command of a Pod
+//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
 //                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
@@ -20,7 +20,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareLane } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 
@@ -144,6 +144,13 @@ if (mode === 'control-fixture-absent') {
     const { read, expected } = await checkDeploymentDetail({ browser, baseURL, kubeconfig });
     assert.equal(read.h1, expected.name);
     assert.ok(read.kv.length >= 3, `the page draws the Details rows: ${JSON.stringify(read.kv)}`);
+  });
+
+  // A Deployment deleted while its page is open (K2c-2, plugin #279): the check makes its own (no replicas, so no Pod), opens its page from the list, deletes it with kubectl and reads the page's state: the title
+  // `gone-check was deleted` over `It no longer exists in namespace checkout.`. The earlier plugin said `was not found` over a body that said it was deleted, and fails here. It removes what it made. Parity mode only.
+  test('a Deployment deleted while its page is open is titled "was deleted", over where it no longer exists', async () => {
+    const { read } = await checkDeploymentGone({ browser, baseURL, kubeconfig });
+    assert.equal(read.title, 'gone-check was deleted');
   });
 
   // The first real log stream of the new stack (P1b-3b): the Logs command of a Pod's page opens a session in the host's Logs tool, whose rows are the lines `kubectl logs --timestamps` prints, and closing its tab
