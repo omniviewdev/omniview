@@ -1,0 +1,28 @@
+name: wip win1 windows
+on:
+  push:
+    branches: ['wip/win1-**']
+permissions:
+  contents: read
+env:
+  GO_VERSION: "1.27"
+  GOWORK: "off"
+  GOFLAGS: ""
+jobs:
+  win:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go version
+        run: go version
+      - name: probe handle flavours
+        continue-on-error: true
+        run: go test ./internal/appstate -run 'TestWin1Probe' -count=1 -v 2>&1 | grep -E 'PROBE|^(---|===|ok|FAIL|PASS)' | grep -v '^=== '
