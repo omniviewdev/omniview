@@ -14,13 +14,14 @@ import (
 
 // The controller keeps one authority resolver per plugin, and the resolver
 // keeps the store root it was built on. An uninstall deletes the store
-// directory, and appstate closes the root of a directory that is gone, so a
-// plugin installed again under the same ID needs a resolver on its new
-// directory, not one that writes through the old root.
+// directory, and the plugin manager then releases the plugin's roots, which
+// closes the one the resolver holds, so a plugin installed again under the same
+// ID needs a resolver on its new directory, not one that writes through the old
+// root.
 //
 // The two services stand for the plugin's store before the uninstall and the
-// store of the installation that follows it: closing the first is what appstate
-// does to the root of a deleted directory.
+// store of the installation that follows it: releasing the plugin's roots in the
+// first is what the manager does once the uninstall is durable.
 func TestOnPluginUninstalledLetsAReinstalledPluginPersistAuthorities(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	before, after := appstate.NewTestService(t), appstate.NewTestService(t)
@@ -37,9 +38,9 @@ func TestOnPluginUninstalledLetsAReinstalledPluginPersistAuthorities(t *testing.
 	require.Contains(t, ctrl.finite.authorities, "p1", "precondition: the controller keeps a resolver for the plugin")
 	require.FileExists(t, filepath.Join(before.Root(), "plugins", "p1", "store", authorityStoreName))
 
-	// Uninstall: the store root of the deleted directory is closed, and the
-	// controller is told once the uninstall is durable.
-	require.NoError(t, before.Close())
+	// Uninstall: the plugin's store root is released, and the controller is told,
+	// once the uninstall is durable.
+	before.ReleasePluginRoots("p1")
 	current = after
 	require.NoError(t, ctrl.OnPluginUninstalled("p1"))
 	assert.NotContains(t, ctrl.finite.authorities, "p1")

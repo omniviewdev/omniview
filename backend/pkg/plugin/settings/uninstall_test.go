@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,6 +13,9 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
+
+// queuedChangeWait bounds how long a test waits for a queued change to be rejected.
+const queuedChangeWait = 5 * time.Second
 
 // uninstallSchema declares one setting of each class the uninstall tells apart.
 func uninstallSchema() map[string]pkgsettings.Setting {
@@ -139,7 +143,12 @@ func TestOnPluginUninstalledFailsQueuedChanges(t *testing.T) {
 
 	require.NoError(t, ctrl.OnPluginUninstalled("fixture"))
 
-	outcome := <-done
-	require.Error(t, outcome.err, "a change queued for a plugin that is gone is rejected, not left waiting")
+	// A bounded wait: a change that is not rejected must fail this test, not hang it.
+	select {
+	case outcome := <-done:
+		require.Error(t, outcome.err, "a change queued for a plugin that is gone is rejected, not left waiting")
+	case <-time.After(queuedChangeWait):
+		t.Fatal("a change queued for an uninstalled plugin was left waiting instead of being rejected")
+	}
 	assert.NotContains(t, ctrl.pendingChanges, "fixture")
 }

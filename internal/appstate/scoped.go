@@ -46,48 +46,6 @@ func (s *ScopedRoot) Close() error {
 	return s.root.Close()
 }
 
-// rootLiveness says how a cached root relates to the directory at its path.
-type rootLiveness int
-
-const (
-	// rootLive: the root holds the directory at its path.
-	rootLive rootLiveness = iota
-	// rootAway: the path names nothing, and neither does the directory above it.
-	// The plugin was uninstalled, or is part-way through an uninstall or an
-	// archive replacement, either of which may move the directory back.
-	rootAway
-	// rootStale: the root is closed, or the directory it holds was removed or
-	// replaced while the directory above its path exists.
-	rootStale
-)
-
-// liveness compares the directory this root holds open with the one at its
-// path. A removed or replaced directory stays reachable through the root, but no
-// path names it any more. Only a different directory at the path, or a missing
-// path under a directory that exists, shows that the held directory is gone. A
-// path that cannot be inspected says nothing, and the root, which does not
-// resolve the path, keeps working.
-func (s *ScopedRoot) liveness() rootLiveness {
-	held, err := s.root.Stat(".")
-	if err != nil {
-		return rootStale // Closed, or no longer a usable directory.
-	}
-	live, err := os.Stat(s.path)
-	switch {
-	case err == nil:
-		if os.SameFile(held, live) {
-			return rootLive
-		}
-		return rootStale
-	case !errors.Is(err, fs.ErrNotExist):
-		return rootLive
-	}
-	if _, parentErr := os.Stat(filepath.Dir(s.path)); parentErr != nil {
-		return rootAway
-	}
-	return rootStale
-}
-
 // validate checks that name is a safe relative path.
 func validate(name string) error {
 	if name == "" {
@@ -154,6 +112,13 @@ func (s *ScopedRoot) RemoveAll(name string) error {
 	}
 	if name == "." {
 		return fmt.Errorf("appstate: refusing to remove root directory via RemoveAll(%q)", name)
+	}
+
+	// RemoveAll resolves a path instead of going through the root's handle. A root
+	// that was closed, as a released root is, must not reach whatever directory is
+	// now at that path: a reinstall of the plugin may have created a new one.
+	if _, statErr := s.root.Stat("."); errors.Is(statErr, os.ErrClosed) {
+		return statErr
 	}
 
 	target := filepath.Join(s.path, filepath.FromSlash(name))

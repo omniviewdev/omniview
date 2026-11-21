@@ -26,6 +26,20 @@ func settingIsSecret(schema map[string]pkgsettings.Setting, id string) bool {
 	return !known || setting.Sensitive || setting.Type == pkgsettings.Password
 }
 
+// ordinarySettingIDs lists the declared settings whose values are ordinary
+// preferences: neither Sensitive nor a Password. It is what the host remembers
+// of a plugin's schema once the plugin stops; every other stored value is
+// credential-class (see settingIsSecret).
+func ordinarySettingIDs(schema map[string]pkgsettings.Setting) []string {
+	ids := make([]string, 0, len(schema))
+	for id := range schema {
+		if !settingIsSecret(schema, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // RedactSettingsSchema keeps schema metadata while excluding every value-bearing
 // field of sensitive settings. Do not serialize an unredacted schema alongside
 // RedactSettingValues: defaults and select options can also contain credentials.

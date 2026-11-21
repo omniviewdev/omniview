@@ -30,15 +30,9 @@ func readRawPluginEntry(t *testing.T, s *Store, pluginID string) []byte {
 	return raw
 }
 
-func erasing(ids ...string) func(string) bool {
-	return func(id string) bool {
-		for _, candidate := range ids {
-			if candidate == id {
-				return true
-			}
-		}
-		return false
-	}
+// declaring is the schema of a plugin that declares these settings ordinary.
+func declaring(ids ...string) *DeclaredSettings {
+	return &DeclaredSettings{Ordinary: ids}
 }
 
 func TestErasePluginSettingsKeepsTheOtherValuesUnchanged(t *testing.T) {
@@ -47,8 +41,10 @@ func TestErasePluginSettingsKeepsTheOtherValuesUnchanged(t *testing.T) {
 	// and encoded again.
 	rawPluginEntry(t, s, "flux", `{"big":1234567890123456789,"note":"plain","token":"s3cret"}`)
 
-	require.NoError(t, s.ErasePluginSettings("flux", erasing("token")))
+	result, err := s.ErasePluginSettings("flux", declaring("big", "note"))
 
+	require.NoError(t, err)
+	assert.Equal(t, EraseResult{Erased: 1, Kept: 2, Basis: EraseBasisSession, Unreadable: false}, result)
 	var kept map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(readRawPluginEntry(t, s, "flux"), &kept))
 	assert.Equal(t, map[string]json.RawMessage{
@@ -62,8 +58,11 @@ func TestErasePluginSettingsRemovesTheEntryWhenNothingIsKept(t *testing.T) {
 	require.NoError(t, s.SavePluginSettings("flux", map[string]any{"token": "s3cret", "password": "pw"}))
 	require.NoError(t, s.SavePluginSettings("other", map[string]any{"token": "other-s3cret"}))
 
-	require.NoError(t, s.ErasePluginSettings("flux", func(string) bool { return true }))
+	result, err := s.ErasePluginSettings("flux", declaring())
 
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Erased)
+	assert.Equal(t, 0, result.Kept)
 	all, err := s.LoadAllPluginSettings()
 	require.NoError(t, err)
 	assert.Equal(t, map[string]map[string]any{"other": {"token": "other-s3cret"}}, all)
@@ -73,8 +72,11 @@ func TestErasePluginSettingsWithoutEntryChangesNothing(t *testing.T) {
 	s := openPatchStore(t)
 	require.NoError(t, s.SavePluginSettings("other", map[string]any{"theme": "dark"}))
 
-	require.NoError(t, s.ErasePluginSettings("flux", func(string) bool { return true }))
+	result, err := s.ErasePluginSettings("flux", declaring())
 
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.Erased)
+	assert.Equal(t, 0, result.Kept)
 	all, err := s.LoadAllPluginSettings()
 	require.NoError(t, err)
 	assert.Equal(t, map[string]map[string]any{"other": {"theme": "dark"}}, all)
@@ -89,8 +91,10 @@ func TestErasePluginSettingsRemovesAnUndecodableEntryWhole(t *testing.T) {
 
 			// The entry cannot be read, so which of its values are credentials is
 			// unknown; erasing nothing would leave them readable.
-			require.NoError(t, s.ErasePluginSettings("flux", func(string) bool { return false }))
+			result, err := s.ErasePluginSettings("flux", declaring("token"))
 
+			require.NoError(t, err)
+			assert.True(t, result.Unreadable, "the result says the entry was removed whole")
 			assert.Empty(t, readRawPluginEntry(t, s, "flux"))
 			assert.JSONEq(t, `{"theme":"dark"}`, string(readRawPluginEntry(t, s, "other")))
 		})
@@ -102,18 +106,26 @@ func TestErasePluginSettingsReportsAStoreThatIsClosed(t *testing.T) {
 	require.NoError(t, s.SavePluginSettings("flux", map[string]any{"token": "s3cret"}))
 	require.NoError(t, s.Close())
 
-	require.ErrorIs(t, s.ErasePluginSettings("flux", func(string) bool { return true }), boltErrors.ErrDatabaseNotOpen)
+	result, err := s.ErasePluginSettings("flux", declaring())
+
+	require.ErrorIs(t, err, boltErrors.ErrDatabaseNotOpen)
+	assert.Equal(t, EraseResult{}, result, "a failed erase reports nothing erased")
 }
 
 func TestErasePluginSettingsWithoutStoreIsUnavailable(t *testing.T) {
 	var s *Store
-	require.ErrorIs(t, s.ErasePluginSettings("flux", func(string) bool { return true }), ErrUnavailable)
+	_, err := s.ErasePluginSettings("flux", declaring())
+	require.ErrorIs(t, err, ErrUnavailable)
 }
 
 func TestErasePluginSettingsDoesNotLoseConcurrentWrites(t *testing.T) {
 	s := openPatchStore(t)
 	require.NoError(t, s.SavePluginSettings("flux", map[string]any{"token": "s3cret"}))
 	const writers = 16
+	ordinary := make([]string, 0, writers)
+	for i := range writers {
+		ordinary = append(ordinary, fmt.Sprintf("kept-%d", i))
+	}
 	var wg sync.WaitGroup
 	for i := range writers {
 		wg.Add(2)
@@ -123,7 +135,8 @@ func TestErasePluginSettingsDoesNotLoseConcurrentWrites(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			assert.NoError(t, s.ErasePluginSettings("flux", erasing("token")))
+			_, err := s.ErasePluginSettings("flux", declaring(ordinary...))
+			assert.NoError(t, err)
 		}()
 	}
 	wg.Wait()
@@ -132,6 +145,6 @@ func TestErasePluginSettingsDoesNotLoseConcurrentWrites(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, saved, "token")
 	for i := range writers {
-		assert.Contains(t, saved, fmt.Sprintf("kept-%d", i), "an erase must not drop a value written beside it")
+		assert.Contains(t, saved, fmt.Sprintf("kept-%d", i), "an erase must not drop a declared value written beside it")
 	}
 }

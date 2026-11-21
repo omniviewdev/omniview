@@ -113,6 +113,7 @@ type Manager interface {
 	SetDevServerChecker(checker DevServerChecker)
 	SetDevServerManager(mgr *devserver.DevServerManager)
 	SetPluginLogManager(mgr *pluginlog.Manager)
+	SetPluginStateReleaser(release func(pluginID string))
 }
 
 // NewManager returns a new plugin manager.
@@ -165,6 +166,7 @@ func NewManager(
 		pidTracker:         NewPIDTracker(stateRoot),
 		healthChecker:      nil, // set by Run
 		pluginLogMgr:       nil, // set by SetPluginLogManager
+		pluginStateRelease: nil, // set by SetPluginStateReleaser
 		backendFactory:     nil, // tests only
 		telemetryConfigFn:  telemetryConfigFn,
 		pluginPprofEnabled: pluginPprofEnabled,
@@ -210,6 +212,7 @@ type pluginManager struct {
 	pidTracker          *PIDTracker
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
+	pluginStateRelease  func(pluginID string) // set by SetPluginStateReleaser
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
 	emitter             resource.EventEmitter
 	telemetryConfigFn   func(string) (TelemetryEnvConfig, error)
@@ -478,6 +481,16 @@ func (pm *pluginManager) SetDevServerManager(mgr *devserver.DevServerManager) {
 // SetPluginLogManager sets the per-plugin log manager.
 func (pm *pluginManager) SetPluginLogManager(mgr *pluginlog.Manager) {
 	pm.pluginLogMgr = mgr
+}
+
+// SetPluginStateReleaser sets the function the manager calls with a plugin's ID
+// once the plugin's installation was disposed of for good (an uninstall, or a
+// first installation that was rolled back), so that whoever caches handles on
+// the plugin's state directories can close them. The application passes
+// appstate.Service.ReleasePluginRoots. It must be set before plugin operations
+// begin.
+func (pm *pluginManager) SetPluginStateReleaser(release func(pluginID string)) {
+	pm.pluginStateRelease = release
 }
 
 // Initialize discovers and loads all installed plugins.

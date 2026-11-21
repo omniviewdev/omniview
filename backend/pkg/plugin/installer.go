@@ -471,9 +471,10 @@ func (pm *pluginManager) installPluginArchive(
 }
 
 // UninstallPlugin uninstalls a plugin from the manager and removes it from the filesystem.
-// Once the uninstall is durable it also erases the credential-class state the plugin has
-// outside its directory (see notifyUninstalled); a failure to do so is returned as a
-// committed-cleanup-pending error for a plugin that is already uninstalled.
+// It also erases the credential-class state the plugin has outside its directory, as the last
+// step of the uninstall's recovery path (see finishUninstall). Until that has succeeded the
+// uninstall is incomplete: the plugin stays listed as failed, its ID cannot be installed
+// again, and uninstalling it again, also after a restart, retries the erase.
 //
 //nolint:nonamedreturns // Deferred telemetry records the returned error.
 func (pm *pluginManager) UninstallPlugin(id string) (info plugintypes.PluginInfo, err error) {
@@ -548,9 +549,15 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 	}
 	installSpanPhase(ctx, "unloaded")
 	restore := func(cause error, incomplete bool) (plugintypes.PluginInfo, error) {
+		// A failed erase comes after disposal finished: no partial artifact remains
+		// in staging, and the cause says what is owed.
+		var eraseOwed *uninstallCleanupError
+		erasePending := errors.As(cause, &eraseOwed)
 		if recovery != nil && staged && recovery.cleanupStarted {
 			incomplete = true
-			cause = errors.Join(cause, errors.New("disposal began; partial artifacts remain in owned staging"))
+			if !erasePending {
+				cause = errors.Join(cause, errors.New("disposal began; partial artifacts remain in owned staging"))
+			}
 		}
 		if recovery != nil && staged && !recovery.cleanupStarted {
 			_, stillStaged, ownershipErr := pm.locateUninstallRecovery(recovery)
@@ -572,7 +579,7 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		}
 		// Keep durable proof on every incomplete transaction, including when the
 		// main inventory write is unavailable. Never recapture a replacement inode.
-		if recovery != nil {
+		if recovery != nil && !erasePending {
 			cause = fmt.Errorf("pending uninstall recovery at %s: %w", pm.pluginsRoot.ResolvePath(recovery.Stage), cause)
 		}
 		log.Warnw(ctx, "plugin uninstall did not complete", "pluginID", id, "incomplete", incomplete,
@@ -605,14 +612,15 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return restore(err, false)
 	}
 	installSpanPhase(ctx, "persisted")
-	if err = pm.removeUninstallRecovery(recovery); err != nil {
+	// The erase of the credential state kept outside the installation runs inside
+	// this step, before the recovery marker goes: see finishUninstall.
+	if err = pm.removeUninstallRecovery(recovery, func() error { return pm.finishUninstall(ctx, id) }); err != nil {
 		return restore(err, true)
 	}
 	installSpanPhase(ctx, "recovery_removed")
-	cleanupErr := pm.notifyUninstalled(ctx, id)
 	pm.emitter.Emit(EventInventoryChanged)
 	log.Infow(ctx, "plugin uninstalled", "pluginID", id, "durationMs", time.Since(started).Milliseconds())
-	return info, cleanupErr
+	return info, nil
 }
 
 // Build-related helper functions (extracted from dev.go).

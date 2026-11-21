@@ -38,10 +38,19 @@ type Service struct {
 	logs    *ScopedRoot
 	rootDir *ScopedRoot
 
-	// Cached per-plugin scoped roots.
+	// Cached per-plugin scoped roots. A root stays cached, and a holder may keep
+	// it for as long as it likes, until ReleasePluginRoots: no lookup closes or
+	// replaces one.
 	pluginRootsMu    sync.Mutex
 	pluginDataRoots  map[string]*ScopedRoot
 	pluginStoreRoots map[string]*ScopedRoot
+	// released holds the IDs whose roots the plugin manager released after an
+	// uninstall. Until the plugin directory exists again, a lookup for such an ID
+	// creates nothing: a late caller must not resurrect an uninstalled plugin's
+	// directory, which would make the next installation of the ID refuse to
+	// proceed. The entry is dropped by the first lookup that finds the plugin
+	// directory.
+	released map[string]struct{}
 
 	closeOnce sync.Once
 	closeErr  error
@@ -95,6 +104,7 @@ func New(opts ...Option) (*Service, error) {
 		root:             root,
 		pluginDataRoots:  make(map[string]*ScopedRoot),
 		pluginStoreRoots: make(map[string]*ScopedRoot),
+		released:         make(map[string]struct{}),
 		lock:             nil,
 		osRoot:           nil,
 		plugins:          nil,
@@ -220,12 +230,13 @@ func (s *Service) Logs() *ScopedRoot { return s.logs }
 func (s *Service) RootDir() *ScopedRoot { return s.rootDir }
 
 // PluginData returns a scoped root for a specific plugin's data directory.
-// The result is cached while the directory it holds is still the one at that
-// path. A directory removed or replaced since (an uninstall, then a reinstall of
-// the same plugin ID) gets a fresh root and the stale one is closed. While the
-// plugin directory is missing altogether, the cached root is returned as it is:
-// recreating the directory would resurrect a plugin that was uninstalled, or
-// break the move that returns its state to it.
+// The result is cached; subsequent calls for the same id return the cached
+// instance. No lookup closes or replaces a cached root, because a holder may
+// keep it for as long as it likes and an archive replacement moves the directory
+// itself, with the plugin's data, into the new plugin directory. The roots of a
+// plugin that is uninstalled end with ReleasePluginRoots; until the plugin
+// directory exists again, PluginData then creates nothing and returns an error
+// satisfying errors.Is(err, fs.ErrNotExist).
 func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 	if err := validatePluginID(id); err != nil {
 		return nil, fmt.Errorf("appstate: PluginData: %w", err)
@@ -234,8 +245,11 @@ func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 	s.pluginRootsMu.Lock()
 	defer s.pluginRootsMu.Unlock()
 
-	if r, _ := liveRoot(s.pluginDataRoots, id); r != nil {
+	if r, ok := s.pluginDataRoots[id]; ok {
 		return r, nil
+	}
+	if err := s.checkNotReleasedLocked(id); err != nil {
+		return nil, err
 	}
 
 	dir := filepath.Join(s.root, "plugins", id, "data")
@@ -251,9 +265,7 @@ func (s *Service) PluginData(id string) (*ScopedRoot, error) {
 // only when that directory already exists. It never creates directories and
 // never caches a root for a missing directory, so read-only callers cannot
 // grow the disk or the descriptor table by probing novel plugin IDs. A cached
-// root whose directory has since been removed or replaced is closed and dropped,
-// as in PluginData; one whose plugin directory is missing altogether is kept
-// but not returned.
+// root is returned as it is, as in PluginData.
 // ok is false (with a nil error) when the directory does not exist.
 func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err error) {
 	if err := validatePluginID(id); err != nil {
@@ -263,10 +275,7 @@ func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err 
 	s.pluginRootsMu.Lock()
 	defer s.pluginRootsMu.Unlock()
 
-	if r, away := liveRoot(s.pluginDataRoots, id); r != nil {
-		if away {
-			return nil, false, nil
-		}
+	if r, cached := s.pluginDataRoots[id]; cached {
 		return r, true, nil
 	}
 
@@ -283,8 +292,8 @@ func (s *Service) PluginDataIfExists(id string) (root *ScopedRoot, ok bool, err 
 }
 
 // PluginStore returns a scoped root for a specific plugin's store directory.
-// The result is cached while the directory it holds is still the one at that
-// path, as in PluginData.
+// The result is cached; subsequent calls for the same id return the cached
+// instance, which no lookup closes or replaces. See PluginData.
 func (s *Service) PluginStore(id string) (*ScopedRoot, error) {
 	if err := validatePluginID(id); err != nil {
 		return nil, fmt.Errorf("appstate: PluginStore: %w", err)
@@ -293,8 +302,11 @@ func (s *Service) PluginStore(id string) (*ScopedRoot, error) {
 	s.pluginRootsMu.Lock()
 	defer s.pluginRootsMu.Unlock()
 
-	if r, _ := liveRoot(s.pluginStoreRoots, id); r != nil {
+	if r, ok := s.pluginStoreRoots[id]; ok {
 		return r, nil
+	}
+	if err := s.checkNotReleasedLocked(id); err != nil {
+		return nil, err
 	}
 
 	dir := filepath.Join(s.root, "plugins", id, "store")
@@ -306,23 +318,49 @@ func (s *Service) PluginStore(id string) (*ScopedRoot, error) {
 	return r, nil
 }
 
-// liveRoot returns the cached root for id. A root that is stale (see
-// rootStale) is forgotten and closed first, so it releases its descriptor, and
-// nil is returned: a holder that still has it fails with os.ErrClosed on its
-// next use instead of acting on a directory that no path names. The bool
-// reports a root returned while its path and plugin directory are both
-// missing; see rootAway. The caller holds pluginRootsMu.
-func liveRoot(cache map[string]*ScopedRoot, id string) (*ScopedRoot, bool) {
-	r := cache[id]
-	if r == nil {
-		return nil, false
+// ReleasePluginRoots closes and forgets the cached store and data roots of a
+// plugin whose installation the plugin manager has just disposed of, once the
+// uninstall is durable, and remembers the ID: until the plugin directory exists
+// again, PluginStore and PluginData create nothing for it. A holder that still
+// has a root gets os.ErrClosed on its next use, and a plugin installed again
+// under the same ID gets roots on its own new directories.
+//
+// Only this call ends a root's life. Archive replacement and its rollback move
+// the state directories with their inodes, so roots held across an update stay
+// valid, and a lookup that closed one because a directory looked missing for a
+// moment would break the move.
+func (s *Service) ReleasePluginRoots(id string) {
+	if validatePluginID(id) != nil {
+		return
 	}
-	liveness := r.liveness()
-	if liveness != rootStale {
-		return r, liveness == rootAway
+
+	s.pluginRootsMu.Lock()
+	defer s.pluginRootsMu.Unlock()
+
+	// After Close both maps are nil, there is nothing left to close, and the
+	// deletes below are no-ops. os.Root.Close reports no error, and the root is
+	// unreachable either way.
+	if r := s.pluginDataRoots[id]; r != nil {
+		_ = r.Close()
 	}
-	delete(cache, id)
-	// os.Root.Close reports no error, and the root is unreachable either way.
-	_ = r.Close()
-	return nil, false
+	delete(s.pluginDataRoots, id)
+	if r := s.pluginStoreRoots[id]; r != nil {
+		_ = r.Close()
+	}
+	delete(s.pluginStoreRoots, id)
+	s.released[id] = struct{}{}
+}
+
+// checkNotReleasedLocked refuses to create the directories of a plugin whose
+// roots were released while its plugin directory is missing. The first call that
+// finds the directory forgets the release. The caller holds pluginRootsMu.
+func (s *Service) checkNotReleasedLocked(id string) error {
+	if _, released := s.released[id]; !released {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(s.root, "plugins", id)); err != nil {
+		return fmt.Errorf("appstate: plugin %q is not installed: %w", id, err)
+	}
+	delete(s.released, id)
+	return nil
 }

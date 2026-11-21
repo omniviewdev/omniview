@@ -10,9 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	boltErrors "go.etcd.io/bbolt/errors"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
@@ -36,7 +34,11 @@ const (
 
 // credentialSettingsProvider is the settings capability of the fixture plugin:
 // a Password setting, a Sensitive text setting and an ordinary preference.
-type credentialSettingsProvider struct{}
+type credentialSettingsProvider struct {
+	// onList runs each time the host asks the plugin for its schema, which it
+	// does while the plugin starts.
+	onList func()
+}
 
 func credentialSchema() map[string]pkgsettings.Setting {
 	return map[string]pkgsettings.Setting{
@@ -46,7 +48,10 @@ func credentialSchema() map[string]pkgsettings.Setting {
 	}
 }
 
-func (credentialSettingsProvider) ListSettings() map[string]pkgsettings.Setting {
+func (p credentialSettingsProvider) ListSettings() map[string]pkgsettings.Setting {
+	if p.onList != nil {
+		p.onList()
+	}
 	return credentialSchema()
 }
 
@@ -80,20 +85,33 @@ func (credentialSettingsProvider) CommitSettings(
 
 // credentialFixture is a manager wired to a real appstate service and a real
 // settings store and controller, with a plugin whose backend serves
-// credentialSettingsProvider.
+// credentialSettingsProvider, the way the application wires them: the manager
+// releases the plugin's cached state roots through the service.
 type credentialFixture struct {
-	pm    *pluginManager
-	svc   *appstate.Service
-	store *settingsstore.Store
+	pm       *pluginManager
+	svc      *appstate.Service
+	store    *settingsstore.Store
+	settings settings.Controller
+	dbPath   string
+	// onList runs when the fixture plugin is asked for its schema, that is,
+	// while it starts.
+	onList func()
 }
 
 func newCredentialFixture(t *testing.T) *credentialFixture {
 	t.Helper()
-	svc := appstate.NewTestService(t)
-	store, err := settingsstore.Open(filepath.Join(t.TempDir(), "settings.db"))
+	return newCredentialFixtureOver(t, appstate.NewTestService(t), filepath.Join(t.TempDir(), "settings.db"))
+}
+
+// newCredentialFixtureOver starts a manager over an existing state service and
+// the settings database at dbPath, which it opens: what a host start does.
+func newCredentialFixtureOver(t *testing.T, svc *appstate.Service, dbPath string) *credentialFixture {
+	t.Helper()
+	store, err := settingsstore.Open(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 
+	f := &credentialFixture{svc: svc, store: store, settings: nil, dbPath: dbPath, onList: nil}
 	pm := &pluginManager{
 		logger:              testLogger(t),
 		stateRoot:           svc.RootDir(),
@@ -106,20 +124,47 @@ func newCredentialFixture(t *testing.T) *credentialFixture {
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 		emitter:             testNoopEmitter{},
 	}
-	pm.connlessControllers[sdktypes.CapabilitySettings] = settings.NewController(pm.logger, store)
+	pm.SetPluginStateReleaser(svc.ReleasePluginRoots)
+	f.settings = settings.NewController(pm.logger, store)
+	pm.connlessControllers[sdktypes.CapabilitySettings] = f.settings
 	pm.backendFactory = func(config.PluginMeta, string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(plugintypes.InProcessBackendConfig{
-			Providers: map[string]any{"settings": credentialSettingsProvider{}},
+			Providers: map[string]any{"settings": credentialSettingsProvider{onList: func() {
+				if f.onList != nil {
+					f.onList()
+				}
+			}}},
 		}), nil
 	}
-	return &credentialFixture{pm: pm, svc: svc, store: store}
+	f.pm = pm
+	return f
+}
+
+// restart simulates a host restart over the same state: the old store is
+// closed, the state service and the settings database are opened again, a new
+// manager starts over them, and Initialize runs. Whatever the old manager held
+// in memory is gone.
+func (f *credentialFixture) restart(t *testing.T) *credentialFixture {
+	t.Helper()
+	require.NoError(t, f.store.Close())
+	svc, err := appstate.New(appstate.WithRoot(f.svc.Root()), appstate.WithFlock(false))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, svc.Close()) })
+	next := newCredentialFixtureOver(t, svc, f.dbPath)
+	require.NoError(t, next.pm.Initialize(context.Background()))
+	return next
 }
 
 // credentialArchive packages the fixture plugin for the archive install path.
 func credentialArchive(t *testing.T) string {
 	t.Helper()
+	return credentialArchiveVersion(t, "1.0.0")
+}
+
+func credentialArchiveVersion(t *testing.T, version string) string {
+	t.Helper()
 	return writeTestTarball(t, []tarEntry{
-		{name: "plugin.yaml", mode: 0o644, body: "id: flux\nversion: 1.0.0\ncapabilities: [settings]\n"},
+		{name: "plugin.yaml", mode: 0o644, body: "id: flux\nversion: " + version + "\ncapabilities: [settings]\n"},
 		{name: "bin/", mode: 0o755, dir: true},
 		{name: "bin/plugin", mode: 0o755, body: "#!/bin/sh\n"},
 	})
@@ -210,9 +255,11 @@ func TestUninstallErasesSensitiveSettingValues(t *testing.T) {
 func TestUninstallErasesSettingValuesItCannotClassify(t *testing.T) {
 	f := newCredentialFixture(t)
 	installLoadedUIPlugin(t, f.pm)
-	// This plugin never reported a schema in the session, so nothing says which
-	// of its stored values are credentials: all of them are erased, as the
-	// settings snapshot and the redaction already treat unknown values as secret.
+	// The legacy case: this plugin has no settings capability, so it never
+	// reported a schema, neither in this session nor in an earlier one that the
+	// host could have remembered. Nothing says which of its stored values are
+	// credentials, so all of them are erased, as the settings snapshot and the
+	// redaction already treat unknown values as secret.
 	require.NoError(t, f.store.SavePluginSettings("flux", map[string]any{"apiToken": credentialToken, "theme": "dark"}))
 	require.NoError(t, f.store.SavePluginSettings("other", map[string]any{"theme": "dark"}))
 
@@ -226,6 +273,7 @@ func TestUninstallErasesSettingValuesItCannotClassify(t *testing.T) {
 }
 
 func TestUninstallRemovesHostSavedConnectionState(t *testing.T) {
+	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	store, err := f.svc.PluginStore("flux")
@@ -256,19 +304,28 @@ func TestUninstallRemovesHostSavedConnectionState(t *testing.T) {
 }
 
 func TestUninstallLeavesCredentialStateAloneWhenRolledBack(t *testing.T) {
+	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	observer := newUninstallObserverStub()
 	f.pm.connlessControllers[sdktypes.CapabilityExec] = observer
 	f.install(t)
 	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})
+	heldStore, err := f.svc.PluginStore("flux")
+	require.NoError(t, err)
 	// A directory where the inventory's temporary file belongs makes the
 	// inventory write fail, so the uninstall rolls back after staging.
 	require.NoError(t, f.pm.stateRoot.MkdirAll(stateFileName+".tmp", 0o755))
 
-	_, err := f.pm.UninstallPlugin("flux")
+	_, err = f.pm.UninstallPlugin("flux")
 	require.Error(t, err)
 
 	assert.Empty(t, observer.uninstalled(), "a rolled-back uninstall notifies nobody")
+	// The plugin is still installed, so its cached state roots stay: a holder of
+	// one, such as the authority resolver, must not be left with a closed root.
+	again, err := f.svc.PluginStore("flux")
+	require.NoError(t, err)
+	assert.Same(t, heldStore, again, "a rolled-back uninstall releases no root")
+	require.NoError(t, heldStore.WriteFile("after-rollback.json", []byte("ok"), 0o600))
 	assert.Equal(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"}, f.persisted(t))
 	assert.DirExists(t, f.pm.pluginsRoot.ResolvePath("flux"), "the installation is restored")
 	_, getErr := f.pm.GetPlugin("flux")
@@ -282,7 +339,7 @@ func TestUninstallLeavesCredentialStateAloneWhenRolledBack(t *testing.T) {
 	assert.Equal(t, map[string]any{"theme": "dark"}, f.persisted(t))
 }
 
-func TestUninstallNotifiesObserversOnceAndOnlyWhenDurable(t *testing.T) {
+func TestUninstallRunsTheErasureAfterDisposalAndBeforeTheMarkerIsRemoved(t *testing.T) {
 	for _, dev := range []bool{false, true} {
 		name := "installed"
 		if dev {
@@ -290,23 +347,33 @@ func TestUninstallNotifiesObserversOnceAndOnlyWhenDurable(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			pm := newTestManager(t)
-			durable := func() {
-				// Durable: the directory is gone, the inventory no longer lists the
-				// plugin and no recovery marker is left to retry.
+			disposed := func() {
+				// The installation is disposed of for good, the only point after which
+				// anything may be erased: the directory and its staging are gone, the
+				// inventory no longer lists the plugin and disposal was published in the
+				// recovery marker. The marker itself is still there, so a failure or a
+				// kill from here on is retried instead of forgotten.
 				require.NoDirExists(t, pm.pluginsRoot.ResolvePath("flux"))
 				persisted, err := pm.readPluginStateJSON()
 				require.NoError(t, err)
 				require.Empty(t, persisted)
 				recovery, err := pm.readUninstallRecovery("flux")
 				require.NoError(t, err)
-				require.Nil(t, recovery)
+				require.NotNil(t, recovery, "the marker must stay until the erase has succeeded")
+				require.True(t, recovery.cleanupStarted, "disposal is published before anything is erased")
+				require.NoDirExists(t, pm.pluginsRoot.ResolvePath(recovery.Stage))
 			}
 			// One observer of each kind of registration: the settings controller is
 			// connection-less, the resource controller connection-full.
 			connless, connfull := newUninstallObserverStub(), newUninstallObserverStub()
-			connless.onCall, connfull.onCall = durable, durable
+			connless.onCall, connfull.onCall = disposed, disposed
 			pm.connlessControllers[sdktypes.CapabilityExec] = connless
 			pm.connfullControllers[sdktypes.CapabilityResource] = connfull
+			var released []string
+			pm.SetPluginStateReleaser(func(id string) {
+				disposed()
+				released = append(released, id)
+			})
 			installLoadedUIPlugin(t, pm)
 			pm.records["flux"].DevMode = dev
 			require.NoError(t, pm.writePluginStateJSON())
@@ -321,6 +388,10 @@ func TestUninstallNotifiesObserversOnceAndOnlyWhenDurable(t *testing.T) {
 
 			assert.Equal(t, []string{"flux"}, connless.uninstalled())
 			assert.Equal(t, []string{"flux"}, connfull.uninstalled())
+			assert.Equal(t, []string{"flux"}, released, "the plugin's cached state roots are released once")
+			recovery, err := pm.readUninstallRecovery("flux")
+			require.NoError(t, err)
+			assert.Nil(t, recovery, "the marker goes once the erase has succeeded")
 		})
 	}
 }
@@ -355,61 +426,8 @@ func TestUninstallDoesNotNotifyObserversWhenItFails(t *testing.T) {
 	}
 }
 
-func TestUninstallReportsCredentialCleanupFailureAfterCommit(t *testing.T) {
-	cleanupErr := errors.New("settings store offline")
-	pm := newTestManager(t)
-	observer := newUninstallObserverStub()
-	observer.err = cleanupErr
-	pm.connlessControllers[sdktypes.CapabilityExec] = observer
-	installLoadedUIPlugin(t, pm)
-	refreshes := 0
-	pm.emitter = uninstallInventoryConsumer{refresh: func() { refreshes++ }}
-
-	info, err := pm.UninstallPlugin("flux")
-
-	// The plugin is uninstalled: it is gone from the directory, the inventory and
-	// the in-memory records, and the inventory consumers were told once.
-	assert.Equal(t, "flux", info.ID)
-	assert.NoDirExists(t, pm.pluginsRoot.ResolvePath("flux"))
-	persisted, readErr := pm.readPluginStateJSON()
-	require.NoError(t, readErr)
-	assert.Empty(t, persisted)
-	assert.Empty(t, pm.ListPlugins())
-	assert.Equal(t, 1, refreshes)
-	// The failure is reported on the error channel the uninstall already has,
-	// as a committed outcome with its cause attached and no cause text shown.
-	require.Error(t, err)
-	require.ErrorIs(t, err, cleanupErr)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypePluginCommittedCleanupPending, appErr.Type)
-	assert.Equal(t, "flux", appErr.Instance)
-	assert.NotContains(t, appErr.Detail, cleanupErr.Error())
-	// There is nothing left to retry through the uninstall itself.
-	_, retryErr := pm.UninstallPlugin("flux")
-	require.ErrorAs(t, retryErr, &appErr)
-	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
-	assert.Equal(t, []string{"flux"}, observer.uninstalled())
-}
-
-func TestUninstallReportsSettingsStoreFailureAfterCommit(t *testing.T) {
-	f := newCredentialFixture(t)
-	f.install(t)
-	f.save(t, map[string]any{"apiToken": credentialToken})
-	require.NoError(t, f.store.Close())
-
-	_, err := f.pm.UninstallPlugin("flux")
-
-	require.ErrorIs(t, err, boltErrors.ErrDatabaseNotOpen)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypePluginCommittedCleanupPending, appErr.Type)
-	assert.NoDirExists(t, f.pm.pluginsRoot.ResolvePath("flux"))
-	_, getErr := f.pm.GetPlugin("flux")
-	require.Error(t, getErr)
-}
-
 func TestReinstallAfterUninstallStartsFreshAndKeepsHostStoresWritable(t *testing.T) {
+	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})

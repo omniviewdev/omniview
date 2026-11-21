@@ -41,14 +41,17 @@ type Controller interface {
 }
 
 // PluginUninstallObserver is implemented by controllers that keep state for a plugin outside its installation
-// directory. The manager calls OnPluginUninstalled once per plugin, after the uninstall is durable: the
-// installation directory is removed, the inventory is persisted and the recovery marker is gone. It never runs
-// for an uninstall that was rolled back or is incomplete.
+// directory. The manager calls OnPluginUninstalled once per attempt, after the installation is disposed of for good:
+// the installation directory and its staging are removed and the inventory is persisted. The uninstall's recovery
+// marker is still in place, and is removed only once every observer has succeeded. It never runs for an uninstall
+// that was rolled back, which can still happen before disposal begins.
 //
 // An implementation erases the credential-class state it holds for the plugin and releases state bound to the
 // removed directory. It must not delete other state: an uninstall removes what the plugin directory holds and
-// credential-class state, nothing else. The plugin is already gone, so a returned error is reported to the
-// caller of the uninstall; it cannot undo the uninstall.
+// credential-class state, nothing else. A returned error keeps the uninstall incomplete: the plugin stays listed as
+// failed, its ID cannot be installed again, and uninstalling it again, also after a restart, calls the hook again.
+// The hook is therefore idempotent. The manager logs and shows only the class of an error, never its text, and an
+// implementation keeps values out of its errors all the same.
 type PluginUninstallObserver interface {
 	OnPluginUninstalled(pluginID string) error
 }

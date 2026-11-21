@@ -656,7 +656,7 @@ without `--json`.
 | `plugin install-version` | `ID --version VERSION` | Install an explicit registry version noninteractively |
 | `plugin uninstall` | `ID` | Canonical plugin uninstall transaction |
 | `plugin dev link` | `--path SOURCE` | Canonical source-link/install/rebind transaction |
-| `plugin dev unlink` | `ID` | Stop/unlink a managed development plugin |
+| `plugin dev unlink` | `ID` | Stop/unlink a managed development plugin; erases its stored credential settings like an uninstall, so linking it again asks for them again |
 | `plugin dev start` | `ID` | Start canonical managed lifecycle |
 | `plugin dev stop` | `ID` | Stop actual plugin backend and managed watcher/services |
 | `plugin dev restart` | `ID` | Canonical restart and readiness |

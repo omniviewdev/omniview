@@ -341,31 +341,61 @@ volumes. Archive replacement moves the
 existing state directories into the new installation without copying them, so
 cached scoped roots and nested authority handles still address live state.
 Failed publication moves that same state back before restarting the original
-plugin. Runtime unload does not close appstate-owned roots. A cached root is
-reused while its directory is the one at its path, and while the plugin
-directory is missing altogether: an uninstall or an archive replacement may be
-moving it, and a lookup must not recreate what a rollback needs free. Once the
-plugin directory exists again without that directory (an uninstall, then a
-reinstall of the same ID), the next lookup closes the stale root and returns one
-on the live directory. A holder that kept the old root gets `os.ErrClosed` on its
-next use. appstate closes the remaining roots when the application shuts down.
-Interrupted transactions retain their existing recovery barrier and private
-staging evidence instead of adopting another path.
+plugin. Runtime unload does not close appstate-owned roots, and no lookup does:
+a cached root stays until the plugin manager releases it, and a holder may keep
+one for as long as it likes (the resource controller keeps one for the life of
+the process). Between publishing the new plugin directory and moving the state
+directories into it, the plugin directory exists without them, so a lookup there
+must neither close a root nor create a directory the move needs free. The manager
+releases a plugin's roots only when its installation is disposed of for good, an
+uninstall that is durable or a first installation that rolled back
+(`appstate.Service.ReleasePluginRoots`). A holder that kept a released root gets
+`os.ErrClosed` on its next use; a lookup creates nothing for that plugin until its
+plugin directory exists again, so an uninstalled plugin's directory is never
+resurrected (a stray `store/` makes the next installation refuse to proceed); and
+a plugin installed again under the same ID gets roots on its new directories.
+appstate closes the remaining roots when the application shuts down. Interrupted
+transactions retain their existing recovery barrier and private staging evidence
+instead of adopting another path.
 
 Uninstalling a plugin removes its whole directory: the binary and assets, `data/`,
 `store/` (connection profiles, host-saved connection credentials, authority
-bindings) and any settings migration backup. Once the uninstall is durable, the
-host also erases the plugin's credential-class settings from the host settings
-store: every stored value whose setting the plugin declared `Sensitive` or of type
-`Password`, and every stored value its last known schema does not declare, as the
-settings snapshot already treats those as secret. The plugin's other setting values
-stay, and a later installation under the same ID inherits them. A plugin that never
-reported a schema in the session has nothing to tell its values apart, so all of its
-stored values are erased. A rolled-back or incomplete uninstall erases nothing. If
-the erase fails, the plugin is still uninstalled and the uninstall returns a
-`committed-cleanup-pending` error; installing the plugin again and uninstalling it
-retries the erase. Plugin process logs and activity history are not part of an
-uninstall.
+bindings) and any settings migration backup. It also erases the plugin's
+credential-class settings from the host settings store, as the last step of the
+uninstall's recovery path: after the directory is disposed of and the inventory is
+persisted, and before the recovery marker is removed. A stored value is
+credential-class when the plugin's last known schema declares its setting
+`Sensitive` or of type `Password`, or declares no setting for it, as the settings
+snapshot already treats those as secret. The values of declared, ordinary settings
+stay, and a later installation under the same ID finds them. The last known schema
+is the one the running host learned from the plugin, else the one the host
+remembered the last time the plugin started (the `plugin-schemas` bucket of the
+settings database, written when the plugin reports its settings: the IDs of its
+ordinary settings, never a label, default, option or value). A plugin that did not
+start in the session in which it is uninstalled, because it was disabled, failed
+to start, or the host restarted, therefore loses its credentials and keeps its
+preferences. A plugin with no remembered schema, installed before the host
+remembered schemas and not started since, has nothing to tell its values apart, so
+all of its stored values are erased, and the log says so. The remembered schema is
+removed once no value of the plugin is left; while declared values stay it stays,
+so uninstalling a reinstalled plugin that never started again treats them alike.
+
+A rolled-back uninstall erases nothing. If the erase fails, or the process dies
+before it ran, the uninstall is incomplete, like one whose disposal stopped half
+way: the plugin stays listed as failed, the recovery marker stays, the ID cannot be
+installed again (a new installation would inherit what was not erased), and
+uninstalling the plugin again, also after a restart, runs the erase again until it
+succeeds. `plugin dev unlink` is the same transaction, so it erases the plugin's
+stored credentials too: linking the plugin again asks for them again.
+
+The erase covers the live settings database. bbolt is copy-on-write and does not
+zero the pages it frees, so an erased value may stay readable in the file until a
+later write reuses its page. Copies of the database are not touched:
+`settings.db.corrupt.<unix>`, made when the database is found corrupt and never
+pruned, and the copy a channel switch makes with "copy current data", hold every
+plugin's settings. The plugin process log, the activity history, the filesystem and
+backups are outside the erase as well. Compacting the database on its next open and
+pruning the corrupt copies are separate changes.
 
 Managed development workspaces also require host-owned fixed-SDK build evidence
 for backend archives. Build the plugin through the selected workspace's normal

@@ -270,9 +270,15 @@ func (pm *pluginManager) beginUninstallDisposal(recovery *uninstallRecovery) (er
 	return file.Sync()
 }
 
-func (pm *pluginManager) removeUninstallRecovery(recovery *uninstallRecovery) error {
+// removeUninstallRecovery disposes of the staged installation and removes the
+// recovery marker. finish runs in between: once disposal is irrevocable and
+// published, and before the marker, the only record of what the uninstall still
+// owes, is removed. An error from finish keeps the marker, so the uninstall is
+// retried, also after a restart, until finish succeeds. Without a recovery there
+// is no installation to dispose of, and finish runs directly.
+func (pm *pluginManager) removeUninstallRecovery(recovery *uninstallRecovery, finish func() error) error {
 	if recovery == nil {
-		return nil
+		return finish()
 	}
 	canonical, staged, err := pm.locateUninstallRecovery(recovery)
 	if err != nil {
@@ -308,6 +314,9 @@ func (pm *pluginManager) removeUninstallRecovery(recovery *uninstallRecovery) er
 	file.Close()
 	if identity != recovery.markerIdentity {
 		return errors.New("uninstall recovery marker was replaced")
+	}
+	if err = finish(); err != nil {
+		return err
 	}
 	if err = pm.stateRoot.Remove(uninstallRecoveryName(recovery.Plugin.ID)); err != nil {
 		return err

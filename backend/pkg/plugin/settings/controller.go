@@ -177,6 +177,11 @@ func (c *controller) hydratePlugin(
 		return
 	}
 
+	// 1b. Remember which declared settings are ordinary, before any value is
+	// stored for this schema, so that an uninstall can tell credentials from
+	// preferences even when the plugin does not run again.
+	c.rememberSchema(ctx, pluginID, schema, logger)
+
 	// 2. Load persisted values from bbolt
 	var persisted map[string]any
 	if c.store != nil {
@@ -242,6 +247,38 @@ func (c *controller) hydratePlugin(
 
 	// 7. Drain pending changes
 	c.drainPendingChanges(pluginID, client)
+}
+
+// rememberSchema stores which of the plugin's declared settings are ordinary
+// preferences, so that uninstalling the plugin erases its credentials and keeps
+// its preferences even when it has not started in that session: it was
+// disabled, it failed to start, or the host restarted. It runs before the
+// persisted values are loaded and before anything can be stored for this schema:
+// no value is ever stored without a schema to classify it, and a crash between
+// the two writes is harmless. A schema that cannot be remembered must not leave
+// an earlier one that may be more permissive, so it is forgotten; an uninstall
+// then erases every value of the plugin.
+func (c *controller) rememberSchema(
+	ctx context.Context,
+	pluginID string,
+	schema map[string]pkgsettings.Setting,
+	logger logging.Logger,
+) {
+	if c.store == nil {
+		return
+	}
+	err := c.store.RememberPluginSchema(pluginID, ordinarySettingIDs(schema))
+	if err == nil {
+		return
+	}
+	logger.Warnw(ctx, "failed to remember plugin settings schema; uninstalling the plugin erases every value it stored",
+		"plugin", pluginID, "error", err)
+	if errors.Is(err, settingsstore.ErrSchemaTooLarge) {
+		return // The store dropped the earlier schema itself.
+	}
+	if forgetErr := c.store.ForgetPluginSchema(pluginID); forgetErr != nil {
+		logger.Warnw(ctx, "failed to forget plugin settings schema", "plugin", pluginID, "error", forgetErr)
+	}
 }
 
 // failPendingChanges removes and rejects queued transactions for a plugin.

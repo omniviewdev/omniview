@@ -616,6 +616,9 @@ func main() {
 		},
 		builtinCatalog,
 	)
+	// An uninstall releases the plugin's cached store and data roots, so that a
+	// plugin installed again under the same ID gets roots on its new directories.
+	pluginManager.SetPluginStateReleaser(stateDir.ReleasePluginRoots)
 	plugin.ConfigureActivities(pluginManager, resourceController, activityService)
 	telemetry.RegisterPluginProcessSource(func() []telemetry.PluginProcess {
 		var processes []telemetry.PluginProcess

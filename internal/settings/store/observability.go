@@ -35,7 +35,13 @@ func (s *Store) logger() logging.Logger {
 // pluginID are identifiers; values are never exported or logged, and failures
 // are recorded as a class, never as error text.
 func (s *Store) persistSave(category, pluginID string, save func() error) error {
-	ctx, span := tracer.Start(context.Background(), "settings.Save")
+	return s.persistOperation("settings.Save", category, pluginID, save)
+}
+
+// persistOperation is persistSave for an operation that is not a plain save,
+// such as an erase, which gets a span of its own name.
+func (s *Store) persistOperation(spanName, category, pluginID string, save func() error) error {
+	ctx, span := tracer.Start(context.Background(), spanName)
 	if category != "" {
 		span.SetAttributes(attribute.String("category", category))
 	}
