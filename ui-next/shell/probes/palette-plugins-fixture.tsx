@@ -6,6 +6,9 @@
 //   ?plugins=1   how many plugins are installed: `fixture-a-ok` ("Seam Fixture") and, with 2, `fixture-b-dup` ("Seam Fixture Copy"), each with the fixture's providers
 //   ?quick=0     what `quick` costs in milliseconds, then `slow=300` and `big=5000` (the rows `big` returns); `window.__fixturePalette` is the fixture's control, read and written by the probe
 //   ?scoped=1    the tab on screen has a connection, so the palette opens narrowed to its plugin and that connection (S69)
+//   ?aliases=1   the plugin's sidebar is Group > Widgets, Gadgets (the keyword `gz`) and Gazebo (a title that holds the keyword's letters in one word), and the plugin's own providers stay quiet: what answers is the
+//                host's pages source, from the sidebar's keywords (C1e). `window.__aliasFault('ignored' | 'loose')` is the probe's negative control: the keyword is not the host's to read, or it ranks as a keyword did before
+//                an alias was a name (a source of the host's own that holds the same word as a keyword, below a loose match in a title)
 //
 // `window.__palette` is the model's store; `window.__tabs` the tab model; `window.__plugin` takes a plugin's interface out of the live set (`unload(id)`, `fail(id)`) and brings it back (`reload(id)`, a new contribution, as a
 // reload of its bundle makes); `window.__commits` lists every commit of the tree (React's profiler: the probe builds this entry with the development build of React DOM for the counts); `window.__announced` lists what the
@@ -21,21 +24,25 @@ import { createContributions, type PluginSource } from '../../plugins/host/contr
 import { createHostPalette } from '../../plugins/host/palette';
 import type { PluginEntry } from '../../plugins/host/pluginStore';
 import { Published } from '../../plugins/host/published';
-import { acme } from '../../plugins/testing';
+import { acme, answering, widgetPage } from '../../plugins/testing';
 import { createTabsStore, platformOf } from '..';
 import { StaticShell, STATIC_RAIL } from '../testing';
 
 const params = new URLSearchParams(window.location.search);
 const number = (name: string, fallback: number): number => Number(params.get(name) ?? fallback);
+const ALIASES = params.get('aliases') === '1';
 
-// What the fixture's providers cost, and what they did: the control the plugin reads (plugins/fixture/src/palette.ts). Quiet providers are not asked until it exists, and here it exists from the first frame.
-Reflect.set(window, '__fixturePalette', {
-  stats: {},
-  commands: [],
-  quick: { delay: number('quick', 0), size: 5 },
-  slow: { delay: number('slow', 300), size: 5 },
-  big: { delay: 0, size: number('big', 5000) },
-});
+// What the fixture's providers cost, and what they did: the control the plugin reads (plugins/fixture/src/palette.ts). Quiet providers are not asked until it exists, and here it exists from the first frame
+// (but with `?aliases=1`, where the plugin's providers stay quiet, so nothing answers but the host's own sources).
+if (!ALIASES) {
+  Reflect.set(window, '__fixturePalette', {
+    stats: {},
+    commands: [],
+    quick: { delay: number('quick', 0), size: 5 },
+    slow: { delay: number('slow', 300), size: 5 },
+    big: { delay: 0, size: number('big', 5000) },
+  });
+}
 
 /** A page that draws nothing: the palette's rows lead to it, and what is under test is that they open it. */
 const itemPage: DetailPageV1 = {
@@ -44,10 +51,25 @@ const itemPage: DetailPageV1 = {
   usePage: () => ({ source: { state: { kind: 'loading' }, view: undefined, refreshing: false, refresh: async () => undefined } }),
 };
 
+/** The sidebar of `?aliases=1`: Gadgets has a keyword, and Gazebo is a decoy whose title holds the keyword's letters (g, z) in one word, which a title match of that kind used to outrank a keyword with. */
+const ALIAS_NODES: readonly SidebarNodeV1[] = [
+  {
+    id: 'group',
+    label: 'Group',
+    icon: 'layers',
+    children: [
+      { id: 'widgets', label: 'Widgets', icon: 'box' },
+      { id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gz'] },
+      { id: 'gazebo', label: 'Gazebo', icon: 'box' },
+    ],
+  },
+];
+
 const contributionOf = (name: string): ContributionV1 =>
   acme({
     plugin: { name },
-    pages: { ...acme().pages, item: itemPage },
+    pages: { ...acme().pages, item: itemPage, ...(ALIASES ? { gazebo: widgetPage('Gazebo', answering([], 'Gazebo')) } : {}) },
+    ...(ALIASES ? { sidebar: { label: `${name} navigation`, title: name, nodes: ALIAS_NODES } } : {}),
     palette: createFixturePalette(name, (item) => ({ page: 'item', params: { name: item } }), { page: 'widgets', params: {} }),
   });
 
@@ -114,6 +136,29 @@ const host = createHostPalette({
 });
 host.attach();
 Reflect.set(window, '__palette', host.store);
+
+/** The nodes without the keywords they carry, as a plugin's sidebar that never said any. */
+const withoutKeywords = (list: readonly SidebarNodeV1[]): SidebarNodeV1[] =>
+  list.map(({ keywords: _keywords, children, ...rest }) => ({ ...rest, ...(children === undefined ? {} : { children: withoutKeywords(children) }) }));
+
+/**
+ * The probe's negative control for the sidebar's keywords (`?aliases=1`): the fault the check is there to see, made in the page. `ignored`: the host does not read the keyword, so the page has no name but its label.
+ * `loose`: the keyword ranks as a keyword did before an alias was a name (a source of the host's own that offers the page with the word among its keywords, which weigh 3), so a loose match in a title (Gazebo) outranks it.
+ */
+Reflect.set(window, '__aliasFault', (fault: 'ignored' | 'loose'): void => {
+  nodes.publish(WEST.id, withoutKeywords(ALIAS_NODES));
+  if (fault === 'loose') {
+    host.store.registerProvider({
+      id: 'probe:keyword',
+      plugin: 'host',
+      pluginName: 'Omniview',
+      title: 'Pages',
+      section: 'goto',
+      // The words as a plugin wrote them when they were keywords (the kind, then its short name): the start of a part of a text is 76 x 3, and a loose match in a title (Gazebo) is 39 x 6.
+      match: () => [{ id: 'gadgets', kind: 'page', title: 'Gadgets', context: 'Group', keywords: 'gadget gz', route: { plugin: WEST.id, contribution: 'gadgets' } }],
+    });
+  }
+});
 
 const announced: string[] = [];
 Reflect.set(window, '__announced', announced);

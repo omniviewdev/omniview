@@ -17,6 +17,9 @@
 //   states     the sections with results and axe on them; a provider that rejects, answers what is not a list, never answers (at 1440 x 900), and one with a row that is not valid: the others answer, the band names the
 //              source in the host's words with a Retry that asks again; an answer that comes after the provider was told to stop is never shown; a plugin that leaves while the palette is open takes its section away at once, and
 //              comes back with its section when it is back.
+//   aliases    (C1e, `?aliases=1`: the plugin's own providers stay quiet, so what answers is the host's pages source) a page found by the keyword its sidebar entry carries: `gz` is the keyword of Gadgets, and Gazebo is a
+//              decoy whose title holds its letters in one word. The page is in the list, it is the FIRST row (a loose match in a title used to outrank a keyword), nothing of the keyword is drawn on a row, and a plain Enter
+//              opens it in the tab on screen. The negative controls: `alias-ignored` (the host does not read the keyword) and `alias-loose` (the keyword ranks as a plain keyword did, below the decoy).
 //
 // The numbers go to `report.plugins["<engine> <viewport>"]`; `fail(where, what)` records what must hold and is never thrown.
 import { normalizeFont } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -113,7 +116,7 @@ const marked = (...names) => names;
 
 export async function plugins({ browser, engine, viewportName, viewport, production, development, report, fail, control, only, axe, shots }) {
   const where = `${engine} ${viewportName}`;
-  const result = { timeline: null, typing: null, focus: null, commits: null, shift: null, closed: null, states: null, seconds: {} };
+  const result = { timeline: null, typing: null, focus: null, commits: null, shift: null, closed: null, states: null, aliases: null, seconds: {} };
   report.plugins ??= {};
   report.plugins[where] = result;
 
@@ -566,5 +569,36 @@ export async function plugins({ browser, engine, viewportName, viewport, product
     if ((await listOf(page)).ids.some((id) => id.startsWith('fixture-a-ok:'))) fail(where, 'plugins states: the rows of a plugin that failed are still on screen');
     found.leaves = { rowsAfterUnload: gone.length };
     result.states = found;
+  });
+
+  // 8. A page found by the keyword its sidebar entry carries (C1e), through the host's own wiring of a plugin's sidebar (`?aliases=1`). `gz` is the keyword of Gadgets; Gazebo is a decoy whose title holds its letters in one
+  // word, which a title match of that kind used to outrank a keyword with. The page the keyword names must be in the list (the negative control `alias-ignored`: the host does not read the keyword), the FIRST row (`alias-loose`:
+  // the keyword ranks as a plain keyword did, 3 against a title's 6, so the decoy comes first), nothing of the keyword drawn on a row, and a plain Enter opens it in the tab on screen.
+  await part('aliases', production.origin, 'aliases=1', {}, async (page) => {
+    if (control === 'alias-ignored' || control === 'alias-loose') await page.evaluate((fault) => window.__aliasFault(fault), control === 'alias-ignored' ? 'ignored' : 'loose');
+    await openPalette(page);
+    await page.keyboard.type('gz', { delay: 60 });
+    await sleep(400);
+    const listed = await listOf(page);
+    const drawn = await page.evaluate(() => [...document.querySelectorAll('dialog [role=option]')].map((option) => option.textContent ?? ''));
+    const named = listed.names.indexOf('Page: Gadgets, Group');
+    if (shots !== undefined) await page.screenshot({ path: `${shots}/palette-aliases-${engine}-${viewportName}.png` });
+    result.aliases = { names: listed.names, named, active: listed.active };
+    if (named < 0) {
+      fail(where, `plugins aliases: the keyword "gz" does not find the page it names: ${JSON.stringify(listed.names)}`);
+      return;
+    }
+
+    if (!listed.names.includes('Page: Gazebo, Group')) fail(where, `plugins aliases: the decoy (a title that holds the letters of the keyword) is not in the list, so the order says nothing: ${JSON.stringify(listed.names)}`);
+    if (named !== 0) fail(where, `plugins aliases: the page a keyword names is not the first row: it is row ${named}, after ${JSON.stringify(listed.names.slice(0, named))}`);
+    if (drawn.some((text) => /gz/i.test(text))) fail(where, `plugins aliases: the keyword is drawn on a row: ${JSON.stringify(drawn)}`);
+    await page.keyboard.press('Enter');
+    await sleep(200);
+    const went = await page.evaluate(() => {
+      const state = window.__tabs.getSnapshot();
+      return { tabs: state.order.length, page: state.active === null ? null : (state.tabs[state.active]?.location.route.contribution ?? null) };
+    });
+    result.aliases = { ...result.aliases, went };
+    if (went.page !== 'gadgets' || went.tabs !== 1) fail(where, `plugins aliases: a plain Enter on the page a keyword names did not open it in the tab on screen: ${JSON.stringify(went)}`);
   });
 }

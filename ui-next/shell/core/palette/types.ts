@@ -115,6 +115,11 @@ export type Candidate = {
   readonly context?: string | undefined;
   /** Words that match but are never drawn. They match whole words; the title also matches loosely. */
   readonly keywords?: string | undefined;
+  /**
+   * Other names the row is known by, apart by spaces: the short name a tool gives the thing (`ws` for Workshops), which the title does not hold. A word of the query that is a whole alias ranks as an exact title
+   * match, and one an alias begins with as a prefix of a title (ch16 SE1: an exact or prefix match on a name outranks a substring or loose match in a title); any other match of an alias is a keyword's. Never drawn.
+   */
+  readonly aliases?: string | undefined;
   /** What the context is matched by when it says more than should be matched: a tab's window name is drawn and never matched (S68). */
   readonly matchContext?: string | undefined;
   readonly icon?: string | undefined;

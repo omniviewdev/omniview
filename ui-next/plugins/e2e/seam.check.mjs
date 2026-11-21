@@ -596,7 +596,8 @@ async function checkLogs(page, base, engine) {
 /**
  * j. The command palette (C1b), on the real host with the fixture plugins loaded: the host's own sources (the pages the plugins' sidebars open, the open tabs, the host's commands) and the view over them, in a
  * page of its own. Nothing of it is a plugin's: the palette offers a plugin's pages because the host reads them from the contribution it admitted. What it lists and says is what is real: the host's commands
- * and no others, the four open keys the tab model has and no key for a window this host cannot open.
+ * and no others, the four open keys the tab model has and no key for a window this host cannot open. The two plugins declare one name here, so a page of each reads alike and stays so (a name that says the same tells
+ * nothing); `checkTwins` is the scenario where they declare two, and the rows are told apart.
  */
 async function checkPalette(page, base, engine) {
   const errors = [];
@@ -635,12 +636,14 @@ async function checkPalette(page, base, engine) {
   await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'tab');
   assert.ok(await hasFocus(items), `${engine}: Escape gave the focus back to the control that had it`);
 
-  // A plugin's page is found by its name, from the sidebar the plugin published. The two plugins are built from one source, so each has a Crash page in a group called Things and the same name inside its
-  // bundle: two rows that read alike. Each says whose it is and the group it sits in, and the first plugin's (the rail's first) is the first row, which is the active one.
+  // A plugin's page is found by its name, from the sidebar the plugin published. The two plugins are built from one source, so each has a Crash page in a group called Things and the same name inside its bundle: two
+  // rows that read alike, and a name that says the same cannot tell them apart, so each reads as a page does (the group it sits in; with no connection there is nothing before it). The first plugin's (the rail's
+  // first) is the first row, which is the active one.
   await ask('crash');
   const crash = dialog.getByRole('option', { name: /^Page: Crash/ }).first();
   await crash.waitFor();
-  assert.equal(await crash.getAttribute('aria-label'), 'Page: Crash, Seam Fixture · Things', `${engine}: a page row says whose it is, then the group it sits in`);
+  assert.equal(await crash.getAttribute('aria-label'), 'Page: Crash, Things', `${engine}: a page row says the group it sits in`);
+  assert.equal(await dialog.locator('[data-palette-row*="fixture-b-dup:crash"]').getAttribute('aria-label'), 'Page: Crash, Things', `${engine}: and so does the page of the plugin that declares the same name: the name would tell nothing`);
   assert.equal(await crash.getAttribute('aria-selected'), 'true', `${engine}: the page that matched is the active row`);
   await shot('page');
 
@@ -721,6 +724,29 @@ async function checkPalette(page, base, engine) {
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'detached' });
 
+  // The keywords of a plugin's sidebar entry (C1e) are other names for its page: the fixture gives Crash `boom` and `bang` and Items `stuff` and `inventory` (plugins/fixture/src/entry.tsx), none of them a letter of its label, so
+  // a page found by one is found by the keyword and by nothing else. Typed whole, a keyword ranks the page as its label does: it is the first row, the active one, and nothing of the keyword is on it; a plain Enter opens it in
+  // the tab on screen (the same plugin, so smart open navigates that tab: the strip holds the three tabs it held). The leaf that opens the plugin's home gives its keywords to the home's row, which is the one row for that page.
+  await ask('stuff');
+  const itemsHome = dialog.getByRole('option').first();
+  await itemsHome.waitFor();
+  assert.equal(await itemsHome.getAttribute('aria-label'), 'Plugin home: Seam Fixture, Items', `${engine}: a keyword of the leaf that opens the plugin's home finds the home`);
+  assert.equal(await itemsHome.getAttribute('aria-selected'), 'true', `${engine}: and it is the active row`);
+  await field.fill('');
+  await page.keyboard.type('boom', { delay: 20 });
+  const named = dialog.getByRole('option', { name: /^Page: Crash/ }).first();
+  await named.waitFor();
+  assert.equal(await dialog.getByRole('option').first().getAttribute('data-palette-row'), await named.getAttribute('data-palette-row'), `${engine}: the page a keyword names is the first row`);
+  assert.match((await named.getAttribute('data-palette-row')) ?? '', /fixture-a-ok:crash$/, `${engine}: of the first plugin (the rail's first), whose page and whose copy hold the same keyword`);
+  assert.equal(await named.getAttribute('aria-label'), 'Page: Crash, Things', `${engine}: the row says what it said for the label`);
+  assert.equal(await named.getAttribute('aria-selected'), 'true', `${engine}: it is the active row`);
+  assert.ok(!(await named.innerText()).includes('boom'), `${engine}: and nothing of the keyword is drawn on it`);
+  await page.keyboard.press('Enter');
+  await dialog.waitFor({ state: 'detached' });
+  await page.getByRole('tab', { name: 'Crash', selected: true }).waitFor();
+  await page.locator('[data-shell-part="rail"] [aria-label="Seam Fixture"][aria-current="true"]').waitFor();
+  assert.equal(await page.getByRole('tab').count(), 3, `${engine}: a plain Enter on the page a keyword names opened it in the tab on screen`);
+
   // The Search control of the top row opens it with a click, and Escape gives the focus back to the control.
   const search = page.getByRole('button', { name: /^Search / });
   await search.click();
@@ -731,6 +757,40 @@ async function checkPalette(page, base, engine) {
   await page.waitForFunction(() => document.activeElement?.getAttribute('data-shell-part') === 'search');
   assert.ok(await hasFocus(search), `${engine}: Escape gave the focus back to the Search control`);
   assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the palette wrote no page error`);
+}
+
+/**
+ * j2. Two pages that would read alike, of two plugins of two names, are told apart by the plugin's name, first, on those two rows only (C1e, the lead's ruling: the rule the scope of a session tab follows for twins), in the
+ * text the row draws and so in its accessible name. The two plugins are built from one source and declare one name (the checks that order rows by their ids need rows that read alike), so this scenario asks the page, before
+ * the bundles load, for the names their rail entries say (`window.__fixtureOwnNames`, read by the bundle as it loads): two plugins have two names.
+ */
+async function checkTwins(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    Reflect.set(window, '__fixtureOwnNames', true);
+  });
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  const dialog = page.getByRole('dialog', { name: 'Search' });
+  await page.keyboard.press(`${mac ? 'Meta' : 'Control'}+KeyK`);
+  await dialog.waitFor();
+  await page.keyboard.type('crash', { delay: 20 });
+  const first = dialog.locator('[data-palette-row*="fixture-a-ok:crash"]');
+  const second = dialog.locator('[data-palette-row*="fixture-b-dup:crash"]');
+  await first.waitFor();
+  await second.waitFor();
+  assert.equal(await first.getAttribute('aria-label'), 'Page: Crash, Seam Fixture · Things', `${engine}: a page that reads like another plugin's page says its plugin's name first, in its accessible name`);
+  assert.equal(await second.getAttribute('aria-label'), 'Page: Crash, Seam Fixture Copy · Things', `${engine}: and so does the other plugin's page, with its own plugin's name`);
+  assert.match(await first.innerText(), /Seam Fixture · Things/, `${engine}: the text the row draws says it too`);
+  assert.match(await second.innerText(), /Seam Fixture Copy · Things/, `${engine}: and the other's`);
+  assert.equal(await dialog.getByRole('option', { name: /^Page: Crash/ }).count(), 2, `${engine}: two rows, one for each plugin's page`);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the twins wrote no page error`);
 }
 
 /** The plugin's `retry` on the window's plugin store, which is where the window keeps it (the hooks of `PluginHostScreen`, reached from any element React drew): what a reload of a plugin's interface is. The store's entry goes to `loading` at once. */
@@ -1972,6 +2032,7 @@ try {
       await checkPanel(await freshPage(browser, host.base), host.base, name);
       await checkLogs(await freshPage(browser, host.base), host.base, name);
       await checkPalette(await freshPage(browser, host.base), host.base, name);
+      await checkTwins(await freshPage(browser, host.base), host.base, name);
       await checkProviders(await freshPage(browser, host.base), host.base, name);
       await checkKept(await freshPage(browser, host.base), host.base, name);
       await checkIdentity(await freshPage(browser, host.base), host.base, name);

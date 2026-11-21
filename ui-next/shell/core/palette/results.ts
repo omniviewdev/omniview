@@ -29,6 +29,8 @@ export type Cand = {
   readonly context: string;
   readonly matchContext: string | undefined;
   readonly keywords: string;
+  /** Other names of the row, apart by spaces: never drawn (match.ts). */
+  readonly aliases: string;
   readonly icon: string;
   readonly tone: Tone;
   readonly noun: string;
@@ -165,6 +167,7 @@ export function candidateOf(raw: unknown, owner: Owner): Cand | undefined {
 
   const reason = raw.unavailable === true ? 'Unavailable' : nonEmpty(raw.unavailable);
   const keywords = optional(raw.keywords);
+  const aliases = optional(raw.aliases);
   const matchContext = typeof raw.matchContext === 'string' ? raw.matchContext : undefined;
   const shortcut = nonEmpty(raw.shortcut);
   return Object.freeze({
@@ -178,6 +181,7 @@ export function candidateOf(raw: unknown, owner: Owner): Cand | undefined {
     context: optional(raw.context),
     matchContext,
     keywords,
+    aliases,
     icon: nonEmpty(raw.icon) ?? owner.pluginIcon ?? '',
     tone: isTone(raw.tone) ? raw.tone : 'neutral',
     noun: nonEmpty(raw.noun) ?? NOUNS[kind],

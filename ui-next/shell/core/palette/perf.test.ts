@@ -136,3 +136,39 @@ describe('a provider that takes 300 ms of real time', () => {
     f.palette.dispose();
   });
 });
+
+// Aliases (C1e) are one more field to read for a candidate that has any: ten thousand candidates that each carry three, ranked for the same queries and through the store, in the same bound as the commands above.
+describe('ten thousand static candidates that carry aliases', () => {
+  const aliased = commands(10_000).map((candidate, index): Candidate => ({ ...candidate, aliases: `a${String(index)} ${candidate.title.split(' ')[0]?.slice(0, 2).toLowerCase() ?? 'x'}${String(index % 100)} tog${String(index % 10)}` }));
+
+  for (const [length, query] of QUERIES) {
+    it(`rank a ${String(length)}-character query (${JSON.stringify(query)}) in under ${String(BOUND)} ms`, () => {
+      const words = wordsOf(query);
+      const found = rank([{ owner: 'host:commands', candidates: aliased }], words, 6);
+      expect(found.total).toBeGreaterThan(0);
+      expect(found.hits).toHaveLength(6);
+      expect(fastest(() => rank([{ owner: 'host:commands', candidates: aliased }], words, 6))).toBeLessThan(BOUND);
+    });
+  }
+
+  it('puts the candidate an alias names first, among ten thousand', () => {
+    const found = rank([{ owner: 'host:commands', candidates: aliased }], wordsOf('a4242'), 6);
+    expect(found.hits[0]?.candidate.id).toBe('cmd.4242');
+    expect(found.hits[0]?.score).toBe(600);
+  });
+
+  it('answers a keystroke through the store in under the bound, with the rows ready', () => {
+    const times: number[] = [];
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const f = makePalette();
+      f.palette.registerProvider({ id: 'host:commands', plugin: 'host', section: 'commands', match: () => aliased });
+      f.palette.open();
+      const start = performance.now();
+      f.palette.setQuery('tog');
+      times.push(performance.now() - start);
+      expect(f.palette.getSnapshot().rows.length).toBeGreaterThan(0);
+    }
+
+    expect(Math.min(...times)).toBeLessThan(BOUND);
+  });
+});

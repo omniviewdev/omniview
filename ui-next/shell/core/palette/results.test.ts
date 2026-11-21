@@ -78,6 +78,14 @@ describe('candidateOf', () => {
     expect(candidateOf({ ...base, kind: 'resource' }, owner)?.noun).toBe('Resource');
     expect(candidateOf({ ...base, kind: 'resource', noun: 'Workload' }, owner)?.noun).toBe('Workload');
   });
+
+  it('reads the aliases as a string, trimmed, and none for what is not one (they are words a row is named by: match.ts)', () => {
+    expect(candidateOf({ ...base, aliases: '  nameset ns ' }, owner)?.aliases).toBe('nameset ns');
+    expect(candidateOf(base, owner)?.aliases).toBe('');
+    for (const aliases of [3, null, ['ns'], { ns: true }, true]) {
+      expect(candidateOf({ ...base, aliases }, owner)?.aliases, JSON.stringify(aliases)).toBe('');
+    }
+  });
 });
 
 describe('rowFor', () => {
@@ -140,6 +148,16 @@ describe('rowFor', () => {
     expect(row.word).toBe('Degraded');
     expect(row.into).toBeUndefined();
     expect(row.name).toBe('Resource: cart-api, Deployment · prod-eu · payments, Degraded');
+  });
+
+  it('draws an alias nowhere, and is not a row\'s member: the user cannot see one, and a view reads data it can draw', () => {
+    const named = candidateOf({ ...base, title: 'Zebra', aliases: 'ns' }, owner);
+    const row = rowFor(named ?? fail('valid'), { section: 'goto', words: wordsOf('ns'), availability: checkAvailable, inert: false, score: 600 });
+    expect(row.title.ranges).toEqual([]);
+    expect(row.title.parts).toEqual([{ text: 'Zebra', match: false }]);
+    expect(row.context.ranges).toEqual([]);
+    expect(Object.keys(row)).not.toContain('aliases');
+    expect(JSON.stringify(row)).not.toContain('"ns"');
   });
 
   it('is unavailable when the provider says so, without asking the host', () => {

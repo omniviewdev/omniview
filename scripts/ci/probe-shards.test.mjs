@@ -377,8 +377,9 @@ const MEASURED_SECONDS = {
   'Probe that the log probe sees a log view that is wrong': 106,
   'Probe the tooltip host': 144,
   'Probe the parts against the pinned mock reference': 163,
-  'Probe what the providers of a plugin do to the command palette': 140,
-  'Probe that the plugin providers probe sees a palette that is wrong': 80,
+  // C1e: the runner's seconds of the first run of its PR (shard 6's log: the aliases part adds about 4 s to the probe, 140 to 144, and the two new controls take 6 s and 7 s, so its nine controls take 91 s, 80 before).
+  'Probe what the providers of a plugin do to the command palette': 144,
+  'Probe that the plugin providers probe sees a palette that is wrong': 91,
   'Probe the table against the pinned mock reference': 63,
   'Probe the shell frame against the pinned mock reference': 45,
   'Probe the fonts and the layout shift': 35,

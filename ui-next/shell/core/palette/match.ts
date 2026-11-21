@@ -6,12 +6,19 @@ import { LIMITS, type LabelPart, type Range } from './types';
 // Every word of the query must match (AND). A word matches a field whole (100), as a prefix of it (88), at the start of one of its words or at a CamelCase hump (76) or as a
 // substring (58); in the TITLE only, also loosely: by its letters in order inside ONE word ("dply" is Deployments) or by the first letters of consecutive words ("ei" is EC2
 // Instances). Letters that wander across words match nothing, so a stray command never ranks (QA-SF-26). A title weighs 6, keywords 3 and the context 1.
+//
+// Aliases (C1e) are the one thing the mock's matcher does not have. An alias is another NAME for a row: the short name a tool gives the thing (`ws` for Workshops, `rk` for Racks), which the title does not
+// hold. Ch16 SE1 ranks a name: "an exact or prefix match on an object name outranks a substring or loose match in a command or page title". So a word that is a whole alias scores what an exact title match
+// does (100 x 6) and a word an alias begins with scores what a prefix of a title does (88 x 6); any other match of an alias (inside it, at the start of one of its parts) is a keyword's (x 3), and an alias
+// never matches loosely. The mock's keywords keep their weight on purpose: a keyword is a word a row is found by, not a name, and many keywords the host writes are its own (a tab carries its plugin's name),
+// which an exact keyword that ranked as a title would tie with the plugin's own home row.
 
 export type Match = { readonly score: number; readonly runs: readonly Range[] };
 
 /** A separator of words: white space and `- _ . / : · › ( ) [ ]`. */
 const SEPARATOR = /[\s\-_./:·›()[\]]/;
 const LETTER = /[A-Za-z]/;
+const WHITE = /\s/;
 
 const isSeparator = (character: string): boolean => SEPARATOR.test(character);
 
@@ -220,10 +227,34 @@ export function matchWord(word: string, text: string, loose = true): Match | und
   return matchFolded(word, text, fold(text), loose);
 }
 
+/**
+ * What a word is to a list of aliases (lower case, apart by white space): 100 when it is a whole alias, 88 when an alias begins with it, else 0. An occurrence of the word that does not start an alias
+ * (inside one, or at the end of one) is not one: that is a keyword's match, which the caller scores.
+ */
+function aliasScore(word: string, lower: string): number {
+  let best = 0;
+  for (let at = lower.indexOf(word); at >= 0; at = lower.indexOf(word, at + 1)) {
+    if (at > 0 && !WHITE.test(lower.charAt(at - 1))) {
+      continue;
+    }
+
+    const after = at + word.length;
+    if (after >= lower.length || WHITE.test(lower.charAt(after))) {
+      return 100;
+    }
+
+    best = 88;
+  }
+
+  return best;
+}
+
 export type Fields = {
   readonly title: string;
   readonly context?: string | undefined;
   readonly keywords?: string | undefined;
+  /** Other names of the row, apart by spaces (`ws` for Workshops): a whole alias ranks as an exact title match and the start of one as a prefix of a title; see the head of this file. */
+  readonly aliases?: string | undefined;
   /** What the context is matched by when it holds more than it should (a window's name is not matched). */
   readonly matchContext?: string | undefined;
 };
@@ -238,9 +269,11 @@ export function scoreCandidate(words: readonly string[], fields: Fields): number
   const titleLower = fold(title);
   const context = fields.matchContext ?? fields.context ?? '';
   const keywords = fields.keywords ?? '';
+  const aliases = fields.aliases ?? '';
   // Made at most once, and only when a word reaches them.
   let contextLower: string | undefined;
   let keywordsLower: string | undefined;
+  let aliasesLower: string | undefined;
   let total = 0;
   for (const word of words) {
     let best = 0;
@@ -254,6 +287,20 @@ export function scoreCandidate(words: readonly string[], fields: Fields): number
       const inKeywords = matchFolded(word, keywords, keywordsLower, false);
       if (inKeywords !== undefined && inKeywords.score * 3 > best) {
         best = inKeywords.score * 3;
+      }
+    }
+
+    if (aliases !== '') {
+      aliasesLower ??= fold(aliases);
+      const named = aliasScore(word, aliasesLower) * 6;
+      if (named > best) {
+        best = named;
+      } else if (named === 0) {
+        // Not the start of an alias: whatever else of it the word matches is a keyword's.
+        const inAliases = matchFolded(word, aliases, aliasesLower, false);
+        if (inAliases !== undefined && inAliases.score * 3 > best) {
+          best = inAliases.score * 3;
+        }
       }
     }
 

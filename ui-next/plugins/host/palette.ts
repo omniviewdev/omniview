@@ -10,12 +10,14 @@ import {
   type PaletteBindings,
   type PaletteCandidate,
   type PaletteCommandOutcome,
+  type PaletteScope,
   type PaletteSource,
   type PanelStore,
   type Route,
   type TabsStore,
 } from '../../shell';
 import { openable } from '../contract/admit';
+import { readKeywords } from '../contract/sidebarKeywords';
 import type { ContributionV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { connectionOf, routeKey, type PluginSource } from './contributions';
 import { commandOf, providersOf, runCommand } from './paletteProviders';
@@ -32,7 +34,8 @@ type Ready = Extract<PluginEntry, { readonly phase: 'ready' }>;
 // There are three sources, all of the host's, and each answers synchronously from what the host holds at the moment it is asked: nothing is kept between one question and the next, so there is
 // nothing to go stale. The model scores, filters and ranks what a source returns; a source returns the candidates that could answer and does not look at the query. While the palette is narrowed
 // to a plugin (ch16 S69) the places of the others are not offered, and the host's commands still are.
-//   Pages     the home of each plugin, whatever state it is in, and a row for each page of a plugin that is ready that its sidebar opens (section Go to).
+//   Pages     the home of each plugin, whatever state it is in, and a row for each page of a plugin that is ready that its sidebar opens (section Go to). A page's row says where it is as the design lab's kind rows do
+//             ("Workloads", the connection first when the palette is not narrowed to it) and is found by the keywords its sidebar entry gives it (`contract/sidebarKeywords.ts`), which the palette ranks as names.
 //   Tabs      the open tabs, in the strip's order (section Tabs).
 //   Commands  what the host can do from here, each with the reason it cannot when it cannot (section Commands).
 // And one more for each provider a plugin that is ready declares (contract/v1.ts, `palette`; `paletteProviders.ts` makes them): registered when the plugin is ready and taken away, with its pending requests and its rows,
@@ -87,6 +90,8 @@ const CLOSE_WINDOW_CHORD = '⌘⇧W';
 /** A browser tab keeps Command or Control W and J for itself, so the shell also binds Control Option (Control Alt): that is the chord that works where the window is not the app's own, and the one said there. */
 const WEB_CLOSE_TAB_CHORD = { mac: '⌃⌥W', other: 'Ctrl+Alt+W' } as const;
 const WEB_TOGGLE_CHORD = { mac: '⌃⌥J', other: 'Ctrl+Alt+J' } as const;
+/** The most distinct things the host says of one plugin's sidebar, whatever the plugin does next (`tell`). */
+const MAX_SAID = 8;
 
 /**
  * A list of places as one text: a place another part already named is said once ("north", never "north · north"). A part is a list of places joined by ` › `, and the parts are joined by
@@ -147,62 +152,130 @@ function leavesOf(nodes: readonly SidebarNodeV1[], groups: readonly string[] = [
   return nodes.flatMap((node) => (node.children === undefined ? [{ node, groups }] : leavesOf(node.children, [...groups, node.label])));
 }
 
+/** What the host says to a plugin's author about the entries of its sidebar: the plugin's entry in the store (so a plugin that is loaded again is told again) and a sentence. */
+type Tell = (entry: PluginEntry, message: string) => void;
+
+/**
+ * Two page rows of different plugins that would read alike (the same title and the same words under it) are told apart by the plugin's name, put first ("Acme · Group", "Acme · north · Group"): on those rows only, in the text the row
+ * draws and so in the name a screen reader reads. It is the rule a session tab's scope follows when two tabs read alike: said when it is needed, so it is judged on the rows the source lists and never on the query. The name does not tell
+ * apart two plugins of one name, nor two pages of one plugin: such rows read as they did. `owners` is the name of the plugin each page row (by its place in `rows`) belongs to.
+ */
+function tellApart(rows: PaletteCandidate[], owners: ReadonlyMap<number, string>): PaletteCandidate[] {
+  const reading = new Map<string, number[]>();
+  for (const index of owners.keys()) {
+    const row = rows[index];
+    if (row !== undefined) {
+      const key = JSON.stringify([row.title, row.context ?? '']);
+      reading.set(key, [...(reading.get(key) ?? []), index]);
+    }
+  }
+
+  for (const alike of reading.values()) {
+    if (new Set(alike.map((index) => owners.get(index))).size < 2) {
+      continue;
+    }
+
+    for (const index of alike) {
+      const row = rows[index];
+      if (row !== undefined) {
+        rows[index] = { ...row, context: placesOf([owners.get(index) ?? '', row.context ?? '']) };
+      }
+    }
+  }
+
+  return rows;
+}
+
 /**
  * The rows of the pages source. For each plugin, ready ones first in the order of the rail and then the others as the source lists them: its home, then a row for each page its sidebar opens.
  * A plugin that is not ready has its home alone: that opens a page that says what is wrong, and the model draws the row as Degraded. The home says where it is: its page's title when that is
- * not the plugin's name again. The sidebar's entry for the home is not a second row: its label is said by the home instead, when the home had nothing to say, and found by it.
+ * not the plugin's name again. The sidebar's entry for the home is not a second row: its label is said by the home instead, when the home had nothing to say, and found by it, and so are its keywords.
+ *
+ * A page's row says where it is as the design lab's kind rows do (`shell-search.js`, `connectionRows`: `where(place)` is the connection and a place, or the place alone): the groups it sits in ("Workloads"), with the
+ * connection it opens in before them unless a chip has narrowed the palette to that connection (it says it); a page that sits in no group says the connection alone, chip or none (the design lab says "Cluster" there: a group
+ * only its plugin can name, so the host makes none up), and the plugin's name only for a page with neither. Rows of different plugins that would read alike are told apart (`tellApart`). One route is one row, as in the design lab
+ * (`gotoCandidates`: "the same destination offered twice is one row that keeps the context and the keywords either one gave"): an entry the sidebar names twice is listed once, with the keywords and the group names of both and the first group there was to say. The open tab
+ * of a page is a row of the tabs source besides, and not this one's business. The keywords of an entry are the other names its page is known by (`contract/sidebarKeywords.ts`): the row's aliases, which the model
+ * ranks as names and never draws.
  */
-function pagesOf({ tabs, plugins, contributions, nodes, remembered }: HostPaletteDeps, only: string | null): PaletteCandidate[] {
+function pagesOf({ tabs, plugins, contributions, nodes, remembered }: HostPaletteDeps, scope: PaletteScope, tell: Tell): PaletteCandidate[] {
+  const only = scope.plugin;
   const entries = plugins.getSnapshot();
   const rail = railOf(entries);
   const place = new Map(rail.map((entry, index) => [entry.id, index]));
   const glyphs = new Map([...rail, ...failedOf(entries)].map((entry) => [entry.id, entry.icon]));
   const wanted = entries.filter((entry) => only === null || entry.id === only).sort((a, b) => (place.get(a.id) ?? rail.length) - (place.get(b.id) ?? rail.length));
-  const onScreen = activeRoute(tabs)?.plugin;
+  const active = activeRoute(tabs);
+  const onScreen = active?.plugin;
   const rows: PaletteCandidate[] = [];
+  const owners = new Map<number, string>();
   for (const entry of wanted) {
     // A page of a plugin that is not on screen opens at the connection that plugin was last used in (the tab model gives a page the connection of the tab it is opened from, and that tab is another plugin's).
     const last = onScreen === entry.id ? undefined : remembered?.(entry.id);
     const connection = last === undefined ? undefined : connectionOf(last);
+    // The connection the page opens in (the tab on screen's, when the plugin is on screen). A row says it before its groups unless a chip has narrowed the palette to that connection and says it already (a palette keeps its
+    // chips when the tab moves on, so a chip of another connection does not say it); a page that sits in no group says it whatever the chip says, as there is nothing else for it to say.
+    const opensIn = onScreen === entry.id && active !== undefined ? connectionOf(active) : connection;
+    const said = scope.scope !== null && scope.scope.id === opensIn ? undefined : opensIn;
     const name = entry.phase === 'ready' ? entry.contribution.plugin.name : entry.name;
     const input = contributions.home?.(entry.id);
     const home = input === undefined ? undefined : normaliseRoute(input);
     const title = home === undefined ? '' : (contributions.describe(home)?.title ?? '').trim();
     let context = title.toLowerCase() === name.toLowerCase() ? '' : title;
     const found = [name, title];
-    const pages: PaletteCandidate[] = [];
+    const homeWords: string[] = [];
+    const pages = new Map<string, { readonly node: SidebarNodeV1; groups: readonly string[]; readonly route: Route; readonly words: string[]; readonly places: string[] }>();
     const leaves = entry.phase === 'ready' ? leavesOf(openable(nodes.get(entry.id) ?? entry.contribution.sidebar.nodes, entry.contribution.pages)) : [];
     for (const { node, groups } of leaves) {
       const plain: Route = { plugin: entry.id, contribution: node.id, params: {} };
       const route: Route = connection === undefined ? plain : { ...plain, params: { connection } };
+      const read = readKeywords(node);
+      for (const problem of read.problems) {
+        tell(entry, problem);
+      }
+
       if (home !== undefined && routeKey(plain) === routeKey(home)) {
         found.push(node.label);
+        homeWords.push(...read.words);
         context = context === '' && node.label.toLowerCase() !== name.toLowerCase() ? node.label : context;
       } else {
-        pages.push({
-          id: `page:${entry.id}:${node.id}`,
-          kind: 'page',
-          noun: 'Page',
-          title: node.label,
-          icon: node.icon,
-          tone: 'neutral',
-          route,
-          context: groups.length === 0 ? name : placesOf([name, groups.join(' › ')]),
-          keywords: wordsOf([name, ...groups]),
-        });
+        const same = pages.get(node.id);
+        if (same === undefined) {
+          pages.set(node.id, { node, groups, route, words: [...read.words], places: [...groups] });
+        } else {
+          // The row keeps what either entry gave: the words of both, the groups of both as words it is found by, and the first group there was to say (a page named at the top and again in a group is in the group).
+          same.words.push(...read.words);
+          same.places.push(...groups);
+          if (same.groups.length === 0) {
+            same.groups = groups;
+          }
+        }
       }
     }
 
     if (home !== undefined) {
-      rows.push({ id: `home:${entry.id}`, kind: 'home', noun: 'Plugin home', title: name, icon: glyphs.get(entry.id) ?? DEFAULT_RAIL_ICON, tone: 'neutral', route: home, context, keywords: wordsOf(found), order: rows.length });
+      rows.push({ id: `home:${entry.id}`, kind: 'home', noun: 'Plugin home', title: name, icon: glyphs.get(entry.id) ?? DEFAULT_RAIL_ICON, tone: 'neutral', route: home, context, keywords: wordsOf(found), aliases: wordsOf(homeWords), order: rows.length });
     }
 
-    for (const page of pages) {
-      rows.push({ ...page, order: rows.length });
+    for (const { node, groups, route, words, places } of pages.values()) {
+      owners.set(rows.length, name);
+      rows.push({
+        id: `page:${entry.id}:${node.id}`,
+        kind: 'page',
+        noun: 'Page',
+        title: node.label,
+        icon: node.icon,
+        tone: 'neutral',
+        route,
+        context: groups.length === 0 ? (opensIn ?? name) : placesOf([said ?? '', groups.join(' › ')]) || name,
+        keywords: wordsOf([name, ...places]),
+        aliases: wordsOf(words),
+        order: rows.length,
+      });
     }
   }
 
-  return rows;
+  return tellApart(rows, owners);
 }
 
 /**
@@ -384,8 +457,24 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     },
   });
 
+  const report = deps.report ?? ((problem: PaletteProblem): void => {
+    console.warn(`[palette] ${problem.provider}: ${problem.message}`);
+  });
+
+  // What a plugin's sidebar did wrong that the pages source left out (a keyword that is not valid): said to the plugin's author once for each sentence, and at most `MAX_SAID` for one load of the plugin, because the
+  // source is asked on every keystroke and a hook that is wrong in a new way on every render is not to be said a thousand times. The plugin's entry in the store is the key: a plugin that is loaded again is told again.
+  const told = new WeakMap<PluginEntry, Set<string>>();
+  const tell: Tell = (entry, message) => {
+    const said = told.get(entry) ?? new Set<string>();
+    told.set(entry, said);
+    if (said.size < MAX_SAID && !said.has(message)) {
+      said.add(message);
+      report({ provider: `${entry.id}:sidebar`, message });
+    }
+  };
+
   const sources: readonly PaletteSource[] = [
-    { id: 'host:pages', ...OWN, title: 'Pages', section: 'goto', match: (_query, scope) => pagesOf(deps, scope.plugin) },
+    { id: 'host:pages', ...OWN, title: 'Pages', section: 'goto', match: (_query, scope) => pagesOf(deps, scope, tell) },
     { id: 'host:tabs', ...OWN, title: 'Tabs', section: 'tabs', match: (_query, scope) => tabsOf(deps, scope.plugin) },
     {
       id: 'host:commands',
@@ -402,10 +491,6 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
       throw new Error(`The palette refused the host's own source ${source.id}: ${registration.reason}`);
     }
   }
-
-  const report = deps.report ?? ((problem: PaletteProblem): void => {
-    console.warn(`[palette] ${problem.provider}: ${problem.message}`);
-  });
 
   // The plugins' providers. What is registered is the contribution each plugin's providers were made of, so a plugin whose contribution is the same object as before is left alone, one that was replaced has its
   // providers made again, and one that is not ready (or is gone) has none. `attached` counts the windows that keep the palette current: the providers stay until the last one is undone, and none are registered before the first.

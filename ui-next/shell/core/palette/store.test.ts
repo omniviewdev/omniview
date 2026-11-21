@@ -196,6 +196,64 @@ describe('a query (S68, SE1)', () => {
     expect(rows(f)[0]?.title.text).toBe('cart-api');
   });
 
+  // Aliases (C1e): the short name a plugin gives one of its pages. `ns` is typed whole and the page it names is the first row, the active one, and a plain Enter opens it: where it was typed as a keyword the
+  // pages whose titles hold its letters came first (a plugin found this in the real host, C1d).
+  describe('a page found by its alias', () => {
+    const kinds = (named: Partial<Candidate>): Candidate[] => [
+      page('sensors', 'Sensors', { context: 'Cluster' }),
+      page('pinpointslots', 'PinpointSlots', { context: 'Network' }),
+      page('namesets', 'Namesets', { context: 'Cluster', ...named }),
+      page('nodes', 'Nodes', { context: 'Cluster' }),
+    ];
+
+    it('is the first row and the active one, and a plain Enter opens it', () => {
+      const f = makePalette();
+      f.palette.registerProvider(cloud(() => kinds({ aliases: 'Nameset ns' })));
+      f.palette.open();
+      f.palette.setQuery('ns');
+      expect(titles(f)).toEqual(['Namesets', 'Sensors', 'PinpointSlots', 'Nodes']);
+      expect(state(f).active).toBe(rows(f)[0]?.id);
+
+      expect(f.palette.activate()).toMatchObject({ status: 'opened', result: { status: 'done' } });
+      expect(f.tabs.state().tabs[f.tabs.current()]?.location.route).toEqual({ plugin: 'cloud', contribution: 'namesets', params: {} });
+    });
+
+    it('is not what a keyword is: the same words as keywords leave the page third, as they did', () => {
+      const f = makePalette();
+      f.palette.registerProvider(cloud(() => kinds({ keywords: 'Nameset ns' })));
+      f.palette.open();
+      f.palette.setQuery('ns');
+      expect(titles(f)).toEqual(['Sensors', 'PinpointSlots', 'Namesets', 'Nodes']);
+    });
+
+    it('draws nothing of the alias: the row is its title and its context, and nothing is emphasised where the title does not hold the word', () => {
+      const f = makePalette();
+      f.palette.registerProvider(cloud(() => [page('crash', 'Crash', { context: 'Things', aliases: 'boom' })]));
+      f.palette.open();
+      f.palette.setQuery('boom');
+      expect(rows(f).map((row) => [row.title.text, row.title.ranges, row.context.text, row.context.ranges])).toEqual([['Crash', [], 'Things', []]]);
+    });
+
+    it('makes the section that holds it lead: a tab whose title starts a word with the same letters (456) comes after the page the alias names (600), and before it where the words are keywords', () => {
+      const openTab: Candidate = { id: 't1', kind: 'tab', title: 'Open ns', tab: 't1' };
+      const tabs: Provider = { id: 'host:tabs', plugin: 'host', pluginName: 'Omniview', title: 'Tabs', section: 'tabs', match: () => [openTab] };
+      const f = makePalette();
+      f.palette.registerProvider(tabs);
+      f.palette.registerProvider(cloud(() => kinds({ aliases: 'ns' })));
+      f.palette.open();
+      f.palette.setQuery('ns');
+      expect(sections(f)).toEqual(['goto', 'tabs']);
+      expect(rows(f)[0]?.title.text).toBe('Namesets');
+
+      const g = makePalette();
+      g.palette.registerProvider(tabs);
+      g.palette.registerProvider(cloud(() => kinds({ keywords: 'ns' })));
+      g.palette.open();
+      g.palette.setQuery('ns');
+      expect(sections(g)).toEqual(['tabs', 'goto']);
+    });
+  });
+
   it('shows no row for what no word of the query matches, and every word must match (AND)', () => {
     const f = makePalette();
     f.palette.registerProvider(cloud());

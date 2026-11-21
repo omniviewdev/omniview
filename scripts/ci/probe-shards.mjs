@@ -16,17 +16,18 @@
 // shards when one is more than a minute over the others, and put its new seconds in MEASURED_SECONDS of scripts/ci/probe-shards.test.mjs (a test fails when a unit has no measurement, a shard is over the limit, or the work would fit one shard fewer).
 // The seconds are the RUNNER's (the job summaries of the green runs of 2026-11-20 and 21 that are named in docs/ui-next/status/N24-K2.md), each unit being a probe or a probe's controls; the two units of the toast probe (O1b-1) are an
 // ESTIMATE until its first run on the runner (one run on a laptop under load took 3 m 34 s, its controls about 130 s). The job of a shard is its probes plus its setup (about 90 s on the runner with the CI image,
-// docs/ui-next/status/N24-B1.md), so the shards below, at 443 to 489 s, are jobs of about 9 to 9.5 minutes:
-//   shard 1  panel controls 399, row menu controls 2, plugin providers controls 80                  = 481
+// docs/ui-next/status/N24-B1.md), so the shards below, at 445 to 490 s, are jobs of about 9 to 9.5 minutes:
+//   shard 1  panel controls 399, plugin providers controls 91                                       = 490
 //   shard 2  logs 319, parts 163                                                                    = 482
 //   shard 3  panel 288, palette controls 60, detail 10, log view controls 106                       = 464
 //   shard 4  palette 258, toast layer 214                                                           = 472
 //   shard 5  strip 191 + its controls 26, kit-probe-bc 192, rail 17, table 63                       = 489
-//   shard 6  log view 180, logs controls 161, shell 45, fonts 35, row menu 22                       = 443
-//   shard 7  tooltip 144, plugin providers 140, list page 60, toast layer controls 130              = 474
-// Seven stay: the 3,305 s of work over six is 551 s a shard (11 minutes with the setup), and over eight 413 s (the longest unit, the panel probe's controls, is 399 s, so an eighth shard buys at most 76 s of wall time for one more job and its
+//   shard 6  log view 180, logs controls 161, shell 45, fonts 35, row menu 22 + its controls 2      = 445
+//   shard 7  tooltip 144, plugin providers 144, list page 60, toast layer controls 130              = 478
+// Seven stay: the 3,320 s of work over six is 553 s a shard (11 minutes with the setup), and over eight 415 s (the longest unit, the panel probe's controls, is 399 s, so an eighth shard buys at most 75 s of wall time for one more job and its
 // setup, and a new shard is a change to the workflow, which takes a pull request out of the new-UI class: O1b-1 kept seven and raised the limit from 430 s to 490 s, moving five units to do it). Before K2 a probe and its controls had to
-// share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 399 s.
+// share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 399 s. C1e put 15 s into the plugin providers probe and its controls (the runner's first run of its PR: 144 and 91 s,
+// from 140 and 80); shard 1 had 9 s of room for the 11 of the controls, so the 2 s unit of the row menu's controls moved to shard 6, beside its probe, and the limit stays 490 s.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -64,22 +65,13 @@ export const TABLE = {
           controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled', 'twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'],
         },
 
-        // The negative controls of the row menu probe (its probe is in shard 6), each in the page after it loaded, on the one opening that must see it (Chromium, 1440 x 900): the open trigger carries no `aria-expanded` (`trigger-not-expanded`), and the next row's trigger carries it too
-        // (`expanded-twice`). Each passes only when the opening is clean without the perturbation and the one failure with it is the named one; with that failure dropped (ASSERTION_OFF) it is not detected.
-        {
-          name: 'Probe that the row menu probe sees a trigger that does not say it is open',
-          script: 'packages/kit/probes/row-menu-probe.mjs',
-          env: { DIST: '$PROBE_DIST' },
-          controls: ['trigger-not-expanded', 'expanded-twice'],
-        },
-
         // The negative controls of the plugin providers probe (its probe is in shard 7): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
         // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop) and passes only when that assertion sees it. Each runs the part it perturbs.
         {
           name: 'Probe that the plugin providers probe sees a palette that is wrong',
           script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
           env: { FONT_DELAY_MS: '40' },
-          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown'],
+          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose'],
         },
       ],
     },
@@ -221,6 +213,15 @@ export const TABLE = {
         // heights, arrows, Home, End, Escape and Tab, and no write to <html> or <body>. `aria-expanded` is read on the menu's TRIGGERS (`button[aria-haspopup="menu"]`), as the kit's contract says: the handle writes it on the one trigger that is open. It read the
         // whole page before, and the parts page has other elements that carry it (the TagList's toggle: `aria-expanded="true"` at rest), which was the 196 findings it failed with. It reads the ui-next build.
         { name: 'Probe the row menu on the 5,000-row example', script: 'packages/kit/probes/row-menu-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/row-menu-probe.json' } },
+
+        // The negative controls of the row menu probe (its probe is in shard 6), each in the page after it loaded, on the one opening that must see it (Chromium, 1440 x 900): the open trigger carries no `aria-expanded` (`trigger-not-expanded`), and the next row's trigger carries it too
+        // (`expanded-twice`). Each passes only when the opening is clean without the perturbation and the one failure with it is the named one; with that failure dropped (ASSERTION_OFF) it is not detected.
+        {
+          name: 'Probe that the row menu probe sees a trigger that does not say it is open',
+          script: 'packages/kit/probes/row-menu-probe.mjs',
+          env: { DIST: '$PROBE_DIST' },
+          controls: ['trigger-not-expanded', 'expanded-twice'],
+        },
       ],
     },
     {
