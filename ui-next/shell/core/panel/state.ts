@@ -58,11 +58,17 @@ export const isLive = (state: PanelState, owner: string): boolean => owner === H
 /** A tool is visible while its owner is live. */
 export const toolVisible = (state: PanelState, tool: Tool): boolean => isLive(state, tool.owner);
 
-/** The visible tools, in order: lowest `order` first, registration breaks a tie. */
+/**
+ * The visible tools, in order (R2). Lowest `order` first, as the mock sorts them (`shell-regions.js` `visibleTools`: `a.order - b.order || a.seq - b.seq`). A tie is settled by the place of the tool's owner: the host's
+ * own tools lead (the mock registers them before any plugin's, and gives what a plugin declares one `seq` after them all), then the plugins in the order the caller listed them (`PanelState.live`: the mock lists plugins by
+ * name and its rail is that list; the host lists them in the order of its rail), then `seq`, the order the owner declared its own tools in. Nothing in it is the order in which anything arrived, so two plugins that
+ * finish loading at nearly the same time give the strip of every run, and a plugin that arrives late takes its place in it instead of the end of it.
+ */
 export function visibleTools(state: PanelState): Tool[] {
+  const place = (tool: Tool): number => (tool.owner === HOST ? -1 : state.live.indexOf(tool.owner));
   return Object.values(state.tools)
     .filter((tool) => toolVisible(state, tool))
-    .sort((a, b) => a.order - b.order || a.seq - b.seq);
+    .sort((a, b) => a.order - b.order || place(a) - place(b) || a.seq - b.seq);
 }
 
 /**

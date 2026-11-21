@@ -247,6 +247,95 @@ describe('the tools a plugin brings (PO1: a plugin that is off contributes nothi
   });
 });
 
+// R2. Where a plugin's tools sit when two of them say the same `order` is not settled by when their plugins arrived: two plugins that finish loading at nearly the same time gave a strip whose order
+// changed from one run to the next (the seam's `checkPanel` failed in CI on it, and passed on the rerun). The caller says where each plugin sits by the order of the list it hands `syncPlugins` (the host
+// hands them over in the order of the rail, `plugins/host/rail.ts`), the model keeps that order for as long as the plugin is live, and a plugin that arrives later takes its place in it.
+describe('the order of the tools of the plugins (R2)', () => {
+  const streams = (label: string) => tool('streams', label, 40);
+  /** The tool ids after each step, each step a call of `syncPlugins` with the plugins listed in the order given, every plugin bringing one tool of the same `order`. */
+  const after = (steps: ReadonlyArray<readonly string[]>): readonly string[] => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    for (const step of steps) {
+      h.store.syncPlugins(step.map((id) => ({ id, tools: [streams(id)] })));
+    }
+
+    return h.store.selectors.toolIds(h.snapshot());
+  };
+
+  const WANTED = ['terminal', 'logs', 'first:streams', 'second:streams'];
+
+  it('puts a plugin that arrives after another where the caller lists it, whichever arrived first', () => {
+    expect(after([['first', 'second']])).toEqual(WANTED);
+    expect(after([['first'], ['first', 'second']])).toEqual(WANTED);
+    // The plugin the caller lists second arrives first: the one listed first takes its place ahead of it, it is not appended.
+    expect(after([['second'], ['first', 'second']])).toEqual(WANTED);
+  });
+
+  it('keeps the caller\'s order for as long as the plugins are live, and follows it when the caller changes it', () => {
+    expect(after([['first', 'second'], ['second', 'first']])).toEqual(['terminal', 'logs', 'second:streams', 'first:streams']);
+    expect(after([['second', 'first'], ['first', 'second']])).toEqual(WANTED);
+  });
+
+  it('tells the subscribers when only the order of the plugins changed, and nobody when nothing did', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    const both = (ids: readonly string[]) => ids.map((id) => ({ id, tools: [streams(id)] }));
+    h.store.syncPlugins(both(['first', 'second']));
+    const told = h.notified();
+    expect(h.store.syncPlugins(both(['first', 'second']))).toEqual({ status: 'noop' });
+    expect(h.notified()).toBe(told);
+    expect(h.store.syncPlugins(both(['second', 'first']))).toEqual({ status: 'done' });
+    expect(h.notified()).toBe(told + 1);
+    expect(h.snapshot().live).toEqual(['second', 'first']);
+  });
+
+  it('still orders by the tool\'s own `order` first: a plugin listed later with a lower number leads, and a tool that says none follows every tool that does', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.syncPlugins([
+      { id: 'first', tools: [tool('streams', 'First', 40)] },
+      { id: 'second', tools: [tool('streams', 'Second', 25)] },
+      { id: 'third', tools: [tool('streams', 'Third')] },
+    ]);
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['terminal', 'logs', 'second:streams', 'first:streams', 'third:streams']);
+  });
+
+  it('puts a tool of the host ahead of a plugin\'s tool of the same `order`, whenever the host registered it', () => {
+    const h = boot({ plugins: { acme: [tool('metrics', 'Metrics', 20)] } });
+    h.store.registerTool(tool('logs', 'Logs', 20));
+    h.store.registerTool(tool('terminal', 'Terminal', 20));
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['logs', 'terminal', 'acme:metrics']);
+  });
+
+  it('puts the tools of one plugin that say the same `order` in the order the plugin lists them, whichever plugin arrived first', () => {
+    const both = (ids: readonly string[]) => ids.map((id) => ({ id, tools: [tool('one', 'One', 40), tool('two', 'Two', 40)] }));
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.syncPlugins(both(['second']));
+    h.store.syncPlugins(both(['first', 'second']));
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['terminal', 'logs', 'first:one', 'first:two', 'second:one', 'second:two']);
+  });
+
+  it('puts the tools of a plugin that brings them in another order on a reload in the new order', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.syncPlugins([{ id: 'acme', tools: [tool('one', 'One', 40), tool('two', 'Two', 40)] }]);
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['terminal', 'logs', 'acme:one', 'acme:two']);
+    h.store.syncPlugins([{ id: 'acme', tools: [tool('two', 'Two', 40), tool('one', 'One', 40)] }]);
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['terminal', 'logs', 'acme:two', 'acme:one']);
+  });
+
+  it('does not move the tool on screen, the tool the user chose or its session when a plugin that sorts before them arrives', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.syncPlugins([{ id: 'second', tools: [streams('Second')] }]);
+    h.store.show();
+    h.store.activateTool('second:streams');
+    h.store.openSession({ tool: 'second:streams', plugin: 'second', title: 'run' });
+    const shown = h.store.selectors.shown(h.snapshot());
+    h.store.syncPlugins([{ id: 'first', tools: [streams('First')] }, { id: 'second', tools: [streams('Second')] }]);
+    expect(h.store.selectors.toolIds(h.snapshot())).toEqual(['terminal', 'logs', 'first:streams', 'second:streams']);
+    expect(h.store.selectors.shown(h.snapshot())).toEqual(shown);
+    expect(h.store.selectors.activeTool(h.snapshot())).toBe('second:streams');
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'second:streams')).toEqual(['s1']);
+  });
+});
+
 describe('a session', () => {
   it('opens in a tool, starting, with the time it started, and the panel shows it', () => {
     const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [] } });

@@ -28,9 +28,12 @@ export type Tool = {
   readonly label: string;
   /** A glyph name. The model never reads it; the renderer draws the kit's glyph, or its generic one for a name it does not have. */
   readonly icon: string;
-  /** Where the tool sits among the tools, lowest first. Ties keep the order of registration. */
+  /** Where the tool sits among the tools, lowest first. What it ties on is settled by the place of its owner among the live plugins (the host's own tools lead), then by `seq`. */
   readonly order: number;
-  /** The order of registration: what a tie in `order` is settled by. */
+  /**
+   * The order the owner declared it in: a tool of the host takes the next place when it is registered, a plugin's tool its place in the list the plugin brought it in. What a tie in `order` between the tools of one
+   * owner is settled by; it says nothing of when the owner arrived, so a plugin that loads late and the same plugin loaded first have the same tools in the same places.
+   */
   readonly seq: number;
 };
 
@@ -108,9 +111,12 @@ export type PanelState = {
    * streaming session keeps its buffer while another is on screen), so there is no cap; the panel being hidden unmounts nothing. A session whose plugin is not live is not mounted.
    */
   readonly mounted: readonly SessionId[];
-  /** The plugins whose tools and sessions show (`host` always does). */
+  /**
+   * The plugins whose tools and sessions show (`host` always does), in the order the caller listed them (`syncPlugins`): a plugin's place in this list is the place its tools take among the tools that tie in
+   * `order`. The host lists them in the order of the rail, so the place does not depend on the order the plugins arrived in.
+   */
   readonly live: readonly string[];
-  /** How many tools were ever registered: the place the next one takes in the order of registration. */
+  /** How many tools of the host were ever registered: the place the next one takes among them. */
   readonly registered: number;
 };
 
