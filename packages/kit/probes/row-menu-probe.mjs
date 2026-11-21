@@ -6,6 +6,9 @@
 //   DIST=<dir>     probe an existing build instead of building one
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   (defaults: both of each)
 //   REPORT=<file>  write the full report as JSON
+//   NEGATIVE_CONTROL=<name>   perturb ONE thing the probe measures in the page and run the one opening that must see it (chromium at 1440x900 unless ENGINES or VIEWPORTS say otherwise):
+//                  trigger-not-expanded (the open trigger carries no aria-expanded), expanded-twice (the next row's trigger carries it too). Exit 0 when the probe sees it
+//   ASSERTION_OFF=<regex>     drops the failures whose line matches, as if the assertion that says them were not there: a control is shown to depend on its assertion by running it with its own pattern
 //
 // It drives the 5,000-row example (`RowMenu/Large`) and the two small ones. Per engine and viewport it opens the menu from a trigger at the top, in
 // the middle and at the bottom of the table region, with the mouse and with the keyboard (Enter, Space, ArrowDown, ArrowUp), once with the region
@@ -35,8 +38,10 @@ import { ENGINES, VIEWPORTS } from './probe-lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
-const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
-const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
+const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
+// A negative control runs the one opening that must see it, in one engine at one viewport, unless ENGINES or VIEWPORTS say otherwise.
+const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
+const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(VIEWPORTS).join(',') : '1440x900')).split(',');
 
 const MARGIN = 4;
 const GAP = 4;
@@ -47,7 +52,11 @@ const POPUP_ELEMENTS = 1 + ITEMS + SEPARATORS;
 
 const failures = [];
 const report = { engines: {}, notes: [] };
-const fail = (where, what) => failures.push(`${where}: ${what}`);
+const OFF = process.env.ASSERTION_OFF === undefined ? undefined : new RegExp(process.env.ASSERTION_OFF);
+const fail = (where, what) => {
+  const line = `${where}: ${what}`;
+  if (OFF === undefined || !OFF.test(line)) failures.push(line);
+};
 const check = (where, condition, what) => {
   if (!condition) fail(where, what);
   return condition;
@@ -180,7 +189,9 @@ function snapshot() {
   return {
     roots: popups.length,
     popup: popup === null ? null : { id: popup.id, side: popup.getAttribute('data-ov-side'), label: popup.getAttribute('aria-label'), popover: popup.getAttribute('popover'), inTopLayer: popup.matches(':popover-open'), items: [...popup.querySelectorAll('[role="menuitem"]')].map((item) => ({ text: item.textContent, disabled: item.getAttribute('aria-disabled') === 'true', destructive: item.hasAttribute('data-ov-destructive') })), separators: popup.querySelectorAll('[role="separator"]').length, style: popup.getAttribute('style'), rect, hits },
-    expanded: [...document.querySelectorAll('[aria-expanded="true"]')].map((element) => element.getAttribute('aria-label')),
+    // The menu's trigger is the one element this contract is about ("the handle writes `aria-expanded` and `aria-controls` on the one trigger that is open", RowMenuTrigger.tsx): the read is of the triggers, not of every element of the page that
+    // carries the attribute (the parts page has others: the TagList's "Show fewer" is `aria-expanded="true"` at rest).
+    expanded: [...document.querySelectorAll('button[aria-haspopup="menu"][aria-expanded="true"]')].map((element) => element.getAttribute('aria-label')),
     controlled: controlling.map((element) => element.getAttribute('aria-label')),
     focus: describe(active),
     viewport,
@@ -487,7 +498,7 @@ async function closers(page, where) {
   const again = await positionsOf(page, example);
   await triggerLocator(page, example, again.middle.index).click();
   await page.evaluate((name) => {
-    const button = document.querySelector('[aria-expanded="true"]');
+    const button = document.querySelector(`[data-example="${name}"] button[aria-haspopup="menu"][aria-expanded="true"]`);
     button.closest('tr').remove();
   }, example);
   await sleep(100);
@@ -615,8 +626,58 @@ async function look(page, where) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------------
+// The negative controls: one perturbation of what the probe reads, made in the page after it loaded, and the one opening (the top trigger of the 5,000-row example, with the mouse) that must see it. Each names the failure it is for (`expected`).
+// A control is detected only when (1) the same opening, before the perturbation, agrees with the contract (no failure at all: a page that was wrong already proves nothing) and (2) with the perturbation EVERY failure is the one named: an unrelated
+// failure is not a detection. ASSERTION_OFF=<expected> drops that failure, so the same control is shown undetected with its assertion removed.
+// The perturbation uses the page's native MutationObserver (the probe counts the observers the page makes through the wrapped one).
+const CONTROLS = {
+  // The handle's `aria-expanded` is taken off the trigger as soon as it is written: a trigger that never says it is open.
+  'trigger-not-expanded': {
+    expected: /top mouse: aria-expanded on \[\], aria-controls on \["Actions for worker-1"\]$/,
+    perturb: () => {
+      new window.__NativeMutationObserver((records) => {
+        for (const record of records) if (record.target.hasAttribute('aria-expanded') && record.target.matches('button[aria-haspopup="menu"]')) record.target.removeAttribute('aria-expanded');
+      }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] });
+    },
+  },
+  // The next row's trigger says it is open too: two triggers expanded for one menu.
+  'expanded-twice': {
+    expected: /top mouse: aria-expanded on \["Actions for worker-1","Actions for worker-2"\], aria-controls on \["Actions for worker-1"\]$/,
+    perturb: () => {
+      const mirrors = new WeakSet();
+      new window.__NativeMutationObserver((records) => {
+        for (const record of records) {
+          if (mirrors.has(record.target)) continue;
+          const next = record.target.matches('button[aria-haspopup="menu"]') ? record.target.closest('tr')?.nextElementSibling?.querySelector('button[aria-haspopup="menu"]') : null;
+          if (next === null || next === undefined) continue;
+          mirrors.add(next);
+          if (record.target.hasAttribute('aria-expanded')) next.setAttribute('aria-expanded', record.target.getAttribute('aria-expanded'));
+          else next.removeAttribute('aria-expanded');
+        }
+      }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] });
+    },
+  },
+};
+if (CONTROL !== '' && CONTROLS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL=${CONTROL} is not one of ${Object.keys(CONTROLS).join(', ')}`);
+
+/** The opening a control is for, as a clean run and then perturbed: the failures of each, and whether the perturbation was applied before the second. */
+async function control(page, where) {
+  const example = 'RowMenu/Large';
+  await page.locator(`[data-example="${example}"]`).evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  await settle(page);
+  const mid = await positionsOf(page, example);
+  const opening = () => cycle(page, where, example, mid.top, 'mouse', { name: 'top' });
+  await opening();
+  const baseline = failures.splice(0);
+  await page.evaluate(CONTROLS[CONTROL].perturb);
+  await opening();
+  return { baseline, perturbed: failures.splice(0) };
+}
+
 const dist = await build();
 const { server, url } = await serve(dist);
+let controlled = null;
 try {
   for (const engineName of engineNames) {
     const browser = await ENGINES[engineName].launch();
@@ -624,6 +685,11 @@ try {
     for (const viewportName of viewportNames) {
       const where = `${engineName} ${viewportName}`;
       const { page, context, errors } = await open(browser, url, VIEWPORTS[viewportName]);
+      if (CONTROL !== '') {
+        controlled = await control(page, where);
+        await context.close();
+        continue;
+      }
       const out = { cycles: [], clipping: {}, keys: {}, closers: {}, elements: {}, look: {} };
       report.engines[engineName][viewportName] = out;
       const start = await read(page);
@@ -674,6 +740,16 @@ try {
   }
 } finally {
   server.close();
+}
+
+if (CONTROL !== '') {
+  const { baseline, perturbed } = controlled;
+  const { expected } = CONTROLS[CONTROL];
+  const named = perturbed.filter((line) => expected.test(line));
+  if (baseline.length > 0) console.log(`NEGATIVE CONTROL "${CONTROL}": SETUP ERROR, the opening failed before the perturbation (${baseline.length}): ${baseline.join(' | ')}`);
+  else if (named.length > 0 && named.length === perturbed.length) console.log(`NEGATIVE CONTROL "${CONTROL}": detected (${named.length} failure, ${named[0]})`);
+  else console.log(`NEGATIVE CONTROL "${CONTROL}": NOT DETECTED (${named.length} of the failures are the one named, ${perturbed.length - named.length} other failures${perturbed.length === 0 ? '' : `: ${perturbed.join(' | ')}`})`);
+  process.exit(baseline.length === 0 && named.length > 0 && named.length === perturbed.length ? 0 : 1);
 }
 
 const lines = [];
