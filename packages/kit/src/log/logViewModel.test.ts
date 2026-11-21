@@ -63,6 +63,9 @@ class FakeFeed implements LogFeed {
   private status: LogFeedSnapshot = { state: 'streaming', paused: false, cause: undefined };
   private seq = 0;
 
+  /** The time a line pushed without one is stamped with: the instant the harness's wall clock reads (`setup`), so a line is written "now" when it arrives. */
+  stamp = (): string => '2024-01-15T10:30:00.000Z';
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     this.subscribers += 1;
@@ -102,7 +105,7 @@ class FakeFeed implements LogFeed {
   push(texts: readonly string[], level?: LogFeedLevel): void {
     for (const text of texts) {
       this.seq += 1;
-      this.lines.push({ seq: this.seq, source: 'src', timestamp: '2024-01-15T10:30:00.000Z', text, level });
+      this.lines.push({ seq: this.seq, source: 'src', timestamp: this.stamp(), text, level });
     }
 
     this.received += texts.length;
@@ -110,13 +113,24 @@ class FakeFeed implements LogFeed {
   }
 
   /** Lines of one source arrive, each with the clock the test gives it (default: the same instant for every line); the listener is told once. */
-  pushFrom(source: string, texts: readonly string[], level?: LogFeedLevel, timestamp = '2024-01-15T10:30:00.000Z'): void {
+  pushFrom(source: string, texts: readonly string[], level?: LogFeedLevel, timestamp = this.stamp()): void {
     for (const text of texts) {
       this.seq += 1;
       this.lines.push({ seq: this.seq, source, timestamp, text, level });
     }
 
     this.received += texts.length;
+    this.wake();
+  }
+
+  /** Lines arrive as they are (the test gives each its time, or none); `seq` is the feed's own. The listener is told once. */
+  pushRaw(lines: readonly LogFeedLine[]): void {
+    for (const line of lines) {
+      this.seq += 1;
+      this.lines.push({ ...line, seq: this.seq });
+    }
+
+    this.received += lines.length;
     this.wake();
   }
 
@@ -156,13 +170,18 @@ class FakeFeed implements LogFeed {
   }
 }
 
+/** The wall clock of the harness at its frame clock's zero: the instant a view "opens" in these tests. */
+const OPENED = Date.parse('2024-01-15T10:30:00.000Z');
+
 function setup(over: Partial<ViewModelOptions> = {}) {
   const frames = new Frames();
   const feed = new FakeFeed();
+  feed.stamp = () => new Date(OPENED + frames.now).toISOString();
   const timers: Array<() => void> = [];
   const model = new LogViewModel(feed, {
     maxLines: 100_000,
     now: () => frames.now,
+    wallClock: () => OPENED + frames.now,
     schedule: frames.schedule,
     timer: (callback) => {
       timers.push(callback);
@@ -189,7 +208,7 @@ function setup(over: Partial<ViewModelOptions> = {}) {
     return model.getStats();
   };
 
-  return { frames, feed, model, published, strip };
+  return { frames, feed, model, published, strip, timers };
 }
 
 const numbered = (count: number, from = 1, text = 'line') => Array.from({ length: count }, (_, index) => `${text} ${from + index}`);
@@ -1676,6 +1695,129 @@ describe('the rate of a paused or quiet feed (L3)', () => {
     // It falls and does not come back: a feed that is quiet makes nothing.
     expect(rates).toEqual([...rates].sort((a, b) => b - a));
     expect(model.getStats().rate).toBe(0);
+  });
+});
+
+// L4 (demo defect D2, 0:52 to 0:58): a view opened on a source that writes 5 lines a second read 7,878 lines/s, then 1,958, 1,131, 716, and took eight seconds to come down: the stream replays the source's last 1,000
+// lines at open, and they were counted as the rate the source makes. The runtime's stream marks the replay in no way (no flag, no "caught up" event: `LogStreamEvent` has seven kinds and none of them is that) but it gives each line
+// the time the backend wrote it, so a line written before the view opened is the replay; a feed with no times (or a clock that disagrees) falls back to the burst, which ends at its first quiet gap, and a replay never keeps
+// the strip waiting more than the window the rate is told over. The mock does the same in its way: the lines it seeds a log with are pushed `quiet`, never counted, and its strip reads `0.0 lines/s` until live lines come.
+describe('the rate at open (L4)', () => {
+  const REPLAY = 5000;
+  /** The harness's feed with the replay a stream gives at open (`age` ms apart, the newest `newest` ms before the open), stamped or not. */
+  const replay = (feed: ReturnType<typeof setup>['feed'], stamped: boolean, newest = 1000) => {
+    const lines: LogFeedLine[] = [];
+    for (let index = 0; index < REPLAY; index += 1) {
+      lines.push({ seq: index + 1, source: 'src', timestamp: stamped ? new Date(OPENED - newest - (REPLAY - 1 - index) * 200).toISOString() : '', text: `old ${index}`, level: undefined });
+    }
+
+    feed.pushRaw(lines);
+  };
+
+  /**
+   * Runs `seconds` of a feed that writes `perSecond` lines a second (a line every 1000 / perSecond ms, in steps of 50 ms; the strip's clock runs every 250 ms) and returns the strip's rate at every tell. `skew` is how far
+   * the backend's clock is behind the view's, `stamped` whether its lines carry a time at all.
+   */
+  const live = (h: ReturnType<typeof setup>, seconds: number, perSecond: number, { stamped = true, skew = 0 }: { stamped?: boolean; skew?: number } = {}): number[] => {
+    const rates: number[] = [];
+    const end = h.frames.now + seconds * 1000;
+    const every = 1000 / perSecond;
+    let due = h.frames.now + every;
+    let sinceTell = 0;
+    while (h.frames.now < end) {
+      h.frames.now += 50;
+      sinceTell += 50;
+      while (h.frames.now >= due) {
+        const stamp = stamped ? new Date(OPENED + h.frames.now - skew).toISOString() : '';
+        h.feed.pushRaw([{ seq: 0, source: 'src', timestamp: stamp, text: 'live', level: undefined }]);
+        due += every;
+      }
+
+      h.frames.settle();
+      if (sinceTell >= 250) {
+        sinceTell = 0;
+        h.timers.splice(0).forEach((fire) => {
+          fire();
+        });
+        h.frames.settle();
+        rates.push(h.model.getStats().rate);
+      }
+    }
+
+    return rates;
+  };
+
+  it.each([1000, 200])('does not count the replay: 5,000 lines at open (the newest written %i ms before it), then 5 a second, the strip never reads above twice the true rate and settles on it (the lines carry their time)', (newest) => {
+    const h = setup();
+    replay(h.feed, true, newest);
+    h.frames.frame();
+    expect(h.model.getStats().total).toBe(REPLAY);
+    const rates = live(h, 15, 5);
+    expect(Math.max(...rates)).toBeLessThanOrEqual(10);
+    expect(rates.at(-1)).toBeGreaterThanOrEqual(4);
+    expect(rates.at(-1)).toBeLessThanOrEqual(6);
+    // Once the live lines are told of, the rate is the source's from the first span on, and stays there.
+    expect(rates.slice(8).every((rate) => rate >= 3.5 && rate <= 6.5)).toBe(true);
+  });
+
+  it('does not count the replay of a feed whose lines carry no time: the burst ends at its first quiet gap', () => {
+    const h = setup();
+    replay(h.feed, false);
+    h.frames.frame();
+    const rates = live(h, 15, 5, { stamped: false });
+    expect(Math.max(...rates)).toBeLessThanOrEqual(10);
+    // Told well before the window the rate is told over has passed (that is the longest a replay is waited for): the gap ended it.
+    expect(rates.slice(6, 12).every((rate) => rate >= 3.5 && rate <= 6.5)).toBe(true);
+    expect(rates.at(-1)).toBeGreaterThanOrEqual(4);
+    expect(rates.at(-1)).toBeLessThanOrEqual(6);
+  });
+
+  it('keeps the strip at 0.0 while the replay is read, not a burst number', () => {
+    const h = setup();
+    replay(h.feed, true);
+    h.frames.frame();
+    expect(h.model.getStats().rate).toBe(0);
+    h.frames.now += 300;
+    h.timers.splice(0).forEach((fire) => {
+      fire();
+    });
+    h.frames.settle();
+    expect(h.model.getStats().rate).toBe(0);
+    expect(h.model.getStats().total).toBe(REPLAY);
+  });
+
+  it('does not wait for ever when the backend\'s clock is a minute behind the view\'s: the live lines look old, and the replay is over when the window the rate is told over has passed', () => {
+    const h = setup();
+    replay(h.feed, true);
+    h.frames.frame();
+    const rates = live(h, 15, 5, { skew: 60_000 });
+    expect(Math.max(...rates)).toBeLessThanOrEqual(10);
+    expect(rates.slice(0, 8).every((rate) => rate === 0)).toBe(true);
+    expect(rates.at(-1)).toBeGreaterThanOrEqual(4);
+    expect(rates.at(-1)).toBeLessThanOrEqual(6);
+  });
+
+  it('is 0.0 for a source that has a backlog and writes nothing, and the source\'s own rate when it speaks later', () => {
+    const h = setup();
+    replay(h.feed, true);
+    h.frames.frame();
+    expect(live(h, 10, 0.0001).every((rate) => rate === 0)).toBe(true);
+    const rates = live(h, 10, 5);
+    expect(Math.max(...rates)).toBeLessThanOrEqual(10);
+    expect(rates.at(-1)).toBeGreaterThanOrEqual(4);
+    expect(rates.at(-1)).toBeLessThanOrEqual(6);
+  });
+
+  it('is the source\'s own rate for a busy one: 5,000 lines at open, then 1,000 a second', () => {
+    const h = setup();
+    replay(h.feed, true);
+    h.frames.frame();
+    const rates = live(h, 8, 1000);
+    expect(Math.max(...rates)).toBeLessThanOrEqual(2000);
+    // The lines carry their time, so a feed that never goes quiet is told at once, well before the window the rate is told over has passed.
+    expect(rates[6]).toBeGreaterThanOrEqual(900);
+    expect(rates.at(-1)).toBeGreaterThanOrEqual(900);
+    expect(rates.at(-1)).toBeLessThanOrEqual(1100);
   });
 });
 

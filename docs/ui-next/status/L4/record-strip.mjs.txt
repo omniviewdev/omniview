@@ -1,0 +1,51 @@
+// L4 dev tool: records the Logs strip's text every 250 ms for 15 s after Logs is pressed on a Pod, in both engines.
+//   MAIN=<url> ENGINES=webkit,chromium POD=rate5 node record.mjs
+import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
+const require = createRequire('/Users/joshuapare/Repos/omniviewdev/worktrees/l4-log-rate-open/package.json');
+const { webkit, chromium } = require('playwright');
+const MAIN = process.env.MAIN ?? 'http://127.0.0.1:34511';
+const POD = process.env.POD ?? 'rate5';
+const ENGINES = (process.env.ENGINES ?? 'webkit,chromium').split(',');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const call = async (service, method, ...args) => {
+  const response = await fetch(`${MAIN}/wails/runtime`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': 'l4' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `l4-${method}-${Date.now()}`, methodName: `${service}.${method}`, args } }) });
+  if (!response.ok) throw new Error(`${method} ${response.status}`);
+};
+console.log('uptime', execFileSync('uptime', { encoding: 'utf8' }).trim());
+const out = {};
+for (const name of ENGINES) {
+  const browser = await { webkit, chromium }[name].launch();
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  await sleep(1200);
+  await call('github.com/omniviewdev/omniview/backend/window.Service', 'SaveState', 'main', 'session', 'null');
+  await page.goto(`${MAIN}/`);
+  await page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ }).click();
+  await page.waitForFunction(() => document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') === 'ready', undefined, { timeout: 90_000 });
+  const nav = page.getByRole('navigation', { name: 'Kubernetes resources' });
+  const pods = nav.getByRole('treeitem', { name: /^Pods(\s|$)/ });
+  if ((await pods.count()) === 0) await nav.getByRole('treeitem', { name: /^Workloads(\s|$)/ }).click();
+  await pods.click();
+  await page.waitForFunction(() => document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') === 'ready', undefined, { timeout: 60_000 });
+  await page.getByPlaceholder('Search Pods').fill(POD);
+  await page.getByRole('link', { name: POD, exact: true }).click();
+  await page.locator('[data-detail-part=header] h1').waitFor({ timeout: 30_000 });
+  await page.getByRole('heading', { name: 'Containers', exact: true }).waitFor({ timeout: 30_000 });
+  await sleep(1500);
+  await page.evaluate(() => {
+    window.__series = [];
+    window.__t0 = performance.now();
+    const read = () => document.querySelector('[role=group][aria-label="Session status"] > span[aria-live]')?.textContent ?? '(no strip yet)';
+    window.__timer = setInterval(() => window.__series.push([Math.round(performance.now() - window.__t0), read()]), 250);
+  });
+  await page.evaluate(() => { window.__t0 = performance.now(); });
+  console.log('uptime before press', execFileSync('uptime', { encoding: 'utf8' }).trim());
+  await page.locator('[data-detail-part=header]').getByRole('button', { name: 'Logs', exact: true }).click();
+  await sleep(15_500);
+  out[name] = await page.evaluate(() => { clearInterval(window.__timer); return window.__series; });
+  await context.close();
+  await browser.close();
+}
+const fmt = (series) => series.map(([t, text]) => `${String(t).padStart(5)} ms  ${text}`).join('\n');
+for (const [name, series] of Object.entries(out)) console.log(`\n== ${name}\n${fmt(series)}`);

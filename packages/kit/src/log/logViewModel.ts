@@ -22,8 +22,8 @@ import { LineBuffer } from './lineBuffer';
 import { LineSearch, type SearchOptions, type SearchStatus } from './lineSearch';
 import { LineView } from './lineView';
 import { LogSources, type SourceTag } from './sources';
-import { formatStamp } from './time';
-import type { LogEntry, LogFeed, LogFeedState, LogTimestamps } from './types';
+import { formatStamp, instantOf } from './time';
+import type { LogEntry, LogFeed, LogFeedLine, LogFeedState, LogTimestamps } from './types';
 import { windowOf, type RowWindow } from './window';
 
 /** The most entries a view keeps unless it is told otherwise: the cap of the old viewer (HLT-4, MNR-L2). */
@@ -42,6 +42,10 @@ export const RANGE_STEP = 4;
 export const STATS_INTERVAL_MS = 250;
 /** The window over which the rate of a feed is told, in ms (the mock's three seconds). */
 const RATE_WINDOW_MS = 3000;
+/** A line the backend wrote this long before the view opened still counts as the feed's own (the view opens a moment after the stream does, and the two clocks are not the same clock), in ms. */
+const OPEN_MARGIN_MS = 250;
+/** A feed whose lines carry no time: the replay at open is the burst, and it is over at the first gap this long between two reads that found lines, in ms. */
+const OPEN_GAP_MS = 150;
 /** A scroll event this close to the place the list was asked to go is the list's own (sub-pixel layout and rounding), in px. */
 const OWN_SCROLL_TOLERANCE = 3;
 
@@ -49,6 +53,8 @@ export type ViewModelOptions = {
   /** The most entries the view keeps; older ones are dropped and counted (HLT-4: 100,000). */
   readonly maxLines: number;
   readonly now?: (() => number) | undefined;
+  /** The wall clock, in ms since the epoch: what the lines' times are read against (default `Date.now`). */
+  readonly wallClock?: (() => number) | undefined;
   /** Runs `callback` at the next animation frame; returns what cancels it. */
   readonly schedule?: ((callback: () => void) => () => void) | undefined;
   /** Runs `callback` after `ms`; returns what cancels it. */
@@ -219,6 +225,7 @@ export class LogViewModel {
   private readonly search: LineSearch;
   private readonly sources = new LogSources();
   private readonly now: () => number;
+  private readonly wallClock: () => number;
   private readonly schedule: (callback: () => void) => () => void;
   private readonly timer: (callback: () => void, ms: number) => () => void;
 
@@ -261,12 +268,21 @@ export class LogViewModel {
   private unread = 0;
   /** The strip has been told of lines: the first lines are told at once, the rest by the clock. */
   private toldLines = false;
+  /**
+   * The feed's opening, until the lines it replays are past (L4). A stream opened on a source that has written before gives its last lines first, in a burst, and marks them in no way; those lines are the source's past and are no part of the
+   * rate it makes. The opening ends at the first line that was written after the view opened (by the time the backend gave it, less OPEN_MARGIN_MS), or, for a line with no time, at the first quiet gap
+   * (OPEN_GAP_MS) in what the view reads, or when the window the rate is told over has passed: a backend whose clock is far from this one must not keep the rate away for ever. Until then the rate is 0 (the mock's
+   * own strip reads 0.0 while its seeded backlog is not counted); at its end the series starts from the lines read so far. `at` and `wall` are the clocks when the view opened, `lastLineAt` when a read last found lines.
+   */
+  private opening: { readonly at: number; readonly wall: number; lastLineAt: number | undefined } | undefined;
 
   constructor(feed: LogFeed, options: ViewModelOptions) {
     this.stream = feed;
     this.buffer = new LineBuffer(options.maxLines);
     this.view = new LineView(this.buffer);
     this.now = options.now ?? (() => performance.now());
+    this.wallClock = options.wallClock ?? (() => Date.now());
+    this.opening = { at: this.now(), wall: this.wallClock(), lastLineAt: undefined };
     this.search = new LineSearch(this.view, this.now);
     this.schedule = options.schedule ?? defaultSchedule;
     this.timer = options.timer ?? defaultTimer;
@@ -715,6 +731,7 @@ export class LogViewModel {
       let lines = 0;
       for (;;) {
         const batch = this.stream.read(READ_SLICE_LINES);
+        this.scanOpening(batch.lines);
         if (batch.dropped > 0) {
           this.unread += batch.dropped;
           shift += this.append({ kind: 'gap', n: this.buffer.next, dropped: batch.dropped });
@@ -783,7 +800,7 @@ export class LogViewModel {
     if (this.statsDue || at - this.statsAt >= STATS_INTERVAL_MS) {
       this.statsDue = false;
       this.statsAt = at;
-      if (this.tellStats() || this.lastRate > 0 || this.stream.getSnapshot().paused) {
+      if (this.tellStats() || this.lastRate > 0 || this.opening !== undefined || this.stream.getSnapshot().paused) {
         this.requestStats();
       }
     } else {
@@ -1006,6 +1023,11 @@ export class LogViewModel {
    * count, which the quiet left unchanged, so the lines that woke it are counted, and from now, so the quiet is not. The clock's tells take every other sample.
    */
   private sample(fresh: boolean): void {
+    // While the feed replays what it held at open there is no series: it starts when the replay is over.
+    if (this.opening !== undefined) {
+      return;
+    }
+
     const at = this.now();
     const last = this.arrivals.at(-1);
     if (!fresh && last !== undefined && at - last.at < RATE_WINDOW_MS) {
@@ -1017,20 +1039,67 @@ export class LogViewModel {
     this.arrivals.push({ at, received });
   }
 
+  /**
+   * Reads what a read found against the opening (L4): the lines of the replay are skipped, and the first that is the feed's own ends it. `lines` are the batch just read, so the feed's count of what it gave out
+   * (`received` less `held`) already holds them.
+   */
+  private scanOpening(lines: readonly LogFeedLine[]): void {
+    const opening = this.opening;
+    if (opening === undefined || lines.length === 0) {
+      return;
+    }
+
+    const at = this.now();
+    let first = lines.length;
+    if (at - opening.at >= RATE_WINDOW_MS) {
+      first = 0;
+    } else {
+      for (let index = 0; index < lines.length; index += 1) {
+        const written = instantOf(lines[index]?.timestamp ?? '');
+        if (written === undefined ? index === 0 && opening.lastLineAt !== undefined && at - opening.lastLineAt >= OPEN_GAP_MS : written >= opening.wall - OPEN_MARGIN_MS) {
+          first = index;
+          break;
+        }
+      }
+    }
+
+    if (first < lines.length) {
+      // The first line of the feed's own is the series' first instant: it is not counted, the lines after it are.
+      this.endOpening(lines.length - first - 1);
+    } else {
+      opening.lastLineAt = at;
+    }
+  }
+
+  /** The replay is over: the series starts now, from the lines the feed gave out up to the first of its own, less `after`, the lines of this read that came after it. */
+  private endOpening(after: number): void {
+    const stats = this.stream.stats();
+    this.opening = undefined;
+    this.arrivals.length = 0;
+    this.arrivals.push({ at: this.now(), received: Math.max(0, stats.received - stats.held - after) });
+  }
+
   private computeStats(): StatsSnapshot {
     const at = this.now();
+    if (this.opening !== undefined && at - this.opening.at >= RATE_WINDOW_MS) {
+      this.endOpening(0);
+    }
+
     const feed = this.stream.stats();
-    // The baseline is the newest sample that is at least a window old, else the oldest: the series is the feed's counter against the wall clock, taken at each tell.
-    while ((this.arrivals.at(1)?.at ?? Number.POSITIVE_INFINITY) <= at - RATE_WINDOW_MS) {
-      this.arrivals.shift();
+    if (this.opening === undefined) {
+      // The baseline is the newest sample that is at least a window old, else the oldest: the series is the feed's counter against the wall clock, taken at each tell.
+      while ((this.arrivals.at(1)?.at ?? Number.POSITIVE_INFINITY) <= at - RATE_WINDOW_MS) {
+        this.arrivals.shift();
+      }
+
+      const base = this.arrivals.at(0);
+      if (base !== undefined && at - base.at >= STATS_INTERVAL_MS) {
+        this.lastRate = Math.round(((feed.received - base.received) / ((at - base.at) / 1000)) * 10) / 10;
+      }
+
+      this.arrivals.push({ at, received: feed.received });
     }
 
-    const base = this.arrivals.at(0);
-    if (base !== undefined && at - base.at >= STATS_INTERVAL_MS) {
-      this.lastRate = Math.round(((feed.received - base.received) / ((at - base.at) / 1000)) * 10) / 10;
-    }
-
-    this.arrivals.push({ at, received: feed.received });
     return {
       shown: this.view.lineCount,
       total: this.buffer.lines,

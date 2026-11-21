@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Logs open fixture</title>
+    <!-- The same three preloaded faces as ui-next/index.html (see fixture.html): the probe reads the strip, not about a face swapping after the first layout. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../packages/kit/dist/fonts/Inter-Regular.latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../packages/kit/dist/fonts/Inter-SemiBold.latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../packages/kit/dist/fonts/JetBrainsMono-Regular.latin.woff2" />
+    <style>
+      [data-fixture='body'] {
+        display: flex;
+        inline-size: 1390px;
+        block-size: 229px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./logs-open-fixture.tsx"></script>
+  </body>
+</html>

@@ -6,17 +6,20 @@ const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|
 
 const two = (value: number): string => (value < 10 ? `0${value}` : String(value));
 
-/** The clock of `timestamp`, in local time or, with `utc`, in UTC; '' when it is empty or not a time. */
-export function formatClock(timestamp: string, { utc = false }: { readonly utc?: boolean } = {}): string {
+/**
+ * The instant `timestamp` names, in ms since the epoch; undefined when it is empty or not a time. Written out and not left to `Date.parse`: the backend's text has nine digits of fraction, which the two engines
+ * do not read alike.
+ */
+export function instantOf(timestamp: string): number | undefined {
   const match = RFC3339.exec(timestamp);
   if (match === null) {
-    return '';
+    return undefined;
   }
 
   const [, year, month, day, hour, minute, second, fraction, zone] = match;
   const parts = [Number(month), Number(day), Number(hour), Number(minute), Number(second)] as const;
   if (parts[0] < 1 || parts[0] > 12 || parts[1] < 1 || parts[1] > 31 || parts[2] > 23 || parts[3] > 59 || parts[4] > 59) {
-    return '';
+    return undefined;
   }
 
   // The first three digits of the fraction are the milliseconds; a shorter one is padded on the right ("5" is 500).
@@ -28,11 +31,18 @@ export function formatClock(timestamp: string, { utc = false }: { readonly utc?:
     offset = sign * (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2, 4))) * 60_000;
   }
 
-  const date = new Date(Date.UTC(Number(year), parts[0] - 1, parts[1], parts[2], parts[3], parts[4], millis) - offset);
-  if (Number.isNaN(date.getTime())) {
+  const instant = Date.UTC(Number(year), parts[0] - 1, parts[1], parts[2], parts[3], parts[4], millis) - offset;
+  return Number.isNaN(instant) ? undefined : instant;
+}
+
+/** The clock of `timestamp`, in local time or, with `utc`, in UTC; '' when it is empty or not a time. */
+export function formatClock(timestamp: string, { utc = false }: { readonly utc?: boolean } = {}): string {
+  const instant = instantOf(timestamp);
+  if (instant === undefined) {
     return '';
   }
 
+  const date = new Date(instant);
   const h = utc ? date.getUTCHours() : date.getHours();
   const m = utc ? date.getUTCMinutes() : date.getMinutes();
   const s = utc ? date.getUTCSeconds() : date.getSeconds();

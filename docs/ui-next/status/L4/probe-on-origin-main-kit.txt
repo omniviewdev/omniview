@@ -1,0 +1,57 @@
+uptime: 9:43  up 11 days,  2:10, 2 users, load averages: 11.48 18.14 26.59
+
+== webkit (load 11.48 18.14 26.59); the feed made 5000 replayed and 58 live lines; the first 5 s every 250 ms, then every 2 s
+   250 ms  750 lines · 0.0 lines/s · Following
+   500 ms  2,500 lines · 9,578.5 lines/s · Following
+   750 ms  4,750 lines · 9,277.3 lines/s · Following
+  1000 ms  5,001 lines · 6,545.8 lines/s · Following
+  1252 ms  5,002 lines · 4,928.1 lines/s · Following
+  1504 ms  5,003 lines · 3,954.9 lines/s · Following
+  1758 ms  5,004 lines · 3,298.6 lines/s · Following
+  2009 ms  5,006 lines · 2,815.5 lines/s · Following
+  2262 ms  5,007 lines · 2,466.5 lines/s · Following
+  2518 ms  5,008 lines · 2,194.6 lines/s · Following
+  2770 ms  5,009 lines · 1,977.5 lines/s · Following
+  3026 ms  5,011 lines · 1,798.6 lines/s · Following
+  3282 ms  5,012 lines · 1,650.3 lines/s · Following
+  3538 ms  5,013 lines · 829.9 lines/s · Following
+  3788 ms  5,014 lines · 87.2 lines/s · Following
+  4041 ms  5,016 lines · 4.9 lines/s · Following
+  4292 ms  5,017 lines · 4.9 lines/s · Following
+  4545 ms  5,018 lines · 4.9 lines/s · Following
+  4798 ms  5,019 lines · 4.9 lines/s · Following
+  5049 ms  5,020 lines · 4.6 lines/s · Following
+  6309 ms  5,027 lines · 5.0 lines/s · Following
+  8325 ms  5,037 lines · 4.9 lines/s · Following
+ 10352 ms  5,046 lines · 4.6 lines/s · Following
+ 12378 ms  5,056 lines · 5.0 lines/s · Following
+
+== chromium (load 9.74 17.43 26.19); the feed made 5000 replayed and 60 live lines; the first 5 s every 250 ms, then every 2 s
+   253 ms  250 lines · 0.0 lines/s · Following
+   501 ms  2,500 lines · 9,742.8 lines/s · Following
+   751 ms  5,000 lines · 9,545.6 lines/s · Following
+  1006 ms  5,001 lines · 6,376.4 lines/s · Following
+  1260 ms  5,002 lines · 4,830.5 lines/s · Following
+  1501 ms  5,004 lines · 3,862.0 lines/s · Following
+  1755 ms  5,005 lines · 3,217.0 lines/s · Following
+  2009 ms  5,006 lines · 2,760.9 lines/s · Following
+  2258 ms  5,007 lines · 2,416.7 lines/s · Following
+  2510 ms  5,009 lines · 2,151.4 lines/s · Following
+  2759 ms  5,010 lines · 1,935.8 lines/s · Following
+  3009 ms  5,011 lines · 1,762.1 lines/s · Following
+  3257 ms  5,013 lines · 1,550.6 lines/s · Following
+  3510 ms  5,014 lines · 811.1 lines/s · Following
+  3761 ms  5,015 lines · 4.9 lines/s · Following
+  4003 ms  5,016 lines · 4.9 lines/s · Following
+  4260 ms  5,018 lines · 5.2 lines/s · Following
+  4510 ms  5,019 lines · 4.9 lines/s · Following
+  4761 ms  5,020 lines · 4.9 lines/s · Following
+  5011 ms  5,022 lines · 5.2 lines/s · Following
+  6260 ms  5,028 lines · 4.8 lines/s · Following
+  8260 ms  5,037 lines · 4.8 lines/s · Following
+ 10259 ms  5,047 lines · 4.8 lines/s · Following
+ 12260 ms  5,058 lines · 5.2 lines/s · Following
+
+2 failure(s):
+rate.max [webkit]: the strip read 9578.5 lines/s at 500 ms, the feed writes 5 a second (the limit is 10)
+rate.max [chromium]: the strip read 9742.8 lines/s at 501 ms, the feed writes 5 a second (the limit is 10)

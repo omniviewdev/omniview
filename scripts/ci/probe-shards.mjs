@@ -32,8 +32,8 @@
 //   shard 5  strip 192, list page 61, strip controls 28, plugin providers 151                       = 432
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  tooltip 145, palette controls 63, toast layer controls 156, table 62                   = 426
-//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105                      = 376
-//   shard 9  logs controls 381                                                                      = 381
+//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105, rate at open 40      = 416 (L4: the 40 is an estimate)
+//   shard 9  logs controls 381, rate at open control 40                                             = 421 (L4: the 40 is an estimate)
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
 // (C1f: the plugin providers probe and its controls are ESTIMATES of 148 and 98 s, from the runner's 142 and 91: the connection part and its control, until a run's summary has the runner's. Shard 5 would have been 438 s, so four units
 // moved, the fewest that fit under the limit: the palette's controls and the strip's controls to shard 5, the fonts probe to shard 8 and the plugin providers' controls to shard 2. The limit is not raised, and shard 8 is at it.)
@@ -263,6 +263,11 @@ export const TABLE = {
           env: { FONT_DELAY_MS: '40' },
           controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
         },
+
+        // The rate on the Logs strip at open (L4, demo defect D2): the host's own Logs session body over a feed that replays the last 5,000 lines of a source that has been writing for a while, each stamped with the time it was written
+        // and with nothing to mark it a replay (what the runtime's stream does), and then writes 5 lines a second; the strip's text is read every 250 ms for 12 s and never reads above 10 lines/s, tells a rate near 5 within 5 s and
+        // settles on it (ui-next/shell/probes/logs-open-fixture.tsx), in both engines at 1440 x 900. It builds its own fixture, so it does not read PROBE_DIST.
+        { name: 'Probe the rate on the Logs strip at open', script: 'ui-next/shell/probes/logs-open-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/logs-open-probe.json' } },
       ],
     },
     {
@@ -280,6 +285,10 @@ export const TABLE = {
           script: 'ui-next/shell/probes/logs-probe.mjs',
           controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines', 'toolbar-moved', 'pause-leaks', 'copy-no-source', 'clear-miscount', 'state-lost', 'more-missing', 'pause-commits', 'toolbar-timer'],
         },
+
+        // The negative control of the probe of the rate at open (its probe is in shard 8): the replay is stamped with the instant it is delivered, so the view has no way to tell it from lines the source wrote just now and the strip reads the
+        // burst (9,984 lines/s in the control's first sample); the probe must fail `rate.max` with it and pass it without (Chromium, 1440 x 900), and the step passes only when it did.
+        { name: 'Probe that the rate at open probe sees a replay counted as live', script: 'ui-next/shell/probes/logs-open-probe.mjs', env: { FONT_DELAY_MS: '40' }, controls: ['fresh'] },
       ],
     },
   ],
@@ -328,6 +337,9 @@ export const MEASURED_SECONDS = {
   'Probe that the row menu probe sees a trigger that does not say it is open': 2,
   'Probe the toast layer against the pinned mock reference': 220,
   'Probe that the toast probe sees a toast layer that is wrong': 156,
+  // L4: ESTIMATES until a run's summary has the runner's: the build of its one fixture (about 8 s), then 12.5 s of the page in each of two engines, and in the control's step two runs of 12.5 s in one (locally 27 s and 30 s).
+  'Probe the rate on the Logs strip at open': 40,
+  'Probe that the rate at open probe sees a replay counted as live': 40,
 };
 
 /** The wall time a shard job is held to: 9 minutes, the job (its setup and its probes) from start to end. */
