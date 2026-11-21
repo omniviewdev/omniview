@@ -110,7 +110,7 @@ func TestChannelImpostorChildProcess(t *testing.T) {
 // the impostor through the production path. go-plugin dials lazily, so
 // createBackend returns and the refusal comes with the first call.
 func TestCreateBackendRefusesServerThatDoesNotHoldItsAdvertisedCertificate(t *testing.T) {
-	root := channelWrapperFor(t, "TestChannelImpostorChildProcess", "")
+	root := channelWrapperFor(t, "TestChannelImpostorChildProcess", nil)
 	out := filepath.Join(t.TempDir(), "handshake")
 	t.Setenv(impostorChildEnv, "1")
 	t.Setenv(impostorOutEnv, out)

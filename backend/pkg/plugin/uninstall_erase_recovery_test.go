@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -302,12 +301,9 @@ const (
 // This process then starts over what it left, as the next start of the host does,
 // and nothing but the start is needed to finish the uninstall.
 func TestUninstallKilledProcessBeforeTheEraseIsCompletedByTheNextStart(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the child process installs the fixture archive, whose bin/plugin is a Unix shell script; a Windows host requires bin/plugin.exe")
-	}
 	dir := t.TempDir()
 	child := exec.Command(os.Args[0], "-test.run=^TestUninstallKillHelperProcess$", "-test.count=1")
-	child.Env = append(os.Environ(), killChildDirectory+"="+dir)
+	child.Env = append(os.Environ(), killChildDirectory+"="+dir, pluginFixtureExecutablePath(t))
 	output, err := child.CombinedOutput()
 	var exitErr *exec.ExitError
 	require.ErrorAs(t, err, &exitErr, "the child must have been killed, not finished: %s", output)

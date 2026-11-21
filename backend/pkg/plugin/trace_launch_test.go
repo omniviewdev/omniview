@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,21 +15,19 @@ import (
 )
 
 func TestCreateBackendOwnsTraceReceiver(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fixture uses a Unix executable wrapper")
-	}
 	pm := newTestManager(t)
 	binary, err := os.Executable()
 	require.NoError(t, err)
 	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "bin"), 0700))
-	wrapper := `#!/bin/sh
-printf '%s\n' "$OMNIVIEW_TELEMETRY_ENABLED" "$OMNIVIEW_TELEMETRY_OTLP_ENDPOINT" \
-  "$OMNIVIEW_TELEMETRY_AUTH_HEADER" "$OMNIVIEW_TELEMETRY_AUTH_VALUE" \
-  "${OTEL_EXPORTER_OTLP_HEADERS-unset}" > "$TRACE_TEST_ENV_FILE"
-exec "$TRACE_TEST_BINARY" -test.run='^TestActivityBrokerChildProcess$'
-`
-	require.NoError(t, os.WriteFile(filepath.Join(root, "bin", "plugin"), []byte(wrapper), 0700))
+	writePluginFixture(t, filepath.Join(root, "bin"), &pluginFixtureBehaviour{
+		Records: []pluginFixtureRecord{{
+			File: "${TRACE_TEST_ENV_FILE}",
+			Text: "${OMNIVIEW_TELEMETRY_ENABLED}\n${OMNIVIEW_TELEMETRY_OTLP_ENDPOINT}\n" +
+				"${OMNIVIEW_TELEMETRY_AUTH_HEADER}\n${OMNIVIEW_TELEMETRY_AUTH_VALUE}\n" +
+				"${OTEL_EXPORTER_OTLP_HEADERS-unset}\n",
+		}},
+		Run: []string{"${TRACE_TEST_BINARY}", "-test.run=^TestActivityBrokerChildProcess$"},
+	})
 	file := filepath.Join(t.TempDir(), "environment")
 	t.Setenv("TRACE_TEST_ENV_FILE", file)
 	t.Setenv("TRACE_TEST_BINARY", binary)
