@@ -1,0 +1,26 @@
+name: wip win2 base
+on:
+  push:
+    branches: ['wip/win2-base-**']
+permissions:
+  contents: read
+env:
+  GO_VERSION: "1.27"
+  GOWORK: "off"
+  GOFLAGS: ""
+jobs:
+  win:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: whole plugin package (base, information)
+        continue-on-error: true
+        run: go test -v -count=1 ./backend/pkg/plugin -timeout 25m 2>&1
