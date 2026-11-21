@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ShellTreeNode } from '../../shell';
 import { ContractError } from '../loader/failure';
 import { admit, admitOrThrow, openable, CONTRIBUTION_EXPORT_V1 } from './admit';
 import type { ContributionV1, SidebarNodeV1 } from './v1';
@@ -181,6 +182,14 @@ describe('openable', () => {
       { id: 'gadgets', label: 'Gadgets', icon: 'box' },
     ]);
   });
+
+  it('keeps the keywords of the entries it keeps, in the entries of a group too: they are the page\'s names, whatever else changed', () => {
+    const named: readonly SidebarNodeV1[] = [{ id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', keywords: ['wg'] }, { id: 'ghost', label: 'Ghost', icon: 'box', keywords: ['gh'] }] }, { id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gd', 'gizmo'] }];
+    expect(openable(named, { widgets: {}, gadgets: {} })).toEqual([
+      { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', keywords: ['wg'] }] },
+      { id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gd', 'gizmo'] },
+    ]);
+  });
 });
 
 // The detail page was added to contract version 1 as a minor addition (the rule is written at the head of `v1.ts`): what a bundle written before it said is read as before, and
@@ -263,6 +272,65 @@ describe('admit: the detail page (a minor addition to version 1)', () => {
     ];
 
     expect(openable(nodes, { widgets: page(), widget: detailPage() })).toEqual([{ id: 'widgets', label: 'Widgets', icon: 'box' }]);
+  });
+});
+
+// The keywords of a sidebar node (C1e) are a minor addition to version 1, on the terms of the palette's providers (the rule is at the head of `v1.ts`): `keywords` is a NEW optional member of a node, and a host that
+// predates it never reads it. Admission does not read it at all: what a plugin says there, a sidebar hook answers anew on every render, so it is read where it is used (`sidebarKeywords.ts`), and a keyword that is not
+// valid is left out with a problem there, never a reason to refuse a bundle or to lose a node.
+describe('admit: the sidebar\'s keywords (a minor addition to version 1)', () => {
+  const withNodes = (nodes: unknown) => contribution({ sidebar: sidebar({ nodes }), pages: { widgets: page(), gadgets: page() } });
+  const widgets = (extra: Loose = {}): Loose => ({ id: 'widgets', label: 'Widgets', icon: 'box', ...extra });
+
+  it('admits a node with keywords, in a group and at the top, and hands back the plugin\'s own object', () => {
+    const value = withNodes([{ id: 'group', label: 'Group', icon: 'layers', children: [widgets({ keywords: ['wg', 'widget'] })] }, widgets({ id: 'gadgets', keywords: [] })]);
+    expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
+  });
+
+  it('is not made refuse by a keyword that is not valid, whatever its shape: the words are read where they are used, and the bad ones left out there', () => {
+    for (const keywords of [3, 'ns', null, [3, '', 'two words', 'x'.repeat(100)], Array.from({ length: 1000 }, () => 'k'), { 0: 'ns' }]) {
+      expect(problemsOf(withNodes([widgets({ keywords })])), JSON.stringify(keywords)).toEqual([]);
+    }
+  });
+
+  describe('a plugin built against the older contract, and one built against this, load in either host', () => {
+    it('this host admits a bundle written before the keywords, whose nodes carry none, and hands back its own object', () => {
+      const value = contribution();
+      expect(JSON.stringify(value.sidebar)).not.toContain('keywords');
+      expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
+    });
+
+    it('a host that predates the keywords admits a bundle that has them: what it reads of a node is the same, member for member, and `keywords` is the only member it does not', () => {
+      const READ_BEFORE = ['id', 'label', 'icon', 'count', 'children'];
+      const newer = widgets({ count: 3, keywords: ['wg'] });
+      const { keywords: _keywords, ...before } = newer;
+
+      expect(Object.keys(newer).filter((name) => !READ_BEFORE.includes(name))).toEqual(['keywords']);
+      expect(Object.keys(before).filter((name) => !READ_BEFORE.includes(name))).toEqual([]);
+      for (const name of Object.keys(before)) {
+        expect(newer[name], name).toBe(before[name]);
+      }
+
+      expect(problemsOf(withNodes([before]))).toEqual([]);
+      expect(problemsOf(withNodes([newer]))).toEqual([]);
+      // The verdict on everything else does not depend on the member: a node that is wrong in an older way is wrong with it and without it, in the same words.
+      expect(problemsOf(withNodes([{ ...newer, icon: undefined }]))).toEqual(problemsOf(withNodes([{ ...before, icon: undefined }])));
+      expect(problemsOf(withNodes([newer, newer]))).toEqual(problemsOf(withNodes([before, before])));
+    });
+
+    it('is the same in types, both ways: a node of the older contract is a node, and a node is a node of the older contract with a member more', () => {
+      const before: ShellTreeNode = { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', count: 3 }] };
+      const asNew: SidebarNodeV1 = before;
+      const newer: SidebarNodeV1 = { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', count: 3, keywords: ['wg'] }] };
+      const asOlder: ShellTreeNode = newer;
+
+      expect(asNew.keywords).toBeUndefined();
+      expect(asOlder.id).toBe('group');
+      // A contribution whose sidebar is written either way is one.
+      const contributionOf = (nodes: readonly SidebarNodeV1[]): ContributionV1['sidebar'] => ({ label: 'Acme navigation', title: 'Acme', nodes });
+      expect(contributionOf([before]).nodes).toHaveLength(1);
+      expect(contributionOf([newer]).nodes).toHaveLength(1);
+    });
   });
 });
 

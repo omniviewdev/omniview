@@ -2,8 +2,8 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, type PanelStore } from '../../shell';
-import type { PaletteCommandV1, PaletteProviderV1, PaletteRowV1, PaletteV1 } from '../contract/v1';
-import { acme, startedOn } from '../testing';
+import type { PaletteCommandV1, PaletteProviderV1, PaletteRowV1, PaletteV1, SidebarNodeV1 } from '../contract/v1';
+import { acme, answering, startedOn, widgetPage } from '../testing';
 import * as palette from './palette';
 import { PluginHost } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
@@ -374,5 +374,76 @@ describe('the providers of the plugins, through the window', () => {
       });
       expect(palette.store.getSnapshot().sections.map((section) => section.id).filter((id) => id.includes(':'))).toEqual([]);
     }
+  });
+});
+
+// What a plugin's sidebar says of its pages (C1e), through the real window: a plugin whose entries carry keywords (the other names their pages are known by), a plugin written before them, and one whose keywords are not valid.
+describe('the keywords of a plugin\'s sidebar, through the window', () => {
+  const entry = (nodes: readonly SidebarNodeV1[]): PluginEntry => ({
+    id: 'acme',
+    name: 'Acme plugin',
+    phase: 'ready',
+    contribution: acme({
+      sidebar: { label: 'Acme navigation', title: 'Acme', nodes },
+      pages: { ...acme().pages, gazebo: widgetPage('Gazebo', answering([], 'Gazebo')) },
+    }),
+  });
+  const group = (...children: readonly SidebarNodeV1[]): readonly SidebarNodeV1[] => [{ id: 'group', label: 'Group', icon: 'layers', children }];
+  const widgets: SidebarNodeV1 = { id: 'widgets', label: 'Widgets', icon: 'box' };
+
+  /** The window over the plugins, and `search`: the Search control pressed and the text typed, as a person does. */
+  function open(plugins: readonly PluginEntry[]) {
+    const user = userEvent.setup();
+    const source = { getSnapshot: () => plugins, subscribe: () => () => undefined };
+    render(<PluginHost plugins={source} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={startedOn(plugins)} />);
+    return {
+      user,
+      search: async (text: string) => {
+        await user.click(screen.getByRole('button', { name: /^Search/ }));
+        await user.keyboard(text);
+      },
+    };
+  }
+
+  const strip = () => within(screen.getByRole('tablist', { name: 'Open tabs' })).getAllByRole('tab').map((tab) => `${tab.textContent ?? ''}${tab.getAttribute('aria-selected') === 'true' ? '*' : ''}`);
+
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  it('finds a page by a keyword its entry carries, first, and Enter opens it in the tab on screen: Gazebo holds the keyword\'s letters in a word of its title and used to come first', async () => {
+    const { user, search } = open([entry(group(widgets, { id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gz'] }, { id: 'gazebo', label: 'Gazebo', icon: 'box' }))]);
+    await search('gz');
+
+    await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
+    const names = screen.getAllByRole('option').map((option) => option.getAttribute('aria-label'));
+    expect(names.slice(0, 2)).toEqual(['Page: Gadgets, Group', 'Page: Gazebo, Group']);
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    // Nothing of the keyword is drawn: the row is its label and its group.
+    expect(screen.getByRole('option', { name: 'Page: Gadgets, Group' }).textContent).toBe('Gadgets Group');
+
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(strip()).toEqual(['Gadgets*']);
+  });
+
+  it('draws a plugin written before the keywords as it always did: its pages are found by their labels, their groups and the plugin\'s name', async () => {
+    const { search } = open([entry(group(widgets, { id: 'gadgets', label: 'Gadgets', icon: 'box' }, { id: 'gazebo', label: 'Gazebo', icon: 'box' }))]);
+    await search('gz');
+
+    await screen.findByRole('option', { name: 'Page: Gazebo, Group' });
+    expect(screen.getAllByRole('option').map((option) => option.getAttribute('aria-label')).filter((name) => name?.startsWith('Page:'))).toEqual(['Page: Gazebo, Group']);
+  });
+
+  it('leaves a keyword that is not valid out and tells the plugin\'s author once, whatever is typed after: the page is still there, found by its label and by the keywords that are', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { user, search } = open([entry(group(widgets, { id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['two words', 'gd'] }))]);
+    await search('gd');
+
+    await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
+    await user.keyboard('{Backspace}g');
+    await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
+    const said = warn.mock.calls.map((call) => String(call[0]));
+    expect(said).toEqual(['[palette] acme:sidebar: sidebar entry "gadgets": keyword 1 is not a word of 1 to 32 characters, with no white space in it: it is left out']);
   });
 });

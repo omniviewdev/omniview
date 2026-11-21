@@ -8,10 +8,11 @@
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)      AXE=<axe.min.js>      REPORT=<file>   the full report as JSON      SHOTS=<dir>   a screenshot per scene
 //   PLATFORM='Linux x86_64'   (geometry only) the pages say so in `navigator.platform`, so the keys are written as that platform writes them: the Command sign and K on a Mac, Ctrl+K elsewhere
 //   NEGATIVE_CONTROL=<name>   perturb ONE measured value in the page (frame-width, row-height, foot-height, search-place, foot-gap, paint, hover-steals, no-restore, and for the plugins' providers slow-blocks, quick-late,
-//                             focus-moves, extra-commit, plugin-shift, closed-work, stale-shown; see PERTURBATIONS), run the section that must
+//                             focus-moves, extra-commit, plugin-shift, closed-work, stale-shown, and for a sidebar's keywords alias-ignored, alias-loose; see PERTURBATIONS), run the section that must
 //                             see it, and exit 0 when it did and 1 when it did not (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise)
 //   ASSERTION_OFF=<regex>     drops the failures whose line matches, as if the assertion that says them were not there: a control is shown to depend on its assertion by running it with its own pattern
 //                             (PERTURBATIONS[<name>].expected) here, and it must then print NOT DETECTED (the rule for a negative control)
+//   PARTS=<a,b>               (section plugins) runs only those parts of it (timeline, typing, focus, commits, shift, closed, states, aliases): a developer's shortcut, never a CI step
 //
 // What it checks, per engine and viewport:
 //   geometry   the seven scenes of the mock (the closed field; open with nothing typed; narrowed to the tab's place, with its two chips; a query that matches in two sections; one that matches
@@ -34,7 +35,8 @@
 //   plugins    (palette-plugins.mjs, over palette-plugins-fixture.tsx: the host's own wiring of the fixture plugin's providers) what a plugin's providers do to the palette: the order things happen in with a slow provider
 //              present (typing never waits, the fast providers' rows paint first, the 5,000-row answer comes to 20), a key pressed while the slow provider works, the row the user moved to when a late section arrives, one
 //              commit per key and per answer, no layout shift outside the palette, a closed palette that does no provider work, and the states with axe: a provider that rejects, answers what is not a list, never
-//              answers, is deaf to its signal or has a row that is not valid, and a plugin that leaves while the palette is open
+//              answers, is deaf to its signal or has a row that is not valid, and a plugin that leaves while the palette is open; and (C1e) a page found by the keyword its sidebar entry carries: first in the list, ahead of a loose
+//              match in a title, nothing of the keyword drawn, and a plain Enter opens it
 // Exit code 1 when anything differs.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -627,6 +629,9 @@ const PERTURBATIONS = {
   'plugin-shift': { sections: ['plugins'], parts: ['shift'], expected: /^[^:]+: plugins shift: \d+ moves outside the palette/ },
   'closed-work': { sections: ['plugins'], parts: ['closed'], expected: /^[^:]+: plugins closed: a provider was asked before the palette had been opened/ },
   'stale-shown': { sections: ['plugins'], parts: ['states'], expected: /^[^:]+: plugins states: \d+ rows of an answer that came after the provider was told to stop are on screen/ },
+  // The sidebar's keywords (C1e; palette-plugins.mjs, part `aliases`): the page a keyword names is not found at all, or is found and ranks as a plain keyword did and comes after a loose match in a title.
+  'alias-ignored': { sections: ['plugins'], parts: ['aliases'], expected: /^[^:]+: plugins aliases: the keyword "gz" does not find the page it names/ },
+  'alias-loose': { sections: ['plugins'], parts: ['aliases'], expected: /^[^:]+: plugins aliases: the page a keyword names is not the first row/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
@@ -683,7 +688,7 @@ for (const engineName of CONTROL === '' ? engineNames : [process.env.ENGINES ===
     }
     if (wants('plugins')) {
       const { plugins } = await import('./palette-plugins.mjs');
-      await plugins({ browser, engine: engineName, viewportName, viewport, production, development, report, fail, control: CONTROL, only: CONTROL === '' ? undefined : PERTURBATIONS[CONTROL].parts, axe, shots: SHOTS });
+      await plugins({ browser, engine: engineName, viewportName, viewport, production, development, report, fail, control: CONTROL, only: CONTROL === '' ? process.env.PARTS?.split(',') : PERTURBATIONS[CONTROL].parts, axe, shots: SHOTS });
     }
     console.log(engineName, viewportName, 'done');
   }

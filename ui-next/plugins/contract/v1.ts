@@ -79,11 +79,28 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // (`paletteRows.ts`): a row that is not valid is left out with a problem for its provider, and no other row, provider or plugin is affected. A row is DATA: words, a glyph from the kit's registry, and either a route to
 // one of the plugin's own pages or the id of one of its own commands. It never holds code that draws.
 //
+// The sidebar's keywords (C1e) are minor, on the terms of the palette's providers: `keywords` is a NEW optional member of a sidebar NODE, the other names its page is known by (the short name a tool gives the thing:
+// `ws` for Workshops). (1) Nothing that exists is removed, renamed or given another meaning. (2) Every bundle written before it is admitted and drawn as before: a node with no `keywords` is a page the palette finds
+// by its title, its group and its plugin's name, as it did (`admit.test.ts` keeps one, and `PluginHost.palette.test.tsx` runs a window with one). (3) Rule (3) cannot be kept by the letter for a new member, as for
+// `panel` and `palette`: an older host's admission has never refused a member it does not know, so it admits a bundle whose nodes carry keywords, draws its sidebar as before and finds the page by its title alone
+// (`admit.test.ts` shows the member is the only difference, and that a node of either contract is a node of the other in types). Admission does not refuse for a keyword that is not valid, and does not read the member at
+// all: a sidebar hook answers its nodes anew on every render, so the words are read where they are used (`sidebarKeywords.ts`), one at a time, and a keyword that is not one word of at most 32 characters, or comes after the
+// eighth, is left out with a problem for the plugin's author and costs the node nothing else. Only the keywords of an entry (a leaf, a page the palette can go to) are read: a group is not a page.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 
-/** A node of the sidebar's tree: an entry (a leaf) or a group (it has `children`). The id of a leaf is the id of the page it opens. */
-export type SidebarNodeV1 = ShellTreeNode;
+/**
+ * A node of the sidebar's tree: an entry (a leaf) or a group (it has `children`). The id of a leaf is the id of the page it opens.
+ *
+ * `keywords` (C1e) are the other names the entry's page is known by, which its label does not say: the short name a tool gives the thing (`ws` for Workshops, `rk` for Racks), or its kind written out. The window's palette
+ * finds the page by them as it finds it by its label: typed whole, a keyword ranks the page with an exact match on its label, and typed as the start of one, with a prefix of it; nothing of them is drawn. A keyword is
+ * one word (no white space) of 1 to 32 characters; at most eight are read, and one that is not valid is left out with a problem for the plugin's author (`sidebarKeywords.ts`). The keywords of a group are not read.
+ */
+export type SidebarNodeV1 = Omit<ShellTreeNode, 'children'> & {
+  readonly keywords?: readonly string[] | undefined;
+  readonly children?: readonly SidebarNodeV1[];
+};
 
 /**
  * Where the host asks a contribution to show itself. `connection` is the scope the user chose; it is absent until one is chosen. `params` are the route's other parameters, strings: empty

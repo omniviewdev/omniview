@@ -12,19 +12,20 @@ import { Published } from './published';
 // the window lives. Built over a plugin source, a tab store and a contributions object made the way contributions.test.ts and PluginHost.test.tsx make theirs; the palette store is the real one
 // (the model is tested in ui-next/shell/core/palette), so a row is read as the data a view would draw. Invented plugins: acme and beta contribute, gamma is loading and delta did not load.
 
+// Keywords (C1e) are the other names a page is known by: `rk` and `shelf` are Racks (`rk` is its letters, `shelf` is not), `stuff` is Items, and the leaf that opens the plugin's home (Overview) has `ov`.
 const BETA_NODES: readonly SidebarNodeV1[] = [
-  { id: 'overview', label: 'Overview', icon: 'layers' },
+  { id: 'overview', label: 'Overview', icon: 'layers', keywords: ['ov'] },
   {
     id: 'inventory',
     label: 'Inventory',
     icon: 'folder-tree',
     children: [
-      { id: 'items', label: 'Items', icon: 'box' },
-      { id: 'storage', label: 'Storage', icon: 'folder-tree', children: [{ id: 'racks', label: 'Racks', icon: 'server' }] },
+      { id: 'items', label: 'Items', icon: 'box', keywords: ['stuff'] },
+      { id: 'storage', label: 'Storage', icon: 'folder-tree', children: [{ id: 'racks', label: 'Racks', icon: 'server', keywords: ['rk', 'shelf'] }] },
     ],
   },
   // Opens nothing: no page has this id, so the sidebar draws no entry for it and neither does the palette.
-  { id: 'soon', label: 'Soon', icon: 'clock' },
+  { id: 'soon', label: 'Soon', icon: 'clock', keywords: ['sn'] },
 ];
 
 const ready = (id: string, name: string, patch: Parameters<typeof acme>[0]): PluginEntry => ({ id, name, phase: 'ready', contribution: acme(patch) });
@@ -57,6 +58,30 @@ const BETA = ready('beta', 'Beta plugin', {
   pages: { overview: widgetPage('Beta', answering([], 'Beta')), items: widgetPage('Items', answering([], 'Items')), racks: widgetPage('Racks', answering([], 'Racks')) },
   home: 'overview',
 });
+
+/** A copy of acme under another name: its Gadgets page reads as acme's does (the same title, in a group of the same name) until the rows are told apart. It has a page of its own too. Last in the rail. */
+const COPY_PATCH: Parameters<typeof acme>[0] = {
+  plugin: { name: 'Acme Copy' },
+  rail: { icon: 'layers', order: 3 },
+  sidebar: {
+    label: 'Acme Copy navigation',
+    title: 'Acme Copy',
+    nodes: [
+      {
+        id: 'group',
+        label: 'Group',
+        icon: 'layers',
+        children: [
+          { id: 'widgets', label: 'Start', icon: 'box' },
+          { id: 'gadgets', label: 'Gadgets', icon: 'box' },
+          { id: 'sprockets', label: 'Sprockets', icon: 'box' },
+        ],
+      },
+    ],
+  },
+  pages: { ...acme().pages, sprockets: widgetPage('Sprockets', answering([], 'Sprockets')) },
+};
+const COPY = ready('copy', 'Acme Copy plugin', COPY_PATCH);
 
 const GAMMA: PluginEntry = { id: 'gamma', name: 'Gamma plugin', phase: 'loading' };
 const DELTA: PluginEntry = { id: 'delta', name: 'Delta plugin', phase: 'failed', failure: { kind: 'missing', message: 'The plugin\'s interface could not be read.' } };
@@ -260,16 +285,16 @@ describe('the pages source', () => {
     ]);
   });
 
-  it('lists the openable leaves of the sidebar of each plugin that is ready after its home, in the order the sidebar draws them, each saying whose it is and the groups it sits in; a plugin that is not ready offers its home only', () => {
+  it('lists the openable leaves of the sidebar of each plugin that is ready after its home, in the order the sidebar draws them, each saying the groups it sits in (the design lab\'s kind rows say "Workloads", never the plugin\'s name); a plugin that is not ready offers its home only', () => {
     const w = build();
     w.store.open({ kind: 'goto' });
 
     expect(rowsOf(w, 'goto').map((row) => [row.kind, row.title.text, row.context.text])).toEqual([
       ['home', 'Beta', 'Overview'],
-      ['page', 'Items', 'Beta · Inventory'],
-      ['page', 'Racks', 'Beta · Inventory › Storage'],
+      ['page', 'Items', 'Inventory'],
+      ['page', 'Racks', 'Inventory › Storage'],
       ['home', 'Acme', 'Widgets'],
-      ['page', 'Gadgets', 'Acme · Group'],
+      ['page', 'Gadgets', 'Group'],
       ['home', 'Gamma plugin', ''],
       ['home', 'Delta plugin', ''],
     ]);
@@ -383,6 +408,327 @@ describe('the pages source', () => {
     for (const row of rowsOf(w, 'goto')) {
       expect(isIconName(row.tile?.icon ?? '')).toBe(true);
     }
+  });
+});
+
+// The pages the plugin's sidebar opens, as the design lab's palette lists them (C1e). Its kind rows are rows of Go to (`shell-search.js`, `gotoCandidates`, fed by the plugin adapter's `search.entries`:
+// `connectionRows`): the title is the kind, the context says where it is, `where(place) = label ? `${connectionId} · ${text}` : text` (the connection first, only when the palette offers the kind for more than one
+// connection and it is not scoped to one; else the group alone: "Workloads"), and the words a row is found by are its keywords. A destination offered twice is one row (`seen` in `gotoCandidates`: "the same destination
+// offered twice is one row that keeps the context and the keywords either one gave"), and an open tab is a row of Tabs besides (its screenshot shows one page under Tabs and again under Go to). What a plugin's own
+// keywords add is the host's: they are names for the page, and the palette ranks a name as it ranks a title (`shell/core/palette/match.ts`).
+describe('the pages source: the plugin\'s keywords, where each page says it is, and one row for a route (C1e)', () => {
+  const gotoOf = (w: World, query: string): string[] => {
+    w.store.setQuery(query);
+    return titlesOf(w, 'goto');
+  };
+
+  /** The chain of a palette narrowed to a plugin and nothing under it: the first chip of the one a tab with a connection makes (`seedChips` makes none for a tab without one). */
+  const pluginOnly = (plugin: string, name: string) => seedChips({ plugin, pluginName: name, scope: { id: 'x', label: 'x' } }).slice(0, 1);
+
+  describe('the keywords of a leaf', () => {
+    it('find the page by a name the label does not hold, and rank it as the label ranks: a keyword typed whole leads the pages whose titles only hold its letters', () => {
+      const w = build();
+      // `Workloads` holds `rk` inside a word, which is a substring match of a title (348), and `Racks` holds it only as the letters of two of its own (a loose match, 204): the keyword is worth an exact one (600).
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Workloads', icon: 'box' }]);
+      w.store.open({ kind: 'goto' });
+
+      expect(gotoOf(w, 'rk')).toEqual(['Racks', 'Workloads']);
+      expect(rowTitled(w, 'Racks').score).toBe(100 * 6);
+      expect(rowTitled(w, 'Workloads').score).toBe(58 * 6);
+      // Typed as the start of a keyword, it is a prefix of a title (528).
+      expect(gotoOf(w, 'shel')).toEqual(['Racks']);
+      expect(rowTitled(w, 'Racks').score).toBe(88 * 6);
+    });
+
+    it('draw nothing of the keyword: the row is its label and its context, and the user sees no word that is not on it', () => {
+      const w = build();
+      w.store.open({ kind: 'goto' });
+      expect(gotoOf(w, 'shelf')).toEqual(['Racks']);
+      const racks = rowTitled(w, 'Racks');
+      expect(racks.title.ranges).toEqual([]);
+      expect(racks.context.ranges).toEqual([]);
+      expect(racks.context.text).toBe('Inventory › Storage');
+      expect(JSON.stringify(racks)).not.toContain('shelf');
+    });
+
+    it('are the names of the plugin\'s home when the leaf that opens it carries them: the home is the one row for that page', () => {
+      const w = build();
+      w.store.open({ kind: 'goto' });
+      expect(gotoOf(w, 'ov')).toEqual(['Beta']);
+      expect(rowTitled(w, 'Beta').score).toBe(100 * 6);
+      expect(rowTitled(w, 'Beta').route).toEqual({ plugin: 'beta', contribution: 'overview', params: {} });
+    });
+
+    it('are read from the nodes the plugin\'s hook published, in place of the skeleton\'s: a page that is no longer named so is no longer found so', () => {
+      const w = build();
+      w.store.open({ kind: 'goto' });
+      w.nodes.publish('beta', [
+        { id: 'overview', label: 'Overview', icon: 'layers' },
+        { id: 'items', label: 'Items', icon: 'box', keywords: ['thing'] },
+        { id: 'racks', label: 'Racks', icon: 'server' },
+      ]);
+      w.store.refresh();
+      expect(gotoOf(w, 'thing')).toEqual(['Items']);
+      expect(gotoOf(w, 'shelf')).toEqual([]);
+      expect(gotoOf(w, 'stuff')).toEqual([]);
+    });
+
+    it('are not read from a group: a group is not a page', () => {
+      const w = build();
+      w.nodes.publish('acme', [{ id: 'group', label: 'Group', icon: 'layers', keywords: ['grp'], children: [{ id: 'widgets', label: 'Start', icon: 'box' }] }]);
+      w.store.open({ kind: 'goto' });
+      expect(gotoOf(w, 'grp')).toEqual([]);
+    });
+
+    it('leave a node that has none as it was: no keywords, or an empty list, is a page found by its label, its group and its plugin\'s name', () => {
+      const w = build();
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: [] }]);
+      w.store.open({ kind: 'goto' });
+      expect(gotoOf(w, 'gadgets')).toEqual(['Gadgets']);
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }]);
+      w.store.refresh();
+      expect(gotoOf(w, 'gadgets')).toEqual(['Gadgets']);
+      expect(gotoOf(w, 'acme')).toEqual(['Acme', 'Gadgets']);
+    });
+
+    it('are bounded: a keyword that is not one word of at most 32 characters, or comes after the eighth, is left out and said once to the plugin\'s author, and the page keeps its other names', () => {
+      const problems: Array<{ readonly provider: string; readonly message: string }> = [];
+      const w = build({ report: (problem) => problems.push(problem) });
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gd', 3 as unknown as string, 'two words', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'] }]);
+      w.store.open({ kind: 'goto' });
+
+      expect(gotoOf(w, 'gd')).toEqual(['Gadgets']);
+      expect(gotoOf(w, 'g7')).toEqual(['Gadgets']);
+      expect(gotoOf(w, 'g8')).toEqual([]);
+      expect(gotoOf(w, 'words')).toEqual([]);
+      // Typed again and again, refreshed, it is said once.
+      w.store.setQuery('g');
+      w.store.refresh();
+      w.store.setQuery('gd');
+      expect(problems).toEqual([
+        { provider: 'acme:sidebar', message: 'sidebar entry "gadgets": keyword 2 is not a word of 1 to 32 characters, with no white space in it: it is left out' },
+        { provider: 'acme:sidebar', message: 'sidebar entry "gadgets": keyword 3 is not a word of 1 to 32 characters, with no white space in it: it is left out' },
+        { provider: 'acme:sidebar', message: 'sidebar entry "gadgets": more than 8 keywords: the rest are left out' },
+      ]);
+    });
+
+    it('are read where they are used, whatever a plugin\'s node does: a node whose keywords throw costs the page its keywords and the source nothing', () => {
+      const problems: string[] = [];
+      // The skeleton of a bundle is the plugin's own object, and admission does not read `keywords`; a node a hook answers is plain data (`Published` holds JSON), so a getter that throws can only be in the skeleton.
+      const hostile = {
+        id: 'gadgets',
+        label: 'Gadgets',
+        icon: 'box',
+        get keywords(): readonly string[] {
+          throw new Error('no');
+        },
+      } as unknown as SidebarNodeV1;
+      const w = build({ entries: [ready('acme', 'Acme plugin', { sidebar: { label: 'Acme navigation', title: 'Acme', nodes: [hostile] } })], report: (problem) => problems.push(problem.message) });
+      w.store.open({ kind: 'goto' });
+
+      expect(titlesOf(w, 'goto')).toEqual(['Acme', 'Gadgets']);
+      expect(problems).toEqual(['sidebar entry "gadgets": keywords could not be read: it is left out']);
+    });
+  });
+
+  describe('where a page says it is', () => {
+    const NORTH = (plugin: string): Route | undefined => (plugin === 'acme' ? { plugin: 'acme', contribution: 'widgets', params: { connection: 'north' } } : undefined);
+    const contextOf = (w: World, title: string): string => rowTitled(w, title).context.text;
+
+    it('is the group alone when no connection is known: the plugin\'s name is said only for a page that sits in no group', () => {
+      const w = build();
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+      expect(contextOf(w, 'Racks')).toBe('Inventory › Storage');
+
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
+      w.store.refresh();
+      expect(contextOf(w, 'Gizmos')).toBe('Acme');
+    });
+
+    it('is the connection alone for a page that sits in no group, whether or not a chip says it: the host makes no group up (the design lab says "Cluster" for such a page, which only its plugin can say)', () => {
+      const w = build({ remembered: NORTH });
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gizmos')).toBe('north');
+      w.store.close();
+
+      w.open(at('acme', 'widgets', 'south'));
+      w.store.open({ kind: 'goto', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'south', label: 'south' } }) });
+      expect(contextOf(w, 'Gizmos')).toBe('south');
+      // A page with a group says the group alone under the same chip.
+      w.nodes.publish('acme', null);
+      w.store.refresh();
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+    });
+
+    it('is the connection first and then the group when the page opens in a connection and the palette is not narrowed to it: the connection of the tab on screen, or else the one the plugin was last used in', () => {
+      const w = build({ remembered: NORTH });
+      w.open(at('beta', 'items'));
+      w.store.open({ kind: 'goto' });
+      // Acme is not on screen: it opens at the connection it was last used in.
+      expect(contextOf(w, 'Gadgets')).toBe('north · Group');
+      expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: { connection: 'north' } });
+      // Beta has none.
+      expect(contextOf(w, 'Racks')).toBe('Inventory › Storage');
+      w.store.close();
+
+      // Acme on screen, in another connection: the tab model opens its pages there, and the row says so.
+      w.open(at('acme', 'widgets', 'south'));
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gadgets')).toBe('south · Group');
+      expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: {} });
+    });
+
+    it('is the group alone when the palette is narrowed to the connection: the chip says it, as the design lab\'s rows do when it is scoped to one connection', () => {
+      const w = build();
+      w.open(at('acme', 'widgets', 'south'));
+      w.store.open({ kind: 'goto', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'south', label: 'south' } }) });
+      expect(titlesOf(w, 'goto')).toEqual(['Acme', 'Gadgets']);
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+
+      // Narrowed to the plugin alone, the connection is still not said by a chip: the row says it.
+      w.store.close();
+      w.store.open({ kind: 'goto', scope: pluginOnly('acme', 'Acme') });
+      expect(contextOf(w, 'Gadgets')).toBe('south · Group');
+    });
+
+    it('says the connection when the chip that narrows the palette names another one: the tab moved after the palette opened, and the page opens where the tab is now', () => {
+      const w = build();
+      w.open(at('acme', 'widgets', 'south'));
+      w.store.open({ kind: 'goto', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'north', label: 'north' } }) });
+      expect(contextOf(w, 'Gadgets')).toBe('south · Group');
+    });
+
+    it('names a place once: a group that is the connection\'s name is not said twice', () => {
+      const w = build({ remembered: NORTH });
+      w.nodes.publish('acme', [{ id: 'group', label: 'North', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }] }]);
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gadgets')).toBe('north');
+    });
+
+    it('finds a page by its connection, which the row says, as the design lab finds a kind by the connection its row names', () => {
+      const w = build({ remembered: NORTH });
+      w.store.open({ kind: 'goto' });
+      expect(gotoOf(w, 'north')).toEqual(['Gadgets']);
+    });
+  });
+
+  describe('one row for a route', () => {
+    it('lists a page the sidebar names twice once, with the words either said: the first label and context, and the keywords of both', () => {
+      const w = build();
+      w.nodes.publish('acme', [
+        { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gd'] }] },
+        { id: 'other', label: 'Other', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets again', icon: 'box', keywords: ['gz'] }] },
+      ]);
+      w.store.open({ kind: 'goto' });
+
+      expect(rowsOf(w, 'goto').filter((row) => row.route?.contribution === 'gadgets').map((row) => [row.title.text, row.context.text])).toEqual([['Gadgets', 'Group']]);
+      expect(gotoOf(w, 'gd')).toEqual(['Gadgets']);
+      expect(gotoOf(w, 'gz')).toEqual(['Gadgets']);
+      expect(gotoOf(w, 'again')).toEqual([]);
+    });
+
+    it('keeps the groups of every entry that names the page as words the page is found by, while the row says the groups of one: a page named in two groups is found by either', () => {
+      const w = build();
+      w.nodes.publish('acme', [
+        { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }] },
+        { id: 'other', label: 'Other', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }] },
+      ]);
+      w.store.open({ kind: 'goto' });
+
+      expect(rowsOf(w, 'goto').filter((row) => row.route?.contribution === 'gadgets').map((row) => [row.title.text, row.context.text])).toEqual([['Gadgets', 'Group']]);
+      expect(gotoOf(w, 'other')).toEqual(['Gadgets']);
+    });
+
+    it('says the first group an entry gave: a page named at the top and again in a group is in that group, and not the plugin\'s own', () => {
+      const w = build();
+      w.nodes.publish('acme', [
+        { id: 'gadgets', label: 'Gadgets', icon: 'box' },
+        { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }] },
+      ]);
+      w.store.open({ kind: 'goto' });
+
+      expect(rowsOf(w, 'goto').filter((row) => row.route?.contribution === 'gadgets').map((row) => [row.title.text, row.context.text])).toEqual([['Gadgets', 'Group']]);
+    });
+
+    it('lists the page that a tab has open under Tabs and under Go to, as the design lab does: they are two sources, and the tab is not the page', () => {
+      const w = build();
+      w.open(at('beta', 'items'));
+      w.store.open();
+      w.store.setQuery('items');
+
+      const sections = w.store.getSnapshot().sections.map((section) => [section.id, section.rows.map((row) => `${row.kind}:${row.title.text}`)]);
+      expect(sections).toEqual([
+        ['tabs', ['tab:Items']],
+        ['goto', ['page:Items']],
+      ]);
+      expect(rowTitled(w, 'Items').route).toEqual({ plugin: 'beta', contribution: 'items', params: {} });
+    });
+
+    it('lists no page of a plugin twice because it brings the same word twice, or because the plugin is listed twice', () => {
+      const w = build({ entries: [BETA, BETA] });
+      w.store.open({ kind: 'goto' });
+      expect(titlesOf(w, 'goto')).toEqual(['Beta', 'Items', 'Racks']);
+    });
+  });
+
+  // Two rows that would READ ALIKE (the same title and the same words under it) from different plugins are told apart by the plugin's name, on those rows only (C1e, the lead's ruling): the rule a session tab's scope
+  // follows when two tabs read alike, "shown only when needed". It is in the text the row draws and so in the name a screen reader reads, and it is judged on the rows the source lists, never on the query.
+  describe('two rows that would read alike', () => {
+    const twins = (extra: Setup = {}): World => build({ entries: [ACME, COPY], ...extra });
+    const gadgetsOf = (w: World) => rowsOf(w, 'goto').filter((row) => row.title.text === 'Gadgets');
+
+    it('are told apart by the plugin\'s name, first, on those rows only: in the text drawn and in the name a screen reader reads', () => {
+      const w = twins();
+      w.store.open({ kind: 'goto' });
+      expect(gadgetsOf(w).map((row) => [row.context.text, row.name])).toEqual([
+        ['Acme · Group', 'Page: Gadgets, Acme · Group'],
+        ['Acme Copy · Group', 'Page: Gadgets, Acme Copy · Group'],
+      ]);
+      // The page only one of them has reads as it did, and so do the homes.
+      expect(rowTitled(w, 'Sprockets').context.text).toBe('Group');
+      expect(rowsOf(w, 'goto').filter((row) => row.kind === 'home').map((row) => [row.title.text, row.context.text])).toEqual([['Acme', 'Widgets'], ['Acme Copy', 'Widgets']]);
+    });
+
+    it('is judged on the rows the source lists and not on the query: a query that leaves one of them out does not change what the other reads', () => {
+      const w = twins();
+      w.store.open({ kind: 'goto' });
+      w.store.setQuery('copy');
+      expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['Acme Copy · Group']);
+      w.store.setQuery('gadgets');
+      expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['Acme · Group', 'Acme Copy · Group']);
+    });
+
+    it('is not needed when the palette is narrowed to one plugin: only its rows are listed, and the chip says whose they are', () => {
+      const w = twins();
+      w.store.open({ kind: 'goto', scope: pluginOnly('copy', 'Acme Copy') });
+      expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['Group']);
+    });
+
+    it('is not needed when they already differ: another connection tells them apart', () => {
+      const w = twins({ remembered: (plugin) => ({ plugin, contribution: 'widgets', params: { connection: plugin === 'acme' ? 'north' : 'south' } }) });
+      w.store.open({ kind: 'goto' });
+      expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['north · Group', 'south · Group']);
+    });
+
+    it('comes before the connection when they read alike there too', () => {
+      const w = twins({ remembered: (plugin) => ({ plugin, contribution: 'widgets', params: { connection: 'north' } }) });
+      w.store.open({ kind: 'goto' });
+      expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['Acme · north · Group', 'Acme Copy · north · Group']);
+    });
+
+    it('is not made of a name they share, and not for two pages of one plugin: the name would not tell them apart, so they read as they did', () => {
+      const same = ready('copy', 'Acme Copy plugin', { ...COPY_PATCH, plugin: { name: 'Acme' } });
+      const w = build({ entries: [ACME, same] });
+      w.store.open({ kind: 'goto' });
+      expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['Group', 'Group']);
+
+      const one = build({ entries: [COPY] });
+      one.nodes.publish('copy', [{ id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'gadgets', label: 'Same', icon: 'box' }, { id: 'sprockets', label: 'Same', icon: 'box' }] }]);
+      one.store.open({ kind: 'goto' });
+      expect(rowsOf(one, 'goto').filter((row) => row.title.text === 'Same').map((row) => row.context.text)).toEqual(['Group', 'Group']);
+    });
   });
 });
 

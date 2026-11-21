@@ -219,6 +219,7 @@ function recentSection(input: ComposeInput): Section | undefined {
         context: said === undefined ? recent.context : contextOf(said),
         matchContext: undefined,
         keywords: '',
+        aliases: '',
         icon: said?.icon ?? recent.icon,
         tone: recent.tone,
         noun: recent.noun,
