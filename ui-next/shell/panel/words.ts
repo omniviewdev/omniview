@@ -1,18 +1,14 @@
-import type { SessionItem, SessionState } from '../core/panel';
+import { heardAs, stateWord } from '../core/panel';
+import type { SessionItem } from '../core/panel';
 import type { Platform } from '../core/chords';
 
-// The words and the DOM ids of the panel: what a session's state is called to a person, how a tab is named, and the chord's text. One place, so no component builds its own.
+// The words and the DOM ids of the panel: what a session's state is called to a person, how a tab is named, and the chord's text. One place, so no component builds its own. The state's words are the model's
+// (core/panel/names.ts): it makes the tab names unique by what a tab is heard as, so it must say the same words the strip does.
 
-/** What a state is called in a tab's accessible name; a session that runs says nothing (a steady state has no word). */
-const STATE_WORDS: Readonly<Record<SessionState, string>> = { starting: 'starting', running: '', ended: 'ended', failed: 'failed' };
-
-export const stateWord = (state: SessionState): string => STATE_WORDS[state];
+export { stateWord };
 
 /** The accessible name of a session tab: the whole name and, when it is not steady, its state (ch16 SCT1: no plain-text tooltip repeats it). */
-export function sessionName(item: SessionItem): string {
-  const word = stateWord(item.state);
-  return word === '' ? item.name : `${item.name}, ${word}`;
-}
+export const sessionName = (item: SessionItem): string => heardAs(item.name, item.state);
 
 /**
  * An id the DOM and `aria-labelledby` can hold, and one that two different ids never share: anything outside letters, digits and hyphen becomes an underscore and the character's UTF-16 code

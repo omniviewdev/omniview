@@ -143,7 +143,10 @@ export type CloseResult = Done<{ readonly closed: SessionId; readonly active: Se
 /** The pointer or the keys moved the splitter: the stored height is `size`; below the collapse threshold the panel hides instead and keeps its old height. */
 export type Resize = { readonly size: number } | { readonly collapse: true };
 
-/** What a session tab shows (SCT1) and its accessible name. The same object while the session and its twins are the same. */
+/**
+ * What a session tab shows (SCT1, TI1) and its accessible name: the words it DRAWS, and no others. The same object while the session and its twins are the same. The scope is drawn only when two listed sessions of
+ * the tool share a title and not a scope (the mock's `labelParts`), so it is empty on a tab that has no such twin, whatever scope its session has (`Session.scope`: what its card and the saved panel read).
+ */
 export type SessionItem = {
   readonly id: SessionId;
   readonly tool: ToolId;
@@ -153,8 +156,9 @@ export type SessionItem = {
   readonly head: string;
   /** The end of the name that stays whole, with the ordinal of a twin (` (2)`). */
   readonly tail: string;
+  /** The muted qualifier the tab draws after its name: the session's scope while another session of its tool has its title and another scope, else empty. */
   readonly scope: string;
-  /** The whole name: title, ordinal and scope. The tab's accessible name adds the state. */
+  /** The whole name, as drawn: title, ordinal and the scope the tab draws. No two tabs of a tool have one name. The tab's accessible name adds the state. */
   readonly name: string;
   readonly state: SessionState;
   readonly since: number;

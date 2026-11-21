@@ -461,6 +461,78 @@ describe('choosing a session', () => {
   });
 });
 
+describe('showing a session (a press of the command that opened it, again)', () => {
+  const world = () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('logs', 'host', 'a'));
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    h.store.openSession(session('logs', 'host', 'b'), { reveal: false });
+    return h;
+  };
+
+  it('opens the panel, puts the session\'s tool on screen and makes it the tool\'s session: what a session the user starts does, for one that is already there', () => {
+    const h = world();
+    h.store.hide();
+    expect(h.store.selectors.shown(h.snapshot())).toBeNull();
+    expect(h.store.revealSession('s1')).toEqual({ status: 'done' });
+    expect(h.snapshot().open).toBe(true);
+    expect(h.store.selectors.activeTool(h.snapshot())).toBe('logs');
+    expect(h.store.selectors.shown(h.snapshot())).toEqual({ tool: 'logs', session: 's1' });
+  });
+
+  it('moves the tool and the session on screen from another tool and another session, and leaves the other tool\'s own choice alone', () => {
+    const h = world();
+    h.store.activateSession('s3');
+    h.store.activateSession('s2');
+    expect(h.store.selectors.shown(h.snapshot())).toEqual({ tool: 'terminal', session: 's2' });
+    h.store.revealSession('s1');
+    expect(h.store.selectors.shown(h.snapshot())).toEqual({ tool: 'logs', session: 's1' });
+    expect(h.store.selectors.activeSession(h.snapshot(), 'terminal')).toBe('s2');
+  });
+
+  it('is one change: the panel, the tool and the session move together, and a subscriber is told once, with the body mounted', () => {
+    const h = world();
+    h.store.hide();
+    const told = h.notified();
+    h.store.revealSession('s3');
+    expect(h.notified()).toBe(told + 1);
+    expect(h.snapshot().mounted).toContain('s3');
+    expect(h.store.selectors.isShown(h.snapshot(), 's3')).toBe(true);
+  });
+
+  it('changes nothing, and tells nobody, when the session is already the one on screen', () => {
+    const h = world();
+    h.store.revealSession('s1');
+    const before = h.snapshot();
+    const told = h.notified();
+    expect(h.store.revealSession('s1')).toEqual({ status: 'noop' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.notified()).toBe(told);
+  });
+
+  it('refuses a session that is hidden or not there, and changes nothing', () => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [tool('metrics', 'Metrics', 30)] } });
+    h.store.openSession(session('acme:metrics', 'acme', 'one', { state: 'running' }));
+    h.store.syncPlugins([]);
+    const before = h.snapshot();
+    expect(h.store.revealSession('s1')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.store.revealSession('nope')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it('shows a held session as it shows any other, and leaves it as it was', () => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [] } });
+    h.store.openSession(session('logs', 'acme', 'a', { state: 'running' }));
+    h.store.syncPlugins([]);
+    h.store.hide();
+    const held = h.snapshot().sessions.s1;
+    expect(held).toMatchObject({ held: true, state: 'ended' });
+    expect(h.store.revealSession('s1')).toEqual({ status: 'done' });
+    expect(h.snapshot().sessions.s1).toBe(held);
+    expect(h.store.selectors.shown(h.snapshot())).toEqual({ tool: 'logs', session: 's1' });
+  });
+});
+
 describe('the body of a session (docs/ui-next/optimisations.md HLT-32, MNR-X4)', () => {
   it('is mounted when it is first shown, and stays while another is on screen and while the panel is hidden', () => {
     const h = boot({ hostTools: HOST_TOOLS });

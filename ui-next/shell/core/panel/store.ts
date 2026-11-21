@@ -1,4 +1,4 @@
-import { activateSession, activateTool, fitHeight, hide, resize, setHeight, show, type ShowOptions } from './arrange';
+import { activateSession, activateTool, fitHeight, hide, resize, revealSession, setHeight, show, type ShowOptions } from './arrange';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
 import { closeSession, openSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
@@ -39,6 +39,11 @@ export type PanelStore = {
   readonly activateTool: (id: ToolId) => PanelResult;
   /** Chooses a session: its tool comes on screen. It does not open the panel. */
   readonly activateSession: (id: SessionId) => PanelResult;
+  /**
+   * Shows a session: the panel opens on it, its tool on screen and the session its tool's, in one change. What a press of the command that opened it does when it is already there. It moves no focus (the model has
+   * none) and starts nothing; a session that is hidden or not there is refused.
+   */
+  readonly revealSession: (id: SessionId) => PanelResult;
 
   /** Registers a tool of the host. */
   readonly registerTool: (input: ToolInput) => PanelResult;
@@ -128,6 +133,7 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
     fitHeight: (viewport) => run(fitHeight(state, viewport)),
     activateTool: (id) => run(activateTool(state, id)),
     activateSession: (id) => run(activateSession(state, id)),
+    revealSession: (id) => run(revealSession(state, id)),
 
     registerTool: (input) => run(registerTool(state, input)),
     unregisterTool: (id) => run(unregisterTool(state, id)),

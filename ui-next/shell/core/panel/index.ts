@@ -2,6 +2,7 @@
 export { createPanelStore, UNLOADED_CAUSE } from './store';
 export type { PanelStore, PanelStoreOptions } from './store';
 export { createSelectors } from './selectors';
+export { heardAs, stateWord } from './names';
 export { toolIdOf } from './tools';
 export type { PluginTools } from './tools';
 export type { OpenOptions, StateChange } from './sessions';

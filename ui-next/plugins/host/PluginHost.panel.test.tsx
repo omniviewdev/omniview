@@ -91,7 +91,7 @@ describe('a tool a plugin brings to the panel', () => {
     await user.click(screen.getByRole('tab', { name: 'Streams' }));
     expect(screen.getByRole('tab', { name: 'Streams' })).toHaveAttribute('aria-selected', 'true');
     await user.click(plus());
-    expect(screen.getByRole('tab', { name: 'alpha · north' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'alpha' })).toHaveAttribute('aria-selected', 'true');
   });
 
   // The body is drawn by `renderBody`, which the shell puts in the page as it is. A promise there is a component that suspends: outside the tool's error boundary, with no fallback of the
@@ -100,7 +100,7 @@ describe('a tool a plugin brings to the panel', () => {
     const { user } = mount(streams());
     await openStreams(user);
     await user.click(plus());
-    const body = screen.getByRole('tabpanel', { name: 'alpha · north' });
+    const body = screen.getByRole('tabpanel', { name: 'alpha' });
     expect(within(body).getByText('the body of alpha')).toBeInTheDocument();
   });
 
@@ -112,10 +112,10 @@ describe('a tool a plugin brings to the panel', () => {
     const { user } = mount(streams({ Body: Broken }));
     await openStreams(user);
     await user.click(plus());
-    const body = screen.getByRole('tabpanel', { name: 'alpha · north' });
+    const body = screen.getByRole('tabpanel', { name: 'alpha' });
     expect(within(body).getByText('Couldn\'t show this session')).toBeInTheDocument();
     expect(screen.queryByText('the plugin\'s own words')).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'alpha · north' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'alpha' })).toBeInTheDocument();
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('acme panel streams'), expect.any(Error), expect.anything());
   });
 
