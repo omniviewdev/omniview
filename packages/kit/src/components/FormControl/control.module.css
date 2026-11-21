@@ -1,0 +1,89 @@
+/* The face of a field, shared by TextInput, SecretInput and Select (and read by the number field's group): the mock's `input`
+   (base.css 1015 to 1044, 1499). One stylesheet, so that one state is painted one way wherever it appears. The paint is a few private
+   properties that the state rules set and the base rule reads, so a state never repeats a colour, and nothing here changes the box:
+   a state is a paint, never a size (design 16 S126, 02 section 8). */
+@layer ov.components {
+  .face {
+    --_border: var(--ov-border-control);
+    --_bg: var(--ov-bg-island);
+    --_fg: var(--ov-fg);
+    --_ring: var(--ov-accent);
+
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    padding-block: var(--ov-spacing-4);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the mock's text insets (`--int-control-text-inset` 9 px, `--int-control-trailing-inset` 6 px, design 04 section 1): outside the spacing scale */
+    padding-inline: 9px 6px;
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_bg);
+    color: var(--_fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .face::placeholder {
+    color: var(--ov-fg-muted);
+    opacity: 1;
+  }
+
+  /* An identifier, an address, a key: the code face, without ligatures. */
+  .face[data-ov-mono='true'] {
+    font-family: var(--ov-font-code);
+    font-variant-ligatures: none;
+  }
+
+  /* The ring: 2 px outside the edge, whose own border takes the island colour. */
+  .face:focus-visible {
+    --_border: var(--ov-bg-island);
+
+    outline: 2px solid var(--_ring);
+    outline-offset: 0;
+  }
+
+  /* Invalid is a colour, never a border width (design 16 S127): the inactive error border at rest, the error ring with the keyboard's focus. */
+  .face[aria-invalid='true'] {
+    --_border: var(--ov-error-control-inactive);
+  }
+
+  .face[aria-invalid='true']:focus-visible {
+    --_border: var(--ov-bg-island);
+    --_ring: var(--ov-error-control);
+  }
+
+  /* A warning never blocks and never hides behind hue alone: the lane says it in words and a glyph. */
+  .face[data-ov-validation='warning'] {
+    --_border: var(--ov-warning-control-inactive);
+  }
+
+  .face[data-ov-validation='warning']:focus-visible {
+    --_border: var(--ov-bg-island);
+    --_ring: var(--ov-warning-control);
+  }
+
+  /* Read-only is a fact (design 14 F-4): selectable and focusable, on the inline surface with a quiet edge, never the disabled paint. */
+  .face[readonly]:not([aria-disabled='true']) {
+    --_bg: var(--ov-bg-inline);
+    --_border: var(--ov-border-subtle);
+  }
+
+  /* Unavailable for a reason (design 14 P2): the disabled roles, never opacity. The field stays focusable and selectable. */
+  .face[aria-disabled='true'] {
+    --_bg: var(--ov-bg-island);
+    --_fg: var(--ov-fg-disabled);
+    --_border: var(--ov-border-disabled);
+
+    cursor: default;
+  }
+
+  .face[aria-disabled='true']::placeholder {
+    color: var(--ov-fg-disabled);
+  }
+}

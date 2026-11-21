@@ -1,0 +1,178 @@
+/* One field of a form (the mock's `.field`, base.css 1065 to 1072 and 1505 to 1524, design 14 F-3): a label track of 96 to 140 px beside the
+   control track, 6 px between them and between the control, the help and the lane; or the label above in one track. The rows below the
+   control sit in the control's track. The field holds no margin of its own: the form owns the space between its fields (design 04 section 3). */
+@layer ov.components {
+  .root {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(96px, 140px) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--ov-spacing-6);
+    min-width: 0;
+  }
+
+  .root > :not(.label) {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .root[data-ov-layout='stacked'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .root[data-ov-layout='stacked'] > * {
+    grid-column: 1;
+  }
+
+  /* The persistent label: 13/16 body type in the text role. A field that cannot change keeps a legible label: the control is the dimmed part
+     and the reason is the lane (design SP-16: the disabled role is 1.6 to 2.5:1 on the island). */
+  .label {
+    grid-column: 1;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .root[data-ov-unavailable='true'] > .label {
+    color: var(--ov-fg-muted);
+  }
+
+  /* The marker of a required field: an asterisk in the error role, never an inline colour; assistive technology is told by `required`. */
+  .required {
+    margin-inline-start: var(--ov-spacing-4);
+    color: var(--ov-error-fg);
+  }
+
+  .aside {
+    /* 4 px and the space of the markup (about 4 px) make the mock's 8 px: the space is what assistive technology reads between the label and the word. */
+    margin-inline-start: var(--ov-spacing-4);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+
+  .help {
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  /* The message lane (design 16 S126, S127, A4): one line of 12/16, reserved in every state, so a message that comes or goes moves nothing.
+     Kind is a glyph and a word as well as a colour: an error and a warning take their text role, the others stay muted. */
+  .lane {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    height: var(--ov-lh-16);
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .lane[data-ov-kind='error'] {
+    color: var(--ov-error-fg);
+  }
+
+  .lane[data-ov-kind='warning'],
+  .lane[data-ov-kind='retry'] {
+    color: var(--ov-warning-fg);
+  }
+
+  .lane > svg {
+    flex: 0 0 16px;
+  }
+
+  /* The info glyph is in the link colour while its text stays quiet (the mock's `.field__message[data-kind='info'] > .field__message-icon`, base.css 1521). */
+  .lane[data-ov-kind='info'] > svg {
+    color: var(--ov-link);
+  }
+
+  /* One clipped line: its whole text is the tip while it is cut, and the lane's own text for assistive technology. */
+  .message {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A word that says the kind to assistive technology and draws nothing (the mock's `.visually-hidden`, base.css 1592). */
+  .word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the visually hidden box takes its own pixel back (the mock's rule) */
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Retry is a link of the lane: its own button, 24 px high whatever the density (design 16 A20), in the link colour, underlined on hover. */
+  .retry {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    margin: 0;
+    padding: var(--ov-spacing-4) 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-link);
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .retry:hover {
+    text-decoration: underline;
+  }
+
+  .retry:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  /* The loader turns, and comes after a second: it is in the lane from the start and the stylesheet reveals it (the mock's `field-message-reveal`,
+     base.css 1523), so that nothing is added to the page when the second is up. Under reduced motion it holds still and is drawn all the same. */
+  .lane > svg[data-ov-busy='true'] {
+    opacity: 0;
+    animation: reveal 1ms linear 1s forwards, spin 1.2s linear 1s infinite;
+  }
+
+  @keyframes reveal {
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lane > svg[data-ov-busy='true'] {
+      animation: reveal 1ms linear 1s forwards;
+    }
+  }
+}

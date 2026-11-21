@@ -239,6 +239,38 @@ export function ErrorBody(input: {
 }): JSX.Element;
 
 // @public
+export function Field(input: FieldProps): JSX.Element;
+
+// @public
+export type FieldLayout = 'aligned' | 'stacked';
+
+// @public (undocumented)
+export type FieldMessage = {
+    readonly kind: FieldMessageKind;
+    readonly text: string;
+    readonly detail?: string | undefined;
+    readonly retry?: boolean | undefined;
+};
+
+// @public
+export type FieldMessageKind = 'error' | 'warning' | 'checking' | 'retry' | 'saved' | 'info' | 'hint';
+
+// @public (undocumented)
+export type FieldProps = {
+    readonly label: string;
+    readonly children: ReactNode;
+    readonly required?: boolean | undefined;
+    readonly aside?: string | undefined;
+    readonly layout?: FieldLayout | undefined;
+    readonly help?: string | undefined;
+    readonly message?: FieldMessage | undefined;
+    readonly lane?: boolean | undefined;
+    readonly onRetry?: (() => void) | undefined;
+    readonly disabledReason?: string | undefined;
+    readonly readOnly?: boolean | undefined;
+} & DataAttributes;
+
+// @public
 export function hoverCard(key: string | undefined, options?: {
     readonly arrow?: 'down';
 }): HoverCardAttributes;
@@ -293,7 +325,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'activity' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'blocks' | 'box' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'eraser' | 'file-cog' | 'folder-tree' | 'gauge' | 'globe' | 'hard-drive' | 'hard-drive-download' | 'hourglass' | 'key-round' | 'layers' | 'layout-template' | 'list-ordered' | 'loader' | 'loader-circle' | 'network' | 'panel-bottom' | 'pause' | 'play' | 'plus' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'server' | 'server-cog' | 'settings-2' | 'shield' | 'shield-check' | 'split' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'target' | 'umbrella' | 'waypoints';
+export type IconName = 'activity' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'blocks' | 'box' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'eraser' | 'eye' | 'eye-off' | 'file-cog' | 'folder-tree' | 'gauge' | 'globe' | 'hard-drive' | 'hard-drive-download' | 'hourglass' | 'key-round' | 'layers' | 'layout-template' | 'list-ordered' | 'loader' | 'loader-circle' | 'minus' | 'network' | 'panel-bottom' | 'pause' | 'play' | 'plus' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'server' | 'server-cog' | 'settings-2' | 'shield' | 'shield-check' | 'split' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'target' | 'umbrella' | 'waypoints';
 
 // @public (undocumented)
 export type IconProps = {
@@ -527,6 +559,27 @@ export type MissingValueProps = {
 } & DataAttributes;
 
 // @public
+export function NumberInput(input: NumberInputProps): JSX.Element;
+
+// @public (undocumented)
+export type NumberInputProps = {
+    readonly value: string;
+    readonly onValueChange: (value: string) => void;
+    readonly onCommit?: ((value: string) => void) | undefined;
+    readonly onBlur?: (() => void) | undefined;
+    readonly onRevert?: (() => void) | undefined;
+    readonly dirty?: boolean | undefined;
+    readonly min?: number | undefined;
+    readonly max?: number | undefined;
+    readonly step?: number | undefined;
+    readonly unit?: string | undefined;
+    readonly label?: string | undefined;
+    readonly invalid?: boolean | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
+
+// @public
 export function PageHeader(input: PageHeaderProps): JSX.Element;
 
 // @public
@@ -730,6 +783,27 @@ export type SearchFieldProps = {
 } & DataAttributes;
 
 // @public
+export function SecretInput(input: SecretInputProps): JSX.Element;
+
+// @public (undocumented)
+export type SecretInputProps = {
+    readonly presence: 'set' | 'unset';
+    readonly changed: boolean;
+    readonly onValueChange: (value: string) => void;
+    readonly onCommit?: (() => void) | undefined;
+    readonly onBlur?: (() => void) | undefined;
+    readonly onRevert?: (() => void) | undefined;
+    readonly label?: string | undefined;
+    readonly width?: SecretInputWidth | undefined;
+    readonly invalid?: boolean | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
+
+// @public
+export type SecretInputWidth = 'short' | 'normal' | 'wide' | 'fill';
+
+// @public
 export function SectionCard(input: SectionCardProps): JSX.Element;
 
 // @public (undocumented)
@@ -741,6 +815,33 @@ export type SectionCardProps = {
     readonly pad?: boolean | undefined;
     readonly children?: ReactNode;
 } & DataAttributes;
+
+// @public
+export function Select(input: SelectProps): JSX.Element;
+
+// @public (undocumented)
+export type SelectOption = {
+    readonly value: string;
+    readonly label: string;
+    readonly disabled?: boolean | undefined;
+};
+
+// @public (undocumented)
+export type SelectProps = {
+    readonly value: string;
+    readonly onValueChange: (value: string) => void;
+    readonly options: readonly SelectOption[];
+    readonly placeholder?: string | undefined;
+    readonly label?: string | undefined;
+    readonly width?: SelectWidth | undefined;
+    readonly mono?: boolean | undefined;
+    readonly invalid?: boolean | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
+
+// @public
+export type SelectWidth = 'normal' | 'fill';
 
 // @public (undocumented)
 export type SpacingStep = 2 | 4 | 6 | 8 | 12 | 16 | 20 | 24;
@@ -871,6 +972,31 @@ export const TEXT_SIZES: readonly ["80", "90", "100", "110", "125"];
 // @public (undocumented)
 export type TextElement = 'span' | 'p' | 'h1' | 'h2' | 'h3' | 'h4';
 
+// @public
+export function TextInput(input: TextInputProps): JSX.Element;
+
+// @public (undocumented)
+export type TextInputProps = {
+    readonly value: string;
+    readonly onValueChange: (value: string) => void;
+    readonly onCommit?: ((value: string) => void) | undefined;
+    readonly onBlur?: (() => void) | undefined;
+    readonly onRevert?: (() => void) | undefined;
+    readonly dirty?: boolean | undefined;
+    readonly label?: string | undefined;
+    readonly placeholder?: string | undefined;
+    readonly mono?: boolean | undefined;
+    readonly width?: TextInputWidth | undefined;
+    readonly maxLength?: number | undefined;
+    readonly allows?: ((text: string) => boolean) | undefined;
+    readonly invalid?: boolean | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
+
+// @public
+export type TextInputWidth = 'short' | 'normal' | 'wide' | 'fill';
+
 // @public (undocumented)
 export type TextProps = {
     readonly as?: TextElement;
@@ -975,6 +1101,18 @@ export type TipAttributes = {
 export type TipOptions = {
     readonly delay?: 0;
 };
+
+// @public
+export function Toggle(input: ToggleProps): JSX.Element;
+
+// @public (undocumented)
+export type ToggleProps = {
+    readonly checked: boolean;
+    readonly onCheckedChange: (checked: boolean) => void;
+    readonly label?: string | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
 
 // @public (undocumented)
 export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-shadow-popup' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal';

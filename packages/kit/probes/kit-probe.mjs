@@ -471,7 +471,8 @@ async function busy(browser, url, viewport, where) {
   const still = await browser.newContext({ viewport, reducedMotion: 'reduce' });
   const quiet = await still.newPage();
   await quiet.goto(url, { waitUntil: 'load' });
-  await quiet.waitForTimeout(1400);
+  // Wait for the loader's state and not for a fixed time: its second starts when the whole page has committed, which a heavier page does later (polled, at most 3 s; the check below still fails when it never comes).
+  await quiet.waitForFunction(() => document.querySelector('[data-example="Button/Busy"] svg')?.getAttribute('data-ov-glyph') === 'loader', null, { timeout: 3000, polling: 50 }).catch(() => undefined);
   const reduced = await quiet.evaluate(() => ({ glyph: document.querySelector('[data-example="Button/Busy"] svg').getAttribute('data-ov-glyph'), animation: getComputedStyle(document.querySelector('[data-example="Button/Busy"] svg')).animationName }));
   if (reduced.glyph !== 'loader' || reduced.animation !== 'none') fail(where, `reduced motion: ${JSON.stringify(reduced)}, expected a still loader`);
   await still.close();
