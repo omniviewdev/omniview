@@ -28,6 +28,8 @@
 // Shard 6 is C1c's: what a plugin's palette providers do to the palette is four pairs of an engine and a viewport (about 150 s) and seven controls (about 120 s), which no other shard has room for (the four are within
 // 9 to 51 s of the test's limit): it is a job of its own, with the setup of one (about 80 s), and it is shorter than the panel's, so the job's wall time does not move. The seconds are the one local measurement
 // of each unit; the first run's job summary has the runner's.
+// P1b-3d (A22) added the panel probe's `twins` and `twin-rules` sections, an axe case and four controls, and the logs probe's `identity` and `a11y` sections and four controls: by estimate about 60 s more in shard 1
+// and about 60 s more in shard 3, taken on a laptop and not on a runner (the panel probe 278 s with both engines and both viewports, the logs probe 308 s, each new control 5 to 12 s); put the runner's seconds in MEASURED_SECONDS once a run has them.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -59,17 +61,20 @@ export const TABLE = {
         // (ui-next/shell/probes/mock-panel.json, measured from the mock's own panel by mock-panel-measure.mjs), what opening and resizing the panel move (the frame's height, nothing else), the paint of its parts,
         // the keyboard path and the splitter's keys with real key presses, axe, what a drag costs (no write at the document root, no commit while the pointer moves), a plugin's tool that registers late, and a
         // session body that keeps running while it is hidden, and (A21) the sessions of the host's Logs tool that their plugin's unload kept (the tab stays in its place, ended or as it was, its body mounted and counting
-        // no more, the card's link and Open button unavailable while the plugin is off and working when it returns, a new press a twin beside it, Delete closing it), at 1440 x 900 and 1280 x 800. It builds its own
+        // no more, the card's link and Open button unavailable while the plugin is off and working when it returns, a new press a twin beside it, Delete closing it), and (A22) the scope of a session tab: drawn only
+        // when two open sessions of one title differ in scope, against the mock's own twin tabs within 1 px (ui-next/shell/probes/mock-panel.json, scenario `twins`) and on the shell's markup (alone no scope, twins draw
+        // theirs, an ordinal for twins of one scope, no two names alike, the tab left loses its scope), and axe on the open Logs tool with two scoped twin tabs, at 1440 x 900 and 1280 x 800. It builds its own
         // fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the bottom panel against the pinned mock reference', script: 'ui-next/shell/probes/panel-probe.mjs', env: { REPORT: '$RUNNER_TEMP/panel-probe.json' } },
 
         // The negative controls of that probe: each perturbs one measured value in the page (the region's height, the gap between a session's glyph and its name, the toggle's place, a tool tab's padding, the
         // sidebar's place when the panel opens, a write at the document root during a drag, and, for the sessions their plugin's unload kept (A21): the tab of the held session is not drawn, nor is the tab of the one that
-        // had ended on its own, a tab moves, the Open button can be pressed while the plugin is off) and passes only when the probe sees it. A probe that cannot fail proves nothing.
+        // had ended on its own, a tab moves, the Open button can be pressed while the plugin is off; and, for the scope of a tab (A22): the twins' scope part is 3 px off the mock's, a tab with no twin draws a scope, the
+        // tab left when its twin closes still draws one, the name of a scoped tab leaves its scope out) and passes only when the probe sees it. A probe that cannot fail proves nothing.
         {
           name: 'Probe that the panel probe sees a panel that is wrong',
           script: 'ui-next/shell/probes/panel-probe.mjs',
-          controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled'],
+          controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled', 'twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'],
         },
       ],
     },
@@ -122,16 +127,21 @@ export const TABLE = {
         // the feed gave the line (its label, its hue, the mock's 168 px and chip), one that follows one has none, and a column that appears while a session is open moves no row, scrolls nothing, measures nothing and (Chromium) lays the
         // page out once, following the end and scrolled back. A plugin's unload (A21, on the host fixture's `window.__plugin`): the sessions of an item (one streams, one ended, one failed) stay in the same views with the
         // oldest line each showed (read by its number and text), each stream is closed once (the fixture counts every call to `close`) and the registry lets go of it, and closing the tabs leaves no listener; and, in Chromium,
-        // the heap after forced collections (CDP) falls back once the tab of a session that held 100,000 lines is closed. It builds its own fixtures, so it does not read PROBE_DIST.
+        // the heap after forced collections (CDP) falls back once the tab of a session that held 100,000 lines is closed. A Logs session is its plugin and its target (A22, section `identity`): pressing a target whose session
+        // is running shows it and starts no second stream (the fixture counts the feeds opened), moves no focus, opens the panel and chooses Logs from a hidden panel or another tool; a twin of another scope makes both tabs
+        // draw their scope and closing one takes it off the other; a target whose session ended or failed opens a new session beside it, its stream still open and its view holding its lines, the tabs named
+        // `x, ended` and `x (2)`; and (section `a11y`) axe on the real log view with the scoped twin tabs and with an ended session beside its replacement. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
 
         // The negative controls of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other source's name; the list is
         // scrolled 48 px when the column appears; every listener ever added to a Set is kept, so the model of a view outlives its closed tab and the heap does not fall back (A21); a stream is closed twice, which the count of closed
-        // feeds does not see; a held view shows another line from the one it had (A21). The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
+        // feeds does not see; a held view shows another line from the one it had (A21); a second press that starts a second stream, a tab with no twin that draws a scope, two tabs that carry one name, a scoped
+        // tab whose name leaves its scope out, and the view of a session that ended and was pressed again showing another line from the one it had (A22; each is detected by its own check and by no other: a page that
+        // draws no tab is never taken for one). The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
         {
           name: 'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved',
           script: 'ui-next/shell/probes/logs-probe.mjs',
-          controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines'],
+          controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines'],
         },
       ],
     },

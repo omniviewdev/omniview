@@ -156,7 +156,7 @@ describe('a plugin that opens a Logs session', () => {
     });
     expect(session?.id).toBeDefined();
     expect(panel.getSnapshot().open).toBe(true);
-    expect(tab('alpha/app · north')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('alpha/app')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Logs')).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -200,7 +200,7 @@ describe('a plugin that opens a Logs session', () => {
     expect(await within(log).findByText(/25 lines/, undefined, { timeout: STRIP_WAIT_MS })).toBeInTheDocument();
   });
 
-  it('puts the session in its own tool\'s strip, named for its title and scope, with its state in its name when it is not running', async () => {
+  it('puts the session in its own tool\'s strip, named for its title and nothing else (its scope is for twins), with its state in its name when it is not running', async () => {
     const { seen } = mount();
     const logs = (await handle(seen)).logs;
     const ended = fakeFeed({ state: 'streaming' });
@@ -211,8 +211,8 @@ describe('a plugin that opens a Logs session', () => {
     act(() => {
       ended.set({ state: 'ended' });
     });
-    expect(tab('alpha/app · north')).toBeInTheDocument();
-    expect(tab('beta/app · north, ended')).toBeInTheDocument();
+    expect(tab('alpha/app')).toBeInTheDocument();
+    expect(tab('beta/app, ended')).toBeInTheDocument();
   });
 
   it('says why a stream failed on the tab, in the words of the failure', async () => {
@@ -227,7 +227,7 @@ describe('a plugin that opens a Logs session', () => {
       feed.set({ state: 'failed', cause: { stage: 'source', message: 'Failed to reconnect after 5 attempts' } });
     });
     expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'failed', cause: 'The log stream stopped. Failed to reconnect after 5 attempts.' });
-    expect(tab('alpha/app · north, failed')).toBeInTheDocument();
+    expect(tab('alpha/app, failed')).toBeInTheDocument();
     expect(await screen.findByText(/The log stream stopped\./)).toBeInTheDocument();
   });
 
@@ -240,7 +240,7 @@ describe('a plugin that opens a Logs session', () => {
     });
     await screen.findByRole('group', { name: 'Log, alpha/app · north' });
     expect(feed.listeners()).toBeGreaterThan(1);
-    tab('alpha/app · north').focus();
+    tab('alpha/app').focus();
     await user.keyboard('{Delete}');
     expect(Object.keys(panel.getSnapshot().sessions)).toEqual([]);
     expect(feed.closed()).toBe(1);
@@ -260,7 +260,7 @@ describe('a plugin that opens a Logs session', () => {
     set([]);
     expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: 'The plugin was unloaded.', held: true });
     expect(feed.closed()).toBe(1);
-    expect(screen.getByRole('tab', { name: 'alpha/app · north, ended' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'alpha/app, ended' })).toBeInTheDocument();
     // Not a view made again over nothing: the same element, with its lines.
     expect(screen.getByRole('group', { name: 'Log, alpha/app · north' })).toBe(log);
     expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe('41');
@@ -274,7 +274,7 @@ describe('a plugin that opens a Logs session', () => {
     const feed = closingFeed();
     await follow(logs, feed, 40);
     set([]);
-    tab('alpha/app · north, ended').focus();
+    tab('alpha/app, ended').focus();
     await user.keyboard('{Delete}');
     expect(Object.keys(panel.getSnapshot().sessions)).toEqual([]);
     // It was closed once, at the unload.
@@ -303,14 +303,14 @@ describe('a plugin that opens a Logs session', () => {
       pressed = logs.open(target(fresh));
     });
     expect(pressed?.id).not.toBe(heldSession?.id);
-    expect(tab('alpha/app · north, ended')).toBeInTheDocument();
-    expect(tab('alpha/app (2) · north')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('alpha/app, ended')).toBeInTheDocument();
+    expect(tab('alpha/app (2)')).toHaveAttribute('aria-selected', 'true');
     expect(panel.getSnapshot().sessions[pressed?.id ?? '']).toMatchObject({ state: 'running' });
     expect(panel.getSnapshot().sessions[pressed?.id ?? '']?.held).toBeUndefined();
     expect(fresh.closed()).toBe(0);
     expect(fresh.listeners()).toBeGreaterThan(0);
     // The old session still has its lines: choosing it shows them, ended; the new one goes on.
-    await user.click(tab('alpha/app · north, ended'));
+    await user.click(tab('alpha/app, ended'));
     const log = await screen.findByRole('group', { name: 'Log, alpha/app · north' });
     expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe('41');
     expect(await within(log).findByText('Stream ended')).toBeInTheDocument();
@@ -328,7 +328,7 @@ describe('a plugin that opens a Logs session', () => {
     const before = panel.getSnapshot().sessions[session?.id ?? ''];
     set([]);
     expect(panel.getSnapshot().sessions[session?.id ?? '']).toMatchObject({ state: 'ended', cause: '', since: before?.since, held: true });
-    expect(screen.getByRole('tab', { name: 'alpha/app · north, ended' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'alpha/app, ended' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Log, alpha/app · north' })).toBe(log);
     expect(within(log).getByRole('grid').getAttribute('aria-rowcount')).toBe('41');
     expect(feed.closed()).toBe(1);
@@ -353,5 +353,118 @@ describe('a plugin that opens a Logs session', () => {
     });
     expect(Object.keys(panel.getSnapshot().sessions)).toEqual([]);
     expect(feed.closed()).toBe(1);
+  });
+});
+
+// A session is its plugin's and its target's id (P1b3b-01, P1b-3d): a command that opens the same target again is a press for the session that is open, which the panel shows, and the plugin's `open` is not
+// called again, so no second stream starts. Two targets of one title and two scopes are twins, and their tabs say which is which.
+describe('a plugin that opens the same target again (P1b-3d)', () => {
+  const sessionTabs = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[data-shell-part="sessionTab"] [role="tab"]')];
+
+  it('shows the session it has and starts no second stream: one tab, one call to the plugin\'s `open`, and the panel opens on it again when it was hidden', async () => {
+    const { seen, panel, user } = mount();
+    const logs = (await handle(seen)).logs;
+    const feed = fakeFeed({ state: 'streaming' });
+    const open = vi.fn(() => feed);
+    let first: LogSessionV1 | undefined;
+    let second: LogSessionV1 | undefined;
+    act(() => {
+      first = logs.open(target(feed, { open }));
+    });
+    await user.click(screen.getByRole('button', { name: 'Hide panel' }));
+    expect(panel.getSnapshot().open).toBe(false);
+    const again = vi.fn(() => fakeFeed({ state: 'streaming' }));
+    act(() => {
+      second = logs.open(target(feed, { open: again }));
+    });
+    expect(second?.id).toBe(first?.id);
+    expect(again).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(panel.getSnapshot().open).toBe(true);
+    expect(sessionTabs()).toHaveLength(1);
+    expect(tab('alpha/app')).toHaveAttribute('aria-selected', 'true');
+    expect(feed.closed()).toBe(0);
+    expect(feed.listeners()).toBeGreaterThan(1);
+  });
+
+  it('moves no focus: the control that had it keeps it, on the press that opens the session and on the press that shows it (the mock shows the panel with `focus: false`)', async () => {
+    const { seen } = mount();
+    const logs = (await handle(seen)).logs;
+    const feed = fakeFeed({ state: 'streaming' });
+    act(() => {
+      toggle().focus();
+    });
+    expect(toggle()).toHaveFocus();
+    act(() => {
+      logs.open(target(feed));
+    });
+    expect(toggle()).toHaveFocus();
+    act(() => {
+      logs.open(target(feed));
+    });
+    expect(toggle()).toHaveFocus();
+  });
+
+  it('shows the session it has when another session of the tool is on screen, and starts nothing for either: the press is for the session', async () => {
+    const { seen, panel, user } = mount();
+    const logs = (await handle(seen)).logs;
+    act(() => {
+      logs.open(target(fakeFeed({ state: 'streaming' })));
+      logs.open(target(fakeFeed({ state: 'streaming' }), { id: 'widget/beta/app', title: 'beta/app' }));
+    });
+    expect(tab('beta/app')).toHaveAttribute('aria-selected', 'true');
+    act(() => {
+      logs.open(target(fakeFeed(), { open: vi.fn(() => fakeFeed()) }));
+    });
+    expect(tab('alpha/app')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Logs')).toHaveAttribute('aria-selected', 'true');
+    expect(sessionTabs()).toHaveLength(2);
+    expect(Object.keys(panel.getSnapshot().sessions)).toHaveLength(2);
+    await user.click(tab('beta/app'));
+    expect(tab('beta/app')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // A22: a stream that ended is not shown again (the host has no Reconnect): the press opens a new session beside it, and the two tabs, which differ in neither title nor scope, are told apart by the ordinal and by
+  // the ended state, in the name and in what is drawn (the mock's rule for the same title: an ordinal in the tab, shell-panel.js:219-220, and the info glyph of an exited session, S116's table).
+  it('opens a new session when the stream of the session it has has ended: two tabs of one title and one scope, told apart by the ordinal and the ended state, the ended one readable', async () => {
+    const { seen, panel } = mount();
+    const logs = (await handle(seen)).logs;
+    const old = fakeFeed({ state: 'streaming' });
+    let first: LogSessionV1 | undefined;
+    act(() => {
+      first = logs.open(target(old));
+    });
+    act(() => {
+      old.set({ state: 'ended' });
+    });
+    const fresh = fakeFeed({ state: 'streaming' });
+    const open = vi.fn(() => fresh);
+    let second: LogSessionV1 | undefined;
+    act(() => {
+      second = logs.open(target(fresh, { open }));
+    });
+    expect(second?.id).not.toBe(first?.id);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(sessionTabs().map((one) => one.getAttribute('aria-label'))).toEqual(['alpha/app, ended', 'alpha/app (2)']);
+    expect(tab('alpha/app (2)')).toHaveAttribute('aria-selected', 'true');
+    expect(sessionTabs().map((one) => one.textContent)).toEqual(['alpha/app', 'alpha/app (2)']);
+    expect(document.querySelector(`[data-shell-part="sessionTab"][data-tab-id="${first?.id ?? ''}"] [data-shell-part="sessionLead"]`)?.getAttribute('data-state')).toBe('ended');
+    expect(old.closed()).toBe(0);
+    expect(panel.getSnapshot().sessions[first?.id ?? '']).toMatchObject({ state: 'ended' });
+  });
+
+  it('draws the scope on the tab of each of two targets that share a title and not a scope, and takes it off the one that is left when the other closes', async () => {
+    const { seen, user } = mount();
+    const logs = (await handle(seen)).logs;
+    act(() => {
+      logs.open(target(fakeFeed({ state: 'streaming' })));
+      logs.open(target(fakeFeed({ state: 'streaming' }), { id: 'widget/alpha/app@south', scope: 'south' }));
+    });
+    expect(sessionTabs().map((one) => one.getAttribute('aria-label'))).toEqual(['alpha/app · north', 'alpha/app · south']);
+    expect([...document.querySelectorAll('[data-shell-part="sessionScope"]')].map((one) => one.textContent)).toEqual(['north', 'south']);
+    tab('alpha/app · south').focus();
+    await user.keyboard('{Delete}');
+    expect(sessionTabs().map((one) => one.getAttribute('aria-label'))).toEqual(['alpha/app']);
+    expect(document.querySelector('[data-shell-part="sessionScope"]')).toBeNull();
   });
 });

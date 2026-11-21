@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPanelStore, UNLOADED_CAUSE, type PanelStore } from '../../core/panel';
+import { createPanelStore, restorePanel, UNLOADED_CAUSE, type PanelStore } from '../../core/panel';
 import type { LogTarget } from './feed';
 import { createLogStreams, type LogStreams } from './LogStreams';
 import { fakeFeed, type FakeFeed } from './testing';
@@ -101,18 +101,270 @@ describe('opening a session for a target', () => {
     expect(store.getSnapshot().sessions[opened?.id ?? '']?.state).toBe('running');
   });
 
-  it('opens two sessions for one target as twins: each has its own stream, and the strip tells them apart', () => {
+  // P1b-3d: this test used to say that one target opened twice made two sessions ("twins"). A session is its plugin and its target now (below): what makes twins is two TARGETS of one title.
+  it('opens two sessions for two targets of one title as twins: each has its own stream, and the strip tells them apart', () => {
     const { store, streams } = harness();
     const feeds = [fakeFeed(), fakeFeed()];
     let next = 0;
-    const target: LogTarget = { plugin: 'acme', id: 'same', title: 'orders-api/app', open: () => feeds[next++] ?? fakeFeed() };
-    const first = streams.open(target);
-    const second = streams.open(target);
+    const open = () => feeds[next++] ?? fakeFeed();
+    const first = streams.open({ plugin: 'acme', id: 'one', title: 'orders-api/app', open });
+    const second = streams.open({ plugin: 'acme', id: 'two', title: 'orders-api/app', open });
     expect(first?.id).not.toBe(second?.id);
     const names = store.selectors.sessionIds(store.getSnapshot(), 'logs').map((id) => store.selectors.sessionItem(store.getSnapshot(), id)?.name);
     expect(names).toEqual(['orders-api/app', 'orders-api/app (2)']);
     expect(streams.feedOf(first?.id ?? '')).toBe(feeds[0]);
     expect(streams.feedOf(second?.id ?? '')).toBe(feeds[1]);
+  });
+});
+
+// A session is identified by its plugin and its target's id (P1b3b-01, P1b-3d). The mock does it for the targets its runner simulates (`openLogsFor`, shell-panel.js:2564-2565): a target that has a session
+// that is not failed or expired is not opened again, its session is shown (`setActive`, `Shell.panel.show('logs', { focus: false })`: the panel opens, the Logs tool is chosen, no focus moves). The host
+// shows only a session that is starting or running (A22, the lead's ruling): an ended session is not shown again, because the host has no Reconnect and a dead tab shown again leaves a person no way to fresh
+// lines; a failed one is not either (the mock), and a session kept by its plugin's unload (A21) never changes again. For each of these a new press
+// opens a new session beside it.
+describe('opening a target that has a session already: the plugin and the target\'s id are the session', () => {
+  const press = (streams: LogStreams, plugin: string, id: string, feed = fakeFeed(), title = 'orders-api/app', scope = 'north') => {
+    const open = vi.fn(() => feed);
+    return { opened: streams.open({ plugin, id, title, scope, open }), open, feed };
+  };
+
+  it('shows the session that is open and starts no second stream: the same session, the same feed, and the plugin\'s `open` is not called again', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    const again = press(streams, 'acme', 'item/orders-api/app');
+    expect(again.opened?.id).toBe(first.opened?.id);
+    expect(again.open).not.toHaveBeenCalled();
+    expect(Object.keys(store.getSnapshot().sessions)).toEqual([first.opened?.id]);
+    expect(streams.feedOf(first.opened?.id ?? '')).toBe(first.feed);
+    expect(first.feed.listeners()).toBe(1);
+    expect(again.feed.listeners()).toBe(0);
+    expect(first.feed.closed()).toBe(0);
+  });
+
+  it('starts one stream however often it is pressed', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    const opens = [first.open];
+    for (let i = 0; i < 20; i += 1) {
+      opens.push(press(streams, 'acme', 'item/orders-api/app').open);
+    }
+
+    expect(first.open).toHaveBeenCalledTimes(1);
+    expect(opens.slice(1).every((open) => open.mock.calls.length === 0)).toBe(true);
+    expect(store.getSnapshot().order).toHaveLength(1);
+    expect(first.feed.listeners()).toBe(1);
+  });
+
+  it('shows it: the panel opens, the Logs tool is chosen and the session is its tab, from a hidden panel, from another tool and from another session', () => {
+    const { store, streams } = harness();
+    store.registerTool({ id: 'terminal', label: 'Terminal', icon: 'box', order: 10 });
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    const other = press(streams, 'acme', 'item/orders-api/migrate', fakeFeed(), 'orders-api/migrate');
+    expect(store.selectors.activeSession(store.getSnapshot(), 'logs')).toBe(other.opened?.id);
+    store.hide();
+    press(streams, 'acme', 'item/orders-api/app');
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'logs', session: first.opened?.id });
+    store.activateSession(other.opened?.id ?? '');
+    store.activateTool('terminal');
+    expect(store.selectors.shown(store.getSnapshot())?.tool).toBe('terminal');
+    press(streams, 'acme', 'item/orders-api/app');
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'logs', session: first.opened?.id });
+    expect(store.getSnapshot().open).toBe(true);
+  });
+
+  it('changes nothing, and tells nobody, when its session is already the one on screen', () => {
+    const { store, streams } = harness();
+    press(streams, 'acme', 'item/orders-api/app');
+    const before = store.getSnapshot();
+    let told = 0;
+    store.subscribe(() => {
+      told += 1;
+    });
+    press(streams, 'acme', 'item/orders-api/app');
+    expect(store.getSnapshot()).toBe(before);
+    expect(told).toBe(0);
+  });
+
+  it('finds a session by its plugin and its target\'s id, and by nothing else: the title and the scope are what the tab says, and a press that says another does not rename it', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    const again = press(streams, 'acme', 'item/orders-api/app', fakeFeed(), 'another title', 'another scope');
+    expect(again.opened?.id).toBe(first.opened?.id);
+    expect(store.getSnapshot().sessions[first.opened?.id ?? '']).toMatchObject({ title: 'orders-api/app', scope: 'north' });
+  });
+
+  it('opens another session for another id of the same plugin, and for the same id of another plugin', () => {
+    const { store, streams } = harness({ plugins: ['acme', 'beta'] });
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    const sibling = press(streams, 'acme', 'item/orders-api/app/sidecar');
+    const stranger = press(streams, 'beta', 'item/orders-api/app');
+    expect(new Set([first.opened?.id, sibling.opened?.id, stranger.opened?.id]).size).toBe(3);
+    expect(Object.keys(store.getSnapshot().sessions)).toHaveLength(3);
+    expect(sibling.open).toHaveBeenCalledTimes(1);
+    expect(stranger.open).toHaveBeenCalledTimes(1);
+    // The one of another plugin is its own: pressing it again shows it and not the first.
+    expect(press(streams, 'beta', 'item/orders-api/app').opened?.id).toBe(stranger.opened?.id);
+  });
+
+  // A22: the mock shows an ended session (`exited` is neither failed nor expired), but it has a Reconnect on the card and in the tab's menu and the host has none (decision 5 of P1b-3a). A press for a target
+  // whose stream ended opens a new session beside it, and the ended one stays readable: its lines are evidence.
+  it('opens a NEW session beside one whose stream has ended on its own, and leaves the ended one as it was, its stream still the session\'s and its lines readable (A22)', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/migrate');
+    first.feed.set({ state: 'streaming' });
+    first.feed.set({ state: 'ended' });
+    const ended = store.getSnapshot().sessions[first.opened?.id ?? ''];
+    expect(ended).toMatchObject({ state: 'ended' });
+    store.hide();
+    const again = press(streams, 'acme', 'item/orders-api/migrate');
+    expect(again.opened?.id).not.toBe(first.opened?.id);
+    expect(again.open).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().sessions[first.opened?.id ?? '']).toBe(ended);
+    expect(streams.feedOf(first.opened?.id ?? '')).toBe(first.feed);
+    // The ended stream is not closed: its tab closes it, as for any session.
+    expect(first.feed.closed()).toBe(0);
+    expect(first.feed.listeners()).toBe(1);
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'logs', session: again.opened?.id });
+    // Two tabs of one title and one scope, which differ in neither: the new one is told by its ordinal, the ended one by its state (the shell words it).
+    const items = store.selectors.sessionIds(store.getSnapshot(), 'logs').map((id) => store.selectors.sessionItem(store.getSnapshot(), id));
+    expect(items.map((item) => [item?.name, item?.state])).toEqual([
+      ['orders-api/app', 'ended'],
+      ['orders-api/app (2)', 'starting'],
+    ]);
+    // From then on the press is for the live one, not the ended one.
+    const third = press(streams, 'acme', 'item/orders-api/migrate');
+    expect(third.opened?.id).toBe(again.opened?.id);
+    expect(third.open).not.toHaveBeenCalled();
+    expect(Object.keys(store.getSnapshot().sessions)).toHaveLength(2);
+  });
+
+  it('opens a new session beside a failed one, as the mock does, and leaves the failed one as it was, its lines readable', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/sync');
+    first.feed.set({ state: 'failed', cause: { stage: 'source', message: 'The source did not answer' } });
+    const failed = store.getSnapshot().sessions[first.opened?.id ?? ''];
+    expect(failed).toMatchObject({ state: 'failed' });
+    const again = press(streams, 'acme', 'item/orders-api/sync');
+    expect(again.opened?.id).not.toBe(first.opened?.id);
+    expect(again.open).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().sessions[first.opened?.id ?? '']).toBe(failed);
+    expect(streams.feedOf(first.opened?.id ?? '')).toBe(first.feed);
+    expect(first.feed.closed()).toBe(0);
+    expect(store.selectors.activeSession(store.getSnapshot(), 'logs')).toBe(again.opened?.id);
+  });
+
+  it('shows the session that is live, not the failed one that came before it, and starts no third', () => {
+    const { store, streams } = harness();
+    const failing = press(streams, 'acme', 'item/orders-api/sync');
+    failing.feed.set({ state: 'failed', cause: { stage: 'source', message: 'late' } });
+    const retry = press(streams, 'acme', 'item/orders-api/sync');
+    const third = press(streams, 'acme', 'item/orders-api/sync');
+    expect(third.opened?.id).toBe(retry.opened?.id);
+    expect(third.open).not.toHaveBeenCalled();
+    expect(Object.keys(store.getSnapshot().sessions)).toHaveLength(2);
+  });
+
+  it('opens a new session beside one that its plugin\'s unload kept (A21), and does not show the kept one: it never changes again', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    store.syncPlugins([]);
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    const kept = store.getSnapshot().sessions[first.opened?.id ?? ''];
+    expect(kept).toMatchObject({ held: true, state: 'ended' });
+    const again = press(streams, 'acme', 'item/orders-api/app');
+    expect(again.opened?.id).not.toBe(first.opened?.id);
+    expect(again.open).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().sessions[first.opened?.id ?? '']).toBe(kept);
+    expect(store.selectors.activeSession(store.getSnapshot(), 'logs')).toBe(again.opened?.id);
+    // And the new one is the session of the target from then on.
+    expect(press(streams, 'acme', 'item/orders-api/app').opened?.id).toBe(again.opened?.id);
+  });
+
+  it('opens a new session beside one that was restored from the last run: it has no stream, and the registry never held one', () => {
+    const saved = restorePanel({ version: 1, open: false, height: null, tool: null, active: {}, sessions: [{ id: 'old', tool: 'logs', plugin: 'acme', title: 'orders-api/app', scope: 'north' }] }, { now: 500 });
+    if (!saved.ok) {
+      throw new Error('the saved panel is readable');
+    }
+
+    const store = createPanelStore({ initial: saved.state, now: () => clock, newId: () => 'store-1' });
+    store.registerTool(LOGS_TOOL);
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    const streams = createLogStreams(store, { newId: () => 'log-1', warn: () => undefined });
+    streams.attach();
+    expect(store.getSnapshot().sessions.old).toMatchObject({ state: 'ended' });
+    const again = press(streams, 'acme', 'item/orders-api/app');
+    expect(again.opened?.id).toBe('log-1');
+    expect(again.open).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().sessions.old).toMatchObject({ state: 'ended' });
+  });
+
+  it('refuses a target that is not well formed before it looks for a session: a malformed press neither shows the live session nor starts anything', () => {
+    const { store, streams, warn } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    store.hide();
+    const bad = press(streams, 'acme', 'item/orders-api/app', fakeFeed(), '   ');
+    expect(bad.opened).toBeUndefined();
+    expect(bad.open).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not open a log stream'));
+    expect(store.getSnapshot().open).toBe(false);
+    expect(first.feed.closed()).toBe(0);
+  });
+
+  it('closes the one session through either handle: the tab closes, the stream is closed once, and the other handle is safe to use', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    const again = press(streams, 'acme', 'item/orders-api/app');
+    again.opened?.close();
+    first.opened?.close();
+    expect(Object.keys(store.getSnapshot().sessions)).toEqual([]);
+    expect(first.feed.closed()).toBe(1);
+    expect(first.feed.listeners()).toBe(0);
+    // The target is free again: a press now is a new session with a stream of its own.
+    const fresh = press(streams, 'acme', 'item/orders-api/app');
+    expect(fresh.open).toHaveBeenCalledTimes(1);
+    expect(fresh.opened?.id).not.toBe(first.opened?.id);
+  });
+
+  // CodeRabbit (LogStreams.ts, #609): the press of a target whose session the panel cannot show (the Logs tool is gone) used to open a second stream into a second, hidden session, and a third, each press one more. One
+  // live session per target on every path: the press answers the session the target has and starts nothing, and the tool brings that one session back.
+  it('starts no second stream when the session it would show cannot be shown (its tool is gone): the press answers the session the target has, and the tool brings it back', () => {
+    const { store, streams } = harness();
+    const first = press(streams, 'acme', 'item/orders-api/app');
+    store.unregisterTool('logs');
+    expect(store.selectors.session(store.getSnapshot(), first.opened?.id ?? '')).toBeUndefined();
+    const again = press(streams, 'acme', 'item/orders-api/app');
+    const third = press(streams, 'acme', 'item/orders-api/app');
+    expect([again.opened?.id, third.opened?.id]).toEqual([first.opened?.id, first.opened?.id]);
+    expect(again.open).not.toHaveBeenCalled();
+    expect(third.open).not.toHaveBeenCalled();
+    expect(Object.keys(store.getSnapshot().sessions)).toEqual([first.opened?.id]);
+    expect(first.feed.closed()).toBe(0);
+    // The tool returns: the one session is there as it was, and it is the one a press shows.
+    store.registerTool(LOGS_TOOL);
+    expect(store.selectors.sessionIds(store.getSnapshot(), 'logs')).toEqual([first.opened?.id]);
+    const back = press(streams, 'acme', 'item/orders-api/app');
+    expect(back.opened?.id).toBe(first.opened?.id);
+    expect(back.open).not.toHaveBeenCalled();
+  });
+
+  // CodeRabbit (LogStreams.ts, #609, second pass): the id is compared as the plugin gave it. `text()` trimmed it, so `item/a` and `item/a ` were one target: the second press showed the first session and its own feed
+  // was never opened. An exact repeat still shows its session; a blank id is still refused.
+  it('keeps two ids that differ only by surrounding white space apart, and still shows the session of an exact repeat', () => {
+    const { store, streams } = harness();
+    const plain = press(streams, 'acme', 'item/a');
+    const padded = press(streams, 'acme', 'item/a ');
+    const leading = press(streams, 'acme', ' item/a');
+    expect(new Set([plain.opened?.id, padded.opened?.id, leading.opened?.id]).size).toBe(3);
+    for (const one of [plain, padded, leading]) {
+      expect(one.open).toHaveBeenCalledTimes(1);
+    }
+
+    expect(Object.keys(store.getSnapshot().sessions)).toHaveLength(3);
+    expect(streams.recordOf(padded.opened?.id ?? '')).toMatchObject({ id: 'item/a ' });
+    const again = press(streams, 'acme', 'item/a ');
+    expect(again.opened?.id).toBe(padded.opened?.id);
+    expect(again.open).not.toHaveBeenCalled();
+    expect(press(streams, 'acme', '   ').opened).toBeUndefined();
   });
 });
 

@@ -317,7 +317,7 @@ export type LogFeedV1 = Pick<LogFeed, 'subscribe' | 'read' | 'stats' | 'pause' |
  * words of the state, the lifecycle.
  */
 export type LogTargetV1 = {
-  /** Names what is read, as the plugin knows it, and is the same each time the same thing is opened (`item/orders-api/app`): a registry lists by it. The host keeps it with the session and does not read it. */
+  /** Names what is read, as the plugin knows it, and is the same each time the same thing is opened (`item/orders-api/app`): a registry lists by it, comparing it exactly as given. With the plugin it is the session's identity (A22): a target whose session is starting or running is shown, not opened again, and the host answers that session even when it has nowhere to show it. */
   readonly id: string;
   /** What the tab is called. The shell cuts a long one (SCT1): a head that gives way with an ellipsis and a tail that stays whole, so what tells sessions apart goes last (`orders-api/app`). */
   readonly title: string;
@@ -340,7 +340,7 @@ export type LogSessionV1 = {
 /**
  * What a plugin asks of the window's bottom panel. Call it from a user's action on a resource (a command, a click), as owner decision A20 has it, and not from an effect while a page mounts: the panel learns
  * that a plugin is live after the page's own first effects have run, so a call made there is refused. `logs.open` opens a session in the host's Logs tool for a target and answers it, or `undefined` when the host could not (the plugin is not live,
- * the target is not well formed, its `open` threw): the reason is in the console. The panel opens on the new session, as it does for any session the user starts.
+ * the target is not well formed, its `open` threw): the reason is in the console. The panel opens on the new session, as it does for any session the user starts. A target whose session is starting or running is not opened again (A22): that session is answered and `open` is not called, and the panel shows it when it can: a returned handle is the session's, not proof that it is on screen (the host's Logs tool may be gone).
  */
 export type PanelHostV1 = {
   readonly logs: { readonly open: (target: LogTargetV1) => LogSessionV1 | undefined };

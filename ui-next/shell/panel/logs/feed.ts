@@ -18,13 +18,16 @@ export type LogFeedHandle = LogFeed & {
  * the host's business: `LogStreams.open` is the one entry point for all of them.
  */
 export type LogTarget = {
-  /** The plugin that supplies the stream, by the id it is installed under: the session is its, and it ends with the plugin. */
+  /** The plugin that supplies the stream, by the id it is installed under: the session is its, and it ends with the plugin. With `id` it is the session's identity (P1b-3d). */
   readonly plugin: string;
-  /** Names what is read, as the plugin knows it, and is the same each time the same thing is opened. The host keeps it with the session and does not read it. */
+  /**
+   * Names what is read, as the plugin knows it, and is the same each time the same thing is opened. With the plugin it is the session's identity (P1b-3d, A22): a press for a target whose session is starting or running
+   * is not opened again, its session is shown and the stream is not started a second time; a session that has ended, failed or was kept opens a new one beside it; the same title and scope of another `id` is another session, a twin.
+   */
   readonly id: string;
-  /** What the tab is called; the shell cuts a long one (SCT1). */
+  /** What the tab is called; the shell cuts a long one (SCT1). Presentation only: it is not part of the session's identity. */
   readonly title: string;
-  /** The muted qualifier after the title. */
+  /** The muted qualifier after the title, which the tab draws only to tell two sessions of one title apart (TI1). Presentation only: it is not part of the session's identity. */
   readonly scope?: string | undefined;
   /** The resource the lines belong to: its display text, the word of the card's button, its glyph and its page (a route of the tab model). */
   readonly resource?: { readonly label: string; readonly kind?: string | undefined; readonly icon?: string | undefined; readonly route?: RouteInput | undefined } | undefined;

@@ -11,7 +11,8 @@ import { LOGS_TOOL_ID } from './tool';
 //   - it closes the feed, and lets go of its own listener, when the session's tab closes, when its plugin unloads, and when the registry itself ends (the window). A session the unload ENDED is kept (A21,
 //     `Session.held`): its stream is closed, but its entry stays, with the very feed object the view over it was made for, until the tab closes, so the lines a person was reading stay readable; a session
 //     the unload did not end (one that had ended or failed on its own) is hidden with its plugin and released with it (PO1);
-//   - it never reads the feed, and never pauses it: the view is the one reader (a feed has one), and a hidden view reads nothing while the feed goes on holding its lines, bounded.
+//   - it never reads the feed, and never pauses it: the view is the one reader (a feed has one), and a hidden view reads nothing while the feed goes on holding its lines, bounded;
+//   - it knows a session by its plugin and its target's id (P1b3b-01, P1b-3d, A22): a target whose session is starting or running is not opened again, that session is shown (below, `sessionOf`); a target whose session is over gets a new one beside it.
 //
 // A feed's status is told to the registry's listener with every held line's first wake-up too; the listener compares the status with the last it saw and writes to the panel only for a new one, so a
 // stream of 10,000 lines a second is a handful of writes in its life, never one a line.
@@ -46,8 +47,11 @@ export type LogStreams = {
    */
   readonly attach: () => () => void;
   /**
-   * Opens a session in the Logs tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). `undefined` when it could not, and why is in the log: the target is not
-   * well formed, the plugin's `open` threw or answered something that is not a feed, or the panel refused the session (the plugin is not live); the stream is closed again in the last two cases.
+   * Opens a session in the Logs tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). A session is its plugin's and its target's `id` (A22, `sessionOf`): a target
+   * whose session is starting or running is not opened again, that session is shown (the panel opens, the Logs tool is chosen, the session is its tab, no focus moves) and answered, and the plugin's `open` is not
+   * called, so no second stream starts; a target whose session has ended, failed, was kept by its plugin's unload (A21) or was restored opens a NEW session beside it, and the old one stays readable until its tab
+   * closes. `undefined` when it could not, and why is in the log: the target is not well formed, the plugin's `open` threw or answered something that is not a feed, or the panel refused the session (the plugin
+   * is not live); the stream is closed again in the last two cases.
    */
   readonly open: (target: LogTarget) => LogOpened | undefined;
   /** The stream of a session the registry holds, by identity: the stream of a live session, or the closed one of a held session (A21); `undefined` for a session that has none (one that closed, one restored from the last run, one hidden with its plugin and back). */
@@ -192,6 +196,32 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
     store.setSessionState(id, sessionStateOf(snapshot));
   };
 
+  /**
+   * The session a press of a target is for, if it has one (A22, the lead's ruling): the session of this plugin and this target's id that is starting or running. The mock re-activates a session that is not failed or
+   * expired (`openLogsFor`, shell-panel.js:2564-2565), an ended one included; the host does not, because the mock has a Reconnect for an ended session and the host has none, so a dead tab shown again would leave a
+   * person no way to fresh lines. Not these, so a new session opens beside them and they stay readable (their lines are evidence): an ENDED session, a FAILED one, a session a plugin's unload KEPT (A21: its stream is
+   * closed and it never changes again), and one that is not here, restored from the last run, which the registry never held. Of several, the newest.
+   */
+  const sessionOf = (plugin: string, target: string): SessionId | undefined => {
+    const { sessions } = store.getSnapshot();
+    let found: SessionId | undefined;
+    for (const [id, entry] of entries) {
+      const session = Object.hasOwn(sessions, id) ? sessions[id] : undefined;
+      if (entry.plugin === plugin && entry.target === target && !entry.ended && session !== undefined && session.held !== true && (session.state === 'starting' || session.state === 'running')) {
+        found = id;
+      }
+    }
+
+    return found;
+  };
+
+  const handleOf = (id: SessionId): LogOpened => ({
+    id,
+    close: () => {
+      store.closeSession(id);
+    },
+  });
+
   return {
     attach: () => {
       const stop = store.subscribe(reconcile);
@@ -206,10 +236,19 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
 
     open: (target) => {
       const plugin = text(target.plugin);
-      const targetId = text(target.id);
-      if (plugin === '' || targetId === '' || text(target.title) === '' || typeof target.open !== 'function') {
+      // The id is the plugin's own and is compared exactly as it gave it (CodeRabbit, #609): `item/a` and `item/a ` are two targets, each with its own stream. Only a blank one is refused.
+      const targetId = typeof target.id === 'string' ? target.id : '';
+      if (plugin === '' || targetId.trim() === '' || text(target.title) === '' || typeof target.open !== 'function') {
         warn(`[panel] ${plugin === '' ? 'a plugin' : plugin} could not open a log stream: a target needs a plugin, an id, a title and a way to open it`);
         return undefined;
+      }
+
+      // A target that has a session is not opened again, whatever the panel can do with it: the session is shown and nothing the plugin does starts. When the panel cannot show it (the Logs tool is gone: there is
+      // nowhere to put it) the session stays as it is, hidden with its tool, and the press answers it all the same, so a target never has two live sessions, a hidden one included (CodeRabbit, #609).
+      const existing = sessionOf(plugin, targetId);
+      if (existing !== undefined) {
+        store.revealSession(existing);
+        return handleOf(existing);
       }
 
       let feed: unknown;
@@ -266,12 +305,7 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
       // A status that changed since the first read (while the panel announced the session) is the session's state now: a subscription only tells of what changes after it.
       heard(id);
 
-      return {
-        id,
-        close: () => {
-          store.closeSession(id);
-        },
-      };
+      return handleOf(id);
     },
 
     feedOf: (session) => entries.get(session)?.feed,

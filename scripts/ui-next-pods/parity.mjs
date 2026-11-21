@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareCounts, countLines } from './counts.mjs';
 import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
-import { compareLogs, expectedLogs, LOGS_JOB } from './logs.mjs';
+import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
 const run = promisify(execFile);
@@ -51,8 +51,9 @@ export async function readPage(page) {
   });
 }
 
-export async function kubectl(kubeconfig, args) {
-  const { stdout } = await run('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: 60_000 });
+// `timeoutMs` is how long the process may run: kubectl's calls are short, and the one that waits for a Pod to be Ready is given more than the wait it carries (logs.mjs, `waitProcessMs`).
+export async function kubectl(kubeconfig, args, { timeoutMs = 60_000 } = {}) {
+  const { stdout } = await run('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: timeoutMs });
   return stdout;
 }
 
@@ -379,5 +380,73 @@ export async function checkLogs({ browser, baseURL, kubeconfig, timeoutMs = 30_0
     // A check that failed leaves no session running in the host: the tab is closed whatever happened (a page that closes by itself leaves the SDK's session open).
     await closeLogsTab(page).catch(() => undefined);
     await page.close();
+  }
+}
+
+// The Logs command of a RUNNING Pod pressed twice (P1b-3d, A22: a session is its plugin and its target). The Pod is made for the check (`LOGS_RUNNING`: a busybox that writes a line a second and never ends); its page is
+// opened from the list as a person opens it and the header's Logs command is pressed twice. The first press opens the session and the second shows it: the Logs tool holds ONE tab, named for the Pod, and the SDK one
+// session more, not two; closing the tab closes the SDK's session. The first proof of a re-activation against a real cluster. The Pod is the check's own: a Pod of its name that is already there is neither used nor deleted,
+// and one the check makes is deleted whatever happens, its creation included (logs.mjs, `withOwnedPod`).
+// Throws ParityError('LOGS_MISMATCH') when the readings differ from what `compareRepress` (logs.mjs) says they must be.
+export async function checkLogsTwice(options) {
+  const { kubeconfig } = options;
+  const pod = LOGS_RUNNING;
+  const at = ['-n', pod.namespace];
+  return withOwnedPod(
+    {
+      exists: async () => (await kubectl(kubeconfig, ['get', 'pod', pod.name, ...at, '--ignore-not-found', '-o', 'name'])).trim() !== '',
+      create: () => kubectl(kubeconfig, ['run', pod.name, ...at, '--image=busybox:1.37.0', '--restart=Never', '--', 'sh', '-c', 'i=0; while true; do i=$((i + 1)); echo "line $i"; sleep 1; done']),
+      remove: () => kubectl(kubeconfig, ['delete', 'pod', pod.name, ...at, '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']),
+    },
+    () => pressTwice(options),
+  );
+}
+
+// The part of the press-twice case that needs the Pod to be there: wait for it, then press the Logs command of its page twice and read the tool and the SDK.
+async function pressTwice({ browser, baseURL, kubeconfig, timeoutMs = 60_000 }) {
+  const pod = LOGS_RUNNING;
+  await kubectl(kubeconfig, ['wait', '--for=condition=Ready', `pod/${pod.name}`, '-n', pod.namespace, `--timeout=${String(READY_SECONDS)}s`], { timeoutMs: waitProcessMs(READY_SECONDS) });
+  let page;
+  try {
+    const before = (await listLogSessions(baseURL)).length;
+    page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
+    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    await link.waitFor({ timeout: timeoutMs });
+    await link.click();
+    const press = () => page.getByRole('button', { name: 'Logs', exact: true }).first().click({ timeout: timeoutMs });
+    await press();
+    // The session is streaming once its tab is there and holds a line: its name is then the Pod's alone (a session that is starting has its state in its name).
+    const deadline = Date.now() + timeoutMs;
+    let reading = await readLogs(page);
+    while ((reading.tabs.length === 0 || reading.rows.length === 0) && Date.now() < deadline) {
+      await page.waitForTimeout(100);
+      reading = await readLogs(page);
+    }
+
+    const first = { tabs: reading.tabs, sessions: (await listLogSessions(baseURL)).length };
+    await press();
+    // A session the second press wrongly opened shows within a moment: the page is read after one, and the SDK is asked after the page.
+    await page.waitForTimeout(1_500);
+    reading = await readLogs(page);
+    const second = { tabs: reading.tabs, sessions: (await listLogSessions(baseURL)).length };
+    await closeLogsTab(page);
+    let closed = (await listLogSessions(baseURL)).length;
+    for (let attempt = 0; closed !== before && attempt < 100; attempt += 1) {
+      await page.waitForTimeout(100);
+      closed = (await listLogSessions(baseURL)).length;
+    }
+
+    const found = { before, first, second, closed: { sessions: closed } };
+    const problems = compareRepress(found, pod.name);
+    if (problems.length > 0) {
+      throw new ParityError('LOGS_MISMATCH', `${pod.namespace}/${pod.name}: ${problems.join('; ')}`, { problems, found });
+    }
+
+    return { found, pod };
+  } finally {
+    if (page !== undefined) {
+      await closeLogsTab(page).catch(() => undefined);
+      await page.close().catch(() => undefined);
+    }
   }
 }
