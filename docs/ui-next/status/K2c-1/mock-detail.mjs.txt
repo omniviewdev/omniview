@@ -1,0 +1,31 @@
+// K2c-1: screenshots of the design mock's detail pages (a Deployment, a Service, a Node) in WebKit at 1440x900, beside the plugin's (a read-only use of the mock). Serve the mock first as packages/kit/probes/mock-measure.mjs says.
+import { createRequire } from 'node:module';
+import path from 'node:path';
+const hostRoot = path.resolve(process.env.OMNIVIEW_HOST_ROOT);
+const out = path.resolve(process.env.OUT);
+const base = process.env.MOCK_URL ?? 'http://127.0.0.1:48977/';
+const pw = createRequire(path.join(hostRoot, 'package.json'))('playwright');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const browser = await pw.webkit.launch();
+for (const [kind, type] of [['deployment', 'k8s:apps/deployments'], ['service', 'k8s:/services'], ['node', 'k8s:/nodes']]) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(base, { waitUntil: 'load' });
+  await sleep(3500);
+  await page.evaluate((logicalType) => {
+    const scope = K8s.connections.defaultScope('prod-eu');
+    Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType }, scope), scope }, { how: 'here' });
+  }, type);
+  await page.waitForSelector('table tbody tr', { timeout: 30000 });
+  await sleep(1500);
+  const candidates = await page.evaluate(() => [...document.querySelectorAll('table tbody tr:first-child a, table tbody tr:first-child button')].map((element) => ({ tag: element.tagName, text: (element.textContent ?? '').trim().slice(0, 40), href: element.getAttribute('href'), label: element.getAttribute('aria-label') })));
+  console.log('first row', JSON.stringify(candidates));
+  const link = page.locator('table tbody tr:first-child a').first();
+  const name = (await link.textContent())?.trim();
+  await link.click();
+  await page.waitForSelector('h1', { timeout: 30000 });
+  await sleep(3000);
+  await page.screenshot({ path: path.join(out, `mock-${kind}-detail-webkit-1440x900.png`) });
+  console.log('mock', kind, name, (await page.locator('h1').first().textContent())?.trim());
+  await page.close();
+}
+await browser.close();
