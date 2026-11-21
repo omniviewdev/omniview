@@ -243,3 +243,40 @@ func TestRedactingWriterPassesItsWriterErrorThrough(t *testing.T) {
 		t.Errorf("Write = (%d, %v), want (%d, boom)", n, err, len(short))
 	}
 }
+
+// A chunk can end in the middle of a line: the stdout copy is written as the plugin's
+// stderr arrives, and a Write is not a line. A newline made up for the end of such a
+// chunk would end a line that is still being written, and the next chunk would begin
+// another. Each line keeps the ending it had, and the last one, which has none, keeps
+// none, whether it changes or not and whether a line before it did.
+func TestRedactLinesKeepsTheEndingOfEachLine(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"an earlier line and the last one change": {
+			"a password=x\nb password=y", "a password=[REDACTED]\nb password=[REDACTED]",
+		},
+		"an earlier line changes and the last one does not": {
+			"a password=x\nb done", "a password=[REDACTED]\nb done",
+		},
+		"the last line changes and no earlier one does": {
+			"a done\nb password=y", "a done\nb password=[REDACTED]",
+		},
+		"one line that changes, with no ending": {"b password=y", "b password=[REDACTED]"},
+		"a last line with an ending keeps it": {
+			"a password=x\nb password=y\n", "a password=[REDACTED]\nb password=[REDACTED]\n",
+		},
+		"carriage returns and blank lines are kept": {
+			"a password=x\r\n\r\n\nb password=y\r\nc", "a password=[REDACTED]\r\n\r\n\nb password=[REDACTED]\r\nc",
+		},
+		"a last line that is empty after an ending": {"a password=x\n", "a password=[REDACTED]\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := string(redactLines([]byte(tc.in))); got != tc.want {
+				t.Errorf("redactLines(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+			var out bytes.Buffer
+			if _, err := RedactingWriter(&out).Write([]byte(tc.in)); err != nil || out.String() != tc.want {
+				t.Errorf("RedactingWriter wrote %q (%v), want %q", out.String(), err, tc.want)
+			}
+		})
+	}
+}

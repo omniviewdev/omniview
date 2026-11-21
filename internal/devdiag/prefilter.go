@@ -34,9 +34,24 @@ func couldCarryCredential(text string) bool {
 	return containsCredentialStart(text, strings.ContainsAny(text, ":="))
 }
 
+// MayCarryCredential reports whether text could hold what Redact would change, or a
+// name that SensitiveKey would hide: it is for a caller that has a document to read (a
+// value written out as JSON, say) and wants to know whether reading it can find
+// anything. false is exact: neither Redact nor SensitiveKey, applied to any string or
+// to any key of the document, can act. true only says that it has to be read.
+//
+// A document has its separators in its structure, and a name does not need one, so this
+// looks for the start of every word, the words of nameWords included, wherever it is.
+func MayCarryCredential(text string) bool {
+	if strings.Contains(text, "://") && strings.ContainsAny(text, "@?") {
+		return true
+	}
+	return containsNameStart(text)
+}
+
 // containsCredentialStart reports whether some position of text starts a word or a
 // prefix that a pattern needs (startsCredential). separator tells whether the text
-// has a ':' or '=' anywhere; SensitiveKey, whose keys carry none, passes true.
+// has a ':' or '=' anywhere.
 func containsCredentialStart(text string, separator bool) bool {
 	for i := range len(text) {
 		// Only the bytes startsCredential can accept are worth the call: the first
@@ -51,13 +66,34 @@ func containsCredentialStart(text string, separator bool) bool {
 	return false
 }
 
+// containsNameStart is containsCredentialStart for names: whether some position of text
+// starts a word of keyWords or of nameWords, a name having no separator.
+func containsNameStart(text string) bool {
+	for i := range len(text) {
+		switch text[i] {
+		case 'a', 'A', 'b', 'B', 'c', 'C', 'e', 'g', 'k', 'K', 'p', 'P', 's', 'S', 't', 'T', 'x', longSLead, kelvinLead:
+			if startsKeyWord(text[i:]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// startsKeyWord reports whether s starts with the first part of a word that SensitiveKey
+// looks for: one of the patterns' (with the separator its name does not need) or one of
+// nameWords.
+func startsKeyWord(s string) bool {
+	return startsCredential(s, true) || startsNameWord(s)
+}
+
 // startsCredential reports whether s starts with a word or a prefix that a pattern
 // needs. separator tells whether the text has a ':' or '=' anywhere.
 func startsCredential(s string, separator bool) bool {
 	switch s[0] | 0x20 { // folds ASCII case; no other byte becomes a letter
 	case 'a':
 		return strings.HasPrefix(s, "AKIA") ||
-			separator && (hasPrefixFold(s, "authorization") || startsKeyName(s, "api") || startsKeyName(s, "access"))
+			separator && (hasPrefixFold(s, "authorization") || startsKeyName(s, "api", "key") || startsKeyName(s, "access", "key"))
 	case 'b':
 		return hasPrefixFold(s, "bearer")
 	case 'c':
@@ -79,17 +115,30 @@ func startsCredential(s string, separator bool) bool {
 	return strings.HasPrefix(s, "\u017f") || strings.HasPrefix(s, "\u212a")
 }
 
-// startsKeyName reports whether s starts with word, an optional '_' or '-', and key,
-// in any case: api_key, API-KEY, accesskey.
-func startsKeyName(s, word string) bool {
-	if !hasPrefixFold(s, word) {
+// startsNameWord reports whether s starts with the first part of a word of nameWords.
+func startsNameWord(s string) bool {
+	switch s[0] | 0x20 {
+	case 'c':
+		return hasPrefixFold(s, "cookie") || startsKeyName(s, "client", "key") || startsKeyName(s, "client", "certificate")
+	case 'k':
+		return startsKeyName(s, "kube", "config")
+	case 'p':
+		return startsKeyName(s, "private", "key")
+	}
+	return false
+}
+
+// startsKeyName reports whether s starts with first, an optional '_' or '-', and
+// second, in any case: api_key, API-KEY, accesskey, kube-config.
+func startsKeyName(s, first, second string) bool {
+	if !hasPrefixFold(s, first) {
 		return false
 	}
-	s = s[len(word):]
+	s = s[len(first):]
 	if s != "" && (s[0] == '_' || s[0] == '-') {
 		s = s[1:]
 	}
-	return hasPrefixFold(s, "key")
+	return hasPrefixFold(s, second)
 }
 
 // hasPrefixFold reports whether s starts with lower, ignoring ASCII case. lower

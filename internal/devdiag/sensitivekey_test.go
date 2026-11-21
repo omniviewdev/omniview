@@ -8,11 +8,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// SensitiveKey tells a field called token from a field called tokenizer. It shares its
-// words with the key=value pattern of Redact (keyWords), and these tests hold it to
-// the definition written on it: the table is the definition by example, the rest
-// builds keys from every word of the list, and compares the two-step test with a
-// plain search.
+// SensitiveKey tells a field called token from a field called tokenizer. It shares the
+// words of keyWords with the key=value pattern of Redact and has a few of its own
+// (nameWords), and these tests hold it to the definition written on it: the tables are
+// the definition by example, the rest builds keys from every word of the lists, and
+// compares the two-step test with a plain search.
+
+// nameOnlyWords returns the words of nameWords, written out, and checks that the text
+// pattern is not built from them.
+func nameOnlyWords(t *testing.T) []string {
+	t.Helper()
+	require.NotContains(t, keyValue.String(), nameWords, "the key=value pattern is built from nameWords")
+	words := expandWords(nameWords)
+	require.GreaterOrEqual(t, len(words), 5)
+	return words
+}
+
+// sensitiveKeyWords returns every word SensitiveKey looks for, written out.
+func sensitiveKeyWords(t *testing.T) []string {
+	t.Helper()
+	return append(keyValueWords(t), nameOnlyWords(t)...)
+}
 
 func TestSensitiveKeyNamesACredential(t *testing.T) {
 	for _, key := range []string{
@@ -25,6 +41,14 @@ func TestSensitiveKeyNamesACredential(t *testing.T) {
 		"access_key", "access-key", "accesskey", "accessKey", "AccessKeyId", "AWS_ACCESS_KEY_ID",
 		"credential", "credentialId", "awsCredential", "gcp_credential",
 		"signature", "x-amz-signature", "signatureValue", "request_signature",
+		// A plural is the word: a field called secrets or credentials holds them.
+		"tokens", "secrets", "passwords", "credentials", "signatures", "passwds", "authorizations", "api_keys", "apiKeys",
+		"apikeys", "access_keys", "accessKeys", "authTokens", "TOKENS", "tokensValue", "tokens_count", "secretsMap",
+		// What a private key, a kubeconfig and a cookie are called.
+		"private_key", "privateKey", "private-key", "PRIVATE_KEY", "privatekey", "ssl_private_key", "privateKeyPem",
+		"client-key-data", "client_key_data", "clientKeyData", "client-certificate-data", "clientCertificateData",
+		"kubeconfig", "kubeConfig", "kube-config", "kube_config", "KUBECONFIG", "kubeconfigPath", "kubeconfigs",
+		"cookie", "Cookie", "COOKIE", "cookies", "set-cookie", "Set-Cookie", "setCookie", "set_cookie", "x-cookie",
 	} {
 		require.True(t, SensitiveKey(key), "%q names a credential", key)
 	}
@@ -32,35 +56,61 @@ func TestSensitiveKeyNamesACredential(t *testing.T) {
 
 func TestSensitiveKeyLeavesOtherNamesAlone(t *testing.T) {
 	for _, key := range []string{
-		"", "id", "pluginID", "connectionID", "sessionID", "error", "errorClass", "durationMs", "count", "name",
+		"", "id", "pluginID", "connectionID", "error", "errorClass", "durationMs", "count", "name",
 		"namespace", "resource", "op", "trigger", "status", "details", "url", "path", "version", "component",
 		// A bare key is not a credential: it is not in the list, and the host logs it as the key of a map entry or
 		// of a resource. The same goes for the other ways to say key that the list does not have.
 		"key", "Key", "KEY", "resourceKey", "cache_key", "primary_key", "partitionKey", "object_key", "s3_key",
-		"private_key", "client_key", "ssh_key", "encryptionKey", "signing_key",
-		// A word with letters after it is another word, and a plural is not the word.
-		"keyboard", "monkey", "donkey", "tokenizer", "tokenize", "tokenization", "tokens", "secretary", "secrets",
-		"secretive", "passwordless", "passwordless_enabled", "passwords", "authorizations", "credentials",
-		"signatures", "apikeys", "api_keys", "access_keys", "accessKeys",
+		"client_key", "clientKey", "ssh_key", "encryptionKey", "signing_key", "private", "privateData",
+		// A client certificate's authority is public, and the name of a file is not the content of one.
+		"certificate-authority-data", "certificateAuthorityData", "certificate-authority", "client-certificate",
+		"client-key", "client_cert", "kube", "kube-system", "kubernetes", "kubeletConfig",
+		// A word with letters after it is another word, even in its plural.
+		"keyboard", "monkey", "donkey", "tokenizer", "tokenize", "tokenization", "secretary", "secretive",
+		"passwordless", "passwordless_enabled", "tokenss", "secretsmanager", "credentialsx", "cookiejar", "cookiecutter",
 		// Half a word.
-		"author", "autho", "pass", "passw", "sig", "sign", "cred", "toke", "accesss", "api", "access",
+		"author", "autho", "pass", "passw", "sig", "sign", "cred", "toke", "accesss", "api", "access", "cook", "priv",
 	} {
 		require.False(t, SensitiveKey(key), "%q does not name a credential", key)
 	}
 }
 
-// Every word of the list, in four spellings of its letters, with what can come before
+// A session is not a word of the list. The host's own handles for an exec, a log and a
+// terminal session are called session, sessionID and session_id: they correlate the
+// lines of one session and are not credentials, and hiding them would cost debugging for
+// no gain. What a session holds that is a credential has a name that is: a token, a
+// cookie, the security token of an AWS call. This test keeps the day someone drops the
+// bare word from being read as dropping those.
+func TestSensitiveKeyNamesTheTokenAndTheCookieOfASessionAndNotItsHandle(t *testing.T) {
+	for _, key := range []string{
+		"session_token", "sessionToken", "session-token", "SessionToken", "AWS_SESSION_TOKEN", "aws_session_token",
+		"x-amz-security-token", "X-Amz-Security-Token", "securityToken", "session_cookie", "sessionCookie",
+		"cookie", "Cookie", "set-cookie", "Set-Cookie", "session_secret", "sessionPassword",
+	} {
+		require.True(t, SensitiveKey(key), "%q names a credential", key)
+	}
+	for _, key := range []string{
+		"session", "Session", "SESSION", "sessionID", "sessionId", "session_id", "session-id", "sessions",
+		"sessionCount", "session_ttl", "x-session-id", "mcpSessionID",
+	} {
+		require.False(t, SensitiveKey(key), "%q is a handle, not a credential", key)
+	}
+}
+
+// Every word of the lists, in four spellings of its letters, with what can come before
 // it (nothing is required) and after it (a word ends where the key ends or goes on).
-func TestSensitiveKeyMatchesEveryWordOfTheListAndOnlyWhereAWordEnds(t *testing.T) {
-	for _, word := range keyValueWords(t) {
+func TestSensitiveKeyMatchesEveryWordOfTheListsAndOnlyWhereAWordEnds(t *testing.T) {
+	for _, word := range sensitiveKeyWords(t) {
 		for _, spelled := range []string{word, strings.ToUpper(word), strings.ToUpper(word[:1]) + word[1:], alternatingCase(word)} {
 			for _, key := range []string{
 				spelled, "x_" + spelled, "x-" + spelled, "x." + spelled, "my" + spelled, "X" + spelled,
 				spelled + "_id", spelled + "-id", spelled + ".id", spelled + "2", spelled + "/x", spelled + " x",
+				// The plural of a word is the word.
+				spelled + "s", "x_" + spelled + "s", spelled + "s_id", spelled + "s2", spelled + "S",
 			} {
 				require.True(t, SensitiveKey(key), "%q ends with the word %q", key, word)
 			}
-			for _, key := range []string{spelled + "s", spelled + "er", spelled + "less", spelled + "ize"} {
+			for _, key := range []string{spelled + "er", spelled + "less", spelled + "ize", spelled + "ser", spelled + "sless"} {
 				require.False(t, SensitiveKey(key), "%q goes on after the word %q", key, word)
 			}
 		}
@@ -68,28 +118,33 @@ func TestSensitiveKeyMatchesEveryWordOfTheListAndOnlyWhereAWordEnds(t *testing.T
 		for _, spelled := range []string{word, strings.ToUpper(word[:1]) + word[1:]} {
 			require.True(t, SensitiveKey(spelled+"Id"), "%q", spelled+"Id")
 			require.True(t, SensitiveKey(spelled+"ID"), "%q", spelled+"ID")
+			require.True(t, SensitiveKey(spelled+"sId"), "%q", spelled+"sId")
 		}
 		// A run of capitals ends before its last one when a lower case letter follows.
 		require.True(t, SensitiveKey(strings.ToUpper(word)+"Value"))
 		// All capitals, with nothing to tell where the next word starts, is one word.
 		require.False(t, SensitiveKey(strings.ToUpper(word)+"VALUE"))
+		require.False(t, SensitiveKey(strings.ToUpper(word)+"SVALUE"))
 	}
 }
 
-// plainKeySearch is the plain way to find a word of the list in a key: every spelling of
-// every word, found wherever it is, kept if a word of the key ends where it does.
+// plainKeySearch is the plain way to find a word of the lists in a key: every spelling of
+// every word and of its plural, found wherever it is, kept if a word of the key ends
+// where it does.
 func plainKeySearch(words []string, key string) bool {
 	lower := asciiLower(key)
 	for _, word := range words {
-		for from := 0; from < len(lower); {
-			at := strings.Index(lower[from:], word)
-			if at < 0 {
-				break
+		for _, spelled := range []string{word, word + "s"} {
+			for from := 0; from < len(lower); {
+				at := strings.Index(lower[from:], spelled)
+				if at < 0 {
+					break
+				}
+				if endsWord(key, from+at+len(spelled)) {
+					return true
+				}
+				from += at + 1
 			}
-			if endsWord(key, from+at+len(word)) {
-				return true
-			}
-			from += at + 1
 		}
 	}
 	return false
@@ -110,12 +165,12 @@ func spelledAtRandom(rng *rand.Rand, word string) string {
 }
 
 // generatedKey joins one to five pieces: fragments that make a word end or go on, and
-// the words of the list in every spelling.
+// the words of the lists in every spelling.
 func generatedKey(rng *rand.Rand, words []string) string {
 	fragments := []string{
-		"x", "my", "auth", "client", "a", "A", "API", "Id", "ID", "id", "name", "Name", "s", "er", "less", "2", "_", "-", ".", "/", " ",
+		"x", "my", "auth", "client", "a", "A", "API", "Id", "ID", "id", "name", "Name", "s", "S", "er", "less", "2", "_", "-", ".", "/", " ",
 		":", "Key", "key", "KEY", "key_", "ey", "api", "access", "Api", "Access", "\u017f", "\u212a", "\u00e9", "\u65e5", "pass", "sig",
-		"AKIA", "Bearer", "bearer", "ghp_", "eyJ", "xox",
+		"AKIA", "Bearer", "bearer", "ghp_", "eyJ", "xox", "kube", "Kube", "private", "Private", "set", "data", "Data", "cert", "session",
 	}
 	var b strings.Builder
 	for range 1 + rng.IntN(5) {
@@ -131,7 +186,7 @@ func generatedKey(rng *rand.Rand, words []string) string {
 // The first test, which an ordinary key does not pass, must not hide a key that the
 // exact one finds. The comparison is with a plain search.
 func TestSensitiveKeyAgreesWithAPlainSearchOnGeneratedKeys(t *testing.T) {
-	words := keyValueWords(t)
+	words := sensitiveKeyWords(t)
 	rng := rand.New(rand.NewPCG(20261120, 2))
 	matched := 0
 	for range 20000 {
@@ -157,7 +212,10 @@ func asciiLower(s string) string {
 }
 
 func TestSensitiveKeyAllocatesNothing(t *testing.T) {
-	keys := []string{"pluginID", "connectionID", "error", "durationMs", "access_token", "x-api-key", "secretName", "tokenizer"}
+	keys := []string{
+		"pluginID", "connectionID", "error", "durationMs", "access_token", "x-api-key", "secretName", "tokenizer",
+		"cookie", "kubeconfig", "clientKeyData", "tokens", "sessionID", "certificate-authority-data",
+	}
 	require.Zero(t, testing.AllocsPerRun(200, func() {
 		for _, key := range keys {
 			_ = SensitiveKey(key)
@@ -165,9 +223,85 @@ func TestSensitiveKeyAllocatesNothing(t *testing.T) {
 	}))
 }
 
+// The words of nameWords are looked for in a name and nowhere else. In text they are
+// ordinary words: a kubeconfig error says "loading kubeconfig: stat ...", a kubectl one
+// "getting credentials: exec: ...", and Redact, which apperror.PublicText shares, leaves
+// them as they are. A word added to nameWords and to the text pattern would change the
+// sentences the frontend shows.
+func TestNameWordsAreNotLookedForInText(t *testing.T) {
+	for _, text := range []string{
+		"loading kubeconfig: stat /Users/jane/.kube/config: no such file or directory",
+		"Unable to connect to the server: getting credentials: exec: executable aws failed with exit code 255",
+		"kubeconfig=/Users/jane/.kube/config",
+		"listed 42 secrets in namespace=default",
+	} {
+		require.Equal(t, text, Redact(text))
+	}
+	for _, word := range nameOnlyWords(t) {
+		for _, text := range []string{word + ": value", "x_" + word + "=value", `{"` + word + `":"value"}`} {
+			require.Equal(t, text, Redact(text), "the text pattern looks for %q", word)
+		}
+	}
+}
+
+// What an AWS call carries, by name (above) and by the shape of a key=value pair in text.
+func TestRedactFindsTheSessionTokenOfAnAWSCall(t *testing.T) {
+	for name, tc := range map[string]struct{ in, want string }{
+		"security token header": {
+			in:   "X-Amz-Security-Token: IQoJb3JpZ2luX2VjEJz",
+			want: "X-Amz-Security-Token: [REDACTED]",
+		},
+		"session token variable": {
+			in:   "AWS_SESSION_TOKEN=FwoGZXIvYXdzEBYaDExample region=us-east-1",
+			want: "AWS_SESSION_TOKEN=[REDACTED] region=us-east-1",
+		},
+		"session token in json": {
+			in:   `{"SessionToken":"FwoGZXIvYXdzEBYaDExample","Expiration":"2026-11-20T10:00:00Z"}`,
+			want: `{"SessionToken":"[REDACTED]","Expiration":"2026-11-20T10:00:00Z"}`,
+		},
+		"session token with a hyphen": {
+			in:   "session-token: FwoGZXIvYXdzEBYaDExample",
+			want: "session-token: [REDACTED]",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, Redact(tc.in))
+		})
+	}
+}
+
 func TestPlaceholderIsWhatRedactWrites(t *testing.T) {
 	require.Equal(t, "[REDACTED]", Placeholder)
 	require.Contains(t, Redact("password=hunter2"), Placeholder)
+}
+
+// MayCarryCredential is the test a caller runs before it reads a document for names as
+// well as for text: false has to be exact for both.
+func TestMayCarryCredentialIsFalseOnlyWhenNeitherATextNorANameCanBeFound(t *testing.T) {
+	fixed, words := generatedFragments(t)
+	words = append(words, nameOnlyWords(t)...)
+	rng := rand.New(rand.NewPCG(20261120, 3))
+	found := 0
+	for range 20000 {
+		text := generatedText(rng, fixed, words)
+		if Redact(text) != text {
+			found++
+			require.True(t, MayCarryCredential(text), "Redact changes %q", text)
+		}
+		require.True(t, !SensitiveKey(text) || MayCarryCredential(text), "SensitiveKey accepts %q", text)
+	}
+	require.Greater(t, found, 2000)
+
+	for _, word := range sensitiveKeyWords(t) {
+		for _, spelled := range []string{word, strings.ToUpper(word), alternatingCase(word)} {
+			require.True(t, MayCarryCredential(spelled), "%q", spelled)
+			require.True(t, MayCarryCredential(`{"`+spelled+`":["x"]}`), "%q", spelled)
+		}
+	}
+	ordinary := append([]string{"", `{"name":"x","count":3,"ready":true}`, `["a","b"]`, "plain"}, ordinaryLogText()[:6]...)
+	for _, text := range ordinary {
+		require.False(t, MayCarryCredential(text), "ordinary text: %q", text)
+	}
 }
 
 func BenchmarkSensitiveKey(b *testing.B) {
@@ -177,6 +311,8 @@ func BenchmarkSensitiveKey(b *testing.B) {
 		{"near miss: a word and letters after it", "tokenizer"},
 		{"sensitive key", "access_token"},
 		{"sensitive camelCase key", "clientSecretName"},
+		{"sensitive name-only key", "Set-Cookie"},
+		{"plural", "credentials"},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()

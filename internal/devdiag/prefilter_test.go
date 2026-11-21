@@ -13,22 +13,36 @@ import (
 // that none can match. A wrong "none" leaves a credential in the output with no
 // error anywhere, so these tests compare Redact with the patterns themselves.
 
-// keyValueWords returns the words of keyWords, written out: api[_-]?key becomes
-// apikey, api_key and api-key. It reads the list the code reads, so that a word added
-// there is tested here without anyone remembering to; and it checks that the key=value
-// pattern is built from that list and not from a copy.
+// expandWords writes the alternation list out: api[_-]?key becomes apikey, api_key and
+// api-key; a word with two optional separators becomes nine.
+func expandWords(list string) []string {
+	var words []string
+	for _, alternative := range strings.Split(list, "|") {
+		spellings := []string{""}
+		for i, part := range strings.Split(alternative, optionalSeparator) {
+			var next []string
+			for _, spelled := range spellings {
+				if i == 0 {
+					next = append(next, spelled+part)
+					continue
+				}
+				next = append(next, spelled+part, spelled+"_"+part, spelled+"-"+part)
+			}
+			spellings = next
+		}
+		words = append(words, spellings...)
+	}
+	return words
+}
+
+// keyValueWords returns the words of keyWords, written out. It reads the list the code
+// reads, so that a word added there is tested here without anyone remembering to; and
+// it checks that the key=value pattern is built from that list and not from a copy.
 func keyValueWords(t *testing.T) []string {
 	t.Helper()
 	require.Contains(t, keyValue.String(), keyWords, "the key=value pattern is not built from keyWords")
 
-	var words []string
-	for _, alternative := range strings.Split(keyWords, "|") {
-		if before, after, found := strings.Cut(alternative, optionalSeparator); found {
-			words = append(words, before+after, before+"_"+after, before+"-"+after)
-		} else {
-			words = append(words, alternative)
-		}
-	}
+	words := expandWords(keyWords)
 	require.GreaterOrEqual(t, len(words), 9)
 	return words
 }

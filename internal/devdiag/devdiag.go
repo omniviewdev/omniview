@@ -21,7 +21,8 @@ const redacted = "[REDACTED]"
 // returns and wherever else a caller replaces a value it knows to be one.
 const Placeholder = redacted
 
-// optionalSeparator stands, in keyWords, for "an underscore, a hyphen or nothing".
+// optionalSeparator stands, in keyWords and nameWords, for "an underscore, a hyphen or
+// nothing".
 const optionalSeparator = `[_-]?`
 
 // keyWords are the words that mark a key as holding a credential: the one list
@@ -32,6 +33,18 @@ const optionalSeparator = `[_-]?`
 // (prefilter.go), which only tells the two when to bother looking.
 const keyWords = `token|password|passwd|secret|authorization|api` + optionalSeparator + `key|access` +
 	optionalSeparator + `key|credential|signature`
+
+// nameWords are the words that mark the NAME of a field as holding a credential and
+// that the key=value pattern does not look for. They are in the same form as keyWords.
+// In a name they say what the field holds: a private key, the key or the certificate of
+// a kubeconfig user, a whole kubeconfig, a cookie. In text they are ordinary words
+// ("loading kubeconfig: stat ...", "setting a cookie: ..."), and Redact, which
+// apperror.PublicText shares, would blank the sentence after them. A word added here is
+// found by SensitiveKey only; it also has to be added to startsNameWord (prefilter.go).
+//
+// The public half of a kubeconfig, certificate-authority-data, is not in the list.
+const nameWords = `private` + optionalSeparator + `key|client` + optionalSeparator + `key` + optionalSeparator +
+	`data|client` + optionalSeparator + `certificate` + optionalSeparator + `data|cookie|kube` + optionalSeparator + `config`
 
 // The patterns Redact applies. Each is also described, as the least it needs in
 // order to match, in couldCarryCredential (prefilter.go): a new pattern, or a new

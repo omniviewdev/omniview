@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -300,25 +299,30 @@ func TestRedactingCoreReflectedValues(t *testing.T) {
 	})
 }
 
-// This pins the limits written on NewRedactingCore. By shape, a struct, a pointer, a
-// typed map, raw JSON or a key is not read, so text in one reaches the sink as it was,
-// and binary data is written as the base64 of its bytes. If that is made to change,
-// change the comment on NewRedactingCore with it.
-func TestRedactingCoreDoesNotReadByShapeWhatItHasNoWayToInspect(t *testing.T) {
-	type request struct{ Header string }
-	var out bytes.Buffer
-	jsonLogger(&out, zapcore.DebugLevel, true).Info("m",
-		zap.Any("struct", request{Header: credentialText}),
-		zap.Any("pointer", &request{Header: credentialText}),
-		zap.Any("typed map", map[string][]string{"k": {credentialText}}),
-		zap.Any("raw json", json.RawMessage(`{"Authorization":"Bearer abc123def456ghi789"}`)),
-		zap.String("Bearer abc123def456ghi789 AKIAIOSFODNN7EXAMPLE password=hunter2", "a key is a name"),
-		zap.Binary("binary", []byte(credentialText)),
-	)
-	for _, value := range credentialValues() {
-		assert.Contains(t, out.String(), value, "a value or a key that is not inspected was changed")
+// This pins the limits written on NewRedactingCore. A key is a name and not text to hide,
+// and binary data, and bytes in a reflected value, are written as the base64 of the bytes
+// and not read as text. If that is made to change, change the comment on NewRedactingCore
+// with it. Each is checked on its own: a credential in one that is read would be written
+// redacted, and one that is not is written whole.
+func TestRedactingCoreDoesNotReadWhatItHasNoWayToInspect(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte(credentialText))
+	// A name with the shape of a credential and no word of the list: the key of a field
+	// that has one is the field of a credential, and its value is hidden.
+	key := "Bearer abc123def456ghi789 AKIAIOSFODNN7EXAMPLE"
+	for name, tc := range map[string]struct {
+		field zap.Field
+		want  string
+	}{
+		"a key":                    {zap.String(key, "a key is a name"), `"` + key + `":"a key is a name"`},
+		"binary data":              {zap.Binary("binary", []byte(credentialText)), `"binary":"` + encoded + `"`},
+		"bytes in a reflected one": {zap.Reflect("bytes", []byte(credentialText)), `"bytes":"` + encoded + `"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			jsonLogger(&out, zapcore.DebugLevel, true).Info("m", tc.field)
+			assert.Contains(t, out.String(), tc.want, "what is not inspected was changed")
+		})
 	}
-	assert.Contains(t, out.String(), base64.StdEncoding.EncodeToString([]byte(credentialText)))
 }
 
 // opaqueSecret has no shape that devdiag.Redact could find: only the name it is
@@ -382,8 +386,8 @@ func TestRedactingCoreHidesTheValueOfAFieldNamedForACredential(t *testing.T) {
 
 func TestRedactingCoreLeavesTheValueOfAnyOtherNameAlone(t *testing.T) {
 	names := []string{
-		"tokenizer", "secretary", "passwordless_enabled", "keyboard", "monkey", "key", "pluginID", "primary_key", "tokens",
-		"error", "connectionID", "cache_key", "resourceKey",
+		"tokenizer", "secretary", "passwordless_enabled", "keyboard", "monkey", "key", "pluginID", "primary_key",
+		"error", "connectionID", "cache_key", "resourceKey", "sessionID", "session", "certificate-authority-data",
 	}
 	fields := make([]zap.Field, 0, len(names))
 	for _, name := range names {

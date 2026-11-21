@@ -238,13 +238,33 @@ line):
 - *By name.* The value of a structured field whose name is that of a credential is
   replaced whatever it looks like, because most secrets have no shape. The names are the
   words of the `key=value` pattern above (`token`, `password`, `passwd`, `secret`,
-  `authorization`, `api_key`, `access_key`, `credential`, `signature`), matched without
-  regard to case where a word ends where a word of the name ends: `auth_token`,
-  `accessToken`, `x-api-key` and `clientSecret` are credentials; `tokenizer`, `secretary`,
-  `passwordless_enabled` and a bare `key` are not, nor are plurals such as `secrets` and
-  `credentials`. Under such a name every string is replaced, in nested objects, arrays
-  and maps too; numbers, booleans, times and durations stay. A name that is a credential
-  with a harmless value (`secretName`, `token_type`) is replaced all the same.
+  `authorization`, `api_key`, `access_key`, `credential`, `signature`) and a few that
+  only a name can mean (`private_key`, `client-key-data`, `client-certificate-data`,
+  `kubeconfig`, `cookie`), each in the plural too, matched without regard to case where a
+  word ends where a word of the name ends: `auth_token`, `accessToken`, `x-api-key`,
+  `clientSecret`, `tokens`, `credentials`, `private_key`, `Set-Cookie`, `session_token`
+  and `X-Amz-Security-Token` are credentials; `tokenizer`, `secretary`,
+  `passwordless_enabled`, `certificate-authority-data` (public) and a bare `key` are
+  not. A session is not a word of the list: the host's own `session` and `sessionID` are
+  handles that tie together the lines of one exec, log or terminal session, not
+  credentials, and hiding them would cost debugging for no gain; what a session holds
+  that is one has a name that matches (`session_token`, a cookie). The extra words are
+  looked for in names only: in a sentence, `loading kubeconfig: stat ...` and
+  `getting credentials: exec: ...` are ordinary text and are left as they are. Under such
+  a name every string is replaced, in nested objects, arrays and maps too; numbers,
+  booleans, times and durations stay. A name that is a credential with a harmless value
+  (`secretName`, `token_type`) is replaced all the same. In a list of pairs such as
+  `{"name": "DB_PASSWORD", "value": "..."}` (environment variables, headers) the value is
+  replaced when the name is that of a credential.
+
+Both rules read structured values the way they are written: an `http.Header` or
+`url.Values` (by header and parameter name), a struct (by field name), a named string, raw
+JSON, and the text zap writes around an error (its verbose form, the causes of a group of
+errors, the message of a marshaler or value that failed, the message of a panic). Reading
+a value is bounded: a branch nested more than 32 levels deep is written as
+`[REDACTED: nested too deeply]`, and a value of more than 10,000 entries (maps and
+slices, all counted together), or whose JSON is longer than 256 KiB, is written as
+`[REDACTED: value too large]`. A value that contains itself is replaced the same way.
 
 The same shape rule applies to each line of a plugin process's output before it reaches
 `plugin.<id>.log`, the plugin log viewer, a plugin log search, the log shipper and the
@@ -253,10 +273,9 @@ development supervisor's log keep). The log of a **resource** (a pod's log lines
 in the log viewer or read by the Logs tool) is the user's own data and is never redacted.
 
 This is defence in depth and not a guarantee. A secret with no shape under a name that is
-not in the list (`private_key`, a field called `data`) is written as it is, and so are
-the keys of structured fields themselves, and values the host cannot read as text, such as
-binary data and structs, under names that are not credentials. A log file written before
-this existed is not rewritten.
+not in the list (`client_key`, `ssh_key`, a field called `data`) is written as it is, and
+so are the keys of structured fields themselves and binary data. A log file written
+before this existed is not rewritten.
 
 OTLP traces and metrics use their own endpoint and authentication settings.
 For OTLP HTTP, use a base URL such as `https://collector.example/otlp`.

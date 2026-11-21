@@ -3,6 +3,7 @@ package logs
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,16 +54,9 @@ type podLogUIProvider struct {
 	stubLogsProvider
 	controller *controller
 	lines      []string
-	timer      *time.Timer
 }
 
 func (p *podLogUIProvider) CreateSession(_ *sdktypes.PluginContext, opts sdklogs.CreateSessionOptions) (*sdklogs.LogSession, error) {
-	// An inert timer keeps the batch from being flushed: a flush emits a Wails event,
-	// and a unit test has no Wails application. The batch is what the flush would send.
-	p.timer = time.NewTimer(time.Hour)
-	p.controller.batchMux.Lock()
-	p.controller.batches[opts.SessionID] = &logBatch{timer: p.timer}
-	p.controller.batchMux.Unlock()
 	for _, line := range p.lines {
 		p.controller.handleOutput(sdklogs.StreamOutput{
 			SessionID: opts.SessionID,
@@ -72,29 +66,83 @@ func (p *podLogUIProvider) CreateSession(_ *sdktypes.PluginContext, opts sdklogs
 	return &sdklogs.LogSession{ID: opts.SessionID}, nil
 }
 
+// eventRecorder is the controller's emitter in a test: what it is given is what the
+// frontend would receive, as the Wails application would send it.
+type eventRecorder struct {
+	mu     sync.Mutex
+	events []recordedEvent
+	arrive chan struct{}
+}
+
+type recordedEvent struct {
+	key  string
+	data []any
+}
+
+func newEventRecorder() *eventRecorder {
+	return &eventRecorder{mu: sync.Mutex{}, events: nil, arrive: make(chan struct{}, 64)}
+}
+
+func (r *eventRecorder) Emit(key string, data ...any) {
+	r.mu.Lock()
+	r.events = append(r.events, recordedEvent{key: key, data: data})
+	r.mu.Unlock()
+	select {
+	case r.arrive <- struct{}{}:
+	default:
+	}
+}
+
+func (r *eventRecorder) recorded() []recordedEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]recordedEvent(nil), r.events...)
+}
+
+// linesOf returns the lines the recorded events of one session carry, in order, once
+// there are n of them. The controller flushes a batch when a timer says so, in a
+// goroutine of its own; the test waits for the event and not for a time.
+func (r *eventRecorder) linesOf(t *testing.T, sessionID string, n int) []sdklogs.LogLine {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		var lines []sdklogs.LogLine
+		for _, event := range r.recorded() {
+			if event.key != "core/logs/lines/"+sessionID {
+				continue
+			}
+			require.Len(t, event.data, 1)
+			payload, ok := event.data[0].(string)
+			require.True(t, ok, "the event carries the batch as a string")
+			var batch []sdklogs.LogLine
+			require.NoError(t, json.Unmarshal([]byte(payload), &batch))
+			lines = append(lines, batch...)
+		}
+		if len(lines) >= n {
+			return lines
+		}
+		select {
+		case <-r.arrive:
+		case <-deadline:
+			t.Fatalf("%d of %d lines reached the frontend", len(lines), n)
+		}
+	}
+}
+
 func TestResourceLogLinesReachTheUIEventUnredacted(t *testing.T) {
 	requireTheFixtureIsWhatTheHostRedacts(t)
+	events := newEventRecorder()
 	ctrl := &controller{
 		logger: logging.NewNop(), clients: make(map[string]Provider), sessionIndex: make(map[string]sessionIndex),
-		batches: make(map[string]*logBatch), resourceClient: immediateUIConnection{},
+		batches: make(map[string]*logBatch), resourceClient: immediateUIConnection{}, emitter: events,
 	}
-	provider := &podLogUIProvider{controller: ctrl, lines: podLogLines()}
-	ctrl.clients["plugin"] = provider
+	ctrl.clients["plugin"] = &podLogUIProvider{controller: ctrl, lines: podLogLines()}
 	session, err := ctrl.CreateSession(context.Background(), "plugin", "route", sdklogs.CreateSessionOptions{ResourceKey: "pod", ResourceID: "pod"})
-	if provider.timer != nil {
-		defer provider.timer.Stop()
-	}
 	require.NoError(t, err)
 
-	ctrl.batchMux.Lock()
-	defer ctrl.batchMux.Unlock()
-	batch := ctrl.batches[session.ID]
-	require.NotNil(t, batch)
-	// flushBatchLocked emits the batch, marshalled, as the event core/logs/lines/<session>.
-	payload, err := json.Marshal(batch.lines)
-	require.NoError(t, err)
-	var received []sdklogs.LogLine
-	require.NoError(t, json.Unmarshal(payload, &received))
+	// The lines go to the frontend as the event core/logs/lines/<session>, which the
+	// controller emits when its batch is flushed: here by the timer of the real flush.
+	received := events.linesOf(t, session.ID, len(podLogLines()))
 	require.Len(t, received, len(podLogLines()))
 	for i, line := range received {
 		require.Equal(t, podLogLines()[i], line.Content)
