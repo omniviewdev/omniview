@@ -1,0 +1,80 @@
+=== inv3_debug.go (new file)
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"time"
+
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+)
+
+type debugCounter interface{ DebugCounts() map[string]int }
+
+// inv3Counters writes the registries' counts to the file named by INV3_COUNTERS every 250 ms. INV3 proof probe (never committed).
+func inv3Counters(realm *invocation.WindowRealm, ctrl any, others ...debugCounter) {
+	path := os.Getenv("INV3_COUNTERS")
+	if path == "" {
+		return
+	}
+	for range time.Tick(250 * time.Millisecond) {
+		out := realm.DebugCounts()
+		if c, ok := ctrl.(interface{ DebugSourceCounts() map[string]int }); ok {
+			for k, v := range c.DebugSourceCounts() {
+				out[k] = v
+			}
+		}
+		for _, other := range others {
+			for k, v := range other.DebugCounts() {
+				out[k] = v
+			}
+		}
+		data, _ := json.Marshal(out)
+		_ = os.WriteFile(path+".tmp", data, 0o600)
+		_ = os.Rename(path+".tmp", path)
+	}
+}
+
+=== backend/pkg/invocation/inv3_debug.go (new file)
+package invocation
+
+// DebugCounts is an INV3 proof probe (never committed).
+func (r *WindowRealm) DebugCounts() map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return map[string]int{"realmScopes": len(r.scopes), "realmClosed": len(r.closed), "realmRefused": len(r.refused), "realmSubscribers": len(r.subscribers)}
+}
+
+=== backend/pkg/plugin/metric/inv3_debug.go (new file)
+package metric
+
+// DebugCounts is an INV3 proof probe (never committed).
+func (s *ServiceWrapper) DebugCounts() map[string]int {
+	s.sessionsMu.Lock()
+	defer s.sessionsMu.Unlock()
+	return map[string]int{"metricSessions": len(s.sessions)}
+}
+
+=== backend/pkg/plugin/resource/inv3_debug.go (new file)
+package resource
+
+// DebugCounts is an INV3 proof probe (never committed).
+func (s *GraphService) DebugCounts() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return map[string]int{"graphWindows": len(s.windows), "graphObservations": len(s.observations)}
+}
+
+// DebugSourceCounts is an INV3 proof probe (never committed).
+func (c *controller) DebugSourceCounts() map[string]int {
+	sc := c.sources
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	return map[string]int{"sourceSessions": len(sc.sessions), "sourceViews": len(sc.views), "sourceInterests": len(sc.interests), "retiredOwners": len(sc.retiredOwners)}
+}
+
+=== main.go (two edits, by hand)
+after: toolsController := tools.NewController(log, resourceBoundary)
++	inv3Metric := &pluginmetric.ServiceWrapper{Ctrl: metricController, Realm: resourceUIRealm}
++	go inv3Counters(resourceUIRealm, resourceController, inv3Metric, graphService)
+and in the service list: application.NewService(&pluginmetric.ServiceWrapper{...}) -> application.NewService(inv3Metric)

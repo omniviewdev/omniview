@@ -1,0 +1,12 @@
+#!/bin/bash
+# usage: run.sh <label> <bin> <iter> <mode> [extra env...]
+label=$1; bin=$2; iter=$3; mode=$4; shift 4
+out=/tmp/inv3/out/$label; mkdir -p $out
+cd /tmp/inv3/tools
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="$TMPDIR" LANG="${LANG:-en_US.UTF-8}" USER="$USER" \
+  HOST_ROOT=/Users/joshuapare/Repos/omniviewdev/worktrees/inv3-registry-slots BIN=$bin \
+  PLUGIN_ARCHIVE=/Users/joshuapare/Repos/omniviewdev/worktrees/inv3-plugin-k8s/dist/kubernetes-darwin_arm64.tar.gz \
+  KUBECONFIG_PATH=/tmp/inv3/kubeconfig OUT=$out INV2_COUNTERS=$out/counters.json \
+  ENGINE=chromium MODE=$mode CLOSE=clean ITER=$iter VIEWS=1 ROW_TIMEOUT_MS=8000 STOP_AFTER_STALL=3 DUMP_AT=0 "$@" \
+  node loop.mjs > $out/loop.log 2>&1
+echo "exit $?" >> $out/loop.log

@@ -1,0 +1,129 @@
+// INV2 shared helpers: start a real host + plugin on a throwaway HOME (host pprof on, plugin pprof opted in by a wrapper) and sample them. Throwaway tool of the investigation.
+import { spawn, spawnSync } from 'node:child_process';
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+export const sh = (cmd, args, timeout = 30_000) => spawnSync(cmd, args, { encoding: 'utf8', timeout, maxBuffer: 256 * 1024 * 1024 }).stdout ?? '';
+export const log = (...a) => console.log(new Date().toISOString().slice(11, 23), ...a);
+export const RESOURCE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
+export const LOGS = 'github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper';
+export const WINDOW = 'github.com/omniviewdev/omniview/backend/window.Service';
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+    probe.on('error', reject);
+  });
+}
+export function playwright(hostRoot) { return createRequire(path.join(hostRoot, 'package.json'))('playwright'); }
+
+export async function startHost({ bin, archive, kubeconfig, out, countersFile, pluginPprof = true, extraEnv = {} }) {
+  mkdirSync(out, { recursive: true });
+  const work = path.join(os.tmpdir(), `inv2-home-${process.pid}-${Math.random().toString(36).slice(2, 6)}`);
+  const home = path.join(work, 'home');
+  const pluginDir = path.join(home, '.omniview-feature-ui-next', 'plugins', 'kubernetes');
+  mkdirSync(path.join(home, '.kube'), { recursive: true });
+  mkdirSync(pluginDir, { recursive: true });
+  copyFileSync(kubeconfig, path.join(home, '.kube', 'config'));
+  chmodSync(path.join(home, '.kube', 'config'), 0o600);
+  const untar = spawnSync('tar', ['-xzf', archive, '-C', pluginDir], { encoding: 'utf8' });
+  if (untar.status !== 0) throw new Error(`untar: ${untar.stderr}`);
+  if (pluginPprof) {
+    renameSync(path.join(pluginDir, 'bin/plugin'), path.join(pluginDir, 'bin/plugin.real'));
+    writeFileSync(path.join(pluginDir, 'bin/plugin'), '#!/bin/sh\nexport OMNIVIEW_PLUGIN_PPROF_ENABLED=true\nexec "$(dirname "$0")/plugin.real" "$@"\n');
+    chmodSync(path.join(pluginDir, 'bin/plugin'), 0o755);
+  }
+  const port = await freePort();
+  const pprofPort = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const hostLog = path.join(out, 'host.log');
+  writeFileSync(hostLog, '');
+  const hostEnv = { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, LANG: process.env.LANG, USER: process.env.USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port), OMNIVIEW_PPROF_PORT: String(pprofPort), ...extraEnv };
+  if (countersFile) { hostEnv.INV2_COUNTERS = countersFile; hostEnv.INV3_COUNTERS = countersFile; }
+  const child = spawn(bin, [], { env: hostEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => appendFileSync(hostLog, chunk));
+  const h = { base, port, pprofBase: `http://127.0.0.1:${pprofPort}`, hostPid: child.pid, child, work, home, out, countersFile, exited: false, pluginPid: undefined, pluginPprofUrl: undefined, stopping: false };
+  child.on('exit', (code, signal) => { h.exited = true; log('HOST EXITED', code, signal); });
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    if (h.exited) throw new Error(`the host exited while starting:\n${readFileSync(hostLog, 'utf8').slice(-2000)}`);
+    try { if ((await fetch(`${base}/`)).ok) break; } catch { /* not yet */ }
+    await sleep(500);
+  }
+  h.scriptCall = async (methodName, args, clientId = 'inv2-script') => {
+    const t0 = Date.now();
+    try {
+      const response = await fetch(`${base}/wails/runtime`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': clientId }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `inv2-${Date.now()}-${Math.random()}`, methodName, args } }), signal: AbortSignal.timeout(15_000) });
+      const text = await response.text();
+      return { status: response.status, ms: Date.now() - t0, body: text };
+    } catch (error) { return { status: 0, ms: Date.now() - t0, body: String(error).slice(0, 200) }; }
+  };
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    const r = await h.scriptCall(`${RESOURCE}.ListConnections`, ['kubernetes']);
+    if (r.status === 200 && r.body.length > 10) { h.connections = JSON.parse(r.body); break; }
+    await sleep(500);
+  }
+  h.findPlugin = () => {
+    for (const pid of childrenOf(h.hostPid)) {
+      const cmd = sh('ps', ['-o', 'command=', '-p', String(pid)]).trim();
+      if (cmd.includes('plugins/kubernetes/bin/plugin')) {
+        h.pluginPid = pid;
+        const listen = sh('lsof', ['-a', '-p', String(pid), '-iTCP', '-sTCP:LISTEN', '-n', '-P']).split('\n').find((l) => /LISTEN/.test(l));
+        const m = listen && /127\.0\.0\.1:(\d+)/.exec(listen);
+        if (m) h.pluginPprofUrl = `http://127.0.0.1:${m[1]}`;
+        return;
+      }
+    }
+  };
+  h.findPlugin();
+  h.counters = () => { if (!countersFile || !existsSync(countersFile)) return null; try { return JSON.parse(readFileSync(countersFile, 'utf8')); } catch { return null; } };
+  h.sample = async () => {
+    if (h.pluginPid && !h.pluginPprofUrl) h.findPlugin();
+    const host = { goroutines: await goroutines(h.pprofBase), files: filesOf(h.hostPid), rssMb: Math.round(rssKb(h.hostPid) / 1024), threads: threadsOf(h.hostPid) };
+    const plugin = h.pluginPid ? { goroutines: h.pluginPprofUrl ? await goroutines(h.pluginPprofUrl) : null, files: filesOf(h.pluginPid), rssMb: Math.round(rssKb(h.pluginPid) / 1024), threads: threadsOf(h.pluginPid) } : null;
+    const sessions = await h.scriptCall(`${LOGS}.ListSessions`, []);
+    let logSessions = null;
+    try { logSessions = JSON.parse(sessions.body)?.length ?? 0; } catch { /* cut */ }
+    return { host, plugin, logSessions, counters: h.counters(), load1: Number(os.loadavg()[0].toFixed(1)) };
+  };
+  h.dumps = async (label) => {
+    const a = await dump(h.pprofBase, path.join(out, 'dumps', `host-${label}.txt`));
+    const b = h.pluginPprofUrl ? await dump(h.pluginPprofUrl, path.join(out, 'dumps', `plugin-${label}.txt`)) : 0;
+    log(`dumps ${label}: host ${a} bytes, plugin ${b} bytes`);
+  };
+  mkdirSync(path.join(out, 'dumps'), { recursive: true });
+  h.cleanup = async () => {
+    if (h.stopping) return;
+    h.stopping = true;
+    const kids = childrenOf(h.hostPid);
+    if (!h.exited) child.kill('SIGTERM');
+    for (let i = 0; i < 50 && !h.exited; i += 1) await sleep(200);
+    if (!h.exited) child.kill('SIGKILL');
+    for (const kid of kids) { try { process.kill(kid, 'SIGTERM'); } catch { /* gone */ } }
+    await sleep(500);
+    for (const kid of kids) { try { process.kill(kid, 0); process.kill(kid, 'SIGKILL'); } catch { /* gone */ } }
+    rmSync(work, { recursive: true, force: true });
+  };
+  return h;
+}
+
+export function filesOf(pid) {
+  const lines = sh('lsof', ['-p', String(pid), '-n', '-P']).split('\n').filter(Boolean).slice(1);
+  const byType = {};
+  let established = 0;
+  for (const line of lines) { const type = line.split(/\s+/)[4] ?? '?'; byType[type] = (byType[type] ?? 0) + 1; if (/ESTABLISHED/.test(line)) established += 1; }
+  return { total: lines.length, byType, established };
+}
+export const rssKb = (pid) => Number(sh('ps', ['-o', 'rss=', '-p', String(pid)]).trim()) || 0;
+export const threadsOf = (pid) => Math.max(0, sh('ps', ['-M', '-p', String(pid)]).split('\n').filter(Boolean).length - 1);
+export const childrenOf = (pid) => sh('pgrep', ['-P', String(pid)]).split('\n').filter(Boolean).map(Number);
+export async function goroutines(url) {
+  try { const text = await (await fetch(`${url}/debug/pprof/goroutine?debug=1`, { signal: AbortSignal.timeout(10_000) })).text(); return Number(/goroutine profile: total (\d+)/.exec(text)?.[1]); } catch { return null; }
+}
+export async function dump(url, file) {
+  try { const text = await (await fetch(`${url}/debug/pprof/goroutine?debug=2`, { signal: AbortSignal.timeout(20_000) })).text(); writeFileSync(file, text); return text.length; } catch (error) { writeFileSync(file, `dump failed: ${error}\n`); return 0; }
+}
