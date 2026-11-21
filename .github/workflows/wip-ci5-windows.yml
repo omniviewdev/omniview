@@ -23,16 +23,16 @@ jobs:
           cache: true
       - name: appstate
         continue-on-error: true
-        run: go test ./internal/appstate -count=1 -v -timeout 8m 2>&1 | grep -E '^(=== RUN|--- |\s+--- |ok|FAIL|PASS|panic)|Error|error' | grep -v '=== RUN' | head -400
+        run: go test ./internal/appstate -count=1 -v -timeout 8m 2>&1
       - name: settings store
         continue-on-error: true
-        run: go test ./internal/settings/store -count=1 -v -timeout 8m 2>&1 | grep -E '^(--- |\s+--- |ok|FAIL|PASS|panic)|Error|error' | head -400
+        run: go test ./internal/settings/store -count=1 -v -timeout 8m 2>&1
       - name: plugin settings
         continue-on-error: true
-        run: go test ./backend/pkg/plugin/settings -count=1 -v -timeout 8m 2>&1 | grep -E '^(--- |\s+--- |ok|FAIL|PASS|panic)|Error|error' | head -400
+        run: go test ./backend/pkg/plugin/settings -count=1 -v -timeout 8m 2>&1
       - name: plugin lifecycle
         continue-on-error: true
-        run: go test ./backend/pkg/plugin -run 'Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate' -count=1 -v -timeout 10m 2>&1 | grep -E '^(--- |\s+--- |ok|FAIL|PASS|panic)|Error|error' | head -600
+        run: go test ./backend/pkg/plugin -run 'Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate' -count=1 -v -timeout 10m 2>&1
       - name: channel mtls
         continue-on-error: true
-        run: go test ./backend/pkg/plugin -run 'Channel|Mutually|Impostor' -count=1 -v -timeout 5m 2>&1 | grep -E '^(--- |\s+--- |ok|FAIL|PASS|panic)|SKIP' | head -100
+        run: go test ./backend/pkg/plugin -run 'TestCreateBackendEnablesChannelAuthentication|TestCreateBackendChannelIsMutuallyAuthenticated|TestChannelRejectsClient' -count=1 -v -timeout 5m 2>&1
