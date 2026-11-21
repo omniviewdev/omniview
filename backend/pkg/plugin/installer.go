@@ -124,7 +124,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 
 	// Stop the watcher before unloading so it cannot reload the old source
 	// during the swap. Never trust StartDevServerForPath's existing-ID path.
-	if err = pm.unloadForReinstall(metadata.ID); err != nil {
+	if err = pm.unloadForReinstall(metadata.ID, UnloadReloaded); err != nil {
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return info, err
 	}
@@ -236,7 +236,10 @@ func (pm *pluginManager) installOpsLock(id string) *sync.Mutex {
 	return mu
 }
 
-func (pm *pluginManager) unloadForReinstall(pluginID string) error {
+// unloadForReinstall stops the plugin so its files can be replaced or removed, and tells the window why it is gone: `cause` is what the caller is about to do (UnloadUninstalled to remove
+// it, UnloadReloaded to put a new build in its place). A plugin the manager does not hold is not told of: no window holds an interface of it.
+func (pm *pluginManager) unloadForReinstall(pluginID string, cause UnloadCause) error {
+	held := pm.holds(pluginID)
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(pluginID)
 	}
@@ -249,6 +252,9 @@ func (pm *pluginManager) unloadForReinstall(pluginID string) error {
 	if err := pm.UnloadPlugin(pluginID); err != nil {
 		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusConflict,
 			"Failed to unload existing plugin").WithInstance(pluginID)
+	}
+	if held {
+		emitUnloaded(pm.emitter, pluginID, cause)
 	}
 	return nil
 }
@@ -539,7 +545,7 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return record.ToInfo(), apperror.Internal(err, "Uninstall recovery path is occupied or changed").WithInstance(id)
 	}
 	info := record.ToInfo()
-	if err = pm.unloadForReinstall(id); err != nil {
+	if err = pm.unloadForReinstall(id, UnloadUninstalled); err != nil {
 		// The pre-unload ownership marker remains available for a safe retry.
 		return info, err
 	}

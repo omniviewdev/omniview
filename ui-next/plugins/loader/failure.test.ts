@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BundleTimeoutError, ContractError, IncompatibleBundleError, classify } from './failure';
+import { BundleTimeoutError, ContractError, IncompatibleBundleError, UNLOAD_CAUSES, classify, failureWords, unloadedFailure } from './failure';
 
 // Each thing that can go wrong between the host and a plugin's bundle is one of five kinds, and the page says the same sentence for a kind whatever
 // the words of the loader's own error were. SystemJS's messages are quoted as it writes them (systemjs 6.15: errors 3, 7 and 8).
@@ -54,5 +54,45 @@ describe('classify', () => {
 
     expect(failure.message).not.toContain('abc123');
     expect(failure.message).toBe('The plugin\'s interface failed to start.');
+  });
+});
+
+// A plugin that was loaded and then stopped (PU1) has no bundle that failed: the host said it stopped, in one of four words, and the page words each itself.
+
+describe('unloadedFailure', () => {
+  it('says a crashed plugin stopped unexpectedly, in the words of the mock\'s failed plugin (ch16 S89)', () => {
+    expect(unloadedFailure('crashed')).toEqual({ kind: 'unloaded', cause: 'crashed', message: 'The plugin process stopped unexpectedly, so its pages can\'t load data.' });
+  });
+
+  it('says a plugin that is reloading is starting again, in the words of the mock\'s starting plugin', () => {
+    expect(unloadedFailure('reloaded')).toEqual({ kind: 'unloaded', cause: 'reloaded', message: 'The plugin is starting again. The page opens when it is ready.' });
+  });
+
+  it('has no detail and no text of the plugin: nothing but the host\'s sentence', () => {
+    for (const cause of ['crashed', 'reloaded'] as const) {
+      expect(Object.keys(unloadedFailure(cause)).sort()).toEqual(['cause', 'kind', 'message']);
+    }
+  });
+});
+
+describe('the four causes', () => {
+  it('are the host\'s four words: what the event of backend/pkg/plugin/events.go can carry', () => {
+    expect([...UNLOAD_CAUSES]).toEqual(['crashed', 'reloaded', 'uninstalled', 'disabled']);
+  });
+});
+
+describe('failureWords', () => {
+  it('says "did not load" of a bundle that failed, whatever the kind, and calls it a fault', () => {
+    for (const kind of ['missing', 'incompatible', 'broken', 'timeout', 'contract'] as const) {
+      expect(failureWords({ kind, message: 'x' })).toEqual({ label: 'did not load', caption: 'Did not load', faulted: true });
+    }
+  });
+
+  it('says a plugin whose process crashed is stopped, and a fault', () => {
+    expect(failureWords(unloadedFailure('crashed'))).toEqual({ label: 'stopped', caption: 'Stopped', faulted: true });
+  });
+
+  it('says a plugin that is reloading is starting again, and no fault: nothing failed', () => {
+    expect(failureWords(unloadedFailure('reloaded'))).toEqual({ label: 'starting again', caption: 'Starting again', faulted: false });
   });
 });

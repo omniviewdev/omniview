@@ -1,6 +1,6 @@
 import { admitOrThrow } from '../contract/admit';
 import type { ContributionV1 } from '../contract/v1';
-import { classify, type LoadFailure } from '../loader/failure';
+import { classify, unloadedFailure, type LoadFailure, type UnloadCause } from '../loader/failure';
 
 // What the host knows about each installed plugin's interface: loading, ready with its contribution, or failed with why. Framework-free (React reads it
 // through `useSyncExternalStore`), and the loader is injected, so the rules here (bounded parallel loads, one load per plugin at a time, a retry that
@@ -83,6 +83,52 @@ export class PluginStore {
     return this.start(descriptor);
   }
 
+  /**
+   * The plugin stopped serving the window (`plugin/unloaded`, `lifecycle.ts`): what it drew goes through the paths that already know a plugin with no contribution, in the same transaction, and its modules
+   * are dropped. A plugin whose process crashed and one that is reloading are plugins the window will want again, so they stay as a failed entry of the kind `unloaded` that says why in the host's words
+   * (`revive` loads it when it runs); the first cause stands until then, so the recovery of a crash, which reloads the plugin, does not turn "stopped unexpectedly" into "reloading". A plugin that was
+   * uninstalled or turned off is not a failure: the store forgets it, as it would not have it if the window had opened now, and what loads it again is the inventory. A load that was on its way is
+   * dropped, and a plugin the store has no entry for has nothing to drop.
+   */
+  unload(id: string, cause: UnloadCause): void {
+    const entry = this.entries.get(id);
+    if (entry === undefined) {
+      return;
+    }
+
+    if (cause === 'crashed' || cause === 'reloaded') {
+      if (entry.phase === 'failed' && entry.failure.kind === 'unloaded') {
+        return;
+      }
+
+      this.supersede(id);
+      this.set({ id, name: entry.name, phase: 'failed', failure: unloadedFailure(cause) });
+      return;
+    }
+
+    this.supersede(id);
+    this.forget(id);
+  }
+
+  /**
+   * The plugin runs again (`plugin/state_change` to Running): a plugin that was gone loads again from its files. A plugin that is ready, loading, or failed to load on its own is left alone (a retry is
+   * explicit), as is one the store has no entry for: the inventory loads that.
+   */
+  async revive(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (entry?.phase !== 'failed' || entry.failure.kind !== 'unloaded') {
+      return;
+    }
+
+    return this.retry({ id, name: entry.name });
+  }
+
+  /** The answers of loads that are on their way are stale from now on, and so are the modules of what they were loading. */
+  private supersede(id: string): void {
+    this.generation.set(id, (this.generation.get(id) ?? 0) + 1);
+    this.deps.clearBundle(id);
+  }
+
   private async start(descriptor: PluginDescriptor): Promise<void> {
     const generation = (this.generation.get(descriptor.id) ?? 0) + 1;
     this.generation.set(descriptor.id, generation);
@@ -133,8 +179,18 @@ export class PluginStore {
   }
 
   private set(entry: PluginEntry): void {
-    this.entries = new Map(this.entries).set(entry.id, entry);
-    this.snapshot = [...this.entries.values()].sort((a, b) => a.id.localeCompare(b.id));
+    this.publish(new Map(this.entries).set(entry.id, entry));
+  }
+
+  private forget(id: string): void {
+    const next = new Map(this.entries);
+    next.delete(id);
+    this.publish(next);
+  }
+
+  private publish(entries: ReadonlyMap<string, PluginEntry>): void {
+    this.entries = entries;
+    this.snapshot = [...entries.values()].sort((a, b) => a.id.localeCompare(b.id));
     for (const listener of this.listeners) {
       listener();
     }

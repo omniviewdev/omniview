@@ -38,6 +38,19 @@ Queued rebuild callbacks use `ReloadManagedPlugin(ctx, id, source, generation)`.
 
 Each external or built-in replacement record registers its lifecycle observer before entering `Running`. The manager publishes the replacement record first, then emits the real `plugin/state_change` transition so existing connection boundaries can leave the retired plugin's unavailable state. A successful backend load without that event is not consumer recovery; no cache clearing, forced remount, or additional readiness probe substitutes for it.
 
+## What the window is told when a plugin stops
+
+A window draws a plugin's interface from files the host serves and reaches the plugin's process only through the host, so it cannot see the plugin stop. The manager says so with `plugin/unloaded` (`backend/pkg/plugin/events.go`): the plugin's `pluginID` and a `cause`, which is one of `crashed`, `reloaded`, `uninstalled` or `disabled` and nothing else. No text of the plugin, of its process or of an error travels with it: the window words each cause itself, and `internal/auditgate/policy.json` classifies the event as carrying none.
+
+| Cause | Sent when | Where |
+| --- | --- | --- |
+| `crashed` | the health check or the resource event stream finds the process gone: every crash, where `plugin/crash` (which carries the plugin's last log line) is sent for the first crash of a cycle only | `handlePluginCrash` |
+| `reloaded` | the plugin is stopped to start again: `ReloadPlugin` (a rebuild of a development plugin, a retry, and the restart that recovers a crash, which follows `crashed`), an update or a reinstall from an archive, relinking a development plugin | `reloadPluginLocked`, `unloadArchivePlugin`, `unloadForReinstall` |
+| `uninstalled` | the plugin is stopped to be removed | `unloadForReinstall`, from `uninstallPlugin` |
+| `disabled` | the person turns the plugin off (turning it on tells nothing: the plugin runs again, which `plugin/state_change` says) | `SetPluginEnabled` |
+
+It is sent once the plugin has stopped (for `disabled`, before the teardown, as `plugin/enablement_changed` is, to fence a pending activation) and before the plugin can run again, so the last of `plugin/unloaded` and `plugin/state_change` to `Running` that a window reads is the true one. A plugin the manager does not hold (a first install) is not told of. A window drops what it drew from the plugin at `plugin/unloaded` and draws it again at `plugin/state_change` to `Running` (`ui-next/plugins/host/lifecycle.ts`). Not told: a development plugin stopped with `StopDevPlugin`, and a stop that failed (the plugin is `Failed`, which `plugin/state_change` says).
+
 ## Tools and child environment
 
 Explicit configured Go/pnpm/node executables are validated at execution. For workspace UI plugins, the launcher supplies `OMNIVIEW_PLUGIN_PNPM_COMMANDS`: a map keyed by plugin ID containing `{program, args, source}`. After ConfigureWorkspace, the host calls `ConfigurePNPMCommands` before managed starts. Each entry is an absolute native Node program plus an owned pnpm.cjs argument prefix, bound to that plugin's canonical source; install/dev task arguments are appended without a shell. Different plugins may therefore use different exact packageManager pins. Configuration is copied so caller mutation cannot change a running selection. A nonempty explicit `developer.pnpmpath` remains authoritative and receives no injected prefix. Without that override, missing or rebound workspace sources require reconfiguration rather than silently adopting another source's pin or a global pnpm. Outside workspace-managed command selection, tools default to `PATH`; GUI-entered paths are not mandatory. Missing or invalid required tools are operation errors.

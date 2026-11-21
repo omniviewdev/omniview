@@ -1,6 +1,7 @@
 import { openSession, SESSION_VERSION, type LoadedSession } from '../shell/session';
 import type { ContributionV1, ContextV1, ListPageV1, ListPageViewV1 } from './contract/v1';
 import { HOME_PAGE } from './host/contributions';
+import type { EventSource } from './host/lifecycle';
 import type { PluginEntry } from './host/pluginStore';
 import { railOf } from './host/rail';
 
@@ -85,4 +86,49 @@ export function startedOn(entries: readonly PluginEntry[]): LoadedSession | unde
     panel: { version: 1 },
   });
   return openSession({ read: async () => text, write: async () => undefined, keep: async () => undefined }, text);
+}
+
+type EventHandler = (event: { readonly data?: unknown }) => void;
+
+export type FakeEvents = {
+  /** What the listener under test is given. */
+  readonly source: EventSource;
+  /** The host says something to the window: every handler of the name is called with the data. */
+  readonly emit: (name: string, data?: unknown) => void;
+  /** The handlers on now, whatever the name. */
+  readonly held: () => number;
+  /** The names that have a handler on, sorted. */
+  readonly names: () => string[];
+};
+
+/**
+ * The runtime's `Events`, as a table of handlers a test calls: what the host says to the window (`plugin/unloaded`, `plugin/state_change`) is `emit`ted by the test, and `held` counts the handlers that
+ * are on now, so a test sees a listener that is never removed. No runtime, no host.
+ */
+export function fakeEvents(): FakeEvents {
+  const handlers = new Map<string, Set<EventHandler>>();
+  const source: EventSource = {
+    On: (name, callback) => {
+      const set = handlers.get(name) ?? new Set<EventHandler>();
+      handlers.set(name, set);
+      set.add(callback);
+      return () => {
+        set.delete(callback);
+      };
+    },
+  };
+  return {
+    source,
+    emit: (name, data) => {
+      for (const handler of [...(handlers.get(name) ?? [])]) {
+        handler({ data });
+      }
+    },
+    held: () => [...handlers.values()].reduce((total, set) => total + set.size, 0),
+    names: () =>
+      [...handlers.entries()]
+        .filter(([, set]) => set.size > 0)
+        .map(([name]) => name)
+        .sort(),
+  };
 }

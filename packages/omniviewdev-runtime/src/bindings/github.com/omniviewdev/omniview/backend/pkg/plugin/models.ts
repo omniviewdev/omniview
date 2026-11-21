@@ -256,6 +256,65 @@ export class StateWriteErrorPayload {
 }
 
 /**
+ * UnloadCause says why a plugin stopped serving the window. It is one of the four words below and nothing else: the window words each for the person itself, so no text of the plugin, of
+ * its process or of an error ever travels with the event (docs/development-plugin-lifecycle.md, "What the window is told when a plugin stops").
+ */
+export enum UnloadCause {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * UnloadCrashed: the plugin's process ended or stopped answering, and the host is recovering it. Told for every crash, not for the first of a cycle only (EventCrash is).
+     */
+    UnloadCrashed = "crashed",
+
+    /**
+     * UnloadReloaded: the host stopped the plugin to start it again: a reload (a rebuild of a development plugin, a retry), an update or a reinstall, or the restart that recovers a crash.
+     */
+    UnloadReloaded = "reloaded",
+
+    /**
+     * UnloadUninstalled: the plugin was removed.
+     */
+    UnloadUninstalled = "uninstalled",
+
+    /**
+     * UnloadDisabled: the person turned the plugin off.
+     */
+    UnloadDisabled = "disabled",
+};
+
+/**
+ * UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. It has no other member, and a member that carried text would put the plugin's words in the window's hands.
+ */
+export class UnloadedPayload {
+    "pluginID": string;
+    "cause": UnloadCause;
+
+    /** Creates a new UnloadedPayload instance. */
+    constructor($$source: Partial<UnloadedPayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("cause" in $$source)) {
+            this["cause"] = UnloadCause.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UnloadedPayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UnloadedPayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UnloadedPayload($$parsedSource as Partial<UnloadedPayload>);
+    }
+}
+
+/**
  * UpdateErrorPayload is sent with EventUpdateError.
  */
 export class UpdateErrorPayload {

@@ -1,4 +1,5 @@
 import { Icon, KindTile, Text, type IconName, type KindTileTone } from '@omniviewdev/kit';
+import { failureWords } from '../loader/failure';
 import styles from './NoTabs.module.css';
 import type { PluginEntry } from './pluginStore';
 import { DEFAULT_RAIL_ICON, railOf } from './rail';
@@ -13,7 +14,7 @@ export type HomeEntry = {
   readonly label: string;
   readonly icon: IconName;
   readonly tone: KindTileTone;
-  /** "Loading" or "Did not load": the plugin opens, to a page that says so (ch16 S65, degraded). Absent for a plugin that is ready. */
+  /** "Loading", "Did not load", "Stopped" or "Starting again": the plugin opens, to a page that says so (ch16 S65, degraded). Absent for a plugin that is ready. */
   readonly state: string | undefined;
 };
 
@@ -25,7 +26,7 @@ export function homeEntriesOf(entries: readonly PluginEntry[]): readonly HomeEnt
   const ready = railOf(entries).map((entry): HomeEntry => ({ id: entry.id, label: entry.label, icon: entry.icon, tone: entry.accent ?? 'neutral', state: undefined }));
   const others = entries
     .filter((entry) => entry.phase !== 'ready')
-    .map((entry): HomeEntry => ({ id: entry.id, label: entry.name, icon: DEFAULT_RAIL_ICON, tone: 'neutral', state: entry.phase === 'loading' ? 'Loading' : 'Did not load' }))
+    .map((entry): HomeEntry => ({ id: entry.id, label: entry.name, icon: DEFAULT_RAIL_ICON, tone: 'neutral', state: entry.phase === 'loading' ? 'Loading' : failureWords(entry.failure).caption }))
     .sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.id < b.id ? -1 : 1));
   return [...ready, ...others];
 }

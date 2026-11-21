@@ -255,6 +255,14 @@ func (pm *pluginManager) pluginOpsLock(pluginID string) *sync.Mutex {
 	return mu
 }
 
+// holds reports whether the manager has a record of the plugin: a plugin it holds is one a window may hold an interface of, so the stops of it are told to the window.
+func (pm *pluginManager) holds(id string) bool {
+	pm.recordsMu.RLock()
+	defer pm.recordsMu.RUnlock()
+	_, ok := pm.records[id]
+	return ok
+}
+
 // Run starts the plugin manager's background tasks.
 func (pm *pluginManager) Run(ctx context.Context) {
 	if pm.ctx == nil {
@@ -342,6 +350,10 @@ func (pm *pluginManager) handlePluginCrash(pluginID string, expected *probedCras
 			Error:    crashError,
 		})
 	}
+
+	// Every crash takes the plugin away from the window, the first of a cycle and each one after it, so the window is told each time, with the cause and no text. "plugin/crash" above carries
+	// the plugin's last log line for the readers that want it, and is sent for the first crash of a cycle only.
+	emitUnloaded(pm.emitter, pluginID, UnloadCrashed)
 
 	// Transition state machine to Recovering and set Phase so the health
 	// checker skips this plugin (it only checks Phase == PhaseRunning).

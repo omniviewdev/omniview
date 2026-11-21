@@ -298,6 +298,7 @@ func (pm *pluginManager) SetPluginEnabled(id string, enabled bool) (_ plugintype
 	if !enabled {
 		// Fence pending frontend activation before waiting for provider teardown.
 		pm.emitter.Emit("plugin/enablement_changed", map[string]interface{}{"pluginID": id, "enabled": false})
+		emitUnloaded(pm.emitter, id, UnloadDisabled)
 	}
 	var cleanupErr error
 	if !enabled && (record.Phase == lifecycle.PhaseRunning || record.Backend != nil) {
