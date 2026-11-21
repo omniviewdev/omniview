@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
 import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
-import { compareLane } from './lane.mjs';
+import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
@@ -97,6 +97,18 @@ if (mode === 'control-fixture-absent') {
     // The one assertion about the connection's chip (H6): its text is the NAME of the connection, and not the ID that the host lists for it.
     const lane = compareLane(read.lane, await expectedLane({ baseURL, kubeconfig }));
     assert.equal(lane.length, 0, lane.join('; '));
+  });
+
+  // C1h: the ID is a key; no text the window draws and no accessible name carries it (the tab's name, the status bar, the sidebar's and the page's labels).
+  test('the window draws no connection ID in its text or its accessible names', async () => {
+    const page = await openPods(browser, baseURL);
+    try {
+      const { id } = await expectedLane({ baseURL, kubeconfig });
+      const problems = compareDrawn(await readDrawn(page), id);
+      assert.equal(problems.length, 0, problems.join('; '));
+    } finally {
+      await page.close();
+    }
   });
 
   // The runtime's live feed, end to end: a Pod created and deleted with kubectl appears and disappears without a reload.

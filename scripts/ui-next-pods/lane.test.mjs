@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareLane, DERIVED_ID } from './lane.mjs';
+import { compareDrawn, compareLane, DERIVED_ID } from './lane.mjs';
 
 // The context kubectl calls current, and the ID the plugin derives for the connection of that name. The kubeconfig of the check lives in a temp directory and the ID is a hash of its path, so the ID
 // is another one on every run: no test writes one into the check, and these are the shapes of two runs.
@@ -52,4 +52,15 @@ test('the derived ID has the plugin\'s shape: a slug, a dash and ten lower-case 
   assert.doesNotMatch('kind-ui-next-pods-ef801541b', DERIVED_ID, 'nine digits');
   assert.doesNotMatch('kind-ui-next-pods-EF801541B4', DERIVED_ID, 'upper case');
   assert.doesNotMatch('arn:aws:eks:eu-west-1:1:cluster/prod', DERIVED_ID, 'a name that is not an ID');
+});
+
+test('the window that draws no ID agrees; one that draws it in a text or an accessible name is reported (negative control), and an unknown ID is a problem', () => {
+  assert.deepEqual(compareDrawn(`Deployments, ${CONTEXT}\nKubernetes ${CONTEXT} Deployments`, FIRST_RUN.id), []);
+  for (const drawn of [`Deployments · ${FIRST_RUN.id}`, `tab\nDeployments, ${CONTEXT} ${FIRST_RUN.id}`]) {
+    const problems = compareDrawn(drawn, FIRST_RUN.id);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], new RegExp(`draws the connection's ID \\(${FIRST_RUN.id}\\)`));
+  }
+  assert.equal(compareDrawn('anything', undefined).length, 1);
+  assert.equal(compareDrawn('anything', '').length, 1);
 });
