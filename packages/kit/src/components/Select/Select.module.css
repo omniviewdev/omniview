@@ -1,0 +1,49 @@
+/* The select (the mock's `:root select`, base.css 1046 to 1055, and `.settings-select`, shell-page-settings.css 48): the face of an input,
+   drawn by the part (`appearance: none`), with 28 px at its end for the arrow (the mock's `--int-select-arrow-area`) and the arrow a glyph of
+   the registry in a theme role, never a picture with a colour of its own. A select in a settings row is at least 200 px and as wide as its
+   longest option needs; in a field it takes the width of its place. */
+@layer ov.components {
+  .root {
+    position: relative;
+    max-width: 100%;
+  }
+
+  .root[data-ov-width='fill'] {
+    display: block;
+  }
+
+  .root[data-ov-width='normal'] {
+    display: inline-block;
+    justify-self: start;
+    min-width: min(200px, 100%);
+  }
+
+  .select {
+    display: block;
+    width: 100%;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the mock's select insets: 9 px at the start and the 28 px arrow area at the end (`--int-select-arrow-area`): outside the spacing scale */
+    padding-inline: 9px 28px;
+    text-overflow: ellipsis;
+    appearance: none;
+  }
+
+  .chevron {
+    --_arrow: var(--ov-icon);
+
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 9px;
+    display: inline-flex;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  /* The glyph's own stroke is pinned to the chevron role; the arrow of a select takes the icon role, as the mock's does. */
+  .chevron > svg path[data-ov-stroke='chevron'] {
+    stroke: var(--_arrow);
+  }
+
+  .select[aria-disabled='true'] ~ .chevron {
+    --_arrow: var(--ov-icon-disabled);
+  }
+}

@@ -1,0 +1,10 @@
+/* The column the form-column example sits in: its fields one under the other, 12 px apart (the pane inset and row gap), the width of its place. */
+@layer ov.components {
+  .column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-12);
+    width: 100%;
+    min-width: 0;
+  }
+}

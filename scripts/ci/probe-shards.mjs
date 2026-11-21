@@ -32,7 +32,7 @@
 //   shard 5  strip 192, list page 61, strip controls 28, plugin providers 151                       = 432
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  tooltip 145, palette controls 63, toast layer controls 156, table 62                   = 426
-//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105                      = 376
+//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105, form 35 + its controls 20 = 431
 //   shard 9  logs controls 381                                                                      = 381
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
 // (C1f: the plugin providers probe and its controls are ESTIMATES of 148 and 98 s, from the runner's 142 and 91: the connection part and its control, until a run's summary has the runner's. Shard 5 would have been 438 s, so four units
@@ -254,6 +254,20 @@ export const TABLE = {
         // The fonts are delivered, used, and the page does not shift.
         { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
 
+        // The form parts (FM2a: Field, TextInput, NumberInput, Toggle, Select and SecretInput) against the pinned mock reference (packages/kit/probes/mock-form.json, measured from the mock's own helpers by mock-form-measure.mjs): the face, the message lane in each kind, the label, the
+        // switch, the number field, the select and the secret, at rest and in each state with real focus and the pointer, in Void and in Light; every example in every state of the field model; a typed secret that is found nowhere in the page but the live input; the keyboard paths;
+        // the paints of the parts in the nine themes; and axe, at 1440 x 900 and 1280 x 800 in both engines.
+        { name: 'Probe the form parts against the pinned mock reference', script: 'packages/kit/probes/form-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/form-probe.json' } },
+
+        // The negative controls of the form probe: each plants one fault in the page after it loaded, and the fault trips the one assertion it is named for and no other (a text field at rest 4 px taller, a code-face field in the interface face, a lane message 6 px lower, a switch track 4 px wider in the same place, padding in the number field, a label that is for no control, a read-only switch that is not exposed as
+        // unavailable, a stepper button that is a tab stop, a locked select whose keydown is not refused, the typed secret copied into an attribute of its input). A control passes (exit 0) when its assertion sees the fault; with that assertion removed (ASSERTION_OFF=says) nothing at all is left (exit 1, NOT DETECTED), and a fault that trips another assertion is INVALID (exit 2). Chromium at 1440 x 900, the section of the fault only.
+        {
+          name: 'Probe that the form probe sees a form that is wrong',
+          script: 'packages/kit/probes/form-probe.mjs',
+          env: { DIST: '$PROBE_DIST' },
+          controls: ['face-height', 'mono-font', 'lane-offset', 'track-width', 'stepper-pad', 'label-for', 'switch-pressable', 'step-tab-stop', 'select-unblocked', 'secret-attribute'],
+        },
+
         // The negative controls of the plugin providers probe (its probe is in shard 5): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
         // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword, a connection said by its key in a row of the
         // palette, and by the tab model's faces in the tab strip, its tooltip and the status bar) and passes only when that assertion sees it. Each runs the part it perturbs.
@@ -328,6 +342,9 @@ export const MEASURED_SECONDS = {
   'Probe that the row menu probe sees a trigger that does not say it is open': 2,
   'Probe the toast layer against the pinned mock reference': 220,
   'Probe that the toast probe sees a toast layer that is wrong': 156,
+  // FM2a: the runner's seconds of the first run of the change that added the form probe (a single run, not a median of 8; the laptop's were 32 and 17).
+  'Probe the form parts against the pinned mock reference': 35,
+  'Probe that the form probe sees a form that is wrong': 20,
 };
 
 /** The wall time a shard job is held to: 9 minutes, the job (its setup and its probes) from start to end. */
