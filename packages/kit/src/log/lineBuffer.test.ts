@@ -157,4 +157,63 @@ describe('LineBuffer.resize', () => {
     expect(() => buffer.resize(1.5)).toThrow(RangeError);
     expect([buffer.capacity, buffer.length]).toEqual([4, 1]);
   });
+
+  describe('clear (the toolbar\'s Clear: the view forgets what it holds)', () => {
+    it('empties the buffer, counts nothing as evicted and keeps the ordinals going: a cleared line is not a dropped one, and no ordinal is ever reused', () => {
+      const buffer = new LineBuffer(3);
+      for (let n = 1; n <= 5; n += 1) {
+        buffer.push(line(n));
+      }
+
+      expect([buffer.length, buffer.first, buffer.next, buffer.evicted, buffer.evictedLines]).toEqual([3, 3, 6, 2, 2]);
+      buffer.clear();
+      expect([buffer.length, buffer.lines, buffer.first, buffer.next, buffer.evictedLines]).toEqual([0, 0, 6, 6, 0]);
+      expect(buffer.byOrdinal(5)).toBeUndefined();
+      expect(buffer.byOrdinal(6)).toBeUndefined();
+    });
+
+    it('lets the next entry in at the next ordinal, and takes none of the old', () => {
+      const buffer = new LineBuffer(3);
+      buffer.push(line(1));
+      buffer.push(gap(2));
+      buffer.clear();
+      expect(() => buffer.push(line(2))).toThrow(RangeError);
+      buffer.push(line(3));
+      expect([buffer.length, buffer.lines, buffer.first, buffer.at(0).n]).toEqual([1, 1, 3, 3]);
+    });
+
+    it('counts a marker that was held as no marker: the lines it holds are the lines after the clear', () => {
+      const buffer = new LineBuffer(4);
+      buffer.push(gap(1));
+      buffer.push(line(2));
+      buffer.clear();
+      buffer.push(line(3));
+      expect([buffer.length, buffer.lines]).toEqual([1, 1]);
+    });
+
+    it('still evicts, and counts, the lines that come after it past its capacity', () => {
+      const buffer = new LineBuffer(2);
+      buffer.push(line(1));
+      buffer.clear();
+      for (let n = 2; n <= 5; n += 1) {
+        buffer.push(line(n));
+      }
+
+      expect([buffer.length, buffer.evictedLines, buffer.first]).toEqual([2, 2, 4]);
+    });
+
+    it('holds nothing of the old lines: a ring written after the clear never hands an old entry back as the one it overwrote', () => {
+      const buffer = new LineBuffer(3);
+      buffer.push(line(1));
+      buffer.push(line(2));
+      buffer.push(line(3));
+      buffer.clear();
+      const gone: Array<number | undefined> = [];
+      for (let n = 4; n <= 9; n += 1) {
+        gone.push(buffer.push(line(n))?.n);
+      }
+
+      expect(gone).toEqual([undefined, undefined, undefined, 4, 5, 6]);
+    });
+  });
 });

@@ -443,7 +443,7 @@ describe('RovingGroup', () => {
 
   it('passes data-* attributes through and nothing else', () => {
     const Loose = RovingGroup as unknown as ComponentType<Record<string, unknown>>;
-    const loose: Record<string, unknown> = { label: 'Items', children: <Buttons />, 'data-testid': 'probe', className: 'restyled', style: { color: 'red' }, id: 'x', title: 'hint', tabIndex: 3, role: 'toolbar', onKeyDown: () => undefined };
+    const loose: Record<string, unknown> = { label: 'Items', children: <Buttons />, 'data-testid': 'probe', className: 'restyled', style: { color: 'red' }, id: 'x', title: 'hint', tabIndex: 3, role: 'presentation', onKeyDown: () => undefined };
     render(<Loose {...loose} />);
     const group = screen.getByTestId('probe');
     expect(group.getAttribute('class')).not.toContain('restyled');
@@ -473,8 +473,8 @@ describe('RovingGroup', () => {
     const unknownGap: RovingGroupProps = { label: 'Items', gap: 10 };
     // @ts-expect-error an alignment outside the closed set
     const unknownAlign: RovingGroupProps = { label: 'Items', align: 'middle' };
-    // @ts-expect-error a role is not a prop: the group is a group
-    const withRole: RovingGroupProps = { label: 'Items', role: 'toolbar' };
+    // @ts-expect-error a role outside the two the group may be: a group or a toolbar
+    const withRole: RovingGroupProps = { label: 'Items', role: 'button' };
     expect([accepted, nameless, withClass, withStyle, unknownKind, unknownGap, unknownAlign, withRole]).toHaveLength(8);
   });
 

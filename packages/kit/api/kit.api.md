@@ -106,6 +106,9 @@ export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 
 export const compactAge: AgeFormatter;
 
 // @public
+export function createLogViewControls(): LogViewControls;
+
+// @public
 export function createRowMenu<TRow>(): RowMenuHandle<TRow>;
 
 // @public
@@ -282,6 +285,7 @@ export type IconButtonProps = {
     readonly busy?: boolean | undefined;
     readonly pressed?: boolean | undefined;
     readonly disabledReason?: string | undefined;
+    readonly popup?: 'menu' | undefined;
     readonly onClick?: ((event: MouseEvent_2<HTMLButtonElement>) => void) | undefined;
 } & DataAttributes;
 
@@ -289,7 +293,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'activity' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'blocks' | 'box' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'file-cog' | 'folder-tree' | 'gauge' | 'globe' | 'hard-drive' | 'hard-drive-download' | 'hourglass' | 'key-round' | 'layers' | 'layout-template' | 'list-ordered' | 'loader' | 'loader-circle' | 'network' | 'panel-bottom' | 'play' | 'plus' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'server' | 'server-cog' | 'settings-2' | 'shield' | 'shield-check' | 'split' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'target' | 'umbrella' | 'waypoints';
+export type IconName = 'activity' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'blocks' | 'box' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'eraser' | 'file-cog' | 'folder-tree' | 'gauge' | 'globe' | 'hard-drive' | 'hard-drive-download' | 'hourglass' | 'key-round' | 'layers' | 'layout-template' | 'list-ordered' | 'loader' | 'loader-circle' | 'network' | 'panel-bottom' | 'pause' | 'play' | 'plus' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'server' | 'server-cog' | 'settings-2' | 'shield' | 'shield-check' | 'split' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'target' | 'umbrella' | 'waypoints';
 
 // @public (undocumented)
 export type IconProps = {
@@ -470,13 +474,39 @@ export type LogTimestamps = 'local' | 'utc';
 export function LogView(input: LogViewProps): JSX.Element;
 
 // @public
+export type LogViewControls = {
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly getSnapshot: () => LogViewState;
+    readonly follow: (on: boolean) => void;
+    readonly pause: (on: boolean) => void;
+    readonly clear: () => void;
+    readonly copy: (timestamps?: LogTimestamps) => LogViewCopy | undefined;
+};
+
+// @public
+export type LogViewCopy = {
+    readonly text: string;
+    readonly lines: number;
+};
+
+// @public
 export type LogViewProps = {
     readonly label: string;
     readonly feed: LogFeed;
     readonly maxLines?: number | undefined;
     readonly defaultQuery?: string | undefined;
     readonly timestamps?: LogTimestamps | undefined;
+    readonly controls?: LogViewControls | undefined;
 } & DataAttributes;
+
+// @public
+export type LogViewState = {
+    readonly following: boolean;
+    readonly drawn: boolean;
+    readonly held: boolean;
+    readonly paused: boolean;
+    readonly feed: LogFeedState;
+};
 
 // @public
 export function MiddleEllipsis(input: MiddleEllipsisProps): JSX.Element;
@@ -625,6 +655,7 @@ export type RovingGroupProps = {
     readonly gap?: SpacingStep | undefined;
     readonly wrap?: boolean | undefined;
     readonly align?: StackAlign | undefined;
+    readonly role?: 'group' | 'toolbar' | undefined;
     readonly children?: ReactNode;
 } & DataAttributes;
 

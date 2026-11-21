@@ -1,0 +1,4 @@
+/* The box the toolbar option mounts LogSession in: the host's `.log` (a flex row) given the stage's full height, as the panel's slot gives it the body's. */
+.bench-log-box {
+  block-size: 100%;
+}

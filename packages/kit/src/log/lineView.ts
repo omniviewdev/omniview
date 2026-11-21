@@ -159,6 +159,18 @@ export class LineView {
     return this.trim() - replaced;
   }
 
+  /**
+   * The buffer was emptied (`LineBuffer.clear`): the view shows nothing and holds no index. It keeps the level the reader chose, so what comes next is filtered as before, and it forgets the lead:
+   * what a marker that reached the head stood for was a count of lines that are not held any more, and the reader cleared the place it was told of.
+   */
+  reset(): void {
+    this.ordinals = [];
+    this.start = 0;
+    this.shownLines = 0;
+    this.headDropped = 0;
+    this.headEntry = undefined;
+  }
+
   /** 1 while the view has a lead, else 0: the rows before the entries of the buffer. */
   private get lead(): number {
     return this.headDropped > 0 ? 1 : 0;

@@ -26,6 +26,8 @@ One piece at a time: `node bench/log/run.mjs --engine webkit --workload follow -
 
 `--sources 2` (L2) makes the seeded source follow two sources and list them, with the names a real stream has (`orders-7d8c6f49b-f8q4m/app` and `/sidecar`: 13 characters or more, which the kit draws in two halves, its dearest name): the kit's view then draws its Source column (a row of 13 elements against 7) and the control a plain 168 px source cell (5 against 4). `node bench/log/run.mjs --engine webkit --workload follow --configs kit:10000,control:10000 --rounds 10 --sources 2 --tag l2-webkit-follow`, then `node bench/log/analyze.mjs l2` (the tag prefix, as `m1` is for the matrix).
 
+`--toolbar` mounts the host's `LogSession` (`ui-next/shell/panel/logs`: the Logs tool's 40 px toolbar, the kit's view and the hidden live region) in the kit variant, in the flex row the tool gives it (`LogsBody.module.css` `.log`, at the stage's full height), instead of the bare `LogView`; the view is then 40 px narrower. The control variant is unchanged, and the probe selectors still find the list, the strip and the find field. Tag such a run apart (`--tag`): the analyzer judges it as any other run.
+
 ## Workloads
 
 | | |

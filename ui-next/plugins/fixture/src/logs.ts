@@ -3,10 +3,10 @@ import type { LogFeedV1, LogTargetV1, PanelHostV1 } from '../../contract/v1';
 // eslint-disable-next-line no-restricted-imports -- the lines come from the kit's synthetic feed, which no entry of the kit exports (it is development and documentation only); build.mjs lets this one file into the bundle (docs/ui-next/status/P1b-3a.md, "Fixture plugin")
 import { SyntheticFeed } from '../../../../packages/kit/src/components/LogView/syntheticFeed';
 
-// The fixture's Logs sessions: the proof of `ctx.panel.logs.open` from outside the host's bundle. Seven targets of one item, each over a synthetic feed (neutral lines, the same run every time), one for
+// The fixture's Logs sessions: the proof of `ctx.panel.logs.open` from outside the host's bundle. Eight targets of one item, each over a synthetic feed (neutral lines, the same run every time), one for
 // every state of a log the host draws: one that streams and goes on, one that ends, one that fails with a cause, one at 10,000 lines a second (what a hidden session must cost nothing for), one that follows
 // TWO sources (the log's Source column, L2: its lines take the two in turn, odd lines the first), one that follows ONE until a check says its second source speaks (`speak()`: the column appears while
-// the session is open), and a TWIN of the first (its title, another id and another yard as its scope: two tabs of one title, which the strip tells apart by their scope, P1b-3d). The item's detail page lists
+// the session is open), a TWIN of the first (its title, another id and another yard as its scope: two tabs of one title, which the strip tells apart by their scope, P1b-3d), and one that makes no line at all (the toolbar's Clear and Copy with nothing to act on, P1b-4a). The item's detail page lists
 // them as commands in its menu, so opening one is what a plugin's resource view does and no header moves. Pressing a command again is a press for the session it opened: the host shows it (P1b-3d). The two that end or fail
 // by themselves (1.5 s after they open) can be held live by a check while they open (`hold` and `endHeld`, below), so that a check that presses one again does not race the frames of its page against that second and a half.
 
@@ -152,6 +152,8 @@ const SPECS: readonly Spec[] = [
   // The same name in another yard: the title of `app`, an id of its own and the south yard as its scope, so the strip has two tabs of one title and each says which yard it is. Last, so the indexes of the others
   // (`window.__logs.open(0)` of the probes) are what they were; its label contains no `Logs: app`.
   { source: 'app', command: 'Logs: its twin in the south yard', rate: 20, seed: 17, scope: 'south-yard', idSuffix: '@south-yard' },
+  // A session that is connected and makes no line at all (P1b-4a): the toolbar's Clear and Copy have nothing to act on, and say so; Follow and Pause are what they are. After the twin, so the indexes before it are what they were.
+  { source: 'quiet', command: 'Logs: no lines yet (quiet)', rate: 0, seed: 18 },
 ];
 
 /** A stream over a synthetic feed: what the host reads (`subscribe`, `read` and the rest are the feed's own) and what it closes. */

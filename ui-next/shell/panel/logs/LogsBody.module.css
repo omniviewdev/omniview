@@ -1,10 +1,68 @@
 @layer ov.shell {
-  /* The kit's log view is a block-level column that takes the width of the box it is given and the height of it (`height: 100%`), and owns its scrolling. The panel lays a session's body out as an item of a
-     row (`.slot` in ../Panel.module.css), which sizes an item that does not grow to its content: the view stood at the width of its filter row, about half of the panel at 1440 px. This box is that item:
-     it takes all the room the panel gives the body and is the block the view fills. */
+  /* The body of a Logs session: the tool's vertical toolbar at the left and the kit's log view beside it, as the mock lays out `.panel__view` (shell-regions.js 352: the toolbar, then `.panel__content`). The kit's
+     log view is a block-level column that takes the width of the box it is given and the height of it (`height: 100%`), and owns its scrolling. The panel lays a session's body out as an item of a row (`.slot`
+     in ../Panel.module.css), which sizes an item that does not grow to its content: the view stood at the width of its filter row, about half of the panel at 1440 px. This box is that item: it takes all the room
+     the panel gives the body, and is the row the toolbar and the view share. */
   .log {
+    display: flex;
     flex: 1 1 auto;
     min-inline-size: 0;
     min-block-size: 0;
+  }
+
+  /* The toolbar's column (the mock's `.panel__tools`: shell.css 127 `flex: 0 0 40px`, 28 px buttons centred, 4 px apart, 4 px above and below; shell-panel.css 177 `overflow-y: auto` with the bar hidden). A body too short for
+     every button keeps the first ones and puts the rest behind a `⋯` More actions button (LogToolbar.tsx: the mock's `toolbarOf`, shell-regions.js 298-308), so the column does not overflow; the scroll with no bar is the mock's
+     own safety net (a height that was not measured yet) and hides nothing a person could need to find. */
+  .tools {
+    display: flex;
+    flex: 0 0 40px;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    inline-size: 40px;
+    min-block-size: 0;
+    padding-block: var(--ov-spacing-4);
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .tools::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* What is beside the column: the view fills it. */
+  .view {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The session's polite announcements (a copy that was made, one that was not): in the body and read, never drawn. It takes no room and holds no focus. */
+  .live {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* The textarea a copy is made through where the asynchronous clipboard refuses (./clipboard.ts; the mock's `.pcopy`, shell-panel.css 186): rendered and selectable, out of sight, and it keeps white space, so the
+     columns of a log are copied as they are. */
+  .holder {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    overflow: hidden;
+    resize: none;
+    white-space: pre;
+    pointer-events: none;
   }
 }

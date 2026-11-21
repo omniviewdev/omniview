@@ -1,5 +1,7 @@
 export { LogView } from './LogView';
 export type { LogViewProps } from './LogView';
+export { createLogViewControls } from './LogViewControls';
+export type { LogViewControls, LogViewCopy, LogViewState } from './LogViewControls';
 export type {
   LogFeed,
   LogFeedBatch,
