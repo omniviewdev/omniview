@@ -3,7 +3,7 @@ import { MIGRATIONS, restoreNotices, serialiseNotices } from './persist';
 import { START } from './testing';
 import { FOREVER, LIMITS, NOTICES_VERSION, type PersistedRecord } from './types';
 
-// The history survives a restart (ch16 S74: "Records persist (at most 200, 7 days) and a record that was active reloads as unknown"; the mock's `reload`, shell-notify.js:704-725). The saved form
+// The history survives a restart (ch16 S74: "Records persist (at most 200, 7 days) and a record that was active reloads as unknown", and the lead's ruling of 2026-11-20 for the owner's decision B7: 500 records, 7 days; the mock's `reload`, shell-notify.js:704-725). The saved form
 // carries its version and `migrate` (the tab model's) brings an older one up; what is read back is repaired rather than discarded: a damaged record is dropped alone. The old app has 36 stores
 // that were never versioned; this is not the 37th.
 
@@ -45,7 +45,7 @@ describe('serialiseNotices', () => {
   it('writes at most the history, newest first, and keeps what a record needs to draw before its plugin loads', () => {
     const many = Array.from({ length: LIMITS.history + 50 }, (_, index) => record({ id: `n${String(index)}`, createdAt: START - index }));
     const written = serialiseNotices(many, new Map(), START);
-    expect(written.records).toHaveLength(LIMITS.history);
+    expect(written.records).toHaveLength(500);
     expect(written.records[0]?.id).toBe('n0');
   });
 
@@ -85,10 +85,10 @@ describe('restoreNotices: the way back', () => {
     expect(result.ok && result.records.map((read) => read.id)).toEqual(['recent']);
   });
 
-  it('keeps the newest two hundred and says it dropped the rest', () => {
-    const many = Array.from({ length: 250 }, (_, index) => record({ id: `n${String(index)}`, createdAt: START - 1000 - index }));
+  it('keeps the newest five hundred and says it dropped the rest', () => {
+    const many = Array.from({ length: 600 }, (_, index) => record({ id: `n${String(index)}`, createdAt: START - 1000 - index }));
     const result = restore(document(many));
-    expect(result.ok && result.records).toHaveLength(200);
+    expect(result.ok && result.records).toHaveLength(500);
     expect(result.ok && result.records[0]?.id).toBe('n0');
     expect(result).toMatchObject({ repaired: true });
   });

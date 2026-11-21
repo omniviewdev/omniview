@@ -9,6 +9,15 @@ export const MOCK_OPEN = `
   Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/pods' }, scope), scope }, { how: 'here' });
 `;
 
+/**
+ * The mock's list of nodes of the same connection, in a freshly loaded page: the screen the toast layer's reference is measured on (ui-next/shell/probes/mock-notices-measure.mjs). The toast stack stands at its home box above the
+ * status bar, and `MOCK_OPEN`'s list has row buttons under that box at 1440 x 900 (the mock then MOVES the stack: that measures its placement rule, not the toast); this list has none, so the stack stands at HOME at both viewports.
+ */
+export const MOCK_OPEN_NODES = `
+  const scope = K8s.connections.defaultScope('prod-eu');
+  Shell.tabs.open({ plugin: 'kubernetes', route: K8s.route.make('k8s-resources', { logicalType: 'k8s:/nodes' }, scope), scope }, { how: 'here' });
+`;
+
 /** The mock's tree rows on that screen: the group, and the entry the screen is on. */
 export const MOCK_GROUP = '.tree__row[data-key="group:workloads"]';
 export const MOCK_ENTRY = '.tree__row[data-key="k8s:/pods"]';

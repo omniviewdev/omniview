@@ -11,8 +11,8 @@ export type Facts = {
   readonly severity: Severity;
   readonly initiator: Initiator;
   readonly read: boolean;
-  /** The record offers a decision: an enabled Retry or a command of the producer. Opening a page is a shortcut, not a decision (the mock: "open is not a decision"). */
-  readonly decision: boolean;
+  /** The record carries an action the user can use now: an enabled Retry, command, route or code of the producer (S77: "a warning with an action"). An action that cannot be used is no action: the toast draws no button for it. */
+  readonly action: boolean;
 };
 
 /** What happened to a record since the rules last looked: it is new, its state changed, or it started over (Retry). */
@@ -54,9 +54,11 @@ export const attention = (facts: Facts, muted: boolean): boolean => unread(facts
 export const urgent = (facts: Facts): boolean => facts.severity === 'error' && facts.initiator === 'user';
 
 /**
- * The eligibility table (S77, S78, OF4), the mock's `toastPolicy`: `null` is no toast, else whether it is sticky. A muted source and a record whose own control shows it raise none for any
- * outcome. Work the user started is sticky while it runs and updated in place; work the system started raises none while it runs. A completion that is read history raises none. A failure, an
- * unknown outcome, an error or a warning that offers a decision is sticky; anything else that ended closes by itself.
+ * The eligibility table (S77, S78, OF4): `null` is no toast, else whether it is sticky. A muted source and a record whose own control shows it raise none for any outcome. Work the user started is
+ * sticky while it runs and updated in place; work the system started raises none while it runs. A completion that is read history raises none. A failure, an unknown outcome and an error are
+ * sticky, whether or not it has an action: "a failure must not vanish" (S78; the lead's ruling of 2026-11-20 follows the written rule, and not the mock's `toastPolicy`, which timed out a failure that
+ * offered no decision). A warning that carries an action is sticky too, any action (S77's table: "a warning with an action"; the mock's `needsAction` counted only a Retry or a producer's code, and the lead
+ * ruled for the written rule again); anything else that ended closes by itself, after `TIMING.toast`.
  */
 export function toastPolicy(facts: Facts, options: { readonly muted: boolean; readonly inline: boolean }): { readonly sticky: boolean } | null {
   if (options.muted || options.inline) {
@@ -71,8 +73,8 @@ export function toastPolicy(facts: Facts, options: { readonly muted: boolean; re
     return null;
   }
 
-  const trouble = facts.state === 'failed' || facts.state === 'unknown' || facts.severity === 'error' || facts.severity === 'warning';
-  return { sticky: trouble && facts.decision };
+  const failure = facts.state === 'failed' || facts.state === 'unknown' || facts.severity === 'error';
+  return { sticky: failure || (facts.severity === 'warning' && facts.action) };
 }
 
 /** What a record that ended is told to the live region as (S86): the same words as its toast would carry, with its state in a word. */

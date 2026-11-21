@@ -36,9 +36,11 @@ import { ContributionBoundary } from './ContributionBoundary';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
+import { createHostNotices, type HostNotices } from './notices';
 import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { panelHostsOf } from './panelHost';
+import { useGuardedDefinition, useGuardedSource } from './pageFailures';
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -106,6 +108,8 @@ type Host = {
   readonly opened: Published<string>;
   /** The window's command palette: the shell draws it, and the window attaches it to the models once it is on screen (`palette.ts`). */
   readonly palette: HostPalette;
+  /** The window's toasts: the store the shell draws, and the one source that feeds it, a plugin's command that failed (`notices.ts`). The window attaches it to the models once it is on screen. */
+  readonly notices: HostNotices;
 };
 
 /**
@@ -123,6 +127,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
   const routes = new Published<Route>();
   const panelHosts = panelHostsOf(logs);
+  const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator) });
   return {
     frames,
     nodes,
@@ -141,6 +146,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     contributions,
     opened: new Published<string>(),
     palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
+    notices,
   };
 }
 
@@ -283,12 +289,13 @@ function ListContribution({ entry, route, page: pageId, frames, panelHost }: Lis
   // A list page's route has no parameters of its own (`RouteV1.params`): what an address adds to one is not an identity the page reads, so its hook is told none.
   const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS }, panel: panelHost }), [entry.id, pageId, connection, panelHost]);
   const { frame, source } = page.usePage(context);
+  const definition = useGuardedDefinition(page.definition, entry.id);
   // Before the first paint, so the scope lane and the tab's words are there with the page; a frame equal to the one held changes nothing.
   useLayoutEffect(() => {
     frames.publish(routeKey(route), frame);
   }, [frames, route, frame]);
 
-  return <ListPage definition={page.definition} source={source} />;
+  return <ListPage definition={definition} source={source} />;
 }
 
 type DetailProps = {
@@ -315,7 +322,8 @@ function DetailContribution({ entry, route, page: pageId, frames, tabs, panelHos
   const connection = connectionOf(route);
   const params = useMemo(() => textParamsOf(route), [route]);
   const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost }), [entry.id, pageId, connection, params, panelHost]);
-  const { scope, source } = page.usePage(context);
+  const { scope, source: read } = page.usePage(context);
+  const source = useGuardedSource(read, entry.id);
   const { definition } = page;
   const pluginName = entry.contribution.plugin.name;
   const face = useMemo(() => describeDetail(pluginName, route, definition), [pluginName, route, definition]);
@@ -535,6 +543,9 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   // The palette remembers the places the user goes to and keeps its list up to date while it is open, for as long as the window is on screen. Closed, it costs nothing.
   useEffect(() => host.palette.attach(), [host]);
 
+  // The toasts follow the window: a modal (the palette) holds them back, and a plugin that leaves or a tab that moves makes every notice ask again what its actions can do. Nothing runs while nothing changes.
+  useEffect(() => host.notices.attach({ subscribe: host.palette.store.subscribe, open: () => host.palette.store.getSnapshot().open }), [host]);
+
   const route = useSyncExternalStore(tabs.subscribe, () => activeRoute(tabs));
   const activeId = useSyncExternalStore(tabs.subscribe, () => tabs.getSnapshot().active);
   const rail = railOf(entries);
@@ -705,6 +716,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         onCloseWindow={onCloseWindow}
         panel={bindings}
         palette={host.palette}
+        notices={host.notices}
       />
     </>
   );

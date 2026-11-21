@@ -20,3 +20,8 @@ export { createAnnouncer } from './palette/host';
 export type { Announcer, PaletteBindings } from './palette/host';
 export { togglePanel } from './panel/focus';
 export { toggleChordText } from './panel/words';
+export { createNoticesStore } from './core/notices';
+export type { Availability as NoticeAvailability, CommandRef as NoticeCommandRef, NoticesOptions, NoticesStore, Producer as NoticesProducer } from './core/notices';
+export { createNoticesAnnouncer } from './notices/host';
+export type { NoticesAnnouncer, NoticesBindings } from './notices/host';
+export { useNotices } from './notices/context';

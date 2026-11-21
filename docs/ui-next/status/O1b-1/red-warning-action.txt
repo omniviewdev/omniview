@@ -1,0 +1,7 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+FAIL  ui-next/shell/core/notices/lifetime.test.ts > how long a toast lives > keeps a warning that carries ANY action until the user acts, an Open too (S77: "a warning with an action", the lead ruled for the written rule), and clos
+FAIL  ui-next/shell/core/notices/policy.test.ts > toastPolicy: one eligibility rule decides every toast (S77, S78, OF4) > is timed for an outcome that is calm: succeeded, cancelled, an info message, a warning with no action
+FAIL  ui-next/shell/core/notices/policy.test.ts > toastPolicy: one eligibility rule decides every toast (S77, S78, OF4) > is sticky for a failure, an unknown outcome, an error message and a warning that carries an action: S77 ("a 
+FAIL  ui-next/shell/core/notices/policy.test.ts > toastPolicy: one eligibility rule decides every toast (S77, S78, OF4) > stays timed for a warning with no action, and for an info or a success that has one: only a failure, an unkn
+Test Files  2 failed | 19 passed (21)
+     Tests  4 failed | 468 passed (472)
