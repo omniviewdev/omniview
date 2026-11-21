@@ -8,7 +8,7 @@
 //   DIST=<dir>      probe an existing build instead of building one
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   ONLY=<regexp>: a debug filter on the ids of the parity, strip and ellipsis
 //                   cases and on the example names of the counts, a11y and axe sections; ONLY runs do not exit 1 on missing coverage
-//   AXE=<path>      axe-core's axe.min.js (default /tmp/ov-axe/node_modules/axe-core/axe.min.js)
+//   AXE=<path>      axe-core's axe.min.js (default: the one `axe-core` resolves to from here, the kit's dev dependency, as kit-probe.mjs does)
 //   SHOTS=<dir>     a screenshot of each of the seven parts' sections per engine and viewport (default theme)
 //   REPORT=<file>   the full report as JSON (default /tmp/ov-1a4bc/kit-probe-bc-report.json): every check row, the element counts, the
 //                   accessibility tree of each example root and the axe violations
@@ -21,6 +21,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +37,7 @@ const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const REPORT = process.env.REPORT ?? '/tmp/ov-1a4bc/kit-probe-bc-report.json';
-const AXE = process.env.AXE ?? '/tmp/ov-axe/node_modules/axe-core/axe.min.js';
+const AXE = process.env.AXE ?? createRequire(import.meta.url).resolve('axe-core/axe.min.js');
 const MAIN = '1440x900';
 const PARTS = ['Chip', 'Status', 'MissingValue', 'KindTile', 'QuickFilters', 'MiddleEllipsis'];
 const wanted = (id) => !only || only.test(id);
