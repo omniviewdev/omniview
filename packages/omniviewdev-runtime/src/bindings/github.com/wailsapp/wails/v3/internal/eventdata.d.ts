@@ -74,6 +74,7 @@ declare module "@wailsio/runtime" {
             "plugin/recovered": plugin$0.PluginErrorPayload;
             "plugin/state_change": plugin$0.StateChangePayload;
             "plugin/state_write_error": plugin$0.StateWriteErrorPayload;
+            "plugin/unloaded": plugin$0.UnloadedPayload;
             "plugin/update_complete": plugin$0.UpdatePayload;
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;

@@ -386,6 +386,11 @@ function HostPage({ entries, route, pluginName, frames, tabs, platform, inventor
   }
 
   if (entry.phase === 'failed') {
+    // A plugin that is reloading is the mock's starting plugin (ch16 S89, PO1): nothing failed and there is nothing to retry, so its tab keeps its route and draws the loading state until the plugin runs again.
+    if (entry.failure.kind === 'unloaded' && entry.failure.cause === 'reloaded') {
+      return <PlaceholderPage title={entry.name} state={{ kind: 'loading' }} />;
+    }
+
     return (
       <PlaceholderPage
         title={entry.name}

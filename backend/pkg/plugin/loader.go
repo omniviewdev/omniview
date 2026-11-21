@@ -623,6 +623,8 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 		return plugintypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Failed to unload plugin during reload").WithInstance(id)
 	}
+	// The plugin is stopped and about to start again: the window is told it is gone before it is told it runs again (EventStateChange to Running, from the load below), so what it reads last is true.
+	emitUnloaded(pm.emitter, id, UnloadReloaded)
 	return pm.loadPluginLocked(id, opts)
 }
 

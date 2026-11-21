@@ -199,6 +199,11 @@ export const PluginStateChange = "plugin/state_change";
 export const PluginStateWriteError = "plugin/state_write_error";
 
 /**
+ * Name of the custom event "plugin/unloaded".
+ */
+export const PluginUnloaded = "plugin/unloaded";
+
+/**
  * Name of the custom event "plugin/update_complete".
  */
 export const PluginUpdateComplete = "plugin/update_complete";

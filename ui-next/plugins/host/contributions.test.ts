@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Route } from '../../shell';
 import type { FrameV1 } from '../contract/v1';
+import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
@@ -11,6 +12,7 @@ import { Published } from './published';
 const ready = (id = 'acme', name = 'Acme plugin', patch: Parameters<typeof acme>[0] = {}): PluginEntry => ({ id, name, phase: 'ready', contribution: acme(patch) });
 const loading = (id = 'slow', name = 'Slow plugin'): PluginEntry => ({ id, name, phase: 'loading' });
 const failed = (id = 'broken', name = 'Broken plugin'): PluginEntry => ({ id, name, phase: 'failed', failure: { kind: 'missing', message: 'The plugin\'s interface could not be read.' } });
+const gone = (cause: 'crashed' | 'reloaded', id = 'gone', name = 'Gone plugin'): PluginEntry => ({ id, name, phase: 'failed', failure: unloadedFailure(cause) });
 
 const route = (plugin: string, contribution: string, params: Route['params'] = {}): Route => ({ plugin, contribution, params });
 const from = (plugin: string, params: Route['params'] = {}) => ({ from: route(plugin, 'widgets', params), source: 'test' });
@@ -100,6 +102,14 @@ describe('describe', () => {
     expect(description).not.toHaveProperty('provisional');
   });
 
+  it('names a plugin whose process crashed with the error glyph, and one that is reloading with the generic glyph: nothing failed in the second', () => {
+    const { contributions } = world([gone('crashed', 'crashed', 'Crashed plugin'), gone('reloaded', 'reloading', 'Reloading plugin')]);
+
+    expect(contributions.describe(route('crashed', HOME_PAGE))).toMatchObject({ title: 'Crashed plugin', icon: 'status-error', path: ['Crashed plugin'] });
+    expect(contributions.describe(route('reloading', HOME_PAGE))).toMatchObject({ title: 'Reloading plugin', icon: 'box', path: ['Reloading plugin'] });
+    expect(contributions.describe(route('crashed', HOME_PAGE))).not.toHaveProperty('provisional');
+  });
+
   it('keeps the connection of a plugin that is not ready, so its tab is told from a twin', () => {
     expect(world([loading()]).contributions.describe(route('slow', HOME_PAGE, { connection: 'north' }))).toMatchObject({ scope: { id: 'north', label: 'north' }, facets: ['north'] });
   });
@@ -116,6 +126,13 @@ describe('availability', () => {
     expect(contributions.availability?.(route('acme', 'widgets'))).toEqual({ state: 'available' });
     expect(contributions.availability?.(route('slow', HOME_PAGE))).toEqual({ state: 'degraded', reason: 'This plugin is loading.' });
     expect(contributions.availability?.(route('broken', HOME_PAGE))).toEqual({ state: 'degraded', reason: 'This plugin did not load.' });
+  });
+
+  it('says why a plugin that stopped is degraded, in the host\'s words, not that it did not load', () => {
+    const { contributions } = world([gone('crashed', 'crashed'), gone('reloaded', 'reloading')]);
+
+    expect(contributions.availability?.(route('crashed', HOME_PAGE))).toEqual({ state: 'degraded', reason: 'The plugin process stopped unexpectedly, so its pages can\'t load data.' });
+    expect(contributions.availability?.(route('reloading', HOME_PAGE))).toEqual({ state: 'degraded', reason: 'The plugin is starting again. The page opens when it is ready.' });
   });
 });
 

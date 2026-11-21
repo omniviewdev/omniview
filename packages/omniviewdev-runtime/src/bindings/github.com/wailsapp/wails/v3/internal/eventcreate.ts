@@ -61,20 +61,21 @@ function configure() {
         "plugin/recovered": $$createType6,
         "plugin/state_change": $$createType16,
         "plugin/state_write_error": $$createType17,
-        "plugin/update_complete": $$createType18,
-        "plugin/update_error": $$createType19,
-        "plugin/update_started": $$createType18,
-        "resource/connection/metadata": $$createType20,
-        "settings/changed": $$createType21,
-        "settings/state": $$createType22,
-        "source/STATE": $$createType23,
-        "windows/changed": $$createType24,
-        "windows/closed": $$createType25,
-        "windows/drag/begin": $$createType26,
-        "windows/drag/drop": $$createType27,
-        "windows/drag/end": $$createType28,
-        "windows/drag/hover": $$createType27,
-        "windows/drag/leave": $$createType29,
+        "plugin/unloaded": $$createType18,
+        "plugin/update_complete": $$createType19,
+        "plugin/update_error": $$createType20,
+        "plugin/update_started": $$createType19,
+        "resource/connection/metadata": $$createType21,
+        "settings/changed": $$createType22,
+        "settings/state": $$createType23,
+        "source/STATE": $$createType24,
+        "windows/changed": $$createType25,
+        "windows/closed": $$createType26,
+        "windows/drag/begin": $$createType27,
+        "windows/drag/drop": $$createType28,
+        "windows/drag/end": $$createType29,
+        "windows/drag/hover": $$createType28,
+        "windows/drag/leave": $$createType30,
     }));
 }
 
@@ -97,17 +98,18 @@ const $$createType14 = devserver$0.DevServerState.createFrom;
 const $$createType15 = pluginlog$0.LogEntry.createFrom;
 const $$createType16 = plugin$0.StateChangePayload.createFrom;
 const $$createType17 = plugin$0.StateWriteErrorPayload.createFrom;
-const $$createType18 = plugin$0.UpdatePayload.createFrom;
-const $$createType19 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType20 = resource$0.HostConnectionMetadata.createFrom;
-const $$createType21 = settings$0.Scope.createFrom;
-const $$createType22 = window$0.SettingsState.createFrom;
-const $$createType23 = resource$0.HostSourceStateEvent.createFrom;
-const $$createType24 = window$0.WindowsChangedEvent.createFrom;
-const $$createType25 = window$0.WindowClosedEvent.createFrom;
-const $$createType26 = window$0.DragBeginEvent.createFrom;
-const $$createType27 = window$0.DragPointerEvent.createFrom;
-const $$createType28 = window$0.DragEndEvent.createFrom;
-const $$createType29 = window$0.DragLeaveEvent.createFrom;
+const $$createType18 = plugin$0.UnloadedPayload.createFrom;
+const $$createType19 = plugin$0.UpdatePayload.createFrom;
+const $$createType20 = plugin$0.UpdateErrorPayload.createFrom;
+const $$createType21 = resource$0.HostConnectionMetadata.createFrom;
+const $$createType22 = settings$0.Scope.createFrom;
+const $$createType23 = window$0.SettingsState.createFrom;
+const $$createType24 = resource$0.HostSourceStateEvent.createFrom;
+const $$createType25 = window$0.WindowsChangedEvent.createFrom;
+const $$createType26 = window$0.WindowClosedEvent.createFrom;
+const $$createType27 = window$0.DragBeginEvent.createFrom;
+const $$createType28 = window$0.DragPointerEvent.createFrom;
+const $$createType29 = window$0.DragEndEvent.createFrom;
+const $$createType30 = window$0.DragLeaveEvent.createFrom;
 
 configure();
