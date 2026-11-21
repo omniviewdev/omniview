@@ -1,0 +1,17 @@
+     × has a column for the marks of its radios, and one for the glyphs of its commands once a source is chosen 35ms
+     × marks the chosen source with a dot and no other source, and gives each command its glyph 54ms
+     × opens with its first item active, whichever source is chosen, as the mock's menu does 51ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/notices/Centre.test.tsx > the Filter menu and the mute of a source > has a column for the marks of its radios, and one for the glyphs of its commands once a source is chosen
+AssertionError: expected false to be true // Object.is equality
+ FAIL  ui-next/shell/notices/Centre.test.tsx > the Filter menu and the mute of a source > marks the chosen source with a dot and no other source, and gives each command its glyph
+AssertionError: expected [ …(3) ] to deeply equal [ …(3) ]
+ FAIL  ui-next/shell/notices/Centre.test.tsx > the Filter menu and the mute of a source > opens with its first item active, whichever source is chosen, as the mock's menu does
+      Tests  3 failed | 32 passed (35)
+     × holds only plain list items, each a row or a heading: no item takes a role away 134ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/notices/Centre.test.tsx > the list > holds only plain list items, each a row or a heading: no item takes a role away
+AssertionError: expected [ Array(5) ] to deeply equal [ null, null, null, null, null ]
+- Expected
++ Received
+      Tests  1 failed | 35 skipped (36)

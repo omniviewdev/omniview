@@ -6,20 +6,24 @@
 //   ?case=real      (default) the store runs on the platform's real timers: geometry, placement, keyboard, announcements and performance read this
 //   ?case=clock     the store runs on a clock the probe drives (`window.__clock.advance(ms)`, core/notices/testing): what a toast lives for and what holds it, in no time and in the same order on every run.
 //                   The view's own timers (the 120 ms it waits before it asks whether the pointer left, and before it decides the placement again) stay real: they are the view's, not the model's
-//   &centre=1       the window has a notification centre (`NoticesBindings.centre`): the summary toast has its Show, as the mock's has (a toast is 70 px tall then)
+//   &centre=1       the window has a notification centre (`NoticesBindings.centre`): the bell in the status bar and the popover of history it opens, and the summary toast's Show, as the mock's has (a toast is 70 px tall then)
+//   &seed=<name>    (`case=real` only) the history the window starts with, as a person who comes back finds it: `list` (the mock's five records: an unread error, an unread warning, two read infos, a read success from yesterday),
+//                   `expanded` (the same without the error: the probe raises that one live, with its Retry), `muted` (the five, and source p1 muted until tomorrow 10:30), `dots` (four unread, one of each severity),
+//                   `bell-info`, `bell-warning`, `bell-error` (one unread record), `aged` (five records three hours old, so that no age label changes while a count is taken), `many` (500 records from 500 sources, a second apart). No seed: no history
 //
-// What the page exposes: `window.__notices` the store, `window.__panel` the panel model, `window.__palette` the palette model, `window.__tabs` the tab model, `window.__clock` (`?case=clock`), `window.__commits` every
-// commit of the shell's tree (React's Profiler; the probe builds this entry with the development build of React DOM for the counts), `window.__announced` what the model and the view asked the two live regions to
-// say, in order (`{ kind: 'polite' | 'assertive', text }`: the seam; what the DOM carried is the probe's own recorder, installed before this script runs), `window.__centre` how many times the summary toast's Show
-// asked for the centre, `window.__errors` what the model reported of a plugin's code that threw.
+// What the page exposes: `window.__notices` the store, `window.__panel` the panel model, `window.__palette` the palette model, `window.__tabs` the tab model, `window.__clock` (`?case=clock`), `window.__centreControl` the centre's
+// controller (`&centre=1`), `window.__commits` every commit of the shell's tree (React's Profiler; the probe builds this entry with the development build of React DOM for the counts), `window.__announced` what the model and the
+// view asked the two live regions to say, in order (`{ kind: 'polite' | 'assertive', text }`: the seam; what the DOM carried is the probe's own recorder, installed before this script runs), `window.__centre` how many times the
+// summary toast's Show asked for the centre, `window.__errors` what the model reported of a plugin's code that threw.
 // Wired as the host wires it (ui-next/plugins/host/notices.ts): while the palette is open the stack waits (`hold('modal')`), and when it closes the stack comes back.
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import { Button, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { Profiler } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createAnnouncer, createNoticesAnnouncer, createNoticesStore, createPaletteStore, type NoticesAnnouncer, type NoticesBindings, type PaletteBindings, type PaletteCandidate, type PaletteSource, type ShellRegistration } from '..';
-import { manualClock } from '../core/notices/testing';
+import { createAnnouncer, createCentre, createNoticesAnnouncer, createNoticesStore, createPaletteStore, type NoticesAnnouncer, type NoticesBindings, type NoticesStore, type PaletteBindings, type PaletteCandidate, type PaletteSource, type ShellRegistration } from '..';
+import { restoreNotices } from '../core/notices';
+import { manualClock, type ManualClock } from '../core/notices/testing';
 import type { ToolInput } from '../core/panel';
 import { staticPanel } from '../panel/testing';
 import { StaticShell, STATIC_RAIL, staticTabs } from '../testing';
@@ -66,11 +70,125 @@ Reflect.set(window, '__errors', errors);
 const clock = CASE === 'clock' ? manualClock() : undefined;
 Reflect.set(window, '__clock', clock);
 
+// The window's notification centre, when the case has one (`&centre=1`): the controller the bell and the summary toast's Show share, as the host makes it (ui-next/plugins/host/notices.ts).
+const control = params.get('centre') === '1' ? createCentre() : undefined;
+Reflect.set(window, '__centreControl', control);
+
+// The history a window starts with (`&seed=`): what a person who comes back finds in the centre. The records are made by the real model over a clock of their own, so that their words, times and read marks are the model's and
+// none is typed here, saved the way the host saves (`serialise`) and read back the way the host reads it (`restoreNotices`): a restored record raises no toast and no announcement, and nothing of it is live (no timer, no action).
+type Severity = 'info' | 'success' | 'warning' | 'error';
+type Seeding = { readonly store: NoticesStore; readonly clock: ManualClock; readonly now: number; readonly yesterday: number };
+
+const HOUR = 3_600_000;
+
+const note = (store: NoticesStore, source: string, title: string, severity: Severity, detail?: string) =>
+  store.forSource(source).notify({ title, severity, initiator: 'system', ...(detail === undefined ? {} : { detail }) });
+
+/** The mock's five records (shell-feedback.js scenes), oldest first and 8 ms apart so that the newest is first in the list: a success of yesterday, an info with no sentence, an info, an unread warning, an unread error; the first three are read. */
+function five({ store, clock, now, yesterday }: Seeding, withError: boolean): void {
+  const snapshot = note(store, 'p3', 'Snapshot created', 'success', 'It is ready to restore.');
+  clock.jump(now - yesterday - 32);
+  const update = note(store, 'p3', 'Update available', 'info');
+  clock.jump(8);
+  const added = note(store, 'p1', 'Connection added', 'info', 'prod-east is ready to use.');
+  clock.jump(8);
+  note(store, 'p2', 'Signed out', 'warning', 'Sign in again to continue.');
+  clock.jump(8);
+  if (withError) {
+    note(store, 'p1', 'Timed out', 'error', 'The cluster did not complete the request in time.');
+  }
+
+  store.read([snapshot.id, update.id, added.id]);
+}
+
+const SEEDS: Readonly<Record<string, (seeding: Seeding) => void>> = {
+  list: (seeding) => {
+    five(seeding, true);
+  },
+  expanded: (seeding) => {
+    five(seeding, false);
+  },
+  muted: (seeding) => {
+    five(seeding, true);
+    // The mock's mute ends at a fixed clock time tomorrow: "P1 is muted until 10:30 AM".
+    const until = new Date(seeding.now);
+    until.setDate(until.getDate() + 1);
+    until.setHours(10, 30, 0, 0);
+    seeding.store.mute('p1', until.getTime());
+  },
+  dots: ({ store, clock }) => {
+    for (const [title, severity] of [['Notice 1', 'info'], ['Notice 2', 'success'], ['Notice 3', 'warning'], ['Notice 4', 'error']] as const) {
+      note(store, 'p1', title, severity);
+      clock.jump(8);
+    }
+  },
+  'bell-info': ({ store }) => {
+    note(store, 'p1', 'Connection added', 'info', 'prod-east is ready to use.');
+  },
+  'bell-warning': ({ store }) => {
+    note(store, 'p2', 'Signed out', 'warning', 'Sign in again to continue.');
+  },
+  'bell-error': ({ store }) => {
+    note(store, 'p1', 'Timed out', 'error', 'The cluster did not complete the request in time.');
+  },
+  // The most the history holds: 500 records, each from a source of its own (so that no source is folded or limited), a second apart, a quarter of each severity.
+  many: ({ store, clock }) => {
+    for (let index = 1; index <= 500; index += 1) {
+      note(store, `s${String(index)}`, `Notice ${String(index)}`, (['info', 'success', 'warning', 'error'] as const)[index % 4] ?? 'info', `Something happened in source ${String(index)}.`);
+      clock.jump(1000);
+    }
+  },
+  // Five records three hours old: the commits of a new notice are counted over a second or two, and a label that says "0s" changes every second.
+  aged: ({ store, clock }) => {
+    for (const [source, title, severity] of [['p3', 'Snapshot created', 'success'], ['p3', 'Update available', 'info'], ['p1', 'Connection added', 'info'], ['p2', 'Signed out', 'warning'], ['p1', 'Timed out', 'error']] as const) {
+      note(store, source, title, severity);
+      clock.jump(8);
+    }
+  },
+};
+
+/** The seeds that hold the mock's five records, the first of which is yesterday's. */
+const FIVE: readonly string[] = ['list', 'expanded', 'muted'];
+
+/** The history of the seed, read back as the host reads it; `undefined` for no seed. */
+function seeded(name: string | null) {
+  if (name === null) {
+    return undefined;
+  }
+
+  const recipe = SEEDS[name];
+  if (recipe === undefined || CASE !== 'real') {
+    throw new Error(`seed=${name}: the seeds are ${Object.keys(SEEDS).join(', ')}, and only the case "real" has them`);
+  }
+
+  const now = Date.now();
+  // Yesterday is a date and not 24 hours: the mock's record is 26 hours old when that falls yesterday, else yesterday at noon.
+  const day = new Date(now);
+  day.setDate(day.getDate() - 1);
+  const old = now - 26 * HOUR;
+  const yesterday = new Date(old).toDateString() === day.toDateString() ? old : day.setHours(12, 0, 0, 0);
+  // The five records start yesterday (the first of them is 26 hours old) and come to now; the aged five are three hours old, the 500 of the last eight minutes, the others of this moment.
+  const clock = manualClock(FIVE.includes(name) ? yesterday : name === 'many' ? now - 501_000 : name === 'aged' ? now - 3 * HOUR : now - 40);
+  const store = createNoticesStore({ scheduler: clock.scheduler, onError: () => undefined });
+  recipe({ store, clock, now, yesterday });
+  const restored = restoreNotices(JSON.parse(JSON.stringify(store.serialise())), { now });
+  store.dispose();
+  if (!restored.ok) {
+    throw new Error(`seed=${name} could not be read back: ${restored.detail}`);
+  }
+
+  return { records: restored.records, muted: restored.muted };
+}
+
+const initial = seeded(params.get('seed'));
+
 const store = createNoticesStore({
   ...(clock === undefined ? {} : { scheduler: clock.scheduler }),
+  ...(initial === undefined ? {} : { initial }),
   announce: announcer.announce,
   openCenter: () => {
     centre.asked += 1;
+    control?.open();
   },
   onError: (error, where) => {
     errors.push({ where, message: String(error) });
@@ -78,7 +196,7 @@ const store = createNoticesStore({
   platform: /mac/i.test(navigator.platform) ? 'mac' : 'other',
 });
 Reflect.set(window, '__notices', store);
-const notices: NoticesBindings = { store, announcer, centre: params.get('centre') === '1' };
+const notices: NoticesBindings = { store, announcer, ...(control === undefined ? {} : { centre: control }) };
 
 // The command palette: the real model over a few invented providers, as the palette probe's fixture has them (a handful of places, the tabs and a few commands).
 const GLYPHS = ['box', 'layers', 'server', 'folder-tree'] as const;

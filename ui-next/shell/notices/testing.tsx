@@ -1,10 +1,13 @@
 import { act, cleanup, render } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
-import { useRef, type ReactNode } from 'react';
+import { Profiler, useRef, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import type { NoticesOptions } from '../core/notices';
 import { makeNotices, manualClock, type Fixture, type ManualClock } from '../core/notices/testing';
+import type { ShellRegistration } from '../registration';
+import { StaticShell } from '../testing';
 import { useRegionKeys } from '../useRegionKeys';
+import { createCentre, type Centre } from './centreControl';
 import { NoticesProvider } from './context';
 import { createNoticesAnnouncer, type NoticesAnnouncer, type NoticesBindings } from './host';
 import { Toasts } from './Toasts';
@@ -46,7 +49,7 @@ export function mount(options: MountOptions = {}): Mounted {
   const clock = manualClock();
   const announcer = createNoticesAnnouncer();
   const f = makeNotices({ announce: announcer.announce, ...(options.centre === true ? {} : { openCenter: undefined }), ...(options.store ?? {}) }, clock);
-  const bindings: NoticesBindings = { store: f.store, announcer, centre: options.centre === true };
+  const bindings: NoticesBindings = { store: f.store, announcer, ...(options.centre === true ? { centre: createCentre() } : {}) };
   const view = render(
     <NoticesProvider notices={bindings}>
       <Window>
@@ -77,7 +80,19 @@ export function mount(options: MountOptions = {}): Mounted {
 export function teardown(): void {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  // A test of local days puts the process in a zone of its own (`ZONES`, `vi.stubEnv('TZ', ...)`): it is the machine's again for the next test.
+  vi.unstubAllEnvs();
+  shown?.remove();
+  shown = undefined;
 }
+
+/**
+ * The zones a test of local days runs in. A day is a local thing, and the machine that runs the tests is not always where the person is: CI is UTC and a laptop is not, so a test that built its history from a fixed
+ * instant (`START` is 22:13 UTC) found one local midnight in one zone and two in another (O1b-2: the list's "Yesterday" was "Tue, Nov 14" in UTC and in Paris). UTC and Paris are where that test failed; Kiritimati (+14)
+ * and Pago Pago (-11) are the two ends of the clock; Kolkata is half an hour off the hour; Chicago is where the test was written and passed.
+ */
+export const ZONES: readonly string[] = ['UTC', 'Europe/Paris', 'America/Chicago', 'Asia/Kolkata', 'Pacific/Kiritimati', 'Pacific/Pago_Pago'];
 
 /** The layer: the one live region of the stack (S86). */
 export const layerOf = (): HTMLElement => {
@@ -94,3 +109,123 @@ export const toastsOf = (): HTMLElement[] => [...document.querySelectorAll<HTMLE
 
 /** What a part of a toast says: its text, or, once its words changed, the generated content they are drawn with (`data-text`). */
 export const wordsOf = (element: Element | null | undefined): string => element?.getAttribute('data-text') ?? element?.textContent ?? '';
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// The whole window: the real shell frame (the status bar with the bell in it), the real centre, the toast layer, the real store over a clock the test drives.
+
+/** The rule that shows a popover in jsdom. */
+let shown: HTMLStyleElement | undefined;
+
+/**
+ * jsdom has no Popover API: the setup's stand-in (`ui-next/test-setup.ts`) marks an element and nothing shows it, and a popover is `display: none` until a rule says otherwise, which makes it inaccessible to the
+ * queries. This is that rule (the Logs toolbar's test has the same); `teardown` takes it away.
+ */
+export function installPopover(): void {
+  if (shown?.isConnected === true) {
+    return;
+  }
+
+  shown = document.createElement('style');
+  shown.textContent = '[popover] { display: block !important; }';
+  document.head.append(shown);
+}
+
+export type MountedWindow = {
+  readonly f: Fixture;
+  readonly clock: ManualClock;
+  readonly announcer: NoticesAnnouncer;
+  readonly centre: Centre;
+  readonly user: UserEvent;
+  /** Lets the model tell the view (it tells it at most once a frame) and React draw what it was told. */
+  readonly flush: () => Promise<void>;
+  /** Moves the model's clock and the page's `Date` together by `ms`: a record's age, the seconds the centre has been open and a toast's life are all read from one time. */
+  readonly pass: (ms: number) => Promise<void>;
+  /** How many times React committed to the window (its own `Profiler`): a test sets `count` to 0 and reads it after the change it measures. */
+  readonly commits: { count: number };
+  readonly unmount: () => void;
+};
+
+export type WindowOptions = {
+  /** What the store is made with besides the clock and the seam of the fixture. */
+  readonly store?: Partial<NoticesOptions>;
+  /** The window has no notification centre: no bell, no popover, and the summary toast has no Show. Default: it has one. */
+  readonly noCentre?: boolean;
+  /** What is drawn in the page, beside the one control the focus can come from. */
+  readonly page?: ReactNode;
+  /**
+   * The instant the model's clock and the page's `Date` start at, in milliseconds since the epoch. Default `START`, which is on different local days in different zones: a test that groups by the day takes its start
+   * from a local time (`new Date(2026, 10, 14, 12).getTime()`, noon, after `vi.stubEnv('TZ', zone)`).
+   */
+  readonly at?: number;
+};
+
+const REGISTRATION: ShellRegistration = { plugin: { name: 'Acme' } };
+
+/**
+ * The window over a store: the shell frame with its status bar (where the bell is), the centre, the toast layer. The page's `Date` is the model's clock (`pass` moves both), so that what the centre reads
+ * of the time (how long it was open, how old a record is, which day it is under) agrees with what the model decided at the time it was told.
+ */
+export function mountWindow(options: WindowOptions = {}): MountedWindow {
+  installPopover();
+  const clock = manualClock(options.at);
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(clock.now());
+  const announcer = createNoticesAnnouncer();
+  const centre = createCentre();
+  const f = makeNotices({ announce: announcer.announce, openCenter: options.noCentre === true ? undefined : centre.open, ...(options.store ?? {}) }, clock);
+  const notices: NoticesBindings = { store: f.store, announcer, ...(options.noCentre === true ? {} : { centre }) };
+  const commits = { count: 0 };
+  const view = render(
+    <Profiler
+      id="window"
+      onRender={() => {
+        commits.count += 1;
+      }}
+    >
+      <StaticShell registration={REGISTRATION} notices={notices}>
+        <button type="button">Inside the page</button>
+        {options.page}
+      </StaticShell>
+    </Profiler>,
+  );
+  const flush = async (): Promise<void> => {
+    await act(async () => {
+      await clock.advance(16);
+      vi.setSystemTime(clock.now());
+    });
+  };
+
+  // A person acts and a frame goes by: the model tells its listeners at most once a frame, and on a clock that stands still the frame would never end.
+  const base = userEvent.setup();
+  const user: UserEvent = {
+    ...base,
+    click: async (element) => {
+      await base.click(element);
+      await flush();
+    },
+    keyboard: async (keys) => {
+      await base.keyboard(keys);
+      await flush();
+    },
+    tab: async (options) => {
+      await base.tab(options);
+      await flush();
+    },
+  };
+  return {
+    f,
+    clock,
+    announcer,
+    centre,
+    user,
+    flush,
+    commits,
+    pass: async (ms) => {
+      await act(async () => {
+        await clock.advance(ms);
+        vi.setSystemTime(clock.now());
+      });
+    },
+    unmount: view.unmount,
+  };
+}

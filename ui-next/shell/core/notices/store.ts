@@ -631,7 +631,11 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
     }
   }
 
-  /** What to do about a record that is new, changed state, started over or repeated: raise its toast, change it in place, drop it, or say it (S76 to S78, S86). */
+  /**
+   * What to do about a record that is new, changed state, started over or repeated: raise its toast, change it in place, drop it, or say it (S76 to S78, S86). ONE PRESENTER (the lead's ruling of 2026-11-21): while the centre is open
+   * its list presents every record, so no toast is raised or kept for one that arrives or changes then; it is said once, as a record without a toast is (S86). A toast that was there before the centre opened is not touched by
+   * this: it waits with the rest of the stack (`holds.center`, `toastStack`) and comes back with what it had left.
+   */
   function decide(rec: Rec, change: Change & { readonly repeated?: boolean }): void {
     const inline = inlineVisible(rec.origin);
     const failed = rec.state === 'failed' || rec.state === 'unknown';
@@ -640,7 +644,7 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
       touch(rec);
     }
 
-    const policy = rec.toastDismissed || rec.limited ? null : toastPolicy(factsOf(rec, actionOf(rec)), { muted: isMuted(rec.source), inline });
+    const policy = rec.toastDismissed || rec.limited || holds.center ? null : toastPolicy(factsOf(rec, actionOf(rec)), { muted: isMuted(rec.source), inline });
     const had = toastById.get(rec.id);
     if (policy === null) {
       dropToast(rec.id);

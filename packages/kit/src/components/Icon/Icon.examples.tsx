@@ -24,12 +24,12 @@ export const Status = () => (
 
 // Every glyph of the registry, for review: the test of this file fails when the registry and this list differ.
 const ALL: readonly IconName[] = [
-  'activity', 'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-up-wide-narrow', 'blocks', 'box', 'brick-wall', 'calendar-clock',
-  'case-sensitive', 'check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle', 'circle-minus', 'clipboard-check', 'clock', 'close', 'columns', 'copy', 'cpu',
+  'activity', 'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-up-wide-narrow', 'bell', 'bell-off', 'blocks', 'box', 'brick-wall', 'calendar-clock',
+  'case-sensitive', 'check', 'check-check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle', 'circle-minus', 'clipboard-check', 'clock', 'close', 'columns', 'copy', 'cpu',
   'database', 'ellipsis', 'eraser', 'eye', 'eye-off', 'file-cog', 'folder-tree', 'gauge', 'globe', 'hard-drive', 'hard-drive-download', 'hourglass', 'key-round', 'layers', 'layout-template',
-  'list-ordered', 'loader', 'loader-circle', 'minus', 'network', 'panel-bottom', 'pause', 'play', 'plus', 'refresh', 'regex', 'repeat', 'rocket', 'ruler', 'scaling', 'scroll-text',
+  'list-filter', 'list-ordered', 'loader', 'loader-circle', 'minus', 'network', 'panel-bottom', 'pause', 'play', 'plus', 'refresh', 'regex', 'repeat', 'rocket', 'ruler', 'scaling', 'scroll-text',
   'search', 'search-x', 'server', 'server-cog', 'settings-2', 'shield', 'shield-check', 'split', 'status-error', 'status-info', 'status-success', 'status-warning',
-  'target', 'umbrella', 'waypoints',
+  'target', 'trash', 'umbrella', 'undo', 'waypoints',
 ];
 
 // Six to a row: eight 20 px glyphs and their gaps (216 px) are wider than the stage of one example (200 px) and would stand outside its border.

@@ -1,0 +1,60 @@
++       "read": false,
++       "reason": "",
++       "rev": 2,
++       "severity": "error",
++       "source": "host",
++       "sourceName": "Omniview",
++       "startedAt": undefined,
++       "state": "succeeded",
++       "target": undefined,
++       "text": "",
++       "title": "Timed out 2 times",
++       "toasted": true,
++       "unread": true,
++       "updatedAt": 1700000000000,
++       "urgent": true,
++       "word": "",
++     },
++     "sticky": true,
++     "summary": undefined,
++     "urgent": true,
++   },
++ ]
+
+ ❯ ui-next/shell/core/notices/lifetime.test.ts:510:46
+    508|     store.hold('center', false);
+    509|     expect(store.getSnapshot().recent[0]).toMatchObject({ count: 2, ti…
+    510|     expect(store.getSnapshot().toasts.items).toEqual([]);
+       |                                              ^
+    511|     expect(said).toEqual([]);
+    512|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  ui-next/shell/core/notices/lifetime.test.ts > one presenter: the centre is open > raises its toasts again for what arrives once it is closed
+AssertionError: expected [ 'While open', 'After' ] to deeply equal [ 'After' ]
+
+- Expected
++ Received
+
+  [
++   "While open",
+    "After",
+  ]
+
+ ❯ ui-next/shell/core/notices/lifetime.test.ts:520:80
+    518|     store.hold('center', false);
+    519|     store.notify({ title: 'After', severity: 'error', initiator: 'user…
+    520|     expect(store.getSnapshot().toasts.items.map((item) => item.record?…
+       |                                                                                ^
+    521|   });
+    522|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 39 passed (43)
+   Start at  07:18:19
+   Duration  2.36s (environment 57%, transform 23%, setup 18%, tests 1%, import 1%)
+

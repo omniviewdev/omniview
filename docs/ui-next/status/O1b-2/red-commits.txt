@@ -1,0 +1,6 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/notices/Centre.commits.test.tsx > what a notice costs the window > is one commit with the centre open: the list, the bell and the live region change together
+AssertionError: expected 2 to be 1 // Object.is equality
+ FAIL  ui-next/shell/notices/Centre.commits.test.tsx > what a notice costs the window > is one commit for fifty notices that arrive in one frame
+AssertionError: expected 2 to be 1 // Object.is equality
+      Tests  2 failed | 1 passed (3)

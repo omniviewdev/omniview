@@ -139,8 +139,8 @@ jobs:
           GOTOOLCHAIN: local
         run: task build:server
 
-      # The whole seam in this engine. A failure is written as one annotation that names the scenario (the letter of the last `// <letter>.` marker or doc comment above the line of the failing check function, and the
-      # function) and the assertion; `Seam check` repeats it.
+      # The whole seam in this engine. A failure is written as one annotation that names the scenario (the id of the last `// <id>.` marker or doc comment above the line of the failing check function, a letter or a letter and digits
+      # as in `h2`, and the function) and the assertion; `Seam check` repeats it. scripts/ci/changes-workflows.test.mjs runs this very program over the check and holds every scenario function to its own marker.
       - name: The seam (${{ matrix.engine }})
         env:
           ENGINES: ${{ matrix.engine }}
@@ -156,7 +156,7 @@ jobs:
           line="${frame##* }"
           letter=""
           if [[ "$line" =~ ^[0-9]+$ ]]; then
-            letter="$(awk -v n="$line" 'NR > n { exit } match($0, /^[ ]*(\/\/|\*|\/\*\*) [a-n]\. [A-Za-z]/) { s = $0; sub(/^[ ]*(\/\/|\*|\/\*\*) /, "", s); l = substr(s, 1, 1) } END { print l }' "$check")"
+            letter="$(awk -v n="$line" 'NR > n { exit } match($0, /^[ ]*(\/\/|\*|\/\*\*) [a-z][0-9]*\. [A-Za-z]/) { s = $0; sub(/^[ ]*(\/\/|\*|\/\*\*) /, "", s); l = substr(s, 1, index(s, ".") - 1) } END { print l }' "$check")"
           fi
           if [ -n "$frame" ]; then
             scenario="${letter:-?} (${frame})"

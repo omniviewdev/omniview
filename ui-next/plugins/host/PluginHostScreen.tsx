@@ -2,7 +2,7 @@ import { ActivityProvider } from '@omniviewdev/runtime';
 import { WindowClient } from '@omniviewdev/runtime/api';
 import { Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { isNativeWindow, loadSession, resolveWindowName, windowStorage, type LoadedSession } from '../../shell';
+import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
@@ -19,12 +19,20 @@ function closeWindow(): void {
   });
 }
 
+/** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
+const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
+
 /**
  * This window's saved session, read through the host's window service: the slots the Go side keeps for the window this page is in (`backend/window`, persisted to `windows.json` in the
  * instance's state root). It never rejects: a window that cannot name itself, or whose slots cannot be read, starts empty and saves nothing, with a note on the console (`shell/session`).
  */
-const loadWindowSession = async (): Promise<LoadedSession> =>
-  loadSession(windowStorage({ client: WindowClient, name: async () => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() }) }));
+const loadWindowSession = async (): Promise<LoadedSession> => loadSession(windowStorage({ client: WindowClient, name: windowName }));
+
+/**
+ * This window's saved notification history, read beside its session and from the same place, in a slot of its own (`shell/notices/storage.ts`). It never rejects either: a history that cannot be read or used is a window
+ * that starts with none, with a note on the console.
+ */
+const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(noticesStorage({ client: WindowClient, name: windowName }));
 
 /**
  * The screen of contributed pages as the window mounts it: the installed plugins, their interfaces loading in a bounded pool beside the first paint (the
@@ -40,7 +48,7 @@ export function PluginHostScreen() {
   const [onCloseWindow] = useState(() => (isNativeWindow() ? closeWindow : undefined));
   const inventory = useInstalledPlugins();
   const link = useHashLink();
-  const [session, setSession] = useState<LoadedSession | undefined>(undefined);
+  const [loaded, setLoaded] = useState<{ readonly session: LoadedSession; readonly notices: LoadedNotices } | undefined>(undefined);
 
   // What the host says of a plugin that stops (`plugin/unloaded`: its process crashed, it is reloading, uninstalled or turned off) and of one that runs again (`plugin/state_change`): the store drops what the
   // window drew from the plugin and loads it again from its files, with no reload of the window (decision A21, P1b3c-01). The inventory above only ever adds.
@@ -48,9 +56,9 @@ export function PluginHostScreen() {
 
   useEffect(() => {
     let current = true;
-    void loadWindowSession().then((loaded) => {
+    void Promise.all([loadWindowSession(), loadWindowNotices()]).then(([session, notices]) => {
       if (current) {
-        setSession(loaded);
+        setLoaded({ session, notices });
       }
     });
     return () => {
@@ -69,7 +77,7 @@ export function PluginHostScreen() {
 
   return (
     <ActivityProvider>
-      {session === undefined ? null : (
+      {loaded === undefined ? null : (
         <PluginHost
           plugins={store}
           inventory={inventory.state}
@@ -82,7 +90,8 @@ export function PluginHostScreen() {
           }}
           onRetryInventory={inventory.retry}
           onCloseWindow={onCloseWindow}
-          session={session}
+          session={loaded.session}
+          savedNotices={loaded.notices}
         />
       )}
     </ActivityProvider>

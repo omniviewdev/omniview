@@ -197,7 +197,8 @@ async function icons(page, where) {
 // beyond it) stays inside its artboard and sits at its centre. The 24 artboard is Lucide's, whose keylines keep the ink in 2..22 and
 // centred; the 16 artboard is Int UI's. The tolerance is the off-centre ink of the registry's glyphs before the per-kind glyphs (G1),
 // measured here in both engines: at most 1.0 on the 24 artboard (case-sensitive, a short wide glyph) and 0.5 on the 16 one; the thirty
-// new glyphs measure 0.85 at most (the document of the cog, whose cog reaches past the left edge of the page).
+// new glyphs measure 0.85 at most (the document of the cog, whose cog reaches past the left edge of the page); the six of the notification
+// centre (O1b-2) measure 0.30 at most (the bell, on the 16 artboard).
 const INK_OFF_CENTRE = { 24: 1.0, 16: 0.5 };
 async function glyphGeometry(page, where) {
   const rows = await page.locator('[data-example="Icon/AllGlyphs"] svg').evaluateAll((svgs) => svgs.map((svg) => {

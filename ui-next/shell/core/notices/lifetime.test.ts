@@ -451,3 +451,82 @@ describe('the clocks while the stack is not drawn', () => {
     expect(store.getSnapshot().toasts.items).toEqual([]);
   });
 });
+
+// ONE PRESENTER (the lead's ruling of 2026-11-21, O1b-2). The written rule S89a ("non-modal surfaces do not suspend feedback", research/int-ui/16-ide-shell.md:445) and the mock's one-presenter rule (shell-notify.js:37: "A toast is not
+// raised, and a raised one is dropped, while ... a centre or Operations row of that record is on screen"; the code, `presented()` at 1144 and `toastEntries()` at 1154, line 1160, leaves a toast out while its record has a row on screen)
+// disagree; the lead chose one presenter, because the same notice drawn twice at once is noise. While the centre is open its list presents every record, so a notice that arrives then raises no toast: it is in the list, and it is told
+// once to a screen reader, as a record without a toast is (S86). A toast that was already there waits, and comes back with what it had left (at least two seconds) unless its record was read meanwhile.
+describe('one presenter: the centre is open', () => {
+  it('raises no toast for a notice that arrives, in the history at once, and tells it once: an error of the user\'s own work is assertive', async () => {
+    const { store, clock, said } = makeNotices();
+    store.hold('center', true);
+    store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', initiator: 'user' });
+    expect(store.getSnapshot().recent).toHaveLength(1);
+    expect(store.getSnapshot().recent[0]).toMatchObject({ unread: true, toasted: false });
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatchObject({ urgent: true });
+    expect(said[0]?.text).toContain('Timed out');
+    store.hold('center', false);
+    await clock.advance(120_000);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(said).toHaveLength(1);
+  });
+
+  it('tells a calm one politely, once, and raises no toast when the centre closes', async () => {
+    const { store, clock, said } = makeNotices();
+    store.hold('center', true);
+    store.notify({ title: 'Snapshot created', severity: 'success' });
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatchObject({ urgent: false });
+    store.hold('center', false);
+    await clock.advance(1000);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(said).toHaveLength(1);
+  });
+
+  it('leaves the toast that was there before it opened: it waits, and has what it had left when the centre closes, never less than two seconds', async () => {
+    const { store, clock, said } = makeNotices();
+    store.notify({ title: 'A' });
+    await clock.advance(TIMING.toast - 1000);
+    store.hold('center', true);
+    await clock.advance(120_000);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+    store.hold('center', false);
+    expect(ids(store.getSnapshot().toasts.items)).toEqual(['n1']);
+    await clock.advance(TIMING.grace - 1);
+    expect(ids(store.getSnapshot().toasts.items)).toEqual(['n1']);
+    await clock.advance(2);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(said).toEqual([]);
+  });
+
+  it('drops the toast of a record that repeats while it is open, and says nothing: its row shows the count', async () => {
+    const { store, said } = makeNotices();
+    store.notify({ title: 'Timed out', severity: 'error', initiator: 'user' });
+    store.hold('center', true);
+    store.notify({ title: 'Timed out', severity: 'error', initiator: 'user' });
+    store.hold('center', false);
+    expect(store.getSnapshot().recent[0]).toMatchObject({ count: 2, title: 'Timed out 2 times' });
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(said).toEqual([]);
+  });
+
+  it('raises its toasts again for what arrives once it is closed', () => {
+    const { store } = makeNotices();
+    store.hold('center', true);
+    store.notify({ title: 'While open', severity: 'error', initiator: 'user' });
+    store.hold('center', false);
+    store.notify({ title: 'After', severity: 'error', initiator: 'user', source: 'stack' });
+    expect(store.getSnapshot().toasts.items.map((item) => item.record?.title)).toEqual(['After']);
+  });
+
+  it('does not change a modal: a notice that arrives while the palette is open waits and comes back (S89a: the records and their actions stay queued)', async () => {
+    const { store, clock } = makeNotices();
+    store.hold('modal', true);
+    store.notify({ title: 'While open', severity: 'error', initiator: 'user' });
+    store.hold('modal', false);
+    expect(ids(store.getSnapshot().toasts.items)).toEqual(['n1']);
+    await clock.advance(120_000);
+    expect(ids(store.getSnapshot().toasts.items)).toEqual(['n1']);
+  });
+});

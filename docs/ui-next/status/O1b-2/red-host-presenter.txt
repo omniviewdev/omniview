@@ -1,0 +1,4 @@
+      Tests  1 failed | 5 passed (6)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/plugins/host/PluginHost.centre.test.tsx > the window's notification centre > puts a failure that arrives while the centre is open in its list and raises no toast for it, now or when the centre closes: one presenter
+AssertionError: expected [ <div …(9)>…(3)</div> ] to have a length of +0 but got 1
