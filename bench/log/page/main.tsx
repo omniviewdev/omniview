@@ -7,6 +7,7 @@
 //   profile   1 wraps the kit in a Profiler that counts its commits (the profiling build only: the cross-check of the DevTools hook's count)
 //   sources   how many sources the feed follows (default 0: one, not listed). The feed lists them and its lines take them in turn, so with 2 or more the kit's view draws its Source column (L2) and the control a plain
 //             source cell. The ids are what a real stream's are, the thing's name and the part that wrote the line (`orders-7d8c6f49b-f8q4m/app`): 13 characters or more, which the kit draws in two halves, its dearest name.
+//   toolbar   1 mounts the host's LogSession (the Logs tool's toolbar beside the kit's view) in the kit variant instead of the bare LogView; the control ignores it
 // The page exposes `window.__bench` (harness.ts); nothing runs until the runner calls it.
 import { SyntheticFeed } from '../../../packages/kit/src/components/LogView/syntheticFeed';
 import { Harness } from './harness';
@@ -47,7 +48,7 @@ async function start() {
   }
 
   const { mountKit } = await import('./variants/mountKit');
-  const mounted = mountKit(stage, feed, params.get('profile') === '1' && import.meta.env.BENCH_REACT_BUILD === 'profiling');
+  const mounted = mountKit(stage, feed, params.get('profile') === '1' && import.meta.env.BENCH_REACT_BUILD === 'profiling', params.get('toolbar') === '1');
   harness.attach(mounted.probe, feed, mounted.unmount);
 }
 

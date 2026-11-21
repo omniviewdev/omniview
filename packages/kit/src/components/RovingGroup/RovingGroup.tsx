@@ -18,6 +18,11 @@ export type RovingGroupProps = {
   readonly wrap?: boolean | undefined;
   /** Alignment on the cross axis. */
   readonly align?: StackAlign | undefined;
+  /**
+   * `group` (the default) or `toolbar`: the ARIA pattern of a set of controls that is one Tab stop and moves by arrows. The keys and the Tab stop are the same either way; a toolbar also says its orientation (a
+   * column is vertical, a row horizontal), as the mock's panel toolbar does (`role="toolbar" aria-orientation="vertical"`).
+   */
+  readonly role?: 'group' | 'toolbar' | undefined;
   readonly children?: ReactNode;
 } & DataAttributes;
 
@@ -28,7 +33,9 @@ export type RovingGroupProps = {
  * or hidden is skipped. It acts on the elements it holds, so any part with a button or a link can be a member. Props are closed:
  * no `className`, no `style`; `data-*` passes through.
  */
-export function RovingGroup({ label, kind = 'row', gap, wrap, align, children, ...rest }: RovingGroupProps) {
+export function RovingGroup({ label, kind = 'row', role = 'group', gap, wrap, align, children, ...rest }: RovingGroupProps) {
+  // Only the two roles the type allows: a value that is neither (the part is closed to what its type does not say) is the group it was.
+  const toolbar = role === 'toolbar';
   const host = useRef<HTMLDivElement | null>(null);
   // The index of the item that last had the focus: the tab stop for as long as it is still an item.
   const remembered = useRef<number | null>(null);
@@ -106,8 +113,9 @@ export function RovingGroup({ label, kind = 'row', gap, wrap, align, children, .
       {...dataAttributes(rest)}
       ref={host}
       className={styles.root}
-      role="group"
+      role={toolbar ? 'toolbar' : 'group'}
       aria-label={label}
+      aria-orientation={toolbar ? (kind === 'column' ? 'vertical' : 'horizontal') : undefined}
       data-ov-roving={kind}
       data-ov-gap={gap}
       data-ov-wrap={wrap === true ? 'true' : undefined}

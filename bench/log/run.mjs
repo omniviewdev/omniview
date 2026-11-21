@@ -19,6 +19,7 @@
 //   --warmup-ms, --measure-ms   3000 and 10000 (follow)
 //   --tag        the output directory name under bench/log/results/
 //   --sources    how many sources the feed follows (default 0: one, not listed; L2): 2 makes the kit draw its Source column and the control a plain source cell, with the names a real stream has
+//   --toolbar    mount the host's LogSession (the Logs tool's toolbar beside the kit's view, in the flex row the tool gives it) in the kit variant instead of the bare LogView; the control is unchanged. Tag such a run apart (--tag)
 //   --dist       the built page (default bench/log/.dist-matrix); a patched overscan is built beside it as <dist>-o<rows>; --no-build reuses them
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -40,6 +41,7 @@ const { values: args } = parseArgs({
     cpu: { type: 'string', default: '1' },
     tag: { type: 'string' },
     sources: { type: 'string', default: '0' },
+    toolbar: { type: 'boolean', default: false },
     dist: { type: 'string' },
     'no-build': { type: 'boolean', default: false },
   },
@@ -66,7 +68,8 @@ const measureMs = Number(args['measure-ms']);
 const maxLoad = Number(args['max-load']);
 const height = Number(args.height);
 const sources = Number(args.sources);
-const tag = args.tag ?? `${engine}-${workload}${cpu === 1 ? '' : `-${cpu}x`}${sources > 0 ? `-${String(sources)}src` : ''}`;
+const toolbar = args.toolbar;
+const tag = args.tag ?? `${engine}-${workload}${cpu === 1 ? '' : `-${cpu}x`}${sources > 0 ? `-${String(sources)}src` : ''}${toolbar ? '-toolbar' : ''}`;
 const out = path.join(here, 'results', tag);
 mkdirSync(out, { recursive: true });
 
@@ -103,7 +106,7 @@ for (const dist of new Set(configs.map(distOf))) {
 }
 
 const pageUrl = (config) => {
-  const query = new URLSearchParams({ variant: config.variant, rate: String(config.rate), height: String(height), overscan: String(config.overscan), sources: String(sources) });
+  const query = new URLSearchParams({ variant: config.variant, rate: String(config.rate), height: String(height), overscan: String(config.overscan), sources: String(sources), ...(toolbar ? { toolbar: '1' } : {}) });
   return `${servers.get(distOf(config)).url}?${query}`;
 };
 
@@ -157,7 +160,7 @@ async function followTrial(browser, config) {
     const emitted = statsAfter.received - statsBefore.received;
     const work = record.work.filter((value) => !Number.isNaN(value));
     return {
-      engine, workload, cpu, sources, config: config.name, variant: config.variant, rate: config.rate, overscan: config.overscan, height,
+      engine, workload, cpu, sources, toolbar, config: config.name, variant: config.variant, rate: config.rate, overscan: config.overscan, height,
       info, idle: { intervals: series(idle.intervals.map(round1)), frames: idle.frames },
       geometry, filled,
       frames: {

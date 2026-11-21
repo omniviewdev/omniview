@@ -9,6 +9,7 @@ import { Icon } from '../Icon';
 import { FindBar } from './FindBar';
 import { LevelFilter } from './LevelFilter';
 import { LogList } from './LogList';
+import { bindLogViewControls, type LogViewControls } from './LogViewControls';
 import { StatusStrip } from './StatusStrip';
 import styles from './LogView.module.css';
 
@@ -30,6 +31,11 @@ export type LogViewProps = {
    * the rows that are mounted again with the other clock, and keeps every line. A line's own timestamp, with its date and zone, is the tip of its clock. The control that offers the choice is the toolbar's.
    */
   readonly timestamps?: LogTimestamps | undefined;
+  /**
+   * The hands of the view, for a toolbar beside it (`createLogViewControls`): Follow, Pause, Clear and Copy, and the few facts they read. The view binds itself to them before it is drawn and lets go when it goes
+   * (a view that is hidden by React's `Activity` releases its effects, and so lets go too: a hidden toolbar is not drawn again for it). Absent: the view has no hands but its own.
+   */
+  readonly controls?: LogViewControls | undefined;
 } & DataAttributes;
 
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -41,7 +47,7 @@ const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
  * ended, failed with its cause) and what it dropped. The list is one tab stop; the arrows, Page, Home and End move the active line, and the find field
  * takes Enter and Shift+Enter for the next and previous match. Props are closed: no `className`, no `style`; `data-*` passes through.
  */
-export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuery = '', timestamps = 'local', ...rest }: LogViewProps) {
+export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuery = '', timestamps = 'local', controls, ...rest }: LogViewProps) {
   // The view of a feed is made once for it: the feed gives each line once, so a view made again would have lost every line it had already given. The cap is told to the view that
   // exists in the layout phase of the commit that changes it, which no animation frame comes between: a frame that read in the gap between that commit and its passive effects would
   // find the old cap and evict lines the new one keeps, which cannot be given back. The view is made with the cap this component first had.
@@ -56,6 +62,8 @@ export function LogView({ label, feed, maxLines = DEFAULT_MAX_LINES, defaultQuer
       model.detach();
     };
   }, [model]);
+  // Before the first paint, so a toolbar is drawn with what the view is and not with what a view is before it begins.
+  useLayoutEffect(() => (controls === undefined ? undefined : bindLogViewControls(controls, model)), [controls, model]);
 
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const status = useSyncExternalStore(feed.subscribe, feed.getSnapshot);

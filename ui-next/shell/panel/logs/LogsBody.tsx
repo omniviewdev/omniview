@@ -1,7 +1,7 @@
-import { LogView } from '@omniviewdev/kit';
 import { Activity } from 'react';
 import type { Session } from '../../core/panel';
 import { EmptyState } from '../EmptyState';
+import { LogSession } from './LogSession';
 import type { LogStreams } from './LogStreams';
 import { LOGS_GONE, LOGS_ICON } from './tool';
 import styles from './LogsBody.module.css';
@@ -37,7 +37,7 @@ export function LogsBody({ streams, session, visible }: LogsBodyProps) {
   return (
     <div className={styles.log} data-shell-part="logsBody">
       <Activity mode={visible ? 'visible' : 'hidden'}>
-        <LogView label={session.scope === '' ? session.title : `${session.title} · ${session.scope}`} feed={feed} data-log-session={session.id} />
+        <LogSession label={session.scope === '' ? session.title : `${session.title} · ${session.scope}`} feed={feed} session={session.id} />
       </Activity>
     </div>
   );
