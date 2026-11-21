@@ -13,7 +13,7 @@ func TestApplySwitchSeedRejectsLiveSource(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	source := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target")
-	if err := os.WriteFile(filepath.Join(source, "data"), []byte("source"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(source, "plugin_state.json"), []byte("source"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteSwitchSeed(target, source); err != nil {
@@ -55,7 +55,7 @@ func TestApplySwitchSeedRejectsLiveSource(t *testing.T) {
 	if err := ApplySwitchSeed(target); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(target, "data"))
+	data, err := os.ReadFile(filepath.Join(target, "plugin_state.json"))
 	if err != nil || string(data) != "source" {
 		t.Fatalf("copied data %q: %v", data, err)
 	}
@@ -67,13 +67,19 @@ func TestApplySwitchSeedRejectsLiveSource(t *testing.T) {
 func TestApplySwitchSeed(t *testing.T) {
 	source := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target")
-	if err := os.Mkdir(filepath.Join(source, "settings"), 0751); err != nil {
+	prefs := filepath.Join("plugins", "p1", "data")
+	if err := os.MkdirAll(filepath.Join(source, prefs), 0751); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "settings", "prefs"), []byte("prefs"), 0640); err != nil {
+	for _, dir := range []string{"plugins", filepath.Join("plugins", "p1"), prefs} {
+		if err := os.Chmod(filepath.Join(source, dir), 0751); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(source, prefs, "prefs"), []byte("prefs"), 0640); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("settings/prefs", filepath.Join(source, "link")); err != nil {
+	if err := os.Symlink("prefs", filepath.Join(source, prefs, "link")); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"runtime", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock"} {
@@ -94,18 +100,18 @@ func TestApplySwitchSeed(t *testing.T) {
 	if err := ApplySwitchSeed(target); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(target, "settings", "prefs"))
+	data, err := os.ReadFile(filepath.Join(target, prefs, "prefs"))
 	if err != nil || string(data) != "prefs" {
 		t.Fatalf("copied contents %q: %v", data, err)
 	}
-	for path, mode := range map[string]os.FileMode{"settings": 0751, "settings/prefs": 0640} {
+	for path, mode := range map[string]os.FileMode{"plugins": 0751, filepath.Join("plugins", "p1"): 0751, prefs: 0751, filepath.Join(prefs, "prefs"): 0640} {
 		info, err := os.Stat(filepath.Join(target, path))
 		if err != nil || info.Mode().Perm() != mode {
 			t.Fatalf("mode for %s: %v %v", path, info, err)
 		}
 	}
-	link, err := os.Readlink(filepath.Join(target, "link"))
-	if err != nil || link != "settings/prefs" {
+	link, err := os.Readlink(filepath.Join(target, prefs, "link"))
+	if err != nil || link != "prefs" {
 		t.Fatalf("link %q: %v", link, err)
 	}
 	for _, name := range []string{"runtime", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock", ".switch-seed-staging"} {
@@ -158,13 +164,13 @@ func TestApplySwitchSeedRetriesMissingSource(t *testing.T) {
 	if err := os.Mkdir(source, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "data"), []byte("ok"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(source, "plugin_state.json"), []byte("ok"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := ApplySwitchSeed(target); err != nil {
 		t.Fatal(err)
 	}
-	if data, err := os.ReadFile(filepath.Join(target, "data")); err != nil || string(data) != "ok" {
+	if data, err := os.ReadFile(filepath.Join(target, "plugin_state.json")); err != nil || string(data) != "ok" {
 		t.Fatalf("retry data %q: %v", data, err)
 	}
 }
@@ -173,7 +179,7 @@ func TestSwitchSeedPartialInstallRetry(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	source := t.TempDir()
 	target := filepath.Join(t.TempDir(), "target")
-	for _, name := range []string{"a", "b"} {
+	for _, name := range []string{"builtin", "plugins"} {
 		if err := os.Mkdir(filepath.Join(source, name), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -188,28 +194,28 @@ func TestSwitchSeedPartialInstallRetry(t *testing.T) {
 	if err := os.Mkdir(staging, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := copySwitchEntry(filepath.Join(source, "a"), filepath.Join(target, "a")); err != nil {
+	if err := copySwitchEntry(filepath.Join(source, "builtin"), filepath.Join(target, "builtin"), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := copySwitchEntry(filepath.Join(source, "b"), filepath.Join(staging, "b")); err != nil {
+	if err := copySwitchEntry(filepath.Join(source, "plugins"), filepath.Join(staging, "plugins"), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(staging, ".entries.json"), []byte(`["a","b"]`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(staging, ".entries.json"), []byte(`["builtin","plugins"]`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(target, "b"), []byte("existing"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(target, "plugins"), []byte("existing"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := ApplySwitchSeed(target); err == nil {
 		t.Fatal("overwrote existing entry")
 	}
-	if err := os.Remove(filepath.Join(target, "b")); err != nil {
+	if err := os.Remove(filepath.Join(target, "plugins")); err != nil {
 		t.Fatal(err)
 	}
 	if err := ApplySwitchSeed(target); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"a", "b"} {
+	for _, name := range []string{"builtin", "plugins"} {
 		data, err := os.ReadFile(filepath.Join(target, name, "data"))
 		if err != nil || string(data) != name {
 			t.Fatalf("entry %s: %q: %v", name, data, err)

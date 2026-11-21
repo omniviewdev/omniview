@@ -130,6 +130,11 @@ func ApplySwitchSeed(stateRoot string) error {
 	var names []string
 	manifestData, err := os.ReadFile(manifest)
 	if os.IsNotExist(err) {
+		// A staging directory with no manifest is an unfinished one. It may hold the
+		// plain copy of a settings database, which is overwritten before it goes.
+		if removeErr := removeStagedDatabase(staging); removeErr != nil {
+			return fmt.Errorf("remove stale switch staging: %w", removeErr)
+		}
 		if err := os.RemoveAll(staging); err != nil {
 			return fmt.Errorf("remove stale switch staging: %w", err)
 		}
@@ -145,27 +150,9 @@ func ApplySwitchSeed(stateRoot string) error {
 		if err := os.Mkdir(staging, 0700); err != nil {
 			return fmt.Errorf("create switch staging: %w", err)
 		}
-		entries, err := os.ReadDir(seed.Source)
+		names, err = stageSwitchProfile(seed.Source, staging)
 		if err != nil {
-			return fmt.Errorf("read switch source: %w", err)
-		}
-		names = []string{}
-		for _, entry := range entries {
-			switch entry.Name() {
-			case "runtime", ".lock", SwitchSeedFile, "update-checkpoints.json", "update-checkpoints.lock":
-				continue
-			}
-			if entry.Name() == ".entries.json" || entry.Name() == ".entries.tmp" {
-				return fmt.Errorf("reserved switch entry %q", entry.Name())
-			}
-			if err := copySwitchEntry(filepath.Join(seed.Source, entry.Name()), filepath.Join(staging, entry.Name())); err != nil {
-				return fmt.Errorf("copy switch entry %q: %w", entry.Name(), err)
-			}
-			if _, err := os.Lstat(filepath.Join(staging, entry.Name())); err == nil {
-				names = append(names, entry.Name())
-			} else if !os.IsNotExist(err) {
-				return fmt.Errorf("stat switch entry: %w", err)
-			}
+			return err
 		}
 		manifestData, err = json.Marshal(names)
 		if err != nil {
@@ -186,6 +173,10 @@ func ApplySwitchSeed(stateRoot string) error {
 	for _, name := range names {
 		if name == "" || name == "." || name == ".." || filepath.Base(name) != name || name == ".entries.json" {
 			return fmt.Errorf("invalid switch entry %q", name)
+		}
+		if !isSeedTopLevel(name) {
+			// A staging an earlier build made, naming what this build does not carry.
+			continue
 		}
 		src, dst := filepath.Join(staging, name), filepath.Join(stateRoot, name)
 		_, srcErr := os.Lstat(src)
@@ -215,52 +206,65 @@ func ApplySwitchSeed(stateRoot string) error {
 	return nil
 }
 
-func copySwitchEntry(src, dst string) error {
+// copySwitchEntry copies a file, a directory tree or a link, leaving out, at any
+// depth, the names skip reports (nil skips nothing).
+func copySwitchEntry(src, dst string, skip func(name string) bool) error {
 	info, err := os.Lstat(src)
 	if err != nil {
 		return err
 	}
 	switch {
 	case info.Mode().IsRegular():
-		in, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(out, in)
-		closeErr := out.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		return os.Chmod(dst, info.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky))
+		return copySwitchFile(src, dst, info)
 	case info.IsDir():
-		if err := os.Mkdir(dst, 0700); err != nil {
-			return err
-		}
-		entries, err := os.ReadDir(src)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if err := copySwitchEntry(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name())); err != nil {
-				return err
-			}
-		}
-		return os.Chmod(dst, info.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky))
+		return copySwitchDirectory(src, dst, info, skip)
 	case info.Mode()&os.ModeSymlink != 0:
-		target, err := os.Readlink(src)
-		if err != nil {
-			return err
+		target, linkErr := os.Readlink(src)
+		if linkErr != nil {
+			return linkErr
 		}
 		return os.Symlink(target, dst)
 	default:
 		return nil
 	}
+}
+
+func copySwitchFile(src, dst string, info os.FileInfo) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return os.Chmod(dst, keptMode(info))
+}
+
+func copySwitchDirectory(src, dst string, info os.FileInfo, skip func(name string) bool) error {
+	if err := os.Mkdir(dst, privateDirectoryMode); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if skip != nil && skip(entry.Name()) {
+			continue
+		}
+		if err = copySwitchEntry(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name()), skip); err != nil {
+			return err
+		}
+	}
+	return os.Chmod(dst, keptMode(info))
 }
