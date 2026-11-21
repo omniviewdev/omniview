@@ -86,7 +86,8 @@ const PERTURBATIONS = {
   'over-lines': { sections: ['identity'], expected: /^identity .*: an ended session pressed again: its view still shows line \d+ as it was/ },
   // P1b-4a, the toolbar. Each is made in the page right before the check it is named for, and each is for ONE check (the same fault passes with that check removed: ASSERTION_OFF=<expected>): the view's row count reads five more while the
   // toolbar says paused (the view draws lines while paused), the text a copy wrote has no source labels, the count of lines after a Clear is one more than the stream made, a choice of a session (UTC) is lost when it comes back, the count of
-  // commits a Pause press cost is one more (a commit that never happened is entered in the profiler's list), and a toolbar that kept its confirmation's clock while hidden changes a node inside the closed window. The comparison with the mock's geometry has no control yet.
+  // commits a Pause press cost is one more (a commit that never happened is entered in the profiler's list), and a toolbar that kept its confirmation's clock while hidden changes a node inside the closed window. `toolbar-moved` stands the column 3 px to the right while it is measured, which the comparison with the mock's geometry must see.
+  'toolbar-moved': { sections: ['toolbar'], expected: /^toolbar .*: geometry: the toolbar's column/ },
   'pause-leaks': { sections: ['toolbar'], expected: /^toolbar .*: pause: the view drew \d+ lines while paused/ },
   'copy-no-source': { sections: ['toolbar'], expected: /^toolbar .*: copy: a line is not the mock's lineText/ },
   'clear-miscount': { sections: ['toolbar'], expected: /^toolbar .*: clear: the sources made/ },
@@ -1308,6 +1309,11 @@ const READ_TOOLBAR = () => {
   };
 };
 
+/** The mock's Logs toolbar, measured from the mock itself (mock-logs-toolbar-measure.mjs: both engines, both viewports): the column, the buttons, the glyphs and the paint. */
+const MOCK_TOOLBAR = JSON.parse(readFileSync(new URL('./mock-logs-toolbar.json', import.meta.url), 'utf8'));
+const near = (a, b, within = 1) => a.length === b.length && a.every((value, index) => Math.abs(value - b[index]) <= within);
+const PAINT_KEYS = ['backgroundColor', 'color', 'borderTopWidth', 'borderTopColor', 'borderTopLeftRadius'];
+
 const TOOL_LABELS = { follow: 'Follow', pause: 'Pause log updates', timestamps: 'Show timestamps in UTC', clear: 'Clear', copy: 'Copy' };
 const TOOL_GLYPHS = { follow: 'arrow-down-to-line', pause: 'pause', timestamps: 'globe', clear: 'eraser', copy: 'copy' };
 const TOOL_ORDER = Object.keys(TOOL_LABELS);
@@ -1350,6 +1356,66 @@ async function toolbar(browser, engine, viewportName, viewport, origin) {
     if (one.disabled !== 'true' || one.reason !== NO_LINES || one.tip !== `${TOOL_LABELS[id]}\n${NO_LINES}`) fail(where, `words: with no line ${id} is ${JSON.stringify({ disabled: one.disabled, reason: one.reason, tip: one.tip })}, wanted unavailable with "${NO_LINES}" as its description and the second line of its tip`);
   }
   for (const id of ['follow', 'pause', 'timestamps']) if (quiet.tools[id]?.disabled !== null) fail(where, `words: ${id} is unavailable with no line (${String(quiet.tools[id]?.disabled)})`);
+  // --- the geometry and the paint against the mock's own: the column and the view beside it in the body, each button's place against the column, the glyph in its button, and the paint of a pressed, a resting and an unavailable button ---
+  const mock = MOCK_TOOLBAR.data[engine]?.[viewportName]?.rest;
+  const mockStates = MOCK_TOOLBAR.data[engine]?.['1440x900']?.states;
+  if (mock === undefined || mockStates === undefined) fail(where, `geometry: mock-logs-toolbar.json has no reference for ${engine} ${viewportName}`);
+  else {
+    const found = await page.evaluate(({ perturb, keys }) => {
+      const rect = (el) => {
+        const b = el.getBoundingClientRect();
+        return [b.x, b.y, b.width, b.height].map((n) => Math.round(n * 100) / 100);
+      };
+      const body = document.querySelector('[data-shell-part="panelBody"]:not([hidden])');
+      const column = body.querySelector('[data-shell-part="logsTools"]');
+      // The negative control `toolbar-moved`: the column stands 3 px to the right while it is measured (its buttons are measured against it, so only the column's own check sees it); put back right after.
+      if (perturb) {
+        column.style.position = 'relative';
+        column.style.left = '3px';
+      }
+
+      const result = {
+        body: rect(body),
+        column: rect(column),
+        view: rect(body.querySelector('[data-log-session]')),
+        buttons: [...column.querySelectorAll('button')].map((button) => {
+          const style = getComputedStyle(button);
+          return { id: button.getAttribute('data-log-tool'), box: rect(button), svg: rect(button.querySelector('svg')), paint: Object.fromEntries(keys.map((key) => [key, style[key]])) };
+        }),
+      };
+      if (perturb) {
+        column.style.position = '';
+        column.style.left = '';
+      }
+
+      return result;
+    }, { perturb: CONTROL === 'toolbar-moved', keys: PAINT_KEYS });
+    const rel = (box, to) => [box[0] - to[0], box[1] - to[1], box[2], box[3]];
+    const columnRel = rel(found.column, found.body);
+    const viewRel = rel(found.view, found.body);
+    const first = mock.buttons[0];
+    report.toolbar[`${engine} ${viewportName}`].geometry = { column: columnRel, view: viewRel, buttons: found.buttons.map((one) => rel(one.box, found.column)) };
+    if (!near(columnRel, mock.tools.rel)) fail(where, `geometry: the toolbar's column is ${JSON.stringify(columnRel)} in the body, the mock's ${JSON.stringify(mock.tools.rel)}`);
+    if (!near(viewRel, mock.content.rel)) fail(where, `geometry: the log view is ${JSON.stringify(viewRel)} in the body, the mock's content ${JSON.stringify(mock.content.rel)}`);
+    found.buttons.forEach((one, index) => {
+      const own = rel(one.box, found.column);
+      const slot = [first.relTools[0], mock.slots.pad + mock.slots.pitch * index, first.relTools[2], first.relTools[3]];
+      const measured = mock.buttons[index];
+      // A button the mock draws in the same slot is compared with the mock's own measurement; the others with its slot arithmetic (4 px above, a 32 px pitch: shell-regions.js `TOOL_PITCH`, `TOOL_PAD`).
+      const wanted = index < 2 && measured !== undefined ? measured.relTools : slot;
+      if (!near(own, wanted)) fail(where, `geometry: the ${one.id} button is ${JSON.stringify(own)} in the column, the mock's ${JSON.stringify(wanted)}`);
+      const inside = [one.svg[0] - one.box[0], one.svg[1] - one.box[1], one.svg[2], one.svg[3]];
+      const glyph = [first.svg[0] - first.abs[0], first.svg[1] - first.abs[1], first.svg[2], first.svg[3]];
+      if (!near(inside, glyph)) fail(where, `geometry: the glyph of ${one.id} is ${JSON.stringify(inside)} in its button, the mock's ${JSON.stringify(glyph)}`);
+    });
+    const paintOf = (id) => found.buttons.find((one) => one.id === id)?.paint ?? {};
+    for (const [id, wanted] of [['follow', mock.buttons[0].style], ['pause', mock.buttons[1].style]]) {
+      for (const key of PAINT_KEYS) if (paintOf(id)[key] !== wanted[key]) fail(where, `paint: the ${id} button's ${key} is ${String(paintOf(id)[key])}, the mock's ${String(wanted[key])}`);
+    }
+
+    if (paintOf('copy').color !== mockStates.connectingDisabledHover.color) fail(where, `paint: the unavailable Copy's colour is ${String(paintOf('copy').color)}, the mock's ${mockStates.connectingDisabledHover.color}`);
+  }
+
   await press('copy', true);
   await press('clear', true);
   await sleep(200);
@@ -1365,6 +1431,14 @@ async function toolbar(browser, engine, viewportName, viewport, origin) {
   const walk = [];
   await page.keyboard.press('Tab');
   walk.push(await at());
+  if (mockStates !== undefined) {
+    const focus = await page.evaluate(() => {
+      const style = getComputedStyle(document.activeElement);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, outlineColor: style.outlineColor, outlineOffset: style.outlineOffset };
+    });
+    for (const key of Object.keys(focus)) if (focus[key] !== mockStates.paintFocus.paint[key]) fail(where, `paint: the keyboard focus's ${key} is ${focus[key]}, the mock's ${String(mockStates.paintFocus.paint[key])}`);
+  }
+
   const stops = await page.evaluate(() => [...document.querySelectorAll('[data-shell-part="panelBody"]:not([hidden]) [aria-label="Logs tools"] button')].filter((b) => b.tabIndex === 0).length);
   await page.keyboard.press('Tab');
   walk.push(await at());
