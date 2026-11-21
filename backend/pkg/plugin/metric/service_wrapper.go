@@ -22,6 +22,8 @@ type ServiceWrapper struct {
 	Realm      *invocation.WindowRealm
 	sessionsMu sync.Mutex
 	sessions   map[invocation.WindowIdentity]*metricFrontendSession
+	// retireOnce subscribes the wrapper to the realm's retirement signal the first time a session is made.
+	retireOnce sync.Once
 }
 
 func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {

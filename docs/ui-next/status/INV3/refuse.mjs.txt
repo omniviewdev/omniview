@@ -1,0 +1,41 @@
+// INV3 (B-89): the page that finds the realm full. N pages stay open; the pages past the limit call ListConnections several times each. Prints what each answered
+// (status and code) and the host's log lines about the refusal: one for each refused page, not one for each call.
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { log, playwright, RESOURCE, sleep, startHost } from './lib.mjs';
+const { HOST_ROOT, BIN, PLUGIN_ARCHIVE, KUBECONFIG_PATH, OUT, N = '68', CALLS = '5' } = process.env;
+const pw = playwright(HOST_ROOT);
+const h = await startHost({ bin: BIN, archive: PLUGIN_ARCHIVE, kubeconfig: KUBECONFIG_PATH, out: OUT, countersFile: process.env.INV2_COUNTERS });
+const browser = await pw.chromium.launch();
+const probe = (page) => page.evaluate(async (methodName) => {
+  const r = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails?.clientId ?? '' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `p-${Math.random()}`, methodName, args: ['kubernetes'] } }) });
+  const text = await r.text();
+  return { status: r.status, code: (/"code":"([A-Z_]+)"/.exec(text) || [])[1] ?? null, body: text.slice(0, 300) };
+}, `${RESOURCE}.ListConnections`);
+const pages = [];
+const answers = [];
+for (let i = 1; i <= Number(N); i += 1) {
+  const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
+  await page.goto(`${h.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+  await sleep(700);
+  const first = await probe(page);
+  const rest = [];
+  if (first.status !== 200) for (let c = 1; c < Number(CALLS); c += 1) rest.push(await probe(page));
+  answers.push({ page: i, first, more: rest.map((r) => `${r.status}/${r.code}`) });
+  pages.push(page);
+}
+for (const a of answers.filter((x) => x.first.status !== 200 || x.page >= 62)) log(`page ${a.page}: ${a.first.status} ${a.first.code} ${a.first.body.slice(0, 220)}  further calls: ${a.more.join(' ')}`);
+log('counters', JSON.stringify(h.counters()));
+const lines = readFileSync(path.join(OUT, 'host.log'), 'utf8').split('\n').filter((l) => /window realm refused/.test(l));
+log(`host log lines about a refused window: ${lines.length}`);
+for (const line of lines.slice(0, 6)) log(line.slice(0, 400));
+for (const page of pages) await page.close();
+await sleep(8000);
+log('counters after all closed', JSON.stringify(h.counters()));
+const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
+await page.goto(`${h.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+await sleep(1500);
+log('a new page after all closed:', JSON.stringify((await probe(page)).status));
+await browser.close();
+await h.cleanup();
+process.exit(0);

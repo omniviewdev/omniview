@@ -2,9 +2,9 @@ package metric
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
@@ -19,6 +19,23 @@ type metricFrontendSession struct {
 	window application.Window
 }
 
+// maxMetricFrontendSessions bounds the sessions a host holds. Every session has a window the realm serves, and the realm serves 64, so the realm's
+// refusal comes first; this is the registry's own bound, not the one a window meets.
+const maxMetricFrontendSessions = 64
+
+// retireWindow is the realm's signal that a window is gone: its session's observations end and its slot is free.
+func (s *ServiceWrapper) retireWindow(key invocation.WindowIdentity) {
+	s.sessionsMu.Lock()
+	session := s.sessions[key]
+	delete(s.sessions, key)
+	s.sessionsMu.Unlock()
+	if session == nil {
+		return
+	}
+	session.cancel()
+	s.Ctrl.RetireMetricsSession(session.ctx)
+}
+
 func (s *ServiceWrapper) metricSession(ctx context.Context) (context.Context, *metricFrontendSession, error) {
 	window, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok || window == nil {
@@ -29,32 +46,29 @@ func (s *ServiceWrapper) metricSession(ctx context.Context) (context.Context, *m
 	}
 	s.sessionsMu.Lock()
 	defer s.sessionsMu.Unlock()
+	// The realm's retirement signal releases a session: a server-mode page never fires its window's close event.
+	// The subscription is made under the lock a session is made under, so a retirement cannot slip between a scope and its session.
+	s.retireOnce.Do(func() { s.Realm.OnRetire(s.retireWindow) })
 	key := invocation.IdentityOf(window)
 	if s.sessions == nil {
 		s.sessions = map[invocation.WindowIdentity]*metricFrontendSession{}
 	}
 	session := s.sessions[key]
 	if session == nil {
-		if len(s.sessions) >= 64 {
-			return ctx, nil, finiteError("RESOURCE_LIMIT", "Metric frontend session limit exceeded.")
+		scope, err := s.Realm.AdmitWindow(window)
+		if errors.Is(err, invocation.ErrWindowLimit) {
+			return ctx, nil, err
 		}
-		scope := s.Realm.ScopeForWindow(window)
-		if scope == nil {
+		if err != nil {
 			return ctx, nil, finiteError("CANCELLED", "Metric frontend window is unavailable.")
+		}
+		if len(s.sessions) >= maxMetricFrontendSessions {
+			return ctx, nil, finiteError("RESOURCE_LIMIT", "Metric frontend session limit exceeded.")
 		}
 		lifeBase := context.WithValue(context.Background(), application.WindowKey, window)
 		life, cancel := context.WithCancel(scope.Context(lifeBase))
 		session = &metricFrontendSession{scope: scope, ctx: life, cancel: cancel, window: window}
 		s.sessions[key] = session
-		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
-			cancel()
-			s.Ctrl.RetireMetricsSession(life)
-			s.sessionsMu.Lock()
-			if s.sessions[key] == session {
-				delete(s.sessions, key)
-			}
-			s.sessionsMu.Unlock()
-		})
 	}
 	if session.ctx.Err() != nil {
 		return ctx, nil, finiteError("CANCELLED", "Metric frontend session closed.")

@@ -540,7 +540,7 @@ func main() {
 	mcpAuthority := mcprelay.NewAuthority()
 	resourceBoundary := invocation.NewBoundary(mcpAuthority)
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
-	resourceUIRealm := invocation.NewWindowRealm(resourceController.RetireSourceOwner)
+	resourceUIRealm := invocation.NewWindowRealm(resourceController.RetireSourceOwner, invocation.WithLogger(log.Named("window-realm")))
 	activityService, err := activity.NewService(stateDir.RootDir(), func(topic string, change sdkactivity.Change) {
 		app.Event.Emit(topic, change)
 	})

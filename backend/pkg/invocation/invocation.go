@@ -139,6 +139,10 @@ func (b *Boundary) Admit(ctx context.Context, operation string, target Target) (
 		return ctx, apperror.ForResource(err, requestID)
 	}
 	principal, ok := ctx.Value(principalKey{}).(Principal)
+	if refusal, refused := ctx.Value(refusalKey{}).(error); refused && (!ok || principal.owner == "") {
+		// A window the realm had no slot for: the class of its refusal, which is not a permission refusal.
+		return ctx, apperror.ForResource(refusal, requestID)
+	}
 	if !ok || principal.owner == "" || (principal.origin != Host && principal.origin != TrustedUI && principal.origin != ExternalAgent) {
 		return ctx, apperror.ForResource(apperror.Forbidden("Access denied", "This operation requires a host-issued invocation."), requestID)
 	}
