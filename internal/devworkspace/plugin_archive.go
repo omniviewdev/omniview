@@ -20,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"gopkg.in/yaml.v3"
@@ -60,7 +61,7 @@ func (g *BuildGraph) PublishPluginArchive(ctx context.Context, plugin devcontrac
 	if err != nil {
 		return "", receipt, err
 	}
-	metadata, err := sdktypes.LoadPluginMetadata(source)
+	metadata, err := pluginmeta.Load(source)
 	if err != nil {
 		return "", receipt, fmt.Errorf("archive plugin %s metadata: %w", plugin.ID, err)
 	}

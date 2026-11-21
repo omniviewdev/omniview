@@ -852,10 +852,6 @@ func (consumer uninstallInventoryConsumer) Emit(event string, _ ...any) {
 }
 
 func TestUninstallPlugin_RefreshesInventoryOnlyAfterDurableDeletion(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, phase := range []lifecycle.PluginPhase{lifecycle.PhaseFailed, lifecycle.PhaseStopped, lifecycle.PhaseRunning} {
 		for _, dev := range []bool{false, true} {
 			name := string(phase) + "/installed"
@@ -905,10 +901,6 @@ func TestUninstallPlugin_RefreshesInventoryOnlyAfterDurableDeletion(t *testing.T
 }
 
 func TestUninstallPlugin_DoesNotPublishInventorySuccessOnFailure(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1. The "remove" case also moves the plugins directory the service holds open, which Windows refuses by nature.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, failure := range []string{"unload", "remove", "persist", "missing", "not-dev"} {
 		t.Run(failure, func(t *testing.T) {
 			pm := newTestManager(t)
@@ -962,10 +954,6 @@ func TestUninstallPlugin_DoesNotPublishInventorySuccessOnFailure(t *testing.T) {
 }
 
 func TestUninstallPlugin_PersistenceFailurePreservesRecoverableInstallation(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, dev := range []bool{false, true} {
 		name := "installed"
 		if dev {
@@ -1036,10 +1024,6 @@ func TestUninstallPlugin_PersistenceFailurePreservesRecoverableInstallation(t *t
 }
 
 func TestUninstallPlugin_RollbackPreservesForeignDestinationAndRecoveryFiles(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	pm := newTestManager(t)
 	installPluginFixture(t, pm, "flux", []string{"ui"}, false)
 	require.NoError(t, os.MkdirAll(pm.pluginsRoot.ResolvePath("flux/assets"), 0755))
@@ -1116,10 +1100,6 @@ func TestUninstallPlugin_MissingInstallationStillCommitsInventoryRemoval(t *test
 }
 
 func TestUninstallPlugin_ForeignReplacementRemainsUnownedAcrossRetryAndRestart(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, restart := range []bool{false, true} {
 		name := "retry"
 		if restart {
@@ -1199,10 +1179,6 @@ func TestUninstallPlugin_ForeignReplacementRemainsUnownedAcrossRetryAndRestart(t
 }
 
 func TestUninstallPlugin_RejectsRecoveryProofFromAnotherProfile(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	source := newTestManager(t)
 	installPluginFixture(t, source, "flux", []string{"ui"}, false)
 	require.NoError(t, source.pluginsRoot.MkdirAll("flux/assets", 0755))
@@ -1516,10 +1492,6 @@ func TestMarketplaceArchive_VersionSurvivesReloadAndLaterLocalReplacement(t *tes
 }
 
 func TestMarketplaceArchive_QueuedUninstallRunsAfterPublication(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	pm := newTestManager(t)
 	archive := writeTestTarball(t, []tarEntry{
 		{name: "plugin.yaml", mode: 0644, body: uiOnlyYaml},

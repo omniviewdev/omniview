@@ -28,7 +28,6 @@ import (
 // that closed the cached root and created an empty directory made the move fail
 // ("file exists") and the update with it ("requires recovery").
 func TestInstallPluginFromPath_ConcurrentStateLookupsDoNotBreakReplacement(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	const (
 		lookers = 4
 		updates = 3
@@ -99,7 +98,6 @@ func TestInstallPluginFromPath_ConcurrentStateLookupsDoNotBreakReplacement(t *te
 // whose host opened its state directories, and which then rolled back. The next
 // installation of the ID must get roots on its own directories.
 func TestFailedFirstInstallReleasesTheRootsItCached(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	var kept atomic.Pointer[appstate.ScopedRoot]
 	f.onList = func() {
@@ -135,7 +133,6 @@ func TestFailedFirstInstallReleasesTheRootsItCached(t *testing.T) {
 }
 
 func TestSuccessfulUpdateReleasesNothing(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	var released []string
@@ -148,7 +145,6 @@ func TestSuccessfulUpdateReleasesNothing(t *testing.T) {
 }
 
 func TestFailedUpdateKeepsThePluginRoots(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	store, err := f.svc.PluginStore("flux")

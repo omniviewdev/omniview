@@ -142,7 +142,7 @@ jobs:
         shell: bash
         run: |
           go test -v -count=1 ./backend/pkg/plugin \
-            -run 'Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate|TestCreateBackendEnablesChannelAuthentication|TestCreateBackendChannelIsMutuallyAuthenticated|TestCreateBackendRefusesPluginThatIgnoresChannelCertificate|TestChannelRejectsClientWithoutHostCertificate' \
+            -run 'Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate|TestHostChannelSyncInstallsSignedFeatureArchive|TestChannelInstallsAndHostSyncSerialize|TestCreateBackendEnablesChannelAuthentication|TestCreateBackendChannelIsMutuallyAuthenticated|TestCreateBackendRefusesPluginThatIgnoresChannelCertificate|TestChannelRejectsClientWithoutHostCertificate' \
             2>&1 | tee "$RUNNER_TEMP/windows-plugin-lifecycle.log"
         env:
           GOWORK: "off"

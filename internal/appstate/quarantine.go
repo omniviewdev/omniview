@@ -26,18 +26,20 @@ func (s *ScopedRoot) Quarantine(name string) (string, error) {
 	if err := validate(name); err != nil {
 		return "", err
 	}
+	root, done := s.acquire()
+	defer done()
 	base := fmt.Sprintf("%s.invalid.%d", name, time.Now().Unix())
 	for attempt := range 1000 {
 		candidate := base
 		if attempt > 0 {
 			candidate = fmt.Sprintf("%s.%d", base, attempt)
 		}
-		if _, err := s.root.Lstat(candidate); err == nil {
+		if _, err := root.Lstat(candidate); err == nil {
 			continue
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return "", err
 		}
-		if err := s.root.Rename(name, candidate); err != nil {
+		if err := root.Rename(name, candidate); err != nil {
 			return "", err
 		}
 		return candidate, nil

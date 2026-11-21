@@ -25,6 +25,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -198,7 +199,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	}
 
 	var err error
-	metadata, err = sdktypes.LoadPluginMetadata(location)
+	metadata, err = pluginmeta.Load(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusNotFound,

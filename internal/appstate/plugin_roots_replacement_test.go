@@ -41,14 +41,15 @@ func cachePluginRoots(t *testing.T, svc *Service, id string) (*ScopedRoot, *Scop
 }
 
 // uninstallPluginDir removes a plugin directory the way an uninstall does:
-// stage it by rename, then delete the staged tree.
+// stage it by rename and delete the staged tree, both through the plugins root,
+// as the plugin manager does. The caller releases the roots afterwards, once the
+// uninstall is durable.
 func uninstallPluginDir(t *testing.T, svc *Service, id string) string {
 	t.Helper()
-	pluginDir := filepath.Join(svc.Root(), "plugins", id)
-	staged := pluginDir + ".uninstall"
-	require.NoError(t, os.Rename(pluginDir, staged), "stage rename")
-	require.NoError(t, os.RemoveAll(staged), "remove staged")
-	return pluginDir
+	plugins := svc.Plugins()
+	require.NoError(t, plugins.RenameDirectoryNoReplace(id, id+".uninstall"), "stage rename")
+	require.NoError(t, plugins.RemoveAll(id+".uninstall"), "remove staged")
+	return filepath.Join(svc.Root(), "plugins", id)
 }
 
 // requireKeptRoots fails unless every lookup answers with the roots the caller
@@ -68,7 +69,6 @@ func requireKeptRoots(t *testing.T, svc *Service, id string, store, data *Scoped
 }
 
 func TestPluginStore_SurvivesUninstallAndReinstall(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "reinstall-plugin"
 
@@ -94,7 +94,6 @@ func TestPluginStore_SurvivesUninstallAndReinstall(t *testing.T) {
 }
 
 func TestPluginData_SurvivesUninstallAndReinstall(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "reinstall-plugin"
 
@@ -126,7 +125,6 @@ func TestPluginData_SurvivesUninstallAndReinstall(t *testing.T) {
 }
 
 func TestPluginRoots_LookupsDuringAnArchiveReplacementKeepTheirRootsAndCreateNothing(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "update-plugin"
 	store, data := cachePluginRoots(t, svc, id)
@@ -137,8 +135,8 @@ func TestPluginRoots_LookupsDuringAnArchiveReplacementKeepTheirRootsAndCreateNot
 	// candidate, a plugin directory with no store and no data directory because a
 	// package cannot contain them, and only then moves the state directories in.
 	pluginDir := filepath.Join(svc.Root(), "plugins", id)
-	previous := pluginDir + ".previous"
-	require.NoError(t, os.Rename(pluginDir, previous))
+	plugins := svc.Plugins()
+	require.NoError(t, plugins.RenameDirectoryNoReplace(id, id+".previous"))
 	require.NoError(t, os.Mkdir(pluginDir, 0o700))
 
 	// A lookup in that window must neither close the cached roots nor create the
@@ -149,7 +147,7 @@ func TestPluginRoots_LookupsDuringAnArchiveReplacementKeepTheirRootsAndCreateNot
 	}
 
 	for _, name := range []string{"data", "store"} {
-		require.NoError(t, os.Rename(filepath.Join(previous, name), filepath.Join(pluginDir, name)),
+		require.NoError(t, plugins.RenameDirectoryNoReplace(filepath.Join(id+".previous", name), filepath.Join(id, name)),
 			"the move of %s must find its destination free", name)
 	}
 	// The roots held across the whole replacement address the live directories.
@@ -163,7 +161,6 @@ func TestPluginRoots_LookupsDuringAnArchiveReplacementKeepTheirRootsAndCreateNot
 }
 
 func TestPluginRoots_KeptWhilePluginDirectoryIsMissing(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "rollback-plugin"
 	store, data := cachePluginRoots(t, svc, id)
@@ -171,8 +168,8 @@ func TestPluginRoots_KeptWhilePluginDirectoryIsMissing(t *testing.T) {
 	// An uninstall stages the plugin directory by rename, and until its disposal
 	// begins it can still roll back by renaming the directory home.
 	pluginDir := filepath.Join(svc.Root(), "plugins", id)
-	staged := pluginDir + ".uninstall"
-	require.NoError(t, os.Rename(pluginDir, staged))
+	plugins := svc.Plugins()
+	require.NoError(t, plugins.RenameDirectoryNoReplace(id, id+".uninstall"))
 
 	requireKeptRoots(t, svc, id, store, data, "while staged")
 	// A lookup must not resurrect the plugin directory the transaction moved
@@ -180,7 +177,7 @@ func TestPluginRoots_KeptWhilePluginDirectoryIsMissing(t *testing.T) {
 	assert.NoDirExists(t, pluginDir, "a lookup recreated the plugin directory")
 
 	// The rollback renames the directory home; the roots were kept and are live.
-	require.NoError(t, os.Rename(staged, pluginDir))
+	require.NoError(t, plugins.RenameDirectoryNoReplace(id+".uninstall", id))
 	for name, held := range map[string]*ScopedRoot{"store": store, "data": data} {
 		require.NoError(t, held.WriteFile("rolled-back.json", []byte("ok"), 0o600), "%s: write through the kept root", name)
 		assert.FileExists(t, filepath.Join(pluginDir, name, "rolled-back.json"), "%s: the write must land in the restored directory", name)
@@ -189,7 +186,6 @@ func TestPluginRoots_KeptWhilePluginDirectoryIsMissing(t *testing.T) {
 }
 
 func TestPluginRoots_ReuseTheRootsWhenOnlyTheStateDirectoriesMoved(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "update-plugin"
 	store, data := cachePluginRoots(t, svc, id)
@@ -198,11 +194,11 @@ func TestPluginRoots_ReuseTheRootsWhenOnlyTheStateDirectoriesMoved(t *testing.T)
 	// one's state directories into it without copying: the same directories, at
 	// the same paths, in a new parent.
 	pluginDir := filepath.Join(svc.Root(), "plugins", id)
-	previous := pluginDir + ".previous"
-	require.NoError(t, os.Rename(pluginDir, previous))
+	plugins := svc.Plugins()
+	require.NoError(t, plugins.RenameDirectoryNoReplace(id, id+".previous"))
 	require.NoError(t, os.Mkdir(pluginDir, 0o700))
 	for _, name := range []string{"store", "data"} {
-		require.NoError(t, os.Rename(filepath.Join(previous, name), filepath.Join(pluginDir, name)))
+		require.NoError(t, plugins.RenameDirectoryNoReplace(filepath.Join(id+".previous", name), filepath.Join(id, name)))
 	}
 
 	requireKeptRoots(t, svc, id, store, data, "after the move")
@@ -211,7 +207,6 @@ func TestPluginRoots_ReuseTheRootsWhenOnlyTheStateDirectoriesMoved(t *testing.T)
 }
 
 func TestReleasePluginRoots_LookupsCreateNothingUntilThePluginDirectoryExists(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "uninstalled-plugin"
 	cachePluginRoots(t, svc, id)
@@ -297,7 +292,6 @@ func TestReleasePluginRoots_IgnoresAnInvalidIDAndAClosedService(t *testing.T) {
 }
 
 func TestReleasePluginRoots_LateHolderGetsAClearErrorAndNeverActsOnTheNewDirectory(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const id = "reinstall-plugin"
 	oldStore, oldData := cachePluginRoots(t, svc, id)
@@ -403,7 +397,6 @@ func lookRootsUp(svc *Service, id string, done <-chan struct{}) {
 }
 
 func TestReleasePluginRoots_ConcurrentWithLookups(t *testing.T) {
-	SkipIfOpenRootBlocksRename(t)
 	svc := NewTestService(t)
 	const (
 		id      = "busy-plugin"
