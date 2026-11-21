@@ -95,6 +95,22 @@ describe('the count slot of an entry', () => {
   });
 });
 
+describe('a label that is cut (ch12 SB1: a long name is clipped at its end, with the full name as a tooltip)', () => {
+  it('is a clipping element for the one tooltip of the window, which names it in full while it is cut and says nothing while it is not: its text is its name, and no title or tip of its own repeats it', () => {
+    renderTree([group('things', 'Things', [entry('a', 'A name much too long for the room it is given', 12), entry('b', 'Beta')])]);
+
+    for (const name of [/^A name much too long/, 'Beta', 'Things']) {
+      const row = screen.getByRole('treeitem', { name });
+      const label = row.children[1];
+      expect(label).toHaveAttribute('data-ov-clip');
+      expect(label).not.toHaveAttribute('data-ov-tip');
+      expect(label).not.toHaveAttribute('title');
+      expect(row).not.toHaveAttribute('data-ov-tip');
+      expect(row).not.toHaveAttribute('title');
+    }
+  });
+});
+
 describe('the open groups the tree tells its host', () => {
   const nodes = [
     group('things', 'Things', [entry('a', 'Alpha'), group('inner', 'Inner', [entry('b', 'Beta')])]),

@@ -25,32 +25,47 @@
 //   arrival    a count that arrives in the sidebar moves nothing (Q2a, ch12 SB1: every collection row has a count slot): the entries declare the slot in the skeleton, and when the counts come (an estimate
 //              as "~25", an exact number as "1") every row's rectangle, its glyph's, its label's and the label's text are the ones they were, no label is cut that was not, the slot is where it was, and
 //              the layout-shift observer where the engine has one reads 0 over the arrival; the host tells the plugin's hook which groups of its tree are open on screen, and follows the user's clicks on one
-//   controls   NEGATIVE_CONTROL=<name> runs only `arrival` (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise) with one perturbation, which the probe must see: the exit code is 0 when it did.
+//   names      the room a sidebar label gets beside its count, against the mock's own tree (S3, demo finding D7; mock-sidebar.json, made by mock-sidebar-measure.mjs): the row, the glyph, the label and the digits sit where the mock's
+//              do (1 px), the label and its count share the row's width as the mock's do, the slot holds three characters (the mock's two digits and the host's tilde) and the label of a count of that width is cut when the mock's is
+//              and when it is not, never earlier; and a label that is cut says its whole name when it is pointed at (the kit's tooltip, the mock's clipped-cell tip), one that is not says nothing
+//   controls   NEGATIVE_CONTROL=<name> runs only the section it is for (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise) with one perturbation, which the probe must see: the exit code is 0 when it did.
 //              slot-width: the slot of a count holds no width (`min-inline-size: 0`, as a tree that does not hold it); slot-undeclared: the plugin's skeleton declares no slot (`?counts=late`). Without the
-//              assertions for a label's and a slot's rectangle neither is seen: every other check agrees with the perturbed page (the layout-shift observer reads 0 for both, the row and the glyph stand, and the digits are where the mock puts them)
+//              assertions for a label's and a slot's rectangle neither is seen: every other check agrees with the perturbed page (the layout-shift observer reads 0 for both, the row and the glyph stand, and the digits are where the mock puts them).
+//              slot-wide: the slot holds four characters of the row's type, as it did before S3 (`names`); names-no-tip: a label that is cut carries no clip marker, so the tooltip never has its name (`names`).
+//   ONLY=<section>            runs one section alone (`arrival`, `names`), for a developer who is working on it; it is not what CI runs
+//   ASSERTION_OFF=<control>   leaves out the assertion a control is named for: the control's perturbation must then pass undetected (the proof that each control trips its own assertion and no other)
 // Exit code 1 when anything differs.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENGINES, normalizeFont } from '../../../packages/kit/probes/probe-lib.mjs';
 import { AXE, NATIVE_VIEWPORTS, SAMPLER, buildFixtures, open, serveFixtures, sleep } from './harness.mjs';
+import { NAMES_COUNTS, NAMES_LABELS } from './names.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const reference = JSON.parse(readFileSync(path.join(here, 'mock-strip.json'), 'utf8'));
-// The negative controls: one perturbation of what the sidebar does when its counts arrive, which the probe must see. With NEGATIVE_CONTROL the exit code is 0 when it did.
+const sidebarReference = JSON.parse(readFileSync(path.join(here, 'mock-sidebar.json'), 'utf8'));
+// The negative controls: one perturbation of the page, which the probe must see, in the section it is for. With NEGATIVE_CONTROL the exit code is 0 when it did.
 const PERTURBATIONS = {
-  'slot-width': { expected: /^arrival .*: the label of "widgets" moved or was cut/ },
-  'slot-undeclared': { expected: /^arrival .*: the label of "widgets" moved or was cut/ },
+  'slot-width': { section: 'arrival', expected: /^arrival .*: the label of "widgets" moved or was cut/ },
+  'slot-undeclared': { section: 'arrival', expected: /^arrival .*: the label of "widgets" moved or was cut/ },
+  'slot-wide': { section: 'names', expected: /^names .*: the room a label is given beside its count differs from the mock's/ },
+  'names-no-tip': { section: 'names', expected: /^names .*: a label that is cut does not say its whole name when it is pointed at/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
+/** ONLY=<section> runs that one section alone, for a developer who is working on it (the whole probe is minutes). */
+const ONLY = process.env.ONLY ?? '';
+/** The control whose assertion is left out (ASSERTION_OFF): its perturbation must pass undetected. */
+const REMOVE = process.env.ASSERTION_OFF ?? '';
+if (REMOVE !== '' && PERTURBATIONS[REMOVE] === undefined) throw new Error(`ASSERTION_OFF must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(NATIVE_VIEWPORTS).join(',') : '1440x900')).split(',');
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const failures = [];
-const report = { parity: {}, states: {}, keyboard: {}, a11y: {}, counts: {}, keepAlive: {}, switchTimes: {}, load: {}, arrival: {}, notes: [] };
+const report = { parity: {}, states: {}, keyboard: {}, a11y: {}, counts: {}, keepAlive: {}, switchTimes: {}, load: {}, arrival: {}, names: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 
 const fixtureUrl = (origin, query) => `${origin}/shell/probes/fixture.html?${query}`;
@@ -649,16 +664,125 @@ async function arrival(browser, engine, viewportName, viewport, origin) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+/** The rows of the sidebar of `?case=names`, by the id of their entry: the row, the glyph, the label's box (the room it was given) and the width of its text, whether it is cut, the count's slot and the digits in it. Code that runs in the page. */
+const READ_NAMES = () => {
+  const r2 = (value) => Math.round(value * 100) / 100;
+  const rect = (el) => {
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    return [r2(box.x), r2(box.y), r2(box.width), r2(box.height)];
+  };
+  const rows = Object.fromEntries(
+    [...document.querySelectorAll('[role=treeitem]')].map((row) => {
+      const label = row.children[1];
+      const slot = row.querySelector('[data-shell-part="count"]');
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      return [row.getAttribute('data-id'), { row: rect(row), glyph: rect(row.children[0]), label: rect(label), text: r2(range.getBoundingClientRect().width), cut: label.scrollWidth > label.clientWidth, slot: rect(slot), digits: rect(slot?.firstElementChild), countText: slot === null ? null : (slot.querySelector('[aria-hidden="true"]') ?? slot).textContent }];
+    }),
+  );
+  return { sidebar: rect(document.querySelector('[data-shell-region="sidebar"]')), rows };
+};
+
+/**
+ * The room a sidebar label gets beside its count, against the mock's own tree (S3, demo finding D7). Five neutral labels beside four counts, in the sidebar the shell draws (244 px, the mock's default) and in the mock's `H.tree`
+ * of the same rows (mock-sidebar.json): the row, the glyph, the label and the digits sit where the mock's do; the label and the slot of its count share the row as the mock's label and count do (the same indent, gaps and
+ * padding); the slot holds three characters, the mock's two digits and the tilde the host puts before an estimate (the mock's own widest count of three characters is the measure), no more, because a label has the room
+ * that is left; and the label of a count that fills the slot is cut when the mock's is and is not when it is not. A count the slot has room to spare for leaves the label less room than the mock's, by what the slot keeps: Q2a's
+ * rule that a count which arrives moves no label. A label that is cut says its whole name when it is pointed at, as the mock's does, and one that is not says nothing.
+ */
+async function names(browser, engine, viewportName, viewport, origin) {
+  const where = `names ${engine} ${viewportName}`;
+  const cases = NAMES_LABELS.flatMap((label, l) => NAMES_COUNTS.map(({ value, approximate }, c) => ({ id: `${String(l)}-${String(c)}`, label, count: approximate ? { value, approximate } : value })));
+  const { page, context, errors } = await open(browser, fixtureUrl(origin, `case=names&names=${encodeURIComponent(JSON.stringify(cases))}`), viewport);
+  await normalizeFont(page, { rootVar: '--ov-font-ui' });
+  // The perturbations of the controls, laid over the page once it is drawn: the slot held at four characters of the row's type (as before S3), and a label that carries no clip marker.
+  if (CONTROL === 'slot-wide') await page.addStyleTag({ content: '[data-shell-part="count"] { min-inline-size: 4ch !important; font-size: var(--ov-fs-13) !important; }' });
+  if (CONTROL === 'names-no-tip') await page.evaluate(() => document.querySelectorAll('[data-shell-region="sidebar"] [data-ov-clip]').forEach((element) => element.removeAttribute('data-ov-clip')));
+  await sleep(250);
+  const got = await page.evaluate(READ_NAMES);
+  const mock = sidebarReference.data[engine][viewportName];
+  report.names[`${engine} ${viewportName}`] = { got, mock: mock.rows };
+  const near = (a, b) => Math.abs(a - b) <= 1;
+  const text = (value) => `${value.toFixed(2)} px`;
+  if (!near(got.sidebar?.[2] ?? 0, mock.sidebar[2])) fail(where, `the sidebar is ${text(got.sidebar?.[2] ?? 0)} wide, the mock's is ${text(mock.sidebar[2])}`);
+  // The widest count of three characters the mock draws, which is what the slot holds: the digits of "~12" are the one a window shows most.
+  const widest = NAMES_COUNTS.findIndex(({ approximate }) => approximate === true);
+  const wanted = sidebarReference.data[engine][viewportName].rows[`0-${String(widest)}`].count[2];
+  const slots = [];
+  for (const [l, label] of NAMES_LABELS.entries()) {
+    for (const [c, count] of NAMES_COUNTS.entries()) {
+      const id = `${String(l)}-${String(c)}`;
+      const row = `"${label}" with ${count.text}`;
+      const m = mock.rows[id];
+      const s = got.rows[id];
+      if (s === undefined) {
+        fail(where, `the entry ${row} is not in the sidebar`);
+        continue;
+      }
+      // Where the parts of the row sit: the indent of the glyph and of the label from the row's start, the row's width, and where the digits end (7 px inside the row's end, as the mock's count does).
+      const from = (box, row_) => box[0] - row_[0];
+      const parts = [
+        ['the row', s.row[2], m.row[2]],
+        ['the glyph', from(s.glyph, s.row), from(m.glyph, m.row)],
+        ['the label', from(s.label, s.row), from(m.label, m.row)],
+        ['the label\'s text', s.text, m.text],
+        ['the digits\' end', s.row[0] + s.row[2] - (s.digits[0] + s.digits[2]), m.row[0] + m.row[2] - (m.count[0] + m.count[2])],
+      ];
+      for (const [name, here_, there] of parts) if (!near(here_, there)) fail(where, `${name} of ${row} sits ${text(here_)} in, the mock's ${text(there)}`);
+      // The label and the slot of its count share the row as the mock's label and count do: what the slot holds is what the label has less.
+      if (!near(s.label[2] + s.slot[2], m.label[2] + m.count[2])) fail(where, `the label and the count of ${row} do not share the row as the mock's do: ${text(s.label[2])} and ${text(s.slot[2])} against ${text(m.label[2])} and ${text(m.count[2])}`);
+      slots.push(s.slot[2]);
+      if (REMOVE !== 'slot-wide') {
+        // A count that fills the slot (three characters) leaves the label the room it has in the mock, and so cuts it when the mock's is cut and not when it is not.
+        if (c >= 2 && s.cut !== m.cut) fail(where, `the room a label is given beside its count differs from the mock's: ${row} is ${s.cut ? '' : 'not '}cut here and ${m.cut ? '' : 'not '}cut in the mock (room ${text(s.label[2])}, the mock's ${text(m.label[2])})`);
+      }
+    }
+  }
+  // The slot is held at one width for every count that fits it, and that width is the mock's widest count of three characters and no more: a label is given the room that is left.
+  if (new Set(slots.map((width) => width.toFixed(2))).size !== 1) fail(where, `the slot of a count is not held at one width whatever the count: ${[...new Set(slots.map(text))].join(', ')}`);
+  if (REMOVE !== 'slot-wide' && !(slots[0] >= wanted - 0.01 && slots[0] <= wanted + 2)) fail(where, `the room a label is given beside its count differs from the mock's: the slot holds ${text(slots[0] ?? 0)}, the mock's widest count of three characters is ${text(wanted)}`);
+
+  // A label that is cut says its whole name when it is pointed at, and one that is not says nothing: the kit's tooltip, the mock's clipped-cell tip (it measures when the pointer arrives, never in advance).
+  const tipped = async (id) => {
+    await page.mouse.move(1, 1);
+    await sleep(120);
+    const target = page.locator(`[role=treeitem][data-id="${id}"] > :nth-child(2)`);
+    await target.hover();
+    try {
+      await page.waitForSelector('[role=tooltip]:popover-open', { timeout: 1800 });
+    } catch {
+      return null;
+    }
+    return page.evaluate(() => document.querySelector('[role=tooltip]:popover-open')?.textContent ?? null);
+  };
+  const cutId = `${String(NAMES_LABELS.length - 1)}-${String(widest)}`;
+  const fitId = `0-${String(widest)}`;
+  if (REMOVE !== 'names-no-tip') {
+    if (got.rows[cutId]?.cut !== true) fail(where, `the probe has no label that is cut to point at: ${cutId}`);
+    const said = await tipped(cutId);
+    if (said === null || !said.includes(NAMES_LABELS.at(-1))) fail(where, `a label that is cut does not say its whole name when it is pointed at: ${JSON.stringify(said)}`);
+  }
+  const quiet = await tipped(fitId);
+  if (quiet !== null) fail(where, `a label that is not cut says something when it is pointed at (${JSON.stringify(quiet)}): a tip never repeats what is drawn`);
+  await page.mouse.move(1, 1);
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 const production = await serveFixtures(buildFixtures('production'));
-const development = await serveFixtures(buildFixtures('development'));
+// The commit counts read React's development build; a negative control reads none of them, so it does not build it.
+const development = CONTROL === '' && ONLY === '' ? await serveFixtures(buildFixtures('development')) : undefined;
+const SECTIONS = { arrival, names };
 const axe = readFileSync(AXE, 'utf8');
 
 for (const engineName of engineNames) {
   const browser = await (engineName === 'chromium' ? ENGINES.chromium.launch({ args: ['--font-render-hinting=none'] }) : ENGINES[engineName].launch());
   for (const viewportName of viewportNames) {
     const viewport = NATIVE_VIEWPORTS[viewportName];
-    if (CONTROL !== '') {
-      await arrival(browser, engineName, viewportName, viewport, production.origin);
+    if (CONTROL !== '' || ONLY !== '') {
+      await SECTIONS[CONTROL === '' ? ONLY : PERTURBATIONS[CONTROL].section](browser, engineName, viewportName, viewport, production.origin);
       continue;
     }
     await parity(browser, engineName, viewportName, viewport, production.origin);
@@ -669,6 +793,7 @@ for (const engineName of engineNames) {
     await keepAlive(browser, engineName, viewportName, viewport, production.origin);
     await switchTimes(browser, engineName, viewportName, viewport, production.origin);
     await arrival(browser, engineName, viewportName, viewport, production.origin);
+    await names(browser, engineName, viewportName, viewport, production.origin);
     const here = (query, label, expected) => load(browser, engineName, viewportName, viewport, production.origin, query, label, expected);
     // A window restored from a session with one tab (the host fixture's default): the tab is in the strip in the first frame, and the plugin loads after it.
     await here('', 'a frame with a lane', { rail: ['Alpha*'], sidebar: 'Alpha navigation' });
@@ -690,7 +815,7 @@ for (const engineName of engineNames) {
 }
 
 production.server.close();
-development.server.close();
+development?.server.close();
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({ counts: report.counts, switchTimes: report.switchTimes, parityWorst: Object.fromEntries(Object.entries(report.parity).map(([key, value]) => [key, value.worst])), notes: report.notes.slice(0, 12) }, null, 1));
 if (CONTROL !== '') {

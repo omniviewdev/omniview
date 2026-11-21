@@ -107,15 +107,19 @@
     white-space: nowrap;
   }
 
-  /* The count slot (ch12 SB1): the digits sit at the row's end, in tabular figures, as the mock's `.tree__count` does (shell-widgets.css:201), and the slot holds the width of four digits beside them,
-     whether or not a number is in it, so a count that arrives moves no label. The mock reserves a trailing slot in the same way, on every row of a tree that has one (`.tree__end`, shell-widgets.css:203-204);
-     its settings navigation holds `min-width: 2ch; text-align: end` for its counts (shell-page-settings.css:13). A longer count widens its own slot. */
+  /* The count slot (ch12 SB1): the digits sit at the row's end, in tabular figures, as the mock's `.tree__count` does (shell-widgets.css:201), and the slot holds a width beside them, whether or not a number is
+     in it, so a count that arrives moves no label (Q2a). What it holds is what the mock holds, and no more: the mock's tree gives its count the room of its text and nothing else (its resource sidebar draws
+     "12" in 15.55 px), its settings navigation keeps TWO digits ("so a change never moves the label", `min-width: 2ch`, shell-page-settings.css:13), and its trailing slot is 24 px (`.tree__end`, shell-widgets.css:203).
+     This slot is three characters of the count's own 12 px type, which are the mock's two digits and the tilde the host puts before an estimate, and it is 3.2ch, 24 px at 12 px: a tabular digit and the tilde are wider
+     than `ch` (the advance of the face's zero), so that "~25" is 23.5 px against 3ch's 22.5. It was four characters of the row's 13 px type (32.5 px) in Q2a, which took 17 to 25 px from a label that the mock gives
+     (S3, demo finding D7: a name of 137.7 px of text was cut in a label of 129.5 px where the mock's is 146.5 px). A longer count widens its own slot, and moves its label, as `~123` does. */
   .count {
     grid-column: 4;
     justify-self: end;
-    min-inline-size: 4ch;
+    min-inline-size: 3.2ch;
     block-size: var(--ov-lh-16);
     margin-inline-start: var(--ov-spacing-8);
+    font-size: var(--ov-fs-12);
     font-variant-numeric: tabular-nums;
     text-align: end;
   }

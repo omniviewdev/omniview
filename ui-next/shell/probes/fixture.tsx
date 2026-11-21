@@ -7,6 +7,8 @@
 //   ?case=long      text longer than its room in the tab, the tree, the lane and the path
 //   ?case=deep      a tree of three levels and enough rows to scroll
 //   ?case=scroll    a page taller than the island
+//   ?case=names&names=<json>   a sidebar whose one open group holds the entries the probe names, `[{ id, label, count }]` with `count` a number, `{ value, approximate: true }` or absent: the rows whose rooms the
+//                   long-name comparison with the mock reads (strip-probe.mjs, section `names`), and what a label that is cut says when it is pointed at (this case mounts the window's one tooltip)
 //   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
 //   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); `window.__tabs` is the model, `window.__commits` counts the commits of every render
 //   ?case=panel     the frame `full` and the bottom panel (panel/testing.tsx: the real model over the five tools the mock's host offers, the first of which has a `+`), closed; `window.__panel` is the model
@@ -14,10 +16,10 @@
 //                   cannot open must not appear in it)
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { Button, ThemeProvider, type IconName } from '@omniviewdev/kit';
+import { Button, ThemeProvider, TooltipHost, type IconName } from '@omniviewdev/kit';
 import { createRoot } from 'react-dom/client';
 import { Profiler, type ReactNode } from 'react';
-import type { ShellRegistration } from '..';
+import type { ShellRegistration, ShellTreeNode } from '..';
 import { staticTabs, StaticShell, STATIC_RAIL, type StaticPage } from '../testing';
 import type { ToolInput } from '../core/panel';
 import { StreamBody, staticPanel } from '../panel/testing';
@@ -64,6 +66,26 @@ const deep: Described = {
   },
 };
 
+/** The entries of `?case=names`, as the probe wrote them in the address. */
+type NamedEntry = { readonly id: string; readonly label: string; readonly count?: ShellTreeNode['count'] };
+const named: Described = {
+  ...full,
+  sidebar: {
+    label: 'Acme names',
+    title: 'Names',
+    nodes: [
+      {
+        id: 'g',
+        label: 'Group',
+        icon: 'layers',
+        children: (JSON.parse(new URLSearchParams(window.location.search).get('names') ?? '[]') as readonly NamedEntry[]).map(({ id, label, count }) => ({ id, label, icon: 'box' as const, ...(count === undefined ? {} : { count }) })),
+      },
+    ],
+    open: ['g'],
+    current: undefined,
+  },
+};
+
 type Case = { readonly described: Described; readonly page: () => ReactNode };
 
 const cases: Record<string, Case> = {
@@ -83,6 +105,7 @@ const cases: Record<string, Case> = {
     page: () => <p>{words}</p>,
   },
   deep: { described: deep, page: () => <p>A page.</p> },
+  names: { described: named, page: () => <></> },
   // The registration a probe injects as `window.__registration` before the page runs (the words of the mock's reference screen, which the probe owns): this file names none.
   injected: { described: (Reflect.get(window, '__registration') as Described | undefined) ?? full, page: () => <></> },
   scroll: {
@@ -195,5 +218,7 @@ createRoot(document.getElementById('root')!).render(
         <Page />
       </StaticShell>
     </Profiler>
+    {/* The one tooltip of the window, where the case reads what a label that is cut says when it is pointed at. */}
+    {params.get('case') === 'names' ? <TooltipHost /> : null}
   </ThemeProvider>,
 );

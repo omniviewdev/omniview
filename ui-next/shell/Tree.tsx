@@ -109,7 +109,8 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       <span className={styles.glyph}>
         <Icon name={icon} />
       </span>
-      <span className={styles.label}>
+      {/* A name that is cut at its end says its whole name when it is pointed at, and only then (ch12 SB1; the mock's clipped-cell tip): the kit's tooltip measures it when the pointer or the focus arrives. */}
+      <span className={styles.label} data-ov-clip="">
         <Text>{label}</Text>
       </span>
       {count === undefined ? null : <CountSlot text={text} />}
