@@ -13,6 +13,9 @@
 //   ?case=error-bare   the same failure, with no way to try again: no Retry
 //   ?case=header       a page header on its own with a block under it, as the mock's header section draws one: window.__fixture.header(shape, operation) chooses
 //                      the shape (list, list-full, detail, detail-long, disabled, note) and the record in the operation slot
+//   ?case=sort         89 items whose columns declare sort keys (Name, Ready as its fraction, Status, Restarts, Age as the time it was made) and a default sort on Name, ascending, for the sort probe (sort-probe.mjs).
+//                      `&rows=5000` makes 5,000. window.__fixture.patch(key, changes) replaces one row with a changed copy, as a live update does; `rows()` reads the rows in the source's order; `keyReads()` counts
+//                      the sort keys the table has read
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import {
@@ -29,7 +32,7 @@ import {
   type PageOperationState,
   type StatusRole,
 } from '@omniviewdev/kit';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { ListPage, type ListPageDefinition, type ListSource } from '..';
@@ -54,12 +57,15 @@ type Item = {
   readonly status: ItemStatus;
   readonly restarts: number;
   readonly age: string;
+  /** How old the item is, in seconds: what `age` says in a unit. */
+  readonly ageSeconds: number;
 };
 
 const GROUPS = ['north-yard', 'south-yard', 'east-dock', 'west-dock'];
 const KINDS = ['anvil', 'beacon', 'cinder', 'drifter', 'ember', 'falcon', 'garnet', 'harbor'];
 const PARTS = ['feeder', 'mixer', 'relay', 'sorter'];
 const AGES = ['17d', '3d', '5h', '42m', '9d', '26d', '2h', '58d'];
+const AGE_SECONDS = [17 * 86_400, 3 * 86_400, 5 * 3_600, 42 * 60, 9 * 86_400, 26 * 86_400, 2 * 3_600, 58 * 86_400];
 /* The two Failed and the nine Completed among 89: the counts of the mock's list (Running 78, Pending 0, Failed 2, Completed 9). */
 const FAILED = new Set([17, 61]);
 const COMPLETED = new Set([5, 14, 23, 32, 41, 50, 59, 68, 77]);
@@ -84,6 +90,7 @@ function itemsOf(count: number): readonly Item[] {
       status,
       restarts: status === 'Failed' ? 12 : index % 11 === 0 ? 3 : 0,
       age: AGES[index % AGES.length] ?? '1d',
+      ageSeconds: AGE_SECONDS[index % AGE_SECONDS.length] ?? 86_400,
     };
   });
 }
@@ -92,7 +99,7 @@ const ROLE_OF: Readonly<Record<Exclude<ItemStatus, 'Pending'>, Exclude<StatusRol
 
 function Identity({ row }: { readonly row: Item }) {
   return (
-    <div className={styles.identity}>
+    <div className={styles.identity} data-fixture-key={row.key}>
       <KindTile icon="box" tone="blue" />
       <div className={styles.lines}>
         <MiddleEllipsis tail={4}>{row.name}</MiddleEllipsis>
@@ -132,13 +139,42 @@ const COLUMNS: ReadonlyArray<DataTableColumn<Item>> = [
   { id: 'age', header: 'Age', fit: 'fixed', width: 59, cell: (row) => row.age },
 ];
 
+/** What the sort probe counts: how many times the table read a sort key (it reads a column's key of a row once and keeps it). */
+const keyReads = { calls: 0 };
+
+const counted =
+  <TKey extends string | number>(read: (row: Item) => TKey) =>
+    (row: Item): TKey => {
+      keyReads.calls += 1;
+      return read(row);
+    };
+
+/** `2/2` is 1 and `0/1` is 0: a ratio sorts by its fraction, the unhealthiest first when it ascends (and a total of 0 is whole). */
+function readyFraction(ready: string): number {
+  const [have = 0, total = 1] = ready.split('/').map(Number);
+  return total === 0 ? 1 : have / total;
+}
+
+/** The sort keys of the columns as a plugin declares them: text, a ratio as its fraction, text, a count as numbers, and an age as when it was made (ascending is the oldest first). */
+const SORT_KEYS: Readonly<Record<string, Pick<DataTableColumn<Item>, 'sortKey' | 'sortKind'>>> = {
+  name: { sortKey: counted((row) => row.name) },
+  ready: { sortKey: counted((row) => readyFraction(row.ready)), sortKind: 'number' },
+  status: { sortKey: counted((row) => row.status) },
+  restarts: { sortKey: counted((row) => row.restarts), sortKind: 'number' },
+  age: { sortKey: counted((row) => -row.ageSeconds), sortKind: 'number' },
+};
+
+/** The same columns, each with its key: the sort case's. */
+const SORT_COLUMNS: ReadonlyArray<DataTableColumn<Item>> = COLUMNS.map((column) => ({ ...column, ...SORT_KEYS[column.id] }));
+
 type Words = 'Items' | 'items';
 
-function definitionOf(words: Words): ListPageDefinition<Item> {
+function definitionOf(words: Words, sortable = false): ListPageDefinition<Item> {
   return {
     title: words,
     nouns: words === 'Items' ? { one: 'Item', other: 'Items' } : { one: 'item', other: 'items' },
-    columns: COLUMNS,
+    columns: sortable ? SORT_COLUMNS : COLUMNS,
+    ...(sortable ? { defaultSort: { column: 'name', direction: 'ascending' } as const } : {}),
     lines: 2,
     getRowKey: (row) => row.key,
     searchText: (row) => `${row.name} ${row.group} ${row.status}`.toLowerCase(),
@@ -191,6 +227,12 @@ type FixtureApi = {
   header(shape: string, operation?: OperationSpec | null): void;
   /** The `header` case: the record in the slot. */
   operation(operation: OperationSpec | null): void;
+  /** The `sort` case: replaces the row with this key by a copy with `changes`, as a live update does (a changed row is a new object, an unchanged one is the same). */
+  patch?(key: string, changes: Partial<Omit<Item, 'key'>>): void;
+  /** The `sort` case: the rows as the source holds them now, in its own order. */
+  rows?(): readonly Item[];
+  /** The `sort` case: how many sort keys the table has read since the page opened. */
+  keyReads?(): number;
 };
 
 declare global {
@@ -248,6 +290,8 @@ type ListConfig = {
   readonly holdsRefresh?: boolean;
   /** An error offers a Retry. */
   readonly retry?: boolean;
+  /** The columns declare their sort keys and the list says it opens on Name, ascending. */
+  readonly sortable?: boolean;
 };
 
 const LIST_CASES: Readonly<Record<string, ListConfig>> = {
@@ -260,6 +304,7 @@ const LIST_CASES: Readonly<Record<string, ListConfig>> = {
   'no-match': { words: 'items', count: 24, start: 'ready' },
   error: { words: 'items', count: 0, start: 'error', retry: true },
   'error-bare': { words: 'items', count: 0, start: 'error', retry: false },
+  sort: { words: 'Items', count: 89, start: 'ready', sortable: true },
 };
 
 type ListCaseProps = {
@@ -271,6 +316,16 @@ type ListCaseProps = {
 function ListCase({ config, definition, rows }: ListCaseProps) {
   const [loaded, setLoaded] = useState(config.start !== 'loading');
   const [held] = useState<Array<() => void>>([]);
+  // What the probe changed since the page opened, by key: the row that changed is a copy, and every other row is the one it was.
+  const [changes, setChanges] = useState<ReadonlyMap<string, Partial<Item>>>(new Map());
+  const current = useMemo(
+    () =>
+      rows.map((row) => {
+        const change = changes.get(row.key);
+        return change === undefined ? row : { ...row, ...change };
+      }),
+    [rows, changes],
+  );
 
   useEffect(() => {
     window.__fixture = {
@@ -287,8 +342,15 @@ function ListCase({ config, definition, rows }: ListCaseProps) {
       },
       header: noop,
       operation: noop,
+      patch: (key, change) => {
+        flushSync(() => {
+          setChanges((previous) => new Map(previous).set(key, { ...previous.get(key), ...change }));
+        });
+      },
+      rows: () => current,
+      keyReads: () => keyReads.calls,
     };
-  }, [held]);
+  }, [held, current]);
 
   const refresh = async () => {
     bump('refreshes');
@@ -310,7 +372,7 @@ function ListCase({ config, definition, rows }: ListCaseProps) {
       : loaded
         ? { kind: 'ready' }
         : { kind: 'loading' },
-    rows: loaded ? rows : [],
+    rows: loaded ? current : [],
     complete: loaded && !failed,
     refreshing: false,
     refresh,
@@ -444,6 +506,7 @@ function HeaderCase() {
 
 const name = new URLSearchParams(window.location.search).get('case') ?? 'list';
 const config = LIST_CASES[name];
+const rowCount = Number(new URLSearchParams(window.location.search).get('rows') ?? config?.count ?? 0);
 if (name !== 'header' && name !== 'detail' && config === undefined) {
   throw new Error(`Unknown case "${name}"`);
 }
@@ -462,7 +525,7 @@ createRoot(document.getElementById('root')!).render(
     ) : config === undefined ? (
       <HeaderCase />
     ) : (
-      <ListCase config={config} definition={definitionOf(config.words)} rows={itemsOf(config.count)} />
+      <ListCase config={config} definition={definitionOf(config.words, config.sortable === true)} rows={itemsOf(rowCount)} />
     )}
   </ThemeProvider>,
 );

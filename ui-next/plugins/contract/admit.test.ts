@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ShellTreeNode } from '../../shell';
 import { ContractError } from '../loader/failure';
 import { admit, admitOrThrow, openable, CONTRIBUTION_EXPORT_V1 } from './admit';
-import type { ContributionV1, SidebarNodeV1 } from './v1';
+import type { ContributionV1, ListPageDefinition, SidebarNodeV1 } from './v1';
 
 // Admission reads what a bundle hands the host as `unknown`. Each test breaks one thing in an otherwise good contribution, and the problem must name it:
 // that is what a plugin author reads in the log. The names are invented (Acme, widgets); the host knows no plugin.
@@ -526,5 +526,69 @@ describe('admit: the palette providers (a minor addition to version 1)', () => {
 
   it('is not made refuse by what it does not read: another member beside the palette, written by a newer contract, is not its business', () => {
     expect(problemsOf(contribution({ palette: { providers: { pages: match() }, somethingNewer: 1 } }))).toEqual([]);
+  });
+});
+
+// The default sort of a list (K3a) is a minor addition to version 1, on the terms of the connection marker (the rule is at the head of `v1.ts`): `defaultSort` is a NEW optional member of a list page's definition, and a host that predates it
+// never reads it, so it draws the list unsorted. Admission does not read it at all: the page reads it where it is used (`ui-next/page/sort.ts`) and takes one that is not a sort of a column that sorts for no default.
+describe('admit: the list\'s default sort (a minor addition to version 1)', () => {
+  const withDefault = (defaultSort: unknown) => contribution({ pages: { widgets: page({ definition: definition({ defaultSort }) }) } });
+
+  it('admits a list with a default sort and hands back the plugin\'s own object', () => {
+    const value = withDefault({ column: 'name', direction: 'descending' });
+    expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
+  });
+
+  it('is not made refuse by a default sort that is not valid, whatever its shape: it is read where it is used, and a default that names no column that sorts is no default there', () => {
+    for (const defaultSort of [3, 'name', null, [], {}, { column: 'name' }, { column: 'name', direction: 'asc' }, { column: 7, direction: 'ascending' }, { column: 'gone', direction: 'descending' }]) {
+      expect(problemsOf(withDefault(defaultSort)), JSON.stringify(defaultSort)).toEqual([]);
+    }
+  });
+
+  describe('a plugin built against the older contract, and one built against this, load in either host', () => {
+    it('this host admits a bundle written before the default sort, whose lists carry none, and hands back its own object', () => {
+      const value = contribution();
+      expect(JSON.stringify(value.pages)).not.toContain('defaultSort');
+      expect(admit(exportsOf(value))).toMatchObject({ ok: true, contribution: value });
+    });
+
+    it('a host that predates the default sort admits a bundle that has one: what it reads of a list\'s definition is the same, member for member, and `defaultSort` is the only member it does not', () => {
+      const READ_BEFORE = ['title', 'nouns', 'tile', 'commands', 'quickFilters', 'columns', 'lines', 'getRowKey', 'searchText'];
+      const newer = definition({ defaultSort: { column: 'name', direction: 'ascending' } });
+      const { defaultSort: _defaultSort, ...before } = newer;
+
+      expect(Object.keys(newer).filter((name) => !READ_BEFORE.includes(name))).toEqual(['defaultSort']);
+      expect(Object.keys(before).filter((name) => !READ_BEFORE.includes(name))).toEqual([]);
+      for (const name of Object.keys(before)) {
+        expect(newer[name], name).toBe(before[name]);
+      }
+
+      const listed = (patch: Loose) => contribution({ pages: { widgets: page({ definition: patch }) } });
+      expect(problemsOf(listed(before))).toEqual([]);
+      expect(problemsOf(listed(newer))).toEqual([]);
+      // The verdict on everything else does not depend on the member: a list that is wrong in an older way is wrong with it and without it, in the same words.
+      expect(problemsOf(listed({ ...newer, lines: 3 }))).toEqual(problemsOf(listed({ ...before, lines: 3 })));
+      expect(problemsOf(listed({ ...newer, columns: [] }))).toEqual(problemsOf(listed({ ...before, columns: [] })));
+    });
+
+    it('is the same in types, both ways: a definition of the older contract is a definition, and a definition is one of the older contract with a member more', () => {
+      type Row = { readonly name: string };
+      type Older = Omit<ListPageDefinition<Row>, 'defaultSort'>;
+      const older: Older = {
+        title: 'Widgets',
+        nouns: { one: 'Widget', other: 'Widgets' },
+        columns: [{ id: 'name', header: 'Name', fit: 'flex', cell: (row) => row.name, sortKey: (row) => row.name }],
+        lines: 1,
+        getRowKey: (row) => row.name,
+        searchText: (row) => row.name,
+      };
+      const asNew: ListPageDefinition<Row> = older;
+      const newer: ListPageDefinition<Row> = { ...older, defaultSort: { column: 'name', direction: 'descending' } };
+      const asOlder: Older = newer;
+
+      expect(asNew.defaultSort).toBeUndefined();
+      expect(asOlder.title).toBe('Widgets');
+      expect(newer.defaultSort).toEqual({ column: 'name', direction: 'descending' });
+    });
   });
 });

@@ -29,12 +29,15 @@
 //   shard 2  logs 395                                                                               = 395
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
-//   shard 5  strip 192, list page 61, strip controls 28, plugin providers 151                       = 432
+//   shard 5  strip 192, list page 76, plugin providers 151                                           = 419
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  tooltip 145, palette controls 63, toast layer controls 156, table 62                   = 426
-//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105                      = 376
+//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105, strip controls 28    = 404
 //   shard 9  logs controls 381                                                                      = 381
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
+// (K3a: the list page probe has two stages more, `sort` (the list's sort in both engines at 1440 x 900 and 1280 x 800) and `perf` (5,000 rows in a production build: a press is one commit), which add about 7 s to a run on a laptop at a load of 15 and about 12 s on a runner
+// slower by the factor the whole probe has: 76 s is an ESTIMATE of 61 + 15 until a run's summary has the runner's. Shard 5 would have been 447 s, so the strip's controls (28 s, which read no PROBE_DIST, as the shard's other units do not) moved to shard 8, which was 376 s:
+// shard 5 is 419 s and shard 8 is 404 s. The limit is not raised.)
 // (C1f: the plugin providers probe and its controls are ESTIMATES of 148 and 98 s, from the runner's 142 and 91: the connection part and its control, until a run's summary has the runner's. Shard 5 would have been 438 s, so four units
 // moved, the fewest that fit under the limit: the palette's controls and the strip's controls to shard 5, the fonts probe to shard 8 and the plugin providers' controls to shard 2. The limit is not raised, and shard 8 is at it.)
 // (C1g: the plugin providers probe and its controls are ESTIMATES of 151 and 105 s now, over the 148 and 98 of C1f: the `names` part (about 0.7 s a pair of an engine and a viewport) and its control, until a run's summary has the runner's. Shard 5
@@ -166,16 +169,11 @@ export const TABLE = {
 
         // The list page's chrome (1a.3c; first in a shard by N24-K2): the real Shell, ListPage and PageHeader around invented data (ui-next/page/probes/fixture.tsx) against the pinned mock reference (packages/kit/probes/mock-page.json, measured
         // from the mock by mock-page-measure.mjs), in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the viewports of probe-lib.mjs; tracker row N23 moves them): the rectangles of the data view, header, title, command lane, quick filters and chips,
-        // toolbar and search field, table header, first row and footer, the 12/8/8 gaps, and a frame sampler around Refresh and every operation state, where no part moves by 0.001 px. It builds its own fixture, so it does not read PROBE_DIST.
+        // toolbar and search field, table header, first row and footer, the 12/8/8 gaps, and a frame sampler around Refresh and every operation state, where no part moves by 0.001 px; and the list's sort (K3a, ui-next/page/probes/sort.mjs) at 1440 x 900 and
+        // 1280 x 800: the header's button and `aria-sort`, the order after each press of every header, the keyboard, a live update and the detectors made to see one fault each, and, with 5,000 rows in a production build, one React commit for a press, the
+        // same few rows mounted and no key read again when a column is turned round. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the list page chrome and its layout shift against the pinned mock reference', script: 'ui-next/page/probes/page-probe.mjs' },
 
-        // The negative controls of the strip probe's `arrival` section (Q2a): a tree that does not hold the count slot (`slot-width`) and a skeleton that declares none (`slot-undeclared`) each make a label give way when its
-        // count arrives. The probe must see it, and passes only when it does: the label's rectangle is the assertion (the layout-shift observer reads 0 for both, so a probe that only watched it would pass).
-        {
-          name: 'Probe that the strip probe sees a label that gives way to a count',
-          script: 'ui-next/shell/probes/strip-probe.mjs',
-          controls: ['slot-width', 'slot-undeclared'],
-        },
 
         // What the providers a plugin brings do to the command palette (C1c): the host's own wiring of the fixture plugin's providers (ui-next/shell/probes/palette-plugins-fixture.tsx: the real shell, palette and tab model)
         // in WebKit and Chromium at 1440 x 900 and 1280 x 800. What is judged does not depend on how fast the machine is: the order things happen in (the input shows its text before a slow provider answers, the fast
@@ -251,6 +249,15 @@ export const TABLE = {
         // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
 
+        // The negative controls of the strip probe's `arrival` section (Q2a): a tree that does not hold the count slot (`slot-width`) and a skeleton that declares none (`slot-undeclared`) each make a label give way when its
+        // count arrives. The probe must see it, and passes only when it does: the label's rectangle is the assertion (the layout-shift observer reads 0 for both, so a probe that only watched it would pass). They moved here from
+        // shard 5 (K3a), where the list page probe grew; the probe they perturb is still in shard 5.
+        {
+          name: 'Probe that the strip probe sees a label that gives way to a count',
+          script: 'ui-next/shell/probes/strip-probe.mjs',
+          controls: ['slot-width', 'slot-undeclared'],
+        },
+
         // The fonts are delivered, used, and the page does not shift.
         { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
 
@@ -322,7 +329,7 @@ export const MEASURED_SECONDS = {
   'Probe the fonts and the layout shift': 35,
   'Probe the rail against the pinned mock reference': 16,
   'Probe the detail page against the pinned mock reference': 16,
-  'Probe the list page chrome and its layout shift against the pinned mock reference': 61,
+  'Probe the list page chrome and its layout shift against the pinned mock reference': 76,
   'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference': 197,
   'Probe the row menu on the 5,000-row example': 22,
   'Probe that the row menu probe sees a trigger that does not say it is open': 2,

@@ -10,7 +10,8 @@ import { laneOf } from './lane';
 // The fixture's list pages. A plugin written the way a real one is: React, the kit and the runtime's curated entry from the host, its own CSS Module, its data hook in the page.
 // `items` lists the five items (items.ts), the name of each a link to its detail page (detail.tsx); its Theme column is the proof of one kit: `useTheme()` throws unless the plugin's kit
 // is the one the host mounted its provider in. Its Connections column is the proof of one runtime: `useConnections()` reads through the host's QueryClient and asks the real host over its
-// Wails runtime. `crash` throws from its data hook, which is how the host's containment of a failing contribution is shown.
+// Wails runtime. `crash` throws from its data hook, which is how the host's containment of a failing contribution is shown. The Name and Group columns declare their sort keys and `items` says it opens
+// on Name, ascending (K3a): the five items are NOT in the order of either column, so the check can tell a sorted list from one left as it was, and the two items of one group tie in the order the source gave them.
 
 /** The theme the host's provider holds, read through the plugin's kit: it throws when that is a second copy of the kit. */
 function ThemeCell() {
@@ -37,8 +38,8 @@ function ConnectionsCell() {
 }
 
 const COLUMNS: ReadonlyArray<DataTableColumn<Item>> = [
-  { id: 'name', header: 'Name', fit: 'flex', width: 160, text: (row) => row.name, cell: (row) => <ItemLink name={row.name} group={row.group} /> },
-  { id: 'group', header: 'Group', fit: 'fixed', width: 96, cell: (row) => <Text tone="muted">{row.group}</Text> },
+  { id: 'name', header: 'Name', fit: 'flex', width: 160, text: (row) => row.name, cell: (row) => <ItemLink name={row.name} group={row.group} />, sortKey: (row) => row.name },
+  { id: 'group', header: 'Group', fit: 'fixed', width: 96, cell: (row) => <Text tone="muted">{row.group}</Text>, sortKey: (row) => row.group },
   { id: 'opens', header: 'Opens as', fit: 'fixed', width: 96, cell: (row) => <Text tone="muted">{row.opens}</Text> },
   { id: 'theme', header: 'Theme', fit: 'fixed', width: 120, cell: () => <ThemeCell /> },
   { id: 'connections', header: 'Connections', fit: 'fixed', width: 140, cell: () => <ConnectionsCell /> },
@@ -77,6 +78,7 @@ export const itemsPage = {
     nouns: { one: 'Item', other: 'Items' },
     columns: COLUMNS,
     lines: 1,
+    defaultSort: { column: 'name', direction: 'ascending' },
     getRowKey: (row) => row.id,
     searchText: (row) => `${row.name} ${row.group} ${row.opens}`.toLowerCase(),
   },
