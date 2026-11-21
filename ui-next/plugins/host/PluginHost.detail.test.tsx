@@ -239,17 +239,29 @@ describe('the detail page of a route', () => {
   });
 });
 
-describe('describeDetail: the face of a detail route is the route\'s and the definition\'s alone', () => {
-  const route = { plugin: 'acme', contribution: 'sprocket', params: { connection: 'north', name: 'alpha', bay: 'east' } };
+describe('describeDetail: the face of a detail route is the route\'s, the definition\'s and the connection\'s name alone', () => {
+  const route = { plugin: 'acme', contribution: 'sprocket', params: { connection: 'north-0123456789', name: 'alpha', bay: 'east' } };
+  const list = { label: 'Widgets', route: { plugin: 'acme', contribution: 'widgets', params: { connection: 'north-0123456789' } } };
 
-  it('is the title, the glyph, the path with its list crumb, the scope and the qualifiers (group first, then the connection)', () => {
+  it('is the title, the glyph, the path with its list crumb, the scope and the qualifiers (group first, then the connection), the connection by its name and the key only as the scope\'s id and in the list crumb\'s route', () => {
+    expect(describeDetail('Acme', route, sprocketPage.definition, 'north')).toEqual({
+      title: 'alpha · Sprocket',
+      icon: 'box',
+      pluginName: 'Acme',
+      path: ['Acme', 'north', list, 'alpha'],
+      scope: { id: 'north-0123456789', label: 'north' },
+      facets: ['east', 'north'],
+    });
+  });
+
+  it('says no connection when no name is known: no crumb and no facet, and the scope has no label', () => {
     expect(describeDetail('Acme', route, sprocketPage.definition)).toEqual({
       title: 'alpha · Sprocket',
       icon: 'box',
       pluginName: 'Acme',
-      path: ['Acme', 'north', { label: 'Widgets', route: { plugin: 'acme', contribution: 'widgets', params: { connection: 'north' } } }, 'alpha'],
-      scope: { id: 'north', label: 'north' },
-      facets: ['east', 'north'],
+      path: ['Acme', list, 'alpha'],
+      scope: { id: 'north-0123456789', label: '' },
+      facets: ['east'],
     });
   });
 

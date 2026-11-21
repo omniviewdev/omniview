@@ -23,6 +23,9 @@
 //   connection (C1f, `?connection=1`: the plugin's own providers stay quiet) the connection a row says. The tab on screen is the detail page of an item read in a connection whose KEY is `north-57a082bd74`, and its scope lane
 //              says the NAME, `north`: the chips that narrow the palette say the name, the rows of Go to say `north · Group` and (a page in no group) `north`, the Tabs row says `north · Current tab`, and the key is in nothing
 //              the palette draws in any of those states: no text and no accessible name. The negative control: `connection-key` (a source of the host's own that says the key).
+//   names      (C1g, `?connection=1`, no palette open) the connection the shell's own surfaces say, through the host's own tab model and `contributions.describe`. The tab on screen is the detail page of an item read in `north-57a082bd74`,
+//              and its page published the NAME, `north`, in the face it marked `role: 'connection'` (labelled Cluster: the marker says what the face is). The tab's accessible name, its tooltip and the status bar's path say the name,
+//              and the key is in nothing the window draws: no text, no accessible name, no tooltip, no title. The negative control: `connection-key-face` (the faces of the tab model carry the connection parameter, as `describe` did).
 //
 // The numbers go to `report.plugins["<engine> <viewport>"]`; `fail(where, what)` records what must hold and is never thrown.
 import { normalizeFont } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -119,7 +122,7 @@ const marked = (...names) => names;
 
 export async function plugins({ browser, engine, viewportName, viewport, production, development, report, fail, control, only, axe, shots }) {
   const where = `${engine} ${viewportName}`;
-  const result = { timeline: null, typing: null, focus: null, commits: null, shift: null, closed: null, states: null, aliases: null, connection: null, seconds: {} };
+  const result = { timeline: null, typing: null, focus: null, commits: null, shift: null, closed: null, states: null, aliases: null, connection: null, names: null, seconds: {} };
   report.plugins ??= {};
   report.plugins[where] = result;
 
@@ -643,5 +646,30 @@ export async function plugins({ browser, engine, viewportName, viewport, product
     result.connection = { chips, places, tabs };
     const keyed = seen.filter((text) => text.includes(KEY));
     if (keyed.length > 0) fail(where, `plugins connection: the key of the connection is drawn (a text or an accessible name): ${JSON.stringify(keyed.map((text) => text.slice(0, 120)))}`);
+  });
+
+  // 10. The connection the shell's own surfaces say (C1g): the tab strip and the status bar of the same window as part 9, read as a person and a screen reader read them, with the palette closed (the negative control
+  // `connection-key-face`: the faces of the tab model carry the connection parameter as a crumb and a qualifier, which is what `contributions.describe` did before it said names).
+  await part('names', production.origin, 'connection=1', {}, async (page) => {
+    const KEY = 'north-57a082bd74';
+    if (control === 'connection-key-face') await page.evaluate(() => window.__connectionFault('face'));
+    await sleep(150);
+    const shell = await page.evaluate(() => {
+      const named = ['aria-label', 'title', 'alt', 'placeholder', 'data-ov-tip'];
+      const attributes = [...document.querySelectorAll('*')].flatMap((node) => named.flatMap((name) => (node.hasAttribute(name) ? [`${name}: ${node.getAttribute(name)}`] : [])));
+      const tab = document.querySelector('[role="tablist"] [role="tab"][aria-selected="true"]');
+      return {
+        drawn: [document.body.innerText, ...attributes],
+        tab: { text: tab?.textContent ?? null, name: tab?.getAttribute('aria-label') ?? null, tip: tab?.getAttribute('data-ov-tip') ?? null },
+        crumbs: [...document.querySelectorAll('nav[aria-label="Current resource"] li')].map((item) => item.textContent ?? ''),
+      };
+    });
+    result.names = { tab: shell.tab, crumbs: shell.crumbs };
+    const says = (text) => typeof text === 'string' && /\bnorth\b/.test(text);
+    if (!says(shell.tab.name)) fail(where, `plugins names: the tab on screen does not say the connection by its name in its accessible name: ${JSON.stringify(shell.tab)}`);
+    if (!says(shell.tab.tip)) fail(where, `plugins names: the tab on screen does not say the connection by its name in its tooltip: ${JSON.stringify(shell.tab)}`);
+    if (!shell.crumbs.some(says)) fail(where, `plugins names: the status bar's path does not say the connection by its name: ${JSON.stringify(shell.crumbs)}`);
+    const keyed = shell.drawn.filter((text) => text.includes(KEY));
+    if (keyed.length > 0) fail(where, `plugins names: the key of the connection is drawn by the shell (a text, an accessible name, a tooltip or a title): ${JSON.stringify(keyed.map((text) => text.slice(0, 120)))}`);
   });
 }

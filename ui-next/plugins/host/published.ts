@@ -12,6 +12,9 @@ export class Published<T> {
   /** The value held for `key`. The same object until it is replaced by a different one. */
   get = (key: string): T | undefined => this.values.get(key)?.value;
 
+  /** Every key and the value held for it, in the order they were first published. */
+  entries = (): ReadonlyArray<readonly [string, T]> => [...this.values].map(([key, held]) => [key, held.value] as const);
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => {

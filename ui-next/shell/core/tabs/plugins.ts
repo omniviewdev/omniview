@@ -23,6 +23,8 @@ export type Plugins = {
   readonly complete: (route: Route, from: Route | undefined, source: string) => Route | undefined;
   /** The route a saved tab comes back as: `false` drops it. A plugin whose `restore` fails leaves the tab as it was saved; one that answers nonsense drops it. */
   readonly restore: (route: Route) => Route | false;
+  /** The face a saved tab comes back with: what the host lets stand of it. A host that has nothing to take out, and one whose `restoreFace` fails or answers nonsense, leaves the face as it was saved. */
+  readonly restoreFace: (face: Face, route: Route) => Face;
   /** The route a window opens with, or the plugin's own first page. */
   readonly home: (plugin?: string) => Route | undefined;
   /** The face and key of a route, as the plugin describes it now. `described` is false when the plugin said nothing, or only a stand-in (`Description.provisional`): a tab that has a face keeps it then. */
@@ -81,6 +83,15 @@ export function guardContributions(contributions: Contributions, onError: ErrorH
 
       const answer = guarded<unknown>(() => restore(route), route, `restore() of ${route.plugin}`);
       return answer === false ? false : (answer === route ? route : normaliseRoute(answer) ?? false);
+    },
+    restoreFace: (face, route) => {
+      const { restoreFace } = contributions;
+      if (!restoreFace) {
+        return face;
+      }
+
+      const answer = guarded<unknown>(() => restoreFace(face, route), face, `restoreFace() of ${route.plugin}`);
+      return isObject(answer) ? (answer as Face) : face;
     },
     home: (plugin) => {
       const { home } = contributions;

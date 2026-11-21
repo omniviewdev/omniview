@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkInvariants, createSaver, createTabsStore, LIMITS, migrate, restoreTabs, serialise, STATE_VERSION, type PersistedTabs, type Route } from './index';
+import { checkInvariants, createSaver, createTabsStore, LIMITS, migrate, restoreTabs, serialise, STATE_VERSION, type Contributions, type PersistedTabs, type Route } from './index';
 import { boot, cloudPage, hostPage, makeWorld, stackPage, tabOf, type Harness, type World } from './testing';
 
 // The saved session (ch16 S32, S150) and what a damaged one becomes. The state carries a version and `migrate` exists from the first release: the old app has 36
@@ -248,6 +248,56 @@ describe('a damaged session is repaired, never discarded (ch16 S32, CO-20)', () 
     world.changed();
     expect(tab(h, 'a').face).toMatchObject({ title: 'Real title', icon: 'clock' });
     sound(h);
+  });
+
+  it('lets the host take out of a saved face what it must not draw (C1g), whether or not its plugin has said anything yet, and a face the plugin has described replaces it', () => {
+    const world = makeWorld();
+    world.install({ id: 'later', name: 'Later', describe: () => ({ title: 'Later', icon: 'box', provisional: true }) });
+    const face = { title: 'Later page', icon: 'clock', scope: { id: 'key-1', label: 'key-1' }, path: [], facets: ['key-1'], pluginName: 'Later', singleton: false, identity: 'key' };
+    const asked: string[] = [];
+    const contributions: Contributions = {
+      ...world.contributions,
+      restoreFace: (kept, at) => {
+        asked.push(`${at.plugin}:${kept.title}`);
+        return { ...kept, scope: kept.scope === undefined ? undefined : { id: kept.scope.id, label: '' }, facets: [] };
+      },
+    };
+    const result = restoreTabs(doc([saved('a', 'page', { face }, 'later'), saved('b', 'instances')], 'a'), { contributions });
+    if (!result.ok) {
+      throw new Error(`not restored: ${result.reason}`);
+    }
+
+    const h = boot({ home: false, initial: result.state, world });
+    // The plugin has said only a stand-in: the tab keeps the face the host let stand, with the scope's id and no label.
+    expect(tab(h, 'a').face).toMatchObject({ title: 'Later page', scope: { id: 'key-1', label: '' }, facets: [] });
+    expect(asked).toContain('later:Later page');
+    // A plugin that has described the tab is the one that makes its face.
+    expect(tab(h, 'b').face).toMatchObject({ title: 'Instances' });
+  });
+
+  it('leaves a saved face as it was saved when the host\'s restoreFace throws or answers what is not a face (C1g)', () => {
+    const world = makeWorld();
+    world.install({ id: 'later', name: 'Later', describe: () => ({ title: 'Later', icon: 'box', provisional: true }) });
+    const face = { title: 'Later page', icon: 'clock', scope: { id: 'key-1', label: 'key-1' }, path: [], facets: [], pluginName: 'Later', singleton: false, identity: 'key' };
+    const answers: unknown[] = [
+      () => {
+        throw new Error('boom');
+      },
+      () => 'nonsense',
+      () => null,
+    ];
+    for (const restoreFace of answers) {
+      // What a host that does not keep the contract answers: assigned past the types.
+      const contributions: Contributions = { ...world.contributions };
+      Reflect.set(contributions, 'restoreFace', restoreFace);
+      const result = restoreTabs(doc([saved('a', 'page', { face }, 'later')], 'a'), { contributions });
+      if (!result.ok) {
+        throw new Error(`not restored: ${result.reason}`);
+      }
+
+      const h = boot({ home: false, initial: result.state, world });
+      expect(tab(h, 'a').face).toMatchObject({ title: 'Later page', scope: { id: 'key-1', label: 'key-1' } });
+    }
   });
 
   it('lets a plugin rewrite or drop a saved tab when it comes back (DM1), and one that throws or answers nonsense costs a tab at most', () => {

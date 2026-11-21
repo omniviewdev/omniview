@@ -22,16 +22,19 @@
 // 90th percentile and its probes take their medians. That is the number of the data, not an estimate with slack: the best split of the 3,387 s of work into 8 shards has a longest shard of 425 s (searched exhaustively; 7 shards cannot do better than 484 s,
 // 484 + 88 = 9 m 32 s, over; 9 shards cannot do better than 411 s, the panel probe's controls alone, 14 s less for one more job), so eight shards is the fewest that fit. The shards below, in seconds of units:
 //   shard 1  panel controls 411, detail 16                                                          = 427
-//   shard 2  logs 321, plugin providers controls 98                                                 = 419
+//   shard 2  logs 321, plugin providers controls 105                                                = 426
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
-//   shard 5  strip 192, palette controls 63, strip controls 28, plugin providers 148                = 431
+//   shard 5  strip 192, list page 61, strip controls 28, plugin providers 151                       = 432
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
-//   shard 7  tooltip 145, list page 61, toast layer controls 156, table 62                          = 424
+//   shard 7  tooltip 145, palette controls 63, toast layer controls 156, table 62                   = 426
 //   shard 8  toast layer 220, logs controls 161, rail 16, fonts 35                                  = 432
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
 // (C1f: the plugin providers probe and its controls are ESTIMATES of 148 and 98 s, from the runner's 142 and 91: the connection part and its control, until a run's summary has the runner's. Shard 5 would have been 438 s, so four units
 // moved, the fewest that fit under the limit: the palette's controls and the strip's controls to shard 5, the fonts probe to shard 8 and the plugin providers' controls to shard 2. The limit is not raised, and shard 8 is at it.)
+// (C1g: the plugin providers probe and its controls are ESTIMATES of 151 and 105 s now, over the 148 and 98 of C1f: the `names` part (about 0.7 s a pair of an engine and a viewport) and its control, until a run's summary has the runner's. Shard 5
+// would have been 434 s, so two units swapped, the fewest that fit under the limit and the pair that leaves shard 5 not reading the ui-next build (a unit that reads it adds a build to the job, which is not in these seconds): the palette's
+// controls to shard 7 and the list page's probe to shard 5. The limit is not raised, and shards 5 and 8 are at it.)
 // What the margin does not cover is a run slower than the medians: a unit's maximum over the 8 runs is up to 12 % over its median for the longest (the panel probe's controls: 411 median, 462 maximum) and up to 36 % for the smallest (the strip's controls: 28, 38), and 5 of the 64 simulated shard jobs of those runs would have been
 // over 9 minutes. Three units have fewer than 8 runs behind them, because their set of controls or the probe itself is new (the toast layer 4 runs, its controls 3, the plugin providers' controls 3): they are the first to move.
 // Before K2 a probe and its controls had to share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 411 s.
@@ -95,12 +98,13 @@ export const TABLE = {
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
 
         // The negative controls of the plugin providers probe (its probe is in shard 5): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
-        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword, a connection said by its key) and passes only when that assertion sees it. Each runs the part it perturbs.
+        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword, a connection said by its key in a row of the
+        // palette, and by the tab model's faces in the tab strip, its tooltip and the status bar) and passes only when that assertion sees it. Each runs the part it perturbs.
         {
           name: 'Probe that the plugin providers probe sees a palette that is wrong',
           script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
           env: { FONT_DELAY_MS: '40' },
-          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key'],
+          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
         },
       ],
     },
@@ -162,16 +166,10 @@ export const TABLE = {
         // The tab strip, the page host and the load, at 1440 x 900 and 1280 x 800 (decision A15). It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the tab strip, the page host and the load against the pinned mock reference', script: 'ui-next/shell/probes/strip-probe.mjs', env: { REPORT: '$RUNNER_TEMP/strip-probe.json' } },
 
-        // The negative controls of the palette probe (its probe is in shard 4): each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the
-        // footer, the paint of the active row, hover that takes the keyboard's row, a palette that does not give the focus back) and passes only when the probe sees it. The widths of the Search control, of its hint and
-        // of the footer's keys are not compared, because a key is written for the platform (the mock was measured on a Mac: the Command sign and K; a Linux runner writes Ctrl+K); their heights, edges and gaps are, and every
-        // other box is compared in full. The report in the log counts the boxes of each kind and prints both widths and the fonts that draw the keys.
-        {
-          name: 'Probe that the palette probe sees a palette that is wrong',
-          script: 'ui-next/shell/probes/palette-probe.mjs',
-          env: { FONT_DELAY_MS: '40' },
-          controls: ['frame-width', 'row-height', 'foot-height', 'search-place', 'foot-gap', 'paint', 'hover-steals', 'no-restore'],
-        },
+        // The list page's chrome (1a.3c; first in a shard by N24-K2): the real Shell, ListPage and PageHeader around invented data (ui-next/page/probes/fixture.tsx) against the pinned mock reference (packages/kit/probes/mock-page.json, measured
+        // from the mock by mock-page-measure.mjs), in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the viewports of probe-lib.mjs; tracker row N23 moves them): the rectangles of the data view, header, title, command lane, quick filters and chips,
+        // toolbar and search field, table header, first row and footer, the 12/8/8 gaps, and a frame sampler around Refresh and every operation state, where no part moves by 0.001 px. It builds its own fixture, so it does not read PROBE_DIST.
+        { name: 'Probe the list page chrome and its layout shift against the pinned mock reference', script: 'ui-next/page/probes/page-probe.mjs' },
 
         // The negative controls of the strip probe's `arrival` section (Q2a): a tree that does not hold the count slot (`slot-width`) and a skeleton that declares none (`slot-undeclared`) each make a label give way when its
         // count arrives. The probe must see it, and passes only when it does: the label's rectangle is the assertion (the layout-shift observer reads 0 for both, so a probe that only watched it would pass).
@@ -215,10 +213,16 @@ export const TABLE = {
         // The one tooltip host: listeners, cost, delay, Escape layering, placement, motion.
         { name: 'Probe the tooltip host', script: 'packages/kit/probes/tooltip-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/tooltip-probe.json' } },
 
-        // The list page's chrome (1a.3c; first in a shard by N24-K2): the real Shell, ListPage and PageHeader around invented data (ui-next/page/probes/fixture.tsx) against the pinned mock reference (packages/kit/probes/mock-page.json, measured
-        // from the mock by mock-page-measure.mjs), in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the viewports of probe-lib.mjs; tracker row N23 moves them): the rectangles of the data view, header, title, command lane, quick filters and chips,
-        // toolbar and search field, table header, first row and footer, the 12/8/8 gaps, and a frame sampler around Refresh and every operation state, where no part moves by 0.001 px. It builds its own fixture, so it does not read PROBE_DIST.
-        { name: 'Probe the list page chrome and its layout shift against the pinned mock reference', script: 'ui-next/page/probes/page-probe.mjs' },
+        // The negative controls of the palette probe (its probe is in shard 4): each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the
+        // footer, the paint of the active row, hover that takes the keyboard's row, a palette that does not give the focus back) and passes only when the probe sees it. The widths of the Search control, of its hint and
+        // of the footer's keys are not compared, because a key is written for the platform (the mock was measured on a Mac: the Command sign and K; a Linux runner writes Ctrl+K); their heights, edges and gaps are, and every
+        // other box is compared in full. The report in the log counts the boxes of each kind and prints both widths and the fonts that draw the keys.
+        {
+          name: 'Probe that the palette probe sees a palette that is wrong',
+          script: 'ui-next/shell/probes/palette-probe.mjs',
+          env: { FONT_DELAY_MS: '40' },
+          controls: ['frame-width', 'row-height', 'foot-height', 'search-place', 'foot-gap', 'paint', 'hover-steals', 'no-restore'],
+        },
 
         // The negative controls of the toast probe (O1b-1): each perturbs one measured value in the page after it loaded (a toast 20 px too wide, a gap of 14, the Retry's colour, a failure that is not an alert, a layer that is
         // not live, an announcement made twice, a toast that takes the focus, F6 that reaches the toasts first, a focus not given back, a failure that closes by itself, a pointer that does not hold the clock, a hold that outlives its
@@ -295,9 +299,10 @@ export const MEASURED_SECONDS = {
   'Probe that the log probe sees a log view that is wrong': 109,
   'Probe the tooltip host': 145,
   'Probe the parts against the pinned mock reference': 164,
-  // C1f: ESTIMATES, 6 s and 7 s over the runner's medians of K3 (142 and 91): the connection part (about 1.5 s a pair of an engine and a viewport) and its control (a run like the keyword controls'), until a run's summary has the runner's.
-  'Probe what the providers of a plugin do to the command palette': 148,
-  'Probe that the plugin providers probe sees a palette that is wrong': 98,
+  // C1f, C1g: ESTIMATES over the runner's medians of K3 (142 and 91): 9 s and 14 s for the plugin providers probe and its controls. C1f added the connection part (about 1.5 s a pair of an engine and a viewport) and its control (a run like the keyword
+  // controls'), C1g the names part (about 0.7 s a pair) and its control, until a run's summary has the runner's.
+  'Probe what the providers of a plugin do to the command palette': 151,
+  'Probe that the plugin providers probe sees a palette that is wrong': 105,
   'Probe the table against the pinned mock reference': 62,
   'Probe the shell frame against the pinned mock reference': 46,
   'Probe the fonts and the layout shift': 35,

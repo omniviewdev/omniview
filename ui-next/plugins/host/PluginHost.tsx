@@ -33,6 +33,7 @@ import {
 import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { ContributionBoundary } from './ContributionBoundary';
+import { ConnectionNames, laneNameOf } from './connectionName';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
@@ -87,6 +88,8 @@ export type PluginHostProps = {
 
 type Host = {
   readonly frames: Published<FrameV1>;
+  /** The names this window has learned for its connections (`connectionName.ts`): from the lanes its pages publish and from the faces its tabs were saved with. */
+  readonly names: ConnectionNames;
   readonly nodes: Published<readonly SidebarNodeV1[] | null>;
   /** The groups of each plugin's sidebar that are open on screen, by plugin: what the plugin's sidebar hook is told (`SidebarContextV1.open`). Nothing is held for a plugin whose tree is not on screen. */
   readonly sidebarOpen: Published<readonly string[]>;
@@ -120,7 +123,8 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
-  const contributions = createContributions({ plugins, frames });
+  const names = new ConnectionNames();
+  const contributions = createContributions({ plugins, frames, names });
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
@@ -130,6 +134,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator) });
   return {
     frames,
+    names,
     nodes,
     sidebarOpen,
     reportSidebarOpen: (owner, open) => {
@@ -303,6 +308,7 @@ type DetailProps = {
   readonly route: Route;
   readonly page: string;
   readonly frames: Published<FrameV1>;
+  readonly names: ConnectionNames;
   readonly tabs: TabsStore;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
@@ -313,7 +319,7 @@ type DetailProps = {
  * title, glyph and path are not the hook's: they are the route's and the definition's (`describeDetail`), the same before this component has run. The back path above the heading is
  * the same path, its parents links that open in place.
  */
-function DetailContribution({ entry, route, page: pageId, frames, tabs, panelHost }: DetailProps) {
+function DetailContribution({ entry, route, page: pageId, frames, names, tabs, panelHost }: DetailProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'detail') {
     throw new Error(`The plugin has no detail page "${pageId}"`);
@@ -326,7 +332,10 @@ function DetailContribution({ entry, route, page: pageId, frames, tabs, panelHos
   const source = useGuardedSource(read, entry.id);
   const { definition } = page;
   const pluginName = entry.contribution.plugin.name;
-  const face = useMemo(() => describeDetail(pluginName, route, definition), [pluginName, route, definition]);
+  // The header's crumbs and the tab's path say the connection by its NAME: the one this page's lane says, else the one the window has learned for the connection, else none. The key is never drawn.
+  const lane = laneNameOf(scope);
+  const name = lane === null ? undefined : (lane ?? (connection === undefined ? undefined : names.get(entry.id, connection)));
+  const face = useMemo(() => describeDetail(pluginName, route, definition, name), [pluginName, route, definition, name]);
   // Before the first paint, so the scope lane is there with the page; a frame equal to the one held changes nothing.
   useLayoutEffect(() => {
     frames.publish(routeKey(route), { tab: { title: face.title, icon: definition.tile.icon }, path: (face.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)), scope });
@@ -357,6 +366,7 @@ type HostPageProps = {
   /** What the tab was saved with as the plugin's name (a tab restored from a session names a plugin the host may not have yet); empty when it says none. */
   readonly pluginName: string;
   readonly frames: Published<FrameV1>;
+  readonly names: ConnectionNames;
   readonly tabs: TabsStore;
   readonly platform: 'mac' | 'other';
   readonly inventory: PluginHostProps['inventory'];
@@ -371,7 +381,7 @@ type HostPageProps = {
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
-function HostPage({ entries, route, pluginName, frames, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts }: HostPageProps) {
+function HostPage({ entries, route, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts }: HostPageProps) {
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
@@ -425,7 +435,7 @@ function HostPage({ entries, route, pluginName, frames, tabs, platform, inventor
         fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
       >
         {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} tabs={tabs} panelHost={panelHosts(entry.id)} />
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id)} />
         ) : (
           <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id)} />
         )}
@@ -509,7 +519,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const [host] = useState(() => createHost(plugins, given, session, onCloseWindow));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
-  const { tabs, frames, nodes, routes, opened } = host;
+  const { tabs, frames, names, nodes, routes, opened } = host;
   const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection, link.params]);
   const waiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
   const known = link.plugin !== undefined && entries.some((entry) => entry.id === link.plugin);
@@ -700,6 +710,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             route={tab.location.route}
             pluginName={tabs.selectors.face(tabs.getSnapshot(), tab.id)?.pluginName ?? ''}
             frames={frames}
+            names={names}
             tabs={tabs}
             platform={platform}
             inventory={inventory}

@@ -919,7 +919,9 @@ async function checkTwins(page, base, engine) {
 /**
  * j3. The connection a row says (C1f), on the real host. The window is opened by an address that names a connection by its KEY (`#/fixture-a-ok/items?connection=north-57a082bd74`: the way a link does, in the shape the host's own keys
  * have), and the fixture's page says its NAME in its scope lane (`north`, laneOf in the fixture). The palette says the name, in its chips and, once they are removed, in the rows of Go to and their accessible names, and the key is in
- * nothing it draws: no text and no accessible name.
+ * nothing it draws: no text and no accessible name. The shell says it the same way (C1g): the tab on screen says it in its accessible name and its tooltip, and on a detail page opened by an address that names the item and the
+ * connection (the path of a detail page is the host's, made from the route; a list page's is the plugin's own words) the status bar's path and the header's breadcrumb say `north` too. The key is in no text, no accessible name, no
+ * tooltip and no title the window draws (the address carries it; the page does not show it). SHOTS=<dir> writes WebKit's `connection-names-webkit-void-1440x900.png` of that detail page.
  */
 async function checkConnection(page, base, engine) {
   const key = 'north-57a082bd74';
@@ -949,6 +951,43 @@ async function checkConnection(page, base, engine) {
   assert.ok(!(await drawn()).includes(key), `${engine}: and the key of the connection is in no row text and no accessible name`);
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'detached' });
+
+  // The shell's own surfaces (C1g), read as a person and a screen reader read them: the text of the window and every attribute that names or describes an element (a tab's accessible name, its tooltip, a title).
+  const shellOf = () =>
+    page.evaluate(() => {
+      const named = ['aria-label', 'title', 'alt', 'placeholder', 'data-ov-tip'];
+      const attributes = [...document.querySelectorAll('*')].flatMap((node) => named.flatMap((name) => (node.hasAttribute(name) ? [`${name}: ${node.getAttribute(name)}`] : [])));
+      const tab = document.querySelector('[role="tablist"] [role="tab"][aria-selected="true"]');
+      return {
+        drawn: [document.body.innerText, ...attributes],
+        tab: { name: tab?.getAttribute('aria-label') ?? null, tip: tab?.getAttribute('data-ov-tip') ?? null },
+        status: [...document.querySelectorAll('nav[aria-label="Current resource"] li')].map((item) => item.textContent ?? ''),
+        header: document.querySelector('header nav[aria-label="Breadcrumb"]')?.textContent ?? null,
+      };
+    });
+  const says = (text) => typeof text === 'string' && /\bnorth\b/.test(text);
+  // A list page's path is the plugin's own words (the fixture's says `Seam Fixture › Items`), and a detail page's is the host's, made from the route: it says the connection by its name, so only a detail page is held to say it.
+  const sound = (shell, what, pathSaysIt) => {
+    assert.ok(says(shell.tab.name), `${engine}: ${what}: the tab on screen says the connection by its name in its accessible name: ${JSON.stringify(shell.tab)}`);
+    assert.ok(says(shell.tab.tip), `${engine}: ${what}: the tab on screen says the connection by its name in its tooltip: ${JSON.stringify(shell.tab)}`);
+    assert.ok(!pathSaysIt || shell.status.some(says), `${engine}: ${what}: the status bar's path says the connection by its name: ${JSON.stringify(shell.status)}`);
+    assert.deepEqual(shell.drawn.filter((text) => text.includes(key)), [], `${engine}: ${what}: the key of the connection is in no text, accessible name, tooltip or title the window draws`);
+  };
+  sound(await shellOf(), 'the list page', false);
+
+  // A detail page of an item of the connection, opened by the address a link makes: its header, the strip and the status bar say the name; the page is loaded afresh (a hash alone does not open a link).
+  await page.goto('about:blank');
+  await open(page, base, `#/${OK}/item?name=alpha&group=east&connection=${key}`);
+  await page.locator('header nav[aria-label="Breadcrumb"]').waitFor({ timeout: 30_000 });
+  await page.locator('[data-shell-part="lane"]').getByText('north', { exact: true }).waitFor({ timeout: 30_000 });
+  const detail = await shellOf();
+  sound(detail, 'the detail page', true);
+  // The breadcrumb's text is its crumbs one after the other, with no separator between them (`Seam FixturenorthItemsalpha`): the name is in it, and the key (above) is in no text of the window.
+  assert.ok(typeof detail.header === 'string' && detail.header.includes('north'), `${engine}: the header of the detail page says the connection by its name: ${JSON.stringify(detail.header)}`);
+  if (process.env.SHOTS !== undefined && engine === 'webkit') {
+    await mkdir(process.env.SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SHOTS, 'connection-names-webkit-void-1440x900.png') });
+  }
   assert.deepEqual(errors.filter((message) => !/access control checks|Load failed|Failed to fetch|NetworkError/i.test(message)), [], `${engine}: the connection scenario wrote no page error`);
 }
 

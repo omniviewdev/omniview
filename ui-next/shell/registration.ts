@@ -46,13 +46,20 @@ export type ShellSidebar = {
   readonly accent?: ShellAccent | undefined;
 };
 
-/** One face of the scope lane: the scope the page is read in. Text for now; the menus that change a scope arrive with their slice. */
+/**
+ * One face of the scope lane: the scope the page is read in. Text for now; the menus that change a scope arrive with their slice.
+ *
+ * `role: 'connection'` (C1g) says this face is the connection the page is read in, whatever its label: the host says a connection by this face's text (its NAME) wherever it says one, and never by the key a route carries.
+ * It is optional and additive: a plugin written before it is read by the face's label, Connection.
+ */
 export type ShellScopeFace = {
   /** What the value is, for assistive technology: read before the value. */
   readonly label: string;
   readonly icon: IconName;
   /** The value, at most 24 characters (ch16 S10). */
   readonly text: string;
+  /** `connection`: this face says the connection the page is read in. Absent: the face's label says what it is (a face labelled Connection is read as the connection). */
+  readonly role?: 'connection' | undefined;
 };
 
 /** One entry of the window's rail: a place whose sidebar the window can show. The shell knows it by its id, its name and its glyph, and nothing of what stands behind it. */

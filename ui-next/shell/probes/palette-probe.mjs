@@ -8,11 +8,12 @@
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)      AXE=<axe.min.js>      REPORT=<file>   the full report as JSON      SHOTS=<dir>   a screenshot per scene
 //   PLATFORM='Linux x86_64'   (geometry only) the pages say so in `navigator.platform`, so the keys are written as that platform writes them: the Command sign and K on a Mac, Ctrl+K elsewhere
 //   NEGATIVE_CONTROL=<name>   perturb ONE measured value in the page (frame-width, row-height, foot-height, search-place, foot-gap, paint, hover-steals, no-restore, and for the plugins' providers slow-blocks, quick-late,
-//                             focus-moves, extra-commit, plugin-shift, closed-work, stale-shown, for a sidebar's keywords alias-ignored, alias-loose, and for the connection a row says connection-key; see PERTURBATIONS), run the section that must
+//                             focus-moves, extra-commit, plugin-shift, closed-work, stale-shown, for a sidebar's keywords alias-ignored, alias-loose, for the connection a row says connection-key, and for the connection the shell's own
+//                             surfaces say connection-key-face; see PERTURBATIONS), run the section that must
 //                             see it, and exit 0 when it did and 1 when it did not (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise)
 //   ASSERTION_OFF=<regex>     drops the failures whose line matches, as if the assertion that says them were not there: a control is shown to depend on its assertion by running it with its own pattern
 //                             (PERTURBATIONS[<name>].expected) here, and it must then print NOT DETECTED (the rule for a negative control)
-//   PARTS=<a,b>               (section plugins) runs only those parts of it (timeline, typing, focus, commits, shift, closed, states, aliases, connection): a developer's shortcut, never a CI step
+//   PARTS=<a,b>               (section plugins) runs only those parts of it (timeline, typing, focus, commits, shift, closed, states, aliases, connection, names): a developer's shortcut, never a CI step
 //
 // What it checks, per engine and viewport:
 //   geometry   the seven scenes of the mock (the closed field; open with nothing typed; narrowed to the tab's place, with its two chips; a query that matches in two sections; one that matches
@@ -634,6 +635,8 @@ const PERTURBATIONS = {
   'alias-loose': { sections: ['plugins'], parts: ['aliases'], expected: /^[^:]+: plugins aliases: the page a keyword names is not the first row/ },
   // The connection a row says (C1f; palette-plugins.mjs, part `connection`): a palette that says the key a route carries (a source of the host's own with the key in a row) is seen, in the text drawn or the accessible name.
   'connection-key': { sections: ['plugins'], parts: ['connection'], expected: /^[^:]+: plugins connection: the key of the connection is drawn/ },
+  // The connection the shell's own surfaces say (C1g; palette-plugins.mjs, part `names`): the faces of the tab model carry the connection parameter (a crumb and a qualifier), so the tab strip, its tooltip and the status bar say the key.
+  'connection-key-face': { sections: ['plugins'], parts: ['names'], expected: /^[^:]+: plugins names: the key of the connection is drawn by the shell/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
