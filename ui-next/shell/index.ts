@@ -25,3 +25,7 @@ export type { Availability as NoticeAvailability, CommandRef as NoticeCommandRef
 export { createNoticesAnnouncer } from './notices/host';
 export type { NoticesAnnouncer, NoticesBindings } from './notices/host';
 export { useNotices } from './notices/context';
+export { createCentre } from './notices/centreControl';
+export type { Centre } from './notices/centreControl';
+export { loadNotices, noticesStorage } from './notices/storage';
+export type { LoadedNotices, NoticesStorage } from './notices/storage';

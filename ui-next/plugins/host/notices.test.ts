@@ -250,11 +250,31 @@ describe('an action that opens a page', () => {
 });
 
 describe('what the host hands the shell', () => {
-  it('has a store, the window\'s live regions, and no notification centre yet: the summary toast has no Show', () => {
+  it('has a store, the window\'s live regions and a notification centre: the summary toast has its Show', () => {
     const w = build();
     expect(typeof w.notices.store.getSnapshot).toBe('function');
     expect(typeof w.notices.announcer.announce).toBe('function');
-    expect(w.notices.centre).toBeFalsy();
+    expect(typeof w.notices.centre?.open).toBe('function');
+    w.stop();
+  });
+
+  it('opens the centre when the summary toast\'s Show asks (the store\'s seam is the centre\'s own open)', () => {
+    const w = build();
+    for (let index = 1; index <= 5; index += 1) {
+      w.notices.store.notify({ title: `Notice ${String(index)}`, severity: 'error', source: `p${String(index)}` });
+    }
+
+    expect(w.notices.centre?.getSnapshot().open).toBe(false);
+    expect(w.notices.store.showSummary()).toBe(true);
+    expect(w.notices.centre?.getSnapshot().open).toBe(true);
+    w.stop();
+  });
+
+  it('closes the centre when the palette opens: a modal owns the window, as the browser\'s own modal would close a popover (S89a)', () => {
+    const w = build();
+    w.notices.centre?.open();
+    w.palette.store.open({});
+    expect(w.notices.centre?.getSnapshot().open).toBe(false);
     w.stop();
   });
 

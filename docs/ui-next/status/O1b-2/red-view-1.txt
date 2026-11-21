@@ -1,0 +1,80 @@
+                  [33mdir[39m=[32m"auto"[39m
+                [36m>[39m
+                  [0mTimed out[0m
+                [36m</span>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"_dismiss_27a252"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33maria-label[39m=[32m"Dismiss: Timed out"[39m
+                [33mclass[39m=[32m"command-module_root_ddyXna"[39m
+                [33mdata-notices-part[39m=[32m"dismiss"[39m
+                [33mdata-ov-shape[39m=[32m"icon"[39m
+                [33mdata-ov-size[39m=[32m"row"[39m
+                [33mdata-ov-tip[39m=[32m"Dismiss"[39m
+                [33mdata-ov-tone[39m=[32m"neutral"[39m
+                [33mdata-ov-variant[39m=[32m"ghost"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"Icon-module_root_8Wb43a"[39m
+                  [33mdata-ov-glyph[39m=[32m"close"[39m
+                  [33mdata-ov-size[39m=[32m"16"[39m
+                  [33mviewBox[39m=[32m"0 0 16 16"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M3.5 12.5L12.5 3.5M12.5 12.5L3.5 3.5"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+              [36m</button>[39m
+            [36m</span>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-atomic[39m=[32m"true"[39m
+        [33maria-live[39m=[32m"polite"[39m
+        [33mclass[39m=[32m"_hidden_27a252"[39m
+        [33mdata-notices-part[39m=[32m"live"[39m
+      [36m>[39m
+        [36m<span />[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33maria-atomic[39m=[32m"true"[39m
+        [33maria-live[39m=[32m"assertive"[39m
+        [33mclass[39m=[32m"_hidden_27a252"[39m
+        [33mdata-notices-part[39m=[32m"alert"[39m
+      [36m>[39m
+        [36m<span />[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ getByRole node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ bell ui-next/shell/notices/Centre.test.tsx:13:40
+     11| afterEach(teardown);
+     12|
+     13| const bell = (): HTMLElement => screen.getByRole('button', { name: /^N…
+       |                                        ^
+     14| const dialog = (): HTMLElement => screen.getByRole('dialog', { name: '…
+     15| const list = (): HTMLElement => within(dialog()).getByRole('list', { n…
+ ❯ open ui-next/shell/notices/Centre.test.tsx:22:22
+ ❯ ui-next/shell/notices/Centre.test.tsx:422:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/39]⎯
+
+
+ Test Files  2 failed | 11 passed (13)
+      Tests  39 failed | 172 passed (211)
+   Start at  06:57:13
+   Duration  4.44s (transform 44%, environment 38%, setup 9%, tests 7%, import 3%)
+

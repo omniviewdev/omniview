@@ -18,7 +18,7 @@ import '../../global.css';
 import { Button, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { Profiler } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createAnnouncer, createNoticesAnnouncer, createNoticesStore, createPaletteStore, type NoticesAnnouncer, type NoticesBindings, type PaletteBindings, type PaletteCandidate, type PaletteSource, type ShellRegistration } from '..';
+import { createAnnouncer, createCentre, createNoticesAnnouncer, createNoticesStore, createPaletteStore, type NoticesAnnouncer, type NoticesBindings, type PaletteBindings, type PaletteCandidate, type PaletteSource, type ShellRegistration } from '..';
 import { manualClock } from '../core/notices/testing';
 import type { ToolInput } from '../core/panel';
 import { staticPanel } from '../panel/testing';
@@ -66,11 +66,16 @@ Reflect.set(window, '__errors', errors);
 const clock = CASE === 'clock' ? manualClock() : undefined;
 Reflect.set(window, '__clock', clock);
 
+// The window's notification centre, when the case has one (`&centre=1`): the controller the bell and the summary toast's Show share, as the host makes it (ui-next/plugins/host/notices.ts).
+const control = params.get('centre') === '1' ? createCentre() : undefined;
+Reflect.set(window, '__centreControl', control);
+
 const store = createNoticesStore({
   ...(clock === undefined ? {} : { scheduler: clock.scheduler }),
   announce: announcer.announce,
   openCenter: () => {
     centre.asked += 1;
+    control?.open();
   },
   onError: (error, where) => {
     errors.push({ where, message: String(error) });
@@ -78,7 +83,7 @@ const store = createNoticesStore({
   platform: /mac/i.test(navigator.platform) ? 'mac' : 'other',
 });
 Reflect.set(window, '__notices', store);
-const notices: NoticesBindings = { store, announcer, centre: params.get('centre') === '1' };
+const notices: NoticesBindings = { store, announcer, ...(control === undefined ? {} : { centre: control }) };
 
 // The command palette: the real model over a few invented providers, as the palette probe's fixture has them (a handful of places, the tabs and a few commands).
 const GLYPHS = ['box', 'layers', 'server', 'folder-tree'] as const;

@@ -61,6 +61,26 @@ describe('Icon', () => {
     }
   });
 
+  it('draws the six notification centre glyphs (O1b-2) at the three sizes of the scale, each on its own artboard', () => {
+    const centre: ReadonlyArray<readonly [IconName, 16 | 24]> = [['bell', 16], ['bell-off', 24], ['check-check', 24], ['list-filter', 24], ['trash', 16], ['undo', 16]];
+    for (const [name, box] of centre) {
+      for (const size of [12, 16, 20] as const) {
+        const { container, unmount } = render(<Icon name={name} size={size} />);
+        const svg = container.querySelector('svg');
+        expect(svg?.getAttribute('data-ov-glyph'), name).toBe(name);
+        expect(svg?.getAttribute('viewBox'), name).toBe(`0 0 ${box} ${box}`);
+        expect(svg?.getAttribute('data-ov-size'), name).toBe(String(size));
+        const paths = [...container.querySelectorAll('path')];
+        expect(paths.length, name).toBe(GLYPHS[name].layers.length);
+        for (const path of paths) {
+          expect(path.getAttribute('d'), name).toMatch(/^M/);
+        }
+
+        unmount();
+      }
+    }
+  });
+
   it('names the glyph it draws, for the stylesheet and for tests', () => {
     const { container } = render(<Icon name="chevron-down" />);
     expect(container.querySelector('svg')).toHaveProperty('dataset.ovGlyph', 'chevron-down');

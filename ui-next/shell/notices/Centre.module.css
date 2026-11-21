@@ -1,0 +1,507 @@
+/* The notification centre (ch16 S80, S81, O4, O5; the mock's `.statuspopover` and `.panel-header` (shell-widgets.css, base.css), `.fbc*` (shell-feedback.css) and the centre row of `.notify` (shell-notify.css)). Host
+   composition, so every rule sits in ov.shell, above the kit's parts. The shell's own metrics are the exceptions to the closed scales that the chapter names: the 420 px popover and its 480 px, the 40 px least height of a
+   row and the 44 px its title reserves on the inline end for the dismiss control (24 px, an 8 px gap and the 12 px inset), the 16 px glyph column, the 6 px unread mark, the 40 px glyph box of an empty state. Closed scales for
+   everything else: spacing 2 to 24, type 12 and 13 at weight 400 and 600, radius 4 and 8, --ov-* roles. No geometry transition and no motion: nothing here moves. Logical properties throughout, so a right-to-left text
+   truncates and aligns at its own end. */
+@layer ov.shell {
+  /* The popover: a non-modal dialog in the top layer, fixed above the bell at the coordinates the bell measured when it opened (--_x: its left edge, --_bottom: its bottom edge, --_max: the room above the bell). A fixed
+     height (480 px, less where the room is less): rows come and go while it is open, and a popover that resized with them would jump under the pointer. The list is the scroll owner and the bar above it never scrolls. */
+  .centre {
+    position: fixed;
+    inset: auto;
+    left: var(--_x, 8px);
+    bottom: var(--_bottom, 40px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    inline-size: min(420px, calc(100vw - 16px));
+    block-size: min(480px, var(--_max, 560px));
+    max-block-size: min(var(--_max, 560px), 560px);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    box-shadow: var(--ov-shadow-popup);
+  }
+
+  .centre:focus {
+    outline: 0;
+  }
+
+  .centre:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border-block-end: 1px solid var(--ov-border-popup);
+  }
+
+  .heading {
+    min-inline-size: 0;
+    margin: 0;
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  .body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* The bar: the tools, and the notes that say which source the list is narrowed to and which are muted. It never scrolls. */
+  .bar {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border-block-end: 1px solid var(--ov-border-popup);
+  }
+
+  /* The tools are the kit's roving group; Filter stands at the far end, as the mock's does. */
+  .bar > [data-notices-part='centreTools'] {
+    justify-content: space-between;
+  }
+
+  .bar [data-notices-part='filter'] {
+    margin-inline-start: auto;
+  }
+
+  .anchor {
+    display: contents;
+  }
+
+  .note {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  .note > svg {
+    flex: 0 0 16px;
+  }
+
+  .noteText {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The list is the scroll owner (A15): it never scrolls sideways, and what it scrolls past does not scroll the page. */
+  .scroll {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding: var(--ov-spacing-4);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .item {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* A heading of the list is an item of it that takes no row from the keyboard: a 24 px lane in the muted caption type. */
+  .label {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 24px;
+    margin: 0;
+    padding: 0 var(--ov-spacing-8);
+    color: var(--ov-fg-muted);
+  }
+
+  .labelText {
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .more {
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+  }
+
+  /* An empty state, in one voice: the title says what is not there, one sentence says what appears here and when, and there may be the one button that leads out. */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-block-size: 96px;
+    padding: var(--ov-spacing-24) var(--ov-spacing-12);
+    color: var(--ov-fg-muted);
+    text-align: center;
+    white-space: normal;
+  }
+
+  .bigicon {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    inline-size: 40px;
+    block-size: 40px;
+    color: var(--ov-icon);
+  }
+
+  .emptyTitle {
+    margin: 0;
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+  }
+
+  .emptyHint {
+    max-inline-size: 64ch;
+    margin: 0;
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* A row: the title is one button across it, 40 px least. The kit's buttons in it are the kit's. */
+  .row {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    border-radius: var(--ov-radius-control);
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    overflow-wrap: anywhere;
+  }
+
+  .toggle {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    column-gap: var(--ov-spacing-8);
+    align-items: center;
+    justify-content: stretch;
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-block-size: 40px;
+    margin: 0;
+    padding-block: var(--ov-spacing-4);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row reserves the 44 px on its inline end that the dismiss control takes when it shows (24 px, an 8 px gap, the 12 px inset), so the time and the mark are never covered and never move (the mock's `padding-inline: 12px 44px`) */
+    padding-inline: var(--ov-spacing-12) 44px;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    white-space: normal;
+    cursor: pointer;
+  }
+
+  .row:not([data-expanded]) > .toggle:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .toggle:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .glyph {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 16px;
+    block-size: 16px;
+  }
+
+  .glyph[data-busy] {
+    color: var(--ov-icon);
+  }
+
+  .column {
+    display: block;
+    min-inline-size: 0;
+  }
+
+  /* The word of the severity is read and not drawn: the glyph is for the eye (S83: never colour alone). */
+  .hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .title {
+    display: block;
+    min-inline-size: 0;
+    font-weight: 600;
+  }
+
+  .message {
+    display: block;
+    min-inline-size: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .state {
+    color: var(--ov-fg);
+  }
+
+  /* Collapsed, the title and the line under it are one line each and end in an ellipsis; open, they wrap in full. */
+  .row:not([data-expanded]) .title,
+  .row:not([data-expanded]) .message {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .time {
+    min-inline-size: 7ch;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  /* The mark of an unread row: 6 px, the accent, or the colour of its severity when that is a warning or an error. */
+  .unread {
+    flex: none;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+  }
+
+  .row[data-unread] .unread {
+    background-color: var(--ov-accent);
+  }
+
+  .row[data-unread] .unread[data-tone='error'] {
+    background-color: var(--ov-error-fg);
+  }
+
+  .row[data-unread] .unread[data-tone='warning'] {
+    background-color: var(--ov-warning-fg);
+  }
+
+  .detail {
+    min-inline-size: 0;
+    margin-inline-start: var(--ov-spacing-24);
+    padding-block: 0 var(--ov-spacing-8);
+    padding-inline: var(--ov-spacing-12);
+  }
+
+  .reason {
+    margin: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The buttons of a row. Collapsed, only the dismiss control is there, in the reserved column on the inline end, and it shows when the row is hovered or has the focus (one at a time: the pointer wins over the keyboard's
+     row). Open, the actions and the dismiss control are a row of their own under the text. */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  .row[data-expanded] > .actions {
+    min-block-size: 36px;
+    margin: 0;
+    margin-inline-start: var(--ov-spacing-24);
+    padding-block: 0 var(--ov-spacing-8);
+    padding-inline: var(--ov-spacing-12);
+  }
+
+  .row:not([data-expanded]) > .actions {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: var(--ov-spacing-12);
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    inline-size: 24px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .row:not([data-expanded]):is(:hover, :focus-within) > .actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .list:has(.row:hover) .row:not([data-expanded]):not(:hover) > .actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* The Filter menu (the mock's shared menu, action profile; the kit's row menu has the same measurements): a nested popover of the centre's, fixed below the Filter button at the coordinates it measured when it opened. */
+  .menu {
+    position: fixed;
+    inset: auto;
+    left: var(--_x, 0px);
+    top: var(--_top, 0px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    inline-size: 240px;
+    max-inline-size: calc(100vw - 16px);
+    max-block-size: var(--_max, none);
+    margin: 0;
+    padding: var(--ov-spacing-8) 0;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    cursor: default;
+    box-shadow: var(--ov-shadow-popup);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .menu:focus {
+    outline: 0;
+  }
+
+  .menuGroup {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .menuTitle {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    block-size: 24px;
+    padding-inline: var(--ov-spacing-16);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  .menuSeparator {
+    block-size: 1px;
+    margin: var(--ov-spacing-4) var(--ov-spacing-8);
+    background-color: var(--ov-border-popup);
+  }
+
+  .menuItem {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-block-size: var(--ov-row-target);
+    margin: 0 var(--ov-spacing-8);
+    padding: var(--ov-spacing-2) var(--ov-spacing-8);
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    appearance: none;
+    background-color: transparent;
+    color: var(--ov-fg);
+    font: inherit;
+    text-align: start;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .menuItem:focus {
+    background-color: var(--ov-selection-active);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+  }
+
+  .menuMark {
+    display: inline-flex;
+    flex: 0 0 16px;
+    inline-size: 16px;
+    block-size: 16px;
+  }
+
+  .menuLabel {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
