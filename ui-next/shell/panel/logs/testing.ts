@@ -15,8 +15,8 @@ export type FakeFeed = LogFeedHandle & {
   readonly controls: () => number;
   /** A new status: only what is given changes, and every listener is told. */
   readonly set: (change: { readonly state?: LogFeedState; readonly paused?: boolean; readonly cause?: LogFeedCause | undefined; readonly sources?: readonly LogFeedSource[] }) => void;
-  /** Holds `count` lines for the reader, written by `source` (default `source/main`), and wakes the listeners once, until the next read. */
-  readonly push: (count: number, source?: string) => void;
+  /** Holds `count` lines for the reader, written by `source` (default `source/main`) at `timestamp` (an RFC 3339 text; default: none), and wakes the listeners once, until the next read. */
+  readonly push: (count: number, source?: string, timestamp?: string) => void;
   /** Tells the listeners without changing anything: what a feed does when held lines became readable. */
   readonly wake: () => void;
 };
@@ -105,11 +105,11 @@ export function fakeFeed(options: FakeFeedOptions = {}): FakeFeed {
       };
       tell();
     },
-    push: (count, source = 'source/main') => {
+    push: (count, source = 'source/main', timestamp = '') => {
       for (let index = 0; index < count; index += 1) {
         seq += 1;
         received += 1;
-        held.push({ seq, source, timestamp: '', text: `line ${String(seq)}`, level: undefined });
+        held.push({ seq, source, timestamp, text: `line ${String(seq)}`, level: undefined });
       }
 
       if (!woken && held.length > 0) {

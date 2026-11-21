@@ -129,6 +129,18 @@ export class LineBuffer {
     return lost;
   }
 
+  /**
+   * Empties the buffer: what it holds is forgotten, and with it the count of lines it had evicted, which is what the strip tells as dropped (a line the reader cleared is not a line the view dropped).
+   * The ordinals go on, never reused: a selection, a match or a row's key that named a cleared line names nothing, and can never name a new one. The entries evicted before are not given back.
+   */
+  clear(): void {
+    this.slots.fill(undefined);
+    this.head = 0;
+    this.size = 0;
+    this.goneLines = 0;
+    this.markers = 0;
+  }
+
   /** The entry `index` places after the oldest. The index must be inside the buffer. */
   at(index: number): LogEntry {
     return this.slots[(this.head + index) % this.cap]!;

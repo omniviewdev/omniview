@@ -680,9 +680,18 @@ async function checkLogs(page, base, engine) {
       const { x, width, height } = element.getBoundingClientRect();
       return [x, width, height].map((n) => Math.round(n));
     };
-    return { body: read(document.querySelector('[data-shell-part="panelBody"]:not([hidden])')), view: read(document.querySelector('[data-log-session]')) };
+    return {
+      body: read(document.querySelector('[data-shell-part="panelBody"]:not([hidden])')),
+      column: read(document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-shell-part="logsTools"]')),
+      view: read(document.querySelector('[data-log-session]')),
+    };
   });
-  assert.ok(box.body.every((value, index) => Math.abs(value - box.view[index]) <= 1), `${engine}: the log view fills the panel's body (${JSON.stringify(box)})`);
+  // The body is the toolbar's column (the mock's 40 px: `.panel__tools`) and the log view beside it, which fills the rest (P1b-4a).
+  const [bodyX, bodyWidth, bodyHeight] = box.body;
+  const [columnX, columnWidth, columnHeight] = box.column;
+  const [viewX, viewWidth, viewHeight] = box.view;
+  assert.ok(Math.abs(columnX - bodyX) <= 1 && Math.abs(columnWidth - 40) <= 1 && Math.abs(columnHeight - bodyHeight) <= 1, `${engine}: the toolbar's column is the body's left 40 px (${JSON.stringify(box)})`);
+  assert.ok(Math.abs(viewX - (bodyX + columnWidth)) <= 1 && Math.abs(viewWidth - (bodyWidth - columnWidth)) <= 1 && Math.abs(viewHeight - bodyHeight) <= 1, `${engine}: the log view fills the panel's body beside the column (${JSON.stringify(box)})`);
   assert.deepEqual(await page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') })), { opened: 1, closed: 0, listeners: 3 }, `${engine}: one feed opened; the registry and the view (two) listen to it`);
   // The card is the host's: the kind, the item as a link, the state in a log's words.
   const tab = page.getByRole('tab', { name: 'orders-api/app', exact: true });
@@ -707,6 +716,28 @@ async function checkLogs(page, base, engine) {
   const after = await place();
   assert.deepEqual({ top: after.top, first: after.first }, { top: before.top, first: before.first }, `${engine}: switching tool and back keeps the scroll place (${JSON.stringify({ before, after })})`);
   assert.ok(after.rows >= before.rows, `${engine}: and the lines it had (${String(before.rows)} then ${String(after.rows)})`);
+  // The toolbar's Pause (P1b-4a): the stream goes on and the view draws no more; the strip counts the lines that arrive (they are the stream's: the plugin's own count says so), and a press again draws them.
+  const waitingOf = async () => Number((/Paused, ([\d,]+) new lines? waiting/.exec(await page.getByRole('group', { name: 'Session status' }).innerText())?.[1] ?? '-1').replace(/,/g, ''));
+  const drawn = () => grid.evaluate((element) => Number(element.getAttribute('aria-rowcount')));
+  const pause = page.getByRole('button', { name: 'Pause log updates' });
+  assert.equal(await pause.getAttribute('aria-pressed'), 'false', `${engine}: Pause is not pressed while the stream runs`);
+  await pause.click();
+  await page.waitForFunction(() => /Paused, [\d,]+ new lines? waiting/.test(document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [aria-label="Session status"]')?.textContent ?? ''), null, { timeout: 15_000 });
+  assert.equal(await pause.getAttribute('aria-pressed'), 'true', `${engine}: Pause says it is pressed`);
+  const stopped = await drawn();
+  const first = await waitingOf();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const later = await waitingOf();
+  assert.ok(later >= first + 15, `${engine}: the lines kept arriving while paused and the strip counted them (${String(first)} waiting, then ${String(later)} 1.5 s later: the stream makes 20 a second)`);
+  assert.equal(await drawn(), stopped, `${engine}: and the view drew none of them (${String(stopped)} rows, then ${String(await drawn())})`);
+  assert.equal((await page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') }))).listeners, 3, `${engine}: the pause held the one feed the host already listens to (no listener more)`);
+  // The lines that waited are drawn at once when Pause is let go: within a second the rows are at least the rows drawn when it was pressed plus the lines the stream held as it is let go. The stream makes 20 lines a second, so
+  // new arrivals alone cannot make up 25 in that time: a view that threw the waiting lines away would not reach it.
+  const waiting = await waitingOf();
+  assert.ok(waiting >= 25, `${engine}: enough lines wait to tell them from the arrivals of one second (${String(waiting)})`);
+  await pause.click();
+  await page.waitForFunction((rows) => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) >= rows, stopped + waiting, { timeout: 1_000 });
+  assert.equal(await pause.getAttribute('aria-pressed'), 'false', `${engine}: pressed again, Pause is not pressed`);
   // Closing the tab closes the plugin's feed and every listener on it is gone.
   await tab.focus();
   await page.keyboard.press('Delete');

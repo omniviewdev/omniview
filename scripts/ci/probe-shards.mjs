@@ -19,19 +19,22 @@
 // MEASURED_SECONDS are the RUNNER's: the median, rounded up, of the last 8 green runs of 2026-11-21 on main and on merged pull requests (the runs and every row are in docs/ui-next/status/N24-K3-seconds.json, the derivation in N24-K3.md), each unit being a
 // probe or a probe's controls, both engines and both viewports counted as the probe runs them. The job of a shard is its probes plus its setup, which is the job minus the probes' step: median 88 s, 90th percentile 108 s on the 56 shard jobs of those runs
 // (the CI image, docs/ui-next/status/N24-B1.md). The wall time the table is held to is 9 minutes (WALL_BUDGET_SECONDS), so a shard may hold LIMIT_SECONDS = 540 - 108 = 432 s of units: the slowest job is then 9 minutes when its setup is as slow as the
-// 90th percentile and its probes take their medians. That is the number of the data, not an estimate with slack: the best split of the 3,387 s of work into 8 shards has a longest shard of 425 s (searched exhaustively; 7 shards cannot do better than 484 s,
-// 484 + 88 = 9 m 32 s, over; 9 shards cannot do better than 411 s, the panel probe's controls alone, 14 s less for one more job), so eight shards is the fewest that fit. The shards below, in seconds of units:
+// 90th percentile and its probes take their medians. That is the number of the data, not an estimate with slack. At K3 the best split of the 3,387 s of work into 8 shards had a longest shard of 425 s (searched exhaustively; 7 shards cannot do better than 484 s,
+// 484 + 88 = 9 m 32 s, over), so eight shards were the fewest that fit. C1f then added estimates of 148 and 98 s for the plugin providers probe and its controls (the runner's 142 and 91, until a run's summary has the runner's) and filled
+// shard 8 to the limit. P1b-4a (the Logs toolbar) adds a section to the logs probe (the toolbar, the short panel and the pause that costs one commit) and eight controls to the logs probe's controls: 3,703 s of work, which is more than
+// 8 x 432 = 3,456 s, so no split into eight shards holds it and the table has NINE. The logs probe's controls have shard 9 to themselves, the logs probe has shard 2 to itself, and the plugin providers' controls went to shard 8 (they were in shard 2 with the logs probe). The two units
+// that grew are the runner's seconds of the pull request's first run (a single run, not a median of 8, which is what the other units have): the logs probe 395 s, and the logs controls 381 s (171 s for the eleven before, which the table
+// had at 161, and 210 s for the eight of this step, 26 s each: each runs the toolbar section's cell); the plugin providers' controls, which moved to shard 8, 107 s against C1f's estimate of 98. The shards below, in seconds of units:
 //   shard 1  panel controls 411, detail 16                                                          = 427
-//   shard 2  logs 321, plugin providers controls 98                                                 = 419
+//   shard 2  logs 395                                                                               = 395
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
 //   shard 5  strip 192, palette controls 63, strip controls 28, plugin providers 148                = 431
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  tooltip 145, list page 61, toast layer controls 156, table 62                          = 424
-//   shard 8  toast layer 220, logs controls 161, rail 16, fonts 35                                  = 432
+//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 107                      = 378
+//   shard 9  logs controls 381                                                                      = 381
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
-// (C1f: the plugin providers probe and its controls are ESTIMATES of 148 and 98 s, from the runner's 142 and 91: the connection part and its control, until a run's summary has the runner's. Shard 5 would have been 438 s, so four units
-// moved, the fewest that fit under the limit: the palette's controls and the strip's controls to shard 5, the fonts probe to shard 8 and the plugin providers' controls to shard 2. The limit is not raised, and shard 8 is at it.)
 // What the margin does not cover is a run slower than the medians: a unit's maximum over the 8 runs is up to 12 % over its median for the longest (the panel probe's controls: 411 median, 462 maximum) and up to 36 % for the smallest (the strip's controls: 28, 38), and 5 of the 64 simulated shard jobs of those runs would have been
 // over 9 minutes. Three units have fewer than 8 runs behind them, because their set of controls or the probe itself is new (the toast layer 4 runs, its controls 3, the plugin providers' controls 3): they are the first to move.
 // Before K2 a probe and its controls had to share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 411 s.
@@ -91,17 +94,11 @@ export const TABLE = {
         // the heap after forced collections (CDP) falls back once the tab of a session that held 100,000 lines is closed. A Logs session is its plugin and its target (A22, section `identity`): pressing a target whose session
         // is running shows it and starts no second stream (the fixture counts the feeds opened), moves no focus, opens the panel and chooses Logs from a hidden panel or another tool; a twin of another scope makes both tabs
         // draw their scope and closing one takes it off the other; a target whose session ended or failed opens a new session beside it, its stream still open and its view holding its lines, the tabs named
-        // `x, ended` and `x (2)`; and (section `a11y`) axe on the real log view with the scoped twin tabs and with an ended session beside its replacement. It builds its own fixtures, so it does not read PROBE_DIST.
+        // `x, ended` and `x (2)`; and (section `a11y`) axe on the real log view with the scoped twin tabs and with an ended session beside its replacement. The toolbar (P1b-4a, section `toolbar`): the column and its five buttons, their glyphs
+        // and paint, against the mock's own measurement (mock-logs-toolbar.json, both engines), their names, states, tooltips and reasons, the keys of a vertical toolbar, Pause that holds the stream and counts the lines it holds, Follow,
+        // Clear that forgets everything made so far and shows every line made after it, Copy that writes every line the list draws with its source, UTC, what a session chose and keeps, the level filter, and a panel too short for every button, where
+        // the last buttons are behind the `⋯` More actions menu. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
-
-        // The negative controls of the plugin providers probe (its probe is in shard 5): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
-        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword, a connection said by its key) and passes only when that assertion sees it. Each runs the part it perturbs.
-        {
-          name: 'Probe that the plugin providers probe sees a palette that is wrong',
-          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
-          env: { FONT_DELAY_MS: '40' },
-          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key'],
-        },
       ],
     },
     {
@@ -245,23 +242,38 @@ export const TABLE = {
         // centre; the palette takes it away and it comes back), at 1440 x 900 and 1280 x 800 in both engines. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the toast layer against the pinned mock reference', script: 'ui-next/shell/probes/notices-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/notices-probe.json' } },
 
-        // The negative controls of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other source's name; the list is
-        // scrolled 48 px when the column appears; every listener ever added to a Set is kept, so the model of a view outlives its closed tab and the heap does not fall back (A21); a stream is closed twice, which the count of closed
-        // feeds does not see; a held view shows another line from the one it had (A21); a second press that starts a second stream, a tab with no twin that draws a scope, two tabs that carry one name, a scoped
-        // tab whose name leaves its scope out, and the view of a session that ended and was pressed again showing another line from the one it had (A22; each is detected by its own check and by no other: a page that
-        // draws no tab is never taken for one). The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
-        {
-          name: 'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved',
-          script: 'ui-next/shell/probes/logs-probe.mjs',
-          controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines'],
-        },
-
         // The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
         // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
 
         // The fonts are delivered, used, and the page does not shift.
         { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
+
+        // The negative controls of the plugin providers probe (its probe is in shard 5): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
+        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword, a connection said by its key) and passes only when that assertion sees it. Each runs the part it perturbs.
+        {
+          name: 'Probe that the plugin providers probe sees a palette that is wrong',
+          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
+          env: { FONT_DELAY_MS: '40' },
+          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key'],
+        },
+      ],
+    },
+    {
+      id: '9',
+      units: [
+        // The negative controls of that probe: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other source's name; the list is
+        // scrolled 48 px when the column appears; every listener ever added to a Set is kept, so the model of a view outlives its closed tab and the heap does not fall back (A21); a stream is closed twice, which the count of closed
+        // feeds does not see; a held view shows another line from the one it had (A21); a second press that starts a second stream, a tab with no twin that draws a scope, two tabs that carry one name, a scoped
+        // tab whose name leaves its scope out, and the view of a session that ended and was pressed again showing another line from the one it had (A22; each is detected by its own check and by no other: a page that
+        // draws no tab is never taken for one), and the toolbar's (P1b-4a): the toolbar's column stands 3 px from where the mock's does, the view draws lines while the toolbar says paused, a copy names no source, the count of lines
+        // after a Clear is one more than the stream made, a session's choice of UTC is lost when it comes back, the buttons read without the More button at the panel's least height, a Pause press costs one more commit, and a toolbar
+        // that keeps its confirmation's clock while hidden changes the closed window. The probe must fail the check each one is for (Chromium at 1440 x 900, its section only), and the step passes only when it did.
+        {
+          name: 'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved',
+          script: 'ui-next/shell/probes/logs-probe.mjs',
+          controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines', 'toolbar-moved', 'pause-leaks', 'copy-no-source', 'clear-miscount', 'state-lost', 'more-missing', 'pause-commits', 'toolbar-timer'],
+        },
       ],
     },
   ],
@@ -285,8 +297,8 @@ export const BY_HAND = TABLE.byHand;
 export const MEASURED_SECONDS = {
   'Probe the bottom panel against the pinned mock reference': 292,
   'Probe that the panel probe sees a panel that is wrong': 411,
-  'Probe the Logs tool in a real engine': 321,
-  'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved': 161,
+  'Probe the Logs tool in a real engine': 395,
+  'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved': 381,
   'Probe the command palette against the pinned mock reference': 260,
   'Probe that the palette probe sees a palette that is wrong': 63,
   'Probe the tab strip, the page host and the load against the pinned mock reference': 192,
@@ -297,7 +309,7 @@ export const MEASURED_SECONDS = {
   'Probe the parts against the pinned mock reference': 164,
   // C1f: ESTIMATES, 6 s and 7 s over the runner's medians of K3 (142 and 91): the connection part (about 1.5 s a pair of an engine and a viewport) and its control (a run like the keyword controls'), until a run's summary has the runner's.
   'Probe what the providers of a plugin do to the command palette': 148,
-  'Probe that the plugin providers probe sees a palette that is wrong': 98,
+  'Probe that the plugin providers probe sees a palette that is wrong': 107,
   'Probe the table against the pinned mock reference': 62,
   'Probe the shell frame against the pinned mock reference': 46,
   'Probe the fonts and the layout shift': 35,

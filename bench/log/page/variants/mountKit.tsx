@@ -7,7 +7,7 @@ import type { Probe } from '../harness';
 import Kit, { probe } from './Kit';
 
 /** `profiled` wraps the kit in a Profiler that counts its commits into `window.__benchProfileCommits` (the cross-check of the DevTools hook's count). */
-export function mountKit(stage: HTMLElement, feed: SyntheticFeed, profiled: boolean): { probe: Probe; unmount: () => void } {
+export function mountKit(stage: HTMLElement, feed: SyntheticFeed, profiled: boolean, toolbar: boolean): { probe: Probe; unmount: () => void } {
   const root = createRoot(stage);
   root.render(
     profiled ? (
@@ -17,10 +17,10 @@ export function mountKit(stage: HTMLElement, feed: SyntheticFeed, profiled: bool
           window.__benchProfileCommits = (window.__benchProfileCommits ?? 0) + 1;
         }}
       >
-        <Kit feed={feed} />
+        <Kit feed={feed} toolbar={toolbar} />
       </Profiler>
     ) : (
-      <Kit feed={feed} />
+      <Kit feed={feed} toolbar={toolbar} />
     ),
   );
   return {
