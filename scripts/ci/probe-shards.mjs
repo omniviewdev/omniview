@@ -14,17 +14,19 @@
 //
 // BALANCE. The shard jobs wait for the slowest shard, so a shard that grows is the job's wall time. Every run of a shard writes the seconds of each of its probes to the job summary (with the probe script and the control of each row): move a unit between
 // shards when one is more than a minute over the others, and put its new seconds in MEASURED_SECONDS of scripts/ci/probe-shards.test.mjs (a test fails when a unit has no measurement, a shard is over the limit, or the work would fit one shard fewer).
-// The seconds are the RUNNER's (the job summaries of the green runs of 2026-11-20 and 21 that are named in docs/ui-next/status/N24-K2.md), each unit being a probe or a probe's controls. The job of a shard is its probes plus its setup (about 90 s on the
-// runner with the CI image, docs/ui-next/status/N24-B1.md), so the shards below, at 421 to 426 s, are jobs of about 8.5 minutes:
-//   shard 1  panel controls 399, row menu 22 + its controls 2                                       = 423
-//   shard 2  logs 319, log view controls 106                                                        = 425
-//   shard 3  panel 288, table 63, palette controls 60, detail 10                                    = 421
-//   shard 4  parts 163, palette 258                                                                 = 421
-//   shard 5  strip 191 + its controls 26, kit-probe-bc 192, rail 17                                 = 426
-//   shard 6  log view 180, logs controls 161, shell 45, fonts 35                                    = 421
-//   shard 7  tooltip 144, plugin providers 140 + its controls 80, list page 60                      = 424
-// Seven is the fewest shards that keep the slowest at that: the 2,961 s of work over six is 494 s a shard (9.8 minutes with the setup), and over eight 370 s (the longest unit, the panel probe's controls, is 399 s, so an eighth shard buys at
-// most 24 s of wall time for one more job and its setup). Before K2 a probe and its controls had to share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 399 s.
+// The seconds are the RUNNER's (the job summaries of the green runs of 2026-11-20 and 21 that are named in docs/ui-next/status/N24-K2.md), each unit being a probe or a probe's controls; the two units of the toast probe (O1b-1) are an
+// ESTIMATE until its first run on the runner (one run on a laptop under load took 3 m 34 s, its controls about 130 s). The job of a shard is its probes plus its setup (about 90 s on the runner with the CI image,
+// docs/ui-next/status/N24-B1.md), so the shards below, at 443 to 489 s, are jobs of about 9 to 9.5 minutes:
+//   shard 1  panel controls 399, row menu controls 2, plugin providers controls 80                  = 481
+//   shard 2  logs 319, parts 163                                                                    = 482
+//   shard 3  panel 288, palette controls 60, detail 10, log view controls 106                       = 464
+//   shard 4  palette 258, toast layer 214                                                           = 472
+//   shard 5  strip 191 + its controls 26, kit-probe-bc 192, rail 17, table 63                       = 489
+//   shard 6  log view 180, logs controls 161, shell 45, fonts 35, row menu 22                       = 443
+//   shard 7  tooltip 144, plugin providers 140, list page 60, toast layer controls 130              = 474
+// Seven stay: the 3,305 s of work over six is 551 s a shard (11 minutes with the setup), and over eight 413 s (the longest unit, the panel probe's controls, is 399 s, so an eighth shard buys at most 76 s of wall time for one more job and its
+// setup, and a new shard is a change to the workflow, which takes a pull request out of the new-UI class: O1b-1 kept seven and raised the limit from 430 s to 490 s, moving five units to do it). Before K2 a probe and its controls had to
+// share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 399 s.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -62,13 +64,7 @@ export const TABLE = {
           controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled', 'twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'],
         },
 
-        // The row menu (1a.3b; first in a shard by N24-K2) on the 5,000-row example, opened from a trigger at the top, middle and bottom of the table region with the mouse and four keys, mid-window and at the window's bottom edge: popup roots 0/1/0, the
-        // listeners an open menu adds (a press, a scroll and a resize on the window, none left), observers, focus after open and after Escape, placement and flip, no clipping in the top layer, an element count that does not depend on the rows, row
-        // heights, arrows, Home, End, Escape and Tab, and no write to <html> or <body>. `aria-expanded` is read on the menu's TRIGGERS (`button[aria-haspopup="menu"]`), as the kit's contract says: the handle writes it on the one trigger that is open. It read the
-        // whole page before, and the parts page has other elements that carry it (the TagList's toggle: `aria-expanded="true"` at rest), which was the 196 findings it failed with. It reads the ui-next build.
-        { name: 'Probe the row menu on the 5,000-row example', script: 'packages/kit/probes/row-menu-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/row-menu-probe.json' } },
-
-        // The negative controls of that probe, each in the page after it loaded, on the one opening that must see it (Chromium, 1440 x 900): the open trigger carries no `aria-expanded` (`trigger-not-expanded`), and the next row's trigger carries it too
+        // The negative controls of the row menu probe (its probe is in shard 6), each in the page after it loaded, on the one opening that must see it (Chromium, 1440 x 900): the open trigger carries no `aria-expanded` (`trigger-not-expanded`), and the next row's trigger carries it too
         // (`expanded-twice`). Each passes only when the opening is clean without the perturbation and the one failure with it is the named one; with that failure dropped (ASSERTION_OFF) it is not detected.
         {
           name: 'Probe that the row menu probe sees a trigger that does not say it is open',
@@ -76,11 +72,23 @@ export const TABLE = {
           env: { DIST: '$PROBE_DIST' },
           controls: ['trigger-not-expanded', 'expanded-twice'],
         },
+
+        // The negative controls of the plugin providers probe (its probe is in shard 7): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
+        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop) and passes only when that assertion sees it. Each runs the part it perturbs.
+        {
+          name: 'Probe that the plugin providers probe sees a palette that is wrong',
+          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
+          env: { FONT_DELAY_MS: '40' },
+          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown'],
+        },
       ],
     },
     {
       id: '2',
       units: [
+        // The kit's parts on the real `ui-next` page against the pinned mock reference (packages/kit/probes/mock-reference.json): parity with the mock, tokens, counts, keyboard, accessibility with axe-core.
+        { name: 'Probe the parts against the pinned mock reference', script: 'packages/kit/probes/kit-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/kit-probe.json' } },
+
         // The host's Logs tool (P1b-3a) on the host fixture (`?logs=1`): the log view fills the panel's body, opening a session moves nothing outside the log view, switching tool and back keeps the lines and the scroll place, what the
         // plugin counts of its feed (the registry and the view listen while the session is on screen, only the registry while another tool is shown, none once the tab is closed), and what the 10,000 lines a second session costs: at most one
         // commit a frame (and at least one) with the panel open (React's development build), and with the panel closed or another tool shown no commit, no frame requested, no timer started, no DOM mutation and (Chromium) no layout or
@@ -94,15 +102,6 @@ export const TABLE = {
         // draw their scope and closing one takes it off the other; a target whose session ended or failed opens a new session beside it, its stream still open and its view holding its lines, the tabs named
         // `x, ended` and `x (2)`; and (section `a11y`) axe on the real log view with the scoped twin tabs and with an ended session beside its replacement. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
-
-        // The negative controls of that probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
-        // height, the copy event, the ArrowDown key, an unnamed button, a name that takes no pointer) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
-        {
-          name: 'Probe that the log probe sees a log view that is wrong',
-          script: 'packages/kit/probes/log-probe.mjs',
-          env: { DIST: '$PROBE_DIST' },
-          controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
-        },
       ],
     },
     {
@@ -118,10 +117,7 @@ export const TABLE = {
         // fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the bottom panel against the pinned mock reference', script: 'ui-next/shell/probes/panel-probe.mjs', env: { REPORT: '$RUNNER_TEMP/panel-probe.json' } },
 
-        // The table: header, rows, selection column, sort, hover, selected and focus states, the fit, the nine themes, against the pinned mock reference (packages/kit/probes/mock-table.json).
-        { name: 'Probe the table against the pinned mock reference', script: 'packages/kit/probes/table-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/table-probe.json' } },
-
-        // The negative controls of that probe: each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the
+        // The negative controls of the palette probe (its probe is in shard 4): each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the
         // footer, the paint of the active row, hover that takes the keyboard's row, a palette that does not give the focus back) and passes only when the probe sees it. The widths of the Search control, of its hint and
         // of the footer's keys are not compared, because a key is written for the platform (the mock was measured on a Mac: the Command sign and K; a Linux runner writes Ctrl+K); their heights, edges and gaps are, and every
         // other box is compared in full. The report in the log counts the boxes of each kind and prints both widths and the fonts that draw the keys.
@@ -135,20 +131,34 @@ export const TABLE = {
         // The detail page (D1a) in the real shell fixture: the header, the strip and the first sections against the pinned mock reference (packages/kit/probes/mock-detail.json), loading to ready
         // with no part moving, and the keyboard path through the strip, at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the detail page against the pinned mock reference', script: 'ui-next/page/probes/detail-probe.mjs' },
+
+        // The negative controls of the log view probe (its probe is in shard 6): each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's
+        // height, the copy event, the ArrowDown key, an unnamed button, a name that takes no pointer) and passes only when the probe's assertion for it is made and agrees without the perturbation and fails with it.
+        {
+          name: 'Probe that the log probe sees a log view that is wrong',
+          script: 'packages/kit/probes/log-probe.mjs',
+          env: { DIST: '$PROBE_DIST' },
+          controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
+        },
       ],
     },
     {
       id: '4',
       units: [
-        // The kit's parts on the real `ui-next` page against the pinned mock reference (packages/kit/probes/mock-reference.json): parity with the mock, tokens, counts, keyboard, accessibility with axe-core.
-        { name: 'Probe the parts against the pinned mock reference', script: 'packages/kit/probes/kit-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/kit-probe.json' } },
-
         // The command palette (C1b) in the real shell fixture (ui-next/shell/probes/palette-fixture.tsx: the real view, model and tab model over invented sources), against the pinned mock reference
         // (ui-next/shell/probes/mock-palette.json, measured from the mock's own palette in seven scenes by mock-palette-measure.mjs): the Search control, the frame, the input, the kinds, the list, the status band and
         // the footer within 1 px, the paint of each, the keyboard with real key presses (the chord, the arrows, Enter and Command Enter, Escape and where the focus goes, Tab, the inert page, hover), the states and
         // axe on each, and what it costs with 1,000 host rows (open and keystroke to rows painted, recorded; one commit a keystroke, no layout shift, and a closed palette that holds one listener and no timer, judged), at
         // 1440 x 900 and 1280 x 800. FONT_DELAY_MS=40 serves the fonts as a runner does. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the command palette against the pinned mock reference', script: 'ui-next/shell/probes/palette-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/palette-probe.json' } },
+
+        // The toast layer (O1b-1): the real shell with its panel and its command palette and the real `Toasts` over the notices model (ui-next/shell/probes/notices-fixture.tsx), against the mock's own toast layer
+        // (ui-next/shell/probes/mock-notices.json, measured by mock-notices-measure.mjs in three scenes: an info toast, a failure with its Retry, the stack at the cap) within 1 px and its paint exactly, axe on the layer and the
+        // two live regions, the keyboard path (F6 reaches the toasts last, Tab, Escape and the focus given back), what a toast lives for and what holds it (a clock the probe drives), what a screen reader is told (the roles,
+        // once, never twice), what 50 notices in one tick cost (one commit for each flush, nothing shifts, nothing held once the stack is empty) and where the stack stands (P7: home, moved, hidden; never over a control's
+        // centre; the palette takes it away and it comes back), at 1440 x 900 and 1280 x 800 in both engines. It builds its own fixtures, so it does not read PROBE_DIST. Its seconds are an ESTIMATE (one run on a laptop at a
+        // load of 25 to 116 took 3 m 34 s), to be replaced by the job summary of its first run.
+        { name: 'Probe the toast layer against the pinned mock reference', script: 'ui-next/shell/probes/notices-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/notices-probe.json' } },
       ],
     },
     {
@@ -173,6 +183,9 @@ export const TABLE = {
         // The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
         // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
+
+        // The table: header, rows, selection column, sort, hover, selected and focus states, the fit, the nine themes, against the pinned mock reference (packages/kit/probes/mock-table.json).
+        { name: 'Probe the table against the pinned mock reference', script: 'packages/kit/probes/table-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/table-probe.json' } },
       ],
     },
     {
@@ -202,6 +215,12 @@ export const TABLE = {
 
         // The fonts are delivered, used, and the page does not shift.
         { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
+
+        // The row menu (1a.3b; first in a shard by N24-K2) on the 5,000-row example, opened from a trigger at the top, middle and bottom of the table region with the mouse and four keys, mid-window and at the window's bottom edge: popup roots 0/1/0, the
+        // listeners an open menu adds (a press, a scroll and a resize on the window, none left), observers, focus after open and after Escape, placement and flip, no clipping in the top layer, an element count that does not depend on the rows, row
+        // heights, arrows, Home, End, Escape and Tab, and no write to <html> or <body>. `aria-expanded` is read on the menu's TRIGGERS (`button[aria-haspopup="menu"]`), as the kit's contract says: the handle writes it on the one trigger that is open. It read the
+        // whole page before, and the parts page has other elements that carry it (the TagList's toggle: `aria-expanded="true"` at rest), which was the 196 findings it failed with. It reads the ui-next build.
+        { name: 'Probe the row menu on the 5,000-row example', script: 'packages/kit/probes/row-menu-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/row-menu-probe.json' } },
       ],
     },
     {
@@ -217,19 +236,22 @@ export const TABLE = {
         // It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe what the providers of a plugin do to the command palette', script: 'ui-next/shell/probes/palette-plugins-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/palette-plugins-probe.json' } },
 
-        // The negative controls of that probe: each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
-        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop) and passes only when that assertion sees it. Each runs the part it perturbs.
-        {
-          name: 'Probe that the plugin providers probe sees a palette that is wrong',
-          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
-          env: { FONT_DELAY_MS: '40' },
-          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown'],
-        },
-
         // The list page's chrome (1a.3c; first in a shard by N24-K2): the real Shell, ListPage and PageHeader around invented data (ui-next/page/probes/fixture.tsx) against the pinned mock reference (packages/kit/probes/mock-page.json, measured
         // from the mock by mock-page-measure.mjs), in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the viewports of probe-lib.mjs; tracker row N23 moves them): the rectangles of the data view, header, title, command lane, quick filters and chips,
         // toolbar and search field, table header, first row and footer, the 12/8/8 gaps, and a frame sampler around Refresh and every operation state, where no part moves by 0.001 px. It builds its own fixture, so it does not read PROBE_DIST.
         { name: 'Probe the list page chrome and its layout shift against the pinned mock reference', script: 'ui-next/page/probes/page-probe.mjs' },
+
+        // The negative controls of the toast probe (O1b-1): each perturbs one measured value in the page after it loaded (a toast 20 px too wide, a gap of 14, the Retry's colour, a failure that is not an alert, a layer that is
+        // not live, an announcement made twice, a toast that takes the focus, F6 that reaches the toasts first, a focus not given back, a failure that closes by itself, a pointer that does not hold the clock, a hold that outlives its
+        // toast, a stack drawn over the palette, a timer left after the stack is empty, a control that moves, a stack that does not avoid a control, a toast over a control's centre, a hidden stack that is still an F6 stop) and passes
+        // only when the probe sees it, on the section that must (Chromium, 1440 x 900); with that assertion dropped (ASSERTION_OFF) it is not detected. Its seconds are an ESTIMATE (41 s of runs with the build reused and eighteen
+        // fixture builds of about 5 s), to be replaced by the job summary of its first run.
+        {
+          name: 'Probe that the toast probe sees a toast layer that is wrong',
+          script: 'ui-next/shell/probes/notices-probe.mjs',
+          env: { FONT_DELAY_MS: '40' },
+          controls: ['toast-width', 'gap', 'retry-paint', 'no-alert', 'no-live', 'told-twice', 'steals-focus', 'f6-first', 'no-restore', 'sticky-closes', 'no-hold', 'hover-stuck', 'modal-leaks', 'timer-left', 'layout-shift', 'no-avoid', 'covers', 'yield-stop'],
+        },
       ],
     },
   ],

@@ -1,0 +1,206 @@
+/* The toast layer (ch16 S79, S83, S86, O6; the mock's `#feedback` (core.css), `.notify-host` and `.notify[data-surface='toast']` (shell-notify.css)). Host composition, so every rule sits in ov.shell, above the kit's parts.
+   The shell's own metrics are the exceptions to the closed scales that the chapter names: the 420 px stack, 12 px from the right edge and above the 32 px status bar (O6), the 16 px glyph column, the 40 px least
+   height of a toast, the z-index of `#feedback` (S11: 1100; no other z-index in shell code). Closed scales for everything else: spacing 4, 6, 8, 12; type 12 and 13 at weight 400 and 600; radius 8; --ov-* roles.
+   No geometry transition: the only motion is the 90 ms opacity fade of a toast that enters (none while `prefers-reduced-motion`), and the turn of the loader of work that runs. A toast that goes is removed at once, as the mock's
+   is. Logical properties throughout, so a right-to-left text truncates and aligns at its own end. */
+@layer ov.shell {
+  /* The layer: the live region of the stack (S86), fixed at the bottom right above the status bar, one column of toasts newest at the bottom. It takes no pointer (the page under it keeps its own); a toast takes it back. */
+  .layer {
+    position: fixed;
+    inset-inline-end: max(var(--ov-spacing-12), env(safe-area-inset-right));
+    inset-block-end: calc(32px + var(--ov-spacing-12) + env(safe-area-inset-bottom));
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    inline-size: min(420px, calc(100vw - 24px));
+    max-block-size: calc(100vh - 96px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    isolation: isolate;
+    pointer-events: none;
+  }
+
+  /* The landmark: it exists only while there is a toast, so the layer is the one thing that is always there for a screen reader to listen to. */
+  .host {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    inline-size: 100%;
+    pointer-events: none;
+  }
+
+  /* Placement (./placement.ts; the mock's P7): the stack is home until it would cover a control. Then it stands in the box of its own that the rule found, physical left and top from the window's corner (they are measured
+     from the window, so they do not mirror) and the width it was tried at, or it has no room, and is hidden and inert, and waits. */
+  .host[data-place='moved'] {
+    position: fixed;
+    inset: auto;
+    left: var(--_x, 0);
+    top: var(--_y, 0);
+    inline-size: var(--_w, 100%);
+  }
+
+  .host[data-place='yield'] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* One toast: neutral --ov-bg-feedback whatever its severity (S83: severity is the glyph and the word, never a tint), radius 8, at least 40 px, 12 px inset. */
+  .toast {
+    position: relative;
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    column-gap: var(--ov-spacing-8);
+    align-items: start;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 40px;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border: 1px solid var(--ov-bg-feedback);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-feedback);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    overflow-wrap: anywhere;
+    pointer-events: auto;
+    animation: enter 90ms linear;
+  }
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  .toast:focus {
+    outline: 0;
+  }
+
+  .toast:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .glyph {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 16px;
+    block-size: 16px;
+  }
+
+  /* Work that runs turns its loader in the accent; work that waits, or was canceled, keeps the icon role. */
+  .glyph[data-busy] {
+    color: var(--ov-icon);
+  }
+
+  .glyph[data-busy='spin'] > svg {
+    color: var(--ov-accent);
+    animation: spin 1.2s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast {
+      animation: none;
+    }
+
+    .glyph[data-busy='spin'] > svg {
+      animation: none;
+    }
+  }
+
+  .main {
+    min-inline-size: 0;
+  }
+
+  .head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ov-spacing-6);
+    min-inline-size: 0;
+  }
+
+  /* The word of the severity: read, not drawn. It leads the text of the toast, so what a live region announces says what kind of thing it is. */
+  .hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* The title and the sentence wrap to two lines and end in an ellipsis. */
+  .title {
+    display: -webkit-box;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    font-weight: 600;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .message {
+    display: -webkit-box;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .state {
+    color: var(--ov-fg);
+  }
+
+  .text {
+    min-inline-size: 0;
+  }
+
+  /* The words of a toast that changed are drawn from an attribute, so no text node changes inside the live region: a count that moves, a phase that changes, are not announced again (S86). */
+  .title[data-text]::before,
+  .text[data-text]::before {
+    content: attr(data-text);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    margin-block-start: var(--ov-spacing-8);
+  }
+
+  /* The dismiss control is 24 px and sits 4 px outside the toast's inset, so its glyph is level with the first line, as the mock's is. */
+  .dismiss {
+    display: inline-flex;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the control sits 4 px out of the toast's inset (the mock's `margin-block-start: -4px; margin-inline-end: -4px`): the scale has no negative step */
+    margin-block-start: -4px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- as above */
+    margin-inline-end: -4px;
+  }
+}

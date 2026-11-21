@@ -3,7 +3,7 @@ import type { CommandRef, Destination, OpenOptions, OpenResult, RecordView, Rout
 
 // Test support only: nothing in the model imports this file.
 //
-// A clock the test drives, so a toast that lives seven seconds and a progress bar that ticks a thousand times a second cost no time and the order of every timer is the same on every run; a
+// A clock the test drives, so a toast that lives eight seconds and a progress bar that ticks a thousand times a second cost no time and the order of every timer is the same on every run; a
 // complete record as a view reads it; and a store over that clock with the host's side of the seam written down (what was said, opened and run, which anchors are on screen, which plugins are
 // off). The names carry the vocabulary of no real plugin (`cloud`, `stack`, as the tab model's fixture does).
 

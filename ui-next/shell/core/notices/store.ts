@@ -71,7 +71,7 @@ export type NoticesOptions = NoticesSeam & {
   readonly platform?: 'mac' | 'other' | undefined;
   /** Hears every failure of a plugin's code. Default: the console. */
   readonly onError?: ErrorHook | undefined;
-  /** The bounds of the history: how many finished records, and how old (milliseconds). Defaults: 200 and seven days (S74; the owner's decision B7 is pending). */
+  /** The bounds of the history: how many finished records, and how old (milliseconds). Defaults: 500 and seven days (S74; the lead's ruling of 2026-11-20 for the owner's decision B7). */
   readonly history?: { readonly max?: number | undefined; readonly age?: number | undefined } | undefined;
 };
 
@@ -318,10 +318,10 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
 
   const view = (rec: Rec): RecordView => viewOf(rec, context, LIMITS.details);
 
-  /** Whether the record offers a decision: an enabled Retry or command of the producer. Asked without making a view. */
-  const decisionOf = (rec: Rec): boolean =>
+  /** Whether the record carries an action the user can use now (a Retry, a command, the producer's own code, an Open): S77's "a warning with an action". Asked without making a view. */
+  const actionOf = (rec: Rec): boolean =>
     resolveActions({ kind: rec.kind, state: rec.state, cancellation: rec.cancellation, target: rec.target, decls: rec.decls, handlers: handlerView(rec), dead: deadReason(rec), availability: context.availability, commandAvailability: context.commandAvailability, current: context.current })
-      .some((action) => action.disabled === '' && (action.kind === 'retry' || action.kind === 'custom'));
+      .some((action) => action.disabled === '');
 
   const mark = (): void => {
     dirty = true;
@@ -640,7 +640,7 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
       touch(rec);
     }
 
-    const policy = rec.toastDismissed || rec.limited ? null : toastPolicy(factsOf(rec, decisionOf(rec)), { muted: isMuted(rec.source), inline });
+    const policy = rec.toastDismissed || rec.limited ? null : toastPolicy(factsOf(rec, actionOf(rec)), { muted: isMuted(rec.source), inline });
     const had = toastById.get(rec.id);
     if (policy === null) {
       dropToast(rec.id);
@@ -1681,7 +1681,7 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
 
       const toast = toastById.get(rec.id);
       if (toast !== undefined) {
-        const policy = toastPolicy(factsOf(rec, decisionOf(rec)), { muted: isMuted(source), inline: inlineVisible(rec.origin) });
+        const policy = toastPolicy(factsOf(rec, actionOf(rec)), { muted: isMuted(source), inline: inlineVisible(rec.origin) });
         if (policy === null) {
           dropToast(rec.id);
         } else {

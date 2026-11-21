@@ -3,7 +3,8 @@ import { makeNotices } from './testing';
 import { LIMITS, TIMING } from './types';
 
 // How long a toast lives, and what holds it (ch16 S77, S78, S79, S89a, OF4; the mock's `toastPolicy`, `retime`, `setPaused` and `toastEntries`, shell-notify.js:993-1165): a toast that ended
-// calmly closes by itself seven seconds after it appears; one that waits on a decision stays; the clocks wait while the pointer or the focus is in the stack, as one; a modal or the centre
+// calmly closes by itself eight seconds after it appears (S78; the mock's code says seven: the lead ruled for the written rule on 2026-11-20); a failure, an unknown outcome, an error and a
+// warning that waits on a decision stay until the user acts (S77: "a failure must not vanish"); the clocks wait while the pointer or the focus is in the stack, as one; a modal or the centre
 // suspends the stack; when the clocks resume a toast has at least two seconds to be read. A toast that closes is still unread in the bell.
 
 const route = { plugin: 'cloud', contribution: 'instances', params: { id: 'i-1' } };
@@ -12,10 +13,11 @@ const fix = { id: 'fix', label: 'Fix it', run: () => undefined };
 const ids = (items: ReadonlyArray<{ readonly id: string }>): string[] => items.map((item) => item.id);
 
 describe('how long a toast lives', () => {
-  it('closes a calm one seven seconds after it appears, and the record stays, unread', async () => {
+  it('closes a calm one eight seconds after it appears (S78, not the mock\'s seven), and the record stays, unread', async () => {
     const { store, clock } = makeNotices();
+    expect(TIMING.toast).toBe(8000);
     store.notify({ title: 'Snapshot created', severity: 'success' });
-    await clock.advance(TIMING.toast - 1);
+    await clock.advance(7999);
     expect(store.getSnapshot().toasts.items).toHaveLength(1);
     await clock.advance(2);
     const state = store.getSnapshot();
@@ -32,23 +34,33 @@ describe('how long a toast lives', () => {
     expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([true, true]);
   });
 
-  it('closes one that has nothing to decide, as the mock does, even an error: it stays unread in the bell (the owner may rule otherwise: S77 says every failure sticks)', async () => {
+  it('keeps a failure that has nothing to decide until the user acts, S77 and S78 (the lead ruled for the written rule: the mock\'s code timed it out); a warning with nothing to decide still closes', async () => {
     const { store, clock } = makeNotices();
     store.notify({ title: 'Lost the connection', severity: 'error', actions: [{ id: 'go', label: 'Open connections', route }] });
     store.notify({ title: 'Disk is filling', severity: 'warning' });
-    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([false, false]);
-    await clock.advance(TIMING.toast + 1);
+    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([true, false]);
+    await clock.advance(10 * 60_000);
     const state = store.getSnapshot();
-    expect(state.toasts.items).toEqual([]);
+    expect(state.toasts.items.map((item) => item.record?.name)).toEqual(['Lost the connection']);
     expect(state.bell).toMatchObject({ dot: 'error', unread: 2 });
   });
 
-  it('closes a Retry that is not enabled with its toast: a disabled Retry is not a decision', async () => {
+  it('keeps a warning that carries ANY action until the user acts, an Open too (S77: "a warning with an action", the lead ruled for the written rule), and closes one whose action cannot be used', async () => {
+    const { store, clock, off } = makeNotices();
+    store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'go', label: 'Open instance', route }] });
+    off.add('stack');
+    store.notify({ title: 'Cache is filling', severity: 'warning', actions: [{ id: 'go', label: 'Open cache', route: { ...route, plugin: 'stack' } }] });
+    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([true, false]);
+    await clock.advance(10 * 60_000);
+    expect(store.getSnapshot().toasts.items.map((item) => item.record?.name)).toEqual(['Disk is filling']);
+  });
+
+  it('keeps the toast of a failure whose Retry is not enabled: a disabled Retry is not a decision, and a failure sticks without one', async () => {
     const { store, clock } = makeNotices();
     store.begin({ title: 'Reconnecting', initiator: 'user', actions: [{ kind: 'retry' }] }).fail('Nothing answered.');
-    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([false]);
-    await clock.advance(TIMING.toast + 1);
-    expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([true]);
+    await clock.advance(10 * 60_000);
+    expect(store.getSnapshot().toasts.items).toHaveLength(1);
   });
 
   it('keeps the toast of work the user started until it ends, then closes it seven seconds after (S78: updated in place)', async () => {
@@ -105,7 +117,7 @@ describe('the pointer or the focus in the stack (S78)', () => {
     expect(ids(store.getSnapshot().toasts.items)).toEqual(['n1', 'n2']);
     expect(store.hold('pointer', false)).toBe(true);
     expect(store.getSnapshot().toasts.paused).toBe(false);
-    await clock.advance(3999);
+    await clock.advance(TIMING.toast - 3000 - 1);
     expect(ids(store.getSnapshot().toasts.items)).toEqual(['n1', 'n2']);
     await clock.advance(2);
     expect(ids(store.getSnapshot().toasts.items)).toEqual(['n2']);

@@ -389,6 +389,10 @@ const MEASURED_SECONDS = {
   'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference': 192,
   'Probe the row menu on the 5,000-row example': 22,
   'Probe that the row menu probe sees a trigger that does not say it is open': 2,
+  // The two units of the toast probe (O1b-1) are an ESTIMATE, not a runner's median: one run of the probe on a laptop at a load of 25 to 116 took 214 s (3 m 34 s, fixture builds included), and its eighteen controls about 130 s (41 s of runs with
+  // the build reused, and eighteen builds of about 5 s). Replace both with the job summary of the first run on the runner.
+  'Probe the toast layer against the pinned mock reference': 214,
+  'Probe that the toast probe sees a toast layer that is wrong': 130,
 };
 /** The seconds of every shard of a table, and the units no measurement is known for. */
 function balance(table, measured = MEASURED_SECONDS) {
@@ -406,7 +410,7 @@ function balance(table, measured = MEASURED_SECONDS) {
 // The shard jobs wait for the slowest. Since K2 a probe's controls may run in another shard than the probe, so the floor is no longer the panel probe with its controls (598 s) but the longest single unit: the work is shared out over as
 // few shards as keep the slowest at about 8 minutes with the setup of a shard (about 90 s on the runner with the CI image, N24-B1). The limit is the slowest shard of the best split found (exhaustively, from the numbers above) and a few
 // seconds; it moves when a probe grows (put its new seconds above) and the table is rebalanced.
-const LIMIT_SECONDS = 430;
+const LIMIT_SECONDS = 490;
 
 test('every unit of the table has a measurement, and every measurement is of a unit', () => {
   const { unmeasured } = balance(TABLE);

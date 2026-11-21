@@ -1,6 +1,7 @@
 import type { IconName } from '@omniviewdev/kit';
 import { useState, type ReactNode } from 'react';
 import { createTabsStore, type TabsStore } from './core/tabs';
+import type { NoticesBindings } from './notices/host';
 import type { PaletteBindings } from './palette/host';
 import type { PanelBindings } from './panel/host';
 import type { ShellRail, ShellRegistration } from './registration';
@@ -64,12 +65,14 @@ type StaticShellProps = {
   readonly panel?: PanelBindings | undefined;
   /** The command palette (`palette/host.ts`). Absent: the window has none, and no Search control. */
   readonly palette?: PaletteBindings | undefined;
+  /** The toast layer (`notices/host.ts`). Absent: the window has none. */
+  readonly notices?: NoticesBindings | undefined;
   /** The page of every tab. */
   readonly children?: ReactNode;
 };
 
 /** The shell with the same page in every tab. */
-export function StaticShell({ registration, tabs, onNewTab, onSelectRail, onCloseWindow, panel, palette, children }: StaticShellProps) {
+export function StaticShell({ registration, tabs, onNewTab, onSelectRail, onCloseWindow, panel, palette, notices, children }: StaticShellProps) {
   const [store] = useState(() => tabs ?? staticTabs([{ title: 'Widgets', icon: 'box', path: ['Acme', 'Widgets'] }]));
-  return <Shell registration={registration} tabs={store} renderPage={() => <>{children}</>} empty={null} onNewTab={onNewTab} onSelectRail={onSelectRail} onCloseWindow={onCloseWindow} panel={panel} palette={palette} />;
+  return <Shell registration={registration} tabs={store} renderPage={() => <>{children}</>} empty={null} onNewTab={onNewTab} onSelectRail={onSelectRail} onCloseWindow={onCloseWindow} panel={panel} palette={palette} notices={notices} />;
 }

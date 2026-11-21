@@ -10,7 +10,7 @@ const facts = (extra: Partial<Facts> = {}): Facts => ({
   severity: 'info',
   initiator: 'user',
   read: false,
-  decision: false,
+  action: false,
   ...extra,
 });
 
@@ -103,33 +103,41 @@ describe('toastPolicy: one eligibility rule decides every toast (S77, S78, OF4)'
     expect(policy({ state: 'running', initiator: 'system' })).toBeNull();
   });
 
-  it('is timed for an outcome that is calm: succeeded, cancelled, an info message, a warning with nothing to decide', () => {
+  it('is timed for an outcome that is calm: succeeded, cancelled, an info message, a warning with no action', () => {
     expect(policy({ state: 'succeeded', severity: 'success' })).toEqual({ sticky: false });
     expect(policy({ state: 'cancelled' })).toEqual({ sticky: false });
     expect(policy({ kind: 'message', state: 'succeeded', severity: 'info' })).toEqual({ sticky: false });
     expect(policy({ kind: 'message', state: 'succeeded', severity: 'warning' })).toEqual({ sticky: false });
   });
 
-  it('is sticky for a failure, an unknown outcome, an error or a warning that offers a decision: a Retry or a command of the producer', () => {
-    expect(policy({ state: 'failed', severity: 'error', decision: true })).toEqual({ sticky: true });
-    expect(policy({ state: 'unknown', severity: 'warning', decision: true })).toEqual({ sticky: true });
-    expect(policy({ kind: 'message', state: 'succeeded', severity: 'error', decision: true })).toEqual({ sticky: true });
-    expect(policy({ kind: 'message', state: 'succeeded', severity: 'warning', decision: true })).toEqual({ sticky: true });
+  it('is sticky for a failure, an unknown outcome, an error message and a warning that carries an action: S77 ("a warning with an action") and S78, "a failure must not vanish" (the lead ruled for the written rule on 2026-11-20)', () => {
+    expect(policy({ state: 'failed', severity: 'error', action: true })).toEqual({ sticky: true });
+    expect(policy({ state: 'unknown', severity: 'warning', action: true })).toEqual({ sticky: true });
+    expect(policy({ kind: 'message', state: 'succeeded', severity: 'error', action: true })).toEqual({ sticky: true });
+    expect(policy({ kind: 'message', state: 'succeeded', severity: 'warning', action: true })).toEqual({ sticky: true });
   });
 
-  it('is timed for a failure that has nothing to decide, as the mock does: it stays unread in the bell (decision for the lead: S77 says sticky)', () => {
-    expect(policy({ state: 'failed', severity: 'error', decision: false })).toEqual({ sticky: false });
-    expect(policy({ kind: 'message', state: 'succeeded', severity: 'error', decision: false })).toEqual({ sticky: false });
+  it('is sticky for a failure that has no action too: S77 says every failure sticks, and the mock\'s code, which timed it out after seven seconds, is not the rule', () => {
+    expect(policy({ state: 'failed', severity: 'error', action: false })).toEqual({ sticky: true });
+    expect(policy({ state: 'unknown', severity: 'warning', action: false })).toEqual({ sticky: true });
+    expect(policy({ kind: 'message', state: 'succeeded', severity: 'error', action: false })).toEqual({ sticky: true });
+    expect(policy({ state: 'failed', severity: 'error', initiator: 'system', action: false })).toEqual({ sticky: true });
+  });
+
+  it('stays timed for a warning with no action, and for an info or a success that has one: only a failure, an unknown outcome, an error and a warning that carries an action are sticky', () => {
+    expect(policy({ kind: 'message', state: 'succeeded', severity: 'warning', action: false })).toEqual({ sticky: false });
+    expect(policy({ kind: 'message', state: 'succeeded', severity: 'info', action: true })).toEqual({ sticky: false });
+    expect(policy({ kind: 'message', state: 'succeeded', severity: 'success', action: true })).toEqual({ sticky: false });
   });
 
   it('is none for a muted source, whatever the outcome', () => {
-    expect(policy({ state: 'failed', severity: 'error', decision: true }, { muted: true })).toBeNull();
+    expect(policy({ state: 'failed', severity: 'error', action: true }, { muted: true })).toBeNull();
     expect(policy({ state: 'running' }, { muted: true })).toBeNull();
   });
 
   it('is none when the control that started the work shows it, whatever the outcome (S76, S77)', () => {
     expect(policy({ state: 'running' }, { inline: true })).toBeNull();
-    expect(policy({ state: 'failed', severity: 'error', decision: true }, { inline: true })).toBeNull();
+    expect(policy({ state: 'failed', severity: 'error', action: true }, { inline: true })).toBeNull();
     expect(policy({ state: 'succeeded', severity: 'success' }, { inline: true })).toBeNull();
   });
 
@@ -139,7 +147,7 @@ describe('toastPolicy: one eligibility rule decides every toast (S77, S78, OF4)'
   });
 
   it('still raises a failure of work the system started: it needs the person', () => {
-    expect(policy({ state: 'failed', severity: 'error', initiator: 'system', decision: true })).toEqual({ sticky: true });
+    expect(policy({ state: 'failed', severity: 'error', initiator: 'system', action: true })).toEqual({ sticky: true });
   });
 });
 

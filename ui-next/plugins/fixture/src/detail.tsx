@@ -1,6 +1,7 @@
 import { Icon, Link, MiddleEllipsis, Text, type DataTableColumn, type KeyValueRow } from '@omniviewdev/kit';
 import { useEffect, useState } from 'react';
 import type { ContextV1, DetailPageV1, DetailPageViewV1, DetailSection, DetailSource, DetailTableSection, DetailView, PanelHostV1 } from '../../contract/v1';
+import { restartItem } from './failure';
 import styles from './fixture.module.css';
 import { modeOf, READ_MS } from './items';
 import { logCommandsOf } from './logs';
@@ -117,7 +118,7 @@ function viewOf(name: string, group: string, controls: Controls): DetailView {
     commands: {
       primary: { id: 'scale', label: 'Scale', icon: 'layers', onSelect: controls.scale },
       secondary: [
-        { id: 'restart', label: 'Restart', icon: 'refresh', onSelect: () => undefined },
+        { id: 'restart', label: 'Restart', icon: 'refresh', onSelect: async () => restartItem(name) },
         { id: 'edit', label: 'Edit', onSelect: () => undefined },
       ],
       danger: { id: 'delete', label: 'Delete', onSelect: controls.remove },

@@ -45,6 +45,9 @@
 //      back and the plugin loaded again the host says it runs (`plugin/state_change`), and the window shows one of everything again with no reload: one rail entry, one tab on its page, one tool, the session as it was.
 //      SEAM_CONTROL=process runs n alone with every perturbation of its controls (PROCESS_CONTROLS) made in turn just before the assertion each must trip, and passes when each tripped its own (one kill serves all of them:
 //      the host's health check is up to 30 s); SEAM_CONTROL=<one of them> makes that one only
+//   o  a page command that fails is a toast (O1b-1): on the item's detail page the fixture's Restart rejects as the runtime's hooks do (`window.__fixtureDetail`); the host's toast says `Timed out` with its one sentence and a Retry,
+//      is an alert, is sticky (it is still there after 9 s, when a timed one would be gone) and takes no focus; F6 reaches it and Escape closes it and gives the focus back to where it was; a failure that is not the host's says
+//      `Operation failed` and none of its text (a password in it is nowhere in the document); a cancelled command makes no toast; Retry asks the command again and the one toast says `Timed out 2 times`
 //
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
@@ -1787,6 +1790,107 @@ async function checkSession(browser, getHost, restart, engine) {
   await again.close();
 }
 
+/**
+ * o. a page command that fails is a toast (O1b-1). Over the real host: the fixture's item page, its header command Restart, `window.__fixtureDetail` to make it fail the way the runtime's hooks do (plugins/fixture/src/failure.ts).
+ * The focus is put on Restart with the keyboard's own focus call and the command is pressed with Enter: an engine may not focus a button that a click presses, and the check is about where the focus is.
+ */
+async function checkToasts(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('link', { name: 'orders-api' }).click();
+  await page.getByRole('heading', { level: 2, name: 'Details' }).waitFor({ timeout: 30_000 });
+
+  const layer = page.locator('[data-notices-part="layer"]');
+  const toasts = layer.locator('[data-notices-part="toast"]');
+  const restart = page.getByRole('button', { name: 'Restart', exact: true });
+  /** Where the focus is: the element's tag and its text, and whether it is a toast. */
+  const focused = () => page.evaluate(() => ({ tag: document.activeElement?.tagName ?? '', text: (document.activeElement?.textContent ?? '').trim(), toast: document.activeElement?.matches('[data-notices-part="toast"]') ?? false }));
+  const onRestart = { tag: 'BUTTON', text: 'Restart', toast: false };
+  const press = async () => {
+    await restart.focus();
+    assert.deepEqual(await focused(), onRestart, `${engine}: the focus is on Restart before it is pressed`);
+    await page.keyboard.press('Enter');
+  };
+  const fail = (failure) =>
+    page.evaluate((name) => {
+      window.__fixtureDetail = { failure: name, runs: [] };
+    }, failure);
+  const runs = () => page.evaluate(() => window.__fixtureDetail.runs.length);
+  const noToast = () => page.waitForFunction(() => document.querySelectorAll('[data-notices-part="layer"] [data-notices-part="toast"]').length === 0);
+
+  assert.equal(await layer.count(), 1, `${engine}: the toast layer is always there`);
+  assert.equal(await toasts.count(), 0, `${engine}: no toast before a command failed`);
+  // Quiet by default: a Restart that nobody made fail does nothing and says nothing.
+  await restart.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(500);
+  assert.equal(await toasts.count(), 0, `${engine}: a Restart that does not fail makes no toast`);
+
+  // a failure of the host's own kind: the class's title, one sentence, a Retry; sticky, an alert, and the focus stays where it was.
+  await fail('timeout');
+  await press();
+  const timeout = layer.getByRole('alert', { name: 'Error: Timed out' });
+  await timeout.waitFor({ timeout: 10_000 });
+  assert.equal(await toasts.count(), 1, `${engine}: one toast for one failure`);
+  assert.equal(await runs(), 1, `${engine}: Restart ran once`);
+  assert.equal(await timeout.getAttribute('data-severity'), 'error', `${engine}: the timeout is an error toast`);
+  assert.match(await timeout.innerText(), /The cluster did not complete the request in time\./, `${engine}: the toast says the host's sentence`);
+  assert.equal(await timeout.getByRole('button', { name: 'Retry', exact: true }).count(), 1, `${engine}: the toast has a Retry button`);
+  assert.notEqual(await timeout.getAttribute('data-sticky'), null, `${engine}: a failure toast is sticky`);
+  assert.deepEqual(await focused(), onRestart, `${engine}: the toast took no focus when it appeared`);
+  // A timed toast closes at 8 s: this one is still there after 9 s of real time.
+  await page.waitForTimeout(9000);
+  assert.equal(await toasts.count(), 1, `${engine}: the failure toast is still there after 9 s`);
+  assert.notEqual(await timeout.getAttribute('data-sticky'), null, `${engine}: and still sticky`);
+  assert.deepEqual(await focused(), onRestart, `${engine}: and the focus never moved`);
+
+  // F6 reaches the toast (the first toast is its stop); Escape closes it and the focus goes back to Restart.
+  let presses = 0;
+  for (; presses < 10 && !(await focused()).toast; presses += 1) await page.keyboard.press('F6');
+  assert.equal((await focused()).toast, true, `${engine}: F6 reached the toast in ${String(presses)} presses`);
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? ''), 'Error: Timed out', `${engine}: the focus is on the first toast`);
+  await page.keyboard.press('Escape');
+  await noToast();
+  assert.deepEqual(await focused(), onRestart, `${engine}: Escape closed the toast and the focus went back to the Restart button`);
+
+  // Retry asks the same command again; the second failure is the same toast.
+  await fail('timeout');
+  await press();
+  await timeout.waitFor({ timeout: 10_000 });
+  await timeout.getByRole('button', { name: 'Retry', exact: true }).click();
+  await page.waitForFunction(() => window.__fixtureDetail.runs.length === 2);
+  await layer.getByRole('alert', { name: 'Error: Timed out 2 times' }).waitFor({ timeout: 10_000 });
+  assert.equal(await toasts.count(), 1, `${engine}: the second failure folded into the one toast`);
+  assert.equal(await runs(), 2, `${engine}: Retry asked the command again, once`);
+  await toasts.first().getByRole('button', { name: /^Dismiss/ }).click();
+  await noToast();
+
+  // a failure that is not the host's: its words are never shown (a plugin's text may hold a credential).
+  await fail('generic');
+  await press();
+  const generic = layer.getByRole('alert', { name: 'Error: Operation failed' });
+  await generic.waitFor({ timeout: 10_000 });
+  assert.match(await generic.innerText(), /The operation could not be completed\./, `${engine}: a generic failure says the generic sentence`);
+  const everything = await page.evaluate(() => `${document.body.innerText}\n${document.body.textContent}\n${document.documentElement.outerHTML}`);
+  for (const secret of ['hunter2', 'ECONNREFUSED', '10.0.0.5']) assert.equal(everything.includes(secret), false, `${engine}: ${secret} is nowhere in the document`);
+  await generic.getByRole('button', { name: /^Dismiss/ }).click();
+  await noToast();
+
+  // a cancelled command is no failure: once it has rejected and the page has settled there is still no toast.
+  await fail('cancelled');
+  await press();
+  await page.waitForFunction(() => window.__fixtureDetail.runs.length === 1);
+  await page.waitForTimeout(1500);
+  assert.equal(await toasts.count(), 0, `${engine}: a cancelled command makes no toast`);
+  assert.equal(await runs(), 1, `${engine}: and the cancelled command ran once`);
+
+  assert.deepEqual(errors, [], `${engine}: the failing commands wrote no page error`);
+  await page.close();
+}
+
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
 let host;
 try {
@@ -1871,6 +1975,7 @@ try {
       await checkProviders(await freshPage(browser, host.base), host.base, name);
       await checkKept(await freshPage(browser, host.base), host.base, name);
       await checkIdentity(await freshPage(browser, host.base), host.base, name);
+      await checkToasts(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
       await checkProcess(browser, name, await processFixture(), work);
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs)`);

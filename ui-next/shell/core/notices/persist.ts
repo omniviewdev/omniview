@@ -7,7 +7,7 @@ import { deriveSeverity, isActive, maxSeverity } from './policy';
 import { block, line } from './text';
 import { LIMITS, NOTICES_VERSION, STATES, type ActionKind, type FoldKind, type PersistedAction, type PersistedNotices, type PersistedRecord } from './types';
 
-// The history survives a restart (ch16 S74: "Records persist (at most 200, 7 days) and a record that was active reloads as unknown"; the mock's `reload`). The saved form carries its version and
+// The history survives a restart (ch16 S74: "Records persist (at most 200, 7 days) and a record that was active reloads as unknown", with the bound the lead ruled on 2026-11-20 for the owner's decision B7: 500 records; the mock's `reload`). The saved form carries its version and
 // `migrate` (the tab model's) brings an older one up; what is read back is repaired rather than discarded: a damaged record is dropped alone and the rest is kept. The old app has 36 stores that
 // were never versioned; this is not the 37th. What is not saved: the code of an action (it cannot survive a restart: the action comes back disabled, with its reason, S84), the origin of the
 // work (a hint, P5), a toast (a restored record raises none) and the progress of work that was running (it is unknown now).

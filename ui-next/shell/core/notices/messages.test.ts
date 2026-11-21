@@ -149,29 +149,34 @@ describe('read and unread (S81)', () => {
 });
 
 describe('the bounded history (S74)', () => {
-  it('keeps the newest two hundred and lets the oldest go', () => {
+  it('is five hundred records and seven days: the owner\'s decision B7, ruled by the lead on 2026-11-20 (the mock says two hundred)', () => {
+    expect(LIMITS.history).toBe(500);
+    expect(LIMITS.age).toBe(7 * day);
+  });
+
+  it('keeps the newest five hundred and lets the oldest go', () => {
     const { store } = makeNotices();
-    for (let index = 1; index <= 250; index += 1) {
-      store.forSource(`p${String(index % 50)}`).notify({ title: `Notice ${String(index)}` });
+    for (let index = 1; index <= 550; index += 1) {
+      store.forSource(`p${String(index % 110)}`).notify({ title: `Notice ${String(index)}` });
     }
 
     const { recent } = store.getSnapshot();
-    expect(recent).toHaveLength(LIMITS.history);
-    expect(recent[0]?.name).toBe('Notice 250');
+    expect(recent).toHaveLength(500);
+    expect(recent[0]?.name).toBe('Notice 550');
     expect(recent.at(-1)?.name).toBe('Notice 51');
-    expect(store.getSnapshot().counts.all).toBe(LIMITS.history);
+    expect(store.getSnapshot().counts.all).toBe(500);
   });
 
   it('never drops work that is still running, however many messages come after it', () => {
     const { store } = makeNotices();
     const handle = store.begin({ title: 'Restoring a backup' });
-    for (let index = 1; index <= 300; index += 1) {
-      store.forSource(`p${String(index % 60)}`).notify({ title: `Notice ${String(index)}` });
+    for (let index = 1; index <= 600; index += 1) {
+      store.forSource(`p${String(index % 120)}`).notify({ title: `Notice ${String(index)}` });
     }
 
     expect(handle.active).toBe(true);
     expect(store.getSnapshot().active.map((record) => record.id)).toEqual([handle.id]);
-    expect(store.getSnapshot().recent).toHaveLength(LIMITS.history);
+    expect(store.getSnapshot().recent).toHaveLength(500);
   });
 
   it('is told its own bound: the decision of B7 is two numbers', () => {
