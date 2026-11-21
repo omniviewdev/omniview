@@ -1678,3 +1678,505 @@ describe('the rate of a paused or quiet feed (L3)', () => {
     expect(model.getStats().rate).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The toolbar beside the view (P1b-4a). Clear forgets everything made so far, the view's lines and the feed's unread ones; Pause is the feed's; Copy is every line of the list (the keyboard's copy is the selection's); and a control reads
+// a handful of facts of the view (`getControls`), told when one changes and not once a frame.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+describe('clear (the toolbar\'s Clear)', () => {
+  it('drops the lines the view holds, whatever the strip said: no row, no line held, a strip that counts none', () => {
+    const { frames, feed, model, strip } = setup();
+    feed.push(numbered(40));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(40);
+    model.clear();
+    frames.settle();
+    const snapshot = model.getSnapshot();
+    expect([snapshot.count, snapshot.buffered, snapshot.rows.length]).toEqual([0, 0, 0]);
+    const stats = strip();
+    expect([stats.shown, stats.total, stats.dropped, stats.unread]).toEqual([0, 0, 0, 0]);
+  });
+
+  it('leaves the feed as it is: a feed that is going is not paused, it keeps its one subscriber, and the lines that come after the clear are shown, counted from the first', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(10));
+    frames.settle();
+    const status = feed.getSnapshot();
+    model.clear();
+    expect(feed.getSnapshot()).toBe(status);
+    expect(feed.getSnapshot().paused).toBe(false);
+    expect(feed.subscribers).toBe(1);
+    feed.push(numbered(3, 11));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(3);
+    expect(model.entryAt(0)).toMatchObject({ kind: 'line', text: 'line 11' });
+  });
+
+  it('clears what the feed holds and the view had not read, as the mock empties its queue (shell-panel.js 2083-2090): those lines were made before the clear and are not shown after it', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(10));
+    frames.settle();
+    feed.push(numbered(5, 11));
+    model.clear();
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(0);
+    expect(feed.stats().held).toBe(0);
+    feed.push(numbered(3, 16));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(3);
+    expect(model.entryAt(0)).toMatchObject({ text: 'line 16' });
+  });
+
+  it('starts the account again: what the view evicts or the feed drops afterwards is told, and what was cleared is not told as dropped', () => {
+    const { frames, feed, model, strip } = setup({ maxLines: 50 });
+    feed.push(numbered(80));
+    frames.settle();
+    expect(strip()).toMatchObject({ total: 50, dropped: 30, unread: 0 });
+    const madeBefore = feed.received;
+    model.clear();
+    frames.settle();
+    expect(strip()).toMatchObject({ shown: 0, total: 0, dropped: 0, unread: 0 });
+    feed.push(numbered(20, 81));
+    frames.settle();
+    feed.drop(5);
+    feed.push(numbered(10, 106));
+    frames.settle();
+    const stats = strip();
+    // Since the clear the feed made 20 + 5 + 10 lines; the view shows 30 and says it never got 5.
+    expect([stats.total, stats.dropped, stats.unread]).toEqual([30, 5, 5]);
+    expect(stats.total + stats.dropped).toBe(feed.received - madeBefore);
+    // And the cap still counts what it evicts after the clear.
+    feed.push(numbered(100, 116));
+    frames.settle();
+    expect(strip()).toMatchObject({ total: 50, dropped: 5 + 80, unread: 5 });
+  });
+
+  it('does not tell again the lines the feed dropped before the clear: they were told, and they are cleared with the rest', () => {
+    const { frames, feed, model, strip } = setup({ maxLines: 50 });
+    feed.drop(12);
+    feed.push(numbered(10));
+    frames.settle();
+    expect(strip()).toMatchObject({ total: 10, dropped: 12, unread: 12 });
+    model.clear();
+    frames.settle();
+    expect(strip()).toMatchObject({ total: 0, dropped: 0, unread: 0 });
+    feed.push(numbered(3, 11));
+    frames.settle();
+    expect(strip()).toMatchObject({ total: 3, dropped: 0, unread: 0 });
+  });
+
+  it('forgets a drop the feed made before the clear that the view had not heard of, as the mock sets its dropped count to 0 (shell-panel.js 2086): what the feed produced before the clear is not told after it', () => {
+    const { frames, feed, model, strip } = setup({ maxLines: 50 });
+    feed.push(numbered(10));
+    frames.settle();
+    // The feed drops lines before it holds the next ones: seven are gone and two are held, and the view has been told of neither.
+    feed.drop(7);
+    feed.push(numbered(2, 11));
+    model.clear();
+    feed.push(numbered(3, 13));
+    frames.settle();
+    expect(strip()).toMatchObject({ total: 3, dropped: 0, unread: 0 });
+    expect(model.entryAt(0)).toMatchObject({ kind: 'line', text: 'line 13' });
+  });
+
+  it('forgets the marker a drop left at the head: the first row after a clear is the first new line', () => {
+    const { frames, feed, model } = setup({ maxLines: 20 });
+    feed.drop(12);
+    feed.push(numbered(40));
+    frames.settle();
+    expect(model.entryAt(0)).toMatchObject({ kind: 'gap', dropped: 12 });
+    model.clear();
+    feed.push(numbered(2, 41));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(2);
+    expect(model.entryAt(0)).toMatchObject({ kind: 'line', text: 'line 41' });
+  });
+
+  it('drops the selection and the matches of the lines it dropped, and keeps the reader\'s query, finding the lines that come', () => {
+    const { frames, feed, model } = setup();
+    model.setSearch({ query: 'needle', regex: false, caseSensitive: false });
+    feed.push(['a needle', 'b', 'c needle']);
+    frames.settle();
+    model.select(1, false);
+    model.select(3, true);
+    expect(model.getSnapshot().search.count).toBe(2);
+    model.clear();
+    frames.settle();
+    const cleared = model.getSnapshot();
+    expect(cleared.selection).toBeUndefined();
+    expect([cleared.search.count, cleared.search.current, cleared.search.options.query]).toEqual([0, 0, 'needle']);
+    feed.push(['d', 'e needle']);
+    frames.settle();
+    expect(model.getSnapshot().search).toMatchObject({ count: 1, status: 'done' });
+  });
+
+  it('keeps the level the reader chose', () => {
+    const { frames, feed, model } = setup();
+    model.setMinRank(2);
+    feed.push(['one', 'two'], 'info');
+    feed.push(['three'], 'error');
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(1);
+    model.clear();
+    feed.push(['four'], 'info');
+    feed.push(['five'], 'warn');
+    frames.settle();
+    expect(model.getSnapshot()).toMatchObject({ count: 1, buffered: 2, minRank: 2 });
+  });
+
+  it('asks the list to go to the end of the log while it follows: it is empty, and the next lines are at its foot', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(100));
+    frames.settle();
+    const before = model.getSnapshot().scroll?.id ?? 0;
+    model.clear();
+    const snapshot = model.getSnapshot();
+    expect(snapshot.following).toBe(true);
+    expect(snapshot.scroll?.id).toBeGreaterThan(before);
+    expect(snapshot.scroll?.top).toBe('end');
+  });
+
+  it('puts a reader who had scrolled back at the top of the empty list, and counts no line that came while they were away', () => {
+    const { frames, feed, model, strip } = setup();
+    feed.push(numbered(200));
+    frames.settle();
+    model.onScroll(240);
+    expect(model.getSnapshot().following).toBe(false);
+    feed.push(numbered(10, 201));
+    frames.settle();
+    expect(strip().unseen).toBe(10);
+    model.clear();
+    frames.settle();
+    expect(model.getSnapshot().scroll?.top).toBe(0);
+    expect(strip().unseen).toBe(0);
+  });
+
+  it('is one snapshot, and the strip is told in the next frame, not at the next tick of its clock', () => {
+    const { frames, feed, model, published } = setup();
+    feed.push(numbered(5));
+    frames.settle();
+    const before = published.length;
+    model.clear();
+    expect(published.length).toBe(before + 1);
+    frames.settle();
+    expect(model.getStats()).toMatchObject({ shown: 0, total: 0 });
+  });
+
+  it('does nothing for a view that holds nothing and has nothing to forget: no snapshot, no frame', () => {
+    const { frames, model, published } = setup();
+    frames.settle();
+    const before = published.length;
+    model.clear();
+    expect(published.length).toBe(before);
+    expect(frames.pending).toBe(0);
+  });
+
+  it('leaves a paused feed paused and clears the lines it held (the mock empties its queue too): only the lines made after the clear come when it is resumed', () => {
+    const { frames, feed, model, strip } = setup();
+    feed.push(numbered(10));
+    frames.settle();
+    feed.pause();
+    feed.push(numbered(7, 11));
+    frames.settle();
+    expect(strip().held).toBe(7);
+    model.clear();
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(0);
+    expect(strip().held).toBe(0);
+    expect(feed.getSnapshot().paused).toBe(true);
+    feed.push(numbered(4, 18));
+    frames.settle();
+    expect(strip().held).toBe(4);
+    feed.resume();
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(4);
+    expect(model.entryAt(0)).toMatchObject({ text: 'line 18' });
+  });
+
+  it('clears the lines a paused feed holds even when the view holds none: there is something to forget', () => {
+    const { frames, feed, model, strip } = setup();
+    feed.pause();
+    feed.push(numbered(5));
+    frames.settle();
+    expect(strip().held).toBe(5);
+    model.clear();
+    frames.settle();
+    expect(strip().held).toBe(0);
+    expect(feed.getSnapshot().paused).toBe(true);
+  });
+
+  it('never reuses an ordinal: a row of the cleared lines cannot be taken for a new one', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(5));
+    frames.settle();
+    const oldest = model.getSnapshot().rows[4]?.entry.n ?? 0;
+    model.clear();
+    feed.push(numbered(1, 6));
+    frames.settle();
+    expect(model.getSnapshot().rows[0]?.entry.n).toBeGreaterThan(oldest);
+  });
+});
+
+describe('what a control beside the view reads (getControls)', () => {
+  it('starts as a view that follows, draws nothing, holds nothing, and whose feed is going', () => {
+    const { model } = setup();
+    expect(model.getControls()).toEqual({ following: true, drawn: false, held: false, paused: false, feed: 'streaming' });
+  });
+
+  it('says the list draws and the view holds lines once a frame read them, and tells its listeners then and not at every frame after', () => {
+    const { frames, feed, model } = setup();
+    const told: unknown[] = [];
+    model.subscribeControls(() => {
+      told.push(model.getControls());
+    });
+    feed.push(numbered(10));
+    frames.settle();
+    expect(model.getControls()).toMatchObject({ drawn: true, held: true });
+    expect(told).toHaveLength(1);
+    for (let batch = 0; batch < 20; batch += 1) {
+      feed.push(numbered(50, batch * 50 + 11));
+      frames.settle();
+    }
+
+    expect(told).toHaveLength(1);
+  });
+
+  it('is the same object for as long as nothing it says has changed: a control that reads it is not drawn again for a line', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(5));
+    frames.settle();
+    const first = model.getControls();
+    feed.push(numbered(5, 6));
+    frames.settle();
+    expect(model.getControls()).toBe(first);
+  });
+
+  it('says a level filter that hides every line draws nothing of lines it still holds', () => {
+    const { frames, feed, model } = setup();
+    feed.push(['quiet'], 'info');
+    frames.settle();
+    model.setMinRank(3);
+    frames.settle();
+    expect(model.getControls()).toMatchObject({ drawn: false, held: true });
+    model.setMinRank(0);
+    expect(model.getControls()).toMatchObject({ drawn: true, held: true });
+  });
+
+  it('follows when the view follows, and says so when the reader leaves, when a control stops it and when the end is asked for again', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(100));
+    frames.settle();
+    const told: boolean[] = [];
+    model.subscribeControls(() => {
+      told.push(model.getControls().following);
+    });
+    model.followOff();
+    expect(model.getControls().following).toBe(false);
+    model.jumpToLatest();
+    expect(model.getControls().following).toBe(true);
+    model.onScroll(240);
+    expect(model.getControls().following).toBe(false);
+    expect(told).toEqual([false, true, false]);
+  });
+
+  it('tells a pause the moment the feed says it, with no frame and no snapshot of the view: the pause is the feed\'s', () => {
+    const { frames, feed, model, published } = setup();
+    feed.push(numbered(3));
+    frames.settle();
+    const snapshots = published.length;
+    const told: boolean[] = [];
+    model.subscribeControls(() => {
+      told.push(model.getControls().paused);
+    });
+    feed.pause();
+    expect(model.getControls().paused).toBe(true);
+    feed.resume();
+    expect(model.getControls().paused).toBe(false);
+    expect(told).toEqual([true, false]);
+    frames.settle();
+    expect(published.length).toBe(snapshots);
+  });
+
+  it('says where the feed is: going, ended, failed', () => {
+    const { feed, model } = setup();
+    expect(model.getControls().feed).toBe('streaming');
+    feed.finish('ended');
+    expect(model.getControls().feed).toBe('ended');
+    feed.finish('failed', { stage: 'source', message: 'no' });
+    expect(model.getControls().feed).toBe('failed');
+  });
+
+  it('says a feed that is paused is paused whatever its state says, as the feed\'s own flag does', () => {
+    const { feed, model } = setup();
+    feed.finishPaused('ended');
+    expect(model.getControls()).toMatchObject({ paused: true, feed: 'ended' });
+  });
+
+  it('says the list draws nothing and the view holds nothing after Clear', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(4));
+    frames.settle();
+    expect(model.getControls()).toMatchObject({ drawn: true, held: true });
+    model.clear();
+    expect(model.getControls()).toMatchObject({ drawn: false, held: false });
+  });
+
+  it('hears nothing of the feed while it is not attached, and reads it again, once, when it is', () => {
+    const { feed, model } = setup();
+    const told: unknown[] = [];
+    model.subscribeControls(() => {
+      told.push(model.getControls());
+    });
+    model.detach();
+    feed.pause();
+    expect(model.getControls().paused).toBe(false);
+    expect(told).toHaveLength(0);
+    model.attach();
+    expect(model.getControls().paused).toBe(true);
+    expect(told).toHaveLength(1);
+  });
+
+  it('stops telling a listener that unsubscribed', () => {
+    const { feed, model } = setup();
+    let told = 0;
+    const stop = model.subscribeControls(() => {
+      told += 1;
+    });
+    feed.pause();
+    stop();
+    feed.resume();
+    expect(told).toBe(1);
+  });
+});
+
+describe('pausing from a control (setPaused)', () => {
+  it('holds the feed\'s reads, and lets them through again', () => {
+    const { frames, feed, model } = setup();
+    feed.push(numbered(5));
+    frames.settle();
+    model.setPaused(true);
+    expect(feed.getSnapshot().paused).toBe(true);
+    feed.push(numbered(5, 6));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(5);
+    model.setPaused(false);
+    frames.settle();
+    expect(feed.getSnapshot().paused).toBe(false);
+    expect(model.getSnapshot().count).toBe(10);
+  });
+
+  it('asks the feed once for what it already is: a pause that is on is not asked again', () => {
+    const { feed, model } = setup();
+    const pause = vi.spyOn(feed, 'pause');
+    const resume = vi.spyOn(feed, 'resume');
+    model.setPaused(false);
+    expect(resume).not.toHaveBeenCalled();
+    model.setPaused(true);
+    model.setPaused(true);
+    expect(pause).toHaveBeenCalledTimes(1);
+    model.setPaused(false);
+    model.setPaused(false);
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the lines the feed holds while it is paused, and shows them in the strip: the lines are counted, not drawn (the mock: Paused, N new lines waiting)', () => {
+    const { frames, feed, model, strip } = setup();
+    feed.push(numbered(5));
+    frames.settle();
+    model.setPaused(true);
+    feed.push(numbered(30, 6));
+    frames.settle();
+    expect(model.getSnapshot().count).toBe(5);
+    expect(strip().held).toBe(30);
+    feed.push(numbered(12, 36));
+    frames.settle();
+    expect(strip().held).toBe(42);
+  });
+});
+
+describe('the lines a Copy control copies (copyLines)', () => {
+  const clock = (text: string) => text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, 'HH:MM:SS.mmm');
+
+  it('is nothing for a view that draws nothing', () => {
+    const { model } = setup();
+    expect(model.copyLines()).toBeUndefined();
+  });
+
+  it('is every line of the list, a line each, in the order they are drawn, with their clock, level and source, when no range is selected', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('svc/app', ['first', 'second'], 'info');
+    feed.pushFrom('svc/job', ['third'], 'error');
+    frames.settle();
+    const copied = model.copyLines();
+    expect(copied?.lines).toBe(3);
+    expect(copied?.text.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO  svc/app  first', 'HH:MM:SS.mmm INFO  svc/app  second', 'HH:MM:SS.mmm ERROR svc/job  third']);
+  });
+
+  it('carries a line\'s source whether or not the view has a column for it, as the mock\'s lineText does (L3)', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('svc/app', ['only'], 'info');
+    frames.settle();
+    expect(model.getSnapshot().sourceColumn).toBe(false);
+    expect(model.copyLines()?.text.replace(/^\d\d:\d\d:\d\d\.\d{3}/, '')).toBe(' INFO  svc/app  only');
+  });
+
+  it('is only the lines the level filter lets through: what is hidden is not drawn and is not copied', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('', ['debug one'], 'debug');
+    feed.pushFrom('', ['warn one'], 'warn');
+    feed.pushFrom('', ['error one'], 'error');
+    frames.settle();
+    model.setMinRank(2);
+    expect(model.copyLines()?.text.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm WARN warn one', 'HH:MM:SS.mmm ERROR error one']);
+    expect(model.copyLines()?.lines).toBe(2);
+  });
+
+  it('is nothing when the filter hides every line', () => {
+    const { frames, feed, model } = setup();
+    feed.push(['quiet'], 'info');
+    frames.settle();
+    model.setMinRank(3);
+    expect(model.copyLines()).toBeUndefined();
+  });
+
+  it('writes a marker as its own sentence and does not count it as a line, the lead of a head that lost lines included', () => {
+    const { frames, feed, model } = setup({ maxLines: 5 });
+    feed.drop(9);
+    feed.push(numbered(8));
+    frames.settle();
+    const copied = model.copyLines();
+    expect(copied?.lines).toBe(5);
+    expect(copied?.text.split('\n')[0]).toBe('-- 9 lines dropped --');
+    expect(copied?.text.split('\n')).toHaveLength(6);
+  });
+
+  it('is every line the list draws when a range is selected: the keyboard\'s copy is the selection\'s, and the mock\'s Copy writes the lines of its view (shell-panel.js 2063-2070)', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('', ['a', 'b', 'c', 'd'], 'info');
+    frames.settle();
+    model.select(2, false);
+    model.select(3, true);
+    const copied = model.copyLines();
+    expect(copied?.lines).toBe(4);
+    expect(copied?.text.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO a', 'HH:MM:SS.mmm INFO b', 'HH:MM:SS.mmm INFO c', 'HH:MM:SS.mmm INFO d']);
+    // The selection still copies its own lines, which is what the keyboard's copy writes.
+    expect(model.copyText()?.split('\n').map(clock)).toEqual(['HH:MM:SS.mmm INFO b', 'HH:MM:SS.mmm INFO c']);
+  });
+
+  it('writes the clock the rows show: UTC with its Z when the view shows UTC', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('', ['first'], 'info', '2024-01-15T10:30:00.123Z');
+    frames.settle();
+    expect(model.copyLines('utc')?.text).toBe('10:30:00.123Z INFO first');
+  });
+
+  it('is what it was before the clock changed: a copy is made when it is asked for', () => {
+    const { frames, feed, model } = setup();
+    feed.pushFrom('', ['first'], 'info', '2024-01-15T10:30:00.123Z');
+    frames.settle();
+    const utc = model.copyLines('utc')?.text;
+    expect(model.copyLines('utc')?.text).toBe(utc);
+    expect(model.copyLines('local')?.text).not.toBe(utc);
+  });
+});

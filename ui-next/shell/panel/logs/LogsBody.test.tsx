@@ -188,14 +188,24 @@ describe('a body that is not on screen', () => {
     expect(rowsBefore).toBeGreaterThan(0);
   });
 
-  it('is not drawn: the view\'s own nodes are hidden, so the browser does no layout and no paint for them', () => {
+  it('is not drawn: every node the body puts in the box (the toolbar\'s column, the view\'s box) is hidden, so the browser does no layout and no paint for them', () => {
     const { show } = mount();
+    const box = document.querySelector<HTMLElement>('[data-shell-part="logsBody"]');
+    expect(box).not.toBeNull();
+    // What the body puts in the box and the view itself, taken before it is hidden: the same nodes must come back, drawn.
+    const children = [...(box?.children ?? [])] as HTMLElement[];
+    const view = document.querySelector<HTMLElement>('[data-log-session]');
+    expect(children.length).toBeGreaterThan(1);
+    expect(view).not.toBeNull();
     show(false);
-    const root = document.querySelector<HTMLElement>('[data-log-session]');
-    expect(root).not.toBeNull();
-    expect(root?.style.display).toBe('none');
+    expect(children.every((child) => child.style.display === 'none')).toBe(true);
+    expect(document.querySelector('[data-log-session]')).toBe(view);
     show(true);
-    expect(root?.style.display).not.toBe('none');
+    expect([...(box?.children ?? [])]).toEqual(children);
+    expect(children.every((child) => child.style.display !== 'none')).toBe(true);
+    expect(document.querySelector('[data-log-session]')).toBe(view);
+    expect(view?.closest('[style*="display: none"]')).toBeNull();
+    expect(view?.querySelector('[role=grid]')).not.toBeNull();
   });
 
   it('comes back with the lines it had and the lines the stream held meanwhile, read from where it left off', () => {

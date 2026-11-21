@@ -34,11 +34,11 @@ afterEach(() => {
 });
 
 describe('the fixture\'s Logs sessions', () => {
-  it('are seven targets of one item: an id of their own, the item\'s group as the scope but for the last, and the item as the resource a card links to', () => {
+  it('are eight targets of one item: an id of their own, the item\'s group as the scope but for the twin, and the item as the resource a card links to', () => {
     const targets = logTargetsOf(ITEM);
-    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late', 'orders-api/app']);
-    expect(new Set(targets.map((target) => target.id)).size).toBe(7);
-    expect(targets.slice(0, 6).map((target) => target.scope)).toEqual(Array<string>(6).fill('north-yard'));
+    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late', 'orders-api/app', 'orders-api/quiet']);
+    expect(new Set(targets.map((target) => target.id)).size).toBe(8);
+    expect(targets.map((target) => target.scope)).toEqual([...Array<string>(6).fill('north-yard'), 'south-yard', 'north-yard']);
     for (const target of targets) {
       expect(target.resource).toMatchObject({ label: 'Item orders-api', kind: 'Item', route: { page: 'item', params: { name: 'orders-api', group: 'north-yard' } } });
     }
@@ -151,6 +151,17 @@ describe('the fixture\'s Logs sessions', () => {
     expect(feed?.stats().received).toBeGreaterThan(10);
   });
 
+  it('have one that makes no line at all, and stays connected: the toolbar\'s Clear and Copy have nothing to act on there, and say why', () => {
+    const quiet = logTargetsOf(ITEM)[7];
+    expect(quiet).toMatchObject({ id: 'item/orders-api/quiet', title: 'orders-api/quiet' });
+    const feed = quiet?.open();
+    vi.advanceTimersByTime(5_000);
+    expect(feed?.stats()).toEqual({ received: 0, dropped: 0, held: 0 });
+    expect(feed?.getSnapshot().state).toBe('streaming');
+    expect(feed?.read(100)).toEqual({ lines: [], dropped: 0, held: 0 });
+    void feed?.close();
+  });
+
   it('give the fourth ten thousand lines a second', () => {
     const feed = logTargetsOf(ITEM)[3]?.open();
     vi.advanceTimersByTime(1_000);
@@ -167,8 +178,8 @@ describe('the fixture\'s Logs sessions', () => {
     }
 
     expect(vi.getTimerCount()).toBe(0);
-    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(Array<string>(7).fill('ended'));
-    expect(counters()).toMatchObject({ opened: 7, closed: 7 });
+    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(Array<string>(8).fill('ended'));
+    expect(counters()).toMatchObject({ opened: 8, closed: 8 });
   });
 
   it('drop what they held when they are closed, as the runtime\'s stream does: a stream the host keeps after closing it (A21) holds no line', () => {
