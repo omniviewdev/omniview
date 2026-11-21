@@ -1,6 +1,6 @@
 import { ErrorBody, LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
 import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
-import { DetailPage, ListPage } from '../../page';
+import { DetailPage, ListPage, type PageMemory } from '../../page';
 import {
   createLogStreams,
   createPanelStore,
@@ -28,6 +28,7 @@ import {
   type ShellRail,
   type ShellRegistration,
   type ShellSidebar,
+  type TabId,
   type TabsStore,
 } from '../../shell';
 import { openable } from '../contract/admit';
@@ -42,6 +43,7 @@ import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { panelHostsOf } from './panelHost';
 import { useGuardedDefinition, useGuardedSource } from './pageFailures';
+import { pageMemoryOf } from './pageMemory';
 import { PlaceholderPage } from './PlaceholderPage';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -281,10 +283,12 @@ type ListProps = {
   readonly frames: Published<FrameV1>;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
+  /** Where the page keeps what the person chose in it (the sort of the list), for this window to give back when the page is drawn again: the tab's own. */
+  readonly memory: PageMemory;
 };
 
 /** The page's own component: its data hook runs here, in its tab's own subtree, and what the hook says about the frame is published for the frame and the tab to read. */
-function ListContribution({ entry, route, page: pageId, frames, panelHost }: ListProps) {
+function ListContribution({ entry, route, page: pageId, frames, panelHost, memory }: ListProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'list') {
     throw new Error(`The plugin has no list page "${pageId}"`);
@@ -300,7 +304,7 @@ function ListContribution({ entry, route, page: pageId, frames, panelHost }: Lis
     frames.publish(routeKey(route), frame);
   }, [frames, route, frame]);
 
-  return <ListPage definition={definition} source={source} />;
+  return <ListPage definition={definition} source={source} memory={memory} />;
 }
 
 type DetailProps = {
@@ -363,6 +367,8 @@ function DetailContribution({ entry, route, page: pageId, frames, names, tabs, p
 type HostPageProps = {
   readonly entries: readonly PluginEntry[];
   readonly route: Route;
+  /** The tab this page is drawn for: what the page keeps (`PageMemory`) is kept in it. */
+  readonly tabId: TabId;
   /** What the tab was saved with as the plugin's name (a tab restored from a session names a plugin the host may not have yet); empty when it says none. */
   readonly pluginName: string;
   readonly frames: Published<FrameV1>;
@@ -381,10 +387,12 @@ type HostPageProps = {
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
-function HostPage({ entries, route, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts }: HostPageProps) {
+function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts }: HostPageProps) {
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
+  // What a page keeps is the tab's `pageState`: the same object for as long as the tab is, so the page's own hooks may depend on it.
+  const memory = useMemo(() => pageMemoryOf(tabs, tabId), [tabs, tabId]);
   const entry = entries.find((candidate) => candidate.id === route.plugin);
   if (entry === undefined) {
     const title = pluginName === '' ? route.plugin : pluginName;
@@ -437,7 +445,7 @@ function HostPage({ entries, route, pluginName, frames, names, tabs, platform, i
         {found?.kind === 'detail' ? (
           <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id)} />
         ) : (
-          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id)} />
+          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id)} memory={memory} />
         )}
       </ContributionBoundary>
     </LinkProvider>
@@ -708,6 +716,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
           <HostPage
             entries={entries}
             route={tab.location.route}
+            tabId={tab.id}
             pluginName={tabs.selectors.face(tabs.getSnapshot(), tab.id)?.pluginName ?? ''}
             frames={frames}
             names={names}

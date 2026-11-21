@@ -63,11 +63,13 @@ export function serve(dist) {
 
 /**
  * Opens a case of the fixture in a fresh context, in the engine's own browser: the font normalized as the mock's reference was (Helvetica for the UI
- * stack on both sides), nothing focused, the pointer away. `ready` is a selector that must be in the page before the case is read.
+ * stack on both sides), nothing focused, the pointer away. `ready` is a selector that must be in the page before the case is read; `init` is a function
+ * the page runs before any of its own scripts (the sort probe's commit counter is one).
  */
-export async function openCase(browser, origin, name, viewport, { ready, extra = '' } = {}) {
+export async function openCase(browser, origin, name, viewport, { ready, extra = '', init } = {}) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
+  if (init !== undefined) await page.addInitScript(init);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)));
   page.on('console', (message) => {

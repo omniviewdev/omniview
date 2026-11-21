@@ -2,7 +2,8 @@
 // (ui-next/plugins/fixture/build.mjs), in WebKit and Chromium. What it proves (docs/ui-next/slices/n19-plugin-seam.md, 1.4):
 //
 //   a  a bundle built by its own Vite config is fetched from `/_/plugins/<id>/assets/entry.js`, linked to the host's React and kit, and contributes a sidebar
-//      entry and a page to the shell; the window opens it with no route (no URL parameter and no hash: the default screen is the plugins')
+//      entry and a page to the shell; the window opens it with no route (no URL parameter and no hash: the default screen is the plugins'); the page's list opens in the sort its definition names and sorts by the columns that
+//      declare a key (K3a: the host's list page holds the sort and the kit's table does it, a plugin built outside the host's tree states it as data)
 //   b  ONE React and ONE kit: the bundle's imports are the registry's instances, and `useTheme()` in the plugin reads the host's provider
 //   c  the negative control: the same plugin with its own copy of the kit fails that read, and the check sees it fail
 //   d  a page that throws is contained: the frame, the sidebar and the other pages stay; Retry tries again
@@ -381,6 +382,25 @@ async function checkHealthy(page, base, engine) {
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
   await page.getByRole('treeitem', { name: 'Items', selected: true }).waitFor();
   for (const name of ['orders-api', 'ledger-sync', 'ghost-service', 'vault-keeper', 'flaky-gateway']) await page.getByRole('link', { name }).waitFor();
+  // K3a. The list sorts, in a plugin built outside the host's tree: its definition says it opens on Name, ascending, and its Name and Group columns declare their keys (plugins/fixture/src/pages.tsx); its five items are in
+  // neither order, and two of them (orders-api and ledger-sync) are of one group. The header of the sort in force says so (`aria-sort`), a press on another column sorts it ascending with the tie in the order the SOURCE gave
+  // (not in the order of the name), a press on the column in force turns it round, Enter and Space on the header's button do the same and leave the focus on it, and a column that declares no key has no button.
+  const itemsOrder = async () => (await page.locator('table tbody tr[data-ov-index] td:first-child').allInnerTexts()).map((text) => text.trim());
+  const sortState = (name) => page.getByRole('columnheader', { name, exact: true }).getAttribute('aria-sort');
+  const sortButton = (name) => page.getByRole('columnheader', { name, exact: true }).getByRole('button', { name, exact: true });
+  assert.deepEqual(await itemsOrder(), ['flaky-gateway', 'ghost-service', 'ledger-sync', 'orders-api', 'vault-keeper'], `${engine}: the list opens in the sort its definition names, Name ascending, though the source gave the items in another order`);
+  assert.deepEqual([await sortState('Name'), await sortState('Group'), await sortState('Opens as')], ['ascending', 'none', null], `${engine}: the header of the sort in force says so, the other sortable header says none, and a column with no key says nothing`);
+  assert.equal(await page.getByRole('columnheader', { name: 'Opens as', exact: true }).getByRole('button').count(), 0, `${engine}: a column that declares no key has no sort button`);
+  await sortButton('Group').click();
+  assert.deepEqual(await itemsOrder(), ['vault-keeper', 'orders-api', 'ledger-sync', 'ghost-service', 'flaky-gateway'], `${engine}: a press sorts the column ascending, and the two items of one group tie in the source's order`);
+  assert.deepEqual([await sortState('Name'), await sortState('Group')], ['none', 'ascending'], `${engine}: and the column that was in force says none`);
+  await sortButton('Group').press('Enter');
+  assert.deepEqual(await itemsOrder(), ['flaky-gateway', 'ghost-service', 'orders-api', 'ledger-sync', 'vault-keeper'], `${engine}: Enter on the header's button turns the column round, and the tie keeps the source's order in this direction too`);
+  assert.ok(await sortButton('Group').evaluate((button) => button === document.activeElement), `${engine}: the focus stays on the header's button`);
+  await sortButton('Group').press('Space');
+  assert.equal(await sortState('Group'), 'ascending', `${engine}: Space on it turns it back`);
+  await sortButton('Name').click();
+  assert.deepEqual(await itemsOrder(), ['flaky-gateway', 'ghost-service', 'ledger-sync', 'orders-api', 'vault-keeper'], `${engine}: a press on another column sorts that one ascending`);
   // The sidebar's hook answers 150 ms after it mounts: the skeleton gives way to the entries with their count. The entry declares its count slot in the skeleton (`count: null`) and the hook answers an estimate
   // (`{ value: 5, approximate: true }`), which the shell draws as "~5" and names "about 5" (Q2a).
   await page.getByRole('treeitem', { name: 'Items about 5' }).waitFor();

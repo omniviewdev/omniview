@@ -8,10 +8,10 @@ The first page of the new shell (slice 1a plan, PR 1a.6): a collection of rows w
 
 | Prop | What | Held by |
 |---|---|---|
-| `definition` | `title` (the plural name: the heading, the table's name, the word of the states and of Refresh), `nouns` (the count's words), `tile?`, `commands?` (the page's own; Refresh is the page's), `quickFilters?` (a named strip of `{ id, label, tone, test }`), `columns` (the kit's `DataTableColumn`s), `lines` (1 or 2), `getRowKey`, `searchText` (lower case) | type |
-| `source` | `state` (`loading`, `ready`, or `failed` with its words and, only when asking again can help, a `retry`), `rows` (already in order; a changed row is a new object), `complete` (the whole set is here), `refreshing`, `refresh()` (resolves when the read is over, never rejects) | type |
+| `definition` | `title` (the plural name: the heading, the table's name, the word of the states and of Refresh), `nouns` (the count's words), `tile?`, `commands?` (the page's own; Refresh is the page's), `quickFilters?` (a named strip of `{ id, label, tone, test }`), `columns` (the kit's `DataTableColumn`s: a column that declares a `sortKey`, and a `sortKind` where its keys are numbers, sorts), `defaultSort?` (the column and direction the page opens in), `lines` (1 or 2), `getRowKey`, `searchText` (lower case) | type |
+| `source` | `state` (`loading`, `ready`, or `failed` with its words and, only when asking again can help, a `retry`), `rows` (in the source's own order, which a tie keeps; a changed row is a new object), `complete` (the whole set is here), `refreshing`, `refresh()` (resolves when the read is over, never rejects) | type |
 
-The page is a **pure function of `(definition, source)` and what the person typed**: the source is a prop, never a hook the definition calls, so the page reads no data layer. What the person typed (the search, the chosen filter) is the page's own state; what is listed, in what order, and whether it is all of it, is the source's. The page sorts nothing: the source's order is the list's, and the table's own sorting stays off until the sort state exists (plan 1a.7).
+The page is a **pure function of `(definition, source)` and what the person chose**: the source is a prop, never a hook the definition calls, so the page reads no data layer. What the person typed (the search, the chosen filter) and the sort they chose are the page's own state; what is listed, and whether it is all of it, is the source's. The page does not sort: the kit's table does, by the keys the columns declare, in the order the page holds (below).
 
 ## Where a plugin meets it
 
@@ -24,6 +24,8 @@ A plugin's bundle states its page as plain data: a `definition` and one data hoo
 - The body: loading until the first rows or the whole (empty) set arrive; an error, with the one Retry, when a failure left no rows (no footer: the mock draws none); empty when the whole set holds nothing; no-match when rows exist and the query hides them all; ready otherwise. A failure that came after rows does not replace them.
 - The footer's count: exact once the set is complete, `N loaded` while it is arriving (decision A10), `K of N` when a search or a filter narrows it.
 - Clear filters: one command, in the toolbar, while a search or a filter is applied; it drops both and hands the focus to the search it cleared.
+- The sort (`sort.ts`, K3a): the sort in force is what the person chose, else the definition's `defaultSort`, and only ever a column that declares a sort key (one that names a column with none is skipped and not an error: the list is then the source's order, as it was drawn before there was a sort). The page hands it to the table as `sort` and `onSortChange`, so the headers of the columns that sort are buttons that say their state in `aria-sort`; a press sorts a column ascending and a press on the column in force turns it round and back, **with no third state** (the mock's sort action and the kit's rule: the lines of the mock are quoted in `docs/ui-next/status/K3a.md`). The sort is **stable**: a tie keeps the order the source gave its rows in, in either direction, and a row whose key is `undefined` is last in either (the mock breaks a tie by the host key; here the source's order is the tie-breaker). The table sorts on every change of the rows, as the mock does on every render: a row whose key changed moves to its place and no other row moves relative to another. A press is one commit and no more work on the rows than the sort itself (`ListPage.sort.test.tsx`, `probes/sort-probe.mjs`). Clear filters does not drop the sort.
+- What the page keeps (`memory.ts`): the sort the person chose is written to the page's **memory**, which the host backs with the tab's `pageState` (`ui-next/plugins/host/pageMemory.ts`), and read once when the page opens. It survives a switch of tabs, a reload of the tab, closing and reopening the tab and a page the keep-alive cap let go; it is not saved to disk, so not across a restart (the mock does not either: the only path of its list module that it registers for saving is the Columns chooser's). **It is lost on list -> detail -> Back**, because the tab model drops `pageState` on every navigation and step: a known gap with a step of its own (`docs/ui-next/status/K3a.md`).
 
 ## The user's own Refresh is felt
 
@@ -31,7 +33,7 @@ The Refresh command of the page header (`Refresh <title>`) is unavailable, with 
 
 ## Not here (later steps)
 
-Column sorting and the plain connection states (1a.7); selection and the state family `stale`/`partial`/`failure with rows` (1a.8); facets and the Columns chooser, and with them the hidden-columns note (1a.9; errata E6 pending); the detail links of a row, Create and the overflow menu (not 1a).
+The plain connection states (1a.7); selection and the state family `stale`/`partial`/`failure with rows` (1a.8); facets and the Columns chooser, and with them the hidden-columns note (1a.9; errata E6 pending); the detail links of a row, Create and the overflow menu (not 1a).
 
 ## The detail page (D1a)
 

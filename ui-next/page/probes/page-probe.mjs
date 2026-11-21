@@ -5,7 +5,8 @@
 //
 //   FIXTURE_DIST=<dir>                 probe an existing build instead of building
 //   ENGINES=webkit,chromium            VIEWPORTS=1440x900,1030x720      (defaults: both of each)
-//   STAGES=chrome,shift                the stages to run (default: all that exist: chrome, shift)
+//   STAGES=chrome,shift,sort,perf      the stages to run (default: all that exist: chrome, shift, sort, perf)
+//   SORT_VIEWPORTS=1440x900,1280x800   the viewports of the sort stage (default: both; the native window's, decision A15), and `perf` runs at 1440x900 only
 //   QUIET=1                            print only the lines that are not ok, and the summary
 //   AUTOCLEAR=0                        skip the 8.5 s wait that proves the presenter clears a calm outcome by itself (default: waited, at 1440 x 900)
 //
@@ -16,16 +17,21 @@
 //   shift    (b) layout shift: a frame sampler around the page's own Refresh (idle, Refreshing…, Updated, cleared) and around every state of an operation in a
 //            header on its own (with and without an identity line); no part may move by 0.001 px at any frame; the slot at rest is 0 px wide and 28 px high.
 //            Chromium's layout-shift score is printed as information only: it also counts the presenter's own content and the facts that give way by design.
+//   sort     (K3a) the list's sort, in WebKit and Chromium at 1440 x 900 and 1280 x 800, on the fixture's `sort` case (probes/sort.mjs): the header's button and `aria-sort`, the order after each press of every
+//            header, the keyboard, a live update, and the detectors made to see one fault each
+//   perf     (K3a) 5,000 rows in a production build: a press on a header is one React commit, the table mounts the same few rows, and the time to the commit and to the next frame are read (probes/sort.mjs)
 // Tolerances: 1 px for a fixed size, 2 px for one that depends on its room or its text; a text box whose words differ from the mock's is compared by x, y
 // and height only. Exit code 1 when anything is outside them.
 import { ENGINES, VIEWPORTS } from '../../../packages/kit/probes/probe-lib.mjs';
 import { Report, buildFixture, diffRect, openCase, readRects, reference, round2, serve, showKeys, sleep } from './lib.mjs';
 import { EPS, HEADER_PARTS, LIST_PARTS, OPERATIONS, frames, installSampler } from './shift.mjs';
+import { SORT_VIEWPORTS, perfStage, sortStage } from './sort.mjs';
 import { ABSENT, CHIP_NAMES, CHROME, GAPS } from './targets.mjs';
 
 const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? Object.keys(VIEWPORTS).join(',')).split(',');
-const stages = (process.env.STAGES ?? 'chrome,shift').split(',');
+const stages = (process.env.STAGES ?? 'chrome,shift,sort,perf').split(',');
+const sortViewportNames = (process.env.SORT_VIEWPORTS ?? Object.keys(SORT_VIEWPORTS).join(',')).split(',');
 const QUIET = process.env.QUIET === '1';
 
 const report = new Report();
@@ -235,6 +241,12 @@ for (const engineName of engineNames) {
       if (process.env.AUTOCLEAR !== '0' && viewportName === '1440x900') await refresh(browser, engineName, viewportName, viewport, origin, { clearsItself: true });
       await headers(browser, engineName, viewportName, viewport, origin);
     }
+  }
+
+  for (const viewportName of sortViewportNames) {
+    const viewport = SORT_VIEWPORTS[viewportName];
+    if (stages.includes('sort')) await sortStage(report, browser, engineName, viewportName, viewport, origin);
+    if (stages.includes('perf') && viewportName === '1440x900') await perfStage(report, browser, engineName, viewportName, viewport, origin);
   }
 
   await browser.close();
