@@ -283,7 +283,9 @@ func (c *controller) connectionProfileSource(ctx context.Context, pluginID strin
 // auto-connect. NativeConnections is authoritative; the supplied Load result may
 // already contain the SDK overlay and must never be persisted as desired state.
 func (c *controller) replayConnectionProfiles(ctx context.Context, pluginID string, loaded []types.Connection) ([]types.Connection, error) {
-	c.profilesMu.Lock()
+	if err := c.lockProfilesQuiescent(ctx, pluginID); err != nil {
+		return nil, err
+	}
 	defer c.profilesMu.Unlock()
 	return c.replayConnectionProfilesLocked(ctx, pluginID, loaded)
 }
@@ -528,7 +530,9 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
 	}
 	c.retireConnectionCalls(pluginID, id)
-	c.profilesMu.Lock()
+	if err := c.lockProfilesQuiescent(ctx, pluginID); err != nil {
+		return ConnectionProfileResult{}, err
+	}
 	defer c.profilesMu.Unlock()
 	_, generation, ctx, cleanup, err := c.operationGeneration(ctx, pluginID, resourcev2.AccessRoute{Connection: id})
 	if err != nil {
