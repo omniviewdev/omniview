@@ -14,10 +14,14 @@
 //
 // The controls run the same `checkParity` and pass only when it fails with the expected code, so a check that has gone blind
 // (passing on an empty cluster, a missing plugin or a plugin with no bundle) turns the job red. Run: `node --test scripts/ui-next-pods/pods-cluster.check.mjs`.
+//
+// H6 (plugin PR #272): a connection's ID is derived (`<slug>-<10 hex>`) and differs on every run, because the kubeconfig of the check lives in a temporary directory. The check never writes one down: the first test
+// reads the ID from the host's list of connections and holds the scope lane to the NAME (the context kubectl calls current), lane.mjs.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDetail, checkLogs, checkLogsTwice, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { compareLane } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
@@ -90,6 +94,9 @@ if (mode === 'control-fixture-absent') {
     assert.equal(read.state, 'ready', 'the connection is up and the page lists the Pods');
     assert.equal(read.count, `${String(oracle.length)} Pods`, 'the footer counts the same Pods, the whole set');
     assert.deepEqual(read.filters, expected.filters, 'the quick filters count what kubectl says');
+    // The one assertion about the connection's chip (H6): its text is the NAME of the connection, and not the ID that the host lists for it.
+    const lane = compareLane(read.lane, await expectedLane({ baseURL, kubeconfig }));
+    assert.equal(lane.length, 0, lane.join('; '));
   });
 
   // The runtime's live feed, end to end: a Pod created and deleted with kubectl appears and disappears without a reload.

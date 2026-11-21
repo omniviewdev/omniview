@@ -18,6 +18,7 @@ const run = promisify(execFile);
 //   names     `namespace/name` of every row mounted, sorted (the identity cell's name and its second line)
 //   rowCount  how many rows the table says it holds (`aria-rowcount` less its header); the table mounts only the rows near its window, so a reading is
 //             whole only when `names.length` equals it (`openPods` gives the page a window tall enough to mount every row of the fixture)
+//   lane      the text of the Connection face of the scope lane above the page (`kind-ui-next-pods`), null when the lane has none: a person reads the connection's NAME there (lane.mjs)
 //   status    one line of the above for a failure message
 // PR 1a.2 and 1a.7 changed the page; they changed this function, not the checks around it.
 export async function readPage(page) {
@@ -31,6 +32,12 @@ export async function readPage(page) {
     const status = body?.querySelector('[role=status]') ?? null;
     const message = state === null || state === 'ready' ? '' : read(body?.querySelector('[role=alert]')) || status?.getAttribute('aria-label') || read(status);
     const count = text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) || null;
+    // The shell's scope lane: one face for each scope, drawn `<what>: <value>` (the face's last element holds two spans, the word and the text).
+    const faces = [...document.querySelectorAll('[data-shell-part=lane] [data-shell-part=scopeFace]')].map((face) => ({
+      what: text(face.lastElementChild?.firstElementChild).replace(/:$/, ''),
+      value: text(face.lastElementChild?.lastElementChild),
+    }));
+    const lane = faces.find((face) => face.what === 'Connection')?.value ?? null;
     const table = root?.querySelector('table') ?? null;
     const names = [...(root?.querySelectorAll('tbody tr') ?? [])]
       .map((row) => {
@@ -45,6 +52,7 @@ export async function readPage(page) {
       count,
       filters: [...(root?.querySelectorAll('[data-ov-block=filters] button') ?? [])].map((chip) => text(chip)),
       names,
+      lane,
       rowCount: table === null ? 0 : Number(table.getAttribute('aria-rowcount')) - 1,
       status: `${state ?? 'no page'}${message === '' ? '' : `: ${message}`}${count === null ? '' : ` (${count})`}`,
     };
@@ -449,4 +457,35 @@ async function pressTwice({ browser, baseURL, kubeconfig, timeoutMs = 60_000 }) 
       await page.close().catch(() => undefined);
     }
   }
+}
+
+// The host's own list of the plugin's connections, asked as the page asks (`ServiceWrapper.ListConnections` of the resource service). Since plugin PR #272 a connection's ID is derived from the path of its kubeconfig and
+// the name of its context (`<slug>-<10 hex>`), and the check's kubeconfig lives in a temporary directory: the ID is another one on every run, so it is read here and never written into the check.
+const RESOURCE_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
+const KUBERNETES_PLUGIN_ID = 'kubernetes';
+
+export async function listConnections(baseURL, pluginID = KUBERNETES_PLUGIN_ID) {
+  const response = await fetch(new URL('/wails/runtime', baseURL), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'pods-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `pods-connections-${String(Date.now())}`, methodName: `${RESOURCE_SERVICE}.ListConnections`, args: [pluginID] } }),
+  });
+  if (!response.ok) {
+    throw new Error(`the connections of ${pluginID} could not be listed: ${String(response.status)} ${await response.text()}`);
+  }
+
+  const connections = await response.json();
+  if (!Array.isArray(connections)) {
+    throw new Error(`the connections of ${pluginID} were not a list: ${JSON.stringify(connections).slice(0, 200)}`);
+  }
+
+  return connections;
+}
+
+// What the scope lane's Connection face must say (lane.mjs): the context kubectl calls current, and the ID the host lists for the connection of that context (`data.context` is the exact context name the plugin
+// puts in every connection it lists). The ID is what the lane must not say; it is `undefined` when the host lists no such connection.
+export async function expectedLane({ baseURL, kubeconfig }) {
+  const context = (await kubectl(kubeconfig, ['config', 'current-context'])).trim();
+  const connection = (await listConnections(baseURL)).find((candidate) => candidate?.data?.context === context);
+  return { context, id: connection?.id };
 }
