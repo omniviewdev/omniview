@@ -382,10 +382,15 @@ so uninstalling a reinstalled plugin that never started again treats them alike.
 
 A rolled-back uninstall erases nothing. If the erase fails, or the process dies
 before it ran, the uninstall is incomplete, like one whose disposal stopped half
-way: the plugin stays listed as failed, the recovery marker stays, the ID cannot be
-installed again (a new installation would inherit what was not erased), and
-uninstalling the plugin again, also after a restart, runs the erase again until it
-succeeds. `plugin dev unlink` is the same transaction, so it erases the plugin's
+way: the plugin stays listed as failed and the recovery marker stays. The host then
+finishes the uninstall without anyone asking: at its next start, before any plugin
+loads, the uninstall-recovery pass retries the erase for every marker whose disposal
+had begun (best effort, within a 30 second budget for the whole pass). Success
+removes the marker and leaves no plugin record; failure leaves the plugin failed
+with the class of the cause as its last error, and is retried at the next start and
+by uninstalling the plugin again. Until it has succeeded the ID cannot be installed
+again (a new installation would inherit what was not erased). A marker whose
+disposal had not begun can still be rolled back, so nothing is erased for it. `plugin dev unlink` is the same transaction, so it erases the plugin's
 stored credentials too: linking the plugin again asks for them again.
 
 The erase covers the live settings database. bbolt is copy-on-write and does not
@@ -947,10 +952,50 @@ unsupported rather than fabricated.
 Host configuration changes block affected routes **before** source mutation and
 keep them blocked through durable save and any rollback. Actual endpoint/auth or
 source-membership changes retire captured work; display-only renames preserve
-authority. Serialized start/stop/profile/host-triggered discovery transactions also retire
-the exact native metric lane before mutation and unblock it only after the
-transaction, without calling external hooks under the plugin-state lock.
+authority. Start/stop/profile/host-triggered discovery transactions on one
+connection run one at a time, and a profile or discovery transaction also waits
+for every in-flight start or stop of its plugin. Starts and stops of different
+connections may overlap, and a start or stop does not hold the profile lock
+across its plugin calls. Once a profile or discovery transaction waits for its
+plugin, new starts and stops of that plugin queue behind it until it has run, so
+starts that keep overlapping cannot keep it waiting. Calls already in flight
+finish normally, other plugins are not held back, and the waits for calls and for
+a place in line end with their caller's context (the plain profile lock does not,
+see below). Transactions that wait for one plugin run in the order in
+which they began to wait. Each transaction also retires the exact native metric
+lane before mutation and unblocks it only after the transaction, without calling
+external hooks under the plugin-state lock.
 Rollback never restores a retired authority or old source epoch.
+
+Code that runs inside a provider's start or stop of a connection, such as a
+callback into the host made while the start is in flight, may use reads and
+plain-lock paths only. These return while the call is in flight: the connection
+and state reads (`GetConnection`, `ListConnections`, `ListAllConnections`,
+`GetAllConnectionStates`, `BorrowableConnections`), `ListConnectionProfiles`,
+the catalog and resource reads, and the start or stop of a connection of another
+plugin. The start or stop of another connection of the same plugin returns too,
+with one exception: while a profile or discovery transaction of the plugin
+waits for the call, one whose context is not marked with the call (see below)
+queues behind that transaction, and so waits for the call it is inside. The paths
+below wait for the in-flight calls of the same plugin, so from inside one of
+them they would wait for the call they are inside: `LoadConnections`,
+`SaveConnectionProfile`, `ImportConnectionProfile`, `ResetConnectionProfile`,
+`RemoveConnection`, the connection watch refresh, and `StartConnection` or
+`StopConnection` of the same connection. They fail at once with
+`INVALID_REQUEST` when their context is marked with the call. The host marks the
+context it gives the provider, which is all an in-process provider needs. A
+callback served from the plugin process arrives on a context of its own: the
+server that handles it must mark that context with
+`resource.WithinConnectionCall(ctx, pluginID, connectionID)`, for the plugin it
+serves and the connection the callback was made for, before it calls into the
+controller. Without a mark such a path waits for the in-flight calls until its
+own context ends, and so does a start or stop of another connection of the
+plugin made while a profile or discovery transaction waits for the call. Only
+those waits end with the context. Every start, stop and profile transaction
+first takes `profilesMu` with a plain lock, which waits for its holder whatever
+the caller's context says. The profile transactions, discovery and
+`ListConnectionProfiles` hold that lock across their own plugin calls, so a
+caller whose context has ended returns only after such a call returns.
 
 Graph queries take `(pluginID, reference, route, ...)`, never namespace/name
 tuples. Each returned graph node carries its canonical reference, independent

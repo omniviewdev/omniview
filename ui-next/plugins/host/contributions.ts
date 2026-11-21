@@ -1,6 +1,7 @@
 import { facetsOf, nameOf, titleOf, type DetailPageDefinition } from '../../page';
 import type { Contributions, Description, Route, RouteInput } from '../../shell';
 import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
+import { failureWords } from '../loader/failure';
 import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
 
@@ -97,9 +98,11 @@ export function createContributions({ plugins, frames }: ContributionsDeps): Con
       const scope = connection === undefined ? undefined : { id: connection, label: connection };
       if (entry.phase !== 'ready') {
         // A plugin that is loading has said nothing yet: the stand-in names a tab opened at it, and is never taken for what the plugin says, so a tab restored from a session keeps the face it was
-        // saved with until the plugin registers. A plugin that did not load has said what it is: its tab says so.
+        // saved with until the plugin registers. A plugin that did not load has said what it is: its tab says so, with the error glyph; one that is starting again after a reload is the mock's
+        // starting plugin (ch16 S89, PO1), where nothing failed, and keeps the plugin's own.
         const standIn = entry.phase === 'loading' ? { provisional: true as const } : {};
-        return { title: entry.name, icon: entry.phase === 'failed' ? 'status-error' : 'box', pluginName: entry.name, path: [entry.name], scope, facets: connection === undefined ? [] : [connection], ...standIn };
+        const faulted = entry.phase === 'failed' && failureWords(entry.failure).faulted;
+        return { title: entry.name, icon: faulted ? 'status-error' : 'box', pluginName: entry.name, path: [entry.name], scope, facets: connection === undefined ? [] : [connection], ...standIn };
       }
 
       const { contribution } = entry;
@@ -127,7 +130,16 @@ export function createContributions({ plugins, frames }: ContributionsDeps): Con
         return { state: 'unavailable', reason: 'This plugin is not installed, or is turned off.' };
       }
 
-      return entry.phase === 'ready' ? { state: 'available' } : { state: 'degraded', reason: entry.phase === 'loading' ? 'This plugin is loading.' : 'This plugin did not load.' };
+      if (entry.phase === 'ready') {
+        return { state: 'available' };
+      }
+
+      if (entry.phase === 'loading') {
+        return { state: 'degraded', reason: 'This plugin is loading.' };
+      }
+
+      // A plugin that stopped says why, in the host's words; one whose bundle failed says it did not load.
+      return { state: 'degraded', reason: entry.failure.kind === 'unloaded' ? entry.failure.message : 'This plugin did not load.' };
     },
     complete: (route, { from }) => {
       const entry = entryOf(route.plugin);

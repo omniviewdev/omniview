@@ -118,7 +118,7 @@ func (a *Authority) UpdatePolicy(cfg Config) {
 func (a *Authority) UpdateCatalog(tools []ToolInfo) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if reflect.DeepEqual(a.tools, tools) {
+	if sameCatalog(a.tools, tools) {
 		return
 	}
 	a.catalog++
@@ -142,7 +142,7 @@ func (a *Authority) allowedLocked(c *authorityCall) bool {
 	}
 	found := false
 	for _, t := range a.tools {
-		if reflect.DeepEqual(t, c.tool) {
+		if sameTool(t, c.tool) {
 			found = true
 			break
 		}

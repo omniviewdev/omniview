@@ -124,7 +124,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 
 	// Stop the watcher before unloading so it cannot reload the old source
 	// during the swap. Never trust StartDevServerForPath's existing-ID path.
-	if err = pm.unloadForReinstall(metadata.ID); err != nil {
+	if err = pm.unloadForReinstall(metadata.ID, UnloadReloaded, true); err != nil {
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return info, err
 	}
@@ -236,7 +236,10 @@ func (pm *pluginManager) installOpsLock(id string) *sync.Mutex {
 	return mu
 }
 
-func (pm *pluginManager) unloadForReinstall(pluginID string) error {
+// unloadForReinstall stops the plugin so its files can be replaced or removed, and tells the window why it is gone: `cause` is what the caller is about to do (UnloadUninstalled to remove
+// it, UnloadReloaded to put a new build in its place). A plugin the manager does not hold is not told of: no window holds an interface of it.
+func (pm *pluginManager) unloadForReinstall(pluginID string, cause UnloadCause, tellWindow bool) error {
+	held := pm.holds(pluginID)
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(pluginID)
 	}
@@ -249,6 +252,9 @@ func (pm *pluginManager) unloadForReinstall(pluginID string) error {
 	if err := pm.UnloadPlugin(pluginID); err != nil {
 		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusConflict,
 			"Failed to unload existing plugin").WithInstance(pluginID)
+	}
+	if held && tellWindow {
+		emitUnloaded(pm.emitter, pluginID, cause)
 	}
 	return nil
 }
@@ -543,7 +549,11 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return record.ToInfo(), apperror.Internal(err, "Uninstall recovery path is occupied or changed").WithInstance(id)
 	}
 	info := record.ToInfo()
-	if err = pm.unloadForReinstall(id); err != nil {
+	// The window was told the plugin is gone when this uninstall first unloaded it,
+	// before disposal began. Retrying an uninstall that got that far is not a new
+	// stop, so it unloads without telling the window a second time.
+	tellWindow := recovery == nil || !recovery.cleanupStarted
+	if err = pm.unloadForReinstall(id, UnloadUninstalled, tellWindow); err != nil {
 		// The pre-unload ownership marker remains available for a safe retry.
 		return info, err
 	}

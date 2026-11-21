@@ -13,6 +13,7 @@ import (
 
 func init() {
 	application.RegisterEvent[StateChangePayload](EventStateChange)
+	application.RegisterEvent[UnloadedPayload](EventUnloaded)
 	application.RegisterEvent[*config.PluginMeta](EventInstallStarted)
 	application.RegisterEvent[*config.PluginMeta](EventInstallFinished)
 	application.RegisterEvent[*config.PluginMeta](EventInstallError)
@@ -39,6 +40,10 @@ func init() {
 const (
 	// Lifecycle state changes.
 	EventStateChange = "plugin/state_change"
+
+	// A plugin that was serving the window stopped: its process crashed, it is being reloaded, it was uninstalled or it was turned off. The window drops the interface it drew from the plugin
+	// and learns that the plugin runs again from EventStateChange (To == Running). The payload is the plugin's id and one of four codes (UnloadCause), never text.
+	EventUnloaded = "plugin/unloaded"
 
 	// Install flow.
 	EventInstallStarted  = "plugin/install_started"
@@ -90,6 +95,27 @@ type StateChangePayload struct {
 	Timestamp time.Time             `json:"timestamp"`
 }
 
+// UnloadCause says why a plugin stopped serving the window. It is one of the four words below and nothing else: the window words each for the person itself, so no text of the plugin, of
+// its process or of an error ever travels with the event (docs/development-plugin-lifecycle.md, "What the window is told when a plugin stops").
+type UnloadCause string
+
+const (
+	// UnloadCrashed: the plugin's process ended or stopped answering, and the host is recovering it. Told for every crash, not for the first of a cycle only (EventCrash is).
+	UnloadCrashed UnloadCause = "crashed"
+	// UnloadReloaded: the host stopped the plugin to start it again: a reload (a rebuild of a development plugin, a retry), an update or a reinstall, or the restart that recovers a crash.
+	UnloadReloaded UnloadCause = "reloaded"
+	// UnloadUninstalled: the plugin was removed.
+	UnloadUninstalled UnloadCause = "uninstalled"
+	// UnloadDisabled: the person turned the plugin off.
+	UnloadDisabled UnloadCause = "disabled"
+)
+
+// UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. It has no other member, and a member that carried text would put the plugin's words in the window's hands.
+type UnloadedPayload struct {
+	PluginID string      `json:"pluginID"`
+	Cause    UnloadCause `json:"cause"`
+}
+
 // PluginErrorPayload is sent with EventCrash, EventCrashRecoveryFailed and
 // EventRecovered (which leaves Error empty).
 type PluginErrorPayload struct {
@@ -134,4 +160,12 @@ func emitStateChange(emitter resource.EventEmitter, pluginID string, t lifecycle
 		Reason:    t.Reason,
 		Timestamp: t.Timestamp,
 	})
+}
+
+// emitUnloaded tells the window that a plugin it may hold an interface of stopped serving it, and why.
+func emitUnloaded(emitter resource.EventEmitter, pluginID string, cause UnloadCause) {
+	if emitter == nil {
+		return
+	}
+	emitter.Emit(EventUnloaded, UnloadedPayload{PluginID: pluginID, Cause: cause})
 }

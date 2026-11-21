@@ -48,7 +48,7 @@ const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const failures = [];
-const report = { geometry: {}, shift: {}, paint: {}, card: {}, facts: {}, keyboard: {}, a11y: {}, drag: {}, late: {}, keep: {}, held: {}, notes: [] };
+const report = { geometry: {}, shift: {}, paint: {}, card: {}, facts: {}, keyboard: {}, a11y: {}, drag: {}, late: {}, keep: {}, held: {}, twins: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 
 const fixtureUrl = (origin, query = '') => `${origin}/shell/probes/fixture.html?case=panel${query === '' ? '' : `&${query}`}`;
@@ -234,19 +234,32 @@ const OPEN = ({ names, states = [], settle = 600 }) => {
 
 const names = (count) => Array.from({ length: count }, (_, i) => `session-${String(i + 1).padStart(2, '0')}`);
 
+/**
+ * The sessions of the twins scenarios, in the host's Logs tool of the fixture: one title (`cart-api`) in each scope given, opened by acme in the state given (the mock's measurement opens the same three, ended by Stop:
+ * mock-panel-measure.mjs, scenario `twins`).
+ */
+const TWINS_SETUP = ({ scopes, state = 'running' }) => {
+  const store = window.__panel;
+  store.syncPlugins([{ id: 'acme', tools: [] }]);
+  scopes.forEach((scope, index) => {
+    store.openSession({ id: `t${String(index + 1)}`, tool: 'logs', plugin: 'acme', title: 'cart-api', scope, state, ...(state === 'ended' ? { cause: 'The stream closed.' } : {}) });
+  });
+};
+
 /** Each scenario in a fresh page, with the mock's font; returns the reading. */
 async function scenario(browser, viewport, origin, name) {
   const { page, context, errors } = await open(browser, fixtureUrl(origin), viewport);
   await normalizeFont(page, { rootVar: '--ov-font-ui' });
   await sleep(250);
   if (name !== 'hidden') {
-    await page.evaluate(() => {
-      window.__panel.show({ tool: 'terminal' });
-    });
+    await page.evaluate((tool) => {
+      window.__panel.show({ tool });
+    }, name === 'twins' ? 'logs' : 'terminal');
     await sleep(350);
   }
   if (name === 'sessions') await page.evaluate(OPEN, { names: ['zsh', 'bash', 'build-runner-7d8c6f49b-f8q4m'] });
   if (name === 'states') await page.evaluate(OPEN, { names: ['alpha', 'beta', 'gamma'], states: ['running', 'ended', 'failed'] });
+  if (name === 'twins') await page.evaluate(TWINS_SETUP, { scopes: ['north-yard', 'south-yard', 'north-yard'], state: 'ended' });
   if (name === 'many') {
     await page.evaluate(OPEN, { names: names(14), settle: 900 });
     // The shell shows the tab that was selected (it scrolls it into view); the mock leaves the strip at its start. The probe puts the strip at its start to read both alike.
@@ -271,6 +284,147 @@ async function geometry(browser, engine, viewportName, viewport, origin) {
     if (SHOTS && name === 'sessions') await page.screenshot({ path: path.join(SHOTS, `panel-${engine}-${viewportName}.png`) });
     await context.close();
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// The scope of a session tab (P1b-3d, TI1; the mock's `labelParts`, shell-panel.js:207-221): drawn ONLY when two open sessions of the tool share a title and have another scope. Two readings.
+//   twins        against the mock: three sessions of one title (`cart-api`, scopes north-yard, south-yard, north-yard), all ended, the Logs tool on screen: every tab and every part of it (the scope among them, and the
+//                third's ordinal, which the mock draws in the tail) within 1 px of the mock's, and the words each part says (mock-panel-measure.mjs, scenario `twins`: ui-next/shell/probes/mock-panel.json)
+//   twin-rules   the rule on the shell's own markup, in one window: a session alone draws no scope, and its name is its title; a second of another scope makes both draw theirs, with the name and the scope kept
+//                apart in the DOM by a space the layout does not draw; a third of the first scope is told by its ordinal; the names of the tabs are never alike; and when the twins close the tab that is left draws none
+
+/** What a tab draws, as a tool reads it: the name it carries, the text the DOM holds (parts joined as the DOM joins them) and the words of its scope part, `null` when it has none. */
+const TABS = () =>
+  [...document.querySelectorAll('[data-shell-part="sessionTab"]')].map((item) => {
+    const tab = item.querySelector('[role=tab]');
+    const scope = item.querySelector('[data-shell-part="sessionScope"]');
+    return { id: item.getAttribute('data-tab-id'), name: tab?.getAttribute('aria-label') ?? null, text: tab?.textContent ?? null, scope: scope === null ? null : scope.textContent };
+  });
+
+/** The words each part of a tab says, for the tabs' text to be compared with the mock's (the mock's `texts`). */
+const TAB_WORDS = () =>
+  [...document.querySelectorAll('[data-shell-part="sessionTab"]')].map((item) => {
+    const words = (name) => item.querySelector(`[data-shell-part="${name}"]`)?.textContent ?? null;
+    return { head: words('sessionHead'), tail: words('sessionTail'), scope: words('sessionScope') };
+  });
+
+/** Each tab of the shell against the mock's, part by part, within 1 px. Returns the largest difference. */
+function compareTabs(mockItems, shellItems, where, tolerance = 1) {
+  let worst = 0;
+  if (shellItems.length !== mockItems.length) fail(`twins ${where}`, `${shellItems.length} tabs, the mock draws ${mockItems.length}`);
+  mockItems.forEach((item, index) => {
+    const got = shellItems[index];
+    if (got === undefined) return;
+    const name = `session ${String(index + 1)}`;
+    for (const key of ['item', 'tab', 'lead', 'leadSvg', 'label', 'head', 'tail', 'scope', 'close', 'closeSvg']) {
+      const a = item[key];
+      const b = got[key];
+      if (a === null && b !== null) fail(`twins ${where}`, `${name} ${key}: the shell draws one, the mock's has none`);
+      else if (a !== null && b === null) fail(`twins ${where}`, `${name} ${key}: the shell does not draw it`);
+      else if (a !== null) {
+        for (const k of [0, 1, 2, 3]) {
+          const d = Math.round(Math.abs(a[k] - b[k]) * 100) / 100;
+          worst = Math.max(worst, d);
+          if (d > tolerance) fail(`twins ${where}`, `${name} ${key}[${'xywh'[k]}]: mock ${a[k]} shell ${b[k]} (off by ${d})`);
+        }
+      }
+    }
+
+    if (item.state !== got.state) fail(`twins ${where}`, `${name} state: mock ${item.state} shell ${got.state}`);
+    if (item.selected !== got.selected) fail(`twins ${where}`, `${name} selected: mock ${String(item.selected)} shell ${String(got.selected)}`);
+  });
+  return worst;
+}
+
+async function twins(browser, engine, viewportName, viewport, origin) {
+  const where = `${engine} ${viewportName}`;
+  const { page, context, errors, reading } = await scenario(browser, viewport, origin, 'twins');
+  const mock = reference.data[engine][viewportName].twins;
+  if (mock === undefined) fail(`twins ${where}`, 'the pinned reference has no `twins` scenario (mock-panel-measure.mjs, SCENARIO=twins)');
+  else {
+    const worst = compareTabs(mock.sessions.items, reading.sessions.items, where);
+    const words = await page.evaluate(TAB_WORDS);
+    mock.sessions.items.forEach((item, index) => {
+      for (const part of ['head', 'tail', 'scope']) {
+        const said = item.texts?.[part] ?? null;
+        if (said !== ((words[index]?.[part] ?? null)?.trim() ?? null)) fail(`twins ${where}`, `session ${String(index + 1)} ${part} says ${JSON.stringify(words[index]?.[part] ?? null)}, the mock's says ${JSON.stringify(said)}`);
+      }
+    });
+    report.twins[where] = { worst, tabs: reading.sessions.items.map((item) => item.item), words };
+  }
+  if (SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(SHOTS, `twins-${engine}-${viewportName}.png`) });
+  for (const error of errors) fail(`errors twins ${where}`, error);
+  await context.close();
+}
+
+async function twinRules(browser, engine, viewportName, viewport, origin) {
+  const where = `twin-rules ${engine} ${viewportName}`;
+  const { page, context, errors } = await open(browser, fixtureUrl(origin), viewport);
+  await sleep(250);
+  await page.evaluate(() => {
+    window.__panel.syncPlugins([{ id: 'acme', tools: [] }]);
+    window.__panel.show({ tool: 'logs' });
+  });
+  const add = (id, scope) =>
+    page.evaluate(({ id, scope }) => {
+      window.__panel.openSession({ id, tool: 'logs', plugin: 'acme', title: 'cart-api', scope, state: 'running' });
+    }, { id, scope });
+  const read = async () => {
+    await sleep(300);
+    return page.evaluate(TABS);
+  };
+  const same = (label, got, wanted) => {
+    if (JSON.stringify(got) !== JSON.stringify(wanted)) fail(where, `${label}: ${JSON.stringify(got)}, wanted ${JSON.stringify(wanted)}`);
+  };
+  const unique = (label, tabs) => {
+    const names = tabs.map((tab) => tab.name);
+    if (new Set(names).size !== names.length) fail(where, `${label}: two tabs are named alike: ${JSON.stringify(names)}`);
+  };
+  const names = (tabs) => tabs.map((tab) => tab.name);
+  // The tab a scope check is about must be there, and be the one: a page that drew no tab, or another, fails in words of its own and never with the scope failure a control waits for (CodeRabbit, #609: a control that
+  // fakes a scope part has nothing to put it into when no tab was drawn, and was taken for detected).
+  const only = (label, tabs, id) => {
+    if (tabs.length === 1 && tabs[0]?.id === id) return true;
+    fail(where, `${label}: the strip holds ${JSON.stringify(tabs.map((tab) => tab.id))}, wanted the one tab ${id}`);
+    return false;
+  };
+  // The control's perturbation: a scope part the shell did not draw, put into the tab the page has.
+  const fakeScope = () => page.evaluate(() => document.querySelector('[data-shell-part="sessionLabel"]')?.insertAdjacentHTML('beforeend', '<span data-shell-part="sessionScope">north-yard</span>'));
+
+  await add('t1', 'north-yard');
+  if (CONTROL === 'twin-lone-scope') await fakeScope();
+  let tabs = await read();
+  if (only('a session with no twin', tabs, 't1') && tabs[0].scope !== null) fail(where, `a session with no twin draws a scope: ${JSON.stringify(tabs)}`);
+  same('the name of a session with no twin: its title, not its scope', names(tabs), ['cart-api']);
+  if (SHOTS && engine === 'webkit') await page.screenshot({ path: path.join(SHOTS, `twins-one-${engine}-${viewportName}.png`) });
+
+  await add('t2', 'south-yard');
+  tabs = await read();
+  same('the scope each tab of two twins draws', tabs.map((tab) => tab.scope), ['north-yard', 'south-yard']);
+  same('the names of two twins', names(tabs), ['cart-api · north-yard', 'cart-api · south-yard']);
+  same('the text each of two twins draws: the name and the scope kept apart by a space the layout does not draw', tabs.map((tab) => tab.text), ['cart-api north-yard', 'cart-api south-yard']);
+  unique('two twins', tabs);
+
+  await add('t3', 'north-yard');
+  tabs = await read();
+  same('the names of three: the third is a twin of the first and is told by its ordinal', names(tabs), ['cart-api · north-yard', 'cart-api · south-yard', 'cart-api (2) · north-yard']);
+  unique('three', tabs);
+
+  await page.evaluate(() => {
+    window.__panel.closeSession('t3');
+  });
+  tabs = await read();
+  same('the names once the third has closed', names(tabs), ['cart-api · north-yard', 'cart-api · south-yard']);
+  await page.evaluate(() => {
+    window.__panel.closeSession('t2');
+  });
+  if (CONTROL === 'twin-scope-kept') await fakeScope();
+  tabs = await read();
+  if (only('the tab that is left once its twin has closed', tabs, 't1') && tabs[0].scope !== null) fail(where, `the tab that is left draws a scope once its twin has closed: ${JSON.stringify(tabs)}`);
+  same('the name of the tab that is left', names(tabs), ['cart-api']);
+  report.twins[where] = { names: names(tabs) };
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -695,7 +849,7 @@ const FACTS_KNOWN = [
   'the panel header is not a group of its own: it would repeat the name of the region it sits in',
   'the `+` is not in a group and there is no `▾` beside it (the targets menu is not built)',
   'the trailing actions are a group "Panel actions" (the kit\'s roving group), not a toolbar, and have only Hide (maximize and options are not built), so Hide is the stop',
-  'a session tab is named by its title and scope, and by its state when it is not running ("stream-beta, ended"); the mock adds the target\'s detail and says "running" too',
+  'a session tab is named by the words it draws (its title, an ordinal, and its scope only when it tells twins apart) and by its state when it is not running ("stream-beta, ended"); the mock adds the target\'s detail and says "running" too',
   'the panel is labelled by the session on screen, by the tool when it has none; the mock labels it by the tool',
   'the close control of a session is hidden from the accessibility tree, as the document tab\'s is: the keyboard closes a session with Delete (the mock names it "Terminate session: ...")',
 ];
@@ -920,6 +1074,19 @@ async function a11y(browser, engine, viewportName, viewport, origin, axe) {
   const cases = [
     ['closed', async () => undefined],
     [
+      'the Logs tool, open, with two sessions of one title in two scopes (each tab draws its scope: P1b-3d, the finding of P1b-3c)',
+      async (page) => {
+        await page.evaluate(TWINS_SETUP, { scopes: ['north-yard', 'south-yard'] });
+        await page.evaluate(() => window.__panel.show({ tool: 'logs' }));
+        // The control `scope-name`: the name of each tab leaves out the scope the tab draws, which axe's `label-content-name-mismatch` must see.
+        if (CONTROL === 'scope-name') {
+          await page.evaluate(() => {
+            for (const tab of document.querySelectorAll('[data-shell-part="sessionTab"] [role=tab]')) tab.setAttribute('aria-label', 'cart-api');
+          });
+        }
+      },
+    ],
+    [
       'open, with three sessions',
       async (page) => {
         await page.evaluate(OPEN, { names: ['zsh', 'bash', 'fish'] });
@@ -955,9 +1122,8 @@ async function a11y(browser, engine, viewportName, viewport, origin, axe) {
     [
       'with the card of a held session open, its plugin off (A21)',
       async (page) => {
-        // No scope: a session tab with one fails axe's `label-content-name-mismatch` (its name has a middle dot the visible text has not), in every state and since the panel was built; the Logs tool's tabs
-        // always have one. That is not this step's to settle (docs/ui-next/status/P1b-3c.md, "Found"), so the case is about the card.
-        await page.evaluate(HELD_SETUP, { scope: '' });
+        // The held session's tab draws no scope (it has no twin), so this case is about the card; the tab that draws a scope has its own case above (P1b-3d fixed the finding of P1b-3c there).
+        await page.evaluate(HELD_SETUP);
         await page.evaluate(() => window.__panel.syncPlugins([]));
         await sleep(600);
         const box = await page.locator('[data-shell-part="sessionTab"][data-tab-id="kept"] [role=tab]').boundingBox();
@@ -1283,7 +1449,7 @@ async function held(browser, engine, viewportName, viewport, origin) {
   if (ids(after) !== 'kept,done,mine') fail(where, `after the unload the strip draws ${ids(after)}, wanted kept,done,mine (every session of the host's tool stays)`);
   const done1 = after.items.find((item) => item.id === 'done');
   if (done1 === undefined || done1.rect === null) fail(where, `the tab of the session that had ended on its own is not in the strip (strip: ${ids(after)}): it stays where a person can see and choose it`);
-  if (done1?.state !== 'ended' || done1.name !== 'orders-api/migrate · north, ended') fail(where, `the session that had ended on its own is ${JSON.stringify(done1?.name)} (${String(done1?.state)}) after the unload, wanted it as it was: "orders-api/migrate · north, ended"`);
+  if (done1?.state !== 'ended' || done1.name !== 'orders-api/migrate, ended') fail(where, `the session that had ended on its own is ${JSON.stringify(done1?.name)} (${String(done1?.state)}) after the unload, wanted it as it was: "orders-api/migrate, ended"`);
   // The negative control that hides the held tab has nothing to hover, focus or close: it ends here, with its own check made.
   if (CONTROL === 'held-hidden') {
     await context.close();
@@ -1292,7 +1458,7 @@ async function held(browser, engine, viewportName, viewport, origin) {
   // (2) It says it ended, in the strip and to a screen reader, and is still the one on screen.
   if (kept1 !== undefined) {
     if (kept1.state !== 'ended') fail(where, `the held session's lead says ${kept1.state}, wanted ended`);
-    if (kept1.name !== 'orders-api/app · north, ended') fail(where, `the held session's tab is named ${JSON.stringify(kept1.name)}, wanted "orders-api/app · north, ended"`);
+    if (kept1.name !== 'orders-api/app, ended') fail(where, `the held session's tab is named ${JSON.stringify(kept1.name)}, wanted "orders-api/app, ended"`);
     if (!kept1.selected) fail(where, 'the held session is no longer the one on screen: a session that stays does not give its place to another');
     // (3) Nothing about its tab moved: the ended glyph is the same size as the tool's, and the label stays where it was.
     for (const key of ['rect', ...Object.keys(kept0.parts)]) {
@@ -1390,7 +1556,7 @@ async function held(browser, engine, viewportName, viewport, origin) {
   const twins = await page.evaluate(HELD);
   if (ids(twins) !== 'kept,done,mine,again') fail(where, `with a second press the strip draws ${ids(twins)}, wanted kept,done,mine,again`);
   if (twins.items.find((item) => item.id === 'kept')?.state !== 'ended') fail(where, 'a new press changed the held session');
-  if (twins.items.find((item) => item.id === 'again')?.name !== 'orders-api/app (2) · north') fail(where, `the new session is named ${JSON.stringify(twins.items.find((item) => item.id === 'again')?.name)}, wanted "orders-api/app (2) · north"`);
+  if (twins.items.find((item) => item.id === 'again')?.name !== 'orders-api/app (2)') fail(where, `the new session is named ${JSON.stringify(twins.items.find((item) => item.id === 'again')?.name)}, wanted "orders-api/app (2)"`);
   await page.locator(tab).focus();
   await page.keyboard.press('Delete');
   await sleep(600);
@@ -1417,6 +1583,12 @@ const PERTURBATIONS = {
   'held-done-hidden': { css: '[data-shell-part="sessionTab"][data-tab-id="done"] { display: none !important; }', sections: ['held'], expected: /^held .*: the tab of the session that had ended on its own is not in the strip/ },
   'held-moved': { css: '[data-shell-part="sessionLead"][data-state="ended"] { margin-inline-end: 3px !important; }', sections: ['held'], expected: /^held .*: the held tab's (rect|lead|label|head|tail|scope|close) moved by/ },
   'held-enabled': { sections: ['held'], expected: /^held .*: the button ".*" is not unavailable while the plugin is off/ },
+  // P1b-3d, the scope of a session tab (TI1): the twins' scope part is 3 px off the mock's; a tab with no twin draws a scope; the tab that is left when its twin closes still draws one; the name of a scoped tab
+  // leaves its scope out, which axe's `label-content-name-mismatch` must see (the finding of P1b-3c). Each trips only its own check.
+  'twin-moved': { css: '[data-shell-part="sessionScope"] { margin-inline-start: 3px !important; }', sections: ['twins'], expected: /^twins .*: session \d (item|tab|label|scope)\[/ },
+  'twin-lone-scope': { sections: ['twin-rules'], expected: /^twin-rules .*: a session with no twin draws a scope/ },
+  'twin-scope-kept': { sections: ['twin-rules'], expected: /^twin-rules .*: the tab that is left draws a scope/ },
+  'scope-name': { sections: ['a11y'], expected: /^a11y .*: label-content-name-mismatch/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
@@ -1434,6 +1606,9 @@ for (const engineName of engineNames) {
     if (wants('geometry')) await geometry(browser, engineName, viewportName, viewport, production.origin);
     if (wants('shift')) await shift(browser, engineName, viewportName, viewport, production.origin);
     if (wants('held')) await held(browser, engineName, viewportName, viewport, production.origin);
+    if (wants('twins')) await twins(browser, engineName, viewportName, viewport, production.origin);
+    if (wants('twin-rules')) await twinRules(browser, engineName, viewportName, viewport, production.origin);
+    if (CONTROL !== '' && wants('a11y')) await a11y(browser, engineName, viewportName, viewport, production.origin, axe);
     if (CONTROL === '') {
       await card(browser, engineName, viewportName, viewport, production.origin);
       await paint(browser, engineName, viewportName, viewport, production.origin);

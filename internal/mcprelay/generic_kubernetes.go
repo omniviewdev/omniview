@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -92,7 +91,7 @@ func genericKubernetesOperationFor(t ToolInfo) (genericKubernetesOperation, bool
 		return genericKubernetesOperation{}, false
 	}
 	for i, expected := range genericKubernetesExpected {
-		if reflect.DeepEqual(t, expected) {
+		if sameTool(t, expected) {
 			return genericKubernetesOperation{group: genericKubernetesGroups[i]}, true
 		}
 	}

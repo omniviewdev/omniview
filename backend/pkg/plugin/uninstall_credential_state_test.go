@@ -142,15 +142,19 @@ func newCredentialFixtureOver(t *testing.T, svc *appstate.Service, dbPath string
 
 // restart simulates a host restart over the same state: the old store is
 // closed, the state service and the settings database are opened again, a new
-// manager starts over them, and Initialize runs. Whatever the old manager held
-// in memory is gone.
-func (f *credentialFixture) restart(t *testing.T) *credentialFixture {
+// manager starts over them, and Initialize runs, which finishes a pending
+// uninstall by itself. customize runs before Initialize. Whatever the old manager
+// held in memory is gone.
+func (f *credentialFixture) restart(t *testing.T, customize ...func(*credentialFixture)) *credentialFixture {
 	t.Helper()
 	require.NoError(t, f.store.Close())
 	svc, err := appstate.New(appstate.WithRoot(f.svc.Root()), appstate.WithFlock(false))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, svc.Close()) })
 	next := newCredentialFixtureOver(t, svc, f.dbPath)
+	for _, apply := range customize {
+		apply(next)
+	}
 	require.NoError(t, next.pm.Initialize(context.Background()))
 	return next
 }

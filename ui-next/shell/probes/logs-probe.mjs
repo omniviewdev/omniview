@@ -1,5 +1,5 @@
 // Probes the host's Logs tool in WebKit and Chromium at 1440 x 900 and 1280 x 800 (P1b-3a, decision A15), on the host fixture (host-fixture.tsx `?logs=1&panel=1`: the product's own `PluginHost`
-// around invented plugins; the fixture plugin's four Logs sessions are opened through the `ctx.panel` a page was given, as a plugin's command does).
+// around invented plugins; the fixture plugin's seven Logs sessions are opened through the `ctx.panel` a page was given, as a plugin's command does).
 //
 //   node ui-next/shell/probes/logs-probe.mjs      builds the fixtures (OMNIVIEW_UI=next: production, and React's development build for the commit counts), serves them, probes them
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)      REPORT=<file>   the full report as JSON      FONT_DELAY_MS=40   as a runner serves fonts
@@ -35,16 +35,33 @@
 // NEGATIVE_CONTROL=kept-leak      every listener ever added to a Set is kept, which keeps the model of the view of a session after its tab closed (Chromium, the `memory` section only): the probe must fail its check that the
 //                                 heap fell back after the tab closed
 // NEGATIVE_CONTROL=close-twice    the count of the calls to the first feed's close is one more just before the check that close was asked of each feed once (the `kept` section only): `closed` counts a feed once, so only
-//                                 the calls themselves show a stream closed twice
-// NEGATIVE_CONTROL=kept-lines     the number of the oldest line of the first session's view is not the one the page drew, just before the check that the lines a view had are the ones it has (the `kept` section only)
+//                                 the calls themselves show a stream closed twice. The calls are read before the raise and must be one each: any other baseline fails a check of its own and is no detection
+// NEGATIVE_CONTROL=kept-lines     the number of the oldest line of the first session's view is not the one the page drew, just before the check that the lines a view had are the ones it has (the `kept` section only); a view that
+//                                 drew no line fails a check of its own, which this control does not look for
+// NEGATIVE_CONTROL=second-stream  one more stream is counted opened just before the check that `app` pressed twice opened ONE stream (the `identity` section only): the probe must fail that check. The count is read before the raise and must be
+//                                 one: any other baseline fails a check of its own and is no detection (a probe that was already failing). The other counters have a check of their own, and a page that opened no stream a failure of its own
+// NEGATIVE_CONTROL=lone-scope     a scope part is put into the label of the tab of the session (found by its id) just before the check that a lone session's tab draws none (the `identity` section only); the name of the tab stays, so only
+//                                 that check sees it, and a strip that has no such tab fails a check of its own (the strip holds the tab of the session and no other), which this control does not look for
+// NEGATIVE_CONTROL=same-name      the tab of the new session beside an ended one is given the ended tab's name just before the check that no two tabs share a name (the `identity` section only)
+// NEGATIVE_CONTROL=axe-name       the name of each tab that draws a scope is its title only, just before axe runs (the `a11y` section only): axe's `label-content-name-mismatch` must be reported for the case of the two scoped tabs
+// NEGATIVE_CONTROL=over-lines     the text of the oldest line of the ended session's view is another line's, under the same tab, just before the check that the view still shows that line as it was (the `identity` section only): the
+//                                 count of its rows is the same, so only the check of the line itself sees it
 //
 // Sections added for A21 (a plugin's unload keeps its sessions of the host's Logs tool): `kept` (both engines: the tabs, the views, the streams closed once, the cards, the new press, the four tabs closed) and `memory`
 // (Chromium: a session fills the view to its bound, the plugin is unloaded, the tab is closed, and after a forced garbage collection the heap has fallen back; WebKit has no heap counter to drive: `kept` is its check).
+//
+// Sections added for A22 (a Logs session is its plugin and its target, P1b-3d, on the host fixture): `identity` (both engines, one window: `app` pressed twice is one session, one tab that draws no scope and one stream; pressed again with the
+// panel hidden and with another tool on screen it shows the session and the page's focus stays where it was; its twin in the south yard is a second session whose tab and `app`'s draw their scope, and the tab left loses its scope when the twin
+// closes; a session that has ended, and one that has failed, get a new session beside them, named apart, with the old stream not closed and the old view not emptied (its rows counted, and its oldest line read again, by its number and
+// its text, under the old tab, chosen by its id); a third press shows the live one (the stream of the new session is held live by the fixture, `hold`, so that a slow page cannot end it before that press, and the probe ends it itself,
+// `endHeld`); closing every tab closes each stream once)
+// and `a11y` (both engines: axe-core on the host fixture with the Logs tool open and the real log view under it, in three states: one session, two scoped twins, an ended session beside the new one its press opened; a serious or critical
+// finding fails, a moderate one is a note in the report).
 // SECTIONS=kept,memory runs only those sections (a draft run); a name that is no section, or a section that ran in no engine (`memory` measures in Chromium only), fails the run.
 // Exit code 1 when anything differs.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
-import { NATIVE_VIEWPORTS, SAMPLER, buildFixtures, open, serveFixtures, sleep } from './harness.mjs';
+import { AXE, NATIVE_VIEWPORTS, SAMPLER, buildFixtures, open, serveFixtures, sleep } from './harness.mjs';
 
 // The negative control: one perturbation of what the page does after it loaded, which the probe must see. With NEGATIVE_CONTROL the exit code is 0 when it did.
 const PERTURBATIONS = {
@@ -53,16 +70,26 @@ const PERTURBATIONS = {
   'column-moves': { sections: ['appears'], expected: /^appears .*: the list scrolled/ },
   // A21: every listener ever added to a Set is kept for good, which keeps the view's model (its listeners close over it) after its tab closed: the heap must not be seen to fall (Chromium, the `memory` section).
   'kept-leak': { sections: ['memory'], expected: /^memory .*: the heap kept/ },
-  // A21: a stream closed twice, which the count of closed feeds does not see (it counts a feed once): the calls to close are counted, and the page says one more.
+  // A21: a stream closed twice, which the count of closed feeds does not see (it counts a feed once): the calls to close are counted, and the page says one more. The calls are read first and must be one each (see `second-stream`).
   'close-twice': { sections: ['kept'], expected: /^kept .*: after the unload: close was asked of each feed once/ },
   // A21: the lines a held view shows are the ones it had, not only as many: the oldest line's number is changed in the page.
   'kept-lines': { sections: ['kept'], expected: /^kept .*: the oldest line of app was/ },
+  // A22: a press of a command whose session is open starts no second stream (the count of feeds opened is one more, as if it had), a lone session's tab draws no scope (a scope part is put into its label), the tab of a new session
+  // beside an ended one has the ended tab's name (no two tabs share a name; the check of the two names beside it sees it too), the old view of an ended session shows another line under its tab (its rows are as many), and the name of
+  // a tab that draws a scope leaves its scope out (axe's `label-content-name-mismatch`). Each is made in the page right before the check it is named for and undone right after, and each is for ONE check: a page that lacks what a
+  // control changes (no tab of the session, no count of feeds, no row) fails a check of its own, with a message the control's line does not match, so a page that rendered nothing is no detection. A control that raises a count reads it
+  // first (`second-stream`, and `close-twice` above): a baseline that is not what an unperturbed probe sees is a failure of its own too, so a probe that was already failing is no detection either.
+  'second-stream': { sections: ['identity'], expected: /^identity .*: pressed twice: one stream was opened/ },
+  'lone-scope': { sections: ['identity'], expected: /^identity .*: pressed twice: the lone tab draws no scope part/ },
+  'same-name': { sections: ['identity'], expected: /^identity .*: an ended session pressed again: no two tabs share a name/ },
+  'axe-name': { sections: ['a11y'], expected: /^a11y .*: the Logs tool, open, two sessions of one title in two scopes .*: label-content-name-mismatch/ },
+  'over-lines': { sections: ['identity'], expected: /^identity .*: an ended session pressed again: its view still shows line \d+ as it was/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
 // SECTIONS=kept,memory runs only those sections (a draft run: the exit code says nothing of the others). A name that is no section is an error before a browser starts, and a section that ran in no engine (`memory`
 // measures the heap in Chromium only, so SECTIONS=memory ENGINES=webkit ran nothing) fails the run: a draft that proved nothing does not pass.
-const SECTION_NAMES = ['fills', 'sources', 'appears', 'hidden', 'kept', 'memory'];
+const SECTION_NAMES = ['fills', 'sources', 'appears', 'hidden', 'kept', 'identity', 'a11y', 'memory'];
 const ONLY = (process.env.SECTIONS ?? '').split(',').filter(Boolean);
 for (const name of ONLY) if (!SECTION_NAMES.includes(name)) throw new Error(`SECTIONS names ${name}, which is no section of this probe: ${SECTION_NAMES.join(', ')}`);
 /** The sections that really ran, in at least one engine. */
@@ -71,7 +98,7 @@ const wants = (section) => (CONTROL === '' ? ONLY.length === 0 || ONLY.includes(
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(NATIVE_VIEWPORTS).join(',') : '1440x900')).split(',');
 const failures = [];
-const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, kept: {}, memory: {}, notes: [] };
+const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, kept: {}, identity: {}, a11y: {}, memory: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 const url = (origin) => `${origin}/shell/probes/host-fixture.html?logs=1&panel=1&inventoryMs=30&loadMs=30&nodesMs=30&dataMs=30`;
 
@@ -128,6 +155,49 @@ const rect = (selector) => `(() => { const el = document.querySelector('${select
 const ready = (page) => page.waitForFunction(() => window.__logs?.ready() === true && window.__panel !== undefined, null, { timeout: 15000 });
 const rowcount = (page) => page.evaluate(() => Number(document.querySelector('[data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0));
 const counters = (page) => page.evaluate(() => ({ ...window.__fixtureLogs }));
+
+/** Waits for a condition in the page. False when it did not come in time: the check that follows says what is wrong, where a timeout's stack would not. */
+const until = (page, condition, arg, timeout = 10000) => page.waitForFunction(condition, arg, { timeout }).then(() => true, () => false);
+
+/**
+ * The oldest line the view of a session shows, read in the page: its list scrolled to the top and the first row read two frames later, by its number and its text. `perturb` is a control's one change, made right before the row is
+ * read: `number` (the control `kept-lines`: the row's number is not the one the page drew, and stays so) or `text` (the control `over-lines`: the row says another line, and says its own words again right after the read).
+ */
+const READ_OLDEST = ({ id, perturb }) => new Promise((resolve) => {
+  const grid = document.querySelector(`[data-log-session="${id}"] [role=grid]`);
+  grid.scrollTop = 0;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const row = grid.querySelector('[role=row][data-n]');
+      if (row !== null && perturb === 'number') row.setAttribute('data-n', `${row.getAttribute('data-n')}0`);
+      const cell = row !== null && perturb === 'text' ? row.querySelector('[role=gridcell]:last-child') : null;
+      const words = cell === null ? [] : [...cell.childNodes];
+      if (cell !== null) cell.replaceChildren('another line');
+      const line = row === null ? null : { n: row.getAttribute('data-n'), text: row.textContent.replace(/\s+/g, ' ').trim() };
+      if (cell !== null) cell.replaceChildren(...words);
+      resolve(line);
+    });
+  });
+});
+
+/**
+ * The oldest line a session's view shows, read by its number and its text (A21's `kept`, A22's `identity`): the session's tab is chosen by its id and the line is read once the view is drawn. A count of rows would pass for a view that
+ * never had a line, or lost its lines and gained as many. `null` when the tab could not be chosen or no row was drawn in time: what that means is the caller's check, with a message of its own.
+ */
+async function oldestLine(page, id, perturb) {
+  const chosen = await page.locator(`[data-shell-part="sessionTab"][data-tab-id="${id}"] [role=tab]`).click({ timeout: 15000 }).then(() => true, () => false);
+  const drawn = chosen && (await until(page, (one) => {
+    const grid = document.querySelector(`[data-log-session="${one}"] [role=grid]`);
+    return grid !== null && grid.getClientRects().length > 0 && grid.querySelector('[role=row][data-n]') !== null;
+  }, id, 15000));
+  if (!drawn) return null;
+  const line = await page.evaluate(READ_OLDEST, { id, perturb });
+  // The click gave the tab the focus: it is taken off, so that the card the check opens later is the one a pointer alone opens, as when no tab was chosen first.
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  return line;
+}
 
 async function fills(browser, engine, viewportName, viewport, origin) {
   const where = `fills ${engine} ${viewportName}`;
@@ -240,33 +310,8 @@ async function kept(browser, engine, viewportName, viewport, origin) {
   };
   const before = await sessions();
   const ids = Object.fromEntries(Object.entries(before).map(([name, one]) => [name, one.id]));
-  /**
-   * The oldest line a session's view shows, read by its number and its text: the session's tab is chosen, its list scrolled to the top and the first row read once it is drawn. A count of rows would pass for a view
-   * that never had a line, or lost its lines and gained as many. `change` is the one perturbation of the control `kept-lines`: the number of the row is not the one the page drew.
-   */
-  const firstLine = async (name, change = false) => {
-    await page.locator(`[data-shell-part="sessionTab"] [role=tab][aria-label^="orders-api/${name} "]`).click();
-    await page.waitForFunction((id) => {
-      const grid = document.querySelector(`[data-log-session="${id}"] [role=grid]`);
-      return grid !== null && grid.getClientRects().length > 0 && grid.querySelector('[role=row][data-n]') !== null;
-    }, ids[name], { timeout: 15000 });
-    const line = await page.evaluate(({ id, perturb }) => new Promise((resolve) => {
-      const grid = document.querySelector(`[data-log-session="${id}"] [role=grid]`);
-      grid.scrollTop = 0;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const row = grid.querySelector('[role=row][data-n]');
-          if (row !== null && perturb) row.setAttribute('data-n', `${row.getAttribute('data-n')}0`);
-          resolve(row === null ? null : { n: row.getAttribute('data-n'), text: row.textContent.replace(/\s+/g, ' ').trim() });
-        });
-      });
-    }), { id: ids[name], perturb: change });
-    // The click gave the tab the focus: it is taken off, so that the card the check opens later is the one a pointer alone opens, as when no tab was chosen first.
-    await page.evaluate(() => {
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    });
-    return line;
-  };
+  // The oldest line a session's view shows, read by its number and its text (`oldestLine`). `change` is the one perturbation of the control `kept-lines`: the number of the row is not the one the page drew.
+  const firstLine = (name, change = false) => oldestLine(page, ids[name], change ? 'number' : undefined);
   // Each session is on screen once, in the order they were opened (so the last is the one on screen again), and its oldest line is kept to be found after the unload.
   const linesBefore = {};
   for (const name of ['app', 'migrate', 'sync']) {
@@ -287,7 +332,7 @@ async function kept(browser, engine, viewportName, viewport, origin) {
   await page.waitForFunction(() => !window.__panel.getSnapshot().live.includes('alpha'), null, { timeout: 15000 });
   await sleep(900);
   const off = await sessions();
-  same(await tabs(), ['orders-api/app · north-yard, ended', 'orders-api/migrate · north-yard, ended', 'orders-api/sync · north-yard, failed'], 'the tabs after the unload');
+  same(await tabs(), ['orders-api/app, ended', 'orders-api/migrate, ended', 'orders-api/sync, failed'], 'the tabs after the unload');
   if (!(off.app.state === 'ended' && off.app.cause === 'The plugin was unloaded.' && off.app.held)) fail(where, `the running session is ${JSON.stringify(off.app)} after the unload, wanted ended with "The plugin was unloaded." and held`);
   for (const name of ['migrate', 'sync']) {
     const a = before[name];
@@ -300,7 +345,10 @@ async function kept(browser, engine, viewportName, viewport, origin) {
     const now = await rows(ids[name]);
     if (now < rowsBefore[name]) fail(where, `${name} had ${String(rowsBefore[name])} lines and has ${String(now)}`);
     const line = await firstLine(name, CONTROL === 'kept-lines' && name === 'app');
-    if (JSON.stringify(line) !== JSON.stringify(linesBefore[name])) fail(where, `the oldest line of ${name} was ${JSON.stringify(linesBefore[name])} and is ${JSON.stringify(line)}: the lines its view had are not the ones it has`);
+    // A view that drew no line (or whose tab could not be chosen) is a failure of its own, with a message the control `kept-lines` does not look for: it changes the number of a row, and a page with no row has none to change.
+    // The lines are compared when there are two of them.
+    if (line === null) fail(where, `the view of ${name} drew no line after the unload (or its tab could not be chosen): it lost the lines it had`);
+    else if (linesBefore[name] !== null && JSON.stringify(line) !== JSON.stringify(linesBefore[name])) fail(where, `the oldest line of ${name} was ${JSON.stringify(linesBefore[name])} and is ${JSON.stringify(line)}: the lines its view had are not the ones it has`);
   }
 
   await page.mouse.move(1, 1);
@@ -310,14 +358,18 @@ async function kept(browser, engine, viewportName, viewport, origin) {
   if ((await rows(ids.app)) !== rowsOff) fail(where, 'the lines of the session the unload ended went on growing');
   same(await counters(page), { opened: 3, closed: 3, listeners: 2 }, 'after the unload: each stream closed once, the registry let go of all three, the view on screen keeps its two');
   const calls = () => page.evaluate(() => [...window.__fixtureLogs.closeCalls]);
-  // The negative control `close-twice`: the count of the calls to the first feed's close is one more, as if the registry had closed it twice; it is put back right after the check.
-  if (CONTROL === 'close-twice') await page.evaluate(() => { window.__fixtureLogs.closeCalls[0] += 1; });
-  same(await calls(), [1, 1, 1], 'after the unload: close was asked of each feed once (the calls are counted, repeats too; `closed` counts a feed once)');
-  if (CONTROL === 'close-twice') await page.evaluate(() => { window.__fixtureLogs.closeCalls[0] -= 1; });
+  // The negative control `close-twice`: the count of the calls to the first feed's close is one more, as if the registry had closed it twice; it is put back right after the check. It means something only on a page whose calls are what an
+  // unperturbed probe sees, one each: they are read before the raise, and any other baseline is a failure of its own (a message this control's line does not match), the control is not made and the run is no detection.
+  const baseCalls = CONTROL === 'close-twice' ? await calls() : undefined;
+  const twice = CONTROL === 'close-twice' && JSON.stringify(baseCalls) === '[1,1,1]';
+  if (CONTROL === 'close-twice' && !twice) fail(where, `close-twice: the baseline is ${JSON.stringify(baseCalls)} calls to close, wanted [1,1,1] before the control raises the first`);
+  if (twice) await page.evaluate(() => { window.__fixtureLogs.closeCalls[0] += 1; });
+  if (CONTROL !== 'close-twice' || twice) same(await calls(), [1, 1, 1], 'after the unload: close was asked of each feed once (the calls are counted, repeats too; `closed` counts a feed once)');
+  if (twice) await page.evaluate(() => { window.__fixtureLogs.closeCalls[0] -= 1; });
   const cardOf = async (name) => {
     await page.mouse.move(1, 1);
     await sleep(500);
-    const box = await page.locator(`[data-shell-part="sessionTab"] [role=tab][aria-label^="orders-api/${name} "]`).boundingBox();
+    const box = await page.locator(`[data-shell-part="sessionTab"][data-tab-id="${ids[name]}"] [role=tab]`).boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 2 });
     await sleep(1000);
     return page.evaluate(() => {
@@ -359,7 +411,7 @@ async function kept(browser, engine, viewportName, viewport, origin) {
     window.__logs.open(0);
   });
   await sleep(900);
-  same(await tabs(), ['orders-api/app · north-yard, ended', 'orders-api/migrate · north-yard, ended', 'orders-api/sync · north-yard, failed', 'orders-api/app (2) · north-yard'], 'the tabs after a new press');
+  same(await tabs(), ['orders-api/app, ended', 'orders-api/migrate, ended', 'orders-api/sync, failed', 'orders-api/app (2)'], 'the tabs after a new press');
   same(await counters(page), { opened: 4, closed: 3, listeners: 3 }, 'a fourth feed: its registry listener and its view\'s two (the held views are hidden and listen to nothing)');
   for (let tab = 0; tab < 4; tab += 1) {
     await page.locator('[data-shell-part="sessionTab"] [role=tab]').first().focus();
@@ -374,6 +426,328 @@ async function kept(browser, engine, viewportName, viewport, origin) {
   report.kept[`${engine} ${viewportName}`] = { before, off, back: facts(back), rowsBefore };
   for (const error of errors) fail(`errors ${where}`, error);
   await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A22: a Logs session is its plugin and its target (P1b-3d), in a real engine on the host fixture, with the fixture's `app` (0), `migrate` (1, ends 1.5 s after it opens), `sync` (2, fails 1.5 s after it opens) and the twin of `app` (6: its
+// title, the south yard as its scope). A press of a command whose session is starting or running SHOWS that session (the panel opens, the Logs tool is on screen, the session is its tab, no focus moves) and starts no second stream; a press of
+// one whose session has ended or failed opens a NEW session beside it and the old one stays readable until its tab closes; a tab draws its scope only beside a twin. One window, in this order:
+//   a  `app` pressed twice: one session, one tab named `orders-api/app` that draws no scope part, one stream (the registry's listener and the view's two), the second press answering the session of the first
+//   b  the panel hidden, and then another tool on screen, `app` pressed again: the panel is open, Logs is on screen, the tab is selected, still one stream, and the focus (on the status bar's panel toggle) is the element it was
+//   c  the twin of `app`: two sessions, two tabs named `orders-api/app · north-yard` and `orders-api/app · south-yard` that each draw their scope, two streams; the twin and `app` pressed again change nothing; the twin's tab closed (Delete),
+//      the tab left is named `orders-api/app` and draws no scope part
+//   d  `migrate` pressed again once it has ended: a NEW session, the two tabs named apart (`orders-api/migrate, ended` and `orders-api/migrate (2)`), a new stream, the stream of the ended session not closed, its view still holding its rows
+//      and, under its tab chosen again by its id, showing its oldest line (number and text) as it was; a third press shows the live one, however late the page is (the new stream is held live, then ended by the probe)
+//   e  `sync` pressed again once it has failed: the same (`orders-api/sync, failed` and `orders-api/sync (2)`)
+//   f  every tab closed with the keyboard: every stream closed once, no listener left, no page error
+// A session that ends on its own ends 1.5 s after it opens, so what a press of one makes is read in the page, two frames after the press, in the same task (a read from here is a round trip later, which a loaded machine can stretch). The
+// session that is over comes to its state by itself, as the checks above need; the stream a second press opens does not (the fixture's `hold`, set around that press only), so that no delay of the page can end it before the third press,
+// which a correct registry answers with another session; the probe ends it itself (`endHeld`) when its checks are done.
+
+/**
+ * What the strip, the panel and the plugin's counters say at one instant, read in one task so that nothing moves between the numbers: the panel (open, the tool and the session on screen, the toggle's pressed state, the Logs tool tab's
+ * selected state, how many sessions it holds), each session tab in the strip's order (its id, its accessible name, the scope parts it holds, the state its lead says, whether it is the selected one and whether its body is on screen),
+ * the counters of the fixture's feeds and, of each session, the rows its view holds (-1: it has no view).
+ */
+const READ_STRIP = () => {
+  const state = window.__panel.getSnapshot();
+  const shown = window.__panel.selectors.shown(state);
+  return {
+    open: state.open,
+    shown: shown === null ? null : { tool: shown.tool, session: shown.session },
+    sessions: Object.keys(state.sessions).length,
+    toggle: document.querySelector('[data-shell-part="panelToggle"]')?.getAttribute('aria-pressed') ?? null,
+    toolTab: document.querySelector('[data-shell-part="panelTools"] [role=tab][data-tab-id="logs"]')?.getAttribute('aria-selected') ?? null,
+    tabs: [...document.querySelectorAll('[data-shell-part="sessionTab"]')].map((one) => {
+      const id = one.getAttribute('data-tab-id');
+      const tab = one.querySelector('[role=tab]');
+      return {
+        id,
+        name: tab.getAttribute('aria-label'),
+        scopes: [...one.querySelectorAll('[data-shell-part="sessionScope"]')].map((part) => part.textContent),
+        lead: one.querySelector('[data-shell-part="sessionLead"]')?.getAttribute('data-state') ?? null,
+        selected: tab.getAttribute('aria-selected') === 'true',
+        onScreen: document.querySelector(`[data-shell-part="panelBody"][data-session-id="${id}"]`)?.hidden === false,
+      };
+    }),
+    counters: { ...window.__fixtureLogs },
+    rows: Object.fromEntries(Object.keys(state.sessions).map((id) => [id, Number(document.querySelector(`[data-log-session="${id}"] [role=grid]`)?.getAttribute('aria-rowcount') ?? -1)])),
+  };
+};
+
+/** What a press is read with, put into the page once: two frames (the registry changes the panel at once and React draws at the next frame) and the read above. */
+const INSTALL = `(() => { window.__frames = () => new Promise((resolve) => { requestAnimationFrame(() => { requestAnimationFrame(resolve); }); }); window.__strip = ${READ_STRIP}; })()`;
+
+/** A press of the fixture's command for the target `index`, and the strip two frames later in the same task: a session that ends on its own ends 1.5 s after it opens, and its tab is read before then. */
+const PRESS = async (index) => {
+  const id = window.__logs.open(index);
+  await window.__frames();
+  return { id, strip: window.__strip() };
+};
+
+/** The same, with the focus: which part of the page had it at the press, and whether the element that had it still does two frames after. */
+const PRESS_FOCUSED = async (index) => {
+  const held = document.activeElement;
+  const id = window.__logs.open(index);
+  await window.__frames();
+  return { id, focused: held?.getAttribute('data-shell-part') ?? null, kept: document.activeElement === held, strip: window.__strip() };
+};
+
+/**
+ * The second and the third press of a target whose session is over (`was`), in one task: `before` is what the page said at the press (the rows its view holds, the counters), `after` what it said two frames later, with the new session
+ * on the strip, and `again` the same after a third press, which must show the live session. The stream the second press opens is HELD live (the fixture's `hold`): `migrate` and `sync` end or fail by themselves 1.5 s after they open,
+ * and a page whose frames are late could end the new one before the third press, which a correct registry answers with another session; the probe ends it itself (`endHeld`) when its checks are done. `change` is the page's one
+ * perturbation here, the control `same-name`: the tab of the new session has the over one's name while `after` is read and its own name right after; `changed` says it was made (a page with no tab of the new session, or one whose
+ * press showed the session that is over, has no two tabs to give one name).
+ */
+const PRESS_OVER = async ({ index, was, change }) => {
+  const before = window.__strip();
+  window.__fixtureLogs.hold(true);
+  let second;
+  try {
+    second = window.__logs.open(index);
+  } finally {
+    window.__fixtureLogs.hold(false);
+  }
+
+  await window.__frames();
+  let undo;
+  if (change === 'same-name') {
+    const tabOf = (id) => document.querySelector(`[data-shell-part="sessionTab"][data-tab-id="${id}"] [role=tab]`);
+    const fresh = tabOf(second);
+    const ended = tabOf(was);
+    if (fresh !== null && ended !== null && fresh !== ended) {
+      const own = fresh.getAttribute('aria-label');
+      fresh.setAttribute('aria-label', ended.getAttribute('aria-label'));
+      undo = () => {
+        fresh.setAttribute('aria-label', own);
+      };
+    }
+  }
+
+  const after = window.__strip();
+  if (undo !== undefined) undo();
+  const third = window.__logs.open(index);
+  await window.__frames();
+  return { before, second, after, third, again: window.__strip(), changed: undo !== undefined };
+};
+
+async function identity(browser, engine, viewportName, viewport, origin) {
+  const where = `identity ${engine} ${viewportName}`;
+  const { page, context, errors } = await open(browser, url(origin), viewport);
+  await ready(page);
+  await page.evaluate(INSTALL);
+  const same = (got, wanted, label) => {
+    if (JSON.stringify(got) !== JSON.stringify(wanted)) fail(where, `${label}: ${JSON.stringify(got)}, wanted ${JSON.stringify(wanted)}`);
+  };
+  const names = (strip) => strip.tabs.map((tab) => tab.name);
+  const scopes = (strip) => strip.tabs.map((tab) => tab.scopes);
+  const fed = (strip) => ({ opened: strip.counters.opened, closed: strip.counters.closed });
+  const selected = (strip) => strip.tabs.find((tab) => tab.selected)?.id ?? null;
+
+  // a: `app` pressed twice is one session, with one tab that draws no scope, and one stream.
+  const one = await page.evaluate(PRESS, 0);
+  const two = await page.evaluate(PRESS, 0);
+  same(await until(page, () => document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]') !== null), true, 'pressed twice: the view of the session was drawn');
+  await sleep(300);
+  same(typeof one.id, 'string', 'pressed: the press answered a session');
+  same(two.id, one.id, 'pressed twice: the second press answered the session of the first');
+  // The control `lone-scope`: a scope part is put into the label of the tab of the session, found by its id. Its name is an attribute and stays, so only the check of its scope parts can see it. It is taken out right after the read.
+  const scoped = CONTROL !== 'lone-scope' || (await page.evaluate((id) => {
+    const label = document.querySelector(`[data-shell-part="sessionTab"][data-tab-id="${id}"] [data-shell-part="sessionLabel"]`);
+    if (label === null) return false;
+    label.insertAdjacentHTML('beforeend', '<span data-shell-part="sessionScope">north-yard</span>');
+    window.__control = label.lastElementChild;
+    return true;
+  }, one.id));
+  const lone = await page.evaluate(READ_STRIP);
+  if (CONTROL === 'lone-scope') await page.evaluate(() => { window.__control?.remove(); });
+  if (!scoped) fail(where, 'the control lone-scope found no tab of the session to put a scope part into: it was not made');
+  same(lone.sessions, 1, 'pressed twice: one session in the panel');
+  // A strip that has no tab of the session, or another besides it, fails a check of its own; a scope part is looked for in the tab of the session, and a tab that is not there draws none.
+  same(lone.tabs.map((tab) => tab.id), [one.id], 'pressed twice: the strip holds the tab of the session and no other');
+  same(names(lone), ['orders-api/app'], 'pressed twice: one tab, named');
+  const loneTab = lone.tabs.find((tab) => tab.id === one.id);
+  if (loneTab !== undefined) same(loneTab.scopes, [], 'pressed twice: the lone tab draws no scope part');
+  // The control `second-stream`: one more stream is counted opened, as if the second press had started one. It is taken back right after the read. It means something only on a page that opened ONE stream, as an unperturbed probe sees:
+  // the count is read before the raise, and any other baseline is a failure of its own (a message this control's line does not match), the control is not made and the run is no detection (a probe that was already failing).
+  const baseline = await counters(page);
+  const raised = CONTROL === 'second-stream' && baseline.opened === 1 && (await page.evaluate(() => { window.__fixtureLogs.opened += 1; return true; }));
+  if (CONTROL === 'second-stream' && !raised) fail(where, `second-stream: the baseline is ${String(baseline.opened)} streams opened, wanted 1 before the control raises it`);
+  const streams = raised ? await counters(page) : baseline;
+  if (raised) await page.evaluate(() => { window.__fixtureLogs.opened -= 1; });
+  // A page that opened no stream fails a check of its own; how many were opened is checked on a page no control touched, or on the one the control raised (a page the control could not be made on has failed above).
+  same(streams.opened > 0, true, 'pressed twice: a stream was opened');
+  if (streams.opened > 0 && (CONTROL !== 'second-stream' || raised)) same(streams.opened, 1, 'pressed twice: one stream was opened');
+  same([streams.closed, streams.listeners], [0, 3], 'pressed twice: none closed, and the stream is listened to by the registry (1) and the view (2)');
+
+  // b: with the panel hidden, and then with another tool on screen, the press shows the session again; the page's focus (the status bar's panel toggle) stays where it was.
+  const toggle = page.locator('[data-shell-part="panelToggle"]');
+  const shownOf = (strip, id) => {
+    const tab = strip.tabs.find((one) => one.id === id);
+    return { open: strip.open, toggle: strip.toggle, tool: strip.shown?.tool ?? null, session: strip.shown?.session === id, toolTab: strip.toolTab, tabSelected: tab?.selected ?? null, onScreen: tab?.onScreen ?? null };
+  };
+  for (const [what, prepare, tool] of [
+    ['panel hidden', () => window.__panel.hide(), null],
+    ['another tool on screen', () => window.__panel.show({ tool: 'alpha:streams' }), 'alpha:streams'],
+  ]) {
+    await page.evaluate(prepare);
+    await toggle.focus();
+    const was = await page.evaluate(READ_STRIP);
+    same(was.shown?.tool ?? null, tool, `${what}: the page is as the press needs it`);
+    const pressed = await page.evaluate(PRESS_FOCUSED, 0);
+    same(pressed.focused, 'panelToggle', `${what}: the probe put the focus on the status bar's panel toggle before the press`);
+    same(pressed.id, one.id, `${what}, pressed again: the press answered the session`);
+    same(shownOf(pressed.strip, one.id), { open: true, toggle: 'true', tool: 'logs', session: true, toolTab: 'true', tabSelected: true, onScreen: true }, `${what}, pressed again: the panel is open on the Logs tool, with the session as its tab`);
+    same(fed(pressed.strip), { opened: 1, closed: 0 }, `${what}, pressed again: still one stream`);
+    same(pressed.kept, true, `${what}, pressed again: the page's focus did not move`);
+  }
+
+  // c: the twin of `app` (its title, the south yard as its scope): two sessions, and each tab draws its scope; pressed again, nothing changes; when the twin's tab closes the tab left draws no scope.
+  const twin = await page.evaluate(PRESS, 6);
+  const south = twin.id;
+  same(south === one.id, false, 'twin pressed: a second session');
+  same(twin.strip.sessions, 2, 'twin pressed: two sessions in the panel');
+  same(names(twin.strip), ['orders-api/app · north-yard', 'orders-api/app · south-yard'], 'twin pressed: two tabs of one title, told apart by the scope each draws (their names)');
+  same(scopes(twin.strip), [['north-yard'], ['south-yard']], 'twin pressed: each tab draws one scope part, saying its scope');
+  same(fed(twin.strip), { opened: 2, closed: 0 }, 'twin pressed: two streams');
+  const south2 = await page.evaluate(PRESS, 6);
+  const north2 = await page.evaluate(PRESS, 0);
+  same([south2.id, north2.id], [south, one.id], 'twin and app pressed again: each press answered its own session');
+  same([south2.strip.sessions, north2.strip.sessions], [2, 2], 'twin and app pressed again: still two sessions');
+  same([fed(south2.strip), fed(north2.strip)], [{ opened: 2, closed: 0 }, { opened: 2, closed: 0 }], 'twin and app pressed again: still two streams');
+  same(names(north2.strip), ['orders-api/app · north-yard', 'orders-api/app · south-yard'], 'twin and app pressed again: the two tabs as they were');
+  same([selected(south2.strip), selected(north2.strip)], [south, one.id], 'twin and app pressed again: each press selected its own tab');
+  await page.locator(`[data-shell-part="sessionTab"][data-tab-id="${south}"] [role=tab]`).focus();
+  await page.keyboard.press('Delete');
+  await until(page, () => document.querySelectorAll('[data-shell-part="sessionTab"]').length === 1);
+  const left = await page.evaluate(READ_STRIP);
+  same(left.tabs.map((tab) => tab.id), [one.id], 'twin closed: the strip holds the tab of app and no other');
+  same(names(left), ['orders-api/app'], 'twin closed: the tab that is left, named');
+  const leftTab = left.tabs.find((tab) => tab.id === one.id);
+  if (leftTab !== undefined) same(leftTab.scopes, [], 'twin closed: the tab that is left draws no scope part');
+  same(fed(left), { opened: 2, closed: 1 }, 'twin closed: its stream closed, the other still open');
+
+  // d, e: a target whose session is over (`migrate` ended, `sync` failed), pressed again: a NEW session beside it, named apart; the stream of the one that is over stays as it was (not closed) and its view keeps its rows and the lines
+  // they say: its oldest line is read by its number and its text before the press, and again after it under the same tab, chosen by its id (a view whose 30 lines were replaced by 30 others has the same count of rows). The new
+  // session's stream is held live through the third press (`PRESS_OVER`) and ended here, when the checks are done.
+  const over = async (index, source, state, change) => {
+    const title = `orders-api/${source}`;
+    const kind = state === 'ended' ? 'an ended session' : 'a failed session';
+    const was = (await page.evaluate(PRESS, index)).id;
+    // The session is over and its view holds its lines before the press: a view that drew nothing would keep "at least its rows" and prove nothing.
+    const done = await until(page, ({ id, to }) => window.__panel.getSnapshot().sessions[id]?.state === to && Number(document.querySelector(`[data-log-session="${id}"] [role=grid]`)?.getAttribute('aria-rowcount') ?? 0) >= 25, { id: was, to: state });
+    same(done, true, `${title} came to ${state} with its lines in time: the checks of ${kind} pressed again need it`);
+    const lineBefore = await oldestLine(page, was);
+    await page.mouse.move(1, 1);
+    if (lineBefore === null) fail(where, `${kind}: its view drew no line before the press (or its tab could not be chosen): the check of its lines proves nothing`);
+    const pressed = await page.evaluate(PRESS_OVER, { index, was, change });
+    if (change === 'same-name' && !pressed.changed) fail(where, 'the control same-name found no two tabs to give one name (the tab of the new session and the one that is over): it was not made');
+    const mine = pressed.after.tabs.filter((tab) => tab.name.startsWith(title));
+    same(pressed.second === was, false, `${kind} pressed again: a new session, not the one that is over`);
+    same(mine.map((tab) => tab.name), [`${title}, ${state}`, `${title} (2)`], `${kind} pressed again: the two tabs, named`);
+    same(names(pressed.after).filter((name, at, all) => all.indexOf(name) !== at), [], `${kind} pressed again: no two tabs share a name`);
+    same(pressed.after.tabs.find((tab) => tab.id === was)?.lead, state, `${kind} pressed again: the lead of the tab of the one that is over says ${state}`);
+    same(pressed.after.counters.opened - pressed.before.counters.opened, 1, `${kind} pressed again: one new stream`);
+    same(pressed.after.counters.closed - pressed.before.counters.closed, 0, `${kind} pressed again: the stream of the one that is over was not closed`);
+    same(pressed.after.rows[was] >= pressed.before.rows[was], true, `${kind} pressed again: its view still holds the rows it had (${String(pressed.before.rows[was])} rows, then ${String(pressed.after.rows[was])})`);
+    same([pressed.third, selected(pressed.again), pressed.again.counters.opened], [pressed.second, pressed.second, pressed.after.counters.opened], `${kind}, a third press: the live session is shown and no stream is opened`);
+    // The lines the old view shows: its oldest again, by its number and its text, under the old tab, which is chosen by its id. The control `over-lines` makes the row say another line while it is read. A view that drew no line is a
+    // failure of its own, and the line is compared when there are two of them.
+    const lineAfter = await oldestLine(page, was, change === 'over-lines' ? 'text' : undefined);
+    await page.mouse.move(1, 1);
+    if (lineAfter === null) fail(where, `${kind} pressed again: its view drew no line when its tab was chosen again (or its tab could not be chosen): it lost the lines it had`);
+    else if (lineBefore !== null) same(lineAfter, lineBefore, `${kind} pressed again: its view still shows line ${lineBefore.n} as it was`);
+    // The new session's stream was held live through the third press: it comes to its state now, by the fixture's own transition, as the one that is over came to its own.
+    await page.evaluate(() => { window.__fixtureLogs.endHeld(); });
+    return mine.map((tab) => tab.name);
+  };
+  const ended = await over(1, 'migrate', 'ended', CONTROL === 'same-name' || CONTROL === 'over-lines' ? CONTROL : undefined);
+  const failed = await over(2, 'sync', 'failed', undefined);
+
+  // f: every tab closed with the keyboard: every stream closed once (the calls to `close` are counted, repeats too), no listener left, no page error.
+  for (let round = 0; round < 12; round += 1) {
+    const count = await page.locator('[data-shell-part="sessionTab"] [role=tab]').count();
+    if (count === 0) break;
+    await page.locator('[data-shell-part="sessionTab"] [role=tab]').first().focus();
+    await page.keyboard.press('Delete');
+    await until(page, (before) => document.querySelectorAll('[data-shell-part="sessionTab"]').length < before, count);
+  }
+
+  await page.getByText('No log sessions').waitFor({ timeout: 10000 });
+  await sleep(300);
+  const last = await counters(page);
+  const calls = await page.evaluate(() => [...window.__fixtureLogs.closeCalls]);
+  same(last.opened, 6, 'every tab closed: six streams were opened in all (app, its twin, migrate twice, sync twice)');
+  same([last.closed === last.opened, last.listeners], [true, 0], `every tab closed: every stream was closed (${String(last.closed)} of ${String(last.opened)}) and no listener is left`);
+  same(calls, Array.from({ length: last.opened }, () => 1), 'every tab closed: close was asked of each feed once');
+  report.identity[`${engine} ${viewportName}`] = { lone: names(lone), twins: names(twin.strip), left: names(left), ended, failed, opened: last.opened, closeCalls: calls };
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A22, the finding of P1b-3c: axe-core on the real host fixture with the Logs tool open (the real log view under the strip) in three states: one session; two sessions of one title in two scopes, each tab drawing its scope (its name must
+// hold the words the tab draws: `label-content-name-mismatch`); and an ended session beside the new one its press opened. A serious or critical finding fails; a moderate one is a note (`region`: the shell's page has no landmark,
+// which the panel probe's cases carry too). The control `axe-name` makes the name of each tab that draws a scope its title only, just before axe runs, and puts the names back right after.
+async function a11y(browser, engine, viewportName, viewport, origin, axe) {
+  const where = `a11y ${engine} ${viewportName}`;
+  const cases = [
+    {
+      label: 'the Logs tool, open, one session (no scope drawn)',
+      prepare: async (page) => {
+        await page.evaluate(() => { window.__logs.open(0); });
+      },
+    },
+    {
+      label: 'the Logs tool, open, two sessions of one title in two scopes (each tab draws its scope)',
+      scoped: true,
+      prepare: async (page) => {
+        await page.evaluate(() => { window.__logs.open(0); window.__logs.open(6); });
+        await page.waitForFunction(() => document.querySelectorAll('[data-shell-part="sessionScope"]').length === 2, null, { timeout: 10000 });
+      },
+    },
+    {
+      label: 'the Logs tool, open, the ended session of migrate beside the new one its press opened',
+      prepare: async (page) => {
+        const was = await page.evaluate(() => window.__logs.open(1));
+        await page.waitForFunction((id) => window.__panel.getSnapshot().sessions[id]?.state === 'ended', was, { timeout: 15000 });
+        await page.evaluate(() => { window.__logs.open(1); });
+        await page.waitForFunction(() => document.querySelectorAll('[data-shell-part="sessionTab"]').length === 2, null, { timeout: 10000 });
+      },
+    },
+  ];
+  for (const { label, scoped = false, prepare } of cases) {
+    const { page, context, errors } = await open(browser, url(origin), viewport);
+    await ready(page);
+    await prepare(page);
+    // The real log view is under the strip: the check does not start before it is drawn.
+    await page.waitForSelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]');
+    await sleep(500);
+    await page.addScriptTag({ content: axe });
+    if (CONTROL === 'axe-name' && scoped) {
+      await page.evaluate(() => {
+        window.__names = [];
+        for (const tab of document.querySelectorAll('[data-shell-part="sessionTab"] [role=tab]')) {
+          if (tab.querySelector('[data-shell-part="sessionScope"]') === null) continue;
+          window.__names.push([tab, tab.getAttribute('aria-label')]);
+          tab.setAttribute('aria-label', window.__panel.getSnapshot().sessions[tab.getAttribute('data-tab-id')].title);
+        }
+      });
+    }
+
+    const result = await page.evaluate(() => axe.run(document, { resultTypes: ['violations'] }).then((r) => r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, first: v.nodes[0]?.html.slice(0, 140) }))));
+    if (CONTROL === 'axe-name' && scoped) await page.evaluate(() => { for (const [tab, name] of window.__names) tab.setAttribute('aria-label', name); });
+    report.a11y[`${engine} ${viewportName} ${label}`] = result;
+    for (const violation of result) {
+      const text = `${violation.id} (${violation.impact}, ${String(violation.nodes)}): ${violation.first}`;
+      if (violation.impact === 'serious' || violation.impact === 'critical') fail(where, `${label}: ${text}`);
+      else report.notes.push(`${where} ${label}: ${text}`);
+    }
+
+    for (const error of errors) fail(`errors ${where}`, error);
+    await context.close();
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -835,8 +1209,9 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   await context.close();
 }
 
-const production = wants('fills') || wants('sources') || wants('kept') || wants('memory') ? await serveFixtures(buildFixtures('production')) : null;
+const production = wants('fills') || wants('sources') || wants('kept') || wants('identity') || wants('a11y') || wants('memory') ? await serveFixtures(buildFixtures('production')) : null;
 const development = wants('hidden') || wants('appears') ? await serveFixtures(buildFixtures('development')) : null;
+const axe = wants('a11y') ? readFileSync(AXE, 'utf8') : '';
 for (const engineName of engineNames) {
   const browser = await launch(engineName);
   for (const viewportName of viewportNames) {
@@ -857,6 +1232,16 @@ for (const engineName of engineNames) {
     if (wants('kept')) {
       await kept(browser, engineName, viewportName, viewport, production.origin);
       ran.add('kept');
+    }
+
+    if (wants('identity')) {
+      await identity(browser, engineName, viewportName, viewport, production.origin);
+      ran.add('identity');
+    }
+
+    if (wants('a11y')) {
+      await a11y(browser, engineName, viewportName, viewport, production.origin, axe);
+      ran.add('a11y');
     }
 
     if (wants('memory') && (await memory(browser, engineName, viewportName, viewport, production.origin))) ran.add('memory');
@@ -880,7 +1265,7 @@ development?.server.close();
 if (CONTROL === '') for (const name of ONLY) if (!ran.has(name)) fail('sections', `${name} was asked for (SECTIONS) and ran in no engine of ${engineNames.join(', ')}`);
 if (ONLY.length > 0) report.notes.push(`SECTIONS=${ONLY.join(',')}: ran ${[...ran].join(', ') || 'nothing'}`);
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, memory: report.memory, notes: report.notes }, null, 1));
+console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, identity: report.identity, a11y: report.a11y, memory: report.memory, notes: report.notes }, null, 1));
 if (CONTROL !== '') {
   const detected = failures.filter((line) => PERTURBATIONS[CONTROL].expected.test(line));
   console.log(`\nwhat the probe saw with the perturbation "${CONTROL}": ${String(failures.length)} differences\n${failures.map((line) => `  ${line}`).join('\n')}`);

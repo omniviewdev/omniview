@@ -1,5 +1,6 @@
 import { sameItems } from '../tabs/json';
 import { SESSION_RULE, splitTitle } from '../title';
+import { heardAs, sameWords } from './names';
 import { effectiveSession, effectiveTool, isLive, own, sessionVisible, shownOf, visibleSessions, visibleTools } from './state';
 import type { PanelState, Selectors, Session, SessionId, SessionItem, Shown, Tool, ToolId, ToolItem } from './types';
 
@@ -23,19 +24,74 @@ const toolItemOf = (tool: Tool): ToolItem => Object.freeze({ id: tool.id, label:
 
 const sameToolItem = (item: ToolItem, tool: Tool): boolean => item.label === tool.label && item.icon === tool.icon;
 
-/** The ordinal a twin is told apart by: the first of its name and scope has none, the second is (2). `at` is its place among the sessions of that name and scope, `count` how many there are. */
-const ordinalText = (at: number, count: number): string => (count > 1 && at > 0 ? ` (${String(at + 1)})` : '');
+/** What a tab draws of its session besides the title: the ordinal of a twin (` (2)`, or none) and the scope, which is empty unless the tab draws it. */
+type Face = { readonly ordinal: string; readonly scope: string };
 
-function itemOf(session: Session, ordinal: string): SessionItem {
+/** The ordinal a twin is told apart by: the first of its title and scope has none, the second is (2). */
+const ordinalOf = (number: number): string => (number === 1 ? '' : ` (${String(number)})`);
+
+/** The name a tab has: its title, its ordinal and, when it draws one, its scope. The same words the tab draws, in the order it draws them. */
+const nameOf = (title: string, ordinal: string, scope: string): string => `${title}${ordinal}${scope === '' ? '' : ` · ${scope}`}`;
+
+const groupOf = (session: Session): string => `${session.title}\u0000${session.scope}`;
+
+/**
+ * What the tabs of one tool draw of their sessions, from the sessions that are listed, oldest first (the mock's `labelParts`, shell-panel.js:207-221; SCT1, TI1). Two rules, and a name that is always
+ * its own:
+ *
+ *   - the SCOPE is drawn only to tell twins apart: on a session whose title is shared with another listed session that has another scope, and on that one too. A session that has no twin, or whose twins
+ *     are all of its scope, draws none: a tab that says nothing of the connection it belongs to is the way of every tab in the strip, and its card says it;
+ *   - the ORDINAL tells apart the sessions of one title AND one scope: the first has none, the second is (2).
+ *
+ * A tab is HEARD as its name and, when its session is not steady, its state (`task, ended`: names.ts), and a person who cannot see the strip has nothing else to tell two tabs by; the name is also what the tab DRAWS
+ * (`SessionItem.name` is its own). So no two tabs of a strip may be drawn alike or heard alike, runs of white space counting as one space (names.ts, `sameWords`): a number whose drawn name or whose sound is already
+ * another tab's (a title that looks like `a (2)` beside two sessions of `a`, or like another session's name and state, an ended `task` beside a running `task, ended`) is skipped, the later session being the one that is
+ * told another number. Grouped once, so a strip of n tabs costs n and not n squared.
+ */
+function facesOf(sessions: readonly Session[]): ReadonlyMap<SessionId, Face> {
+  const scopesOfTitle = new Map<string, Set<string>>();
+  const sizeOfGroup = new Map<string, number>();
+  for (const session of sessions) {
+    const scopes = scopesOfTitle.get(session.title) ?? new Set<string>();
+    scopes.add(session.scope);
+    scopesOfTitle.set(session.title, scopes);
+    sizeOfGroup.set(groupOf(session), (sizeOfGroup.get(groupOf(session)) ?? 0) + 1);
+  }
+
+  const faces = new Map<SessionId, Face>();
+  const placeInGroup = new Map<string, number>();
+  const takenDrawn = new Set<string>();
+  const takenHeard = new Set<string>();
+  for (const session of sessions) {
+    const group = groupOf(session);
+    const at = placeInGroup.get(group) ?? 0;
+    placeInGroup.set(group, at + 1);
+    const scope = session.scope !== '' && (scopesOfTitle.get(session.title)?.size ?? 0) > 1 ? session.scope : '';
+    let number = (sizeOfGroup.get(group) ?? 1) > 1 && at > 0 ? at + 1 : 1;
+    const drawnWith = (n: number): string => nameOf(session.title, ordinalOf(n), scope);
+    const free = (n: number): boolean => !takenDrawn.has(sameWords(drawnWith(n))) && !takenHeard.has(sameWords(heardAs(drawnWith(n), session.state)));
+    while (!free(number)) {
+      number += 1;
+    }
+
+    takenDrawn.add(sameWords(drawnWith(number)));
+    takenHeard.add(sameWords(heardAs(drawnWith(number), session.state)));
+    faces.set(session.id, { ordinal: ordinalOf(number), scope });
+  }
+
+  return faces;
+}
+
+function itemOf(session: Session, face: Face): SessionItem {
   const [head, end] = splitTitle(session.title, SESSION_RULE);
   return Object.freeze({
     id: session.id,
     tool: session.tool,
     title: session.title,
     head,
-    tail: end + ordinal,
-    scope: session.scope,
-    name: `${session.title}${ordinal}${session.scope === '' ? '' : ` · ${session.scope}`}`,
+    tail: end + face.ordinal,
+    scope: face.scope,
+    name: nameOf(session.title, face.ordinal, face.scope),
     state: session.state,
     since: session.since,
   });
@@ -69,21 +125,10 @@ export function createSelectors(): Selectors {
     const strips = new Map<ToolId, readonly SessionId[]>();
     for (const tool of tools) {
       const sessions = visibleSessions(state, tool.id);
-      // Twins are the sessions of one name and scope: grouped once, so a strip of n tabs costs n and not n squared.
-      const twins = new Map<string, number>();
+      const faces = facesOf(sessions);
       for (const session of sessions) {
-        const key = `${session.title}\u0000${session.scope}`;
-        twins.set(key, (twins.get(key) ?? 0) + 1);
-      }
-
-      const seen = new Map<string, number>();
-      for (const session of sessions) {
-        const key = `${session.title}\u0000${session.scope}`;
-        const at = seen.get(key) ?? 0;
-        seen.set(key, at + 1);
-        const ordinal = ordinalText(at, twins.get(key) ?? 1);
         const before = derived?.items.get(session.id);
-        const item = itemOf(session, ordinal);
+        const item = itemOf(session, faces.get(session.id) ?? { ordinal: '', scope: '' });
         items.set(session.id, before !== undefined && sameItem(before, item) ? before : item);
       }
 

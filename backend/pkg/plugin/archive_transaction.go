@@ -190,6 +190,7 @@ func (pm *pluginManager) unloadArchivePlugin(recovery *archiveRecovery) error {
 	if err := pm.checkArchiveAccess(recovery.ID, recovery); err != nil {
 		return err
 	}
+	held := pm.holds(recovery.ID)
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(recovery.ID)
 	}
@@ -208,6 +209,10 @@ func (pm *pluginManager) unloadArchivePlugin(recovery *archiveRecovery) error {
 	if err := pm.unloadPluginLocked(recovery.ID); err != nil {
 		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusConflict,
 			"Failed to unload existing plugin").WithInstance(recovery.ID)
+	}
+	// An update or a reinstall puts other files in the plugin's place: the window drops the interface it drew from the old ones, and draws the new when the plugin runs again.
+	if held {
+		emitUnloaded(pm.emitter, recovery.ID, UnloadReloaded)
 	}
 	return nil
 }

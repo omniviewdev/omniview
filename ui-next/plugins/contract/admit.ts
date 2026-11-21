@@ -1,4 +1,5 @@
 import { ContractError } from '../loader/failure';
+import { PALETTE_LIMITS } from './paletteRows';
 import type { ContributionV1, SidebarNodeV1 } from './v1';
 
 // Admission: what a bundle's exports must be before the host builds anything from them. A bundle is plugin code, and what it hands over is
@@ -264,6 +265,95 @@ function checkPanel(panel: unknown, problems: Problems): void {
   }
 }
 
+/** An id the host makes another id from, with the plugin's before it and a colon between (a tool's, a provider's, a command's): not empty, no colon, and bounded. */
+const isLocalId = (id: string, size: number): boolean => id.trim() !== '' && !id.includes(':') && id.length <= size;
+
+/** One provider of the palette's: how it answers, the heading of its section, and the optional filter and scope test. What it answers is read by `paletteRows.ts` while the palette runs. */
+function checkPaletteProvider(provider: unknown, at: string, problems: Problems): void {
+  if (!isRecord(provider)) {
+    problems.push(`${at} is not an object`);
+    return;
+  }
+
+  const { kind, section, filter, supports } = provider;
+  if (kind !== 'match' && kind !== 'search') {
+    problems.push(`${at}.kind is "${String(kind)}", and this version draws "match" and "search" providers`);
+    return;
+  }
+
+  if (typeof section !== 'string' || section.trim() === '' || section.length > PALETTE_LIMITS.section) {
+    problems.push(`${at}.section is not a non-empty string of at most ${String(PALETTE_LIMITS.section)} characters`);
+  }
+
+  if (filter !== undefined && filter !== 'goto' && filter !== 'commands') {
+    problems.push(`${at}.filter is neither "goto" nor "commands"`);
+  }
+
+  if (supports !== undefined && !isFunction(supports)) {
+    problems.push(`${at}.supports is not a function`);
+  }
+
+  const answers = kind === 'match' ? 'match' : 'search';
+  const other = kind === 'match' ? 'search' : 'match';
+  if (isFunction(provider[other])) {
+    problems.push(`${at} has both match and search: a provider answers one way`);
+  }
+
+  if (!isFunction(provider[answers])) {
+    problems.push(`${at}.${answers} is not a function`);
+  }
+}
+
+/** What a plugin brings to the command palette: the shape the host registers its providers and runs its commands from. Absent is fine: most plugins bring nothing. */
+function checkPalette(palette: unknown, problems: Problems): void {
+  if (palette === undefined) {
+    return;
+  }
+
+  if (!isRecord(palette)) {
+    problems.push('palette is not an object');
+    return;
+  }
+
+  const { providers, commands } = palette;
+  if (providers !== undefined) {
+    if (!isRecord(providers)) {
+      problems.push('palette.providers is not an object');
+    } else {
+      const ids = Object.keys(providers);
+      if (ids.length > PALETTE_LIMITS.providers) {
+        problems.push(`palette.providers has ${String(ids.length)} providers: a plugin brings at most ${String(PALETTE_LIMITS.providers)}`);
+      }
+
+      for (const id of ids) {
+        if (!isLocalId(id, PALETTE_LIMITS.providerId)) {
+          // The host makes the id the palette knows a provider by from the plugin's id and this one, joined with a colon.
+          problems.push(`palette.providers.${id} is not a provider id: no colon, not empty, at most ${String(PALETTE_LIMITS.providerId)} characters`);
+          continue;
+        }
+
+        checkPaletteProvider(providers[id], `palette.providers.${id}`, problems);
+      }
+    }
+  }
+
+  if (commands !== undefined) {
+    if (!isRecord(commands)) {
+      problems.push('palette.commands is not an object');
+    } else {
+      for (const [id, command] of Object.entries(commands)) {
+        if (!isLocalId(id, PALETTE_LIMITS.commandId)) {
+          problems.push(`palette.commands.${id} is not a command id: no colon, not empty, at most ${String(PALETTE_LIMITS.commandId)} characters`);
+        } else if (!isRecord(command)) {
+          problems.push(`palette.commands.${id} is not an object`);
+        } else if (!isFunction(command.run)) {
+          problems.push(`palette.commands.${id}.run is not a function`);
+        }
+      }
+    }
+  }
+}
+
 function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
   const problems: Problems = [];
   const plugin = value.plugin;
@@ -293,6 +383,7 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
   }
 
   checkPanel(value.panel, problems);
+  checkPalette(value.palette, problems);
 
   const leaves: string[] = [];
   const sidebar = value.sidebar;

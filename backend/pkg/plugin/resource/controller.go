@@ -137,6 +137,10 @@ type controller struct {
 	connectionChangeHook func(pluginID, connectionID string) func()
 	connectionRetireHook func(pluginID, connectionID string)
 
+	// calls registers connection starts and stops. They run their plugin calls
+	// without profilesMu; see beginConnectionCall.
+	calls connectionCalls
+
 	autoConnectMu       sync.Mutex
 	autoConnectAttempts map[string]string
 
@@ -532,8 +536,11 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 		return _result, admissionErr
 	}
 	defer finishResource(ctx, &retErr)
-	c.profilesMu.Lock()
-	defer c.profilesMu.Unlock()
+	ctx, call, err := c.beginConnectionCall(ctx, pluginID, connectionID)
+	if err != nil {
+		return types.ConnectionStatus{}, err
+	}
+	defer call.end()
 	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil {
 		defer release()
 	}
@@ -555,6 +562,11 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	if err := c.checkBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
 		return types.ConnectionStatus{}, err
 	}
+	// Both plugin calls, the start below and the catalog admission after it, run
+	// without profilesMu. A profile transaction of this plugin waits for call.end.
+	// ctx is marked with this call, so a provider that issues such a transaction
+	// with it gets an error instead of a wait for the very call it is inside.
+	call.releaseProfiles()
 
 	conn, err := provider.StartConnection(ctx, connectionID)
 	if err != nil {
@@ -614,8 +626,11 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 	}
 	defer finishResource(ctx, &retErr)
 	c.retireConnectionCalls(pluginID, connectionID)
-	c.profilesMu.Lock()
-	defer c.profilesMu.Unlock()
+	ctx, call, err := c.beginConnectionCall(ctx, pluginID, connectionID)
+	if err != nil {
+		return types.Connection{}, err
+	}
+	defer call.end()
 	if release := c.beginMetricConnectionChange(pluginID, connectionID); release != nil {
 		defer release()
 	}
@@ -632,6 +647,10 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 		return types.Connection{}, err
 	}
 	defer releaseObservation()
+	// Source teardown and the plugin call run without profilesMu. The fence above
+	// already excludes new work on this route, and a profile transaction of this
+	// plugin waits for call.end. ctx is marked with this call, as in StartConnection.
+	call.releaseProfiles()
 	c.sources.closeConnectionInterests(pluginID, connectionID)
 
 	conn, err := provider.StopConnection(ctx, connectionID)

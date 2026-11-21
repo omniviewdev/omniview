@@ -49,7 +49,7 @@ type Controller interface {
 // An implementation erases the credential-class state it holds for the plugin and releases state bound to the
 // removed directory. It must not delete other state: an uninstall removes what the plugin directory holds and
 // credential-class state, nothing else. A returned error keeps the uninstall incomplete: the plugin stays listed as
-// failed, its ID cannot be installed again, and uninstalling it again, also after a restart, calls the hook again.
+// failed, its ID cannot be installed again, and the host calls the hook again at its next start, before any plugin loads, and whenever the plugin is uninstalled again.
 // The hook is therefore idempotent. The manager logs and shows only the class of an error, never its text, and an
 // implementation keeps values out of its errors all the same.
 type PluginUninstallObserver interface {

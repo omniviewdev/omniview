@@ -34,14 +34,27 @@ afterEach(() => {
 });
 
 describe('the fixture\'s Logs sessions', () => {
-  it('are six targets of one item: an id and a title of their own, the item\'s group as the scope, and the item as the resource a card links to', () => {
+  it('are seven targets of one item: an id of their own, the item\'s group as the scope but for the last, and the item as the resource a card links to', () => {
     const targets = logTargetsOf(ITEM);
-    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late']);
-    expect(new Set(targets.map((target) => target.id)).size).toBe(6);
+    expect(targets.map((target) => target.title)).toEqual(['orders-api/app', 'orders-api/migrate', 'orders-api/sync', 'orders-api/audit', 'orders-api/pair', 'orders-api/late', 'orders-api/app']);
+    expect(new Set(targets.map((target) => target.id)).size).toBe(7);
+    expect(targets.slice(0, 6).map((target) => target.scope)).toEqual(Array<string>(6).fill('north-yard'));
     for (const target of targets) {
-      expect(target.scope).toBe('north-yard');
       expect(target.resource).toMatchObject({ label: 'Item orders-api', kind: 'Item', route: { page: 'item', params: { name: 'orders-api', group: 'north-yard' } } });
     }
+  });
+
+  it('has a twin of the first: its title and another id and another yard as its scope, so the strip has two tabs of one title and each says which yard it is (TI1)', () => {
+    const [app, , , , , , twin] = logTargetsOf(ITEM);
+    expect(twin?.title).toBe(app?.title);
+    expect(twin?.id).not.toBe(app?.id);
+    expect(twin).toMatchObject({ id: 'item/orders-api/app@south-yard', scope: 'south-yard' });
+    expect(app?.scope).toBe('north-yard');
+    // Opened by the same press as any other: its own stream, which goes on.
+    const feed = twin?.open();
+    vi.advanceTimersByTime(1_000);
+    expect(feed?.getSnapshot().state).toBe('streaming');
+    void feed?.close();
   });
 
   it('has one session that follows two sources: it lists them with their labels and its lines take them in turn; the others follow one and list none', () => {
@@ -154,8 +167,8 @@ describe('the fixture\'s Logs sessions', () => {
     }
 
     expect(vi.getTimerCount()).toBe(0);
-    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(['ended', 'ended', 'ended', 'ended', 'ended', 'ended']);
-    expect(counters()).toMatchObject({ opened: 6, closed: 6 });
+    expect(feeds.map((feed) => feed.getSnapshot().state)).toEqual(Array<string>(7).fill('ended'));
+    expect(counters()).toMatchObject({ opened: 7, closed: 7 });
   });
 
   it('drop what they held when they are closed, as the runtime\'s stream does: a stream the host keeps after closing it (A21) holds no line', () => {
@@ -259,5 +272,60 @@ describe('what a check reads of the sources, apart from the three counters', () 
     expect(closed.held).toBeLessThan(open.held);
     expect(closed.held).toBe(a?.stats().held);
     void a?.close();
+  });
+});
+
+describe('the streams a check holds live (`hold`, `endHeld`)', () => {
+  // A check that presses a target again needs the stream its second press opened to be live at its third, however slow its page: the first press's stream comes to its state by itself (1.5 s after it opens), and the one opened
+  // while the check holds is the one that does not, until the check says so.
+  it('stay live where they would end or fail by themselves, only for the feeds opened while the hold is on, and come to their state when told', () => {
+    const [, ends, fails] = logTargetsOf(ITEM);
+    const early = ends?.open();
+    hooks().hold(true);
+    const held = ends?.open();
+    const heldFails = fails?.open();
+    hooks().hold(false);
+    const late = ends?.open();
+    vi.advanceTimersByTime(3_000);
+    expect(early?.getSnapshot().state).toBe('ended');
+    expect(late?.getSnapshot().state).toBe('ended');
+    expect(held?.getSnapshot().state).toBe('streaming');
+    expect(heldFails?.getSnapshot().state).toBe('streaming');
+    vi.advanceTimersByTime(60_000);
+    expect(held?.getSnapshot().state).toBe('streaming');
+    hooks().endHeld();
+    expect(held?.getSnapshot()).toMatchObject({ state: 'ended', cause: undefined });
+    expect(heldFails?.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'source', message: 'The source did not answer' } });
+    // Nothing is held any more: another call ends nothing, and the hooks are no counters.
+    hooks().endHeld();
+    expect({ ...counters() }).toEqual({ opened: 4, closed: 0, listeners: 0 });
+    expect(Object.keys(counters())).toEqual(['opened', 'closed', 'listeners']);
+    for (const feed of [early, held, heldFails, late]) {
+      void feed?.close();
+    }
+  });
+
+  it('forget a held stream that is closed before it is told to end: it is over as a closed stream is, nothing fails it later, and no timer is left', () => {
+    const [app, , fails] = logTargetsOf(ITEM);
+    // The hooks are on the counters, which exist once a feed has been opened (the logs probe presses a command before it holds a stream).
+    const first = app?.open();
+    hooks().hold(true);
+    const held = fails?.open();
+    hooks().hold(false);
+    void held?.close();
+    hooks().endHeld();
+    expect(held?.getSnapshot()).toMatchObject({ state: 'ended', cause: undefined });
+    void first?.close();
+    vi.advanceTimersByTime(5_000);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('hold nothing by default: a feed opened with no hold on ends by itself, 1.5 s after it opens, as it always did', () => {
+    const [, ends] = logTargetsOf(ITEM);
+    const feed = ends?.open();
+    vi.advanceTimersByTime(1_500);
+    expect(feed?.getSnapshot().state).toBe('ended');
+    expect(typeof hooks().hold).toBe('function');
+    expect(typeof hooks().endHeld).toBe('function');
   });
 });

@@ -548,11 +548,27 @@ func (pm *pluginManager) createBackend(
 		// Unix socket limits even when the plugin has a verified short socket root.
 		// Activity and host-connection bindings complete sequentially before admission.
 		GRPCBrokerMultiplex: true,
-		GRPCDialOptions:     sdk.GRPCDialOptions(),
-		Cmd:                 cmd,
-		SkipHostEnv:         true,
-		StartTimeout:        pluginStartTimeout,
-		AllowedProtocols:    []goplugin.Protocol{goplugin.ProtocolGRPC},
+		// AutoMTLS makes go-plugin generate a throwaway certificate for this
+		// launch, hand its public half to the child in PLUGIN_CLIENT_CERT, and
+		// require the child to serve TLS that demands that exact client
+		// certificate; the host pins the child's own certificate from the
+		// handshake line. The plugin creates its listener (a Unix socket, or
+		// loopback TCP on Windows) before the host connects; without AutoMTLS a
+		// local process that connected in that window is served plaintext gRPC
+		// as if it were the host, with it that process is refused. A local
+		// process that connects before the host can still hold the plugin's only
+		// accepted connection and make that plugin's start fail. The
+		// environment carries only the host's public certificate; the private
+		// keys never leave the memory of the process that made them, so the
+		// limit is a process that can read the host's memory or run as the
+		// host. This does not contain a hostile plugin. Brokered callback
+		// connections use the same certificates.
+		AutoMTLS:         true,
+		GRPCDialOptions:  sdk.GRPCDialOptions(),
+		Cmd:              cmd,
+		SkipHostEnv:      true,
+		StartTimeout:     pluginStartTimeout,
+		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
 			Output: logOutput,
@@ -623,6 +639,8 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 		return plugintypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Failed to unload plugin during reload").WithInstance(id)
 	}
+	// The plugin is stopped and about to start again: the window is told it is gone before it is told it runs again (EventStateChange to Running, from the load below), so what it reads last is true.
+	emitUnloaded(pm.emitter, id, UnloadReloaded)
 	return pm.loadPluginLocked(id, opts)
 }
 

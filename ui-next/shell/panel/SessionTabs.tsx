@@ -22,9 +22,12 @@ type SessionTabProps = {
 
 /**
  * One session tab (ch16 S113, SCT1): the anatomy of a document tab. ONE 16 px lead slot (the tool's glyph, or the session's state while it is not steady), 4 px, the name as a head that
- * gives way with an end ellipsis and a tail that keeps its end (a generated suffix, an ordinal), then the muted scope, which gives way first; CSS cuts it, nothing is measured. The
- * accessible name is the whole name and the state; the card (hover and keyboard focus, SCD1) takes the place of a plain-text tooltip. The close control is the pointer's, as the document
- * tab's is: a tablist owns tabs and nothing else, so it is hidden from the accessibility tree and out of the tab order, and the keyboard closes a session with Delete.
+ * gives way with an end ellipsis and a tail that keeps its end (a generated suffix, an ordinal), then the muted scope, which gives way first; CSS cuts it, nothing is measured. The scope is drawn only to
+ * tell twins apart (TI1: two sessions of one title and another scope, the model's `SessionItem.scope`); a tab with no twin draws none. The accessible name is the words the tab draws and the state, so it
+ * holds the visible text (WCAG 2.5.3, axe's `label-content-name-mismatch`): the name and the scope are two parts the layout sets 4 px apart, and the DOM keeps them apart with a space the flex row does not
+ * draw, so the text a tool reads off the tab is `title scope`, as the name says it, and not the two words run together. The card (hover and keyboard focus, SCD1) takes the place of a plain-text
+ * tooltip. The close control is the pointer's, as the document tab's is: a tablist owns tabs and nothing else, so it is hidden from the accessibility tree and out of the tab order, and the keyboard
+ * closes a session with Delete.
  */
 function SessionTab({ id, stop, selected, controls, prefix }: SessionTabProps) {
   const { store } = usePanel();
@@ -81,11 +84,14 @@ function SessionTab({ id, stop, selected, controls, prefix }: SessionTabProps) {
             )}
           </span>
           {item.scope === '' ? null : (
-            <span className={styles.sessionScope} data-shell-part="sessionScope">
-              <Text variant="caption" tone="muted">
-                {item.scope}
-              </Text>
-            </span>
+            <>
+              {' '}
+              <span className={styles.sessionScope} data-shell-part="sessionScope">
+                <Text variant="caption" tone="muted">
+                  {item.scope}
+                </Text>
+              </span>
+            </>
           )}
         </span>
       </button>

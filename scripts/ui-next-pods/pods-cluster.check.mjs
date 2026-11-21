@@ -6,7 +6,7 @@
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
 //   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the Logs command of a Pod
-//                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session
+//                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
@@ -14,10 +14,15 @@
 //
 // The controls run the same `checkParity` and pass only when it fails with the expected code, so a check that has gone blind
 // (passing on an empty cluster, a missing plugin or a plugin with no bundle) turns the job red. Run: `node --test scripts/ui-next-pods/pods-cluster.check.mjs`.
+//
+// H6 (plugin PR #272): a connection's ID is derived (`<slug>-<10 hex>`) and differs on every run, because the kubeconfig of the check lives in a temporary directory. The check never writes one down: the first test
+// reads the ID from the host's list of connections and holds the scope lane to the NAME (the context kubectl calls current), lane.mjs.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDetail, checkLogs, checkParity, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { compareLane } from './lane.mjs';
+import { compareTabName } from './logs.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
 const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
@@ -89,6 +94,9 @@ if (mode === 'control-fixture-absent') {
     assert.equal(read.state, 'ready', 'the connection is up and the page lists the Pods');
     assert.equal(read.count, `${String(oracle.length)} Pods`, 'the footer counts the same Pods, the whole set');
     assert.deepEqual(read.filters, expected.filters, 'the quick filters count what kubectl says');
+    // The one assertion about the connection's chip (H6): its text is the NAME of the connection, and not the ID that the host lists for it.
+    const lane = compareLane(read.lane, await expectedLane({ baseURL, kubeconfig }));
+    assert.equal(lane.length, 0, lane.join('; '));
   });
 
   // The runtime's live feed, end to end: a Pod created and deleted with kubectl appears and disappears without a reload.
@@ -131,10 +139,18 @@ if (mode === 'control-fixture-absent') {
   });
 
   // The first real log stream of the new stack (P1b-3b): the Logs command of a Pod's page opens a session in the host's Logs tool, whose rows are the lines `kubectl logs --timestamps` prints, and closing its tab
-  // closes the SDK's session (logs.mjs). Parity mode only.
+  // closes the SDK's session (logs.mjs). Parity mode only. The Pod is a finished Job's: its stream ends at once. P1b-3d (A22, SCT1): a session alone in the tool draws no scope (no `<pod> · <connection>`), and a tab's
+  // accessible name carries the state of a session that is not running, so the tab reads `<pod>, ended`: both parts are asserted, as the one exact name (compareTabName, with its controls in logs.test.mjs).
   test('the Logs command of a Pod opens a session with the lines kubectl logs prints, and closing its tab closes the SDK session', async () => {
     const { read, pod } = await checkLogs({ browser, baseURL, kubeconfig });
     assert.ok(read.rows.length > 0, 'the session has lines');
-    assert.ok(read.tabs[0]?.startsWith(`${pod.name} · `), `the session's tab is named for the Pod: ${JSON.stringify(read.tabs)}`);
+    assert.deepEqual(compareTabName(read.tabs[0], pod.name, 'ended'), [], `the session's tab is named for the Pod, then its state: ${JSON.stringify(read.tabs)}`);
+  });
+
+  // P1b-3d (A22: a session is its plugin and its target): the Logs command of a RUNNING Pod, pressed twice, shows its one session: one tab, named for the Pod, one SDK session more and not two (logs.mjs, `compareRepress`,
+  // with its controls in logs.test.mjs; parity.mjs, `checkLogsTwice`). The first proof of a re-activation against a real cluster. Parity mode only; last, because it makes a Pod of its own.
+  test('the Logs command of a running Pod pressed twice shows its one session: one tab, one SDK session', async () => {
+    const { found } = await checkLogsTwice({ browser, baseURL, kubeconfig });
+    assert.equal(found.second.tabs.length, 1, 'the second press shows the session, it opens no other');
   });
 }

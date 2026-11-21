@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareCounts, countLines } from './counts.mjs';
 import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
-import { compareLogs, expectedLogs, LOGS_JOB } from './logs.mjs';
+import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
 const run = promisify(execFile);
@@ -18,6 +18,7 @@ const run = promisify(execFile);
 //   names     `namespace/name` of every row mounted, sorted (the identity cell's name and its second line)
 //   rowCount  how many rows the table says it holds (`aria-rowcount` less its header); the table mounts only the rows near its window, so a reading is
 //             whole only when `names.length` equals it (`openPods` gives the page a window tall enough to mount every row of the fixture)
+//   lane      the text of the Connection face of the scope lane above the page (`kind-ui-next-pods`), null when the lane has none: a person reads the connection's NAME there (lane.mjs)
 //   status    one line of the above for a failure message
 // PR 1a.2 and 1a.7 changed the page; they changed this function, not the checks around it.
 export async function readPage(page) {
@@ -31,6 +32,12 @@ export async function readPage(page) {
     const status = body?.querySelector('[role=status]') ?? null;
     const message = state === null || state === 'ready' ? '' : read(body?.querySelector('[role=alert]')) || status?.getAttribute('aria-label') || read(status);
     const count = text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) || null;
+    // The shell's scope lane: one face for each scope, drawn `<what>: <value>` (the face's last element holds two spans, the word and the text).
+    const faces = [...document.querySelectorAll('[data-shell-part=lane] [data-shell-part=scopeFace]')].map((face) => ({
+      what: text(face.lastElementChild?.firstElementChild).replace(/:$/, ''),
+      value: text(face.lastElementChild?.lastElementChild),
+    }));
+    const lane = faces.find((face) => face.what === 'Connection')?.value ?? null;
     const table = root?.querySelector('table') ?? null;
     const names = [...(root?.querySelectorAll('tbody tr') ?? [])]
       .map((row) => {
@@ -45,14 +52,16 @@ export async function readPage(page) {
       count,
       filters: [...(root?.querySelectorAll('[data-ov-block=filters] button') ?? [])].map((chip) => text(chip)),
       names,
+      lane,
       rowCount: table === null ? 0 : Number(table.getAttribute('aria-rowcount')) - 1,
       status: `${state ?? 'no page'}${message === '' ? '' : `: ${message}`}${count === null ? '' : ` (${count})`}`,
     };
   });
 }
 
-export async function kubectl(kubeconfig, args) {
-  const { stdout } = await run('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: 60_000 });
+// `timeoutMs` is how long the process may run: kubectl's calls are short, and the one that waits for a Pod to be Ready is given more than the wait it carries (logs.mjs, `waitProcessMs`).
+export async function kubectl(kubeconfig, args, { timeoutMs = 60_000 } = {}) {
+  const { stdout } = await run('kubectl', ['--kubeconfig', kubeconfig, ...args], { encoding: 'utf8', timeout: timeoutMs });
   return stdout;
 }
 
@@ -380,4 +389,103 @@ export async function checkLogs({ browser, baseURL, kubeconfig, timeoutMs = 30_0
     await closeLogsTab(page).catch(() => undefined);
     await page.close();
   }
+}
+
+// The Logs command of a RUNNING Pod pressed twice (P1b-3d, A22: a session is its plugin and its target). The Pod is made for the check (`LOGS_RUNNING`: a busybox that writes a line a second and never ends); its page is
+// opened from the list as a person opens it and the header's Logs command is pressed twice. The first press opens the session and the second shows it: the Logs tool holds ONE tab, named for the Pod, and the SDK one
+// session more, not two; closing the tab closes the SDK's session. The first proof of a re-activation against a real cluster. The Pod is the check's own: a Pod of its name that is already there is neither used nor deleted,
+// and one the check makes is deleted whatever happens, its creation included (logs.mjs, `withOwnedPod`).
+// Throws ParityError('LOGS_MISMATCH') when the readings differ from what `compareRepress` (logs.mjs) says they must be.
+export async function checkLogsTwice(options) {
+  const { kubeconfig } = options;
+  const pod = LOGS_RUNNING;
+  const at = ['-n', pod.namespace];
+  return withOwnedPod(
+    {
+      exists: async () => (await kubectl(kubeconfig, ['get', 'pod', pod.name, ...at, '--ignore-not-found', '-o', 'name'])).trim() !== '',
+      create: () => kubectl(kubeconfig, ['run', pod.name, ...at, '--image=busybox:1.37.0', '--restart=Never', '--', 'sh', '-c', 'i=0; while true; do i=$((i + 1)); echo "line $i"; sleep 1; done']),
+      remove: () => kubectl(kubeconfig, ['delete', 'pod', pod.name, ...at, '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']),
+    },
+    () => pressTwice(options),
+  );
+}
+
+// The part of the press-twice case that needs the Pod to be there: wait for it, then press the Logs command of its page twice and read the tool and the SDK.
+async function pressTwice({ browser, baseURL, kubeconfig, timeoutMs = 60_000 }) {
+  const pod = LOGS_RUNNING;
+  await kubectl(kubeconfig, ['wait', '--for=condition=Ready', `pod/${pod.name}`, '-n', pod.namespace, `--timeout=${String(READY_SECONDS)}s`], { timeoutMs: waitProcessMs(READY_SECONDS) });
+  let page;
+  try {
+    const before = (await listLogSessions(baseURL)).length;
+    page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
+    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    await link.waitFor({ timeout: timeoutMs });
+    await link.click();
+    const press = () => page.getByRole('button', { name: 'Logs', exact: true }).first().click({ timeout: timeoutMs });
+    await press();
+    // The session is streaming once its tab is there and holds a line: its name is then the Pod's alone (a session that is starting has its state in its name).
+    const deadline = Date.now() + timeoutMs;
+    let reading = await readLogs(page);
+    while ((reading.tabs.length === 0 || reading.rows.length === 0) && Date.now() < deadline) {
+      await page.waitForTimeout(100);
+      reading = await readLogs(page);
+    }
+
+    const first = { tabs: reading.tabs, sessions: (await listLogSessions(baseURL)).length };
+    await press();
+    // A session the second press wrongly opened shows within a moment: the page is read after one, and the SDK is asked after the page.
+    await page.waitForTimeout(1_500);
+    reading = await readLogs(page);
+    const second = { tabs: reading.tabs, sessions: (await listLogSessions(baseURL)).length };
+    await closeLogsTab(page);
+    let closed = (await listLogSessions(baseURL)).length;
+    for (let attempt = 0; closed !== before && attempt < 100; attempt += 1) {
+      await page.waitForTimeout(100);
+      closed = (await listLogSessions(baseURL)).length;
+    }
+
+    const found = { before, first, second, closed: { sessions: closed } };
+    const problems = compareRepress(found, pod.name);
+    if (problems.length > 0) {
+      throw new ParityError('LOGS_MISMATCH', `${pod.namespace}/${pod.name}: ${problems.join('; ')}`, { problems, found });
+    }
+
+    return { found, pod };
+  } finally {
+    if (page !== undefined) {
+      await closeLogsTab(page).catch(() => undefined);
+      await page.close().catch(() => undefined);
+    }
+  }
+}
+
+// The host's own list of the plugin's connections, asked as the page asks (`ServiceWrapper.ListConnections` of the resource service). Since plugin PR #272 a connection's ID is derived from the path of its kubeconfig and
+// the name of its context (`<slug>-<10 hex>`), and the check's kubeconfig lives in a temporary directory: the ID is another one on every run, so it is read here and never written into the check.
+const RESOURCE_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
+const KUBERNETES_PLUGIN_ID = 'kubernetes';
+
+export async function listConnections(baseURL, pluginID = KUBERNETES_PLUGIN_ID) {
+  const response = await fetch(new URL('/wails/runtime', baseURL), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'pods-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `pods-connections-${String(Date.now())}`, methodName: `${RESOURCE_SERVICE}.ListConnections`, args: [pluginID] } }),
+  });
+  if (!response.ok) {
+    throw new Error(`the connections of ${pluginID} could not be listed: ${String(response.status)} ${await response.text()}`);
+  }
+
+  const connections = await response.json();
+  if (!Array.isArray(connections)) {
+    throw new Error(`the connections of ${pluginID} were not a list: ${JSON.stringify(connections).slice(0, 200)}`);
+  }
+
+  return connections;
+}
+
+// What the scope lane's Connection face must say (lane.mjs): the context kubectl calls current, and the ID the host lists for the connection of that context (`data.context` is the exact context name the plugin
+// puts in every connection it lists). The ID is what the lane must not say; it is `undefined` when the host lists no such connection.
+export async function expectedLane({ baseURL, kubeconfig }) {
+  const context = (await kubectl(kubeconfig, ['config', 'current-context'])).trim();
+  const connection = (await listConnections(baseURL)).find((candidate) => candidate?.data?.context === context);
+  return { context, id: connection?.id };
 }

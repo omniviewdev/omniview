@@ -142,7 +142,7 @@ function keyClock() {
  * type, the phase and the listener's identity, and every timeout, interval, animation frame and idle callback that has not run or been cleared, with the stack that started it. Also how many
  * callbacks have run. Wraps the registering and the clearing on the prototypes that have them (an engine may put the window's own methods on the window), so it sees every caller.
  */
-function watch() {
+export function watch() {
   const held = new Map();
   const ids = new WeakMap();
   let serial = 0;
@@ -399,7 +399,7 @@ function watch() {
 }
 
 /** The text of an init script that runs `fn` in the page. */
-const script = (fn) => `(${fn.toString()})();`;
+export const script = (fn) => `(${fn.toString()})();`;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 const url = (origin, query) => `${origin}/shell/probes/palette-fixture.html?case=${query}`;

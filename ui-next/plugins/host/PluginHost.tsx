@@ -122,6 +122,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const logs = createLogStreams(store);
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
   const routes = new Published<Route>();
+  const panelHosts = panelHostsOf(logs);
   return {
     frames,
     nodes,
@@ -135,11 +136,11 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     tabs,
     panel: store,
     logs,
-    panelHosts: panelHostsOf(logs),
+    panelHosts,
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin) }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
   };
 }
 
@@ -385,6 +386,11 @@ function HostPage({ entries, route, pluginName, frames, tabs, platform, inventor
   }
 
   if (entry.phase === 'failed') {
+    // A plugin that is reloading is the mock's starting plugin (ch16 S89, PO1): nothing failed and there is nothing to retry, so its tab keeps its route and draws the loading state until the plugin runs again.
+    if (entry.failure.kind === 'unloaded' && entry.failure.cause === 'reloaded') {
+      return <PlaceholderPage title={entry.name} state={{ kind: 'loading' }} />;
+    }
+
     return (
       <PlaceholderPage
         title={entry.name}

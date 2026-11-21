@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +67,7 @@ func TestUninstallEraseFailureFailsTheUninstallAndTheRetryErasesAgain(t *testing
 	// What the plugin records, and the UI shows, says what is true: the files are
 	// gone, the credentials are owed, and uninstalling again is the retry. It does
 	// not say that artifacts remain in staging, because none do.
-	assert.Contains(t, info.LastError, "uninstall the plugin again to retry")
+	assert.Contains(t, info.LastError, "retries at the next start")
 	assert.NotContains(t, info.LastError, "partial artifacts")
 	assert.NotContains(t, info.LastError, "pending uninstall recovery at")
 	assert.Equal(t, 0, refreshes, "an incomplete uninstall publishes no inventory change")
@@ -100,7 +102,7 @@ func TestUninstallEraseFailureFailsTheUninstallAndTheRetryErasesAgain(t *testing
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type, "a completed uninstall leaves nothing to retry")
 }
 
-func TestUninstallEraseFailureIsRetriedAfterARestart(t *testing.T) {
+func TestStartupCompletesAnUninstallWhoseEraseFailed(t *testing.T) {
 	pm := newTestManager(t)
 	observer := newUninstallObserverStub()
 	observer.err = errors.New("settings store offline")
@@ -114,21 +116,26 @@ func TestUninstallEraseFailureIsRetriedAfterARestart(t *testing.T) {
 	restarted.pidTracker = NewPIDTracker(pm.stateRoot)
 	second := newUninstallObserverStub()
 	restarted.connlessControllers[sdktypes.CapabilityExec] = second
+	recorder := &testRecordingEmitter{}
+	restarted.emitter = recorder
 	require.NoError(t, restarted.Initialize(context.Background()))
-	held, err := restarted.GetPlugin("flux")
-	require.NoError(t, err)
-	assert.Equal(t, "Failed", held.Phase, "a pending uninstall is listed as failed, not forgotten")
-	_, installErr := restarted.InstallPluginFromPath(uiArchive(t))
-	require.Error(t, installErr, "the ID cannot be installed again while the erase is owed")
-	assert.Empty(t, second.uninstalled(), "starting the host erases nothing by itself")
 
-	_, err = restarted.UninstallPlugin("flux")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"flux"}, second.uninstalled(), "the retry after a restart runs the erase")
+	// No one pressed a button: the host start retried the erase and finished the uninstall.
+	assert.Equal(t, []string{"flux"}, second.uninstalled())
+	_, getErr := restarted.GetPlugin("flux")
+	require.Error(t, getErr, "a finished uninstall leaves no plugin record")
+	assert.Empty(t, restarted.ListPlugins())
 	recovery, readErr := restarted.readUninstallRecovery("flux")
 	require.NoError(t, readErr)
 	assert.Nil(t, recovery)
-	assert.Empty(t, restarted.ListPlugins())
+	persisted, readErr := restarted.readPluginStateJSON()
+	require.NoError(t, readErr)
+	assert.Empty(t, persisted)
+	assert.Empty(t, toldUnloaded(t, recorder.getEvents()), "no window holds an interface of a plugin in a host that has just started")
+	_, retryErr := restarted.UninstallPlugin("flux")
+	var appErr *apperror.AppError
+	require.ErrorAs(t, retryErr, &appErr)
+	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type, "a finished uninstall leaves nothing to retry")
 }
 
 func TestUninstallEraseFailureOfARecordWithoutAnInstallationIsRetried(t *testing.T) {
@@ -226,7 +233,7 @@ func runUntilKilled(fn func()) bool {
 	return killed
 }
 
-func TestUninstallKilledBeforeTheEraseLeavesAnOwedEraseThatTheRetryAfterRestartCompletes(t *testing.T) {
+func TestUninstallKilledBeforeTheEraseIsCompletedByTheNextStart(t *testing.T) {
 	f := newCredentialFixture(t)
 	f.install(t)
 	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})
@@ -239,8 +246,7 @@ func TestUninstallKilledBeforeTheEraseLeavesAnOwedEraseThatTheRetryAfterRestartC
 	require.True(t, killed, "the uninstall must have reached the erase")
 
 	requireErasePendingOnDisk(t, f)
-	next := f.restart(t)
-	requireOwedEraseCompletesOnRetry(t, next)
+	requireStartupCompletedTheUninstall(t, f.restart(t))
 }
 
 // requireErasePendingOnDisk checks what a process killed between the durable
@@ -261,31 +267,24 @@ func requireErasePendingOnDisk(t *testing.T, f *credentialFixture) {
 		"the erase did not run")
 }
 
-// requireOwedEraseCompletesOnRetry takes the host that started after the kill:
-// the uninstall is pending and cannot be bypassed by installing the plugin again, and
-// uninstalling again erases the credentials and keeps the ordinary setting.
-func requireOwedEraseCompletesOnRetry(t *testing.T, next *credentialFixture) {
+// requireStartupCompletedTheUninstall takes the host that started after the kill
+// or the failed erase, and checks that no one had to do anything: the start
+// retried the erase, so the credentials are gone, the ordinary setting stays, no
+// marker or plugin record is left and the ID can be installed again, with none of
+// the old plugin's credentials.
+func requireStartupCompletedTheUninstall(t *testing.T, next *credentialFixture) {
 	t.Helper()
-	held, err := next.pm.GetPlugin("flux")
-	require.NoError(t, err)
-	assert.Equal(t, "Failed", held.Phase, "the pending uninstall is listed as failed, not forgotten")
-	// A new installation would inherit the credentials that are still stored.
-	_, err = next.pm.InstallPluginFromPath(credentialArchive(t))
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, "Plugin uninstall requires recovery", appErr.Title)
-	assert.NoDirExists(t, next.pm.pluginsRoot.ResolvePath("flux"))
-	assert.Equal(t, credentialToken, next.persisted(t)["apiToken"], "nothing is erased before the retry")
-
-	_, err = next.pm.UninstallPlugin("flux")
-	require.NoError(t, err)
-
+	_, err := next.pm.GetPlugin("flux")
+	require.Error(t, err, "the host start finished the uninstall: no plugin record is left")
+	assert.Empty(t, next.pm.ListPlugins())
 	assert.Equal(t, map[string]any{"theme": "dark"}, next.persisted(t),
 		"the credentials are erased and the ordinary setting stays")
 	recovery, err := next.pm.readUninstallRecovery("flux")
 	require.NoError(t, err)
 	assert.Nil(t, recovery)
-	assert.Empty(t, next.pm.ListPlugins())
+	persisted, err := next.pm.readPluginStateJSON()
+	require.NoError(t, err)
+	assert.Empty(t, persisted)
 	// A reinstall can never see the old plugin's credentials.
 	next.install(t)
 	assert.Equal(t, map[string]any{"apiToken": "", "clientSecret": "", "theme": "dark"}, next.persisted(t))
@@ -296,11 +295,12 @@ const (
 	killChildExitCode  = 86
 )
 
-// TestUninstallKilledProcessBeforeTheEraseIsCompletedAfterRestart kills a real
+// TestUninstallKilledProcessBeforeTheEraseIsCompletedByTheNextStart kills a real
 // process: a child process of this test binary runs the uninstall and exits the
 // moment the erase is about to run, with no deferred function and no cleanup.
-// This process then starts over what it left, as the next start of the host does.
-func TestUninstallKilledProcessBeforeTheEraseIsCompletedAfterRestart(t *testing.T) {
+// This process then starts over what it left, as the next start of the host does,
+// and nothing but the start is needed to finish the uninstall.
+func TestUninstallKilledProcessBeforeTheEraseIsCompletedByTheNextStart(t *testing.T) {
 	dir := t.TempDir()
 	child := exec.Command(os.Args[0], "-test.run=^TestUninstallKillHelperProcess$", "-test.count=1")
 	child.Env = append(os.Environ(), killChildDirectory+"="+dir)
@@ -313,9 +313,9 @@ func TestUninstallKilledProcessBeforeTheEraseIsCompletedAfterRestart(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, svc.Close()) })
 	next := newCredentialFixtureOver(t, svc, filepath.Join(dir, "settings.db"))
-	require.NoError(t, next.pm.Initialize(context.Background()))
 	assert.Equal(t, credentialToken, next.persisted(t)["apiToken"], "the killed process erased nothing")
-	requireOwedEraseCompletesOnRetry(t, next)
+	require.NoError(t, next.pm.Initialize(context.Background()))
+	requireStartupCompletedTheUninstall(t, next)
 }
 
 // TestUninstallKillHelperProcess is the child of the test above. It does
@@ -323,7 +323,7 @@ func TestUninstallKilledProcessBeforeTheEraseIsCompletedAfterRestart(t *testing.
 func TestUninstallKillHelperProcess(t *testing.T) {
 	dir := os.Getenv(killChildDirectory)
 	if dir == "" {
-		t.Skip("helper process of TestUninstallKilledProcessBeforeTheEraseIsCompletedAfterRestart")
+		t.Skip("helper process of TestUninstallKilledProcessBeforeTheEraseIsCompletedByTheNextStart")
 	}
 	svc, err := appstate.New(appstate.WithRoot(filepath.Join(dir, "state")), appstate.WithFlock(false))
 	require.NoError(t, err)
@@ -340,7 +340,7 @@ func TestUninstallKillHelperProcess(t *testing.T) {
 	t.Fatal("the process was not killed at the erase")
 }
 
-func TestUninstallSettingsStoreFailureFailsTheUninstallUntilTheStoreWorksAgain(t *testing.T) {
+func TestUninstallSettingsStoreFailureFailsTheUninstallUntilTheNextStartFinishesIt(t *testing.T) {
 	f := newCredentialFixture(t)
 	f.install(t)
 	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})
@@ -357,9 +357,128 @@ func TestUninstallSettingsStoreFailureFailsTheUninstallUntilTheStoreWorksAgain(t
 	require.NoError(t, getErr, "the plugin stays listed, failed, while the erase is owed")
 	assert.Equal(t, "Failed", info.Phase)
 
-	// The store is back (a restart), and uninstalling again erases the credentials.
+	// The store is back (a restart): the host start retries the erase and finishes
+	// the uninstall, without a user.
 	next := f.restart(t)
-	_, err = next.pm.UninstallPlugin("flux")
-	require.NoError(t, err)
+	_, getErr = next.pm.GetPlugin("flux")
+	require.Error(t, getErr)
 	assert.Equal(t, map[string]any{"theme": "dark"}, next.persisted(t))
+}
+
+// settingsFailingFirst is the settings controller of a host whose erase fails a
+// given number of times, across restarts (the counter is shared), and then works.
+type settingsFailingFirst struct {
+	settings.Controller
+	remaining *atomic.Int32
+}
+
+func (c settingsFailingFirst) OnPluginUninstalled(pluginID string) error {
+	if c.remaining.Add(-1) >= 0 {
+		// A cause text that carries a value: it must never reach the plugin's last error.
+		return errors.New("settings store offline, token=" + credentialToken)
+	}
+	observer, ok := c.Controller.(plugintypes.PluginUninstallObserver)
+	if !ok {
+		return errors.New("the settings controller has no uninstall hook")
+	}
+	return observer.OnPluginUninstalled(pluginID)
+}
+
+func TestStartupRetriesAFailedEraseAtEveryStartUntilItSucceeds(t *testing.T) {
+	var remaining atomic.Int32
+	remaining.Store(2) // the erase fails twice, then works
+	failTwice := func(c *credentialFixture) {
+		c.pm.connlessControllers[sdktypes.CapabilitySettings] = settingsFailingFirst{Controller: c.settings, remaining: &remaining}
+	}
+	f := newCredentialFixture(t)
+	f.install(t)
+	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})
+	failTwice(f)
+
+	// Attempt 1, by the uninstall itself, fails.
+	_, err := f.pm.UninstallPlugin("flux")
+	require.Error(t, err)
+
+	// Attempt 2, by the first start, fails too: the plugin stays failed, with the
+	// class of the cause and no cause text, and the credentials stay owed.
+	next := f.restart(t, failTwice)
+	held, err := next.pm.GetPlugin("flux")
+	require.NoError(t, err)
+	assert.Equal(t, "Failed", held.Phase)
+	assert.Contains(t, held.LastError, "retries at the next start")
+	assert.NotContains(t, held.LastError, credentialToken)
+	assert.Equal(t, credentialToken, next.persisted(t)["apiToken"])
+	_, installErr := next.pm.InstallPluginFromPath(credentialArchive(t))
+	require.Error(t, installErr, "the ID cannot be installed again while the erase is owed")
+
+	// Attempt 3, by the next start, works, with no user action.
+	requireStartupCompletedTheUninstall(t, next.restart(t, failTwice))
+}
+
+func TestStartupLeavesAnUninstallThatDidNotReachDisposalToTheUser(t *testing.T) {
+	pm := newTestManager(t)
+	installLoadedUIPlugin(t, pm)
+	// The process died after the uninstall began, before disposal: it can still be
+	// rolled back, so nothing may be erased for it.
+	recovery, err := pm.prepareUninstallRecovery("flux", pm.records["flux"])
+	require.NoError(t, err)
+	require.NotNil(t, recovery)
+	require.False(t, recovery.cleanupStarted)
+	// The plugin is staged but not disposed of: it can still be restored.
+	staged := filepath.Join(recovery.Stage, "plugin")
+	require.NoError(t, pm.pluginsRoot.RenameDirectoryNoReplace("flux", staged))
+
+	restarted := newTestManager(t)
+	restarted.stateRoot, restarted.pluginsRoot = pm.stateRoot, pm.pluginsRoot
+	restarted.pidTracker = NewPIDTracker(pm.stateRoot)
+	second := newUninstallObserverStub()
+	restarted.connlessControllers[sdktypes.CapabilityExec] = second
+	require.NoError(t, restarted.Initialize(context.Background()))
+
+	assert.Empty(t, second.uninstalled(), "an uninstall that can still roll back erases nothing")
+	held, err := restarted.GetPlugin("flux")
+	require.NoError(t, err)
+	assert.Equal(t, "Failed", held.Phase)
+	assert.DirExists(t, pm.pluginsRoot.ResolvePath(staged), "nothing was disposed of: the staged plugin is intact")
+}
+
+func TestStartupStopsFinishingUninstallsWhenItsTimeBudgetIsSpent(t *testing.T) {
+	f := newCredentialFixture(t)
+	f.install(t)
+	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})
+	f.pm.connlessControllers[sdktypes.CapabilitySettings] = settingsKilledBeforeTheErase{
+		Controller: f.settings,
+		kill:       func() { panic(processKilled{}) },
+	}
+	require.True(t, runUntilKilled(func() { _, _ = f.pm.UninstallPlugin("flux") }))
+
+	// A start with no time left attempts nothing: the plugin stays failed and the
+	// credentials stay owed.
+	spent := f.restart(t, func(c *credentialFixture) { c.pm.startupEraseBudget = -time.Second })
+	held, err := spent.pm.GetPlugin("flux")
+	require.NoError(t, err)
+	assert.Equal(t, "Failed", held.Phase)
+	assert.Equal(t, credentialToken, spent.persisted(t)["apiToken"])
+
+	// The next start has its whole budget and finishes the uninstall.
+	requireStartupCompletedTheUninstall(t, spent.restart(t))
+}
+
+func TestAnUninstallThatIsRetriedTellsTheWindowThePluginIsGoneOnce(t *testing.T) {
+	pm, recorder := loadedPlugin(t, "flux")
+	observer := newUninstallObserverStub()
+	observer.err = errors.New("settings store offline")
+	pm.connlessControllers[sdktypes.CapabilityExec] = observer
+
+	_, err := pm.UninstallPlugin("flux")
+	require.Error(t, err)
+	_, err = pm.UninstallPlugin("flux") // the user's retry, still failing
+	require.Error(t, err)
+	observer.err = nil
+	_, err = pm.UninstallPlugin("flux") // the retry that completes it
+	require.NoError(t, err)
+
+	events := recorder.getEvents()
+	assert.Equal(t, []map[string]any{{"pluginID": "flux", "cause": "uninstalled"}}, toldUnloaded(t, events),
+		"the window is told once per uninstall, not once per attempt: %v", names(events))
 }

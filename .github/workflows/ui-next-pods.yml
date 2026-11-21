@@ -7,9 +7,11 @@ name: UI next Pods cluster check
 # The job also runs three negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
 #   a cluster without the fixture, a host without the plugin, and the plugin installed without its bundle (`assets/` empty).
 #
-# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 7a06766582a1f9a8b4dc946324684f256f3d97e3, the squash-merge commit of PR #273 (Q2: the sidebar draws counts, 2026-11-20), the branch
-# head with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268), the Logs command (#267), the
-# counts the plugin's backend says (Q1 #270) and the counts its sidebar draws (Q2 #273). The check opens the Pod page from the list, and a Pod's Logs from its page, and holds the sidebar's counts to kubectl's. To bump it, in a pull request of this repository that changes nothing else about the check:
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: f4fdab1e792b74b2994d1407f9b2884a6568fa8d, the squash-merge commit of PR #272 (H6: every connection has a unique, stable ID, `<slug>-<10 hex>`, and the
+# plugin's pages say its NAME, 2026-11-20), the branch head with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268),
+# the Logs command (#267), the counts the plugin's backend says (Q1 #270), the counts its sidebar draws (Q2 #273), the glyphs of its kinds (Q2b #274) and the derived connection IDs (H6 #272). The check opens the Pod page from the list,
+# and a Pod's Logs from its page, holds the sidebar's counts to kubectl's, and holds the scope lane's Connection text to the context's NAME: the ID is derived from the path of the check's temporary kubeconfig, so it differs on every run
+# and the check reads it from the host's list of connections (lane.mjs). To bump it, in a pull request of this repository that changes nothing else about the check:
 #   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next`, or the merge commit of the plugin pull request you want;
 #   2. put it in KUBERNETES_PLUGIN_REF, check the plugin out at it and run `node scripts/ui-next-pods/pin.mjs <that checkout>`: it fails when the plugin's list of shared
 #      names (`ui/vendor/shared-specifiers.json`) is not this host's `SHARED_SPECIFIERS_V1`, or when the host commit the plugin vendored from (`ui/vendor/HOST_COMMIT`) is not
@@ -75,7 +77,7 @@ env:
   # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
   KUBERNETES_PLUGIN_BRANCH: feature/ui-next
-  KUBERNETES_PLUGIN_REF: 7a06766582a1f9a8b4dc946324684f256f3d97e3
+  KUBERNETES_PLUGIN_REF: f4fdab1e792b74b2994d1407f9b2884a6568fa8d
   # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
   # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
@@ -163,6 +165,10 @@ jobs:
       # What a Pod's session in the Logs tool must print against `kubectl logs --timestamps` (scripts/ui-next-pods/logs.mjs), with its negative controls.
       - name: Pod logs contracts (no cluster)
         run: node --test scripts/ui-next-pods/logs.test.mjs
+
+      # What the scope lane's Connection face must say against `kubectl config current-context` and the ID the host lists (scripts/ui-next-pods/lane.mjs): the NAME and never the derived ID, with its negative controls.
+      - name: Scope lane contracts (no cluster)
+        run: node --test scripts/ui-next-pods/lane.test.mjs
 
       # Before anything is built: the pin is a commit of the plugin's branch, its list of shared names is this host's, and the host it was vendored from is in this history.
       - name: Check the pin
