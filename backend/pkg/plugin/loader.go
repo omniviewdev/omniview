@@ -19,6 +19,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -38,6 +39,22 @@ import (
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 	tp "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 )
+
+// pluginProcessLogOutput is where go-plugin writes the log of a plugin process: the
+// process's stderr, a line at a time, and the host's own account of starting and
+// stopping it. The log goes to stdout, and to the plugin's log stream when there is a
+// log manager. Both get redacted text. The stream redacts what it keeps; the copy for
+// stdout is redacted here because stdout is not nowhere: a terminal keeps it, and so do
+// the systemd journal (or ~/.xsession-errors) for an application started from a Linux
+// desktop and the log of the development supervisor. A macOS application started from
+// the Finder and a Windows GUI build have a stdout that keeps nothing.
+func pluginProcessLogOutput(stdout io.Writer, logs *pluginlog.Manager, id string) io.Writer {
+	out := pluginlog.RedactingWriter(stdout)
+	if logs == nil {
+		return out
+	}
+	return io.MultiWriter(out, logs.Stream(id))
+}
 
 // pluginStartTimeout bounds how long a plugin process may take to start, so
 // broken plugins don't block startup (go-plugin's default is 60s).
@@ -464,10 +481,8 @@ func (pm *pluginManager) createBackend(
 
 	// Build the hclog writer: always write to stdout, and additionally
 	// persist to the plugin's rotated log file when the log manager is available.
-	var logOutput io.Writer = os.Stdout
-	if pm.pluginLogMgr != nil {
-		logOutput = io.MultiWriter(os.Stdout, pm.pluginLogMgr.Stream(id))
-	}
+	// Both get redacted text; see pluginProcessLogOutput.
+	logOutput := pluginProcessLogOutput(os.Stdout, pm.pluginLogMgr, id)
 
 	binaryPath := filepath.Join(location, "bin", plugintypes.BinaryName())
 	var snapshotCleanup func()

@@ -17,7 +17,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/updater"
-	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/extensiondiagnostics"
@@ -473,7 +472,10 @@ func main() {
 	}
 	zapLogger := telemetrySvc.ZapLogger()
 	if zapLogger == nil {
-		zapLogger, _ = zap.NewProduction()
+		// Telemetry did not start, or could not open its log file: log to stderr, with
+		// the same redaction as the logger it would have given, and the sampling of zap's
+		// production logger (telemetry.NewFallbackLogger).
+		zapLogger, _ = telemetry.NewFallbackLogger()
 	}
 	log := logging.New(logging.Config{
 		Name:    "omniview",

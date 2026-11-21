@@ -66,7 +66,9 @@ type sessionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	app                 *application.App
+	// emitter sends the events the frontend listens to (the log lines of a session, its
+	// stream events); a test gives it a recorder, as the resource controller's do.
+	emitter             resource.EventEmitter
 	ctx                 context.Context
 	logger              logging.Logger
 	settingsProvider    pkgsettings.Provider
@@ -115,7 +117,7 @@ func NewController(
 	resourceClient resource.ConnectionReader,
 ) Controller {
 	return &controller{
-		app:              nil,
+		emitter:          resource.NoopEmitter{},
 		ctx:              nil,
 		logger:           logger.Named("LogController"),
 		settingsProvider: sp,
@@ -132,7 +134,7 @@ func NewController(
 }
 
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	c.app = application.Get()
+	c.emitter = resource.NewAppEmitter(application.Get())
 	c.ctx = ctx
 	go c.runMux()
 	return nil
@@ -200,7 +202,7 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 			c.logger.Errorw(context.Background(), "failed to marshal log event", "errorClass", telemetryutil.ErrorClass(err))
 			return
 		}
-		c.app.Event.Emit(eventKey, string(data))
+		c.emitter.Emit(eventKey, string(data))
 	}
 }
 
@@ -264,7 +266,7 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 	if err != nil {
 		c.logger.Errorw(context.Background(), "failed to marshal log batch", "errorClass", telemetryutil.ErrorClass(err))
 	} else {
-		c.app.Event.Emit(eventKey, string(data))
+		c.emitter.Emit(eventKey, string(data))
 	}
 
 	batch.lines = batch.lines[:0]
