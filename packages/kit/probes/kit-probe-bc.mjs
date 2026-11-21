@@ -8,7 +8,7 @@
 //   DIST=<dir>      probe an existing build instead of building one
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   ONLY=<regexp>: a debug filter on the ids of the parity, strip and ellipsis
 //                   cases and on the example names of the counts, a11y and axe sections; ONLY runs do not exit 1 on missing coverage
-//   AXE=<path>      axe-core's axe.min.js (default /tmp/ov-axe/node_modules/axe-core/axe.min.js)
+//   AXE=<path>      axe-core's axe.min.js (default: the one `axe-core` resolves to from here, the kit's dev dependency, as kit-probe.mjs does)
 //   SHOTS=<dir>     a screenshot of each of the seven parts' sections per engine and viewport (default theme)
 //   REPORT=<file>   the full report as JSON (default /tmp/ov-1a4bc/kit-probe-bc-report.json): every check row, the element counts, the
 //                   accessibility tree of each example root and the axe violations
@@ -21,6 +21,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,16 +37,25 @@ const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const REPORT = process.env.REPORT ?? '/tmp/ov-1a4bc/kit-probe-bc-report.json';
-const AXE = process.env.AXE ?? '/tmp/ov-axe/node_modules/axe-core/axe.min.js';
+const AXE = process.env.AXE ?? createRequire(import.meta.url).resolve('axe-core/axe.min.js');
 const MAIN = '1440x900';
 const PARTS = ['Chip', 'Status', 'MissingValue', 'KindTile', 'QuickFilters', 'MiddleEllipsis'];
 const wanted = (id) => !only || only.test(id);
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// What differs on purpose, each with its reason: { section, id: RegExp on the check id, reason }. A deviation not listed fails the probe.
+// What differs on purpose, each with its reason: { section, id: RegExp on the check id, reason }, and, where the difference is the machine's and not the part's, `platform` (process.platform), `engine` and `msg` (RegExp on the failure's
+// words) to say on which machine and exactly what. A deviation not listed fails the probe.
 const KNOWN_DEVIATIONS = [
   { section: 'ellipsis', id: /^ellipsis:\S+ pclip (root\.h|rootScroll|cut)$/, reason: 'the mock\'s plain name wraps at a hyphen in the probe\'s bare block stage; the kit\'s is nowrap (the kit\'s own cut signal is checked against its text width)' },
   { section: 'strip', id: /^quick-zero\/\d+ chip 0 \(All 89\)\.text$/, reason: 'mock-atoms-bc.json measured quick-zero with All 89, the kit example says 85 (the same width)' },
+  {
+    section: 'parity',
+    id: /^none-default\/scale125\/rest$/,
+    platform: 'linux',
+    engine: 'chromium',
+    msg: /^\(MissingValue\/NotApplicable\) height: mock 20 kit 18$/,
+    reason: 'the dash is a bare inline element, so its box is the font\'s content area and not a layout value: the reference was measured on macOS Chromium, where a bare <span>—</span> at 16.25 px (the 125 % text scale) is 20 px tall (ascent and descent each rounded up); in Liberation Sans, the face Linux resolves Helvetica to, the same bare span is 18 px at that size in both engines (measured in the Playwright image, Ubuntu 24.04, with the kit absent: `font: 400 16.25px/20px Helvetica` on a div and a span in it), and at 13 px it is 15 in both, as the reference. A Linux runner is the one place this is not the reference\'s number',
+  },
   { section: 'roving', id: /^modifiers step 3 \(Alt\+ArrowRight\) prevented$/, reason: 'in the mock the shell\'s own history shortcut prevents Alt+ArrowRight (the strip\'s roving handler ignores Alt, as rovingKeys does); the kit\'s group ignores Alt too and nothing moves in either: prevented differs by design' },
 ];
 
@@ -127,7 +137,9 @@ const errorsSeen = {};
 const tick = (where, section, n = 1) => { ((checks[where] ??= {})[section] ??= 0); checks[where][section] += n; };
 function fail(section, where, id, msg) {
   const entry = { section, where, id, msg };
-  const k = KNOWN_DEVIATIONS.find((d) => d.section === section && d.id.test(id));
+  const k = KNOWN_DEVIATIONS.find(
+    (d) => d.section === section && d.id.test(id) && (d.platform === undefined || d.platform === process.platform) && (d.engine === undefined || where.startsWith(`${d.engine} `)) && (d.msg === undefined || d.msg.test(msg)),
+  );
   if (k) known.push({ ...entry, reason: k.reason });
   else failures.push(entry);
 }

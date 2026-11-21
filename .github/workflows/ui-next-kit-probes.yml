@@ -5,10 +5,10 @@ name: UI next kit probes
 # from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs, which writes where each came from into the file; the design lab is private and is never needed here).
 # Each probe fails its job on a difference. They are listed in scripts/ci/probe-shards.mjs, each with what it checks, its negative controls and the shard that runs it.
 #
-# THE SHARDS (N24, step K1). The probes took 26 to 33 minutes one after the other in one job. They now run in five jobs at the same time, `Kit probes shard 1` to `5`, each one the probes (with their negative
-# controls) that scripts/ci/probe-shards.mjs gives it, and the job named `Kit probes` waits for them and is green only when every one is. A probe is a Node process on its own VM, as it was on the one VM: nothing
-# is shared between probes but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its probes reads it. To add a probe, add a unit to the table (the check below fails, naming the file,
-# when a probe script is in no shard); to move one, move its unit.
+# THE SHARDS (N24, steps K1 and K2). The probes took 26 to 33 minutes one after the other in one job. They now run in as many jobs at the same time as scripts/ci/probe-shards.mjs has shards (`Kit probes shard 1` to the last), each one the
+# probes (and negative controls) that table gives it, and the job named `Kit probes` waits for them and is green only when every one is. A probe is a Node process on its own VM, as it was on the one VM: nothing is shared between probes
+# but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its probes reads it. A probe's negative controls may run in another shard than the probe (K2): the table says which, and the job summary of a shard names
+# the probe script and the control of every run. To add a probe, add a unit to the table (the check below fails, naming the file, when a probe script is in no shard); to move one, move its unit.
 #
 # THE IMAGE (N24, step B1). Each shard runs in the CI image, pinned by digest (.github/ci/image.lock), and installs neither Node, pnpm, Task, the Playwright browsers nor the system libraries of WebKit: the install step
 # (and its bounded retry, #557) is gone because there is nothing left to hang. The browsers of the probes are the image's, in /ms-playwright, of the Playwright version pnpm-lock.yaml resolves. Moving to a newer image
@@ -56,7 +56,7 @@ jobs:
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # A shard takes 8 to 12.5 minutes (measured: pull of the image 24 to 46 s, the rest of the setup 50 s, probes 4 to 11; the longest shard is the panel probe and its controls), so 20 is about 1.6 times the longest. The 30 it had
+    # A shard takes 8 to 9 minutes (measured: the pull of the image 24 to 46 s, the rest of the setup 50 s, probes 5 to 7.1; the table's balance note has the seconds of each unit), so 20 is more than twice the longest. The 30 it had
     # was for the bounded browser install of #557 (a first attempt killed after 15 minutes, then a second): the browsers are in the image now, there is no install to hang, and a pull that hangs is what this limit is for.
     timeout-minutes: 20
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
@@ -79,7 +79,7 @@ jobs:
       fail-fast: false
       matrix:
         # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7]
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
       - name: Match checkout directory ownership to container user
