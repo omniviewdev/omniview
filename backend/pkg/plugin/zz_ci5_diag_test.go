@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"runtime"
+	"time"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,4 +33,15 @@ func TestCI5DiagUninstall(t *testing.T) {
 	_, err = pm.UninstallPlugin("flux")
 	t.Logf("DIAG UninstallPlugin err: %v", err)
 	tryMove(t, pm, "after UninstallPlugin")
+}
+
+func init() {
+	if os.Getenv("CI5_GC") != "" {
+		go func() {
+			for {
+				runtime.GC()
+				time.Sleep(2 * time.Millisecond)
+			}
+		}()
+	}
 }
