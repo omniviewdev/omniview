@@ -102,6 +102,16 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // predates the marker draws a marked face as a face and has no other name for the connection. A lane that marks a face is read by the mark alone (a face labelled Connection beside it is not the connection), a marked face with no text
 // says no connection, and a face that is not valid is not the connection and costs the page nothing else.
 //
+// The list's default sort (K3a) is minor, on the terms of the connection marker: `defaultSort` is a NEW optional member of a list page's definition (`ListPageDefinition`), a column of its `columns` and a direction, which the page opens in and
+// says in the header of that column (`aria-sort`). What makes a header sort at all is the column's own `sortKey`, a member of the kit's column type that a list was always free to declare and that the host did not act on until this step: the
+// list page passed no sort to the table, so no header of any plugin's list had a button (the demo's D1). (1) Nothing that exists is removed, renamed or given another meaning: a definition with no `defaultSort` is drawn in the source's order, as it was,
+// and a header has a button only where its column declares a key. (2) Every bundle written before it is admitted and drawn as before, but for the one thing the host now does with a member that was always there: a column that declares a key has the
+// button the key was written for (no plugin of the new UI declared one before this step; `ListPage.sort.test.tsx` keeps a definition with neither, and `PluginHost.sort.test.tsx` runs a plugin whose list has no key and no default: no button, no
+// `aria-sort`, the source's order). (3) Rule (3) cannot be kept by the letter for a new member, as for `keywords`: admission reads a list's definition only for what it needs to draw the page, so a host that predates `defaultSort` admits a bundle that
+// gives one and draws its list unsorted (it passes no sort to the table, so no header has a button whatever its columns declare); nothing is refused, and a bundle is never drawn wrong (`admit.test.ts` shows the member is the only difference
+// between a definition of either contract, and that each is the other's in types). The page reads `defaultSort` where it is used and never refuses for it: one that names a column that does not sort (no such column, or one with no `sortKey`) is
+// no default, and the list is drawn in the source's order. The sort a person chose is the page's own, kept in the tab's page state for the window to give back (`ui-next/page/memory.ts`); a plugin never writes it.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 

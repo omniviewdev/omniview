@@ -1,4 +1,4 @@
-import type { ChipTone, DataTableColumn, IconName, KindTileTone, PageHeaderCommands } from '@omniviewdev/kit';
+import type { ChipTone, DataTableColumn, DataTableSort, IconName, KindTileTone, PageHeaderCommands } from '@omniviewdev/kit';
 
 // What a list page is, and what feeds it. Plain data and one function per question, so a plugin states its page as a value and the host draws
 // it (slice 1a plan 2.4: the shape of the mock's definition record). The page is a pure function of `(definition, source)`: the source is a
@@ -32,6 +32,14 @@ export type ListPageDefinition<TRow> = {
   readonly commands?: Omit<PageHeaderCommands, 'utility'> | undefined;
   readonly quickFilters?: ListQuickFilters<TRow> | undefined;
   readonly columns: ReadonlyArray<DataTableColumn<TRow>>;
+  /**
+   * The order the page opens in: a column of `columns` and a direction. A column sorts only where it declares a `sortKey` (and a `sortKind` where its keys are numbers): its header is then a button that says
+   * its state in `aria-sort`, a press sorts the rows by it, ascending first, and the next press on it turns it round and back (the mock's rule: there is no third state). The header of the column named here
+   * says so, and a press on it turns it round. A tie keeps the order the source gave its rows in, in either direction, and a row whose key is `undefined` is last in either. Absent, or naming a column that does
+   * not sort: the rows are in the source's order, as they were before this member, and no header says it is the one in force. A plugin written before it is drawn that way, and a host that predates it
+   * never reads it, which draws a list unsorted.
+   */
+  readonly defaultSort?: DataTableSort | undefined;
   /** Lines in a row: 1, or 2 for an identity over a second line. */
   readonly lines: 1 | 2;
   /** The identity of a row: the source's own key, never a field a person can edit. */
@@ -56,8 +64,9 @@ export type ListSourceState =
 export type ListSource<TRow> = {
   readonly state: ListSourceState;
   /**
-   * The rows to list, already in the order to show them in: the page sorts nothing. A row is never changed in place: a changed row is a
-   * new object and an unchanged one keeps its identity (the table does a sparse update in near-linear work on that promise).
+   * The rows to list, in the source's own order: the order a list with no sort in force is drawn in, and the order a tie keeps when the person sorts a column (the page does not sort: the kit's table does, by the
+   * keys the columns declare). A source that has a natural order of its own puts the rows in it, and says it in the definition's `defaultSort` too, so that the header of that column says so.
+   * A row is never changed in place: a changed row is a new object and an unchanged one keeps its identity (the table does a sparse update in near-linear work on that promise).
    */
   readonly rows: readonly TRow[];
   /** The whole set is here. Until it is, the count says how many are loaded and not how many there are (decision A10). */
