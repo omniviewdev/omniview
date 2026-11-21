@@ -20,8 +20,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 // Only the transaction holding the original marker identity may cross its
@@ -581,7 +581,7 @@ func (pm *pluginManager) installArchiveCandidate(
 			return false, statErr
 		}
 	}
-	actualMetadata, metadataErr := sdktypes.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(candidate))
+	actualMetadata, metadataErr := pluginmeta.Load(pm.pluginsRoot.ResolvePath(candidate))
 	if metadataErr != nil {
 		return false, apperror.Wrap(metadataErr, apperror.TypePluginInstallFailed,
 			http.StatusUnprocessableEntity, "Invalid extracted plugin metadata")

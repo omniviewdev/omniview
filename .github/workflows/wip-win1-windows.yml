@@ -1,0 +1,35 @@
+name: wip win1 windows
+on:
+  push:
+    branches: ['wip/win1-**']
+permissions:
+  contents: read
+env:
+  GO_VERSION: "1.27"
+  GOWORK: "off"
+  GOFLAGS: ""
+jobs:
+  win:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: pluginmeta
+        continue-on-error: true
+        run: go test ./internal/pluginmeta -count=1 -v 2>&1 | grep -E '^(---|===|ok|FAIL|PASS|panic)|^\s+---|Error|expected|actual' | grep -v '^=== ' | head -80
+      - name: appstate
+        continue-on-error: true
+        run: go test ./internal/appstate -count=1 -v -timeout 8m 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|^\s+---|SKIP|Error|expected|actual|zz_' | head -150
+      - name: plugin lifecycle
+        continue-on-error: true
+        run: go test ./backend/pkg/plugin -run 'Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate' -count=1 -v -timeout 10m 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|^\s+---|SKIP|Error|expected|actual|rename|Access|denied|used by another' | head -250
+      - name: channel tests of B4
+        continue-on-error: true
+        run: go test ./backend/pkg/plugin -run 'TestHostChannelSyncInstallsSignedFeatureArchive|TestChannelInstallsAndHostSyncSerialize' -count=1 -v -timeout 5m 2>&1 | head -120

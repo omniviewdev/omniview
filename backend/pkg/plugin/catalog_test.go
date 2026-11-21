@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -149,10 +148,6 @@ func TestBuiltinCollisionAndReplacementNeverMutateExternalFiles(t *testing.T) {
 }
 
 func TestBuiltinPendingUninstallPreservesCatalogAndUnrelatedStartup(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, scenario := range []string{"canonical", "staged", "invalid"} {
 		t.Run(scenario, func(t *testing.T) {
 			entry := CatalogEntry{Metadata: config.PluginMeta{
