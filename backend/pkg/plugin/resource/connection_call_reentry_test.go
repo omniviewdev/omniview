@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -128,12 +129,12 @@ func reentryProbes(ctrl *controller, p1 *mockProvider) []reentryProbe {
 // deadline of twice callTimeout: a probe that waits for the call it is inside
 // is reported as a hang after callTimeout, well before its deadline, and the
 // rest are skipped.
-func runReentryProbes(ctx context.Context, t *testing.T, probes []reentryProbe) []error {
-	t.Helper()
+func runReentryProbes(ctx context.Context, scope *callScope, probes []reentryProbe) []error {
+	scope.t.Helper()
 	results := make([]error, 0, len(probes))
 	for _, probe := range probes {
 		probeCtx, cancel := context.WithTimeout(ctx, 2*callTimeout)
-		finished, err := callWithin(t, probe.name+" from inside a provider call", func() error {
+		finished, err := scope.callWithin(probe.name+" from inside a provider call", func() error {
 			return probe.call(probeCtx)
 		})
 		cancel()
@@ -176,15 +177,17 @@ func TestPathsThatWaitForTheirOwnCallFailFastInsideAProviderCall(t *testing.T) {
 	for _, where := range []string{"start", "stop", "catalog admission after a start"} {
 		t.Run(where, func(t *testing.T) {
 			ctrl, _, p1 := lifecycleCallFixture(t)
+			scope := newCallScope(t)
 			registerMockPlugin(ctrl, "p2", lockScopeProvider("p2-native"))
 			probes := reentryProbes(ctrl, p1)
 			var results []error
 			var trigger func() error
+			var once sync.Once
 			switch where {
 			case "start":
 				p1.StartConnectionFunc = func(ctx context.Context, id string) (types.ConnectionStatus, error) {
 					if id == "lease" {
-						results = runReentryProbes(ctx, t, probes)
+						once.Do(func() { results = runReentryProbes(ctx, scope, probes) })
 					}
 					return lockScopeConnected(id), nil
 				}
@@ -192,23 +195,22 @@ func TestPathsThatWaitForTheirOwnCallFailFastInsideAProviderCall(t *testing.T) {
 			case "stop":
 				p1.StopConnectionFunc = func(ctx context.Context, id string) (types.Connection, error) {
 					if id == "lease" {
-						results = runReentryProbes(ctx, t, probes)
+						once.Do(func() { results = runReentryProbes(ctx, scope, probes) })
 					}
 					return types.Connection{ID: id, Name: id}, nil
 				}
 				trigger = stopCall(ctrl, "p1", "lease")
 			default:
-				var once sync.Once
 				catalog := p1.CatalogFunc
 				p1.CatalogFunc = func(ctx context.Context, request resourcev2.CatalogRequest) (resourcev2.Catalog, error) {
 					if request.Route.Connection == "lease" {
-						once.Do(func() { results = runReentryProbes(ctx, t, probes) })
+						once.Do(func() { results = runReentryProbes(ctx, scope, probes) })
 					}
 					return catalog(ctx, request)
 				}
 				trigger = startCall(ctrl, "p1", "lease")
 			}
-			require.NoError(t, awaitDone(t, goCall(trigger), "the "+where))
+			require.NoError(t, awaitDone(t, scope.goCall(trigger), "the "+where))
 			requireProbeResults(t, probes, results)
 			requireProfilesMuFree(t, ctrl)
 			require.False(t, ctrl.calls.registered(connectionCallKey{plugin: "p1", connection: "lease"}))
@@ -220,6 +222,7 @@ func TestPathsThatWaitForTheirOwnCallFailFastInsideAProviderCall(t *testing.T) {
 // fix for the caller, not a retry.
 func TestPathThatWaitsForItsOwnCallReturnsAnInvalidRequestAtTheHostBoundary(t *testing.T) {
 	ctrl, _, p1 := lifecycleCallFixture(t)
+	scope := newCallScope(t)
 	var saved error
 	p1.StartConnectionFunc = func(ctx context.Context, id string) (types.ConnectionStatus, error) {
 		// A path that waited for this very call would end at this deadline, which
@@ -229,7 +232,7 @@ func TestPathThatWaitsForItsOwnCallReturnsAnInvalidRequestAtTheHostBoundary(t *t
 		_, saved = ctrl.SaveConnectionProfile(ctx, "p1", profileTestConnection("route", "endpoint"), nil)
 		return lockScopeConnected(id), nil
 	}
-	require.NoError(t, awaitDone(t, goCall(startCall(ctrl, "p1", "lease")), "the start"))
+	require.NoError(t, awaitDone(t, scope.goCall(startCall(ctrl, "p1", "lease")), "the start"))
 	appErr := requireAppError(t, saved)
 	require.Equal(t, "INVALID_REQUEST", appErr.Code)
 	require.Equal(t, 400, appErr.Status)
@@ -243,6 +246,7 @@ func TestPathThatWaitsForItsOwnCallReturnsAnInvalidRequestAtTheHostBoundary(t *t
 // cases it does not: an unmarked path waits until its own context ends.
 func TestCallbackServerMarksItsContextWithWithinConnectionCall(t *testing.T) {
 	ctrl, _, p1 := lifecycleCallFixture(t)
+	scope := newCallScope(t)
 	registerMockPlugin(ctrl, "p2", lockScopeProvider("p2-native"))
 	probes := reentryProbes(ctrl, p1)
 	var results []error
@@ -265,13 +269,14 @@ func TestCallbackServerMarksItsContextWithWithinConnectionCall(t *testing.T) {
 		}},
 	}
 	var timedOut []error
+	var entered atomic.Bool // a probe that is not stopped starts "lease" again from inside it
 	p1.StartConnectionFunc = func(_ context.Context, id string) (types.ConnectionStatus, error) {
-		if id != "lease" {
+		if id != "lease" || entered.Swap(true) {
 			return lockScopeConnected(id), nil
 		}
 		// The callback server's context is a fresh one, marked with the plugin it
 		// serves and the connection the callback was made for.
-		results = runReentryProbes(WithinConnectionCall(testInvocationContext(), "p1", "lease"), t, probes)
+		results = runReentryProbes(WithinConnectionCall(testInvocationContext(), "p1", "lease"), scope, probes)
 		for _, c := range undetectedCases {
 			ctx, cancel := context.WithTimeout(c.ctx(), settleWindow)
 			_, err := ctrl.SaveConnectionProfile(ctx, "p1", profileTestConnection("route", "endpoint"), nil)
@@ -280,7 +285,7 @@ func TestCallbackServerMarksItsContextWithWithinConnectionCall(t *testing.T) {
 		}
 		return lockScopeConnected(id), nil
 	}
-	require.NoError(t, awaitDone(t, goCall(startCall(ctrl, "p1", "lease")), "the start"))
+	require.NoError(t, awaitDone(t, scope.goCall(startCall(ctrl, "p1", "lease")), "the start"))
 	requireProbeResults(t, probes, results)
 	require.Len(t, timedOut, len(undetectedCases))
 	for i, c := range undetectedCases {
@@ -294,8 +299,8 @@ func TestCallbackServerMarksItsContextWithWithinConnectionCall(t *testing.T) {
 // with nothing to wait for runs.
 func TestMarkOfAnEndedCallDoesNotFailAPathThatHasToWait(t *testing.T) {
 	ctrl, _, p1 := lifecycleCallFixture(t)
-	hold := newProviderHold()
-	t.Cleanup(hold.releaseRPC)
+	scope := newCallScope(t)
+	hold := scope.hold("hold")
 	var marked context.Context
 	p1.StartConnectionFunc = func(ctx context.Context, id string) (types.ConnectionStatus, error) {
 		if id == "slow" {
@@ -312,7 +317,7 @@ func TestMarkOfAnEndedCallDoesNotFailAPathThatHasToWait(t *testing.T) {
 	_, err := ctrl.SaveConnectionProfile(nothingToWaitFor, "p1", profileTestConnection("route", "A"), nil)
 	require.NoError(t, err, "nothing is in flight: a mark of an ended call is no reason to fail")
 
-	slow := goCall(startCall(ctrl, "p1", "slow"))
+	slow := scope.goCall(startCall(ctrl, "p1", "slow"))
 	awaitSignal(t, hold.entered, "the other start to reach the provider")
 	waiting, cancel := context.WithTimeout(marked, settleWindow)
 	defer cancel()
@@ -322,10 +327,43 @@ func TestMarkOfAnEndedCallDoesNotFailAPathThatHasToWait(t *testing.T) {
 	require.NoError(t, awaitDone(t, slow, "the other start"))
 }
 
+// A mark names the call of one plugin. A path of another plugin that has to wait
+// behind a call of its own plugin is not inside the marked call, so it waits
+// like any other and does not fail fast.
+func TestMarkOfAnotherPluginsCallDoesNotFailAPathThatHasToWait(t *testing.T) {
+	ctrl, _, p1 := lifecycleCallFixture(t)
+	scope := newCallScope(t)
+	p2 := lockScopeProvider("p2-native")
+	registerMockPlugin(ctrl, "p2", p2)
+	for plugin, provider := range map[string]*mockProvider{"p1": p1, "p2": p2} {
+		hold := scope.hold(plugin)
+		provider.StartConnectionFunc = func(ctx context.Context, id string) (types.ConnectionStatus, error) {
+			hold.wait(ctx)
+			return lockScopeConnected(id), nil
+		}
+	}
+	first := scope.goCall(startCall(ctrl, "p1", "slow"))
+	second := scope.goCall(startCall(ctrl, "p2", "lease"))
+	awaitSignal(t, scope.entered("p1"), "the start of p1 to reach the provider")
+	awaitSignal(t, scope.entered("p2"), "the start of p2 to reach the provider")
+
+	// The call of p2 is registered, but p1's transaction does not wait for it.
+	marked, cancel := context.WithTimeout(WithinConnectionCall(testInvocationContext(), "p2", "lease"), settleWindow)
+	defer cancel()
+	_, err := ctrl.SaveConnectionProfile(marked, "p1", profileTestConnection("route", "A"), nil)
+	require.Equal(t, "TIMEOUT", requireAppError(t, err).Code,
+		"a call of p1 is in flight and the mark names a call of p2: wait for p1's call")
+	scope.release("p1")
+	scope.release("p2")
+	require.NoError(t, awaitDone(t, first, "the start of p1"))
+	require.NoError(t, awaitDone(t, second, "the start of p2"))
+}
+
 // A start of another connection made from inside a start gets its own mark, so a
 // path that waits for that inner call fails fast as well.
 func TestNestedStartMarksItsOwnCall(t *testing.T) {
 	ctrl, _, p1 := lifecycleCallFixture(t)
+	scope := newCallScope(t)
 	var inner error
 	p1.StartConnectionFunc = func(ctx context.Context, id string) (types.ConnectionStatus, error) {
 		switch id {
@@ -341,6 +379,6 @@ func TestNestedStartMarksItsOwnCall(t *testing.T) {
 		}
 		return lockScopeConnected(id), nil
 	}
-	require.NoError(t, awaitDone(t, goCall(startCall(ctrl, "p1", "lease")), "the outer start"))
+	require.NoError(t, awaitDone(t, scope.goCall(startCall(ctrl, "p1", "lease")), "the outer start"))
 	requireReentryError(t, "LoadConnections(p1) from inside the nested start", inner)
 }

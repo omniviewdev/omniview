@@ -36,11 +36,15 @@ type lockProbeRun struct {
 	done   []chan struct{}
 }
 
-func startLockProbes(probes []lockProbe) *lockProbeRun {
+// startLockProbes runs every probe on its own goroutine. The scope waits for
+// them when the test ends, even by failing.
+func startLockProbes(scope *callScope, probes []lockProbe) *lockProbeRun {
 	run := &lockProbeRun{probes: probes, done: make([]chan struct{}, len(probes))}
 	for i := range probes {
 		run.done[i] = make(chan struct{})
+		finished := scope.track()
 		go func(i int) {
+			defer finished()
 			defer close(run.done[i])
 			_ = run.probes[i].run()
 		}(i)
@@ -136,6 +140,7 @@ func lockScopeProvider(native string) *mockProvider {
 // connection "slow" of p1 wait inside the provider until the test releases them.
 type lockScopeFixture struct {
 	ctrl           *controller
+	scope          *callScope
 	hold           *providerHold
 	p1, p2         *mockProvider
 	startedPlugins atomic.Int32
@@ -144,10 +149,11 @@ type lockScopeFixture struct {
 func newLockScopeFixture(t *testing.T) *lockScopeFixture {
 	t.Helper()
 	ctrl, _ := newTestControllerWithEmitter(t)
+	scope := newCallScope(t)
 	f := &lockScopeFixture{
-		ctrl: ctrl, hold: newProviderHold(), p1: lockScopeProvider("p1-native"), p2: lockScopeProvider("p2-native"),
+		ctrl: ctrl, scope: scope, hold: scope.hold("slow"),
+		p1: lockScopeProvider("p1-native"), p2: lockScopeProvider("p2-native"),
 	}
-	t.Cleanup(f.hold.releaseRPC)
 	f.p1.StartConnectionFunc = func(ctx context.Context, id string) (types.ConnectionStatus, error) {
 		if id == "slow" {
 			f.hold.wait(ctx)
@@ -241,8 +247,11 @@ func (f *lockScopeFixture) probes(t *testing.T) []lockProbe {
 			_, err := ctrl.ListAllConnections(testInvocationContext())
 			return err
 		}},
-		// Same plugin, plugin-scoped operations: observed only.
-		{name: "ListConnectionProfiles(p1) [observed]", run: func() error {
+		// Same plugin. ListConnectionProfiles takes the profile lock only to read
+		// and waits for no connection call, so it must proceed. Each of the
+		// others is a profile transaction that waits for the in-flight call of
+		// its plugin by design: observed only.
+		{name: "ListConnectionProfiles(p1)", proceed: true, run: func() error {
 			_, err := ctrl.ListConnectionProfiles(testInvocationContext(), "p1")
 			return err
 		}},
@@ -266,16 +275,15 @@ func (f *lockScopeFixture) probes(t *testing.T) []lockProbe {
 // the call is inside the provider. Its result arrives on the returned channel.
 func (f *lockScopeFixture) startInFlight(t *testing.T, held string) <-chan error {
 	t.Helper()
-	inFlight := make(chan error, 1)
-	go func() {
+	inFlight := f.scope.goCall(func() error {
 		var err error
 		if held == "StartConnection" {
 			_, err = f.ctrl.StartConnection(testInvocationContext(), "p1", "slow")
 		} else {
 			_, err = f.ctrl.StopConnection(testInvocationContext(), "p1", "slow")
 		}
-		inFlight <- err
-	}()
+		return err
+	})
 	select {
 	case <-f.hold.entered:
 	case <-time.After(5 * time.Second):
@@ -324,7 +332,7 @@ func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *te
 			}
 
 			inFlight := f.startInFlight(t, held)
-			run := startLockProbes(probes)
+			run := startLockProbes(f.scope, probes)
 			run.settle(lockScopeWindow)
 			pending := run.pending()
 
@@ -355,6 +363,7 @@ func TestInFlightConnectionLifecycleRPCDoesNotBlockUnrelatedHostOperations(t *te
 // keep returning.
 func TestProviderStartCanCallBackIntoHostForConnectionProfileAndState(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
+	scope := newCallScope(t)
 	provider := lockScopeProvider("p1-native")
 	registerMockPlugin(ctrl, "p1", provider)
 	ctx := testInvocationContext()
@@ -408,7 +417,7 @@ func TestProviderStartCanCallBackIntoHostForConnectionProfileAndState(t *testing
 		// The plugin asks the host for what it needs to build its client, on
 		// separate goroutines like independent callback RPCs, and cannot finish
 		// starting until the host answers.
-		run = startLockProbes(probes)
+		run = startLockProbes(scope, probes)
 		run.settle(lockScopeWindow)
 		pending = run.pending()
 		return lockScopeConnected(id), nil

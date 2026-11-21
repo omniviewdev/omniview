@@ -39,7 +39,19 @@ type connectionCallKey struct {
 //
 // A self-waiting path returns INVALID_REQUEST at once when its context is marked
 // with the call it would wait for (see WithinConnectionCall). Without the mark,
-// and always for OnPluginStart, it waits until its own context ends.
+// and always for OnPluginStart, it waits for the registered calls until its own
+// context ends.
+//
+// What ends with the caller's context, and what does not. The wait for a
+// registered call holds no lock and ends with the context. The plain
+// profilesMu.Lock that every start, stop and profile transaction takes first,
+// and takes again after each wake-up, does not: sync.Mutex cannot be waited on
+// with a context, so a caller whose context has ended keeps waiting there until
+// the holder unlocks. The holders that matter keep profilesMu across their own
+// plugin calls: a profile transaction, discovery (LoadConnections and the watch
+// refresh) and ListConnectionProfiles (its NativeConnections call). A start or
+// stop whose context was cancelled returns only after such a plugin call
+// returns, as it did before the registry existed.
 type connectionCalls struct {
 	mu     sync.Mutex
 	active map[connectionCallKey]struct{}
@@ -115,7 +127,7 @@ type connectionCallContextKey struct{}
 // a context of its own, which carries no mark. The server that handles it must
 // call WithinConnectionCall with the plugin it serves and the connection the
 // callback was made for, before it calls into the controller; without the mark
-// the path waits until its own context ends.
+// the path waits for the registered calls until its own context ends.
 //
 // Only the innermost mark of a context is consulted, a mark for a call that is
 // not in flight changes nothing, and nothing else a callback may wait on is
@@ -153,8 +165,10 @@ type connectionCall struct {
 // beginConnectionCall registers a start or stop of one connection. It waits for
 // an earlier call on the same connection, and returns with profilesMu held so
 // the caller can run its pre-call checks and fences atomically with respect to
-// profile transactions. The wait never holds profilesMu and ends with ctx. A
-// ctx marked with the call it would wait for gets connectionCallReentry instead.
+// profile transactions. The wait for the earlier call holds no lock and ends with
+// ctx. The plain profilesMu.Lock before it does not end with ctx (see
+// connectionCalls). A ctx marked with the call it would wait for gets
+// connectionCallReentry instead.
 // The returned context is marked with the new call and is the one to hand to the
 // provider. The caller must run end, and should run releaseProfiles before its
 // first plugin call so that the lock is not held across it.
@@ -199,9 +213,11 @@ func (call *connectionCall) end() {
 // lockProfilesQuiescent takes profilesMu once no start or stop of the plugin is
 // registered, and returns with the lock held. Profile transactions use it
 // because a start or stop runs its plugin calls without profilesMu: the
-// transaction must not overlap them. The wait never holds profilesMu and ends
-// with ctx, in which case the lock is not held. A ctx marked with a registered
-// call of the plugin gets connectionCallReentry instead of a wait for that call.
+// transaction must not overlap them. The wait for a registered call holds no
+// lock and ends with ctx, in which case profilesMu is not held. The plain
+// profilesMu.Lock before and after it does not end with ctx (see
+// connectionCalls). A ctx marked with a registered call of the plugin gets
+// connectionCallReentry instead of a wait for that call.
 func (c *controller) lockProfilesQuiescent(ctx context.Context, pluginID string) error {
 	for {
 		c.profilesMu.Lock()

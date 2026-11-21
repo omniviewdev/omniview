@@ -921,7 +921,13 @@ needs. A callback served from the plugin process arrives on a context of its
 own: the server that handles it must mark that context with
 `resource.WithinConnectionCall(ctx, pluginID, connectionID)`, for the plugin it
 serves and the connection the callback was made for, before it calls into the
-controller. Without a mark such a path waits until its own context ends.
+controller. Without a mark such a path waits for the in-flight calls until its
+own context ends. Only that wait ends with the context. Every start, stop and
+profile transaction first takes `profilesMu` with a plain lock, which waits for
+its holder whatever the caller's context says. The profile transactions,
+discovery and `ListConnectionProfiles` hold that lock across their own plugin
+calls, so a caller whose context has ended returns only after such a call
+returns.
 
 Graph queries take `(pluginID, reference, route, ...)`, never namespace/name
 tuples. Each returned graph node carries its canonical reference, independent
