@@ -11,6 +11,7 @@
 //                   long-name comparison with the mock reads (strip-probe.mjs, section `names`), and what a label that is cut says when it is pointed at (this case mounts the window's one tooltip)
 //   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
 //   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); `window.__tabs` is the model, `window.__commits` counts the commits of every render
+//   ?case=titles&pages=<json>   the tabs the probe names, `[{ title, scope? }]`, the first on screen: the text of the strip against the mock's (strip-probe.mjs, sections `titles` and `twins`; strip-text-cases.mjs)
 //   ?case=panel     the frame `full` and the bottom panel (panel/testing.tsx: the real model over the five tools the mock's host offers, the first of which has a `+`), closed; `window.__panel` is the model
 //                   a probe opens, fills and resizes, and `window.__lines()` reads every stream body's count; `window.__opened` lists the addresses a session card's link was asked to open (A21: a link that
 //                   cannot open must not appear in it)
@@ -119,6 +120,7 @@ const cases: Record<string, Case> = {
     ),
   },
   tabs: { described: full, page: () => <p>A page.</p> },
+  titles: { described: full, page: () => <p>A page.</p> },
   panel: { described: full, page: () => <></> },
 };
 
@@ -138,8 +140,15 @@ const { tab, path, ...registration } = chosen.described;
 
 /** The tabs of a case: one for a frame case; N for `?case=tabs`, each a page of its own, so no two read alike unless the probe asks. */
 const many = params.get('case') === 'tabs';
+/** `?case=titles`: the tabs a probe names in the address, each a page of its own (a title and, when two read alike, the scope that tells them apart). */
+const titled = params.get('case') === 'titles';
+const titledPages = titled ? (JSON.parse(params.get('pages') ?? '[]') as ReadonlyArray<{ readonly title: string; readonly scope?: string }>) : [];
 const count = many ? Math.max(1, Number(params.get('tabs') ?? '5')) : 1;
-const pages: StaticPage[] = many ? Array.from({ length: count }, (_, index) => ({ title: `Page ${String(index + 1)}`, icon: 'box' as const, path: ['Acme', `Page ${String(index + 1)}`] })) : [{ title: tab.title, icon: tab.icon, path }];
+const pages: StaticPage[] = titled
+  ? titledPages.map(({ title, scope }) => ({ title, icon: 'box' as const, path: ['Acme', title], scope }))
+  : many
+    ? Array.from({ length: count }, (_, index) => ({ title: `Page ${String(index + 1)}`, icon: 'box' as const, path: ['Acme', `Page ${String(index + 1)}`] }))
+    : [{ title: tab.title, icon: tab.icon, path }];
 const tabs = staticTabs(pages, many ? Math.min(count, Math.max(1, Number(params.get('active') ?? count))) - 1 : 0);
 Reflect.set(window, '__tabs', tabs);
 
@@ -207,7 +216,7 @@ createRoot(document.getElementById('root')!).render(
         tabs={tabs}
         panel={panel}
         onNewTab={
-          many
+          many || titled
             ? () => {
               // The strip's `+`: a new page after the last one, through the model (the host's `+` opens a plugin's home page the same way).
               tabs.open({ route: { plugin: 'acme', contribution: `p${String(tabs.getSnapshot().order.length)}` } }, { how: 'new' });

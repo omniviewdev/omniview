@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createTabsStore } from '../core/tabs';
 import { boot, dest } from '../core/tabs/testing';
 import { Shell } from '../Shell';
 
@@ -132,6 +133,70 @@ describe('roles and names', () => {
     expect(two).toHaveAccessibleName(identity(second)?.name);
     expect(one?.textContent).not.toBe(two?.textContent);
     expect(identity(first)?.qualifier).not.toBe('');
+  });
+});
+
+describe('what tells two tabs apart: the connection by its name (the mock: a face carries no scope by default, and the muted text after the title tells tabs that would read alike apart)', () => {
+  // A route carries a connection by its KEY; the page says its NAME, which is the scope's label and what the model tells twins apart by (C1g). The key is the scope's id and is drawn nowhere.
+  const KEYS = { north: 'north-57a082bd74', south: 'south-0f3c9d21aa' } as const;
+
+  /** A strip of tabs on the pages `[page, connection]`, the first on screen: every page is titled by its page, and says its connection by name. */
+  function mountConnections(opened: ReadonlyArray<readonly [string, keyof typeof KEYS]>) {
+    const store = createTabsStore({
+      contributions: {
+        describe: (route) => {
+          const connection = route.params.connection === KEYS.north ? 'north' : 'south';
+          const title = route.contribution === 'nodes' ? 'Nodes' : 'Services';
+          return { title, icon: 'box', pluginName: 'Acme', scope: { id: String(route.params.connection), label: connection }, path: ['Acme', connection, title], facets: [] };
+        },
+        home: () => undefined,
+      },
+    });
+    for (const [page, connection] of opened) {
+      store.open({ route: { plugin: 'acme', contribution: page, params: { connection: KEYS[connection] } } }, { how: 'new' });
+    }
+
+    store.goto(1);
+    render(<Shell registration={{ plugin: { name: 'Acme' } }} tabs={store} renderPage={() => null} empty={null} />);
+    const text = (index: number) => screen.getAllByRole('tab')[index]?.textContent;
+    return { store, text, tipOf: (index: number) => screen.getAllByRole('tab')[index]?.getAttribute('data-ov-tip') };
+  }
+
+  it('says the connection of each of two tabs that read alike, by its name: the face draws it after the title, the accessible name carries it, and the key is in no text, name or tip', () => {
+    const { text, tipOf } = mountConnections([['nodes', 'north'], ['nodes', 'south']]);
+
+    expect(screen.getAllByRole('tab').map((element) => element.getAttribute('aria-label'))).toEqual(['Nodes, north', 'Nodes, south']);
+    expect([text(0), text(1)]).toEqual(['Nodesnorth', 'Nodessouth']);
+    const everything = [document.body.textContent, ...[...document.body.querySelectorAll('[aria-label], [data-ov-tip]')].flatMap((element) => [element.getAttribute('aria-label'), element.getAttribute('data-ov-tip')])].join('\n');
+    expect(everything).not.toContain('57a082bd74');
+    expect(everything).not.toContain('0f3c9d21aa');
+    expect(tipOf(0)).toContain('north');
+  });
+
+  it('says nothing of the connection on a tab that reads like no other, in its face (a window has one connection, and the strip names none), and still carries it in its accessible name and its tip', () => {
+    const { text, tipOf } = mountConnections([['nodes', 'north'], ['services', 'north']]);
+
+    expect([text(0), text(1)]).toEqual(['Nodes', 'Services']);
+    expect(screen.getAllByRole('tab').map((element) => element.getAttribute('aria-label'))).toEqual(['Nodes, north', 'Services, north']);
+    expect(tipOf(0)).toBe('Acme › north › Nodes');
+  });
+
+  it('tells only the twins apart: a third tab that reads like neither says no connection, whatever the others say', () => {
+    const { text } = mountConnections([['nodes', 'north'], ['nodes', 'south'], ['services', 'north']]);
+
+    expect([text(0), text(1), text(2)]).toEqual(['Nodesnorth', 'Nodessouth', 'Services']);
+  });
+
+  it('takes the qualifier off a tab when its twin closes: a lone tab draws none', () => {
+    const { store, text } = mountConnections([['nodes', 'north'], ['nodes', 'south']]);
+    expect(text(0)).toBe('Nodesnorth');
+
+    act(() => {
+      store.close(store.getSnapshot().order[1]);
+    });
+
+    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    expect(text(0)).toBe('Nodes');
   });
 });
 
