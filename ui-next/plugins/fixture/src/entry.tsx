@@ -63,7 +63,7 @@ export const contributionV1 = {
   plugin: { name: 'Seam Fixture', accent: 'teal' },
   rail: { icon: 'layers', label: FIXTURE_RAIL.label, order: FIXTURE_RAIL.order },
   sidebar: { label: 'Seam Fixture navigation', title: 'Fixture', nodes: SKELETON, useNodes: useCounts },
-  pages: { items: itemsPage, item: itemPage, crash: crashPage },
+  pages: { item: itemPage, crash: crashPage },
   home: 'items',
   panel: { tools: { streams: { ...streamsTool, label: FIXTURE_RAIL.tool } } },
   // Providers of results for the command palette (C1c). Quiet until a check asks for them (palette.ts): the other checks search for the host's pages and commands.
