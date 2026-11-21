@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -167,6 +168,9 @@ func credentialArchive(t *testing.T) string {
 
 func credentialArchiveVersion(t *testing.T, version string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture archive carries a Unix shell script as bin/plugin; a Windows host requires bin/plugin.exe")
+	}
 	return writeTestTarball(t, []tarEntry{
 		{name: "plugin.yaml", mode: 0o644, body: "id: flux\nversion: " + version + "\ncapabilities: [settings]\n"},
 		{name: "bin/", mode: 0o755, dir: true},
@@ -257,6 +261,10 @@ func TestUninstallErasesSensitiveSettingValues(t *testing.T) {
 }
 
 func TestUninstallErasesSettingValuesItCannotClassify(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// WINDOWS DEFECT: CI5-W1.
+		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
+	}
 	f := newCredentialFixture(t)
 	installLoadedUIPlugin(t, f.pm)
 	// The legacy case: this plugin has no settings capability, so it never
@@ -344,6 +352,10 @@ func TestUninstallLeavesCredentialStateAloneWhenRolledBack(t *testing.T) {
 }
 
 func TestUninstallRunsTheErasureAfterDisposalAndBeforeTheMarkerIsRemoved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// WINDOWS DEFECT: CI5-W1.
+		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
+	}
 	for _, dev := range []bool{false, true} {
 		name := "installed"
 		if dev {
@@ -401,6 +413,10 @@ func TestUninstallRunsTheErasureAfterDisposalAndBeforeTheMarkerIsRemoved(t *test
 }
 
 func TestUninstallDoesNotNotifyObserversWhenItFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// WINDOWS DEFECT: CI5-W1.
+		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
+	}
 	for _, failure := range []string{"unload", "persist", "missing", "not-dev"} {
 		t.Run(failure, func(t *testing.T) {
 			pm := newTestManager(t)

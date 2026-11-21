@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -100,6 +101,9 @@ func TestScopedRoot_ReadDir(t *testing.T) {
 }
 
 func TestScopedRoot_OpenFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reports mode 0666 for a writable file: Unix permission bits")
+	}
 	t.Parallel()
 	r := newTestScopedRoot(t)
 	f, err := r.OpenFile("rw.txt", os.O_CREATE|os.O_RDWR, 0600)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -272,6 +273,9 @@ func TestOpenNeverRemovesTheCorruptCopyItMadeInThisRun(t *testing.T) {
 }
 
 func TestOpenLeavesEveryOtherFileAlone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows strips the trailing dot of \"settings.db.corrupt.\", so that name and \"settings.db.corrupt\" are one file")
+	}
 	dir := t.TempDir()
 	stamp := strconv.FormatInt(time.Now().Add(-30*24*time.Hour).Unix(), 10)
 	names := []string{

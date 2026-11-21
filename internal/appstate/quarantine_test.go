@@ -2,11 +2,15 @@ package appstate
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestQuarantineKeepsModeAndNeverOverwrites(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reports mode 0666 for a writable file: Unix permission bits")
+	}
 	root, err := newScopedRoot(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
