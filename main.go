@@ -311,6 +311,10 @@ func main() {
 		})
 		return instance.BootMiddleware(profile.Descriptor.BootIdentity())(dispatch)
 	}
+	// Inside the policy, so a refused request is never held.
+	if sockets := hostruntime.EventsSocketMiddleware(); sockets != nil {
+		options.Assets.Middleware = application.ChainMiddleware(sockets, options.Assets.Middleware)
+	}
 	if policy := hostruntime.DevelopmentServerMiddleware(profile); policy != nil {
 		options.Assets.Middleware = application.ChainMiddleware(policy, options.Assets.Middleware)
 	}
