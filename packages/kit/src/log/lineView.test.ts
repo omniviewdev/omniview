@@ -269,3 +269,46 @@ describe('a marker that reaches the head', () => {
     expect(view.lineCount).toBe(3);
   });
 });
+
+describe('reset (the toolbar\'s Clear)', () => {
+  const gapOf = (dropped: number) => (n: number): GapEntry => ({ kind: 'gap', n, dropped });
+
+  it('shows nothing and keeps the level the reader chose', () => {
+    const buffer = new LineBuffer(10);
+    const view = new LineView(buffer);
+    feed(buffer, view, [(n) => line(n, 'debug'), (n) => line(n, 'warn'), (n) => line(n, 'error')]);
+    view.setMinRank(2);
+    expect(ordinals(view)).toEqual([2, 3]);
+    buffer.clear();
+    view.reset();
+    expect([view.length, view.lineCount, view.rank, view.indexSize]).toEqual([0, 0, 2, 0]);
+    // The lines that come now are filtered as before.
+    feed(buffer, view, [(n) => line(n, 'info'), (n) => line(n, 'error')]);
+    expect(ordinals(view)).toEqual([5]);
+    expect(view.lineCount).toBe(1);
+  });
+
+  it('forgets the lead: what a marker that reached the head stood for is cleared with the lines, and says nothing after', () => {
+    const buffer = new LineBuffer(3);
+    const view = new LineView(buffer);
+    feed(buffer, view, [gapOf(8), (n) => line(n), (n) => line(n), (n) => line(n)]);
+    expect(view.at(0)).toMatchObject({ kind: 'gap', dropped: 8 });
+    buffer.clear();
+    view.reset();
+    expect(view.length).toBe(0);
+    feed(buffer, view, [(n) => line(n)]);
+    expect(view.length).toBe(1);
+    expect(view.at(0).kind).toBe('line');
+    expect(view.ordinalAt(0)).toBe(buffer.first);
+  });
+
+  it('a view of everything is the buffer again, with no index', () => {
+    const buffer = new LineBuffer(5);
+    const view = new LineView(buffer);
+    feed(buffer, view, [(n) => line(n), (n) => line(n)]);
+    buffer.clear();
+    view.reset();
+    feed(buffer, view, [(n) => line(n)]);
+    expect([view.length, view.indexSize, view.ordinalAt(0), view.lowerBound(3)]).toEqual([1, 0, 3, 0]);
+  });
+});

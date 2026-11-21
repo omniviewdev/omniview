@@ -84,12 +84,21 @@ const PERTURBATIONS = {
   'same-name': { sections: ['identity'], expected: /^identity .*: an ended session pressed again: no two tabs share a name/ },
   'axe-name': { sections: ['a11y'], expected: /^a11y .*: the Logs tool, open, two sessions of one title in two scopes .*: label-content-name-mismatch/ },
   'over-lines': { sections: ['identity'], expected: /^identity .*: an ended session pressed again: its view still shows line \d+ as it was/ },
+  // P1b-4a, the toolbar. Each is made in the page right before the check it is named for, and each is for ONE check (the same fault passes with that check removed: ASSERTION_OFF=<expected>): the view's row count reads five more while the
+  // toolbar says paused (the view draws lines while paused), the text a copy wrote has no source labels, the count of lines after a Clear is one more than the stream made, a choice of a session (UTC) is lost when it comes back, the count of
+  // commits a Pause press cost is one more (a commit that never happened is entered in the profiler's list), and a toolbar that kept its confirmation's clock while hidden changes a node inside the closed window. The comparison with the mock's geometry has no control yet.
+  'pause-leaks': { sections: ['toolbar'], expected: /^toolbar .*: pause: the view drew \d+ lines while paused/ },
+  'copy-no-source': { sections: ['toolbar'], expected: /^toolbar .*: copy: a line is not the mock's lineText/ },
+  'clear-miscount': { sections: ['toolbar'], expected: /^toolbar .*: clear: the sources made/ },
+  'state-lost': { sections: ['toolbar'], expected: /^toolbar .*: session: back on the first session/ },
+  'pause-commits': { sections: ['hidden'], expected: /^hidden .*: toggling Pause at \d+ lines a second cost/ },
+  'toolbar-timer': { sections: ['hidden'], expected: /^hidden .*: the panel closed: \d+ mutations/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
 // SECTIONS=kept,memory runs only those sections (a draft run: the exit code says nothing of the others). A name that is no section is an error before a browser starts, and a section that ran in no engine (`memory`
 // measures the heap in Chromium only, so SECTIONS=memory ENGINES=webkit ran nothing) fails the run: a draft that proved nothing does not pass.
-const SECTION_NAMES = ['fills', 'sources', 'appears', 'hidden', 'kept', 'identity', 'a11y', 'memory'];
+const SECTION_NAMES = ['fills', 'sources', 'appears', 'hidden', 'kept', 'identity', 'a11y', 'memory', 'toolbar'];
 const ONLY = (process.env.SECTIONS ?? '').split(',').filter(Boolean);
 for (const name of ONLY) if (!SECTION_NAMES.includes(name)) throw new Error(`SECTIONS names ${name}, which is no section of this probe: ${SECTION_NAMES.join(', ')}`);
 /** The sections that really ran, in at least one engine. */
@@ -98,8 +107,14 @@ const wants = (section) => (CONTROL === '' ? ONLY.length === 0 || ONLY.includes(
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(NATIVE_VIEWPORTS).join(',') : '1440x900')).split(',');
 const failures = [];
-const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, kept: {}, identity: {}, a11y: {}, memory: {}, notes: [] };
-const fail = (where, what) => failures.push(`${where}: ${what}`);
+const report = { fills: {}, shift: {}, keep: {}, listeners: {}, sources: {}, appears: {}, hidden: {}, kept: {}, identity: {}, a11y: {}, memory: {}, toolbar: {}, notes: [] };
+// ASSERTION_OFF=<regex> drops the failures whose line matches, as if the assertion that says them were not there: a negative control is shown to depend on its assertion by running it with that assertion's source
+// (printed with the control's result) here, and it must then be NOT DETECTED with no other failure (rule 28: the same fault passes undetected when the assertion is removed).
+const OFF = process.env.ASSERTION_OFF === undefined || process.env.ASSERTION_OFF === '' ? undefined : new RegExp(process.env.ASSERTION_OFF);
+const fail = (where, what) => {
+  const line = `${where}: ${what}`;
+  if (OFF === undefined || !OFF.test(line)) failures.push(line);
+};
 const url = (origin) => `${origin}/shell/probes/host-fixture.html?logs=1&panel=1&inventoryMs=30&loadMs=30&nodesMs=30&dataMs=30`;
 
 // The 10,000 lines a second session is the fixture's `audit` (plugins/fixture/src/logs.ts). The stream that keeps what a hidden view does not read holds at most 100,000 lines (the kit's synthetic feed, as the
@@ -208,8 +223,14 @@ async function fills(browser, engine, viewportName, viewport, origin) {
   await sleep(500);
   const body = await page.evaluate(`${rect('[data-shell-part="panelBody"]:not([hidden])')}`);
   const view = await page.evaluate(`${rect('[data-log-session]')}`);
-  report.fills[`${engine} ${viewportName}`] = { body, view };
-  if (body === null || view === null || body.some((value, index) => Math.abs(value - view[index]) > 1)) fail(where, `the log view is ${JSON.stringify(view)}, the panel's body ${JSON.stringify(body)}`);
+  const column = await page.evaluate(`${rect('[data-shell-part="panelBody"]:not([hidden]) [data-shell-part="logsTools"]')}`);
+  report.fills[`${engine} ${viewportName}`] = { body, column, view };
+  // The body is the toolbar's column (the mock's 40 px, `.panel__tools`) and the log view beside it, which fills the rest (P1b-4a): the two together are the body's rectangle.
+  if (body === null || view === null || column === null) fail(where, `the log view is ${JSON.stringify(view)}, the toolbar's column ${JSON.stringify(column)}, the panel's body ${JSON.stringify(body)}`);
+  else {
+    const joined = [column[0], column[1], column[2] + view[2], column[3]];
+    if (body.some((value, index) => Math.abs(value - joined[index]) > 1) || Math.abs(view[0] - (column[0] + column[2])) > 1 || Math.abs(view[1] - column[1]) > 1 || Math.abs(view[3] - column[3]) > 1) fail(where, `the toolbar's column ${JSON.stringify(column)} and the log view ${JSON.stringify(view)} are not the panel's body ${JSON.stringify(body)}`);
+  }
   for (const error of errors) fail(`errors ${where}`, error);
   await context.close();
 }
@@ -708,6 +729,13 @@ async function a11y(browser, engine, viewportName, viewport, origin, axe) {
       },
     },
     {
+      // P1b-4a: the toolbar's buttons that cannot apply (Clear and Copy with no line: aria-disabled and a description) and the toggles in both states, over a session that makes no line.
+      label: 'the Logs tool, open, a session with no line (Clear and Copy unavailable with their reasons)',
+      prepare: async (page) => {
+        await page.evaluate(() => { window.__logs.open(7); });
+      },
+    },
+    {
       label: 'the Logs tool, open, the ended session of migrate beside the new one its press opened',
       prepare: async (page) => {
         const was = await page.evaluate(() => window.__logs.open(1));
@@ -1061,7 +1089,8 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
     if (to.newest !== from.newest) fail(where, `${label}: the view took in entries (its newest was ${String(from.newest)}, then ${String(to.newest)}) while it was hidden`);
     if (to.held > STREAM_BOUND) fail(where, `${label}: the stream holds ${String(to.held)} lines, past its bound of ${String(STREAM_BOUND)}`);
   };
-  const { page, context, errors } = await open(browser, url(origin), viewport, { init: COUNT });
+  // The clipboard is the toolbar section's spy here too: the press of Copy that arms the confirmation's clock below writes tens of thousands of lines, which the page must not hand to the real clipboard.
+  const { page, context, errors } = await open(browser, url(origin), viewport, { init: `${COUNT};${COPY_SPY}` });
   const cdp = engine === 'chromium' ? await context.newCDPSession(page) : null;
   if (cdp !== null) await cdp.send('Performance.enable');
   await ready(page);
@@ -1096,9 +1125,31 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   if (open_.work.raf === 0 || open_.work.mutations === 0) fail(where, `with the panel open the view asked for no frame or changed no node in 2 s (${JSON.stringify(open_.work)})`);
   const madeOpen = emitting('with the panel open', open_);
   if (open_.to.newest <= open_.from.newest) fail(where, `the view took in no line in 2 s with the panel open (its newest row was ${String(open_.from.newest)}, then ${String(open_.to.newest)})`);
+  // P1b-4a: the toolbar's one control that touches the stream is Pause, and at 10,000 lines a second a press costs ONE commit, and so does the press that lets the stream go: the toolbar and the view's strip read the stream's
+  // status together. The commits are counted from the press to the microtask after it, in which React flushes the update (a frame of the stream's cannot fall in between: a frame is a task of its own).
+  const pauseCost = await page.evaluate(async (perturb) => {
+    const button = () => document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-tool="pause"]');
+    const count = () => window.__commits.length;
+    // A programmatic click is flushed in the microtask after it (a frame of the stream's cannot fall in between): one press, one microtask, and the commits since.
+    const before = count();
+    button().click();
+    await Promise.resolve();
+    if (perturb) window.__commits.push({ phase: 'update', actualDuration: 0 });
+    const held = count() - before;
+    const lifting = count();
+    button().click();
+    await Promise.resolve();
+    return { held, lifted: count() - lifting, paused: button().getAttribute('aria-pressed') };
+  }, CONTROL === 'pause-commits');
+  report.toolbar[`${engine} ${viewportName}`] = { ...report.toolbar[`${engine} ${viewportName}`], pauseCommits: pauseCost };
+  if (pauseCost.held !== 1 || pauseCost.lifted !== 1 || pauseCost.paused !== 'false') fail(where, `toggling Pause at ${String(RATE)} lines a second cost ${String(pauseCost.held)} commits to hold and ${String(pauseCost.lifted)} to let go (pressed ${String(pauseCost.paused)} at the end), wanted one each`);
+  // A copy arms the Copy button's two seconds of confirmation: the timer must not outlive the view's being on screen (the zero windows below see a toolbar that keeps it: the glyph would change inside them).
+  await page.locator('[data-shell-part="panelBody"]:not([hidden]) [data-log-tool="copy"]').click();
   // The panel closed: nothing is drawn, nothing is asked for, and the feed goes on.
   await page.evaluate(() => window.__panel.hide());
   await sleep(500);
+  // The negative control `toolbar-timer`: a toolbar that kept its confirmation's clock while it is hidden changes its glyph inside the closed window.
+  if (CONTROL === 'toolbar-timer') await page.evaluate(() => { setTimeout(() => document.querySelector('[data-log-tool="copy"]')?.setAttribute('data-leak', '1'), 1200); });
   // The negative control: the feed goes quiet once the view is hidden. Every zero below passes for a feed that makes no lines, so the check that the feed went on must fail.
   if (CONTROL === 'feed-stopped') await page.evaluate(() => window.__fixtureLogs.stopSources());
   const closed = await windowOf(page, cdp, CLOSED_MS);
@@ -1209,7 +1260,331 @@ async function hidden(browser, engine, viewportName, viewport, origin) {
   await context.close();
 }
 
-const production = wants('fills') || wants('sources') || wants('kept') || wants('identity') || wants('a11y') || wants('memory') ? await serveFixtures(buildFixtures('production')) : null;
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// P1b-4a: the toolbar of a Logs session (Follow, Pause log updates, Show timestamps in UTC, Clear, Copy), in a real engine, on the host fixture. What it checks, per engine and viewport (everything but the waits, which run
+// at 1440 x 900 only):
+//   geometry   the toolbar's column and its buttons against the mock's own (`mock-logs-toolbar.json`, measured from the mock's Logs tool by mock-logs-toolbar-measure.mjs): the column's rectangle in the body, the first button, the
+//              pitch, the size, and the log view's rectangle (the body less the column), each within 1 px
+//   words      every button's name, glyph, state (`aria-pressed`) and tooltip; Clear and Copy of a session that has no line (the fixture's `quiet`) are unavailable, focusable, with the reason as their description and as
+//              the second line of their tooltip, and do nothing when pressed; a real pointer on a button shows its tooltip
+//   keys       real key presses: the Tab from the panel's Hide button lands on Follow, the toolbar is ONE stop, the next Tab leaves it for the find field, ArrowDown and ArrowUp move through it and stop at its ends,
+//              Home and End go to them, Enter and Space press
+//   stream     Pause holds the stream, the lines keep arriving and are counted (the strip's `Paused, N new lines waiting` is N lines the stream holds: the fixture's own count) and not drawn, and a press again draws them; Follow
+//              off and on; Clear drops the lines the view holds and nothing of the stream, and every line made after it is shown, exactly (made since = shown + held at the clear); Copy writes every line the list draws with
+//              its source label, the selection when there is one, only the lines a level filter lets through, and confirms itself for two seconds (and says how many in the polite region); UTC changes the rows' clock to its
+//              Z form and the copy with it
+//   session    what a session chose (UTC, a pause, Follow off) is its own and survives another tool being shown and another session being chosen
+//   short      a panel at its minimum height: the column scrolls inside its own box with no bar, the arrows bring each button into view, and none is clipped out of reach
+// The controls of this section perturb one thing in the page right before the check they are named for (see PERTURBATIONS).
+const COPY_SPY = `(() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copied.push(text); } } }); })();`;
+
+/** What the toolbar and its view say, read in one task: the strip, the rows, every button's face and state, the polite region. */
+const READ_TOOLBAR = () => {
+  const body = document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-shell-part="logsBody"]');
+  const grid = body?.querySelector('[data-log-session] [role=grid]') ?? null;
+  const tools = {};
+  for (const button of body?.querySelectorAll('[aria-label="Logs tools"] button') ?? []) {
+    const reason = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+    tools[button.getAttribute('data-log-tool')] = {
+      name: button.getAttribute('aria-label'),
+      pressed: button.getAttribute('aria-pressed'),
+      disabled: button.getAttribute('aria-disabled'),
+      tip: button.getAttribute('data-ov-tip'),
+      glyph: button.querySelector('[data-ov-glyph]')?.getAttribute('data-ov-glyph') ?? null,
+      reason: reason === null ? null : reason.textContent,
+      tabindex: button.tabIndex,
+    };
+  }
+
+  const clocks = [...(grid?.querySelectorAll('[role=row][data-n]') ?? [])].map((row) => row.querySelector('[data-ov-tip]')?.textContent ?? '');
+  return {
+    rows: Number(grid?.getAttribute('aria-rowcount') ?? 0) - 1,
+    strip: body?.querySelector('[aria-label="Session status"]')?.textContent ?? '',
+    said: body?.querySelector(':scope > [role=status]')?.textContent ?? '',
+    clocks,
+    timestamps: body?.querySelector('[data-ov-timestamps]')?.getAttribute('data-ov-timestamps') ?? '',
+    tools,
+  };
+};
+
+const TOOL_LABELS = { follow: 'Follow', pause: 'Pause log updates', timestamps: 'Show timestamps in UTC', clear: 'Clear', copy: 'Copy' };
+const TOOL_GLYPHS = { follow: 'arrow-down-to-line', pause: 'pause', timestamps: 'globe', clear: 'eraser', copy: 'copy' };
+const TOOL_ORDER = Object.keys(TOOL_LABELS);
+const NO_LINES = 'There are no lines yet';
+const tool = (id) => `[data-shell-part="panelBody"]:not([hidden]) [data-log-tool="${id}"]`;
+const countIn = (text, pattern) => Number((pattern.exec(text)?.[1] ?? '-1').replace(/,/g, ''));
+
+async function toolbar(browser, engine, viewportName, viewport, origin) {
+  const where = `toolbar ${engine} ${viewportName}`;
+  const waits = viewportName === '1440x900';
+  const { page, context, errors } = await open(browser, url(origin), viewport, { init: COPY_SPY });
+  await ready(page);
+  const read = () => page.evaluate(READ_TOOLBAR);
+  // `force`: Playwright counts `aria-disabled` as not enabled and would wait; the press of an unavailable button is what a check of its own makes.
+  const press = (id, force = false) => page.locator(tool(id)).click({ force });
+  const make = async (index) => {
+    const id = await page.evaluate((one) => window.__logs.open(one), index);
+    await page.waitForSelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]');
+    return id;
+  };
+
+  // --- the session that has no line: the words of every button, and what cannot apply says why ---
+  await make(7);
+  await sleep(400);
+  const quiet = await read();
+  report.toolbar[`${engine} ${viewportName}`] = { quiet: quiet.tools };
+  if (JSON.stringify(Object.keys(quiet.tools)) !== JSON.stringify(TOOL_ORDER)) fail(where, `the buttons are ${JSON.stringify(Object.keys(quiet.tools))}, wanted ${JSON.stringify(TOOL_ORDER)}`);
+  for (const id of TOOL_ORDER) {
+    const one = quiet.tools[id];
+    if (one === undefined) continue;
+    if (one.name !== TOOL_LABELS[id]) fail(where, `words: the ${id} button is named "${String(one.name)}", wanted "${TOOL_LABELS[id]}"`);
+    if (one.glyph !== TOOL_GLYPHS[id]) fail(where, `words: the ${id} button draws "${String(one.glyph)}", wanted "${TOOL_GLYPHS[id]}"`);
+  }
+
+  const want = { follow: 'true', pause: 'false', timestamps: 'false', clear: null, copy: null };
+  for (const id of TOOL_ORDER) if (quiet.tools[id] !== undefined && quiet.tools[id].pressed !== want[id]) fail(where, `words: the ${id} button's aria-pressed is ${String(quiet.tools[id].pressed)}, wanted ${String(want[id])}`);
+  for (const id of ['clear', 'copy']) {
+    const one = quiet.tools[id];
+    if (one === undefined) continue;
+    if (one.disabled !== 'true' || one.reason !== NO_LINES || one.tip !== `${TOOL_LABELS[id]}\n${NO_LINES}`) fail(where, `words: with no line ${id} is ${JSON.stringify({ disabled: one.disabled, reason: one.reason, tip: one.tip })}, wanted unavailable with "${NO_LINES}" as its description and the second line of its tip`);
+  }
+  for (const id of ['follow', 'pause', 'timestamps']) if (quiet.tools[id]?.disabled !== null) fail(where, `words: ${id} is unavailable with no line (${String(quiet.tools[id]?.disabled)})`);
+  await press('copy', true);
+  await press('clear', true);
+  await sleep(200);
+  const pressedNothing = await page.evaluate(() => window.__copied.length);
+  if (pressedNothing !== 0) fail(where, `words: Copy, unavailable, wrote ${String(pressedNothing)} times to the clipboard`);
+  // The tooltip is the kit's one host reading `data-ov-tip` (its own probe, tooltip-probe.mjs, shows a tip open for a trigger; the host fixture mounts no host): what the toolbar owns is the text, and it is read above.
+
+  // --- the keyboard, with real key presses ---
+  // The roving group's Tab stop is the button that last had the focus: Follow, here, so that the Tab lands where the check says.
+  await page.locator(tool('follow')).focus();
+  await page.locator('[data-shell-part="panelHide"]').focus();
+  const at = () => page.evaluate(() => document.activeElement?.getAttribute('data-log-tool') ?? `${document.activeElement?.tagName}:${document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.getAttribute('type') ?? ''}`);
+  const walk = [];
+  await page.keyboard.press('Tab');
+  walk.push(await at());
+  const stops = await page.evaluate(() => [...document.querySelectorAll('[data-shell-part="panelBody"]:not([hidden]) [aria-label="Logs tools"] button')].filter((b) => b.tabIndex === 0).length);
+  await page.keyboard.press('Tab');
+  walk.push(await at());
+  await page.keyboard.press('Shift+Tab');
+  for (const key of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'Home']) {
+    await page.keyboard.press(key);
+    walk.push(await at());
+  }
+  if (walk[0] !== 'follow') fail(where, `keys: the Tab from Hide panel landed on ${walk[0]}, wanted the toolbar's Follow`);
+  if (stops !== 1) fail(where, `keys: ${String(stops)} buttons of the toolbar are Tab stops, wanted one`);
+  if (walk[1] !== 'INPUT:Search logs') fail(where, `keys: the Tab after the toolbar landed on ${String(walk[1])}, wanted the find field (the toolbar is one stop)`);
+  const wanted = ['pause', 'timestamps', 'clear', 'copy', 'copy', 'clear', 'follow', 'copy', 'follow'];
+  if (JSON.stringify(walk.slice(2)) !== JSON.stringify(wanted)) fail(where, `keys: ArrowDown x5, ArrowUp, Home, End, Home landed on ${JSON.stringify(walk.slice(2))}, wanted ${JSON.stringify(wanted)}`);
+  // Enter and Space press a button: Space on Follow turns it off, Enter turns Pause on, and again.
+  await page.keyboard.press('Space');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await sleep(250);
+  const keyed = await read();
+  if (keyed.tools.follow?.pressed !== 'false' || keyed.tools.pause?.pressed !== 'true') fail(where, `keys: Space on Follow and Enter on Pause left them ${String(keyed.tools.follow?.pressed)} and ${String(keyed.tools.pause?.pressed)}, wanted false and true`);
+  report.toolbar[`${engine} ${viewportName}`].keys = { walk, stops };
+
+  // --- a panel at its minimum height: the column scrolls inside its own box, and the arrows bring every button into view ---
+  await page.evaluate(() => window.__panel.resize({ size: 120 }));
+  await sleep(300);
+  const short = await page.evaluate(() => {
+    const column = document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-shell-part="logsTools"]');
+    const box = column.getBoundingClientRect();
+    const buttons = [...column.querySelectorAll('button')];
+    return { height: box.height, scrollHeight: column.scrollHeight, clientHeight: column.clientHeight, bar: column.offsetWidth - column.clientWidth, overflowY: getComputedStyle(column).overflowY, buttons: buttons.length };
+  });
+  const seen = [];
+  await page.locator(tool('follow')).focus();
+  for (let index = 0; index < 5; index += 1) {
+    seen.push(await page.evaluate(() => {
+      const column = document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-shell-part="logsTools"]').getBoundingClientRect();
+      const b = document.activeElement.getBoundingClientRect();
+      return { name: document.activeElement.getAttribute('data-log-tool'), inside: b.top >= column.top - 0.5 && b.bottom <= column.bottom + 0.5 };
+    }));
+    await page.keyboard.press('ArrowDown');
+  }
+
+  report.toolbar[`${engine} ${viewportName}`].short = { ...short, seen };
+  if (short.scrollHeight <= short.clientHeight) fail(where, `short: at 120 px the column holds its five buttons without scrolling (${JSON.stringify(short)}): the probe is not at the case it is for`);
+  if (short.bar !== 0 || short.overflowY !== 'auto') fail(where, `short: the column draws a scroll bar or does not scroll (${JSON.stringify(short)})`);
+  if (seen.some((one) => !one.inside)) fail(where, `short: a button the arrows reached stands outside the column's box: ${JSON.stringify(seen)}`);
+  await page.evaluate(() => window.__panel.resetHeight());
+  await sleep(300);
+
+  // --- the stream: the session `app` (20 lines a second) ---
+  await page.evaluate(() => { document.activeElement?.blur(); });
+  const first = await make(0);
+  await page.waitForFunction(() => Number(document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > 12, null, { timeout: 15000 });
+  // The tab of `quiet` is under the new one; the new session is on screen. Pause: the stream holds, and the lines that arrive are counted.
+  if (waits) {
+    const before = await read();
+    await press('pause');
+    await sleep(1400);
+    const held = await read();
+    const pending = await page.evaluate(() => window.__fixtureLogs.stats());
+    const said = countIn(held.strip, /Paused, ([\d,]+) new lines? waiting/);
+    report.toolbar[`${engine} ${viewportName}`].pause = { rowsBefore: before.rows, rowsPaused: held.rows, strip: held.strip, streamHeld: pending.held };
+    // The negative control `pause-leaks`: the view's row count reads five more than it was while the toolbar says paused (the attribute is put back right after the reading, so no other check sees it).
+    if (CONTROL === 'pause-leaks') await page.evaluate(() => { const grid = document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]'); grid.__rows = grid.getAttribute('aria-rowcount'); grid.setAttribute('aria-rowcount', String(Number(grid.__rows) + 5)); });
+    const leaked = CONTROL === 'pause-leaks' ? await read() : held;
+    if (CONTROL === 'pause-leaks') await page.evaluate(() => { const grid = document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]'); grid.setAttribute('aria-rowcount', grid.__rows); });
+    if (held.tools.pause?.pressed !== 'true') fail(where, `pause: Pause is ${String(held.tools.pause?.pressed)} after a press, wanted pressed`);
+    if (leaked.rows !== held.rows) fail(where, `pause: the view drew ${String(leaked.rows - held.rows)} lines while paused (${String(held.rows)} then ${String(leaked.rows)})`);
+    if (said < 18 || Math.abs(said - pending.held) > 12) fail(where, `pause: the strip says "${held.strip}" and the stream holds ${String(pending.held)} lines: the lines that arrive while paused are not counted as the stream holds them`);
+    await press('pause');
+    await sleep(500);
+    const resumed = await read();
+    report.toolbar[`${engine} ${viewportName}`].pause.rowsResumed = resumed.rows;
+    if (resumed.tools.pause?.pressed !== 'false') fail(where, `pause: Pause is ${String(resumed.tools.pause?.pressed)} after a second press, wanted not pressed`);
+    if (resumed.rows < held.rows + said) fail(where, `pause: after resuming the view has ${String(resumed.rows)} lines, the ${String(held.rows)} it had and the ${String(said)} that waited are ${String(held.rows + said)}`);
+    if (!resumed.strip.includes('Following')) fail(where, `pause: after resuming the strip says "${resumed.strip}", wanted Following`);
+    // The same lines, held while paused, are the ones that come: none was lost.
+    await sleep(100);
+  }
+
+  // Follow: the reader scrolls up (the view stops following), the toggle says so; pressed, it follows the end again. Off at the end: new lines are counted as unseen.
+  await page.locator('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]').hover();
+  await page.mouse.wheel(0, -400);
+  await sleep(350);
+  const scrolled = await read();
+  if (scrolled.tools.follow?.pressed !== 'false' || !scrolled.strip.includes('Scrolled back')) fail(where, `follow: after the reader scrolled up Follow is ${String(scrolled.tools.follow?.pressed)} and the strip says "${scrolled.strip}", wanted not pressed and Scrolled back`);
+  await press('follow');
+  await sleep(500);
+  const followed = await page.evaluate(() => {
+    const grid = document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=grid]');
+    return { atEnd: grid.scrollHeight - grid.scrollTop - grid.clientHeight <= 2, pressed: document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-tool="follow"]').getAttribute('aria-pressed') };
+  });
+  if (followed.pressed !== 'true' || !followed.atEnd) fail(where, `follow: Follow pressed again: pressed ${String(followed.pressed)}, list at its end ${String(followed.atEnd)}, wanted both`);
+  await press('follow');
+  await sleep(1100);
+  const off = await read();
+  if (off.tools.follow?.pressed !== 'false' || countIn(off.strip, /Scrolled back, ([\d,]+) new lines?/) < 8) fail(where, `follow: Follow off at the end: pressed ${String(off.tools.follow?.pressed)}, the strip says "${off.strip}", wanted not pressed and Scrolled back, N new lines`);
+  await press('follow');
+  await sleep(500);
+
+  // Copy: every line the list draws, with its source; the copy confirms itself for two seconds and says how many.
+  await press('copy');
+  await sleep(300);
+  const copied = await page.evaluate(() => ({ writes: window.__copied.length, text: window.__copied.at(-1) ?? '' }));
+  let text = copied.text;
+  if (CONTROL === 'copy-no-source') text = text.split('\n').map((line) => line.replace(/ source\/main {2}/, ' ')).join('\n');
+  const afterCopy = await read();
+  const copiedLines = text === '' ? [] : text.split('\n');
+  report.toolbar[`${engine} ${viewportName}`].copy = { writes: copied.writes, lines: copiedLines.length, first: copiedLines[0], said: afterCopy.said, glyph: afterCopy.tools.copy?.glyph };
+  if (copied.writes !== 1 || copiedLines.length < 12) fail(where, `copy: ${String(copied.writes)} writes of ${String(copiedLines.length)} lines, wanted one write of every line drawn`);
+  if (Math.abs(copiedLines.length - afterCopy.rows) > 40) fail(where, `copy: ${String(copiedLines.length)} lines were written, the list holds ${String(afterCopy.rows)}`);
+  if (!copiedLines.every((line) => /^\d\d:\d\d:\d\d\.\d{3} .{5} source\/main {2}\S/.test(line))) fail(where, `copy: a line is not the mock's lineText (the clock, the level, the source label for every line, two spaces, the text): ${JSON.stringify(copiedLines.find((line) => !/^\d\d:\d\d:\d\d\.\d{3} .{5} source\/main {2}\S/.test(line)))}`);
+  if (!new RegExp(`^[\\d,]+ lines copied$`).test(afterCopy.said)) fail(where, `copy: the polite region says "${afterCopy.said}", wanted "N lines copied"`);
+  if (afterCopy.tools.copy?.glyph !== 'check') fail(where, `copy: the button draws ${String(afterCopy.tools.copy?.glyph)} right after a copy, wanted the check`);
+  if (waits) {
+    await sleep(2200);
+    const reverted = await read();
+    if (reverted.tools.copy?.glyph !== 'copy') fail(where, `copy: the button still draws ${String(reverted.tools.copy?.glyph)} 2.5 s after a copy, wanted the copy glyph again`);
+  }
+
+  // Copy with a selection: the lines selected, as the keyboard's copy writes them. With a level filter: the lines it lets through only. The list stands still while the lines are chosen: Follow is off, so the window does not
+  // slide under the pointer as the stream goes on.
+  await press('follow');
+  await sleep(250);
+  // A row, then Shift with the arrow twice: three lines (the keys of the list, with real presses, so no element has to be found again under a window that moves).
+  await page.locator('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=row][data-n]').nth(2).click();
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  await press('copy');
+  await sleep(250);
+  const selected = await page.evaluate(() => ({ writes: window.__copied.length, text: window.__copied.at(-1) ?? '' }));
+  const said = (await read()).said;
+  if (selected.text.split('\n').length !== 3 || !/^3 selected lines copied$/.test(said)) fail(where, `copy: with three lines selected ${String(selected.text.split('\n').length)} were written and the region says "${said}", wanted 3 and "3 selected lines copied"`);
+
+  // UTC: the rows' clock takes its Z form, the head is the mock's 120 px, and the copy writes the same clock. Back: the viewer's own.
+  await press('timestamps');
+  await sleep(250);
+  const utc = await read();
+  if (utc.tools.timestamps?.pressed !== 'true' || utc.timestamps !== 'utc' || utc.clocks.length === 0 || !utc.clocks.every((clock) => /^\d\d:\d\d:\d\d\.\d{3}Z$/.test(clock))) fail(where, `utc: after the press the toggle is ${String(utc.tools.timestamps?.pressed)}, the view says ${utc.timestamps} and the rows read ${JSON.stringify(utc.clocks.slice(0, 2))}, wanted pressed, utc and a clock with its Z`);
+  await page.locator('[data-shell-part="panelBody"]:not([hidden]) [data-log-session] [role=row][data-n]').nth(2).click();
+  await page.keyboard.press('Shift+ArrowDown');
+  await press('copy');
+  await sleep(250);
+  const utcCopy = await page.evaluate(() => window.__copied.at(-1) ?? '');
+  if (!utcCopy.split('\n').every((line) => /^\d\d:\d\d:\d\d\.\d{3}Z /.test(line))) fail(where, `utc: a copy while the rows show UTC writes ${JSON.stringify(utcCopy.split('\n')[0])}, wanted the clock with its Z`);
+  await press('timestamps');
+  await sleep(250);
+  const local = await read();
+  if (local.tools.timestamps?.pressed !== 'false' || local.clocks.some((clock) => clock.endsWith('Z'))) fail(where, `utc: pressed again the toggle is ${String(local.tools.timestamps?.pressed)} and the rows read ${JSON.stringify(local.clocks.slice(0, 2))}, wanted not pressed and the viewer's own clock`);
+
+  // The level filter: Error shows the lines at or above it; Copy writes only those, and with none to show it says why.
+  await page.getByRole('radio', { name: 'Error' }).click();
+  await sleep(300);
+  const filtered = await read();
+  if (filtered.rows === 0) {
+    if (filtered.tools.copy?.disabled !== 'true' || filtered.tools.copy?.reason !== 'No lines match the filters') fail(where, `filter: with every line hidden Copy is ${JSON.stringify({ disabled: filtered.tools.copy?.disabled, reason: filtered.tools.copy?.reason })}, wanted unavailable with "No lines match the filters"`);
+    if (filtered.tools.clear?.disabled !== null) fail(where, `filter: Clear is unavailable while the filter hides lines it still holds`);
+  } else {
+    await press('copy');
+    await sleep(250);
+    const only = await page.evaluate(() => window.__copied.at(-1) ?? '');
+    if (!only.split('\n').every((line) => / ERROR /.test(line))) fail(where, `filter: with Error shown a copy writes ${JSON.stringify(only.split('\n').find((line) => !/ ERROR /.test(line)))}`);
+  }
+
+  await page.getByRole('radio', { name: 'All' }).click();
+  await press('follow');
+  await sleep(300);
+
+  // Clear: the view forgets what it holds and the stream is not touched; every line made after it is shown, exactly: the lines made since = the lines shown + the lines the stream held at the clear.
+  const cleared = await page.evaluate(() => {
+    const stats = window.__fixtureLogs.stats();
+    const counters = { ...window.__fixtureLogs };
+    document.querySelector('[data-shell-part="panelBody"]:not([hidden]) [data-log-tool="clear"]').click();
+    return { stats, counters };
+  });
+  await sleep(300);
+  const right = await read();
+  if (right.rows > 12) fail(where, `clear: ${String(right.rows)} lines right after a clear`);
+  await page.evaluate(() => window.__fixtureLogs.stopSources());
+  await sleep(700);
+  const settled = await page.evaluate(() => ({ stats: window.__fixtureLogs.stats(), counters: { ...window.__fixtureLogs } }));
+  const done = await read();
+  const shown = CONTROL === 'clear-miscount' ? done.rows + 1 : done.rows;
+  const made = settled.stats.emitted - cleared.stats.emitted + cleared.stats.held;
+  report.toolbar[`${engine} ${viewportName}`].clear = { stats: cleared.stats, madeSince: made, shown, strip: done.strip, counters: settled.counters };
+  if (shown !== made) fail(where, `clear: the sources made ${String(settled.stats.emitted - cleared.stats.emitted)} lines after it and the stream held ${String(cleared.stats.held)} at it: the view shows ${String(shown)}, wanted ${String(made)}`);
+  if (/dropped/.test(done.strip)) fail(where, `clear: the strip says "${done.strip}": what was cleared is not dropped`);
+  if (settled.counters.closed !== cleared.counters.closed || settled.counters.listeners !== cleared.counters.listeners) fail(where, `clear: the stream's counters moved (${JSON.stringify(cleared.counters)}, then ${JSON.stringify(settled.counters)}): Clear is the view's, not the stream's`);
+
+  // --- a session's choices are its own: UTC, Follow off and a pause in `app` survive another tool being shown and another session being chosen, and `pair` is as a new session is ---
+  const other = await make(4);
+  await sleep(300);
+  const fresh = await read();
+  if (fresh.tools.timestamps?.pressed !== 'false' || fresh.tools.pause?.pressed !== 'false' || fresh.tools.follow?.pressed !== 'true') fail(where, `session: a new session starts with UTC ${String(fresh.tools.timestamps?.pressed)}, Pause ${String(fresh.tools.pause?.pressed)}, Follow ${String(fresh.tools.follow?.pressed)}, wanted false, false, true`);
+  await page.locator(`[data-shell-part="sessionTab"][data-tab-id="${first}"] [role=tab]`).click();
+  await sleep(300);
+  await press('timestamps');
+  await press('pause');
+  await press('follow');
+  await sleep(300);
+  await page.evaluate(() => window.__panel.show({ tool: 'alpha:streams' }));
+  await sleep(400);
+  await page.evaluate(() => window.__panel.show({ tool: 'logs' }));
+  await sleep(400);
+  await page.locator(`[data-shell-part="sessionTab"][data-tab-id="${other}"] [role=tab]`).click();
+  await sleep(300);
+  const pair = await read();
+  await page.locator(`[data-shell-part="sessionTab"][data-tab-id="${first}"] [role=tab]`).click();
+  await sleep(300);
+  if (CONTROL === 'state-lost') await press('timestamps');
+  const back = await read();
+  report.toolbar[`${engine} ${viewportName}`].session = { appBack: Object.fromEntries(Object.entries(back.tools).map(([id, one]) => [id, one.pressed])), pair: Object.fromEntries(Object.entries(pair.tools).map(([id, one]) => [id, one.pressed])) };
+  if (back.tools.timestamps?.pressed !== 'true' || back.timestamps !== 'utc' || back.tools.pause?.pressed !== 'true' || back.tools.follow?.pressed !== 'false') fail(where, `session: back on the first session UTC is ${String(back.tools.timestamps?.pressed)}, Pause ${String(back.tools.pause?.pressed)}, Follow ${String(back.tools.follow?.pressed)}, wanted true, true, false`);
+  if (pair.tools.timestamps?.pressed !== 'false' || pair.tools.pause?.pressed !== 'false' || pair.tools.follow?.pressed !== 'true') fail(where, `session: the other session shows UTC ${String(pair.tools.timestamps?.pressed)}, Pause ${String(pair.tools.pause?.pressed)}, Follow ${String(pair.tools.follow?.pressed)}: a choice of the first leaked into it`);
+
+  for (const error of errors) fail(`errors ${where}`, error);
+  await context.close();
+}
+
+const production = wants('fills') || wants('sources') || wants('kept') || wants('identity') || wants('a11y') || wants('memory') || wants('toolbar') ? await serveFixtures(buildFixtures('production')) : null;
 const development = wants('hidden') || wants('appears') ? await serveFixtures(buildFixtures('development')) : null;
 const axe = wants('a11y') ? readFileSync(AXE, 'utf8') : '';
 for (const engineName of engineNames) {
@@ -1244,6 +1619,11 @@ for (const engineName of engineNames) {
       ran.add('a11y');
     }
 
+    if (wants('toolbar')) {
+      await toolbar(browser, engineName, viewportName, viewport, production.origin);
+      ran.add('toolbar');
+    }
+
     if (wants('memory') && (await memory(browser, engineName, viewportName, viewport, production.origin))) ran.add('memory');
     if (wants('appears')) {
       await appears(browser, engineName, viewportName, viewport, development.origin);
@@ -1265,7 +1645,7 @@ development?.server.close();
 if (CONTROL === '') for (const name of ONLY) if (!ran.has(name)) fail('sections', `${name} was asked for (SECTIONS) and ran in no engine of ${engineNames.join(', ')}`);
 if (ONLY.length > 0) report.notes.push(`SECTIONS=${ONLY.join(',')}: ran ${[...ran].join(', ') || 'nothing'}`);
 if (process.env.REPORT) writeFileSync(process.env.REPORT, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, identity: report.identity, a11y: report.a11y, memory: report.memory, notes: report.notes }, null, 1));
+console.log(JSON.stringify({ hidden: report.hidden, shift: report.shift, sources: report.sources, appears: report.appears, identity: report.identity, a11y: report.a11y, memory: report.memory, toolbar: report.toolbar, notes: report.notes }, null, 1));
 if (CONTROL !== '') {
   const detected = failures.filter((line) => PERTURBATIONS[CONTROL].expected.test(line));
   console.log(`\nwhat the probe saw with the perturbation "${CONTROL}": ${String(failures.length)} differences\n${failures.map((line) => `  ${line}`).join('\n')}`);

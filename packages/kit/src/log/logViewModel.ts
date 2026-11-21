@@ -23,7 +23,7 @@ import { LineSearch, type SearchOptions, type SearchStatus } from './lineSearch'
 import { LineView } from './lineView';
 import { LogSources, type SourceTag } from './sources';
 import { formatStamp } from './time';
-import type { LogEntry, LogFeed, LogTimestamps } from './types';
+import type { LogEntry, LogFeed, LogFeedState, LogTimestamps } from './types';
 import { windowOf, type RowWindow } from './window';
 
 /** The most entries a view keeps unless it is told otherwise: the cap of the old viewer (HLT-4, MNR-L2). */
@@ -140,6 +140,26 @@ export type StatsSnapshot = {
 /** A move of the active line: by rows, by a page, or to an end. */
 export type ActiveMove = number | 'home' | 'end' | 'pageUp' | 'pageDown';
 
+/**
+ * What a control beside the view reads of it (P1b-4a: the toolbar's Follow, Pause, Clear and Copy). A handful of facts and no count that a line changes, so a control that reads them is drawn again
+ * when one changes and not once a frame: a stream of 10,000 lines a second moves none of them after its first lines.
+ */
+export type LogViewState = {
+  /** The view follows the end of the log. */
+  readonly following: boolean;
+  /** The list draws at least one line (after the level filter). */
+  readonly drawn: boolean;
+  /** The view holds at least one line, whatever the level filter shows: with `drawn` false, the filter hides every one. */
+  readonly held: boolean;
+  /** The feed's own pause flag, whatever its state says. */
+  readonly paused: boolean;
+  /** Where the feed is. */
+  readonly feed: LogFeedState;
+};
+
+/** What the Copy control copies: the lines as plain text, how many lines that is (a marker is no line), and whether the reader's selection narrowed it. */
+export type LogViewCopy = { readonly text: string; readonly lines: number; readonly selection: boolean };
+
 const defaultSchedule = (callback: () => void): (() => void) => {
   if (typeof requestAnimationFrame === 'function') {
     const id = requestAnimationFrame(callback);
@@ -204,7 +224,9 @@ export class LogViewModel {
 
   private readonly listeners = new Set<() => void>();
   private readonly statsListeners = new Set<() => void>();
+  private readonly controlsListeners = new Set<() => void>();
   private snapshot: ViewSnapshot;
+  private controls: LogViewState;
   private searchSnapshot: SearchSnapshot;
   private stats: StatsSnapshot;
   private revision = 0;
@@ -253,6 +275,7 @@ export class LogViewModel {
     this.sources.learn(this.stream.getSnapshot().sources);
     this.stats = this.computeStats();
     this.snapshot = this.makeSnapshot();
+    this.controls = this.readControls();
   }
 
   // ---- what React reads ----
@@ -282,6 +305,19 @@ export class LogViewModel {
   readonly getStats = (): StatsSnapshot => this.stats;
 
   /**
+   * The facts a control beside the view reads, told when one changes and not otherwise: the same object until then. It is told in the frame that published the change, and the moment the feed says it paused,
+   * resumed, ended or failed, so a control and the strip that read the feed's status are drawn in one commit.
+   */
+  readonly subscribeControls = (listener: () => void): (() => void) => {
+    this.controlsListeners.add(listener);
+    return () => {
+      this.controlsListeners.delete(listener);
+    };
+  };
+
+  readonly getControls = (): LogViewState => this.controls;
+
+  /**
    * The entry at `index` of the list; the index must be inside it. For tests and tools: NEVER read it during a render. A render that reads the model by index is
    * cached by the compiler on its other inputs, and the entries behind an index change with no input changing (T-10): the snapshot carries what the list draws.
    */
@@ -302,6 +338,8 @@ export class LogViewModel {
     this.sample(true);
     this.requestFrame();
     this.requestStats();
+    // ...and perhaps paused, ended or failed meanwhile: a control reads the feed as it is now.
+    this.refreshControls();
   }
 
   /** Stops reading, drops the feed's listener and cancels what was scheduled. The entries stay. */
@@ -417,6 +455,47 @@ export class LogViewModel {
     this.publish('end');
   }
 
+  // ---- what the toolbar does ----
+
+  /**
+   * Clear (the toolbar's): the view forgets what it holds and the stream is not touched. The lines, what the view had evicted and the marker of lines the feed dropped before it were all lines of the
+   * past: none is counted as dropped, because a reader cleared them, and what the feed drops or the view evicts from now is told as it comes. The lines the feed holds and the view has not read are new
+   * lines, and are read next; a feed that is paused stays paused. The search keeps its query and looks at the lines that come, the level filter stays, the selection goes with its lines, and the list is
+   * asked to go to the end (while it follows) or to its top (a reader who had scrolled back has nothing to be scrolled back in). Ordinals go on, so nothing that named a cleared line can name a new one.
+   * A view with nothing to forget is left as it is: no snapshot, no frame.
+   */
+  clear(): void {
+    if (this.buffer.length === 0 && this.view.length === 0 && this.unread === 0 && this.buffer.evictedLines === 0) {
+      return;
+    }
+
+    this.buffer.clear();
+    this.view.reset();
+    this.search.restart();
+    this.pickCurrent();
+    this.autoCurrent = true;
+    this.selection = undefined;
+    this.unseen = 0;
+    this.unread = 0;
+    this.scrollTop = 0;
+    this.expectedTop = undefined;
+    this.tellSoon();
+    this.publish(this.following ? 'end' : 0);
+  }
+
+  /** Holds the feed's reads, or lets them through again (the toolbar's Pause): the pause is the feed's, which goes on holding the lines it is sent. Asks the feed nothing when it already is as asked. */
+  setPaused(paused: boolean): void {
+    if (this.stream.getSnapshot().paused === paused) {
+      return;
+    }
+
+    if (paused) {
+      this.stream.pause();
+    } else {
+      this.stream.resume();
+    }
+  }
+
   // ---- the level filter ----
 
   setMinRank(rank: number): void {
@@ -527,6 +606,26 @@ export class LogViewModel {
    * whether the view has a column for it (the mock's `lineText` names the source of every line). The clock is the one the rows show: the viewer's own by default, or UTC with its Z.
    */
   copyText(timestamps: LogTimestamps = 'local'): string | undefined {
+    return this.textOfSelection(timestamps)?.text;
+  }
+
+  /**
+   * What the Copy control copies: the selected lines when a range is selected and the list draws some of them, else every line the list draws (the level filter applies: a line it hides is neither drawn nor
+   * copied; the mock's Copy writes the lines of its view). A marker is written as its own sentence and is no line. The text is the one the keyboard's copy writes, a line each, the source of every line that has
+   * one included, in the clock the rows show. Undefined when the list draws no line.
+   */
+  copyLines(timestamps: LogTimestamps = 'local'): LogViewCopy | undefined {
+    const selected = this.textOfSelection(timestamps);
+    if (selected !== undefined) {
+      return { ...selected, selection: true };
+    }
+
+    const all = this.textOfRows(0, this.view.length, timestamps);
+    return all === undefined ? undefined : { ...all, selection: false };
+  }
+
+  /** The text of the selected range, or undefined with no selection, or when none of its lines is in the list. */
+  private textOfSelection(timestamps: LogTimestamps): { readonly text: string; readonly lines: number } | undefined {
     const selection = this.selection;
     if (selection === undefined) {
       return undefined;
@@ -534,13 +633,29 @@ export class LogViewModel {
 
     const low = Math.min(selection.anchor, selection.focus);
     const high = Math.max(selection.anchor, selection.focus);
-    const lines: string[] = [];
-    for (let index = this.view.lowerBound(low); index < this.view.length && this.view.ordinalAt(index) <= high; index += 1) {
-      const entry = this.view.at(index);
-      lines.push(entryText(entry, entry.kind === 'line' ? this.sources.tag(entry.source)?.label : undefined, timestamps));
+    const from = this.view.lowerBound(low);
+    let to = from;
+    while (to < this.view.length && this.view.ordinalAt(to) <= high) {
+      to += 1;
     }
 
-    return lines.length === 0 ? undefined : lines.join('\n');
+    return this.textOfRows(from, to, timestamps);
+  }
+
+  /** The rows `from` up to `to` of the list as text, a row each, and how many of them are lines; undefined when none is a line. */
+  private textOfRows(from: number, to: number, timestamps: LogTimestamps): { readonly text: string; readonly lines: number } | undefined {
+    const rows: string[] = [];
+    let lines = 0;
+    for (let index = from; index < to; index += 1) {
+      const entry = this.view.at(index);
+      if (entry.kind === 'line') {
+        lines += 1;
+      }
+
+      rows.push(entryText(entry, entry.kind === 'line' ? this.sources.tag(entry.source)?.label : undefined, timestamps));
+    }
+
+    return lines === 0 ? undefined : { text: rows.join('\n'), lines };
   }
 
   // ---- the frame ----
@@ -550,6 +665,7 @@ export class LogViewModel {
     this.sample(false);
     this.requestFrame();
     this.requestStats();
+    this.refreshControls();
   };
 
   private requestFrame(): void {
@@ -840,7 +956,29 @@ export class LogViewModel {
       listener();
     }
 
+    this.refreshControls();
     this.requestStats();
+  }
+
+  // ---- the controls ----
+
+  private readControls(): LogViewState {
+    const feed = this.stream.getSnapshot();
+    return { following: this.following, drawn: this.view.lineCount > 0, held: this.buffer.lines > 0, paused: feed.paused, feed: feed.state };
+  }
+
+  /** Reads what a control reads and tells its listeners when one of the five moved: a line that arrives moves none of them after the first. */
+  private refreshControls(): void {
+    const next = this.readControls();
+    const was = this.controls;
+    if (was.following === next.following && was.drawn === next.drawn && was.held === next.held && was.paused === next.paused && was.feed === next.feed) {
+      return;
+    }
+
+    this.controls = next;
+    for (const listener of [...this.controlsListeners]) {
+      listener();
+    }
   }
 
   // ---- the strip ----

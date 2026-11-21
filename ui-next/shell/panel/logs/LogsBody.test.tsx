@@ -188,14 +188,17 @@ describe('a body that is not on screen', () => {
     expect(rowsBefore).toBeGreaterThan(0);
   });
 
-  it('is not drawn: the view\'s own nodes are hidden, so the browser does no layout and no paint for them', () => {
+  it('is not drawn: every node the body puts in the box (the toolbar\'s column, the view\'s box) is hidden, so the browser does no layout and no paint for them', () => {
     const { show } = mount();
     show(false);
-    const root = document.querySelector<HTMLElement>('[data-log-session]');
-    expect(root).not.toBeNull();
-    expect(root?.style.display).toBe('none');
+    const box = document.querySelector<HTMLElement>('[data-shell-part="logsBody"]');
+    expect(box).not.toBeNull();
+    const drawn = (): string[] => [...(box?.children ?? [])].map((child) => (child as HTMLElement).style.display);
+    expect(drawn().length).toBeGreaterThan(1);
+    expect(drawn().every((display) => display === 'none')).toBe(true);
+    expect(document.querySelector('[data-log-session]')).not.toBeNull();
     show(true);
-    expect(root?.style.display).not.toBe('none');
+    expect(drawn().every((display) => display !== 'none')).toBe(true);
   });
 
   it('comes back with the lines it had and the lines the stream held meanwhile, read from where it left off', () => {
