@@ -143,13 +143,13 @@ describe('the way back', () => {
   });
 
   it('is bounded at the history, whatever the document held', () => {
-    const records = Array.from({ length: 300 }, (_, index) => ({
+    const records = Array.from({ length: 600 }, (_, index) => ({
       id: `n${String(index + 1)}`, kind: 'message', source: 'cloud', initiator: 'system', severity: 'info', state: 'succeeded', title: `Notice ${String(index)}`, doneTitle: '', detail: '', details: '', fields: [], actions: [], count: 1, fold: '', attempt: 1,
       createdAt: START - index, updatedAt: START - index, finishedAt: START - index, read: false,
     }));
     const result = restoreNotices({ version: NOTICES_VERSION, records, muted: {} }, { now: START });
     const store = createNoticesStore({ scheduler: manualClock().scheduler, initial: result.ok ? { records: result.records, muted: result.muted } : undefined });
-    expect(store.getSnapshot().recent).toHaveLength(LIMITS.history);
+    expect(store.getSnapshot().recent).toHaveLength(500);
     const small = createNoticesStore({ scheduler: manualClock().scheduler, history: { max: 10 }, initial: result.ok ? { records: result.records, muted: result.muted } : undefined });
     expect(small.getSnapshot().recent).toHaveLength(10);
   });

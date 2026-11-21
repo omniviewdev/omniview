@@ -1,6 +1,9 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { platformOf } from './core/chords';
 import type { ModifierEvent, TabsStore } from './core/tabs';
+import { NoticesProvider } from './notices/context';
+import type { NoticesBindings } from './notices/host';
+import { Toasts } from './notices/Toasts';
 import { PaletteProvider } from './palette/context';
 import type { PaletteBindings } from './palette/host';
 import { Palette } from './palette/Palette';
@@ -61,6 +64,11 @@ export type ShellProps = {
    * The command palette: its model, its live region, and what it opens with (`palette/host.ts`). Absent: the top row has no Search control, no chord opens anything, and there is no surface.
    */
   readonly palette?: PaletteBindings | undefined;
+  /**
+   * The toast layer (`notices/host.ts`): the model's store and the window's live regions. The layer is the last region of the window, after the status bar, and draws at the bottom right above it. Absent: the window has no
+   * toasts, and nothing is mounted for them.
+   */
+  readonly notices?: NoticesBindings | undefined;
 };
 
 /**
@@ -69,7 +77,7 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette, notices }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
@@ -99,6 +107,7 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
         </div>
         {panel === undefined ? null : <Panel platform={platform} />}
         <StatusBar platform={platform} />
+        {notices === undefined ? null : <Toasts />}
         {palette === undefined ? null : <Palette />}
       </div>
     </TabsProvider>
@@ -112,5 +121,6 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
         <SessionCards />
       </PanelProvider>
     );
-  return palette === undefined ? framed : <PaletteProvider palette={palette}>{framed}</PaletteProvider>;
+  const noticed = notices === undefined ? framed : <NoticesProvider notices={notices}>{framed}</NoticesProvider>;
+  return palette === undefined ? noticed : <PaletteProvider palette={palette}>{noticed}</PaletteProvider>;
 }

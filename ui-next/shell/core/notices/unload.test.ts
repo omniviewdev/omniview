@@ -106,15 +106,17 @@ describe('a plugin leaves: its notices\' actions are marked unavailable (never a
     expect(store.getSnapshot().recent[0]?.actions[0]).toMatchObject({ id: 'go', disabled: 'cloud is turned off' });
   });
 
-  it('takes the decision away from a toast that waited on it: it closes by itself now, and stays unread', async () => {
+  it('takes the decision away from a toast that waited on it: a warning closes by itself now, and stays unread; an error stays (S77: a failure must not vanish)', async () => {
     const { store, clock } = makeNotices();
-    store.forSource('cloud').notify({ title: 'Disk is full', severity: 'error', actions: [{ id: 'fix', label: 'Fix it', run: () => undefined }] });
-    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([true]);
+    const fix = { id: 'fix', label: 'Fix it', run: () => undefined };
+    store.forSource('cloud').notify({ title: 'Disk is filling', severity: 'warning', actions: [fix] });
+    store.forSource('cloud').notify({ title: 'Disk is full', severity: 'error', actions: [fix] });
+    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([true, true]);
     store.removePlugin('cloud');
-    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([false]);
+    expect(store.getSnapshot().toasts.items.map((item) => item.sticky)).toEqual([false, true]);
     await clock.advance(TIMING.toast + 1);
-    expect(store.getSnapshot().toasts.items).toEqual([]);
-    expect(store.getSnapshot().recent[0]?.unread).toBe(true);
+    expect(store.getSnapshot().toasts.items.map((item) => item.record?.name)).toEqual(['Disk is full']);
+    expect(store.getSnapshot().recent.map((record) => record.unread)).toEqual([true, true]);
   });
 
   it('keeps what is in the history: the notices stay, readable, and may still be cleared', () => {

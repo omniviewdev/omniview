@@ -1,0 +1,10 @@
+FAIL  ui-next/shell/core/notices/lifetime.test.ts > how long a toast lives > closes a calm one eight seconds after it appears (S78, not the mock's seven), and the record stays, unread
+FAIL  ui-next/shell/core/notices/lifetime.test.ts > how long a toast lives > keeps a failure that has nothing to decide until the user acts, S77 and S78 (the lead ruled for the written rule: the mock's code timed it out); a warning with nothing to decide still closes
+FAIL  ui-next/shell/core/notices/lifetime.test.ts > how long a toast lives > keeps the toast of a failure whose Retry is not enabled: a disabled Retry is not a decision, and a failure sticks without one
+FAIL  ui-next/shell/core/notices/messages.test.ts > the bounded history (S74) > is five hundred records and seven days: the owner's decision B7, ruled by the lead on 2026-11-20 (the mock says two hundred)
+FAIL  ui-next/shell/core/notices/messages.test.ts > the bounded history (S74) > keeps the newest five hundred and lets the oldest go
+FAIL  ui-next/shell/core/notices/messages.test.ts > the bounded history (S74) > never drops work that is still running, however many messages come after it
+FAIL  ui-next/shell/core/notices/persist.test.ts > serialiseNotices > writes at most the history, newest first, and keeps what a record needs to draw before its plugin loads
+FAIL  ui-next/shell/core/notices/persist.test.ts > restoreNotices: the way back > keeps the newest five hundred and says it dropped the rest
+FAIL  ui-next/shell/core/notices/policy.test.ts > toastPolicy: one eligibility rule decides every toast (S77, S78, OF4) > is sticky for a failure that has nothing to decide too: S77 says every failure sticks, and the mock's code, which timed it out after seven seconds, is not the rule
+--- (the model rulings, seen red before the constants and the policy changed)

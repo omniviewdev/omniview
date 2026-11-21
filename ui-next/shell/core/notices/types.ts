@@ -327,8 +327,12 @@ export type NoticesState = {
   readonly undo: { readonly count: number; readonly until: number } | undefined;
 };
 
-/** What a view reports (S78, S89a): the pointer or the focus is in the stack (the clocks wait), a modal owns the window or the centre is open (the stack is suspended). */
-export type HoldReason = 'pointer' | 'focus' | 'modal' | 'center';
+/**
+ * What a view reports (S78, S89a): the pointer or the focus is in the stack (the clocks wait), a modal owns the window or the centre is open (the stack is suspended), or the stack has no room anywhere and is not drawn
+ * (`yield`, the placement rule's last resort: the clocks wait and the stack stays in the list, because the view still measures it; the lead's ruling of 2026-11-21, "never lose a message unseen": with no centre yet a toast that
+ * expired while hidden could never be read; the mock's clocks keep running).
+ */
+export type HoldReason = 'pointer' | 'focus' | 'modal' | 'center' | 'yield';
 
 /**
  * What the page header's operation slot takes (the kit's `PageOperation`, structurally: a test proves one is assignable to the other): a record the page hands over, with nothing wired behind it but
@@ -493,8 +497,8 @@ export const LIMITS = Object.freeze({
   actionLabel: 24,
   steps: 20,
   stepLabel: 40,
-  /** Records kept once finished (S74: 200; the owner's decision B7 is pending: 500 by count has been proposed). */
-  history: 200,
+  /** Records kept once finished: 500 (the lead's ruling of 2026-11-20 for the owner's decision B7; the mock and S74 say 200). */
+  history: 500,
   /** How old a finished record may be (S74: seven days). */
   age: 7 * 86_400_000,
   /** Operations that may run at once, per source and in all: a plugin that starts more is flooding. */
@@ -513,8 +517,8 @@ export const LIMITS = Object.freeze({
 
 /** Times, in milliseconds. */
 export const TIMING = Object.freeze({
-  /** A toast that is not sticky closes by itself this long after it appears (the mock: 7 s, never longer than 8 s, S78, OF4). */
-  toast: 7000,
+  /** A toast that is not sticky closes by itself this long after it appears: 8 s (S78, OF4; the lead's ruling of 2026-11-20: the written rule, not the mock's code, which says 7 s). */
+  toast: 8000,
   /** When the clocks resume after a hold, a toast has at least this long to be read (S78, S89a). */
   grace: 2000,
   /** The sliding window of a group, and of a message that repeats (S82). */

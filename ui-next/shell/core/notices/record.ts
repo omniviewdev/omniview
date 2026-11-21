@@ -74,7 +74,7 @@ export type ViewContext = {
   readonly counted: () => void;
 };
 
-export const factsOf = (rec: Rec, decision: boolean): Facts => ({ kind: rec.kind, state: rec.state, severity: rec.severity, initiator: rec.initiator, read: rec.read, decision });
+export const factsOf = (rec: Rec, action: boolean): Facts => ({ kind: rec.kind, state: rec.state, severity: rec.severity, initiator: rec.initiator, read: rec.read, action });
 
 /** Whether two values of plain data say the same: the same object, or the same primitives, arrays and objects, member for member. */
 export function equalPlain(a: unknown, b: unknown): boolean {
@@ -142,8 +142,8 @@ export function viewOf(rec: Rec, context: ViewContext, limit: number): RecordVie
     commandAvailability: context.commandAvailability,
     current: context.current,
   });
-  const decision = actions.some((action) => action.disabled === '' && (action.kind === 'retry' || action.kind === 'custom'));
-  const facts = factsOf(rec, decision);
+  const action = actions.some((candidate) => candidate.disabled === '');
+  const facts = factsOf(rec, action);
   const muted = context.muted(rec.source);
   const phrase: Phrase = {
     kind: rec.kind,
