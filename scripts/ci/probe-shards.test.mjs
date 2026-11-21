@@ -127,13 +127,29 @@ test('negative control: a probe file that only a by-hand entry names is still ru
   assert.match(problems[0].message, /ui-next\/shell\/probes\/b-probe\.mjs is run by shard 2 and listed in BY_HAND/);
 });
 
-test('negative control: the units of one probe in two shards fail the check: a probe runs with its negative controls in one shard', () => {
+// N24 K2 (the lead's ruling): a probe's negative controls may run in another shard than the probe. What is still required is that each of them runs exactly once: one unit of the probe, one unit of its controls, no control twice.
+test('a probe and its negative controls may run in different shards: the probe is one unit, its controls are one unit, and each is in one shard', () => {
   const split = small();
   split.shards[1].units.push(split.shards[0].units.pop());
-  const problems = check({ table: split });
-  assert.equal(problems.length, 1);
-  assert.equal(problems[0].file, 'packages/kit/probes/a-probe.mjs');
-  assert.match(problems[0].message, /packages\/kit\/probes\/a-probe\.mjs is run by shards 1 and 2/);
+  assert.deepEqual(messages(check({ table: split })), []);
+});
+
+test('negative control: a probe that runs twice (two units of it without controls, in one shard or two) or two units of its controls (a control that runs twice, or controls nobody lists) fail the check, and the script is named', () => {
+  const twoShards = small();
+  twoShards.shards[1].units.push(unit('Probe a again', 'packages/kit/probes/a-probe.mjs'));
+  const first = check({ table: twoShards });
+  assert.equal(first.length, 1);
+  assert.equal(first[0].file, 'packages/kit/probes/a-probe.mjs');
+  assert.match(first[0].message, /packages\/kit\/probes\/a-probe\.mjs runs twice as a probe: the units "Probe a" \(shard 1\) and "Probe a again" \(shard 2\)/);
+  const oneShard = small();
+  oneShard.shards[0].units.push(unit('Probe a again', 'packages/kit/probes/a-probe.mjs'));
+  assert.match(messages(check({ table: oneShard }))[0], /runs twice as a probe: the units "Probe a" \(shard 1\) and "Probe a again" \(shard 1\)/);
+  const controls = small();
+  controls.shards[1].units.push(unit('Probe that a sees more', 'packages/kit/probes/a-probe.mjs', { controls: ['x'] }));
+  const second = check({ table: controls });
+  assert.equal(second.length, 1);
+  assert.equal(second[0].file, 'packages/kit/probes/a-probe.mjs');
+  assert.match(second[0].message, /packages\/kit\/probes\/a-probe\.mjs has two units of negative controls: "Probe that a sees" \(shard 1\) and "Probe that a sees more" \(shard 2\): list its controls in one unit, so that each runs exactly once/);
 });
 
 test('negative control: a unit whose script is gone fails the check and names the file, the unit and the shard', () => {
@@ -222,7 +238,7 @@ function readableFile(file) {
 
 const realCheck = (table = TABLE, found = findProbeScripts(repo)) => checkTable({ table, found, exists: readableFile, workflowShards: readWorkflowShards(workflowText) });
 
-test('every probe script under the probe directories runs in exactly one shard (or is listed as run by hand), and the workflow runs the shards of the table', () => {
+test('every probe script under the probe directories runs in a shard (its probe and its controls in one each) or is listed as run by hand, and the workflow runs the shards of the table', () => {
   const found = findProbeScripts(repo);
   for (const file of ['packages/kit/probes/kit-probe.mjs', 'ui-next/shell/probes/palette-probe.mjs', 'ui-next/page/probes/detail-probe.mjs', 'ui-next/page/probes/page-probe.mjs']) {
     assert.ok(found.includes(file), `the scan of the probe directories found ${found.length} scripts and not ${file}`);
@@ -232,9 +248,12 @@ test('every probe script under the probe directories runs in exactly one shard (
   const owners = new Map();
   for (const shard of TABLE.shards) for (const { script } of shard.units) owners.set(script, new Set([...(owners.get(script) ?? []), shard.id]));
   for (const file of found) {
-    const shards = owners.get(file)?.size ?? 0;
+    const shards = (owners.get(file)?.size ?? 0) > 0 ? 1 : 0;
     const byHand = BY_HAND.some((entry) => entry.script === file) ? 1 : 0;
-    assert.equal(shards + byHand, 1, `${file} runs in ${shards} shards and ${byHand} by-hand entries`);
+    assert.equal(shards + byHand, 1, `${file} runs in ${shards ? 'a shard' : 'no shard'} and ${byHand} by-hand entries`);
+    const units = TABLE.shards.flatMap((shard) => shard.units.filter((candidate) => candidate.script === file));
+    assert.ok(units.filter((candidate) => candidate.controls === undefined).length <= 1, `${file} runs twice as a probe`);
+    assert.ok(units.filter((candidate) => candidate.controls !== undefined).length <= 1, `${file} has two units of controls`);
   }
 });
 
@@ -328,35 +347,48 @@ test('negative control: a probe file added to a probe directory without a shard 
   assert.ok(problems.some((problem) => problem.file === 'ui-next/shell/probes/rail-probe.mjs' && /no shard runs it/.test(problem.message)), messages(problems).join('\n'));
 });
 
-test('a probe that CI never ran before the split is listed by hand with the reason, and nothing else is', () => {
-  assert.deepEqual(BY_HAND.map((entry) => entry.script).sort(), ['packages/kit/probes/kit-probe-bc.mjs', 'packages/kit/probes/row-menu-probe.mjs', 'ui-next/page/probes/page-probe.mjs']);
-  for (const entry of BY_HAND) assert.ok(entry.reason.length > 20, entry.script);
+// N24 K2: the three probes CI never ran (docs/ui-next/status/N24-K1.md, N24-B1.md) are in shards, and nothing is left to run by hand: the table's by-hand list is empty (the mechanism stays, with its check).
+test('the three probes CI never ran before K2 are in shards now: the list page, the parts of the second kit probe and the row menu with its two controls; BY_HAND is empty', () => {
+  assert.deepEqual(BY_HAND, []);
+  const where = (script) => TABLE.shards.flatMap((shard) => shard.units.filter((candidate) => candidate.script === script).map((candidate) => ({ shard: shard.id, ...candidate })));
+  assert.equal(where('ui-next/page/probes/page-probe.mjs').length, 1);
+  const bc = where('packages/kit/probes/kit-probe-bc.mjs');
+  assert.equal(bc.length, 1);
+  assert.equal(bc[0].env.DIST, '$PROBE_DIST', 'it reads the ui-next build the shard makes, as kit-probe.mjs does');
+  const rowMenu = where('packages/kit/probes/row-menu-probe.mjs');
+  assert.equal(rowMenu.length, 2);
+  assert.equal(rowMenu.filter((candidate) => candidate.controls === undefined).length, 1, 'the probe');
+  assert.deepEqual(rowMenu.find((candidate) => candidate.controls !== undefined)?.controls, ['trigger-not-expanded', 'expanded-twice'], 'its controls');
+  for (const candidate of [...bc, ...rowMenu]) assert.equal(candidate.env?.DIST, '$PROBE_DIST', candidate.name);
 });
 
-// The balance (N24 B1). Seconds of each unit (a probe with its negative controls), from the green runs of 2026-11-20 on the runner (`### Kit probes shard N` of the job summary): the median of runs 44798544094,
-// 44803451635, 44806908384, 44808922038, 44810769664 and 44818285854; the panel probe, the Logs probe and their controls from the last of them and run 44820580415 (main after #561), the only runs that have the sections P1b-3c (A21) added.
-// A unit that is not here fails the test below: measure it (the job summary of its first run) and add it. The two of the plugins' providers probe (C1c) are the one local measurement of each (2026-11-20, a laptop at
-// a load of 59 to 84): the seconds of the first run's job summary replace them.
+// The balance (N24 K2, after B1). Seconds of each unit (a probe, or a probe's negative controls) on the RUNNER, as the job summary of a shard prints them (`### Kit probes shard N`): the median of the last green runs of the sharded
+// workflow (see docs/ui-next/status/N24-K2.md for the runs). A unit that is not here fails the test below: measure it (the job summary of its first run) and add it.
 const MEASURED_SECONDS = {
-  'Probe the bottom panel against the pinned mock reference': 280,
-  'Probe that the panel probe sees a panel that is wrong': 318,
-  'Probe the table against the pinned mock reference': 68,
-  'Probe the rail against the pinned mock reference': 16,
-  'Probe the detail page against the pinned mock reference': 10,
+  'Probe the bottom panel against the pinned mock reference': 288,
+  'Probe that the panel probe sees a panel that is wrong': 399,
+  'Probe the Logs tool in a real engine': 319,
+  'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved': 161,
   'Probe the command palette against the pinned mock reference': 258,
   'Probe that the palette probe sees a palette that is wrong': 60,
-  'Probe the fonts and the layout shift': 43,
-  'Probe the shell frame against the pinned mock reference': 51,
-  'Probe the log view against the pinned mock reference': 195,
-  'Probe that the log probe sees a log view that is wrong': 114,
-  'Probe the tooltip host': 152,
-  'Probe the Logs tool in a real engine': 282,
-  'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved': 111,
-  'Probe the parts against the pinned mock reference': 172,
-  'Probe the tab strip, the page host and the load against the pinned mock reference': 186,
+  'Probe the tab strip, the page host and the load against the pinned mock reference': 191,
   'Probe that the strip probe sees a label that gives way to a count': 26,
-  'Probe what the providers of a plugin do to the command palette': 181,
-  'Probe that the plugin providers probe sees a palette that is wrong': 117,
+  'Probe the log view against the pinned mock reference': 180,
+  'Probe that the log probe sees a log view that is wrong': 106,
+  'Probe the tooltip host': 144,
+  'Probe the parts against the pinned mock reference': 163,
+  'Probe what the providers of a plugin do to the command palette': 140,
+  'Probe that the plugin providers probe sees a palette that is wrong': 80,
+  'Probe the table against the pinned mock reference': 63,
+  'Probe the shell frame against the pinned mock reference': 45,
+  'Probe the fonts and the layout shift': 35,
+  'Probe the rail against the pinned mock reference': 17,
+  'Probe the detail page against the pinned mock reference': 10,
+  // The three that no workflow ran before K2: the median of the three dispatches of 2026-11-21 that had them (44860748108, 44862158926, 44862163420; docs/ui-next/status/N24-K2.md).
+  'Probe the list page chrome and its layout shift against the pinned mock reference': 60,
+  'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference': 192,
+  'Probe the row menu on the 5,000-row example': 22,
+  'Probe that the row menu probe sees a trigger that does not say it is open': 2,
 };
 /** The seconds of every shard of a table, and the units no measurement is known for. */
 function balance(table, measured = MEASURED_SECONDS) {
@@ -371,10 +403,10 @@ function balance(table, measured = MEASURED_SECONDS) {
   }));
   return { totals, unmeasured };
 }
-// The shard jobs wait for the slowest. A probe stays with its controls, so the panel probe with its controls is the floor of the job (598 s) and nothing can make it shorter than that by moving units;
-// what moving can do is keep every other shard well under it, so that a slow run of one of them does not become the job. The best split of the other eleven probes into four shards (searched
-// exhaustively from the numbers above) has a longest shard of 461 s; the limit is that and 9 s.
-const OTHERS_LIMIT_SECONDS = 470;
+// The shard jobs wait for the slowest. Since K2 a probe's controls may run in another shard than the probe, so the floor is no longer the panel probe with its controls (598 s) but the longest single unit: the work is shared out over as
+// few shards as keep the slowest at about 8 minutes with the setup of a shard (about 90 s on the runner with the CI image, N24-B1). The limit is the slowest shard of the best split found (exhaustively, from the numbers above) and a few
+// seconds; it moves when a probe grows (put its new seconds above) and the table is rebalanced.
+const LIMIT_SECONDS = 430;
 
 test('every unit of the table has a measurement, and every measurement is of a unit', () => {
   const { unmeasured } = balance(TABLE);
@@ -383,25 +415,30 @@ test('every unit of the table has a measurement, and every measurement is of a u
   assert.deepEqual(Object.keys(MEASURED_SECONDS).filter((name) => !names.has(name)), []);
 });
 
-test('the slowest shard is the longest probe with its controls and nothing else, and every other shard is under the limit', () => {
+test('no shard is over the limit: the slowest shard, probes only, is about 8 minutes with its setup', () => {
   const { totals } = balance(TABLE);
-  const panel = totals.find((entry) => TABLE.shards.find((shard) => shard.id === entry.id).units.some((candidate) => candidate.script.endsWith('panel-probe.mjs')));
-  assert.equal(panel.units, 2, 'the panel probe and its controls are the shard');
-  for (const entry of totals) {
-    if (entry === panel) continue;
-    assert.ok(entry.seconds <= OTHERS_LIMIT_SECONDS, `shard ${entry.id} is ${entry.seconds} s, over ${OTHERS_LIMIT_SECONDS}: move a unit (the longest other shard of the best split is 461 s)`);
-  }
-  assert.ok(panel.seconds > Math.max(...totals.filter((entry) => entry !== panel).map((entry) => entry.seconds)), 'the panel shard is the slowest');
+  for (const entry of totals) assert.ok(entry.seconds <= LIMIT_SECONDS, `shard ${entry.id} is ${entry.seconds} s, over ${LIMIT_SECONDS}: move a unit to a shard with room, or add a shard (and put it in the workflow's matrix)`);
 });
 
-test('negative control: a unit moved onto a shard that is already long is seen as a shard over the limit', () => {
+test('the table has the fewest shards that meet the limit: the same work does not fit in one shard fewer, even split perfectly', () => {
+  const { totals } = balance(TABLE);
+  const work = totals.reduce((sum, entry) => sum + entry.seconds, 0);
+  const longest = Math.max(...Object.values(MEASURED_SECONDS));
+  assert.ok(longest <= LIMIT_SECONDS, `the longest unit is ${longest} s, over ${LIMIT_SECONDS}: it cannot be split by moving units`);
+  assert.ok(Math.ceil(work / (totals.length - 1)) > LIMIT_SECONDS, `${work} s over ${totals.length - 1} shards is ${Math.ceil(work / (totals.length - 1))} s a shard, within ${LIMIT_SECONDS}: a shard can go`);
+});
+
+test('negative control: the longest unit moved onto the longest other shard is seen as a shard over the limit, and a unit without a measurement is named', () => {
   const moved = structuredClone(TABLE);
-  const tooltip = moved.shards.flatMap((shard) => shard.units).find((candidate) => candidate.name === 'Probe the tooltip host');
-  moved.shards = moved.shards.map((shard) => ({ ...shard, units: shard.units.filter((candidate) => candidate !== tooltip) }));
-  moved.shards.find((shard) => shard.units.some((candidate) => candidate.script.endsWith('logs-probe.mjs'))).units.push(tooltip);
   const { totals } = balance(moved);
-  assert.ok(totals.some((entry) => entry.seconds > OTHERS_LIMIT_SECONDS && entry.units > 2), JSON.stringify(totals));
-  assert.deepEqual(balance(moved, { ...MEASURED_SECONDS, 'Probe the tooltip host': undefined }).unmeasured, ['Probe the tooltip host'], 'a unit without a measurement is named');
+  const target = totals.reduce((best, entry) => (entry.seconds > best.seconds ? entry : best));
+  const others = moved.shards.filter((shard) => shard.id !== target.id).flatMap((shard) => shard.units);
+  const unit = others.reduce((best, candidate) => (MEASURED_SECONDS[candidate.name] > MEASURED_SECONDS[best.name] ? candidate : best));
+  moved.shards = moved.shards.map((shard) => ({ ...shard, units: shard.units.filter((candidate) => candidate !== unit) }));
+  moved.shards.find((shard) => shard.id === target.id).units.push(unit);
+  const after = balance(moved);
+  assert.ok(after.totals.some((entry) => entry.seconds > LIMIT_SECONDS), JSON.stringify(after.totals));
+  assert.deepEqual(balance(moved, { ...MEASURED_SECONDS, [unit.name]: undefined }).unmeasured, [unit.name], 'a unit without a measurement is named');
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -413,17 +450,17 @@ const VARS = { RUNNER_TEMP: '/tmp/runner', PROBE_DIST: '/tmp/runner/ui-next-dist
 test('a unit is one run, with its env expanded from the runner environment', () => {
   const runs = expandUnit(unit('Probe a', 'packages/kit/probes/a-probe.mjs', { env: { DIST: '$PROBE_DIST', REPORT: '${RUNNER_TEMP}/a-probe.json', FONT_DELAY_MS: '40' } }), VARS);
   assert.deepEqual(runs, [
-    { label: 'Probe a', script: 'packages/kit/probes/a-probe.mjs', env: { DIST: '/tmp/runner/ui-next-dist', REPORT: '/tmp/runner/a-probe.json', FONT_DELAY_MS: '40' } },
+    { label: 'Probe a', script: 'packages/kit/probes/a-probe.mjs', control: null, env: { DIST: '/tmp/runner/ui-next-dist', REPORT: '/tmp/runner/a-probe.json', FONT_DELAY_MS: '40' } },
   ]);
 });
 
 test('a unit with controls is one run for each, with NEGATIVE_CONTROL set to it and the unit env around it', () => {
   const runs = expandUnit(unit('Probe that a sees', 'packages/kit/probes/a-probe.mjs', { env: { DIST: '$PROBE_DIST' }, controls: ['x', 'y'] }), VARS);
   assert.deepEqual(
-    runs.map((run) => [run.label, run.env]),
+    runs.map((run) => [run.label, run.script, run.control, run.env]),
     [
-      ['Probe that a sees (x)', { DIST: '/tmp/runner/ui-next-dist', NEGATIVE_CONTROL: 'x' }],
-      ['Probe that a sees (y)', { DIST: '/tmp/runner/ui-next-dist', NEGATIVE_CONTROL: 'y' }],
+      ['Probe that a sees (x)', 'packages/kit/probes/a-probe.mjs', 'x', { DIST: '/tmp/runner/ui-next-dist', NEGATIVE_CONTROL: 'x' }],
+      ['Probe that a sees (y)', 'packages/kit/probes/a-probe.mjs', 'y', { DIST: '/tmp/runner/ui-next-dist', NEGATIVE_CONTROL: 'y' }],
     ],
   );
 });
@@ -503,7 +540,7 @@ test('negative control: a probe that exits non-zero fails the shard, names the u
   const { results, log } = await run(shardsTable(), '1', root);
   assert.deepEqual(results.map((result) => [result.label, result.ok]), [['First fine', true], ['Then bad', false], ['Control runs (one)', true], ['Control runs (two)', true]]);
   assert.equal(results[1].code, 3);
-  assert.match(log, /^::error title=Kit probe failed \(shard 1\)::Then bad exited with code 3$/m);
+  assert.match(log, /^::error title=Kit probe failed \(shard 1\)::Then bad \[ui-next\/shell\/probes\/bad-probe\.mjs\] exited with code 3$/m);
   const failure = log.indexOf('::error title=Kit probe failed (shard 1)::Then bad');
   assert.ok(log.indexOf('::endgroup::', log.indexOf('::group::Then bad')) < failure, 'the error and the last lines come after the group closed, where a collapsed group does not hide them');
   const afterFailure = log.slice(failure);
@@ -517,7 +554,22 @@ test('negative control: a probe that throws (exit 1 with a stack) fails the shar
   const { results, log } = await run(shardsTable(), '2', root);
   assert.deepEqual(results.map((result) => [result.label, result.ok, result.code]), [['Crashes', false, 1]]);
   assert.match(log, /the page did not load/);
-  assert.match(log, /^::error title=Kit probe failed \(shard 2\)::Crashes exited with code 1$/m);
+  assert.match(log, /^::error title=Kit probe failed \(shard 2\)::Crashes \[ui-next\/shell\/probes\/crash-probe\.mjs\] exited with code 1$/m);
+});
+
+// A control may run in another shard than its probe (K2), so the line that says it failed must name both: the probe's script, the control, and the step that holds it.
+test('negative control: a control that fails, alone in its shard, is named with its probe\'s script, its own name and its step, in the error line and in the summary', async () => {
+  const root = scratch(PROBES);
+  const table = { shards: [{ id: '3', units: [unit('Probe that bad sees', 'ui-next/shell/probes/bad-probe.mjs', { controls: ['frame', 'gap'] })] }], byHand: [] };
+  const { results, log } = await run(table, '3', root);
+  assert.deepEqual(results.map((result) => [result.label, result.script, result.control, result.ok]), [
+    ['Probe that bad sees (frame)', 'ui-next/shell/probes/bad-probe.mjs', 'frame', false],
+    ['Probe that bad sees (gap)', 'ui-next/shell/probes/bad-probe.mjs', 'gap', false],
+  ]);
+  assert.match(log, /^::error title=Kit probe failed \(shard 3\)::Probe that bad sees \(frame\) \[ui-next\/shell\/probes\/bad-probe\.mjs, negative control frame\] exited with code 3$/m);
+  const summary = renderSummary('3', results);
+  assert.match(summary, /^\| \*\*fail\*\* \(exit 3\) \| \d+ \| ui-next\/shell\/probes\/bad-probe\.mjs \| frame \| Probe that bad sees \|$/m);
+  assert.match(summary, /^\| \*\*fail\*\* \(exit 3\) \| \d+ \| ui-next\/shell\/probes\/bad-probe\.mjs \| gap \| Probe that bad sees \|$/m);
 });
 
 test('a script that is not there fails the run (the check names it first, this is the second wall)', async () => {
@@ -527,17 +579,18 @@ test('a script that is not there fails the run (the check names it first, this i
   assert.deepEqual(results.map((result) => [result.label, result.ok]), [['Gone', false]]);
 });
 
-test('the summary of a shard counts runs and failures, one row each with its seconds, and says which failed and how', () => {
+test('the summary of a shard counts runs and failures, one row each with its seconds, the probe script, the control (none for the probe itself) and the step, and says which failed and how', () => {
   const text = renderSummary('3', [
-    { label: 'Probe a', ok: true, code: 0, seconds: 171 },
-    { label: 'Probe that a sees (x)', ok: false, code: 3, seconds: 12 },
-    { label: 'Probe that a sees (y)', ok: false, code: null, signal: 'SIGKILL', seconds: 1 },
+    { label: 'Probe a', script: 'packages/kit/probes/a-probe.mjs', control: null, ok: true, code: 0, seconds: 171 },
+    { label: 'Probe that a sees (x)', script: 'packages/kit/probes/a-probe.mjs', control: 'x', ok: false, code: 3, seconds: 12 },
+    { label: 'Probe that a sees (y)', script: 'packages/kit/probes/a-probe.mjs', control: 'y', ok: false, code: null, signal: 'SIGKILL', seconds: 1 },
   ]);
   assert.match(text, /^### Kit probes shard 3: 3 runs, 2 failed, 184 s$/m);
-  assert.match(text, /^\| pass \| 171 \| Probe a \|$/m);
-  assert.match(text, /^\| \*\*fail\*\* \(exit 3\) \| 12 \| Probe that a sees \(x\) \|$/m);
-  assert.match(text, /^\| \*\*fail\*\* \(SIGKILL\) \| 1 \| Probe that a sees \(y\) \|$/m);
-  assert.match(renderSummary('1', [{ label: 'Probe a', ok: true, code: 0, seconds: 4 }]), /^### Kit probes shard 1: 1 run, all passed, 4 s$/m);
+  assert.match(text, /^\| Result \| Seconds \| Probe \| Negative control \| Step \|$/m);
+  assert.match(text, /^\| pass \| 171 \| packages\/kit\/probes\/a-probe\.mjs \|  \| Probe a \|$/m);
+  assert.match(text, /^\| \*\*fail\*\* \(exit 3\) \| 12 \| packages\/kit\/probes\/a-probe\.mjs \| x \| Probe that a sees \|$/m);
+  assert.match(text, /^\| \*\*fail\*\* \(SIGKILL\) \| 1 \| packages\/kit\/probes\/a-probe\.mjs \| y \| Probe that a sees \|$/m);
+  assert.match(renderSummary('1', [{ label: 'Probe a', script: 'packages/kit/probes/a-probe.mjs', control: null, ok: true, code: 0, seconds: 4 }]), /^### Kit probes shard 1: 1 run, all passed, 4 s$/m);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -611,8 +664,8 @@ test('the run command exits 1 when a probe of the shard fails and 0 when every p
   const root = scratch(files);
   const summary = path.join(root, 'summary.md');
   const env = { ...callerEnv(), RUNNER_TEMP: root, PROBE_DIST: path.join(root, 'dist'), GITHUB_STEP_SUMMARY: summary, GITHUB_ACTIONS: '' };
-  const withPanel = TABLE.shards.find((shard) => shard.units.some((candidate) => candidate.script.endsWith('panel-probe.mjs'))).id;
-  const without = TABLE.shards.find((shard) => shard.id !== withPanel).id;
+  const withPanel = TABLE.shards.find((shard) => shard.units.some((candidate) => candidate.script.endsWith('panel-probe.mjs') && candidate.controls === undefined)).id;
+  const without = TABLE.shards.find((shard) => !shard.units.some((candidate) => candidate.script.endsWith('panel-probe.mjs'))).id;
   const failing = spawnSync('node', [command, '--root', root, 'run', withPanel], { encoding: 'utf8', env });
   assert.equal(failing.status, 1, failing.stdout + failing.stderr);
   assert.match(readFileSync(summary, 'utf8'), new RegExp(`### Kit probes shard ${withPanel}: \\d+ runs?, \\d+ failed`));
