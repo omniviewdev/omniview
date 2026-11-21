@@ -67,6 +67,22 @@ export function railOf(entries: readonly PluginEntry[]): readonly RailEntry[] {
 }
 
 /**
+ * THE RULE for the order of what plugins contribute, in one place (R2). Whatever the window lists from more than one plugin is listed in the order of the rail: the plugins that contribute first, in the order
+ * the rail draws them (`railOf`: what they declare today, and what the person arranges later), and the others after them as they were listed. The tools of the bottom panel are handed to its model in this
+ * order (`panelPluginsOf`), the providers of the command palette are registered in it (`syncProviders`) and its pages source lists the plugins in it (`pagesOf`); a list the window makes of the plugins takes
+ * its order from here and from nothing else. A plugin that finishes loading late takes the place the rail gives it, whichever plugin finished first, whatever order the plugin store lists them in and
+ * however long a load took: nothing is ordered by the moment a plugin arrived (two plugins that finished at nearly the same time gave a bottom panel whose tools changed places from one run to the next).
+ *
+ * What a kind of contribution says of itself comes before the place of its plugin where the kind has one number for all plugins (a panel tool's `order` is a place among every tool, the host's included: the
+ * mock sorts on it first), and after it where it does not (a plugin's own providers, in the order it declares them). Where two plugins' contributions are equal, this order settles it.
+ */
+export function inRailOrder(entries: readonly PluginEntry[]): readonly PluginEntry[] {
+  const places = new Map(railOf(entries).map((entry, index) => [entry.id, index]));
+  const placed = entries.filter((entry) => places.has(entry.id)).sort((a, b) => (places.get(a.id) ?? 0) - (places.get(b.id) ?? 0));
+  return [...placed, ...entries.filter((entry) => !places.has(entry.id))];
+}
+
+/**
  * The plugins that did not load, and the ones that stopped (a crash, a reload: `PluginStore.unload`), one entry each after the ones that contribute, by name: a plugin the window cannot show must
  * still be there to find (a window with nothing saved opens empty, and a failure that only a page names would never be seen). The entry says what happened in its name and carries the cause in its
  * tip; it has no sidebar, so it is never the rail's current entry, and choosing it opens the plugin's page, which names the failure and offers the Retry where asking again can help. The error glyph

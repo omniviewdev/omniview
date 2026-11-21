@@ -25,7 +25,7 @@ import { connectionOf, routeKey, type PluginSource } from './contributions';
 import { commandOf, providersOf, runCommand } from './paletteProviders';
 import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
-import { DEFAULT_RAIL_ICON, failedOf, railOf } from './rail';
+import { DEFAULT_RAIL_ICON, failedOf, inRailOrder, railOf } from './rail';
 
 type Ready = Extract<PluginEntry, { readonly phase: 'ready' }>;
 
@@ -209,9 +209,8 @@ function pagesOf({ tabs, plugins, contributions, nodes, frames, remembered }: Ho
   const only = scope.plugin;
   const entries = plugins.getSnapshot();
   const rail = railOf(entries);
-  const place = new Map(rail.map((entry, index) => [entry.id, index]));
   const glyphs = new Map([...rail, ...failedOf(entries)].map((entry) => [entry.id, entry.icon]));
-  const wanted = entries.filter((entry) => only === null || entry.id === only).sort((a, b) => (place.get(a.id) ?? rail.length) - (place.get(b.id) ?? rail.length));
+  const wanted = inRailOrder(entries).filter((entry) => only === null || entry.id === only);
   const active = activeRoute(tabs);
   const onScreen = active?.plugin;
   const rows: PaletteCandidate[] = [];
@@ -525,8 +524,8 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
 
   // The plugins' providers. What is registered is the contribution each plugin's providers were made of, so a plugin whose contribution is the same object as before is left alone, one that was replaced has its
   // providers made again, and one that is not ready (or is gone) has none. `attached` counts the windows that keep the palette current: the providers stay until the last one is undone, and none are registered before the first.
-  // The model keeps sections that match equally in the order their providers were registered in, and what Enter opens is the first row: so the plugins are registered in the rail's order, which is the same on every run, and
-  // never in the order they happened to finish loading (a race between two plugins decided what a plain Enter opened, from one run to the next).
+  // The model keeps sections that match equally in the order their providers were registered in, and what Enter opens is the first row: so the plugins are registered in the order of the rail (`inRailOrder`, R2), which is
+  // the same on every run, and never in the order they happened to finish loading (a race between two plugins decided what a plain Enter opened, from one run to the next).
   const registered = new Map<string, ContributionV1>();
   const refused = new WeakSet<ContributionV1>();
   let attached = 0;
@@ -545,13 +544,8 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
 
     const entries = plugins.getSnapshot();
     const rail = railOf(entries);
-    const place = (plugin: string): number => {
-      const index = rail.findIndex((candidate) => candidate.id === plugin);
-      return index < 0 ? rail.length : index;
-    };
-
     const wanted: Ready[] = [];
-    for (const entry of entries) {
+    for (const entry of inRailOrder(entries)) {
       if (entry.phase !== 'ready' || entry.contribution.palette === undefined) {
         continue;
       }
@@ -570,8 +564,6 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
 
       wanted.push(entry);
     }
-
-    wanted.sort((a, b) => place(a.id) - place(b.id));
 
     // A plugin that is gone, or no longer brings providers, leaves: the others keep their place.
     const live = new Set(wanted.map((entry) => entry.id));

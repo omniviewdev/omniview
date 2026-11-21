@@ -9,9 +9,11 @@
 //   e  a bundle of the old shell is refused before it runs (the global it sets is never set); a plugin with no bundle is a named state
 //   g  the rail (S2a): one entry for each plugin that contributes (the healthy plugin and its copy; the refused ones have none), in the order each declares; choosing the other entry shows its
 //      sidebar and closes no tab, activating a tab makes its plugin current; closing the last tab leaves the empty window (decision A17), which opens nothing by itself and offers the plugins to open
-//   h  the bottom panel (P1a, P1b-3a): the host's own Logs tool comes first (empty: it says how a session arrives and has no `+`), then the tool each plugin that contributes brings, "Streams" and "Streams copy", drawn by the
-//      host's strip over the plugin's own body; the status bar's toggle opens the panel, the tool's `+` opens its three streams (running, ended, failed), a hidden stream keeps running while another is on screen and
-//      while the panel is hidden, and the card of a stream links to its item, which opens in a tab of the window
+//   h  the bottom panel (P1a, P1b-3a): the host's own Logs tool comes first (empty: it says how a session arrives and has no `+`), then the tool each plugin that contributes brings, "Streams" and "Streams copy", in the order of the rail
+//      (the two say the same `order`, so the rail's order tells them apart, whichever plugin finishes loading first: R2), drawn by the host's strip over the plugin's own body; the status bar's toggle opens the panel, the tool's `+`
+//      opens its three streams (running, ended, failed), a hidden stream keeps running while another is on screen and while the panel is hidden, and the card of a stream links to its item, which opens in a tab of the window
+//   h2 the bottom panel when the rail's first plugin finishes loading LAST (R2): its bundle is held while the copy's tool is on screen with a stream open in it, then let through; the strip is in the rail's order, and the tool, the stream
+//      and the body the person is on do not change (the tab of the copy moves right by the width of the tab that arrived, as the mock's does)
 //   i  the session (S3a): the window opens EMPTY when nothing was saved (decision A17: no page opens by itself); two tabs of two plugins, the rail on the second and the panel open on the second plugin's tool
 //      at a height the keyboard chose come back after a reload of the page, and after the host's process is stopped and started again (the packaged app's restart, in server mode); a session whose plugin is not
 //      installed keeps its tab and says so; a session of a newer version, and a text that is no session, are kept aside in a slot of their own and never deleted, and the window opens empty. The session lives in
@@ -596,7 +598,8 @@ async function checkRail(page, base, engine) {
 
 /**
  * h. The bottom panel, in a page of its own: each plugin that contributes brings a tool (`fixture-a-ok`: "Streams", the copy: "Streams copy"), which the host draws as a tab of its strip over the plugin's
- * body, and sessions the plugin opens through the tool's `+`. What is checked is the seam: a tool and its body from a bundle built outside the host, a card the plugin describes, a route the host opens.
+ * body, and sessions the plugin opens through the tool's `+`. What is checked is the seam: a tool and its body from a bundle built outside the host, a card the plugin describes, a route the host opens. The two tools
+ * say the same place (`order` 40), so the strip tells them apart by the rail's order, which is `fixture-a-ok` first: the order is the rail's whichever of the two plugins finishes loading first (R2; h2 forces the other end).
  */
 async function checkPanel(page, base, engine) {
   const errors = [];
@@ -612,13 +615,13 @@ async function checkPanel(page, base, engine) {
   await toggle.click();
   await region.waitFor({ state: 'visible' });
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${engine}: the toggle is pressed once it is open`);
-  // The host's own Logs tool comes first and is on screen (it says how a session arrives, and has no `+`); then one tool for each plugin that contributes, in the plugin's own words.
+  // The host's own Logs tool comes first and is on screen (it says how a session arrives, and has no `+`); then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Logs', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Logs tool, then the tool of each plugin that contributes`);
+  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Logs', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Logs tool, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
   assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the Logs tool is on screen`);
   await page.getByText('No log sessions').waitFor();
   assert.equal(await page.locator('[data-shell-part="sessionAdd"]').count(), 0, `${engine}: the Logs tool has no \`+\` (decision A20)`);
-  // The plugin that came first brings the tool the rest of this scenario uses.
+  // The rail's first plugin brings the tool the rest of this scenario uses.
   await tools.nth(1).click();
   assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
   await page.getByText('No sessions').waitFor();
@@ -652,6 +655,63 @@ async function checkPanel(page, base, engine) {
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.ok((await lines()) > hiddenAt, `${engine}: the running stream kept counting while the panel was hidden (${hiddenAt} lines)`);
   assert.deepEqual(errors, [], `${engine}: the panel wrote no page error`);
+}
+
+/**
+ * h2. The bottom panel when the plugin the rail puts first finishes loading last (R2), in a page of its own. The bundle of `fixture-a-ok` (the rail's first place, "Streams") is held, so the copy (the rail's second place,
+ * "Streams copy") is ready first and the window is up, with the panel open on the copy's tool and a stream open in it, while the first plugin is still loading; then the bundle is let through. The strip must be in the rail's
+ * order, `Logs`, `Streams`, `Streams copy`, as it is in scenario h when the loads end the other way round: a plugin that loads late takes its place, it is not put after the other. Before R2 the strip read `Logs`, `Streams copy`,
+ * `Streams` here, and in scenario h on the runs in which the copy happened to finish first (the CI failure of #635): the tie between two tools of one `order` was settled by the order the plugins arrived in.
+ *
+ * What the person is on does not move: the copy's tool is still the one on screen, its stream is still the session on screen and its body is the same element, not remounted and still counting. What does move is the copy's
+ * tab, to the right by the width of the tab that arrived. The mock does the same (a tool is added at its sorted place the moment its plugin is live and nothing is held back: `shell-regions.js` `declaredTools` and `visibleTools`), and the
+ * line the check prints says by how much.
+ */
+async function checkPanelLate(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const held = [];
+  let released = false;
+  await page.route(`**/_/plugins/${OK}/**`, (route) => {
+    if (released) void route.continue();
+    else held.push(route);
+  });
+  await open(page, base);
+  const toggle = page.getByRole('button', { name: 'Panel', exact: true });
+  await toggle.click();
+  await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
+  const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
+  const names = async () => (await tools.allTextContents()).map((text) => text.trim());
+  // The copy is ready and the first plugin is not: the strip has the host's tool and the copy's.
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Logs|Streams copy', null, { timeout: 30_000 });
+  assert.equal(held.length > 0, true, `${engine}: the first plugin's bundle was asked for and is held`);
+  // The person is on the copy's tool, with a stream open in it.
+  await tools.nth(1).click();
+  await page.getByRole('button', { name: 'New stream' }).first().click();
+  const stream = page.locator('[data-fixture="stream"][data-session="stream-alpha"]');
+  await stream.waitFor();
+  const body = await stream.elementHandle();
+  const lines = () => stream.evaluate((element) => Number(element.getAttribute('data-lines')));
+  const linesBefore = await lines();
+  const copyBefore = (await tools.nth(1).boundingBox())?.x ?? NaN;
+  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
+
+  // The first plugin's bundle is let through: it finishes after the copy.
+  released = true;
+  for (const route of held.splice(0)) await route.continue();
+  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 3, null, { timeout: 30_000 });
+  assert.deepEqual(await names(), ['Logs', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
+  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
+  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
+  assert.equal(await page.getByRole('tab', { name: 'stream-alpha', selected: true }).count(), 1, `${engine}: the stream is still the session on screen`);
+  assert.equal(await body.evaluate((element) => element.isConnected), true, `${engine}: and its body is the same element, not drawn again`);
+  assert.ok((await lines()) >= linesBefore, `${engine}: and its count did not start again (${String(linesBefore)} lines, then ${String(await lines())})`);
+  const moved = ((await tools.nth(2).boundingBox())?.x ?? NaN) - copyBefore;
+  console.log(`${engine}: the copy's tab moved ${moved.toFixed(1)} px to the right when the first plugin's tab arrived ahead of it; the tool, the stream and the body on screen did not change`);
+  // The window settles: with every plugin loaded and no tab open it is the empty window, which lists the plugins to open.
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await page.unroute(`**/_/plugins/${OK}/**`);
+  assert.deepEqual(errors, [], `${engine}: the panel wrote no page error while the first plugin loaded late`);
 }
 
 /**
@@ -2540,6 +2600,21 @@ try {
         continue;
       }
 
+      // SEAM_PANEL_REPEAT=<n> runs scenarios h and h2 alone, n times in a row, for a developer who is chasing a flake of them (R2: two plugins' tools that tied in `order` were in the order the plugins finished loading in, which failed one run in
+      // CI and passed on the rerun). h2 forces the end h reaches by chance; on a loaded machine h reaches both.
+      if (process.env.SEAM_PANEL_REPEAT !== undefined) {
+        for (let run = 0; run < Number(process.env.SEAM_PANEL_REPEAT); run += 1) {
+          for (const [label, check] of [['panel', checkPanel], ['panel-late', checkPanelLate]]) {
+            const page = await freshPage(browser, host.base);
+            await check(page, host.base, name);
+            await page.close();
+            console.log(`${label} ${name} run ${String(run)} ok`);
+          }
+        }
+
+        continue;
+      }
+
       if (CONTROL === FAILED_GROUP || FAILED_CONTROLS[CONTROL] !== undefined) {
         // The negative controls of scenario p: it runs alone, once, with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkFailedLoad`).
         try {
@@ -2603,6 +2678,7 @@ try {
       });
       await phase('rail', name, async () => checkRail(await freshPage(browser, host.base), host.base, name));
       await phase('panel', name, async () => checkPanel(await freshPage(browser, host.base), host.base, name));
+      await phase('panel-late', name, async () => checkPanelLate(await freshPage(browser, host.base), host.base, name));
       await phase('logs', name, async () => checkLogs(await freshPage(browser, host.base), host.base, name));
       await phase('palette', name, async () => checkPalette(await freshPage(browser, host.base), host.base, name));
       await phase('twins', name, async () => checkTwins(await freshPage(browser, host.base), host.base, name));

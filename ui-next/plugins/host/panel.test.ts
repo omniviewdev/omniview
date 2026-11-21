@@ -36,6 +36,19 @@ describe('what the plugins bring to the panel', () => {
     const failed: PluginEntry = { id: 'delta', name: 'delta', phase: 'failed', failure };
     expect(panelPluginsOf([loading('gamma'), failed])).toEqual([]);
   });
+
+  // R2: the order the plugins are handed to the panel in is the order the model keeps for what ties, so it is the rail's, which is the same whatever order the plugin store lists the plugins in and whichever plugin loaded first.
+  it('lists the plugins in the order of the rail and not the order of the entries: a plugin that declares a lower place leads, one that declares none follows by name', () => {
+    const placed = (id: string, order: number | undefined): PluginEntry => ({
+      id,
+      name: id,
+      phase: 'ready',
+      contribution: { ...contribution({ tools: { streams: tool() } }), plugin: { name: id }, rail: order === undefined ? true : { icon: 'layers', order } },
+    });
+    const entries = [placed('a-last', 30), placed('b-none', undefined), placed('c-first', 10), placed('d-second', 20)];
+    expect(panelPluginsOf(entries).map((plugin) => plugin.id)).toEqual(['c-first', 'd-second', 'a-last', 'b-none']);
+    expect(panelPluginsOf([...entries].reverse()).map((plugin) => plugin.id)).toEqual(['c-first', 'd-second', 'a-last', 'b-none']);
+  });
 });
 
 describe('which plugin\'s tool a tool id is', () => {

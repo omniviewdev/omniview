@@ -2,6 +2,7 @@ import { normaliseRoute, type PanelCard, type PanelNewSession, type PanelSession
 import type { PanelCardV1, PanelSessionV1, PanelToolV1, RouteV1 } from '../contract/v1';
 import { connectionOf, textParamsOf } from './contributions';
 import type { PluginEntry } from './pluginStore';
+import { inRailOrder } from './rail';
 import { addressOf } from './route';
 
 // The host's side of what a plugin brings to the bottom panel (contract/v1.ts, `panel`; the model is ui-next/shell/core/panel). Pure: the plugins' tools for the panel's registry, which
@@ -20,13 +21,16 @@ const ownOf = <T>(dictionary: Readonly<Record<string, T>> | undefined, key: stri
 
 /**
  * The plugins that are live and the tools each brings, for the panel's registry (`PanelStore.syncPlugins`): a plugin is live while its interface is ready, whether it brings a tool or not (the
- * sessions it opens in a tool of the host show while it is). One that is loading or did not load contributes nothing.
+ * sessions it opens in a tool of the host show while it is). One that is loading or did not load contributes nothing. They are listed in the order of the rail (`inRailOrder`, R2) and the model keeps
+ * that order for the tools whose `order` ties, so a plugin that finishes loading late takes its place among the others and is not put after them; the tools of one plugin are in the order it declares them.
  */
 export function panelPluginsOf(entries: readonly PluginEntry[]): readonly PluginTools[] {
-  return entries.filter(isReady).map((entry) => ({
-    id: entry.id,
-    tools: Object.entries(entry.contribution.panel?.tools ?? {}).map(([id, tool]) => ({ id, label: tool.label, icon: tool.icon, order: tool.order })),
-  }));
+  return inRailOrder(entries)
+    .filter(isReady)
+    .map((entry) => ({
+      id: entry.id,
+      tools: Object.entries(entry.contribution.panel?.tools ?? {}).map(([id, tool]) => ({ id, label: tool.label, icon: tool.icon, order: tool.order })),
+    }));
 }
 
 /** The tool a panel tool id names: the id the panel makes is the plugin's, a colon, the plugin's own id. A tool of the host, a plugin that is not ready or a tool it does not have is `undefined`. */
