@@ -1,8 +1,9 @@
 import { ActivityProvider } from '@omniviewdev/runtime';
 import { WindowClient } from '@omniviewdev/runtime/api';
-import { Window } from '@omniviewdev/runtime/runtime';
+import { Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadSession, resolveWindowName, windowStorage, type LoadedSession } from '../../shell';
+import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
 import { useHashLink } from './route';
@@ -40,6 +41,10 @@ export function PluginHostScreen() {
   const inventory = useInstalledPlugins();
   const link = useHashLink();
   const [session, setSession] = useState<LoadedSession | undefined>(undefined);
+
+  // What the host says of a plugin that stops (`plugin/unloaded`: its process crashed, it is reloading, uninstalled or turned off) and of one that runs again (`plugin/state_change`): the store drops what the
+  // window drew from the plugin and loads it again from its files, with no reload of the window (decision A21, P1b3c-01). The inventory above only ever adds.
+  useEffect(() => listenForLifecycle(store, Events), [store]);
 
   useEffect(() => {
     let current = true;

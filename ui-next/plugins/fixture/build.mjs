@@ -7,20 +7,26 @@
 // repositories do (docs/ui-next/slices/n19-plugin-seam.md, 1.2). What differs is the list of externals: exactly the host's shared list for contract v1
 // (`../loader/specifiers.ts`, read here by Node), and a build that imports anything else fails, so a bundle cannot quietly carry its own React.
 //
+// A plugin written by this build may also have a PROCESS (`writePlugin(root, id, binary)`): the Go program of `./process`, built once by `buildProcess` and installed as `bin/plugin` with the `settings`
+// capability, which the SDK serves to every plugin. The seam check uses it to end a plugin's process from outside (scenario n); no plugin of `PLUGINS` has one unless a check asks.
+//
 // Four plugins come out of it, one per thing the host must handle:
 //   fixture-a-ok       the healthy plugin: React and the kit are the host's
 //   fixture-b-dup      the negative control: the same plugin with its OWN copy of the kit, whose `useTheme` has no provider and throws
 //   fixture-c-old      a bundle of the old shell: it imports the old UI library, which the new shell does not serve, and must be refused unrun
 //   fixture-d-missing  a plugin whose `assets/` holds no bundle
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import react from '@vitejs/plugin-react';
 import { build } from 'vite';
 import { readDependencies } from '../loader/preflight.ts';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const repository = path.resolve(here, '../../..');
 const OLD_ENTRY = 'virtual:fixture-old-entry';
 
 // What an old-shell bundle does: it imports the old UI library and acts the moment it is evaluated. The check reads the global to prove the host refused it first.
@@ -143,17 +149,39 @@ async function buildBundle(id, variant, directory, rail) {
   return readDependencies(await readFile(path.join(directory, 'assets/entry.js'), 'utf8')) ?? [];
 }
 
-function manifest(id, name) {
-  return [`id: ${id}`, 'version: 0.0.1', `name: ${name}`, 'description: Fixture plugin of the new UI seam', 'license: Apache-2.0', 'author:', '  name: Omniview', 'capabilities:', '  - ui', ''].join('\n');
+/** `backend` is whether the plugin has a process: the capabilities are what tells the host to start one (`settings` is the one the SDK serves with no code of the plugin's). */
+function manifest(id, name, backend) {
+  const capabilities = backend ? ['  - settings', '  - ui'] : ['  - ui'];
+  return [`id: ${id}`, 'version: 0.0.1', `name: ${name}`, 'description: Fixture plugin of the new UI seam', 'license: Apache-2.0', 'author:', '  name: Omniview', 'capabilities:', ...capabilities, ''].join('\n');
 }
 
-/** Builds one plugin into `<root>/<id>/` and answers the dependencies its bundle declares (empty when it has none). */
-export async function writePlugin(root, id) {
+/**
+ * Builds the fixture's process (`./process`) to `<directory>/plugin` and answers its path: the Go program of the host's own module, so it needs no network and no module of its own. One build serves every
+ * plugin that is given it, in every host a check starts.
+ */
+export async function buildProcess(directory) {
+  await mkdir(directory, { recursive: true });
+  const binary = path.join(directory, 'plugin');
+  await promisify(execFile)('go', ['build', '-o', binary, './ui-next/plugins/fixture/process'], { cwd: repository, env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '' } });
+  return binary;
+}
+
+/**
+ * Builds one plugin into `<root>/<id>/` and answers the dependencies its bundle declares (empty when it has none). With `binary` (the path `buildProcess` answered) the plugin has a process: `bin/plugin`
+ * and the capability that makes the host start it.
+ */
+export async function writePlugin(root, id, binary = undefined) {
   const { variant, name, rail } = PLUGINS[id];
   const directory = path.join(root, id);
   await rm(directory, { recursive: true, force: true });
   await mkdir(path.join(directory, 'assets'), { recursive: true });
-  await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name));
+  await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name, binary !== undefined));
+  if (binary !== undefined) {
+    await mkdir(path.join(directory, 'bin'), { recursive: true });
+    await copyFile(binary, path.join(directory, 'bin', 'plugin'));
+    await chmod(path.join(directory, 'bin', 'plugin'), 0o755);
+  }
+
   return { id, directory, dependencies: variant === 'missing' ? [] : await buildBundle(id, variant, directory, rail) };
 }
 

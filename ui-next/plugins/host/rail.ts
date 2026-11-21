@@ -1,5 +1,6 @@
 import { isIconName, type IconName } from '@omniviewdev/kit';
 import type { RailV1, ShellAccent } from '../contract/v1';
+import { failureWords } from '../loader/failure';
 import type { PluginEntry } from './pluginStore';
 
 // The window's rail, as the host decides it: which plugins have an entry, in what order, and which entry is current. Framework-free, like `pluginStore.ts`; `PluginHost` hands the shell what
@@ -66,14 +67,18 @@ export function railOf(entries: readonly PluginEntry[]): readonly RailEntry[] {
 }
 
 /**
- * The plugins that did not load, one entry each after the ones that contribute, by name: a plugin the window cannot show must still be there to find (a window with nothing saved opens empty, and
- * a failure that only a page names would never be seen). The entry says what happened in its name and carries the cause in its tip; it has no sidebar, so it is never the rail's current entry, and
- * choosing it opens the plugin's page, which names the failure and offers the Retry.
+ * The plugins that did not load, and the ones that stopped (a crash, a reload: `PluginStore.unload`), one entry each after the ones that contribute, by name: a plugin the window cannot show must
+ * still be there to find (a window with nothing saved opens empty, and a failure that only a page names would never be seen). The entry says what happened in its name and carries the cause in its
+ * tip; it has no sidebar, so it is never the rail's current entry, and choosing it opens the plugin's page, which names the failure and offers the Retry where asking again can help. The error glyph
+ * is for a fault: a plugin that is starting again after a reload keeps the plugin's own (the mock's starting plugin, ch16 S89: nothing failed).
  */
 export function failedOf(entries: readonly PluginEntry[]): readonly RailEntry[] {
   return entries
     .filter((entry): entry is PluginEntry & { readonly phase: 'failed' } => entry.phase === 'failed')
-    .map((entry): RailEntry => ({ id: entry.id, label: `${entry.name}, did not load`, icon: 'status-error', order: undefined, accent: undefined, problem: entry.failure.message }))
+    .map((entry): RailEntry => {
+      const words = failureWords(entry.failure);
+      return { id: entry.id, label: `${entry.name}, ${words.label}`, icon: words.faulted ? 'status-error' : DEFAULT_RAIL_ICON, order: undefined, accent: undefined, problem: entry.failure.message };
+    })
     .sort(compareRail);
 }
 

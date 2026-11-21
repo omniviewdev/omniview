@@ -14,6 +14,8 @@ export {
     PluginReleaseState,
     StateChangePayload,
     StateWriteErrorPayload,
+    UnloadCause,
+    UnloadedPayload,
     UpdateErrorPayload,
     UpdatePayload
 } from "./models.js";

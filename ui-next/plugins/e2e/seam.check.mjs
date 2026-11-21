@@ -37,20 +37,28 @@
 //      session that ended on its own and one that failed are not shown again, a press opens a NEW session beside each, told by its ordinal, and no two tabs are named alike; closing every tab frees every listener and closes
 //      each feed once (SEAM_SHOTS=<dir> writes WebKit's `identity-one-session.png` and `identity-twins.png`; SEAM_CONTROL=<name> runs m alone with one perturbation that its named assertion must see, and that
 //      assertion only: a page that drew no tab, or the wrong one, is a failure of its own and never a detection)
+//   n  a plugin that stops reaches the window (PU1, A21): the fixture plugin gets a PROCESS (`fixture/process`) and a host of its own (the other scenarios' plugins have none), the window shows its page, its Logs
+//      session and its tool, and the check asks the host for the plugin's pid (`processinfo`, never a pattern), makes the plugin unable to start again (its binary loses its execute bit) and kills that pid. The host
+//      finds the process gone on its next health check (up to 30 s) and says so with `plugin/unloaded` (the frames of the window's event socket are read: the plugin's id and `crashed`, no other member); what the
+//      window shows is read: the rail names the plugin stopped, with the cause in its tip, its sidebar and its tool leave, its page's tab says why with a Retry, and the Logs session STAYS, ended with "The plugin was
+//      unloaded." in the same view with its lines; the host's recovery reloads the plugin (a second `plugin/unloaded`, `reloaded`) and fails, and the rail still says stopped (the first cause stands); with the binary
+//      back and the plugin loaded again the host says it runs (`plugin/state_change`), and the window shows one of everything again with no reload: one rail entry, one tab on its page, one tool, the session as it was.
+//      SEAM_CONTROL=process runs n alone with every perturbation of its controls (PROCESS_CONTROLS) made in turn just before the assertion each must trip, and passes when each tripped its own (one kill serves all of them:
+//      the host's health check is up to 30 s); SEAM_CONTROL=<one of them> makes that one only
 //
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
-import { writeAll } from '../fixture/build.mjs';
+import { buildProcess, writeAll, writePlugin } from '../fixture/build.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const server = path.join(root, 'bin/Omniview-server');
@@ -76,8 +84,24 @@ const CONTROLS = {
 };
 /** The controls that belong to scenario m; every other one runs scenario k. */
 const IDENTITY_CONTROLS = ['second-stream', 'scope-lone', 'scope-kept', 'same-name'];
+// The negative controls of scenario n, the plugin that stops (PU1). Each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no
+// other. One run serves them all (SEAM_CONTROL=process: the host finds a killed process on its next health check, up to 30 s, so a run for each would cost minutes); SEAM_CONTROL=<name> makes that one only. A page
+// that is wrong in another way fails an assertion of its own, outside a perturbation, and is never taken for a detection.
+const PROCESS_CONTROLS = {
+  'pid-pattern': /the process the host names is the fixture plugin's own/,
+  'frame-text': /the host's plugin\/unloaded carries the plugin's id and the cause and no other member/,
+  'rail-fine': /the rail names the plugin that stopped, with the cause in its tip/,
+  'page-drawn': /the tab of the plugin that stopped says why and draws no page of it/,
+  'tool-stays': /the tool of the plugin that stopped leaves the panel and the other plugin's stays/,
+  'session-live': /the Logs session stays, ended, in the same view with the lines it had/,
+  'rail-moved-on': /the first cause stands while the host recovers the plugin: the rail still says stopped/,
+  'rail-stuck': /the rail names the plugin that runs again, with no word of its stop/,
+  'two-pages': /one of everything: one page, one sidebar entry, one tool/,
+};
 const CONTROL = process.env.SEAM_CONTROL ?? '';
-if (CONTROL !== '' && CONTROLS[CONTROL] === undefined) throw new Error(`SEAM_CONTROL must be one of ${Object.keys(CONTROLS).join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS)].join(', ')}`);
+}
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -95,12 +119,15 @@ async function freePort() {
 /** The state root of the host the check starts: what the window service persists (`windows.json`) lives here, and is kept when the host is started again. */
 const stateRoot = (work) => path.join(work, 'home', '.omniview-feature-ui-next');
 
-/** Starts the host. `built` is what the plugins' build wrote: a host that is started again (the restart of scenario i) is given it and builds nothing, over the same state root. */
-async function startHost(work, port, built = undefined) {
+/**
+ * Starts the host. `built` is what the plugins' build wrote: a host that is started again (the restart of scenario i) is given it and builds nothing, over the same state root. `write` is what builds them when
+ * nothing was (`writeAll`: the four plugins of the fixture, none of them with a process; scenario n writes its own).
+ */
+async function startHost(work, port, built = undefined, write = writeAll) {
   const home = path.join(work, 'home');
   const plugins = path.join(stateRoot(work), 'plugins');
   await mkdir(plugins, { recursive: true });
-  built ??= await writeAll(plugins);
+  built ??= await write(plugins);
   const logFile = path.join(work, 'host.log');
   // A minimal environment, so nothing ambient (a credential, a config path of the developer's machine) reaches the host or a plugin: only the profile the check built.
   const { PATH, TMPDIR, LANG, USER } = process.env;
@@ -124,7 +151,7 @@ async function startHost(work, port, built = undefined) {
 
     try {
       if ((await fetch(`http://127.0.0.1:${String(port)}/`)).ok) {
-        return { child, built, base: `http://127.0.0.1:${String(port)}`, tail: () => lines.join('').slice(-3000), logFile };
+        return { child, built, base: `http://127.0.0.1:${String(port)}`, tail: () => lines.join('').slice(-3000), output: () => lines.join(''), logFile };
       }
     } catch {
       // not listening yet
@@ -142,17 +169,24 @@ async function open(page, base, hash = '') {
 }
 
 const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
+const PLUGIN_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper';
+const PROCESS_SERVICE = 'github.com/omniviewdev/omniview/internal/processinfo.Service';
 
-/** A call of a bound method of the host, by name, as the page's own runtime makes one: the window's slots are read and written through the same service the shell uses. */
-async function callHost(base, method, ...args) {
+/** A call of a bound method of the host, by service and name, as the page's own runtime makes one. The answer is the JSON of what the method returned; a method that returned an error is a failure of the check. */
+async function callBound(base, service, method, ...args) {
   const response = await fetch(`${base}/wails/runtime`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-wails-client-id': 'seam-check' },
-    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `seam-${method}-${Date.now()}`, methodName: `${WINDOW_SERVICE}.${method}`, args } }),
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `seam-${method}-${Date.now()}`, methodName: `${service}.${method}`, args } }),
   });
   const text = await response.text();
   assert.equal(response.status, 200, `${method} was answered ${String(response.status)}: ${text}`);
   return JSON.parse(text);
+}
+
+/** A call of a bound method of the window service: the window's slots are read and written through the same service the shell uses. */
+async function callHost(base, method, ...args) {
+  return callBound(base, WINDOW_SERVICE, method, ...args);
 }
 
 /**
@@ -1294,6 +1328,312 @@ async function checkIdentity(page, base, engine) {
   assert.deepEqual(errors, [], `${engine}: pressing the commands and closing the sessions wrote no page error`);
 }
 
+/** Polls `ready` until it answers true: the host answers on its own clock (its health check ticks every 30 s), so the check waits for what the host does and not for a time. */
+async function waitUntil(what, ready, ms) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await ready()) return;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  throw new Error(`timed out after ${String(ms)} ms waiting for ${what}`);
+}
+
+/**
+ * n. A plugin that stops reaches the window (PU1, decision A21), on a host of its own whose fixture plugin has a PROCESS (the Go program of `fixture/process`, built once). The window shows the plugin's page, its Logs
+ * session and its tool; the check asks the host for the plugin's pid (`processinfo`, with the executable it is running: never a pattern), takes the execute bit off its binary (so that the host's recovery cannot start it) and
+ * kills that pid. The host finds the process gone on its next health check, which ticks every 30 s, and tells the window with `plugin/unloaded`: the frames of the window's event socket are the evidence of what it
+ * was told, and the page is what it did with it. Then the host's recovery reloads the plugin and fails (a second `plugin/unloaded`, `reloaded`: the cause the plugin went away with stands), the binary is put back, the
+ * plugin is loaded again and the host says it runs (`plugin/state_change`): the window shows one of everything again, with no reload.
+ * Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`asserting`; PROCESS_CONTROLS).
+ */
+async function checkProcess(browser, engine, binary, work) {
+  const dir = await mkdtemp(path.join(work, `process-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async (plugins) => [await writePlugin(plugins, OK, binary), await writePlugin(plugins, DUP)]);
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  // What the window is told: every `plugin/*` event that reaches its event socket, as the host sent it.
+  const frames = [];
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', ({ payload }) => {
+      try {
+        const message = JSON.parse(String(payload));
+        if (typeof message?.name === 'string' && message.name.startsWith('plugin/')) frames.push({ name: message.name, data: message.data });
+      } catch {
+        // not an event
+      }
+    });
+  });
+  const controlled = [];
+  /**
+   * An assertion of this scenario. Under SEAM_CONTROL (`process`, or the name of the control) the perturbation is made first and the assertion is run, in a try: it must fail, and with ITS words; the perturbation
+   * is undone and the assertion run as it stands, which is the check.
+   */
+  const asserting = async (name, perturb, undo, assertion) => {
+    if (CONTROL === 'process' || CONTROL === name) {
+      await perturb();
+      let message = '';
+      try {
+        await assertion();
+      } catch (error) {
+        message = String(error?.message ?? error);
+      }
+
+      await undo();
+      controlled.push({ name, message });
+    }
+
+    await assertion();
+  };
+  const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
+  const railNames = async () => entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+  const strip = page.getByRole('tablist', { name: 'Open tabs' });
+  const pageTabs = async () => strip.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.textContent));
+  const streams = page.getByRole('tab', { name: 'Streams', exact: true });
+  const copyStreams = page.getByRole('tab', { name: 'Streams copy', exact: true });
+  const itemHeading = page.getByRole('heading', { level: 1, name: 'orders-api' });
+  const kept = page.getByRole('tab', { name: 'orders-api/app, ended' });
+  const log = page.getByRole('group', { name: 'Log, orders-api/app · north-yard' });
+  const grid = log.getByRole('grid');
+  const counters = async () => page.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') }));
+  const card = page.locator('[popover]:popover-open');
+  const told = () => frames.filter((frame) => frame.name === 'plugin/unloaded').map((frame) => frame.data);
+  const CRASHED = "The plugin process stopped unexpectedly, so its pages can't load data.";
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  try {
+    await open(page, host.base);
+    await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    await openFirstPlugin(page);
+    await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+    await page.getByRole('link', { name: 'orders-api' }).click();
+    await itemHeading.waitFor();
+    await page.getByRole('button', { name: 'More actions for orders-api' }).click();
+    await page.getByRole('menuitem', { name: 'Logs: app' }).click();
+    await grid.waitFor();
+    await page.waitForFunction(() => Number(document.querySelector('[role=group][aria-label="Log, orders-api/app · north-yard"] [role=grid]')?.getAttribute('aria-rowcount') ?? 0) > 20, null, { timeout: 15_000 });
+    // The view is marked: the same element must still be there, with its lines, after everything that follows.
+    await grid.evaluate((element) => {
+      element.__kept = true;
+    });
+    const rowsOf = async () => grid.evaluate((element) => Number(element.getAttribute('aria-rowcount')));
+    const rowsBefore = await rowsOf();
+    // The baseline: what is on screen before the plugin stops, asked for in words none of the controls' patterns match.
+    assert.deepEqual(await railNames(), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: before the process ends the rail lists the two plugins`);
+    assert.equal(await streams.count(), 1, `${engine}: before the process ends the plugin's tool is in the panel`);
+    assert.equal(await copyStreams.count(), 1, `${engine}: and so is the other plugin's`);
+    assert.deepEqual(await counters(), { opened: 1, closed: 0, listeners: 3 }, `${engine}: before the process ends one feed is open, and the registry and the view listen to it`);
+
+    // The process is the host's to name. It reports each plugin's pid with the executable behind it; the check kills what the host reported and nothing it found by a name.
+    const snapshot = await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot');
+    const row = snapshot.processes.find((candidate) => candidate.key === `plugin:${OK}`);
+    assert.ok(row?.ownership === 'verified' && row.identity?.pid > 0, `${engine}: the host names the plugin's process: ${JSON.stringify(row)}`);
+    const { pid, executable } = row.identity;
+    await asserting(
+      'pid-pattern',
+      async () => {
+        row.identity.executable = '/usr/local/bin/node';
+      },
+      async () => {
+        row.identity.executable = executable;
+      },
+      async () => {
+        assert.ok(row.identity.executable.endsWith(`/plugins/${OK}/bin/plugin`), `${engine}: the process the host names is the fixture plugin's own (${row.identity.executable})`);
+      },
+    );
+    process.kill(pid, 0);
+    // With the execute bit off the host's recovery cannot load the plugin again, so it stays down until the check says: that is what makes the state under test hold still.
+    await chmod(path.join(stateRoot(dir), 'plugins', OK, 'bin', 'plugin'), 0o644);
+    const mark = frames.length;
+    process.kill(pid, 'SIGKILL');
+    await waitUntil(`the host to see process ${String(pid)} end`, () => host.output().includes(`id=${String(pid)} error="signal: killed"`), 15_000);
+
+    // The host's health check finds it (up to 30 s) and the window is told.
+    await entries.nth(1).waitFor();
+    await page.getByRole('button', { name: 'Seam Fixture, stopped' }).waitFor({ timeout: 75_000 });
+    assert.match(host.output(), /plugin lifecycle transition.*"from": "Running", "to": "Recovering", "reason": "crash detected"/, `${engine}: the host says it detected the crash`);
+    assert.equal(told()[0]?.pluginID, OK, `${engine}: the first plugin/unloaded names the plugin`);
+    assert.equal(told()[0]?.cause, 'crashed', `${engine}: and says it crashed`);
+    // The perturbation is a frame of the shape a text-carrying event would have; it is removed by identity (a real `plugin/crash` frame carries an `error` too).
+    const forged = { name: 'plugin/unloaded', data: { pluginID: OK, cause: 'crashed', error: 'panic at /Users/someone/.omniview/plugins' } };
+    await asserting(
+      'frame-text',
+      async () => {
+        frames.push(forged);
+      },
+      async () => {
+        frames.splice(frames.indexOf(forged), 1);
+      },
+      async () => {
+        for (const data of told()) assert.deepEqual(Object.keys(data).sort(), ['cause', 'pluginID'], `${engine}: the host's plugin/unloaded carries the plugin's id and the cause and no other member`);
+      },
+    );
+    assert.ok(frames.some((frame) => frame.name === 'plugin/state_change' && frame.data?.to === 'Recovering'), `${engine}: the window was told the phase too`);
+    assert.equal(frames.slice(mark).some((frame) => frame.name === 'plugin/state_change' && frame.data?.to === 'Running'), false, `${engine}: and it does not run again while the check keeps it down`);
+
+    // What the window did with it.
+    await asserting(
+      'rail-fine',
+      async () => {
+        await entries.nth(1).evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture'));
+      },
+      async () => {
+        await entries.nth(1).evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture, stopped'));
+      },
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, stopped'], `${engine}: the rail names the plugin that stopped, with the cause in its tip (its name)`);
+        assert.equal(await entries.nth(1).getAttribute('data-ov-tip'), `Seam Fixture, stopped\n${CRASHED}`, `${engine}: the rail names the plugin that stopped, with the cause in its tip (the tip)`);
+      },
+    );
+    await page.getByRole('alert').waitFor();
+    await asserting(
+      'page-drawn',
+      async () => {
+        await page.evaluate(() => {
+          const decoy = document.createElement('h1');
+          decoy.textContent = 'orders-api';
+          decoy.setAttribute('data-decoy', '');
+          document.body.append(decoy);
+        });
+      },
+      async () => {
+        await page.evaluate(() => {
+          document.querySelector('[data-decoy]')?.remove();
+        });
+      },
+      async () => {
+        assert.deepEqual(await pageTabs(), ['Seam Fixture'], `${engine}: the tab of the plugin that stopped says why and draws no page of it (the tab keeps its route under the plugin's name)`);
+        assert.match(await page.getByRole('alert').innerText(), new RegExp(`Couldn't load Seam Fixture[\\s\\S]*${CRASHED.replace(/[.']/g, '\\$&')}`), `${engine}: the tab of the plugin that stopped says why and draws no page of it (the sentence)`);
+        assert.equal(await page.getByRole('button', { name: 'Retry' }).count(), 1, `${engine}: the tab of the plugin that stopped says why and draws no page of it (the Retry the mock has)`);
+        assert.equal(await itemHeading.count(), 0, `${engine}: the tab of the plugin that stopped says why and draws no page of it (no heading)`);
+      },
+    );
+    await asserting(
+      'tool-stays',
+      async () => {
+        await page.evaluate(() => {
+          const decoy = document.createElement('div');
+          decoy.setAttribute('role', 'tab');
+          decoy.setAttribute('aria-label', 'Streams');
+          decoy.setAttribute('data-decoy', '');
+          document.body.append(decoy);
+        });
+      },
+      async () => {
+        await page.evaluate(() => {
+          document.querySelector('[data-decoy]')?.remove();
+        });
+      },
+      async () => {
+        assert.equal(await streams.count() + (await copyStreams.count()) * 10, 10, `${engine}: the tool of the plugin that stopped leaves the panel and the other plugin's stays`);
+      },
+    );
+
+    // The Logs session of the host's own tool stays (A21): ended, with the cause, in the same view with its lines, its stream closed once.
+    await asserting(
+      'session-live',
+      async () => {
+        await page.locator('[role=tab][aria-label^="orders-api/app"]').evaluate((element) => element.setAttribute('aria-label', 'orders-api/app'));
+      },
+      async () => {
+        await page.locator('[role=tab][aria-label^="orders-api/app"]').evaluate((element) => element.setAttribute('aria-label', 'orders-api/app, ended'));
+      },
+      async () => {
+        assert.equal(await kept.count(), 1, `${engine}: the Logs session stays, ended, in the same view with the lines it had (the tab)`);
+        assert.equal(await grid.evaluate((element) => element.__kept === true), true, `${engine}: the Logs session stays, ended, in the same view with the lines it had (the view)`);
+        assert.ok((await rowsOf()) >= rowsBefore, `${engine}: the Logs session stays, ended, in the same view with the lines it had (the lines)`);
+      },
+    );
+    await log.getByText('Stream ended').waitFor();
+    await kept.hover();
+    await card.waitFor();
+    assert.match(await card.innerText(), /State\s+Stream ended[\s\S]*The plugin was unloaded\./, `${engine}: the card of the kept session says the plugin was unloaded`);
+    await page.mouse.move(2, 2);
+    assert.deepEqual(await counters(), { opened: 1, closed: 1, listeners: 2 }, `${engine}: the stream was closed once and the registry let go of it (the view's stay)`);
+
+    // The host's recovery reloads the plugin, which fails (the binary cannot run), and says it as well: the window keeps the cause the plugin went away with.
+    await waitUntil('the window to be told of the reload the recovery makes', () => told().some((data) => data.cause === 'reloaded'), 30_000);
+    await asserting(
+      'rail-moved-on',
+      async () => {
+        await entries.nth(1).evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture, starting again'));
+      },
+      async () => {
+        await entries.nth(1).evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture, stopped'));
+      },
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, stopped'], `${engine}: the first cause stands while the host recovers the plugin: the rail still says stopped`);
+      },
+    );
+    assert.deepEqual(told().map((data) => data.cause), ['crashed', 'reloaded'], `${engine}: the window was told the crash and then the reload that recovers it, and nothing else`);
+    await waitUntil('the host to give up the recovery', () => host.output().includes('max crash recovery attempts reached'), 45_000);
+    assert.equal(frames.slice(mark).some((frame) => frame.name === 'plugin/state_change' && frame.data?.to === 'Running'), false, `${engine}: the plugin did not run while the binary could not`);
+
+    // The plugin is started again: its binary is back and the host loads it. The host says it runs, and the window loads the interface again with no reload of the page.
+    await chmod(path.join(stateRoot(dir), 'plugins', OK, 'bin', 'plugin'), 0o755);
+    const reload = frames.length;
+    await callBound(host.base, PLUGIN_SERVICE, 'LoadPlugin', OK, null);
+    await page.getByRole('button', { name: 'Seam Fixture', exact: true }).waitFor({ timeout: 30_000 });
+    await itemHeading.waitFor({ timeout: 30_000 });
+    assert.ok(frames.slice(reload).some((frame) => frame.name === 'plugin/state_change' && frame.data?.pluginID === OK && frame.data?.to === 'Running'), `${engine}: the host said the plugin runs (plugin/state_change)`);
+    assert.deepEqual(told().map((data) => data.cause), ['crashed', 'reloaded'], `${engine}: and said nothing more of it stopping`);
+    await asserting(
+      'rail-stuck',
+      async () => {
+        await entries.nth(0).evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture, stopped'));
+      },
+      async () => {
+        await entries.nth(0).evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture'));
+      },
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: the rail names the plugin that runs again, with no word of its stop`);
+      },
+    );
+    await asserting(
+      'two-pages',
+      async () => {
+        await streams.evaluate((tab) => {
+          const twin = tab.cloneNode(true);
+          twin.setAttribute('data-decoy', '');
+          tab.parentElement?.append(twin);
+        });
+      },
+      async () => {
+        await page.evaluate(() => {
+          document.querySelector('[data-decoy]')?.remove();
+        });
+      },
+      async () => {
+        assert.deepEqual(await pageTabs(), ['orders-api · Item'], `${engine}: one of everything: one page, one sidebar entry, one tool (the tab)`);
+        assert.equal(await itemHeading.count(), 1, `${engine}: one of everything: one page, one sidebar entry, one tool (the page)`);
+        assert.equal(await page.getByRole('navigation', { name: 'Seam Fixture navigation' }).count(), 1, `${engine}: one of everything: one page, one sidebar entry, one tool (the sidebar)`);
+        assert.equal(await streams.count(), 1, `${engine}: one of everything: one page, one sidebar entry, one tool (the tool)`);
+        assert.equal(await copyStreams.count(), 1, `${engine}: and the other plugin's tool is as it was`);
+      },
+    );
+    // The Logs session is as it was: still ended, the same view, nothing resumed, nothing opened or closed again.
+    assert.equal(await kept.count(), 1, `${engine}: the kept session is still there, ended, when the plugin is back`);
+    assert.equal(await grid.evaluate((element) => element.__kept === true), true, `${engine}: and is still the same view`);
+    assert.deepEqual(await counters(), { opened: 1, closed: 1, listeners: 2 }, `${engine}: nothing was opened or closed by the plugin's return`);
+    assert.deepEqual(errors, [], `${engine}: the process ending and the plugin coming back wrote no page error`);
+    console.log(`${engine}: process ${String(pid)} killed; the window was told ${JSON.stringify(told())} and then ${JSON.stringify(frames.slice(reload).filter((frame) => frame.name === 'plugin/state_change').map((frame) => frame.data?.to))}`);
+
+    if (controlled.length > 0) {
+      const lost = [];
+      for (const { name, message } of controlled) {
+        if (PROCESS_CONTROLS[name].test(message)) console.log(`NEGATIVE CONTROL "${name}": detected in ${engine}: ${message.split('\n')[0]}`);
+        else lost.push(message === '' ? `NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine}` : `NEGATIVE CONTROL "${name}": failed in ${engine}, but not the assertion it is named for: ${message}`);
+      }
+
+      if (lost.length > 0) throw new Error(lost.join('\n'));
+    }
+  } finally {
+    await page.close();
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+  }
+}
+
 /**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
@@ -1471,6 +1811,10 @@ try {
     host = await startHost(work, port, stopped.built);
   };
 
+  /** The fixture's process, built once for every host scenario n starts (the Go build is the one thing in this check that is not about a page). */
+  let processBinary;
+  const processFixture = async () => (processBinary ??= await buildProcess(path.join(work, 'process-binary')));
+
   // ENGINES=webkit (or chromium) runs one engine, for a developer who is chasing one.
   for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
     const browser = await engine.launch();
@@ -1480,6 +1824,18 @@ try {
         for (let run = 0; run < Number(process.env.SEAM_PROVIDERS_REPEAT); run += 1) {
           await checkProviders(await freshPage(browser, host.base), host.base, name);
           console.log(`providers ${name} run ${String(run)} ok`);
+        }
+
+        continue;
+      }
+
+      if (CONTROL === 'process' || PROCESS_CONTROLS[CONTROL] !== undefined) {
+        // The negative controls of scenario n: it runs alone, once, with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkProcess`).
+        try {
+          await checkProcess(browser, name, await processFixture(), work);
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
         }
 
         continue;
@@ -1516,7 +1872,8 @@ try {
       await checkKept(await freshPage(browser, host.base), host.base, name);
       await checkIdentity(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside)`);
+      await checkProcess(browser, name, await processFixture(), work);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs)`);
     } finally {
       await browser.close();
     }
