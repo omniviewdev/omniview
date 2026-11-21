@@ -5,19 +5,23 @@
 // - `broken`:       the bundle was read and linked but threw when it ran. A defect of the plugin.
 // - `timeout`:      it did not finish in time.
 // - `contract`:     it ran but does not hand the host a contribution this version understands (`admit.ts`).
-// - `unloaded`:     it had a contribution, and the host says it stopped serving the window (`plugin/unloaded`, host/lifecycle.ts): its process crashed, or it is reloading. Wait, or try again.
+// - `unloaded`:     it had a contribution, and the host says it stopped serving the window or could not start (`plugin/unloaded`, host/lifecycle.ts): its process crashed, it is reloading, its load failed, or its process
+//                   did not answer in time. Wait, or try again.
 //
 // The messages are sentences for the page; the detail is for the log and the details view. A failure is a value, never a throw, past the loader.
 
 export type LoadFailureKind = 'missing' | 'incompatible' | 'broken' | 'timeout' | 'contract' | 'unloaded';
 
 /**
- * Why the host says a plugin stopped serving the window: the whole of what the event carries besides the plugin's id (backend/pkg/plugin/events.go, `UnloadCause`). One of four words, never
- * text: each is worded here, for the person, by the host.
+ * Why the host says a plugin is not serving the window: the whole of what the event carries besides the plugin's id (backend/pkg/plugin/events.go, `UnloadCause`). One of six words, never text: each is worded here, for the person, by the host.
+ * `failed` and `timeout` are the end of a load that went wrong (its files did not validate, its process did not start, or it did not answer within the loader's own start timeout), told by the host whether the load was a reload, a retry or a first load.
  */
-export type UnloadCause = 'crashed' | 'reloaded' | 'uninstalled' | 'disabled';
+export type UnloadCause = 'crashed' | 'reloaded' | 'uninstalled' | 'disabled' | 'failed' | 'timeout';
 
-export const UNLOAD_CAUSES: readonly UnloadCause[] = ['crashed', 'reloaded', 'uninstalled', 'disabled'];
+export const UNLOAD_CAUSES: readonly UnloadCause[] = ['crashed', 'reloaded', 'uninstalled', 'disabled', 'failed', 'timeout'];
+
+/** The causes after which the window still has the plugin, as a failed entry of the kind `unloaded` that says why. A plugin that was uninstalled or turned off is not a failure: the window does not have it. */
+export type GoneCause = Exclude<UnloadCause, 'uninstalled' | 'disabled'>;
 
 export type LoadFailure = {
   readonly kind: LoadFailureKind;
@@ -25,30 +29,45 @@ export type LoadFailure = {
   readonly message: string;
   /** What the log says: the names or the text behind it. */
   readonly detail?: string | undefined;
-  /** Only for `unloaded`: why the plugin stopped. */
-  readonly cause?: UnloadCause | undefined;
+  /** Only for `unloaded`: why the plugin is not there. */
+  readonly cause?: GoneCause | undefined;
+};
+
+const SENTENCES: Readonly<Record<GoneCause, string>> = {
+  crashed: 'The plugin process stopped unexpectedly, so its pages can\'t load data.',
+  reloaded: 'The plugin is starting again. The page opens when it is ready.',
+  failed: 'The plugin could not start, so its pages can\'t load data.',
+  timeout: 'The plugin took too long to start, so its pages can\'t load data.',
 };
 
 /**
- * The failure of a plugin that stopped and will be wanted again: a crash (the mock's failed plugin, "The plugin process stopped unexpectedly, so its pages can't load data."; ch16 S89) and a
- * reload (its starting, "The plugin is starting. The page opens when it is ready."). A plugin that was removed or turned off has no failure: it is a plugin the window does not have.
+ * The failure of a plugin that is not there and will be wanted again: a crash (the mock's failed plugin, "The plugin process stopped unexpectedly, so its pages can't load data."; ch16 S89), a reload (its starting, "The plugin is
+ * starting. The page opens when it is ready."), and a load that failed or ran out of time (the mock's failed plugin again, in the host's words for what the host reports: a code, never the plugin's text). A plugin that was
+ * removed or turned off has no failure: it is a plugin the window does not have.
  */
-export function unloadedFailure(cause: 'crashed' | 'reloaded'): LoadFailure {
-  return cause === 'crashed'
-    ? { kind: 'unloaded', cause, message: 'The plugin process stopped unexpectedly, so its pages can\'t load data.' }
-    : { kind: 'unloaded', cause, message: 'The plugin is starting again. The page opens when it is ready.' };
+export function unloadedFailure(cause: GoneCause): LoadFailure {
+  return { kind: 'unloaded', cause, message: SENTENCES[cause] };
 }
+
+type FailureWords = { readonly label: string; readonly caption: string; readonly faulted: boolean };
+
+const UNLOADED_WORDS: Readonly<Record<GoneCause, FailureWords>> = {
+  crashed: { label: 'stopped', caption: 'Stopped', faulted: true },
+  reloaded: { label: 'starting again', caption: 'Starting again', faulted: false },
+  failed: { label: 'did not start', caption: 'Did not start', faulted: true },
+  timeout: { label: 'timed out', caption: 'Timed out', faulted: true },
+};
 
 /**
  * What the places that list a plugin by name say of one that has no contribution: a word after its name in the rail, the caption of its row in the empty window, and whether it is a fault (the
  * error glyph) or only a plugin on its way back (a plugin that is reloading is the mock's starting, ch16 S89: nothing failed).
  */
-export function failureWords(failure: LoadFailure): { readonly label: string; readonly caption: string; readonly faulted: boolean } {
+export function failureWords(failure: LoadFailure): FailureWords {
   if (failure.kind !== 'unloaded') {
     return { label: 'did not load', caption: 'Did not load', faulted: true };
   }
 
-  return failure.cause === 'reloaded' ? { label: 'starting again', caption: 'Starting again', faulted: false } : { label: 'stopped', caption: 'Stopped', faulted: true };
+  return UNLOADED_WORDS[failure.cause ?? 'crashed'];
 }
 
 /** A bundle that imports names the host does not serve. Thrown before the bundle runs. */

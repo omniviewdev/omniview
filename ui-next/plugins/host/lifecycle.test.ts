@@ -5,7 +5,7 @@ import { acme, fakeEvents } from '../testing';
 import { listenForLifecycle, readRunning, readUnloaded } from './lifecycle';
 import { PluginStore } from './pluginStore';
 
-// What the window does with the two things the host says of a plugin that stops and returns (`backend/pkg/plugin/events.go`): `plugin/unloaded` (the plugin's id and one of four words) and
+// What the window does with the two things the host says of a plugin that stops and returns (`backend/pkg/plugin/events.go`): `plugin/unloaded` (the plugin's id and one of six words) and
 // `plugin/state_change` (read for the plugin's id and whether it runs again). No runtime, no host: the events are a table of handlers the test calls, as the runtime's are.
 
 const plugins = () => ({ unload: vi.fn<(id: string, cause: UnloadCause) => void>(), revive: vi.fn(async (_id: string) => undefined) });
@@ -19,7 +19,7 @@ describe('what the host says of a plugin that stopped', () => {
     expect(events.names()).toEqual(['plugin/state_change', 'plugin/unloaded']);
   });
 
-  it.each(['crashed', 'reloaded', 'uninstalled', 'disabled'] as const)('unloads the plugin it names, with the cause %s', (cause) => {
+  it.each(['crashed', 'reloaded', 'uninstalled', 'disabled', 'failed', 'timeout'] as const)('unloads the plugin it names, with the cause %s', (cause) => {
     const events = fakeEvents();
     const target = plugins();
     listenForLifecycle(target, events.source);
@@ -50,7 +50,7 @@ describe('what the host says of a plugin that stopped', () => {
     ['an empty id', { pluginID: '', cause: 'crashed' }],
     ['an id that is not text', { pluginID: 3, cause: 'crashed' }],
     ['no cause', { pluginID: 'acme' }],
-    ['a cause that is not one of the four', { pluginID: 'acme', cause: 'exploded' }],
+    ['a cause that is not one of the six', { pluginID: 'acme', cause: 'exploded' }],
     ['a cause with the case of another word', { pluginID: 'acme', cause: 'Crashed' }],
     ['a cause that is not text', { pluginID: 'acme', cause: 1 }],
     ['the zero cause the bindings name', { pluginID: 'acme', cause: '' }],

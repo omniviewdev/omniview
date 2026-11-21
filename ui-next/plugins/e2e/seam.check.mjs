@@ -49,12 +49,22 @@
 //      is an alert, is sticky (it is still there after 9 s, when a timed one would be gone) and takes no focus; F6 reaches it and Escape closes it and gives the focus back to where it was; a failure that is not the host's says
 //      `Operation failed` and none of its text (a password in it is nowhere in the document); a cancelled command makes no toast; Retry asks the command again and the one toast says `Timed out 2 times`
 //
+//   p  a plugin whose load fails reaches the window and can be retried (PU2, PU1-01 and PU1-02): the same host and fixture process as n, whose NEXT START the check makes fail with a file next to its binary (`start-mode`:
+//      `exit` ends the process before it says it is ready, `hang` keeps it silent). The host is asked to reload the plugin (`ReloadPlugin`, as a rebuild does) and its load fails: the frames of the window's event socket are
+//      read (`plugin/unloaded`: `reloaded`, then `failed`, the plugin's id and the cause and no other member, and no phase of Running); the rail names the plugin that did not start, with the host's sentence in its tip,
+//      its tab says why with a Retry and draws no page and no spinner, the host kept a record of the plugin (it is listed as Failed, so Retry has something to retry), and a window that is opened then, which the host told nothing,
+//      learns it from the inventory and shows the plugin failed from the first. The Retry asks the host: the plugin starts again, fails
+//      again, and the window is back in the failed state, never in a spinner. With the process told to hang, Retry shows the plugin starting again (a spinner, no Retry to press twice) for as long as the host waits, and the
+//      load ends as failed with the cause `timeout` within the loader's own start timeout (15 s); the sentence says it took too long. With the file gone, Retry runs the plugin: the host says it runs, and the window shows
+//      one of everything again with no reload (SEAM_SHOTS=<dir> writes WebKit's pictures of the four states). SEAM_CONTROL=failed-load runs p alone with every perturbation of its controls (FAILED_CONTROLS) made in turn just before the assertion each must trip; SEAM_CONTROL=<one of them>
+//      makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected (the proof that each control trips its own assertion and no other)
+//
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -101,9 +111,31 @@ const PROCESS_CONTROLS = {
   'rail-stuck': /the rail names the plugin that runs again, with no word of its stop/,
   'two-pages': /one of everything: one page, one sidebar entry, one tool/,
 };
+// The negative controls of scenario p, a plugin whose load fails (PU2). As in n each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no other.
+// One run serves them all (SEAM_CONTROL=failed-load); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
+const FAILED_CONTROLS = {
+  'told-frames': /the host's plugin\/unloaded carries the plugin's id and the cause and no other member \(a load that failed\)/,
+  'told-failed': /the window was told the reload and then that the load failed, and the plugin did not run/,
+  'rail-failed': /the rail names the plugin that did not start, with the host's sentence in its tip/,
+  'tab-failed': /the tab of the plugin that did not start says why, with a Retry, and draws no page/,
+  'no-spinner': /no spinner is left in the tab of a plugin that did not start/,
+  'record-kept': /the host kept a record of the plugin that did not start/,
+  reopened: /a window that opens while the plugin is failed shows it failed from the first: the rail, the sentence and the Retry/,
+  'failed-again': /a second failure returns to the failed state: the rail, the sentence and the Retry/,
+  progress: /Retry shows the plugin starting again, with no Retry to press twice/,
+  'told-timeout': /the host said the load ran out of time/,
+  'timeout-ends': /the plugin that did not answer ends as timed out and not as a spinner/,
+  'rail-back': /the rail names the plugin that runs again, with no word of its failure/,
+  'one-of-all': /after the retry that runs: one page, one sidebar entry, one tool/,
+};
+const FAILED_GROUP = 'failed-load';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS)].join(', ')}`);
+const REMOVE = process.env.SEAM_REMOVE ?? '';
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS)].join(', ')}`);
+}
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined) {
+  throw new Error(`SEAM_REMOVE must be one of ${Object.keys(FAILED_CONTROLS).join(', ')}`);
 }
 
 async function freePort() {
@@ -175,15 +207,20 @@ const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
 const PLUGIN_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper';
 const PROCESS_SERVICE = 'github.com/omniviewdev/omniview/internal/processinfo.Service';
 
-/** A call of a bound method of the host, by service and name, as the page's own runtime makes one. The answer is the JSON of what the method returned; a method that returned an error is a failure of the check. */
-async function callBound(base, service, method, ...args) {
+/** A call of a bound method of the host, by service and name, as the page's own runtime makes one, whatever the host answers: the status and the text of the answer. */
+async function tryBound(base, service, method, ...args) {
   const response = await fetch(`${base}/wails/runtime`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-wails-client-id': 'seam-check' },
     body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `seam-${method}-${Date.now()}`, methodName: `${service}.${method}`, args } }),
   });
-  const text = await response.text();
-  assert.equal(response.status, 200, `${method} was answered ${String(response.status)}: ${text}`);
+  return { status: response.status, text: await response.text() };
+}
+
+/** A call of a bound method of the host, by service and name, as the page's own runtime makes one. The answer is the JSON of what the method returned; a method that returned an error is a failure of the check. */
+async function callBound(base, service, method, ...args) {
+  const { status, text } = await tryBound(base, service, method, ...args);
+  assert.equal(status, 200, `${method} was answered ${String(status)}: ${text}`);
   return JSON.parse(text);
 }
 
@@ -1628,8 +1665,13 @@ async function checkProcess(browser, engine, binary, work) {
         assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, stopped'], `${engine}: the first cause stands while the host recovers the plugin: the rail still says stopped`);
       },
     );
-    assert.deepEqual(told().map((data) => data.cause), ['crashed', 'reloaded'], `${engine}: the window was told the crash and then the reload that recovers it, and nothing else`);
+    // What the window was told of the stop: the crash, then each attempt of the recovery, which reloads the plugin (`reloaded`) and fails because the binary cannot run (`failed`, PU2: a load that fails says so), and nothing else.
+    const recovering = (causes) => causes[0] === 'crashed' && causes.length > 1 && causes.slice(1).every((cause) => cause === 'reloaded' || cause === 'failed');
+    assert.ok(recovering(told().map((data) => data.cause)), `${engine}: the window was told the crash and then the reload that recovers it and the failure of its load, and nothing else (${JSON.stringify(told().map((data) => data.cause))})`);
     await waitUntil('the host to give up the recovery', () => host.output().includes('max crash recovery attempts reached'), 45_000);
+    await waitUntil('the window to be told that the recovery\'s last load failed', () => told().at(-1)?.cause === 'failed', 15_000);
+    const stopped = told().map((data) => data.cause);
+    assert.ok(recovering(stopped) && stopped.at(-1) === 'failed', `${engine}: the recovery's last attempt failed to load the plugin and said so (${JSON.stringify(stopped)})`);
     assert.equal(frames.slice(mark).some((frame) => frame.name === 'plugin/state_change' && frame.data?.to === 'Running'), false, `${engine}: the plugin did not run while the binary could not`);
 
     // The plugin is started again: its binary is back and the host loads it. The host says it runs, and the window loads the interface again with no reload of the page.
@@ -1639,7 +1681,7 @@ async function checkProcess(browser, engine, binary, work) {
     await page.getByRole('button', { name: 'Seam Fixture', exact: true }).waitFor({ timeout: 30_000 });
     await itemHeading.waitFor({ timeout: 30_000 });
     assert.ok(frames.slice(reload).some((frame) => frame.name === 'plugin/state_change' && frame.data?.pluginID === OK && frame.data?.to === 'Running'), `${engine}: the host said the plugin runs (plugin/state_change)`);
-    assert.deepEqual(told().map((data) => data.cause), ['crashed', 'reloaded'], `${engine}: and said nothing more of it stopping`);
+    assert.deepEqual(told().map((data) => data.cause), stopped, `${engine}: and said nothing more of it stopping`);
     await asserting(
       'rail-stuck',
       async () => {
@@ -1690,6 +1732,342 @@ async function checkProcess(browser, engine, binary, work) {
 
       if (lost.length > 0) throw new Error(lost.join('\n'));
     }
+  } finally {
+    await page.close();
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+  }
+}
+
+/**
+ * The assertions of a scenario that has negative controls. `asserting(name, perturb, undo, assertion)` runs `assertion` as the check; under SEAM_CONTROL (the group's name or the control's own) it first makes the perturbation, runs the
+ * assertion in a try (it must fail, and with ITS words) and undoes the perturbation. Under SEAM_REMOVE=<name> that assertion is left out altogether, so its perturbation must pass undetected: what shows that the control trips the assertion it is
+ * named for and no other. `verdict(engine)` says, for each control that was made, whether the assertion it is named for saw it, and throws when one did not (or, for the one removed, when anything did).
+ */
+function withControls(group, table) {
+  const made = [];
+  const asserting = async (name, perturb, undo, assertion) => {
+    if (CONTROL === group || CONTROL === name) {
+      await perturb();
+      let message = '';
+      if (REMOVE !== name) {
+        try {
+          await assertion();
+        } catch (error) {
+          message = String(error?.message ?? error);
+        }
+      }
+
+      await undo();
+      made.push({ name, message });
+    }
+
+    if (REMOVE !== name) await assertion();
+  };
+  const verdict = (engine) => {
+    const lost = [];
+    for (const { name, message } of made) {
+      if (REMOVE === name) {
+        if (message === '') console.log(`NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine} with its assertion removed, as it must be`);
+        else lost.push(`NEGATIVE CONTROL "${name}": detected in ${engine} with its assertion removed, by ${message}`);
+      } else if (table[name].test(message)) console.log(`NEGATIVE CONTROL "${name}": detected in ${engine}: ${message.split('\n')[0]}`);
+      else lost.push(message === '' ? `NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine}` : `NEGATIVE CONTROL "${name}": failed in ${engine}, but not the assertion it is named for: ${message}`);
+    }
+
+    if (lost.length > 0) throw new Error(lost.join('\n'));
+  };
+  return { asserting, verdict };
+}
+
+/**
+ * p. A plugin whose load fails reaches the window and can be retried (PU2: PU1-01 and PU1-02), on a host of its own whose fixture plugin has a PROCESS, as in n. What the process does at its next start is a file the check writes next to
+ * its binary (`fixture/process`, `start-mode`): `exit` ends it before it says it is ready, `hang` keeps it silent. The host is asked to reload the plugin (`ReloadPlugin`, the call a rebuild makes) and the load fails; the frames of the window's
+ * event socket are the evidence of what the host said, and the page is what the window did with it. Then Retry, in the tab, asks the host: the load fails again and the window returns to the failed state. With the process told to hang,
+ * Retry shows the plugin starting again for as long as the host waits and the load ends as failed with the cause `timeout`, within the loader's own start timeout (15 s). With the file gone, Retry runs the plugin and the window shows one of
+ * everything again, with no reload. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; FAILED_CONTROLS).
+ */
+async function checkFailedLoad(browser, engine, binary, work) {
+  const dir = await mkdtemp(path.join(work, `failed-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async (plugins) => [await writePlugin(plugins, OK, binary), await writePlugin(plugins, DUP)]);
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  // What the window is told: every `plugin/*` event that reaches its event socket, as the host sent it.
+  const frames = [];
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', ({ payload }) => {
+      try {
+        const message = JSON.parse(String(payload));
+        if (typeof message?.name === 'string' && message.name.startsWith('plugin/')) frames.push({ name: message.name, data: message.data });
+      } catch {
+        // not an event
+      }
+    });
+  });
+  const { asserting, verdict } = withControls(FAILED_GROUP, FAILED_CONTROLS);
+  const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
+  const railNames = async () => entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+  const strip = page.getByRole('tablist', { name: 'Open tabs' });
+  const pageTabs = async () => strip.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.textContent));
+  const streams = page.getByRole('tab', { name: 'Streams', exact: true });
+  const copyStreams = page.getByRole('tab', { name: 'Streams copy', exact: true });
+  const itemHeading = page.getByRole('heading', { level: 1, name: 'orders-api' });
+  const details = page.getByRole('heading', { level: 2, name: 'Details' });
+  const sidebar = page.getByRole('navigation', { name: 'Seam Fixture navigation' });
+  const retry = page.getByRole('button', { name: 'Retry', exact: true });
+  /** The loading states on screen: the kit's skeleton is a status that is busy. */
+  const spinners = async () => page.locator('[role="status"][aria-busy="true"]').count();
+  /** What the host told the window of plugins that are not there, from the frame `from` on: the causes, in order. */
+  const told = (from = 0) => frames.slice(from).filter((frame) => frame.name === 'plugin/unloaded').map((frame) => frame.data);
+  const causes = (from = 0) => told(from).map((data) => data.cause);
+  const ran = (from) => frames.slice(from).some((frame) => frame.name === 'plugin/state_change' && frame.data?.pluginID === OK && frame.data?.to === 'Running');
+  const COULD_NOT_START = "The plugin could not start, so its pages can't load data.";
+  const TOOK_TOO_LONG = "The plugin took too long to start, so its pages can't load data.";
+  const escaped = (text) => text.replace(/[.']/g, '\\$&');
+  const decoy = async (html) => page.evaluate((markup) => document.body.insertAdjacentHTML('beforeend', markup), html);
+  const undecoy = async () => page.evaluate(() => document.querySelectorAll('[data-decoy]').forEach((element) => element.remove()));
+  const relabel = async (index, label) => entries.nth(index).evaluate((button, name) => button.setAttribute('aria-label', name), label);
+  /** SEAM_SHOTS=<dir> writes WebKit's pictures of the states (theme void, 1440 x 900). */
+  const shot = async (name) => {
+    if (!process.env.SEAM_SHOTS || engine !== 'webkit') return;
+    await mkdir(process.env.SEAM_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SEAM_SHOTS, `failed-load-${name}-webkit-void-1440x900.png`) });
+  };
+  /** What the next start of the fixture's process does (`fixture/process`): a word in a file next to its binary, or no file. */
+  const mode = path.join(stateRoot(dir), 'plugins', OK, 'start-mode');
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  try {
+    await open(page, host.base);
+    await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    await openFirstPlugin(page);
+    await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
+    await page.getByRole('link', { name: 'orders-api' }).click();
+    await itemHeading.waitFor();
+    await details.waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Panel', exact: true }).click();
+    await streams.waitFor();
+    // The baseline: what is on screen before the load fails, asked for in words none of the controls' patterns match.
+    assert.deepEqual(await railNames(), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: before the load fails the rail lists the two plugins`);
+    assert.equal(await copyStreams.count(), 1, `${engine}: and the panel has both plugins' tools`);
+    assert.equal(await spinners(), 0, `${engine}: and nothing is loading`);
+
+    // The next start fails, and the host is asked to reload the plugin: the load fails.
+    await writeFile(mode, 'exit');
+    const first = frames.length;
+    const reloading = tryBound(host.base, PLUGIN_SERVICE, 'ReloadPlugin', OK);
+    await page.getByRole('button', { name: 'Seam Fixture, did not start' }).waitFor({ timeout: 30_000 });
+    const answer = await reloading;
+    assert.notEqual(answer.status, 200, `${engine}: the host answered the reload of a plugin that cannot start with an error`);
+    // What the host said: the frames of the event socket. A perturbation is a frame of the shape a text-carrying event would have, removed by identity.
+    const forged = { name: 'plugin/unloaded', data: { pluginID: OK, cause: 'failed', error: 'panic at /Users/someone/.omniview/plugins' } };
+    await asserting(
+      'told-frames',
+      async () => {
+        frames.push(forged);
+      },
+      async () => {
+        frames.splice(frames.indexOf(forged), 1);
+      },
+      async () => {
+        for (const data of told()) assert.deepEqual(Object.keys(data).sort(), ['cause', 'pluginID'], `${engine}: the host's plugin/unloaded carries the plugin's id and the cause and no other member (a load that failed)`);
+      },
+    );
+    let removed;
+    let at = -1;
+    await asserting(
+      'told-failed',
+      async () => {
+        at = frames.findIndex((frame, index) => index >= first && frame.name === 'plugin/unloaded' && frame.data?.cause === 'failed');
+        [removed] = frames.splice(at, 1);
+      },
+      async () => {
+        frames.splice(at, 0, removed);
+      },
+      async () => {
+        assert.deepEqual(causes(first), ['reloaded', 'failed'], `${engine}: the window was told the reload and then that the load failed, and the plugin did not run (the causes)`);
+        assert.equal(ran(first), false, `${engine}: the window was told the reload and then that the load failed, and the plugin did not run (it did not run)`);
+      },
+    );
+
+    // What the window did with it.
+    await page.getByRole('alert').waitFor();
+    await asserting(
+      'rail-failed',
+      async () => relabel(1, 'Seam Fixture, stopped'),
+      async () => relabel(1, 'Seam Fixture, did not start'),
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, did not start'], `${engine}: the rail names the plugin that did not start, with the host's sentence in its tip (the name)`);
+        assert.equal(await entries.nth(1).getAttribute('data-ov-tip'), `Seam Fixture, did not start\n${COULD_NOT_START}`, `${engine}: the rail names the plugin that did not start, with the host's sentence in its tip (the tip)`);
+      },
+    );
+    await asserting(
+      'tab-failed',
+      async () => decoy('<h1 data-decoy>orders-api</h1>'),
+      undecoy,
+      async () => {
+        assert.deepEqual(await pageTabs(), ['Seam Fixture'], `${engine}: the tab of the plugin that did not start says why, with a Retry, and draws no page (the tab keeps its route under the plugin's name)`);
+        assert.match(await page.getByRole('alert').innerText(), new RegExp(`Couldn't load Seam Fixture[\\s\\S]*${escaped(COULD_NOT_START)}`), `${engine}: the tab of the plugin that did not start says why, with a Retry, and draws no page (the sentence)`);
+        assert.equal(await retry.count(), 1, `${engine}: the tab of the plugin that did not start says why, with a Retry, and draws no page (the Retry)`);
+        assert.equal(await itemHeading.count(), 0, `${engine}: the tab of the plugin that did not start says why, with a Retry, and draws no page (no heading)`);
+      },
+    );
+    await asserting(
+      'no-spinner',
+      async () => decoy('<div data-decoy role="status" aria-busy="true"></div>'),
+      undecoy,
+      async () => {
+        assert.equal(await spinners(), 0, `${engine}: no spinner is left in the tab of a plugin that did not start`);
+      },
+    );
+    assert.equal((await streams.count()) + (await copyStreams.count()) * 10, 10, `${engine}: its tool left the panel and the other plugin's stayed`);
+    await shot('did-not-start');
+    // The record: a plugin whose load failed stays in the host's inventory, so that Retry has something to retry (it used to vanish, and Retry answered "not loaded").
+    const record = await callBound(host.base, PLUGIN_SERVICE, 'GetPlugin', OK);
+    const phase = record.phase;
+    await asserting(
+      'record-kept',
+      async () => {
+        record.phase = 'Running';
+      },
+      async () => {
+        record.phase = phase;
+      },
+      async () => {
+        assert.equal(record.phase, 'Failed', `${engine}: the host kept a record of the plugin that did not start: it is listed as Failed, so a retry has something to retry (${String(record.phase)})`);
+      },
+    );
+
+    // A window that opens while the plugin is failed was told nothing (the host's events reach the windows that are open): the inventory lists the plugin as Failed, and the window shows it so from the first, with its Retry.
+    await page.reload({ waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Seam Fixture, did not start' }).waitFor({ timeout: 30_000 });
+    await page.getByRole('alert').waitFor();
+    // The panel is the window's own state: a reload brings back what the session held of it, which is not what this check is about, so it is opened if it is not.
+    const toggle = page.getByRole('button', { name: 'Panel', exact: true });
+    if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+    await copyStreams.waitFor();
+    const opened = 'a window that opens while the plugin is failed shows it failed from the first: the rail, the sentence and the Retry';
+    await asserting(
+      'reopened',
+      async () => relabel(1, 'Seam Fixture, stopped'),
+      async () => relabel(1, 'Seam Fixture, did not start'),
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, did not start'], `${engine}: ${opened} (the rail)`);
+        assert.match(await page.getByRole('alert').innerText(), new RegExp(escaped(COULD_NOT_START)), `${engine}: ${opened} (the sentence)`);
+        assert.equal(await retry.count(), 1, `${engine}: ${opened} (the Retry)`);
+        assert.equal(await spinners(), 0, `${engine}: ${opened} (no spinner)`);
+      },
+    );
+
+    // Retry asks the host, which starts the plugin again, and the load fails again: the window is back in the failed state.
+    const second = frames.length;
+    await retry.click();
+    await waitUntil('the host to say that the retry failed too', () => causes(second).includes('failed'), 30_000);
+    await retry.waitFor();
+    assert.deepEqual(causes(second), ['reloaded', 'failed'], `${engine}: the Retry asked the host: it reloaded the plugin and said the load failed again`);
+    const again = 'a second failure returns to the failed state: the rail, the sentence and the Retry';
+    await asserting(
+      'failed-again',
+      async () => relabel(1, 'Seam Fixture, starting again'),
+      async () => relabel(1, 'Seam Fixture, did not start'),
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, did not start'], `${engine}: ${again} (the rail)`);
+        assert.match(await page.getByRole('alert').innerText(), new RegExp(escaped(COULD_NOT_START)), `${engine}: ${again} (the sentence)`);
+        assert.equal(await retry.count(), 1, `${engine}: ${again} (the Retry)`);
+        assert.equal(await spinners(), 0, `${engine}: ${again} (no spinner)`);
+      },
+    );
+
+    // The process says nothing at all: Retry shows the plugin starting again for as long as the host waits, and the load ends, within the loader's own start timeout, as a plugin that took too long.
+    await writeFile(mode, 'hang');
+    const third = frames.length;
+    const pressed = Date.now();
+    await retry.click();
+    await page.getByRole('button', { name: 'Seam Fixture, starting again' }).waitFor({ timeout: 15_000 });
+    await asserting(
+      'progress',
+      async () => decoy('<button data-decoy type="button">Retry</button>'),
+      undecoy,
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, starting again'], `${engine}: Retry shows the plugin starting again, with no Retry to press twice (the rail)`);
+        assert.equal(await spinners(), 1, `${engine}: Retry shows the plugin starting again, with no Retry to press twice (the spinner)`);
+        assert.equal(await retry.count(), 0, `${engine}: Retry shows the plugin starting again, with no Retry to press twice (no Retry)`);
+      },
+    );
+    await shot('starting-again');
+    await page.getByRole('button', { name: 'Seam Fixture, timed out' }).waitFor({ timeout: 60_000 });
+    const took = Date.now() - pressed;
+    assert.ok(took < 45_000, `${engine}: the load of a process that says nothing ended within the loader's own start timeout of 15 s (it ended after ${String(took)} ms)`);
+    let silent;
+    let place = -1;
+    await asserting(
+      'told-timeout',
+      async () => {
+        place = frames.findIndex((frame, index) => index >= third && frame.name === 'plugin/unloaded' && frame.data?.cause === 'timeout');
+        [silent] = frames.splice(place, 1);
+      },
+      async () => {
+        frames.splice(place, 0, silent);
+      },
+      async () => {
+        assert.deepEqual(causes(third), ['reloaded', 'timeout'], `${engine}: the host said the load ran out of time, in the code and no text`);
+      },
+    );
+    await asserting(
+      'timeout-ends',
+      async () => decoy('<div data-decoy role="status" aria-busy="true"></div>'),
+      undecoy,
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, timed out'], `${engine}: the plugin that did not answer ends as timed out and not as a spinner (the rail)`);
+        assert.equal(await entries.nth(1).getAttribute('data-ov-tip'), `Seam Fixture, timed out\n${TOOK_TOO_LONG}`, `${engine}: the plugin that did not answer ends as timed out and not as a spinner (the tip)`);
+        assert.match(await page.getByRole('alert').innerText(), new RegExp(escaped(TOOK_TOO_LONG)), `${engine}: the plugin that did not answer ends as timed out and not as a spinner (the sentence)`);
+        assert.equal(await retry.count(), 1, `${engine}: the plugin that did not answer ends as timed out and not as a spinner (the Retry)`);
+        assert.equal(await spinners(), 0, `${engine}: the plugin that did not answer ends as timed out and not as a spinner (no spinner)`);
+      },
+    );
+
+    await shot('timed-out');
+    // The start is let through: Retry runs the plugin, the host says it runs, and the window shows one of everything again with no reload.
+    await rm(mode);
+    const fourth = frames.length;
+    await retry.click();
+    await page.getByRole('button', { name: 'Seam Fixture', exact: true }).waitFor({ timeout: 30_000 });
+    await itemHeading.waitFor({ timeout: 30_000 });
+    await details.waitFor({ timeout: 15_000 });
+    assert.ok(ran(fourth), `${engine}: the host said the plugin runs (plugin/state_change)`);
+    assert.deepEqual(causes(fourth), ['reloaded'], `${engine}: and said nothing more of a load failing`);
+    await asserting(
+      'rail-back',
+      async () => relabel(0, 'Seam Fixture, did not start'),
+      async () => relabel(0, 'Seam Fixture'),
+      async () => {
+        assert.deepEqual(await railNames(), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: the rail names the plugin that runs again, with no word of its failure`);
+      },
+    );
+    await asserting(
+      'one-of-all',
+      async () => {
+        await streams.evaluate((tab) => {
+          const twin = tab.cloneNode(true);
+          twin.setAttribute('data-decoy', '');
+          tab.parentElement?.append(twin);
+        });
+      },
+      undecoy,
+      async () => {
+        assert.deepEqual(await pageTabs(), ['orders-api · Item'], `${engine}: after the retry that runs: one page, one sidebar entry, one tool (the tab)`);
+        assert.equal(await itemHeading.count(), 1, `${engine}: after the retry that runs: one page, one sidebar entry, one tool (the page)`);
+        assert.equal(await sidebar.count(), 1, `${engine}: after the retry that runs: one page, one sidebar entry, one tool (the sidebar)`);
+        assert.equal(await streams.count(), 1, `${engine}: after the retry that runs: one page, one sidebar entry, one tool (the tool)`);
+        assert.equal(await copyStreams.count(), 1, `${engine}: and the other plugin's tool is as it was`);
+      },
+    );
+    assert.equal(await spinners(), 0, `${engine}: and nothing is loading`);
+    await shot('recovered');
+    // A reload of the page cuts the calls that are in flight, which an engine reports as a page error ("Load failed", "due to access control checks", "Failed to fetch"): they are the page's going away, not the plugin's (scenario i does the same).
+    const cut = /access control checks|Load failed|Failed to fetch|NetworkError|network connection was lost/i;
+    assert.deepEqual(errors.filter((message) => !cut.test(message)), [], `${engine}: the load failing, the retries and the plugin coming back wrote no page error`);
+    console.log(`${engine}: the load failed and the window was told ${JSON.stringify(causes(first, ))}; it took ${String(took)} ms to end as timed out; the plugin runs again after ${String(frames.slice(fourth).filter((frame) => frame.name === 'plugin/state_change').length)} state changes`);
+    verdict(engine);
   } finally {
     await page.close();
     host.child.kill();
@@ -1993,6 +2371,18 @@ try {
         continue;
       }
 
+      if (CONTROL === FAILED_GROUP || FAILED_CONTROLS[CONTROL] !== undefined) {
+        // The negative controls of scenario p: it runs alone, once, with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkFailedLoad`).
+        try {
+          await checkFailedLoad(browser, name, await processFixture(), work);
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
       if (CONTROL === 'process' || PROCESS_CONTROLS[CONTROL] !== undefined) {
         // The negative controls of scenario n: it runs alone, once, with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkProcess`).
         try {
@@ -2039,7 +2429,8 @@ try {
       await checkToasts(await freshPage(browser, host.base), host.base, name);
       await checkSession(browser, () => host, restart, name);
       await checkProcess(browser, name, await processFixture(), work);
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs)`);
+      await checkFailedLoad(browser, name, await processFixture(), work);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout)`);
     } finally {
       await browser.close();
     }
