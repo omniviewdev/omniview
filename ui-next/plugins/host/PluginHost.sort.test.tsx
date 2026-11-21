@@ -1,5 +1,5 @@
 import { Link, type DataTableSort } from '@omniviewdev/kit';
-import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openSession, SESSION_VERSION, type LoadedSession } from '../../shell/session';
@@ -9,11 +9,17 @@ import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE } from './route';
 
-// jsdom lays nothing out: the table's region gets the size a browser would give it, so rows are in view.
+// jsdom lays nothing out: the table's region gets the size a browser would give it, so rows are in view, and a content that is longer than it, so the table has room to scroll.
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 600 : 0;
 } });
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
+  return this.getAttribute('role') === 'region' ? 1117 : 0;
+} });
+Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: function get(this: HTMLElement) {
+  return this.getAttribute('role') === 'region' ? 2000 : 0;
+} });
+Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
 
@@ -65,6 +71,13 @@ function sortable(title: string, defaultSort?: DataTableSort): ListPageV1<Row> {
       lines: 1,
       getRowKey: (row) => row.key,
       searchText: (row) => row.name,
+      quickFilters: {
+        label: 'Count',
+        filters: [
+          { id: 'many', label: 'Many', tone: 'success', test: (row) => row.count >= 9 },
+          { id: 'few', label: 'Few', tone: 'error', test: (row) => row.count < 9 },
+        ],
+      },
       ...(defaultSort === undefined ? {} : { defaultSort }),
     },
     usePage: answer(title),
@@ -234,9 +247,9 @@ describe('a plugin\'s list through the host: the sort a person chose is the tab\
     expect(rowNames()).toEqual(['alpha', 'beta', 'gamma']);
   });
 
-  // KNOWN GAP (docs/ui-next/status/K3a.md): the tab model drops a tab's page state on every navigation and every step (`core/tabs/open.ts` moveTab, `arrange.ts` step), so what a page keeps is lost on
-  // list -> detail -> Back, where the mock keeps it (its list state is the tab's and is re-seeded only when the list changes: the lines are in the status file). The step that makes history entries carry the page state of the entry they leave turns this test on.
-  it.skip('is there after list -> detail -> Back (turns on with the tab model\'s step: history entries carry the page state)', async () => {
+  // K3a's known gap, closed by H7: the tab model dropped a tab's page state on every navigation and every step, so what a page kept was lost on list -> detail -> Back, where the mock keeps it (its list state is
+  // the tab's and is re-seeded only when the list changes). A history entry now carries the page state of the page it left, and Back and Forward give it back.
+  it('is there after list -> detail -> Back', async () => {
     const { user } = mount([ready()], [{ id: 't1', page: 'widgets' }]);
     await press(user, 'Count');
     await press(user, 'Count');
@@ -247,6 +260,113 @@ describe('a plugin\'s list through the host: the sort a person chose is the tab\
     await user.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByRole('table')).toBeInTheDocument();
     expect(marks()).toEqual(['none', 'descending']);
+    expect(rowNames()).toEqual(['alpha', 'beta', 'gamma']);
+  });
+});
+
+const region = () => screen.getByRole('region', { name: 'Widgets' });
+const field = () => screen.getByRole('searchbox', { name: 'Search Widgets' });
+const chip = (name: RegExp) => screen.getByRole('button', { name });
+
+/** The table scrolled the way a person does it: the offset is the element's, and then the event. */
+function scrollTable(top: number) {
+  region().scrollTop = top;
+  fireEvent.scroll(region());
+}
+
+/** Opens an item from the list and comes back with the Back button of the top row. */
+async function openAndBack(user: UserEvent, name: string) {
+  await user.click(screen.getByRole('link', { name }));
+  await screen.findByRole('heading', { level: 1, name });
+  await user.click(screen.getByRole('button', { name: 'Back' }));
+  expect(await screen.findByRole('table')).toBeInTheDocument();
+}
+
+describe('a plugin\'s list through the host: what the person chose comes back with Back and Forward, as the list was left (H7)', () => {
+  it('gives back the search: the field, and the list narrowed to it', async () => {
+    const { user } = mount([ready()], [{ id: 't1', page: 'widgets' }]);
+    await user.type(field(), 'ta{Enter}');
+    expect(rowNames()).toEqual(['beta']);
+    await openAndBack(user, 'beta');
+    expect(field()).toHaveValue('ta');
+    expect(rowNames()).toEqual(['beta']);
+  });
+
+  it('gives back the quick filter: its chip pressed, and the list narrowed to it', async () => {
+    const { user } = mount([ready()], [{ id: 't1', page: 'widgets' }]);
+    await user.click(chip(/^Many/));
+    expect(rowNames()).toEqual(['alpha', 'beta']);
+    await openAndBack(user, 'alpha');
+    expect(chip(/^Many/)).toHaveAttribute('aria-pressed', 'true');
+    expect(rowNames()).toEqual(['alpha', 'beta']);
+  });
+
+  it('gives back where the table is scrolled', async () => {
+    const { user } = mount([ready()], [{ id: 't1', page: 'widgets' }]);
+    scrollTable(120);
+    await openAndBack(user, 'alpha');
+    expect(region().scrollTop).toBe(120);
+  });
+
+  it('gives back all of it, again after Forward and Back, and a page that kept nothing is a clean page', async () => {
+    const { user } = mount([ready()], [{ id: 't1', page: 'widgets' }]);
+    await press(user, 'Count');
+    await user.click(chip(/^Many/));
+    await user.type(field(), 'a{Enter}');
+    scrollTable(120);
+    expect(rowNames()).toEqual(['beta', 'alpha']);
+
+
+    const asLeft = () => {
+      expect(marks()).toEqual(['none', 'ascending']);
+      expect(chip(/^Many/)).toHaveAttribute('aria-pressed', 'true');
+      expect(field()).toHaveValue('a');
+      expect(rowNames()).toEqual(['beta', 'alpha']);
+      expect(region().scrollTop).toBe(120);
+    };
+
+    await openAndBack(user, 'alpha');
+    asLeft();
+
+    await user.click(screen.getByRole('button', { name: 'Forward' }));
+    await screen.findByRole('heading', { level: 1, name: 'alpha' });
+    // The detail page kept nothing: it is drawn as any page is, and Back gives the list as it was left once more.
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    asLeft();
+  });
+
+  it('opens the list as it was left, but at its top, for a new navigation to it in the tab (the detail page\'s crumb), and Back from there gives the first visit with its offset', async () => {
+    const { user } = mount([ready()], [{ id: 't1', page: 'widgets' }]);
+    await press(user, 'Count');
+    await user.click(chip(/^Many/));
+    await user.type(field(), 'a{Enter}');
+    scrollTable(120);
+    await user.click(screen.getByRole('link', { name: 'alpha' }));
+    await screen.findByRole('heading', { level: 1, name: 'alpha' });
+
+    await user.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Widgets' }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(marks()).toEqual(['none', 'ascending']);
+    expect(chip(/^Many/)).toHaveAttribute('aria-pressed', 'true');
+    expect(field()).toHaveValue('a');
+    expect(rowNames()).toEqual(['beta', 'alpha']);
+    expect(region().scrollTop).toBe(0);
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await screen.findByRole('heading', { level: 1, name: 'alpha' });
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(region().scrollTop).toBe(120);
+    expect(rowNames()).toEqual(['beta', 'alpha']);
+  });
+
+  it('keeps what was chosen in the tab it was chosen in: another tab of the same list is drawn as a list is drawn', async () => {
+    const { user } = mount([ready()], [{ id: 't1', page: 'widgets', connection: 'north' }, { id: 't2', page: 'widgets', connection: 'north' }]);
+    await user.click(chip(/^Many/));
+    expect(rowNames()).toEqual(['alpha', 'beta']);
+    await user.click(tabNamed(1));
+    expect(chip(/^All/)).toHaveAttribute('aria-pressed', 'true');
     expect(rowNames()).toEqual(['alpha', 'beta', 'gamma']);
   });
 });

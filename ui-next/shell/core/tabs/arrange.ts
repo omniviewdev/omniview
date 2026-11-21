@@ -1,9 +1,9 @@
 import { equalJson, lenientJson } from './json';
 import { normaliseKeepAlive } from './keepAlive';
 import { ensureHome, findByKey } from './open';
-import { replaced, type Context } from './resolve';
+import { replaced, stepped, type Context } from './resolve';
 import { sameRoute } from './route';
-import { applyKeepAlive, changeTab, flagsOf, historyOf, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
+import { applyKeepAlive, changeTab, fits, flagsOf, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
 import { LIMITS, type Attention, type Guard, type HistoryDirection, type HistoryItem, type KeepAlive, type Tab, type TabId, type TabResult, type TabsState } from './types';
 
 // Showing a tab, pinning, reordering, and the small facts a page reports about its tab: its state, its draft, its attention (ch16 S22, S29, S38, S45, S47, S48).
@@ -95,11 +95,14 @@ export function keep(state: TabsState, id: TabId | null): Step<TabResult> {
   return tab.flags.preview ? done(withTab(state, changeTab(tab, { flags: flagsOf({ ...tab.flags, preview: false }) })), id) : unchanged(state);
 }
 
-/** What the page keeps across a switch and a reopen, as plain data. `true` when it changed. */
+/**
+ * What the page on screen keeps, as plain data (`Tab.pageState`): it stays with the tab through a switch, a reload and a reopen, and the history entry the tab leaves keeps it. `true` when it changed. A state
+ * over `LIMITS.pageStateBytes` is refused (`false`) and the page keeps the state it had: a tab holds at most 51 of them, so a page cannot grow a tab without a bound.
+ */
 export function setPageState(state: TabsState, id: TabId, value: unknown): Step<boolean> {
   const tab = state.tabs[id];
   const pageState = lenientJson(value) ?? null;
-  if (!tab || equalJson(tab.pageState, pageState)) {
+  if (!tab || equalJson(tab.pageState, pageState) || !fits(pageState)) {
     return { state, result: false };
   }
 
@@ -154,7 +157,7 @@ export function reload(state: TabsState, id: TabId | null, guard: Guard = {}): S
 export const canGo = (tab: Tab | undefined, direction: HistoryDirection): boolean =>
   tab !== undefined && (direction === 'back' ? tab.history.index > 0 : tab.history.index < tab.history.entries.length - 1);
 
-/** One step in a tab's history: the page of that entry, a clean page state, and nothing asked of the page (ch16 S50). Asks about unsaved changes. */
+/** One step in a tab's history (ch16 S50): the page of that entry, given what that page kept when the tab left it, and nothing asked of the page. The page it leaves keeps its state with its entry (H7). Asks about unsaved changes. */
 export function step(state: TabsState, ctx: Context, id: TabId | null, direction: HistoryDirection, guard: Guard = {}): Step<TabResult> {
   const tab = id === null ? undefined : state.tabs[id];
   if (!tab || id === null) {
@@ -182,11 +185,12 @@ export function step(state: TabsState, ctx: Context, id: TabId | null, direction
     return { state, result: { status: 'confirm', action: 'navigate', tabs: [id] } };
   }
 
+  const arrived = stepped(tab.history, index, tab.pageState);
   const moved = changeTab(tab, {
     location: Object.freeze({ route, key: looked.key, generation: tab.location.generation }),
     face: looked.face,
-    history: historyOf(tab.history.entries, index),
-    pageState: null,
+    history: arrived.history,
+    pageState: arrived.pageState,
     flags: flagsOf({ ...tab.flags, unsaved: false }),
     reveal: undefined,
   });

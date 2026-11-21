@@ -1,6 +1,6 @@
 import { lenientJson } from './json';
 import { normaliseRoute, routeSays, sameRoute } from './route';
-import { pushed, replaced, resolveDestination, type Context, type Resolved } from './resolve';
+import { pushed, replaced, resolveDestination, type Context, type Moved, type Resolved } from './resolve';
 import { activeTab, applyKeepAlive, changeTab, flagsOf, freshId, makeTab, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
 import type { Destination, Json, NavigateOptions, OpenChange, OpenHow, OpenOptions, OpenResult, Reveal, RouteInput, Scope, Tab, TabId, TabResult, TabsState } from './types';
 
@@ -61,14 +61,18 @@ function request(state: TabsState, id: TabId, ask: Ask, resolved: Resolved, kind
 
 const done = (state: TabsState, id: TabId, change: OpenChange, focused: boolean): Step<OpenResult> => ({ state, result: { status: 'done', id, change, focused } });
 
-/** The tab moved to the route of `plan`: a new entry in its history (or the current one replaced), a clean page, and no preview. */
+/**
+ * The tab moved to the route of `plan`, and no preview. A push is a new entry in its history: the entry it leaves keeps what its page kept, and the page starts clean, but for a place the tab has been
+ * at, which opens as it was left (`pushed`). A replace puts the route in the current entry (a change of scope): the page is another one, and starts clean (H7).
+ */
 function moveTab(state: TabsState, plan: Plan, tab: Tab, mode: 'push' | 'replace'): TabsState {
   const { route, face, key } = plan.resolved;
+  const arrived: Moved = mode === 'push' ? pushed(tab.history, route, tab.pageState) : { history: replaced(tab.history, route), pageState: null };
   const moved = changeTab(tab, {
     location: Object.freeze({ route, key, generation: tab.location.generation }),
     face,
-    history: mode === 'push' ? pushed(tab.history, route) : replaced(tab.history, route),
-    pageState: null,
+    history: arrived.history,
+    pageState: arrived.pageState,
     flags: flagsOf({ ...tab.flags, preview: false, unsaved: false }),
     reveal: undefined,
   });

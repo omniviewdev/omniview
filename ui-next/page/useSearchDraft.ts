@@ -16,16 +16,30 @@ export type SearchDraft = {
   clear(): void;
 };
 
+export type SearchDraftOptions = {
+  /** The search the field opens with, applied at once: the one the page was left with (H7), which was applied when it was left. */
+  readonly initial?: string | undefined;
+  /** Told the search each time the one the list applies changes, from the timer, Enter and a cleared field; never for the initial one, and never for a text that is typed and not yet applied. */
+  readonly onApply?: ((query: string) => void) | undefined;
+};
+
 /**
  * The draft of a search and the query the list applies. The field is controlled by the draft, so typing never waits; the list follows the
  * query, so a key that is followed by another does no work. One timer, owned here, goes with the page.
  */
-export function useSearchDraft(delay: number = SEARCH_DELAY_MS): SearchDraft {
-  const [draft, setDraft] = useState('');
-  const [query, setQuery] = useState('');
+export function useSearchDraft(delay: number = SEARCH_DELAY_MS, options: SearchDraftOptions = {}): SearchDraft {
+  const [draft, setDraft] = useState(options.initial ?? '');
+  const [query, setQuery] = useState(options.initial ?? '');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // The last text typed, read by `flush`: Enter may arrive before the render that holds the last key.
-  const latest = useRef('');
+  const latest = useRef(options.initial ?? '');
+  // The text the list applies now, so that what is told is a change; and who is told, as of the last render (a timer outlives the render that made it).
+  const applied = useRef(options.initial ?? '');
+  const told = useRef(options.onApply);
+
+  useEffect(() => {
+    told.current = options.onApply;
+  });
 
   useEffect(
     () => () => {
@@ -34,26 +48,34 @@ export function useSearchDraft(delay: number = SEARCH_DELAY_MS): SearchDraft {
     [],
   );
 
+  const apply = (value: string) => {
+    setQuery(value);
+    if (value !== applied.current) {
+      applied.current = value;
+      told.current?.(value);
+    }
+  };
+
   const change = (value: string) => {
     clearTimeout(timer.current);
     timer.current = undefined;
     latest.current = value;
     setDraft(value);
     if (value === '') {
-      setQuery('');
+      apply('');
       return;
     }
 
     timer.current = setTimeout(() => {
       timer.current = undefined;
-      setQuery(value);
+      apply(value);
     }, delay);
   };
 
   const flush = () => {
     clearTimeout(timer.current);
     timer.current = undefined;
-    setQuery(latest.current);
+    apply(latest.current);
   };
 
   const clear = () => {
@@ -61,7 +83,7 @@ export function useSearchDraft(delay: number = SEARCH_DELAY_MS): SearchDraft {
     timer.current = undefined;
     latest.current = '';
     setDraft('');
-    setQuery('');
+    apply('');
   };
 
   return { draft, query, change, flush, clear };

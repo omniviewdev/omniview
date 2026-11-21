@@ -122,8 +122,16 @@ export type Location = {
   readonly generation: number;
 };
 
-/** A tab's own back and forward stack (ch16 S60): routes, at most 50, the current one at `index`. */
-export type History = { readonly entries: readonly Route[]; readonly index: number };
+/** The routes of a tab's back and forward stack (ch16 S60): at most 50, the current one at `index`. This is all of a history that is saved to disk. */
+export type PersistedHistory = { readonly entries: readonly Route[]; readonly index: number };
+
+/**
+ * A tab's own back and forward stack (ch16 S60) with what each page kept when the tab LEFT it (H7): a history entry carries the page state of the page it left, and Back and Forward give it back.
+ * `states[i]` is that state for `entries[i]`, `null` for a page that kept nothing and ALWAYS `null` at `index`: the page on screen keeps its state in the tab's `pageState`, which is the one place it
+ * lives. The member is absent while no page has left anything (a history that saved nothing is the history it always was), and when present it is as long as `entries` and the oldest entry and its
+ * state go together at the cap. Each state is at most `LIMITS.pageStateBytes`, so a tab holds at most `LIMITS.history + 1` of them. A closed tab and a saved session hold none: they are for the window's life.
+ */
+export type History = PersistedHistory & { readonly states?: readonly Json[] | undefined };
 
 export type Attention = false | 'warning' | 'error';
 
@@ -160,12 +168,16 @@ export type Tab = {
   readonly face: Face;
   readonly history: History;
   readonly flags: Flags;
-  /** What the page asked to keep across a switch and a reopen: plain data (scroll offsets, a selection). Never saved to disk. */
+  /**
+   * What the page on screen asked to keep: plain data (what a person chose in it, and where it is scrolled under `scroll`), at most `LIMITS.pageStateBytes`, never saved to disk. It lives with the tab for
+   * the window's life: through a switch of tabs, a reload and a reopen. A navigation saves it with the history entry it leaves and starts a clean page, but for a place the tab has been at before,
+   * which opens as it was left (not where it was scrolled); Back and Forward give back what the entry they go to kept (H7, `History`).
+   */
   readonly pageState: Json;
   readonly reveal?: Reveal | undefined;
 };
 
-/** What a closed tab keeps so it can come back (ch16 S30): its place, and its page state while the window lives. */
+/** What a closed tab keeps so it can come back (ch16 S30): its place, and the page state of the entry it was on while the window lives. The saved states of its history are dropped with it (H7). */
 export type ClosedTab = {
   readonly id: TabId;
   readonly location: Location;
@@ -220,6 +232,12 @@ export const LIMITS = Object.freeze({
   history: 50,
   /** History entries saved per tab (ch16 S32). */
   persistedHistory: 10,
+  /**
+   * One page state, as JSON text in UTF-8 (H7): what a tab's page keeps now (`pageState`) and what each history entry keeps of the page it left. A write over it is refused and the page keeps the state it
+   * had. A tab holds at most `history + 1` of them (816 KiB), a closed tab one, so the 25 closed tabs hold at most 400 KiB; what pages keep in practice (a sort, a search, a filter, an offset) is
+   * about a hundred bytes.
+   */
+  pageStateBytes: 16 * 1024,
   /** Closed tabs kept (ch16 S30). */
   closed: 25,
   /** A scope label (ch16 S10). */
@@ -375,7 +393,7 @@ export type Selectors = {
   readonly closed: (state: TabsState) => readonly ClosedTab[];
 };
 
-/** What a saved tab holds: no page state, no flags that mean "now" (unsaved, attention), no reveal request. */
+/** What a saved tab holds: no page state (not the page on screen's, and none of its history's), no flags that mean "now" (unsaved, attention), no reveal request. */
 export type PersistedTab = {
   readonly id: TabId;
   readonly route: Route;
@@ -383,7 +401,7 @@ export type PersistedTab = {
   readonly face: Face;
   readonly pinned: boolean;
   readonly preview: boolean;
-  readonly history: History;
+  readonly history: PersistedHistory;
 };
 
 /** What the session saves for the strip: the version first, then the tabs in order and the one on screen (ch16 S32). */

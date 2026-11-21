@@ -140,3 +140,87 @@ describe('useSearchDraft (the draft is the field\'s, the query is what the list 
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('useSearchDraft: the search a page was left with, and who is told of the one it applies (H7)', () => {
+  it('opens with the initial text in the field and applied at once, and tells nobody of it: it was applied when the page was left', () => {
+    const told = vi.fn();
+    const { result } = renderHook(() => useSearchDraft(SEARCH_DELAY_MS, { initial: 'beta', onApply: told }));
+    expect(result.current.draft).toBe('beta');
+    expect(result.current.query).toBe('beta');
+    act(() => {
+      vi.advanceTimersByTime(2 * SEARCH_DELAY_MS);
+    });
+    expect(told).not.toHaveBeenCalled();
+  });
+
+  it('tells the search each time the one the list applies changes: after the delay, on Enter, and when the field is cleared', () => {
+    const told = vi.fn();
+    const { result } = renderHook(() => useSearchDraft(SEARCH_DELAY_MS, { onApply: told }));
+    act(() => {
+      result.current.change('alp');
+    });
+    expect(told).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    });
+    expect(told.mock.calls).toEqual([['alp']]);
+    act(() => {
+      result.current.change('alpha');
+      result.current.flush();
+    });
+    expect(told.mock.calls).toEqual([['alp'], ['alpha']]);
+    act(() => {
+      result.current.change('');
+    });
+    expect(told.mock.calls).toEqual([['alp'], ['alpha'], ['']]);
+  });
+
+  it('tells nobody of a text that is typed and not yet applied, nor of an application of the text the list already has', () => {
+    const told = vi.fn();
+    const { result, unmount } = renderHook(() => useSearchDraft(SEARCH_DELAY_MS, { initial: 'beta', onApply: told }));
+    act(() => {
+      result.current.change('betas');
+    });
+    act(() => {
+      result.current.change('beta');
+      result.current.flush();
+    });
+    expect(told).not.toHaveBeenCalled();
+    act(() => {
+      result.current.change('gamma');
+    });
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(2 * SEARCH_DELAY_MS);
+    });
+    expect(told).not.toHaveBeenCalled();
+  });
+
+  it('tells the one it was given by the last render, not the one the timer was made under', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { result, rerender } = renderHook(({ told }) => useSearchDraft(SEARCH_DELAY_MS, { onApply: told }), { initialProps: { told: first } });
+    act(() => {
+      result.current.change('beta');
+    });
+    rerender({ told: second });
+    act(() => {
+      vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    });
+    expect(first).not.toHaveBeenCalled();
+    expect(second.mock.calls).toEqual([['beta']]);
+  });
+
+  it('tells a clear that dropped an applied search, and not one that dropped nothing', () => {
+    const told = vi.fn();
+    const { result } = renderHook(() => useSearchDraft(SEARCH_DELAY_MS, { initial: 'beta', onApply: told }));
+    act(() => {
+      result.current.clear();
+    });
+    expect(told.mock.calls).toEqual([['']]);
+    act(() => {
+      result.current.clear();
+    });
+    expect(told).toHaveBeenCalledTimes(1);
+  });
+});

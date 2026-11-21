@@ -1,3 +1,4 @@
+import { jsonBytes } from './json';
 import { enforce } from './keepAlive';
 import { sameRoute } from './route';
 import {
@@ -55,7 +56,20 @@ export const NO_ATTENTION: Attention = false;
 export const flagsOf = (flags: Partial<Flags> = {}): Flags =>
   Object.freeze({ pinned: flags.pinned === true, preview: flags.preview === true && flags.pinned !== true, unsaved: flags.unsaved === true, attention: flags.attention ?? NO_ATTENTION });
 
-export const historyOf = (entries: readonly Route[], index: number): History => Object.freeze({ entries: Object.freeze(entries.slice()), index });
+/**
+ * A history of these routes, with what the page of each kept when it was left (`History.states`). The states are taken only when there is one for every entry and one of them is something: a history that
+ * saved nothing is `{ entries, index }`, as it always was.
+ */
+export function historyOf(entries: readonly Route[], index: number, states?: readonly Json[]): History {
+  const kept = states?.length === entries.length && states.some((held) => held !== null) ? Object.freeze(states.slice()) : undefined;
+  return Object.freeze({ entries: Object.freeze(entries.slice()), index, ...(kept === undefined ? {} : { states: kept }) });
+}
+
+/** The history as a closed tab and a saved session hold it: the routes and the entry on screen, and none of what the pages kept (H7). The same object when it holds none. */
+export const withoutStates = (history: History): History => (history.states === undefined ? history : historyOf(history.entries, history.index));
+
+/** Whether a page state is within the limit a tab keeps (`LIMITS.pageStateBytes`). */
+export const fits = (state: Json): boolean => state === null || jsonBytes(state) <= LIMITS.pageStateBytes;
 
 export type TabInput = {
   readonly id: TabId;
@@ -139,8 +153,9 @@ export function applyKeepAlive(state: TabsState): TabsState {
   return mounted === state.mounted ? state : patch(state, { mounted });
 }
 
+/** A closed tab's record: its place and the page state of the entry it was on, and its history as routes only (the saved states of its pages go with it: H7). */
 export const closedEntry = (tab: Tab, index: number): ClosedTab =>
-  Object.freeze({ id: tab.id, location: tab.location, face: tab.face, history: tab.history, pageState: tab.pageState, pinned: tab.flags.pinned, index });
+  Object.freeze({ id: tab.id, location: tab.location, face: tab.face, history: withoutStates(tab.history), pageState: tab.pageState, pinned: tab.flags.pinned, index });
 
 /** Every rule the model keeps, checked against a state: an empty list means it is sound. Used by the tests and by anyone who wants to assert a state they were handed. */
 export function checkInvariants(state: TabsState): string[] {
@@ -193,6 +208,14 @@ export function checkInvariants(state: TabsState): string[] {
     bad.push('a closed tab shares an id with another closed tab or a tab that is open');
   }
 
+  if (state.closed.some((entry) => entry.history.states !== undefined)) {
+    bad.push('a closed tab keeps the saved page states of its history');
+  }
+
+  if (state.closed.some((entry) => !fits(entry.pageState))) {
+    bad.push('the page state of a closed tab is over the limit');
+  }
+
   return bad;
 }
 
@@ -235,6 +258,23 @@ function checkTabs(state: TabsState, bad: string[]): void {
       bad.push(`tab ${id}: history out of range`);
     } else if (entries[index] === undefined || !sameRoute(entries[index], tab.location.route)) {
       bad.push(`tab ${id}: the history entry is not its route`);
+    }
+
+    const { states } = tab.history;
+    if (states !== undefined) {
+      if (states.length !== entries.length) {
+        bad.push(`tab ${id}: the saved page states do not line up with the history`);
+      } else if ((states[index] ?? null) !== null) {
+        bad.push(`tab ${id}: the entry on screen has a saved page state too`);
+      }
+
+      if (states.some((held) => !fits(held))) {
+        bad.push(`tab ${id}: a saved page state is over the limit`);
+      }
+    }
+
+    if (!fits(tab.pageState)) {
+      bad.push(`tab ${id}: the page state is over the limit`);
     }
 
     if (tab.location.key === '') {

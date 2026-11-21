@@ -413,6 +413,33 @@ async function checkHealthy(page, base, engine) {
   assert.equal(await sortState('Group'), 'ascending', `${engine}: Space on it turns it back`);
   await sortButton('Name').click();
   assert.deepEqual(await itemsOrder(), ['flaky-gateway', 'ghost-service', 'ledger-sync', 'orders-api', 'vault-keeper'], `${engine}: a press on another column sorts that one ascending`);
+  // H7. A history entry carries the page state of the page it left, in the real host and a plugin built outside its tree: the list sorted by Group and searched for "yard" (three items, in an order that is not the name's)
+  // is what Back gives after the first row's detail page: the same search in the field, the same header in force, the same rows in the same order, the same first row. The fixture's list has no quick filter and five
+  // rows, so the search stands for the filter and there is nothing to scroll: the offset is the jsdom chain's (PluginHost.sort.test.tsx) and the page probe's. Left as it was found: no search, Name ascending.
+  await sortButton('Group').click();
+  const itemsSearch = page.getByRole('searchbox', { name: 'Search Items', exact: true });
+  await itemsSearch.fill('yard');
+  await itemsSearch.press('Enter');
+  const leftAs = await itemsOrder();
+  assert.deepEqual(leftAs, ['orders-api', 'ledger-sync', 'ghost-service'], `${engine}: the search keeps the three items of a yard, in the order of the Group sort (the tie in the source's order), which is not the order of the names`);
+  // SEAM_SHOTS=<dir> writes WebKit's pair: the list as it is left, and as Back gives it.
+  const shotH7 = async (name) => {
+    if (process.env.SEAM_SHOTS === undefined || engine !== 'webkit') return;
+    await mkdir(process.env.SEAM_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SEAM_SHOTS, name) });
+  };
+  await shotH7('h7-list-before-leaving-webkit-void-1440x900.png');
+  await page.getByRole('link', { name: leftAs[0], exact: true }).click();
+  await itemsSearch.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await itemsSearch.waitFor();
+  await shotH7('h7-list-after-back-webkit-void-1440x900.png');
+  assert.equal(await itemsSearch.inputValue(), 'yard', `${engine}: Back gives the list its search`);
+  assert.deepEqual(await itemsOrder(), leftAs, `${engine}: and its rows in the order it was left in, the first row the same`);
+  assert.deepEqual([await sortState('Name'), await sortState('Group')], ['none', 'ascending'], `${engine}: with the header of the sort it was left in`);
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await sortButton('Name').click();
+  assert.deepEqual(await itemsOrder(), ['flaky-gateway', 'ghost-service', 'ledger-sync', 'orders-api', 'vault-keeper'], `${engine}: the list is as it was found`);
   // The sidebar's hook answers 150 ms after it mounts: the skeleton gives way to the entries with their count. The entry declares its count slot in the skeleton (`count: null`) and the hook answers an estimate
   // (`{ value: 5, approximate: true }`), which the shell draws as "~5" and names "about 5" (Q2a).
   await page.getByRole('treeitem', { name: 'Items about 5' }).waitFor();
