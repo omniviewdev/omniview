@@ -131,10 +131,7 @@ func newInstalledNativeManager(t *testing.T) (*pluginManager, hostresource.Contr
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	if sockets := shortSocketRoot(t, "ov-upgrade-"); sockets != "" {
-		t.Setenv("TMP", sockets)
-		t.Setenv("TEMP", sockets)
-	}
+	shortSocketRoot(t, "ov-upgrade-")
 	pm.telemetryConfigFn = func(string) (TelemetryEnvConfig, error) { return TelemetryEnvConfig{}, nil }
 	return pm, controller
 }

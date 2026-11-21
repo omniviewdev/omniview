@@ -28,15 +28,15 @@ const (
 
 // TestPluginFixtureSelfTestChildProcess is the process the fixture runs in the
 // tests below. It does nothing in a normal run.
-func TestPluginFixtureSelfTestChildProcess(t *testing.T) {
+func TestPluginFixtureSelfTestChildProcess(_ *testing.T) {
 	mode := os.Getenv(fixtureChildEnv)
 	if mode == "" {
 		return
 	}
 	_, removedSet := os.LookupEnv("FIXTURE_SELFTEST_REMOVED")
-	fmt.Printf("added=%s removed=%t args=%d\n", os.Getenv("FIXTURE_SELFTEST_ADDED"), removedSet, len(os.Args))
+	_, _ = fmt.Fprintf(os.Stdout, "added=%s removed=%t args=%d\n", os.Getenv("FIXTURE_SELFTEST_ADDED"), removedSet, len(os.Args))
 	if mode == "hang" {
-		fmt.Println("ready")
+		_, _ = fmt.Fprintln(os.Stdout, "ready")
 		time.Sleep(time.Minute)
 	}
 	os.Exit(fixtureChildExit)
@@ -78,7 +78,9 @@ func TestPluginFixtureStaysAliveUntilItIsKilled(t *testing.T) {
 	}
 	require.NoError(t, command.Process.Kill())
 	select {
-	case <-done:
+	case waitErr := <-done:
+		var exit *exec.ExitError
+		require.ErrorAs(t, waitErr, &exit, "a killed process ends with an exit error")
 	case <-time.After(10 * time.Second):
 		t.Fatal("a killed fixture did not end")
 	}
@@ -136,16 +138,18 @@ func TestPluginFixtureEndsItsCommandWhenItIsKilled(t *testing.T) {
 	t.Cleanup(func() { _ = command.Process.Kill(); <-reaped })
 
 	lines := bufio.NewScanner(read)
-	for lines.Scan() && lines.Text() != "ready" {
+	started := false
+	for !started && lines.Scan() {
+		started = lines.Text() == "ready"
 	}
-	require.Equal(t, "ready", lines.Text(), "the command must have started")
+	require.True(t, started, "the command must have started")
 	require.NoError(t, command.Process.Kill())
 
 	ended := make(chan error, 1)
-	go func() { _, err := io.Copy(io.Discard, read); ended <- err }()
+	go func() { _, copyErr := io.Copy(io.Discard, read); ended <- copyErr }()
 	select {
-	case err := <-ended:
-		require.NoError(t, err)
+	case copyErr := <-ended:
+		require.NoError(t, copyErr)
 	case <-time.After(15 * time.Second):
 		t.Fatal("the command the fixture ran outlived the fixture")
 	}

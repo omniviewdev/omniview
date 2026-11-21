@@ -40,6 +40,9 @@ const (
 	pluginFixtureSpecFile = "fixture.json"
 )
 
+// One build of the fixture program for the whole test process.
+//
+//nolint:gochecknoglobals // shared by every test of the package, which cannot hold it any other way
 var pluginFixtureBuild struct {
 	once sync.Once
 	dir  string
@@ -118,22 +121,22 @@ func buildPluginFixture() ([]byte, error) {
 	}
 	pluginFixtureBuild.dir = dir
 	source := filepath.Join(dir, "src")
-	if err := os.Mkdir(source, 0o700); err != nil {
+	if err = os.Mkdir(source, 0o700); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(source, "go.mod"), []byte("module pluginfixture\n\ngo 1.21\n"), 0o600); err != nil {
+	if err = os.WriteFile(filepath.Join(source, "go.mod"), []byte("module pluginfixture\n\ngo 1.21\n"), 0o600); err != nil {
 		return nil, err
 	}
-	entries, err := fs.ReadDir(pluginFixtureSource, "testdata/pluginfixture")
-	if err != nil {
+	var entries []fs.DirEntry
+	if entries, err = fs.ReadDir(pluginFixtureSource, "testdata/pluginfixture"); err != nil {
 		return nil, err
 	}
 	for _, entry := range entries {
-		data, err := pluginFixtureSource.ReadFile(path.Join("testdata/pluginfixture", entry.Name()))
-		if err != nil {
+		var data []byte
+		if data, err = pluginFixtureSource.ReadFile(path.Join("testdata/pluginfixture", entry.Name())); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(filepath.Join(source, entry.Name()), data, 0o600); err != nil {
+		if err = os.WriteFile(filepath.Join(source, entry.Name()), data, 0o600); err != nil {
 			return nil, err
 		}
 	}
@@ -145,7 +148,8 @@ func buildPluginFixture() ([]byte, error) {
 	build.Env = append(os.Environ(),
 		"GOWORK=off", "GOFLAGS=", "GOTOOLCHAIN=local", "CGO_ENABLED=0",
 		"GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
-	if combined, err := build.CombinedOutput(); err != nil {
+	var combined []byte
+	if combined, err = build.CombinedOutput(); err != nil {
 		return nil, &pluginFixtureBuildError{err: err, output: string(combined)}
 	}
 	return os.ReadFile(output)
@@ -197,19 +201,24 @@ func pluginFixtureArchiveEntries(t testing.TB, behaviour *pluginFixtureBehaviour
 	return entries
 }
 
-// shortSocketRoot is a directory the tests give a plugin child as its temporary
-// directory, so that a Unix socket made under it stays below the platform's path
-// limit whatever the test is called. Windows has no such limit (go-plugin listens
-// on loopback TCP there), and no /tmp: the child keeps the default.
-// It sets TMPDIR for the test and returns the directory, or "" where there is none.
+// shortSocketRoot gives a plugin child a temporary directory of its own, for the
+// test: one that is short enough for a Unix socket made under it (a path limit
+// the test's name must not decide), and that is removed with the test. A child
+// that is killed leaves its socket behind, and a socket of a fixed name left in a
+// shared temporary directory stops the next run's child, on Windows too, where the
+// process looks for its temporary directory in TMP and TEMP. It returns the
+// directory.
 func shortSocketRoot(t testing.TB, prefix string) string {
 	t.Helper()
+	parent := "/tmp"
 	if runtime.GOOS == "windows" {
-		return ""
+		parent = ""
 	}
-	sockets, err := os.MkdirTemp("/tmp", prefix)
+	sockets, err := os.MkdirTemp(parent, prefix)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, os.RemoveAll(sockets)) })
-	t.Setenv("TMPDIR", sockets)
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(name, sockets)
+	}
 	return sockets
 }
