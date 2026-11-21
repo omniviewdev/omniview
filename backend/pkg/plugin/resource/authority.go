@@ -186,6 +186,14 @@ func (r *AuthorityResolver) ObserveCatalog(pluginID, connectionID string, catalo
 			results[resourceType] = authorityResult(authority, existed && old.Authority != authority)
 		}
 	}
+	if catalog.Coverage.Kind != "complete" {
+		// Partial discovery cannot prove that a type it did not observe is gone: what is bound for it stays, and the type keeps its authority when it returns.
+		for route, binding := range previous {
+			if _, observed := next[route]; !observed && route.Provider == catalog.Provider {
+				next[route] = binding
+			}
+		}
+	}
 	if maps.Equal(previous, next) {
 		return results, nil
 	}

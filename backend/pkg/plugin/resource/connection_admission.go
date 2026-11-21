@@ -24,8 +24,9 @@ func (c *controller) admitConnectionCatalogCurrent(parent context.Context, plugi
 	if err == nil {
 		err = resourcev2.ValidateCatalog(catalog)
 	}
-	if err == nil && catalog.Coverage.Kind != "complete" {
-		err = resourcev2.NewError("UNAVAILABLE", "Connection admission requires complete discovered support.")
+	// Partial coverage is admitted: every later operation serves such a catalog already, and refusing only the start left the plugin's connection started. A coverage the plugin could not state is refused.
+	if err == nil && catalog.Coverage.Kind != "complete" && catalog.Coverage.Kind != "partial" {
+		err = resourcev2.NewError("UNAVAILABLE", "Connection admission requires discovered support that is complete or partial.")
 	}
 	if err != nil {
 		return catalogAdmission{}, resourcev2.Catalog{}, err

@@ -298,3 +298,32 @@ func TestAuthorityRestartProofRequiresMoreThanPersistedHints(t *testing.T) {
 	require.NoError(t, restarted.InvalidateConnection("p", "route"))
 	require.False(t, restarted.hasUnprovenRestartBindings("p", "route"))
 }
+
+// Partial discovery cannot prove that a type it did not observe is gone: an observation whose coverage is not complete retires nothing, so a type that returns keeps its authority even without a hint.
+func TestAuthorityPartialObservationRetiresNothing(t *testing.T) {
+	store, err := appstate.NewTestService(t).PluginStore("test")
+	require.NoError(t, err)
+	resolver, err := NewAuthorityResolver(store)
+	require.NoError(t, err)
+	both := authorityTestCatalog("p", map[string]*resourcev2.NativeAuthorityHint{"one": nil, "two": nil})
+	first, err := resolver.ObserveCatalog("plugin", "route", both)
+	require.NoError(t, err)
+
+	partial := authorityTestCatalog("p", map[string]*resourcev2.NativeAuthorityHint{"two": nil})
+	partial.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{}, Reason: "A group did not answer."}
+	seen, err := resolver.ObserveCatalog("plugin", "route", partial)
+	require.NoError(t, err)
+	require.Equal(t, first["two"].Authority, seen["two"].Authority)
+	require.NotContains(t, seen, "one", "only what was observed is resolved")
+	require.True(t, resolver.Matches("plugin", "route", "p", "one", first["one"].Authority), "the type the partial observation did not see keeps its binding")
+
+	returned, err := resolver.ObserveCatalog("plugin", "route", both)
+	require.NoError(t, err)
+	require.Equal(t, first["one"].Authority, returned["one"].Authority, "the returning type is the same authority, not a new one")
+	require.False(t, returned["one"].Changed)
+
+	// Control: a complete observation that lacks the type does retire it, as before.
+	_, err = resolver.ObserveCatalog("plugin", "route", authorityTestCatalog("p", map[string]*resourcev2.NativeAuthorityHint{"two": nil}))
+	require.NoError(t, err)
+	require.False(t, resolver.Matches("plugin", "route", "p", "one", first["one"].Authority))
+}

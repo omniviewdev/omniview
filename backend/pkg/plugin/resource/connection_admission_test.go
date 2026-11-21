@@ -153,3 +153,22 @@ func TestBlockedConnectionAdmissionCannotRetireReplacement(t *testing.T) {
 	}
 	requireCurrentAuthoritySurvivesRestart(t, ctrl, route, catalog, current.Authority, disk)
 }
+
+// The plugin starts a connection whose discovery could not read one group and says so: a partial catalog. The host admits it: after admission every other operation already serves a partial catalog, and refusing only the start left the plugin's connection started.
+func TestConnectionAdmissionAdmitsPartialCatalog(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+	catalog := admissionTestCatalog(t, "accepted")
+	catalog.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{}, Reason: "A group did not answer."}
+	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return catalog, nil }})
+	route := resourcev2.AccessRoute{Connection: "opaque/route"}
+	_, observed, err := ctrl.admitConnectionCatalog(testInvocationContext(), "p1", route)
+	require.NoError(t, err)
+	require.Equal(t, "partial", observed.Coverage.Kind)
+
+	// Control: coverage the plugin could not state is still refused.
+	unknown := admissionTestCatalog(t, "accepted")
+	unknown.Coverage = resourcev2.Coverage{Kind: "unknown", Paths: []string{}, Reason: "Not known."}
+	registerMockPlugin(ctrl, "p2", &mockProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return unknown, nil }})
+	_, _, err = ctrl.admitConnectionCatalog(testInvocationContext(), "p2", route)
+	require.Error(t, err)
+}
