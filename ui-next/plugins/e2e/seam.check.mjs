@@ -59,6 +59,9 @@
 //      one of everything again with no reload (SEAM_SHOTS=<dir> writes WebKit's pictures of the four states). SEAM_CONTROL=failed-load runs p alone with every perturbation of its controls (FAILED_CONTROLS) made in turn just before the assertion each must trip; SEAM_CONTROL=<one of them>
 //      makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected (the proof that each control trips its own assertion and no other)
 //
+//   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
+//   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
+//
 //   Every scenario starts from a window with nothing saved: the host keeps ONE session for its main window, and a page that a scenario left behind would be restored by the next.
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
@@ -94,7 +97,10 @@ const CONTROLS = {
   'scope-lone': /a session with no twin draws no scope part/,
   'scope-kept': /the tab that is left when its twin closes draws no scope part/,
   'same-name': /no two session tabs are named alike/,
+  // The watch over failed requests (INV1): a request the allow-list does not name fails its phase. The control plants one 422 in a page that is otherwise clean, and the assertion of the phase must see it; with SEAM_REMOVE=runtime-4xx that assertion is left out and the planted one must pass undetected.
+  'runtime-4xx': /the requests that failed are all in the allow-list \(phase runtime-4xx\)/,
 };
+const RUNTIME_CONTROL = 'runtime-4xx';
 /** The controls that belong to scenario m; every other one runs scenario k. */
 const IDENTITY_CONTROLS = ['second-stream', 'scope-lone', 'scope-kept', 'same-name'];
 // The negative controls of scenario n, the plugin that stops (PU1). Each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no
@@ -134,8 +140,8 @@ const REMOVE = process.env.SEAM_REMOVE ?? '';
 if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined) {
   throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS)].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined) {
-  throw new Error(`SEAM_REMOVE must be one of ${Object.keys(FAILED_CONTROLS).join(', ')}`);
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(FAILED_CONTROLS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 async function freePort() {
@@ -250,10 +256,105 @@ async function openFirstPlugin(page, name = 'Seam Fixture') {
   await page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name, exact: true }).click();
 }
 
+/**
+ * Every request that answers 4xx or 5xx, in any page the check opens, is recorded with the phase it happened in (`phase`), and a phase fails unless each of its failures is in RUNTIME_ALLOW: an explicit list, each entry with the reason
+ * it is expected and the phases it is expected in. The check used to print them; the 422 `activity session unavailable` of Chromium on Linux (INV1) was printed in every run for as long as nobody read it. The browser's own console line for a
+ * failed request ("Failed to load resource") is the same event and is not counted twice; any other console error is a scenario's own business (each asserts its page's errors).
+ */
+const failedRequests = [];
+const pendingBodies = [];
+const phasePages = [];
+let currentPhase = '';
+const RUNTIME_ALLOW = [
+  {
+    phases: null,
+    reason: 'a plugin with no bundle is a named state (scenario e): every page load asks for the bundle of each installed plugin and the host answers 400 for the one that has none',
+    test: (failure) => failure.status === 400 && failure.path === `/_/plugins/${MISSING}/assets/entry.js`,
+  },
+  {
+    phases: ['process', 'failed-load'],
+    reason: 'scenarios n and p take the plugin\'s process down or make its load fail; the page asks for the plugin\'s connections and the host answers with the load failure',
+    test: (failure) => failure.status === 422 && failure.answered.includes('omniview:plugin/load-failed'),
+  },
+];
+
+/** Records every failed request of the page, whichever phase is running when it answers. */
+function watchRequests(page) {
+  phasePages.push(page);
+  page.on('response', (response) => {
+    if (response.status() < 400) return;
+    const request = response.request();
+    const failure = { phase: currentPhase, status: response.status(), method: request.method(), path: new URL(response.url()).pathname, asked: String(request.postData() ?? '').slice(0, 400), answered: '' };
+    failedRequests.push(failure);
+    pendingBodies.push(
+      response.text().then(
+        (body) => {
+          failure.answered = body.slice(0, 400);
+        },
+        () => undefined,
+      ),
+    );
+  });
+}
+
+/** Fails unless every request that failed in the phase is in RUNTIME_ALLOW, and names each one that is not with what was asked and what came back. */
+async function unexpectedFailures(name) {
+  await Promise.all(pendingBodies.splice(0));
+  return failedRequests
+    .filter((failure) => failure.phase === name)
+    .filter((failure) => !RUNTIME_ALLOW.some((entry) => (entry.phases === null || entry.phases.includes(name)) && entry.test(failure)))
+    .map((failure) => `${failure.method} ${failure.path} -> ${String(failure.status)}: asked ${failure.asked} | answered ${failure.answered}`);
+}
+
+async function assertExpectedFailures(name, engine) {
+  assert.deepEqual(await unexpectedFailures(name), [], `${engine}: the requests that failed are all in the allow-list (phase ${name})`);
+}
+
+/** Runs one scenario (or a few that share a page) as a phase: the requests that fail while it runs are held to RUNTIME_ALLOW when it ends. */
+async function phase(name, engine, run) {
+  currentPhase = name;
+  await run();
+  // A page a scenario leaves open would go on calling the host (the activity provider's heartbeat is every 10 s) and its failures would land in the phase that follows, so the phase closes what it opened.
+  for (const page of phasePages.splice(0)) if (!page.isClosed()) await page.close();
+  await assertExpectedFailures(name, engine);
+}
+
+/**
+ * The control of the watch over failed requests: a page that loads clean (its own calls all answer 2xx: asserted first, in words the control does not match, so a page that fails on its own is never taken for a detection), then one call that
+ * must be refused is made from it, as the page's runtime makes a call (the activity service, a session the host never issued: 422). The assertion of the phase must fail with ITS words; the planted failure is then forgotten and the
+ * assertion must pass again.
+ */
+async function checkRuntimeWatch(page, base, engine) {
+  const { asserting, verdict } = withControls(RUNTIME_CONTROL, CONTROLS);
+  currentPhase = RUNTIME_CONTROL;
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  assert.deepEqual(await unexpectedFailures(RUNTIME_CONTROL), [], `${engine}: the page made no failed request of its own before the planted one`);
+  await asserting(
+    RUNTIME_CONTROL,
+    async () => {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/wails/runtime', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId },
+          body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `planted-${String(Date.now())}`, methodName: 'github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService.Heartbeat', args: ['planted-session'] } }),
+        });
+        return response.status;
+      });
+      assert.equal(status, 422, `${engine}: the planted call was refused as a call with no session is`);
+      for (let attempt = 0; attempt < 50 && failedRequests.every((failure) => failure.phase !== RUNTIME_CONTROL); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+    },
+    () => {
+      for (let index = failedRequests.length - 1; index >= 0; index -= 1) if (failedRequests[index].phase === RUNTIME_CONTROL) failedRequests.splice(index, 1);
+    },
+    () => assertExpectedFailures(RUNTIME_CONTROL, engine),
+  );
+  await page.close();
+  verdict(engine);
+}
+
 async function checkHealthy(page, base, engine) {
   const errors = [];
-  const failedRequests = [];
-  const failedDetails = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
     // The browser's own line for a request that answered 4xx is not a script error: the requests are listed below and each must be one the check expects.
@@ -266,19 +367,6 @@ async function checkHealthy(page, base, engine) {
   page.on('response', (response) => {
     const body = response.request().postData() ?? '';
     if (new URL(response.url()).pathname === '/wails/runtime' && body.includes(`"${OK}"`)) connectionCalls.push(response.status());
-  });
-  page.on('response', (response) => {
-    if (response.status() < 400) return;
-    const request = response.request();
-    const pathname = new URL(response.url()).pathname;
-    failedRequests.push(`${String(response.status())} ${pathname}`);
-    // What was asked and what came back, so an unexpected 4xx names its call (the Wails runtime's endpoint carries every call in its body).
-    failedDetails.push(
-      response.text().then(
-        (body) => `${request.method()} ${pathname} -> ${String(response.status())}: asked ${String(request.postData() ?? '').slice(0, 400)} | answered ${body.slice(0, 400)}`,
-        () => `${request.method()} ${pathname} -> ${String(response.status())} (no body)`,
-      ),
-    );
   });
 
   // a. no route at all and nothing saved: the window is EMPTY (decision A17, S3a: no page opens by itself; a first run has no session), with the plugins that can be opened. A plugin of the list opens its home page.
@@ -393,11 +481,9 @@ async function checkHealthy(page, base, engine) {
 
   const unexpected = errors.filter((entry) => !entry.includes('[plugins] fixture-a-ok page crash failed to render') && !entry.includes('crashed on purpose'));
   assert.deepEqual(unexpected, [], `${engine}: the healthy flow wrote no console error`);
-  // Every request that failed is one the check expects: the plugin with no bundle, and nothing else of the plugin seam.
-  const [missing, rest] = [failedRequests.filter((entry) => entry.includes(MISSING)), failedRequests.filter((entry) => !entry.includes(MISSING))];
-  assert.ok(missing.length > 0 && missing.every((entry) => entry.startsWith('400 ')), `${engine}: the plugin with no bundle was answered 400 (${missing.join(', ')})`);
-  console.log(`${engine}: other requests that answered 4xx while the page ran: ${rest.length === 0 ? 'none' : [...new Set(rest)].join(', ')}`);
-  for (const detail of await Promise.all(failedDetails)) if (!detail.includes(MISSING)) console.log(`  ${engine}: ${detail}`);
+  // The requests that failed are asserted by the phase (`phase`, `assertExpectedFailures`): each must be in the allow-list. Here only what this scenario needs of them: the plugin with no bundle is answered 400, always.
+  const missing = failedRequests.filter((entry) => entry.phase === currentPhase && entry.path.includes(MISSING));
+  assert.ok(missing.length > 0 && missing.every((entry) => entry.status === 400), `${engine}: the plugin with no bundle was answered 400 (${missing.map((entry) => String(entry.status)).join(', ')})`);
 }
 
 async function checkRefusals(page, base, engine) {
@@ -2396,6 +2482,14 @@ try {
   // ENGINES=webkit (or chromium) runs one engine, for a developer who is chasing one.
   for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
     const browser = await engine.launch();
+    failedRequests.length = 0;
+    // Every page of the engine's run, whoever opens it, has its failed requests recorded (`watchRequests`).
+    const openPage = browser.newPage.bind(browser);
+    browser.newPage = async (...options) => {
+      const page = await openPage(...options);
+      watchRequests(page);
+      return page;
+    };
     try {
       // SEAM_PROVIDERS_REPEAT=<n> runs scenario l alone, n times in a row, for a developer who is chasing a flake of it (the order of two plugins' sections that load together was found this way, on a loaded machine).
       if (process.env.SEAM_PROVIDERS_REPEAT !== undefined) {
@@ -2431,6 +2525,18 @@ try {
         continue;
       }
 
+      if (CONTROL === RUNTIME_CONTROL) {
+        // The negative control of the watch over failed requests: one planted 422 in a clean page, and the phase's assertion must see it.
+        try {
+          await checkRuntimeWatch(await freshPage(browser, host.base), host.base, name);
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
       if (CONTROL !== '') {
         // A negative control runs the scenario it belongs to (k or m) alone with one perturbation, and passes when the assertion it is named for saw it.
         const scenario = IDENTITY_CONTROLS.includes(CONTROL) ? checkIdentity : checkKept;
@@ -2451,22 +2557,24 @@ try {
       }
 
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-      await checkHealthy(page, host.base, name);
-      await checkRefusals(page, host.base, name);
-      await page.close();
-      await checkRail(await freshPage(browser, host.base), host.base, name);
-      await checkPanel(await freshPage(browser, host.base), host.base, name);
-      await checkLogs(await freshPage(browser, host.base), host.base, name);
-      await checkPalette(await freshPage(browser, host.base), host.base, name);
-      await checkTwins(await freshPage(browser, host.base), host.base, name);
-      await checkConnection(await freshPage(browser, host.base), host.base, name);
-      await checkProviders(await freshPage(browser, host.base), host.base, name);
-      await checkKept(await freshPage(browser, host.base), host.base, name);
-      await checkIdentity(await freshPage(browser, host.base), host.base, name);
-      await checkToasts(await freshPage(browser, host.base), host.base, name);
-      await checkSession(browser, () => host, restart, name);
-      await checkProcess(browser, name, await processFixture(), work);
-      await checkFailedLoad(browser, name, await processFixture(), work);
+      await phase('healthy', name, async () => {
+        await checkHealthy(page, host.base, name);
+        await checkRefusals(page, host.base, name);
+        await page.close();
+      });
+      await phase('rail', name, async () => checkRail(await freshPage(browser, host.base), host.base, name));
+      await phase('panel', name, async () => checkPanel(await freshPage(browser, host.base), host.base, name));
+      await phase('logs', name, async () => checkLogs(await freshPage(browser, host.base), host.base, name));
+      await phase('palette', name, async () => checkPalette(await freshPage(browser, host.base), host.base, name));
+      await phase('twins', name, async () => checkTwins(await freshPage(browser, host.base), host.base, name));
+      await phase('connection', name, async () => checkConnection(await freshPage(browser, host.base), host.base, name));
+      await phase('providers', name, async () => checkProviders(await freshPage(browser, host.base), host.base, name));
+      await phase('kept', name, async () => checkKept(await freshPage(browser, host.base), host.base, name));
+      await phase('identity', name, async () => checkIdentity(await freshPage(browser, host.base), host.base, name));
+      await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
+      await phase('session', name, () => checkSession(browser, () => host, restart, name));
+      await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
+      await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout)`);
     } finally {
       await browser.close();
