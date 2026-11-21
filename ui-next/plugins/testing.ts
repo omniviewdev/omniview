@@ -37,7 +37,8 @@ export const answering =
       frame: {
         tab: { title: crumb, icon: 'box' },
         path: ['Acme', crumb],
-        scope: [{ label: 'Connection', icon: 'server', text: context.route.connection ?? 'none' }],
+        // The lane is there either way; a page that has no connection says so under another label, because the palette says the text of the face labelled Connection as the connection (C1f).
+        scope: [{ label: context.route.connection === undefined ? 'Scope' : 'Connection', icon: 'server', text: context.route.connection ?? 'none' }],
       },
       source: { state: { kind: 'ready' }, rows, complete: true, refreshing: false, refresh: async () => undefined },
     });

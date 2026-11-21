@@ -194,7 +194,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts });
   return {
     palette,
     store: palette.store,
@@ -223,6 +223,17 @@ function build(setup: Setup = {}): World {
 }
 
 const at = (plugin: string, contribution: string, connection?: string): Destination => ({ route: { plugin, contribution, params: connection === undefined ? {} : { connection } } });
+
+/** The route a destination names. */
+const routeAt = (plugin: string, contribution: string, connection?: string): Route => ({ plugin, contribution, params: connection === undefined ? {} : { connection } });
+
+/** The scope lane of a page that says which connection it is read in, by name: the face a plugin's data hook returns, labelled Connection (C1f). */
+const laneOf = (name: string): FrameV1['scope'] => [{ label: 'Connection', icon: 'server', text: name }];
+
+/** The page at `route` was drawn, and published its tab, its path and the lane that names its connection `name` (what the plugin's data hook answered). The path is the page alone unless it says another. */
+function nameConnection(w: World, route: Route, name: string, title = 'Widgets', path: readonly string[] = [title]): void {
+  w.frames.publish(routeKey(route), { tab: { title, icon: 'box' }, path, scope: laneOf(name) });
+}
 
 const rowsOf = (w: World, section: string) => w.store.getSnapshot().sections.find((candidate) => candidate.id === section)?.rows ?? [];
 const titlesOf = (w: World, section: string): string[] => rowsOf(w, section).map((row) => row.title.text);
@@ -548,6 +559,8 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('is the connection alone for a page that sits in no group, whether or not a chip says it: the host makes no group up (the design lab says "Cluster" for such a page, which only its plugin can say)', () => {
       const w = build({ remembered: NORTH });
+      nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+      nameConnection(w, routeAt('acme', 'widgets', 'south'), 'south');
       w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
       w.store.open({ kind: 'goto' });
       expect(contextOf(w, 'Gizmos')).toBe('north');
@@ -564,6 +577,8 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('is the connection first and then the group when the page opens in a connection and the palette is not narrowed to it: the connection of the tab on screen, or else the one the plugin was last used in', () => {
       const w = build({ remembered: NORTH });
+      nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+      nameConnection(w, routeAt('acme', 'widgets', 'south'), 'south');
       w.open(at('beta', 'items'));
       w.store.open({ kind: 'goto' });
       // Acme is not on screen: it opens at the connection it was last used in.
@@ -582,6 +597,7 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('is the group alone when the palette is narrowed to the connection: the chip says it, as the design lab\'s rows do when it is scoped to one connection', () => {
       const w = build();
+      nameConnection(w, routeAt('acme', 'widgets', 'south'), 'south');
       w.open(at('acme', 'widgets', 'south'));
       w.store.open({ kind: 'goto', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'south', label: 'south' } }) });
       expect(titlesOf(w, 'goto')).toEqual(['Acme', 'Gadgets']);
@@ -595,6 +611,7 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('says the connection when the chip that narrows the palette names another one: the tab moved after the palette opened, and the page opens where the tab is now', () => {
       const w = build();
+      nameConnection(w, routeAt('acme', 'widgets', 'south'), 'south');
       w.open(at('acme', 'widgets', 'south'));
       w.store.open({ kind: 'goto', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'north', label: 'north' } }) });
       expect(contextOf(w, 'Gadgets')).toBe('south · Group');
@@ -602,6 +619,7 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('names a place once: a group that is the connection\'s name is not said twice', () => {
       const w = build({ remembered: NORTH });
+      nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
       w.nodes.publish('acme', [{ id: 'group', label: 'North', icon: 'layers', children: [{ id: 'gadgets', label: 'Gadgets', icon: 'box' }] }]);
       w.store.open({ kind: 'goto' });
       expect(contextOf(w, 'Gadgets')).toBe('north');
@@ -609,6 +627,7 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('finds a page by its connection, which the row says, as the design lab finds a kind by the connection its row names', () => {
       const w = build({ remembered: NORTH });
+      nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
       w.store.open({ kind: 'goto' });
       expect(gotoOf(w, 'north')).toEqual(['Gadgets']);
     });
@@ -708,12 +727,16 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
 
     it('is not needed when they already differ: another connection tells them apart', () => {
       const w = twins({ remembered: (plugin) => ({ plugin, contribution: 'widgets', params: { connection: plugin === 'acme' ? 'north' : 'south' } }) });
+      nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+      nameConnection(w, routeAt('copy', 'widgets', 'south'), 'south');
       w.store.open({ kind: 'goto' });
       expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['north · Group', 'south · Group']);
     });
 
     it('comes before the connection when they read alike there too', () => {
       const w = twins({ remembered: (plugin) => ({ plugin, contribution: 'widgets', params: { connection: 'north' } }) });
+      nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+      nameConnection(w, routeAt('copy', 'widgets', 'north'), 'north');
       w.store.open({ kind: 'goto' });
       expect(gadgetsOf(w).map((row) => row.context.text)).toEqual(['Acme · north · Group', 'Acme Copy · north · Group']);
     });
@@ -732,13 +755,259 @@ describe('the pages source: the plugin\'s keywords, where each page says it is, 
   });
 });
 
+// The connection a row says (C1f). A route carries a connection by a KEY (`kind-kind-57a082bd74`: a plugin's own id for it, which the tab model compares and the plugin's calls use and which nobody reads); the NAME a person knows it by (`kind-kind`)
+// is what the plugin's page says in its scope lane, the face labelled Connection, which the host holds as the frame the page published. A row says the name from that lane, and the key never: when no name is known the row says no connection.
+describe('the connection a row says: its name, and never the key a route carries (C1f)', () => {
+  const ID = 'kind-kind-57a082bd74';
+  const NAME = 'kind-kind';
+  const ROUTE = routeAt('acme', 'widgets', ID);
+
+  /** Every text the palette draws and the accessible name of every row, in every section, and the label of every chip. */
+  const drawnOf = (w: World): string[] => {
+    const snapshot = w.store.getSnapshot();
+    return [...snapshot.rows.flatMap((row) => [row.title.text, row.context.text, row.name]), ...snapshot.chips.map((chip) => chip.label)];
+  };
+
+  const keysIn = (w: World): string[] => drawnOf(w).filter((text) => text.includes(ID));
+  const contextOf = (w: World, title: string): string => rowTitled(w, title).context.text;
+  /** The tab on screen is at a page of acme in the connection the key names; its page published the name unless `named` is false. */
+  const onScreen = (named = true): World => {
+    const w = build();
+    if (named) {
+      nameConnection(w, ROUTE, NAME);
+    }
+
+    w.open({ route: ROUTE });
+    return w;
+  };
+
+  describe('in Go to', () => {
+    it('says the connection of the tab on screen by the name its lane gives, in the text drawn and in the name a screen reader reads, and the key is in none of what is drawn', () => {
+      const w = onScreen();
+      w.store.open({ kind: 'goto' });
+
+      expect(contextOf(w, 'Gadgets')).toBe(`${NAME} · Group`);
+      expect(rowTitled(w, 'Gadgets').name).toBe(`Page: Gadgets, ${NAME} · Group`);
+      expect(keysIn(w)).toEqual([]);
+      // It opens through the tab model, which gives the page the connection of the tab it is opened from.
+      expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: {} });
+    });
+
+    it('says the name alone for a page that sits in no group', () => {
+      const w = onScreen();
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
+      w.store.open({ kind: 'goto' });
+
+      expect(contextOf(w, 'Gizmos')).toBe(NAME);
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('says no connection when no lane names it: the group alone, the plugin\'s name for a page with no group, and never the key', () => {
+      const w = onScreen(false);
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
+      w.store.refresh();
+      expect(contextOf(w, 'Gizmos')).toBe('Acme');
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('says no connection when the lane has no face that names one: a lane of another kind is not read as the connection', () => {
+      const w = build();
+      w.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Widgets'], scope: [{ label: 'Region', icon: 'server', text: 'eu-west-1' }] });
+      w.open({ route: ROUTE });
+      w.store.open({ kind: 'goto' });
+
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+    });
+
+    it('reads a lane that is not what the contract says as no name, and never throws: what a plugin publishes is not trusted', () => {
+      const w = onScreen(false);
+      const lanes: unknown[] = ['north', 42, null, [], [null, 3, 'x', { label: 3, text: NAME }, { label: 'Connection' }, { label: 'Connection', text: 7 }, { label: 'Connection', text: '  ' }]];
+      const reads = (title: string, says: string): void => {
+        for (const lane of lanes) {
+          w.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Widgets'], scope: lane as FrameV1['scope'] });
+          w.store.refresh();
+          expect(contextOf(w, title), JSON.stringify(lane)).toBe(says);
+        }
+      };
+
+      // A page in a group says the group alone, and a page in none the plugin's name: an empty text is not a name.
+      w.store.open({ kind: 'goto' });
+      reads('Gadgets', 'Group');
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
+      w.store.refresh();
+      reads('Gizmos', 'Acme');
+
+      // The first face that names a connection is the one: a later one does not take its place, and the case of the label and the white space around the label and the text do not matter.
+      w.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Widgets'], scope: [{ label: ' connection ', icon: 'server', text: `  ${NAME} ` }, { label: 'Connection', icon: 'server', text: 'other' }] });
+      w.store.refresh();
+      expect(contextOf(w, 'Gizmos')).toBe(NAME);
+    });
+
+    it('says the connection of a tab whose route carries none from its lane, as the plugin reads its own and its page says which', () => {
+      const w = build();
+      nameConnection(w, routeAt('acme', 'widgets'), NAME);
+      w.open(at('acme', 'widgets'));
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gadgets')).toBe(`${NAME} · Group`);
+
+      w.nodes.publish('acme', [{ id: 'gadgets', label: 'Gizmos', icon: 'box' }]);
+      w.store.refresh();
+      expect(contextOf(w, 'Gizmos')).toBe(NAME);
+    });
+
+    it('says the connection a plugin that is not on screen was last used in by the name its page said then, and opens the page in that connection by the key', () => {
+      const w = build({ remembered: (plugin) => (plugin === 'acme' ? ROUTE : undefined) });
+      nameConnection(w, ROUTE, NAME);
+      w.open(at('beta', 'items'));
+      w.store.open({ kind: 'goto' });
+
+      expect(contextOf(w, 'Gadgets')).toBe(`${NAME} · Group`);
+      expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: { connection: ID } });
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('says no connection for that plugin when its page was never drawn in this window, and still opens the page in the connection', () => {
+      const w = build({ remembered: (plugin) => (plugin === 'acme' ? ROUTE : undefined) });
+      w.open(at('beta', 'items'));
+      w.store.open({ kind: 'goto' });
+
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+      expect(rowTitled(w, 'Gadgets').route?.params).toEqual({ connection: ID });
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('says the name as soon as the page publishes it: a palette that is open when the lane arrives is made again', () => {
+      // The page was drawn before: its tab and its path are what they will be, and only the lane arrives, so nothing but the frames tells the palette.
+      const w = build();
+      w.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Widgets'] });
+      w.open({ route: ROUTE });
+      const stop = w.palette.attach();
+      w.store.open({ kind: 'goto' });
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+
+      nameConnection(w, ROUTE, NAME);
+      expect(contextOf(w, 'Gadgets')).toBe(`${NAME} · Group`);
+      stop();
+    });
+  });
+
+  describe('in the chips that narrow the palette', () => {
+    it('says the name, and the key travels as the chip\'s id, which is what a plugin\'s provider is asked with', () => {
+      const w = onScreen();
+      expect(w.palette.opening().scope).toMatchObject([
+        { kind: 'plugin', label: 'Acme' },
+        { kind: 'scope', id: ID, label: NAME },
+      ]);
+
+      // Under the chip the connection is not said again: the chip says it.
+      w.store.open(w.palette.opening());
+      expect(contextOf(w, 'Gadgets')).toBe('Group');
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('narrows to the plugin alone when no lane names the connection: a chip that said the key would draw it', () => {
+      const w = onScreen(false);
+      expect(w.palette.opening().scope).toMatchObject([{ kind: 'plugin', label: 'Acme' }]);
+      expect(w.palette.opening().scope).toHaveLength(1);
+
+      w.store.open(w.palette.opening());
+      expect(keysIn(w)).toEqual([]);
+    });
+  });
+
+  describe('in Tabs', () => {
+    it('says the connection of a tab once, by its name: the crumb the host makes from the key (a detail page\'s path) is the name, and so is the scope', () => {
+      const w = build();
+      nameConnection(w, ROUTE, NAME, 'Widgets', ['Acme', ID, 'Widgets']);
+      w.open({ route: ROUTE });
+      w.store.open({ kind: 'tabs' });
+
+      expect(rowsOf(w, 'tabs').map((row) => row.context.text)).toEqual([`${NAME} · Current tab`]);
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('says no connection for a tab that no lane names, and never the key: its crumb of the key is left out', () => {
+      const w = build();
+      w.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Acme', ID, 'Widgets'] });
+      w.open({ route: ROUTE });
+      w.store.open({ kind: 'tabs' });
+
+      expect(rowsOf(w, 'tabs').map((row) => row.context.text)).toEqual(['Current tab']);
+      expect(keysIn(w)).toEqual([]);
+    });
+
+    it('tells each tab its own name: two tabs of one plugin in two connections', () => {
+      const w = build();
+      const other = routeAt('acme', 'gadgets', 'other-0123456789');
+      nameConnection(w, ROUTE, NAME);
+      nameConnection(w, other, 'other', 'Gadgets');
+      w.open({ route: ROUTE });
+      w.open({ route: other });
+      w.store.open({ kind: 'tabs' });
+
+      expect(rowsOf(w, 'tabs').map((row) => row.context.text)).toEqual([NAME, 'other · Current tab']);
+    });
+  });
+
+  describe('in Recent', () => {
+    it('says the place the user was on by the connection\'s name, described again by the plugin: the crumb and the scope the host made from the key are the name', () => {
+      const w = build();
+      const stop = w.palette.attach();
+      nameConnection(w, ROUTE, NAME, 'Widgets', ['Acme', ID, 'Widgets']);
+      w.open({ route: ROUTE });
+      w.open(at('beta', 'items'));
+      w.store.open(w.palette.opening());
+
+      expect(rowsOf(w, 'recent').map((row) => [row.title.text, row.context.text])).toEqual([['Widgets', `Acme · ${NAME}`]]);
+      expect(keysIn(w)).toEqual([]);
+      stop();
+    });
+
+    it('says no connection for a place no lane names, and never the key', () => {
+      const w = build();
+      const stop = w.palette.attach();
+      w.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Acme', ID, 'Widgets'] });
+      w.open({ route: ROUTE });
+      w.open(at('beta', 'items'));
+      w.store.open(w.palette.opening());
+
+      expect(rowsOf(w, 'recent').map((row) => [row.title.text, row.context.text])).toEqual([['Widgets', 'Acme']]);
+      expect(keysIn(w)).toEqual([]);
+      stop();
+    });
+
+    it('says the connection of a place that carries no key by its lane\'s name, as Go to and Tabs say it, and says none when no lane names one', () => {
+      const w = build();
+      const stop = w.palette.attach();
+      const plain = routeAt('acme', 'widgets');
+      const other = routeAt('acme', 'gadgets');
+      nameConnection(w, plain, NAME);
+      w.frames.publish(routeKey(other), { tab: { title: 'Gadgets', icon: 'box' }, path: ['Gadgets'] });
+      w.open({ route: plain });
+      w.open({ route: other });
+      w.open(at('beta', 'items'));
+      w.store.open(w.palette.opening());
+
+      expect(rowsOf(w, 'recent').map((row) => [row.title.text, row.context.text])).toEqual([
+        ['Gadgets', 'Acme'],
+        ['Widgets', `Acme · ${NAME}`],
+      ]);
+      stop();
+    });
+  });
+});
+
 describe('the tabs source', () => {
   /** Three tabs: a page of acme in a connection, a page of beta, and a deep page of beta in a connection, whose plugin says where it is. The last is on screen. */
   function strip() {
     const w = build();
+    nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north', 'Widgets', ['Acme', 'north', 'Widgets']);
     const north = w.open(at('acme', 'widgets', 'north'));
     const items = w.open(at('beta', 'items'));
-    w.frames.publish(routeKey({ plugin: 'beta', contribution: 'racks', params: { connection: 'north' } }), { tab: { title: 'Racks', icon: 'server' }, path: ['Beta', 'Inventory', 'Storage', 'Racks'] });
+    w.frames.publish(routeKey({ plugin: 'beta', contribution: 'racks', params: { connection: 'north' } }), { tab: { title: 'Racks', icon: 'server' }, path: ['Beta', 'Inventory', 'Storage', 'Racks'], scope: laneOf('north') });
     const racks = w.open(at('beta', 'racks', 'north'));
     return { w, north, items, racks };
   }
@@ -1113,6 +1382,7 @@ describe('running a command', () => {
 describe('what the palette opens with', () => {
   it('knows the route on screen, and narrows to its plugin and its scope when the plugin is ready', () => {
     const w = build();
+    nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
     w.open(at('acme', 'widgets', 'north'));
 
     expect(w.palette.opening()).toEqual({
@@ -1127,6 +1397,7 @@ describe('what the palette opens with', () => {
   it('names the plugin as the plugin does and draws it with the glyph of its rail entry, the host\'s own when it gave none', () => {
     const plain = ready('plain', 'Plain plugin', { plugin: { name: 'Plain' }, rail: true });
     const w = build({ entries: [plain] });
+    nameConnection(w, routeAt('plain', 'widgets', 'north'), 'north');
     w.open(at('plain', 'widgets', 'north'));
 
     expect(w.palette.opening().scope).toMatchObject([{ kind: 'plugin', label: 'Plain', icon: 'box' }, { kind: 'scope', id: 'north' }]);
@@ -1154,6 +1425,8 @@ describe('what the palette opens with', () => {
 
   it('opens the palette on the place, without it in Recent, and narrowed to the scope', () => {
     const w = build();
+    nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+    nameConnection(w, routeAt('acme', 'gadgets', 'north'), 'north', 'Gadgets');
     const stop = w.palette.attach();
     w.open(at('acme', 'widgets', 'north'));
     w.open(at('acme', 'gadgets', 'north'));
@@ -1611,6 +1884,7 @@ describe('the providers the plugins bring', () => {
       const west = bringing('west', 'West', { providers: { things: matching([widgetsRow('w1', 'west one')]) } });
       const w = build({ entries: [west, BETA] });
       const stop = w.palette.attach();
+      nameConnection(w, routeAt('west', 'widgets', 'north'), 'north');
       w.open(at('west', 'widgets', 'north'));
       w.store.open(w.palette.opening());
       expect(w.store.getSnapshot().chips.map((chip) => chip.plugin)).toEqual(['west', 'west']);
