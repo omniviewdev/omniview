@@ -72,7 +72,8 @@ type Store struct {
 }
 
 // Open opens (or creates) a bbolt database at path.
-// Both top-level buckets ("core" and "plugins") are pre-created.
+// The top-level buckets ("core", "plugins", "mcp" and "plugin-schemas") are
+// pre-created.
 // If the file is corrupt, it is renamed with a .corrupt.<unix-timestamp> suffix
 // and a fresh database is created in its place.
 func Open(path string, opts ...Option) (*Store, error) {
@@ -105,6 +106,9 @@ func Open(path string, opts ...Option) (*Store, error) {
 		}
 		if _, bucketErr := tx.CreateBucketIfNotExists(mcpBucket); bucketErr != nil {
 			return fmt.Errorf("create mcp bucket: %w", bucketErr)
+		}
+		if _, bucketErr := tx.CreateBucketIfNotExists([]byte(pluginSchemasBucketName)); bucketErr != nil {
+			return fmt.Errorf("create plugin schemas bucket: %w", bucketErr)
 		}
 		return nil
 	}); updateErr != nil {

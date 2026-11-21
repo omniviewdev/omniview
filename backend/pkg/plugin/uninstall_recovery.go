@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -270,9 +271,15 @@ func (pm *pluginManager) beginUninstallDisposal(recovery *uninstallRecovery) (er
 	return file.Sync()
 }
 
-func (pm *pluginManager) removeUninstallRecovery(recovery *uninstallRecovery) error {
+// removeUninstallRecovery disposes of the staged installation and removes the
+// recovery marker. finish runs in between: once disposal is irrevocable and
+// published, and before the marker, the only record of what the uninstall still
+// owes, is removed. An error from finish keeps the marker, so the uninstall is
+// retried, also after a restart, until finish succeeds. Without a recovery there
+// is no installation to dispose of, and finish runs directly.
+func (pm *pluginManager) removeUninstallRecovery(recovery *uninstallRecovery, finish func() error) error {
 	if recovery == nil {
-		return nil
+		return finish()
 	}
 	canonical, staged, err := pm.locateUninstallRecovery(recovery)
 	if err != nil {
@@ -309,6 +316,9 @@ func (pm *pluginManager) removeUninstallRecovery(recovery *uninstallRecovery) er
 	if identity != recovery.markerIdentity {
 		return errors.New("uninstall recovery marker was replaced")
 	}
+	if err = finish(); err != nil {
+		return err
+	}
 	if err = pm.stateRoot.Remove(uninstallRecoveryName(recovery.Plugin.ID)); err != nil {
 		return err
 	}
@@ -332,18 +342,27 @@ func (pm *pluginManager) guardUninstallRecovery(id string) error {
 	return nil
 }
 
+// restoreUninstallRecoveries is the pass over the pending uninstall markers that
+// runs when the host starts, before any plugin loads. A marker whose disposal had
+// begun is an uninstall that already passed its point of no return, with the
+// plugin's credentials still owed an erase: the pass finishes it without waiting
+// for the user, within a time budget for the whole pass. Every other marker, and
+// every one that could not be finished, becomes a failed plugin record that blocks
+// the ID (see restoreUninstallRecovery).
 func (pm *pluginManager) restoreUninstallRecoveries() (map[string]bool, error) {
 	entries, err := pm.stateRoot.ReadDir(".")
 	if err != nil {
 		return nil, err
 	}
 	blocked := make(map[string]bool)
+	deadline := time.Now().Add(pm.startupUninstallBudget())
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), uninstallRecoveryPrefix) || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		id := strings.TrimSuffix(strings.TrimPrefix(entry.Name(), uninstallRecoveryPrefix), ".json")
-		stage, err := pm.restoreUninstallRecovery(id)
+		var stage string
+		stage, err = pm.restoreUninstallRecovery(id, time.Now().Before(deadline))
 		if err != nil {
 			if quarantineErr := pm.quarantineBadRecoveryMarker(entry.Name(), id, err); quarantineErr != nil {
 				return nil, errors.Join(err, quarantineErr)
@@ -359,7 +378,7 @@ func (pm *pluginManager) restoreUninstallRecoveries() (map[string]bool, error) {
 	return blocked, nil
 }
 
-func (pm *pluginManager) restoreUninstallRecovery(id string) (string, error) {
+func (pm *pluginManager) restoreUninstallRecovery(id string, mayFinish bool) (string, error) {
 	lock := pm.pluginOpsLock(id)
 	lock.Lock()
 	defer lock.Unlock()
@@ -402,6 +421,20 @@ func (pm *pluginManager) restoreUninstallRecovery(id string) (string, error) {
 		return stage, nil
 	}
 
+	// Disposal began, so this uninstall is irrevocable and the plugin's credentials
+	// are owed an erase. Finish it now, without anyone pressing a button: a retry that
+	// needs the user would leave credentials on disk after a crash or a failed erase.
+	// A failure leaves the plugin failed, with the class of the cause as its last
+	// error, and is retried at the next start and by uninstalling the plugin again.
+	// Ownership that is not intact (err != nil above) is never acted on.
+	if mayFinish && err == nil && recovery.cleanupStarted {
+		finishErr := pm.finishPendingUninstall(recovery)
+		if finishErr == nil {
+			return stage, nil
+		}
+		detail = "pending uninstall; " + finishErr.Error()
+	}
+
 	state := recovery.Plugin
 	record := plugintypes.NewPluginRecord(id, state.Metadata, lifecycle.PhaseFailed)
 	record.Enabled, record.DevMode, record.DevPath = state.Enabled, state.DevMode, state.DevPath
@@ -412,4 +445,16 @@ func (pm *pluginManager) restoreUninstallRecovery(id string) (string, error) {
 	pm.records[id] = record
 	pm.recordsMu.Unlock()
 	return stage, nil
+}
+
+// defaultStartupUninstallBudget bounds the time a host start spends finishing
+// pending uninstalls, so that a store that does not answer cannot hold up the start:
+// when it is spent, the remaining markers are left for the next start.
+const defaultStartupUninstallBudget = 30 * time.Second
+
+func (pm *pluginManager) startupUninstallBudget() time.Duration {
+	if pm.startupEraseBudget != 0 {
+		return pm.startupEraseBudget
+	}
+	return defaultStartupUninstallBudget
 }

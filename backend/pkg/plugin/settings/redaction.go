@@ -9,14 +9,35 @@ import pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 func RedactSettingValues(values map[string]any, schema map[string]pkgsettings.Setting) map[string]any {
 	result := make(map[string]any, len(values))
 	for id, value := range values {
-		setting, known := schema[id]
-		if !known || setting.Sensitive || setting.Type == pkgsettings.Password {
+		if settingIsSecret(schema, id) {
 			result[id] = "[REDACTED]"
 		} else {
 			result[id] = value
 		}
 	}
 	return result
+}
+
+// settingIsSecret reports whether the value stored under id is credential-class:
+// its schema declares it Sensitive or a Password, or declares nothing for it.
+// Unknown or unavailable plugin schemas fail closed.
+func settingIsSecret(schema map[string]pkgsettings.Setting, id string) bool {
+	setting, known := schema[id]
+	return !known || setting.Sensitive || setting.Type == pkgsettings.Password
+}
+
+// ordinarySettingIDs lists the declared settings whose values are ordinary
+// preferences: neither Sensitive nor a Password. It is what the host remembers
+// of a plugin's schema once the plugin stops; every other stored value is
+// credential-class (see settingIsSecret).
+func ordinarySettingIDs(schema map[string]pkgsettings.Setting) []string {
+	ids := make([]string, 0, len(schema))
+	for id := range schema {
+		if !settingIsSecret(schema, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // RedactSettingsSchema keeps schema metadata while excluding every value-bearing

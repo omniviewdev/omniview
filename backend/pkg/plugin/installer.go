@@ -124,7 +124,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 
 	// Stop the watcher before unloading so it cannot reload the old source
 	// during the swap. Never trust StartDevServerForPath's existing-ID path.
-	if err = pm.unloadForReinstall(metadata.ID, UnloadReloaded); err != nil {
+	if err = pm.unloadForReinstall(metadata.ID, UnloadReloaded, true); err != nil {
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return info, err
 	}
@@ -238,7 +238,7 @@ func (pm *pluginManager) installOpsLock(id string) *sync.Mutex {
 
 // unloadForReinstall stops the plugin so its files can be replaced or removed, and tells the window why it is gone: `cause` is what the caller is about to do (UnloadUninstalled to remove
 // it, UnloadReloaded to put a new build in its place). A plugin the manager does not hold is not told of: no window holds an interface of it.
-func (pm *pluginManager) unloadForReinstall(pluginID string, cause UnloadCause) error {
+func (pm *pluginManager) unloadForReinstall(pluginID string, cause UnloadCause, tellWindow bool) error {
 	held := pm.holds(pluginID)
 	if pm.healthChecker != nil {
 		pm.healthChecker.CancelRecovery(pluginID)
@@ -253,7 +253,7 @@ func (pm *pluginManager) unloadForReinstall(pluginID string, cause UnloadCause) 
 		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusConflict,
 			"Failed to unload existing plugin").WithInstance(pluginID)
 	}
-	if held {
+	if held && tellWindow {
 		emitUnloaded(pm.emitter, pluginID, cause)
 	}
 	return nil
@@ -477,6 +477,10 @@ func (pm *pluginManager) installPluginArchive(
 }
 
 // UninstallPlugin uninstalls a plugin from the manager and removes it from the filesystem.
+// It also erases the credential-class state the plugin has outside its directory, as the last
+// step of the uninstall's recovery path (see finishUninstall). Until that has succeeded the
+// uninstall is incomplete: the plugin stays listed as failed, its ID cannot be installed
+// again, and uninstalling it again, also after a restart, retries the erase.
 //
 //nolint:nonamedreturns // Deferred telemetry records the returned error.
 func (pm *pluginManager) UninstallPlugin(id string) (info plugintypes.PluginInfo, err error) {
@@ -545,15 +549,25 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return record.ToInfo(), apperror.Internal(err, "Uninstall recovery path is occupied or changed").WithInstance(id)
 	}
 	info := record.ToInfo()
-	if err = pm.unloadForReinstall(id, UnloadUninstalled); err != nil {
+	// The window was told the plugin is gone when this uninstall first unloaded it,
+	// before disposal began. Retrying an uninstall that got that far is not a new
+	// stop, so it unloads without telling the window a second time.
+	tellWindow := recovery == nil || !recovery.cleanupStarted
+	if err = pm.unloadForReinstall(id, UnloadUninstalled, tellWindow); err != nil {
 		// The pre-unload ownership marker remains available for a safe retry.
 		return info, err
 	}
 	installSpanPhase(ctx, "unloaded")
 	restore := func(cause error, incomplete bool) (plugintypes.PluginInfo, error) {
+		// A failed erase comes after disposal finished: no partial artifact remains
+		// in staging, and the cause says what is owed.
+		var eraseOwed *uninstallCleanupError
+		erasePending := errors.As(cause, &eraseOwed)
 		if recovery != nil && staged && recovery.cleanupStarted {
 			incomplete = true
-			cause = errors.Join(cause, errors.New("disposal began; partial artifacts remain in owned staging"))
+			if !erasePending {
+				cause = errors.Join(cause, errors.New("disposal began; partial artifacts remain in owned staging"))
+			}
 		}
 		if recovery != nil && staged && !recovery.cleanupStarted {
 			_, stillStaged, ownershipErr := pm.locateUninstallRecovery(recovery)
@@ -575,7 +589,7 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		}
 		// Keep durable proof on every incomplete transaction, including when the
 		// main inventory write is unavailable. Never recapture a replacement inode.
-		if recovery != nil {
+		if recovery != nil && !erasePending {
 			cause = fmt.Errorf("pending uninstall recovery at %s: %w", pm.pluginsRoot.ResolvePath(recovery.Stage), cause)
 		}
 		log.Warnw(ctx, "plugin uninstall did not complete", "pluginID", id, "incomplete", incomplete,
@@ -608,7 +622,9 @@ func (pm *pluginManager) uninstallPlugin(ctx context.Context, id string) (plugin
 		return restore(err, false)
 	}
 	installSpanPhase(ctx, "persisted")
-	if err = pm.removeUninstallRecovery(recovery); err != nil {
+	// The erase of the credential state kept outside the installation runs inside
+	// this step, before the recovery marker goes: see finishUninstall.
+	if err = pm.removeUninstallRecovery(recovery, func() error { return pm.finishUninstall(ctx, id) }); err != nil {
 		return restore(err, true)
 	}
 	installSpanPhase(ctx, "recovery_removed")

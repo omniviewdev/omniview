@@ -489,6 +489,14 @@ func (pm *pluginManager) rollbackArchive(
 		if err = pm.pluginsRoot.RenameDirectoryNoReplace(recovery.ID, filepath.Join(recovery.Stage, "candidate")); err != nil {
 			return fail("stage_candidate", err)
 		}
+		var noPreviousInstallation appstate.FilesystemIdentity
+		if recovery.PreviousIdentity == noPreviousInstallation {
+			// A first installation that rolls back leaves no plugin: the directory the
+			// candidate had, and the state the host opened in it while the plugin
+			// started, are disposed of for good. A replacement keeps its state
+			// directories and the roots held on them, and releases nothing.
+			pm.releasePluginState(recovery.ID)
+		}
 	} else if err != nil && !os.IsNotExist(err) {
 		return fail("identify_canonical", err)
 	}

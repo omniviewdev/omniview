@@ -114,6 +114,13 @@ func (s *ScopedRoot) RemoveAll(name string) error {
 		return fmt.Errorf("appstate: refusing to remove root directory via RemoveAll(%q)", name)
 	}
 
+	// RemoveAll resolves a path instead of going through the root's handle. A root
+	// that was closed, as a released root is, must not reach whatever directory is
+	// now at that path: a reinstall of the plugin may have created a new one.
+	if _, statErr := s.root.Stat("."); errors.Is(statErr, os.ErrClosed) {
+		return statErr
+	}
+
 	target := filepath.Join(s.path, filepath.FromSlash(name))
 
 	// Resolve symlinks and verify the resolved path is still within the
