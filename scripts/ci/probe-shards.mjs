@@ -21,7 +21,7 @@
 // (the CI image, docs/ui-next/status/N24-B1.md). The wall time the table is held to is 9 minutes (WALL_BUDGET_SECONDS), so a shard may hold LIMIT_SECONDS = 540 - 108 = 432 s of units: the slowest job is then 9 minutes when its setup is as slow as the
 // 90th percentile and its probes take their medians. That is the number of the data, not an estimate with slack: the best split of the 3,387 s of work into 8 shards has a longest shard of 425 s (searched exhaustively; 7 shards cannot do better than 484 s,
 // 484 + 88 = 9 m 32 s, over; 9 shards cannot do better than 411 s, the panel probe's controls alone, 14 s less for one more job), so eight shards is the fewest that fit. The shards below, in seconds of units:
-//   shard 1  panel controls 411, detail 10                                                          = 421
+//   shard 1  panel controls 411, detail 16                                                          = 427
 //   shard 2  logs 321, plugin providers controls 98                                                 = 419
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
@@ -29,6 +29,7 @@
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  tooltip 145, list page 61, toast layer controls 156, table 62                          = 424
 //   shard 8  toast layer 220, logs controls 161, rail 16, fonts 35                                  = 432
+// (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
 // (C1f: the plugin providers probe and its controls are ESTIMATES of 148 and 98 s, from the runner's 142 and 91: the connection part and its control, until a run's summary has the runner's. Shard 5 would have been 438 s, so four units
 // moved, the fewest that fit under the limit: the palette's controls and the strip's controls to shard 5, the fonts probe to shard 8 and the plugin providers' controls to shard 2. The limit is not raised, and shard 8 is at it.)
 // What the margin does not cover is a run slower than the medians: a unit's maximum over the 8 runs is up to 12 % over its median for the longest (the panel probe's controls: 411 median, 462 maximum) and up to 36 % for the smallest (the strip's controls: 28, 38), and 5 of the 64 simulated shard jobs of those runs would have been
@@ -301,7 +302,7 @@ export const MEASURED_SECONDS = {
   'Probe the shell frame against the pinned mock reference': 46,
   'Probe the fonts and the layout shift': 35,
   'Probe the rail against the pinned mock reference': 16,
-  'Probe the detail page against the pinned mock reference': 10,
+  'Probe the detail page against the pinned mock reference': 16,
   'Probe the list page chrome and its layout shift against the pinned mock reference': 61,
   'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference': 197,
   'Probe the row menu on the 5,000-row example': 22,

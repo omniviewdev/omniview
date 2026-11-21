@@ -82,3 +82,21 @@ export function compareDeployment(read, expected) {
   check('Revision history', rows.get('Revision history'), expected.history);
   return problems;
 }
+
+// The Deployment the check makes, opens and deletes under its open page (K2c-2): its own, never the fixture's. It has no replicas, so it makes no Pod the other tests would count.
+export const goneDeployment = { namespace: 'checkout', name: 'gone-check' };
+
+// What the page of a Deployment deleted while it was open says (plugin #279; the design mock's two lines): the title `<name> was deleted` over `It no longer exists in namespace <namespace>.`, with the heading still the name.
+// `read` is `{ h1, title, hint }`: the header's title and the state body's title and message. The earlier plugin said `<name> was not found` over a body that said it was deleted.
+export function compareGone(read, { namespace, name }) {
+  const problems = [];
+  const check = (field, page, want) => {
+    if (page !== want) {
+      problems.push(`${field}: the page says ${JSON.stringify(page ?? null)}, the page of a deleted object says ${JSON.stringify(want)}`);
+    }
+  };
+  check('heading', read.h1, name);
+  check('title', read.title, `${name} was deleted`);
+  check('message', read.hint, `It no longer exists in namespace ${namespace}.`);
+  return problems;
+}

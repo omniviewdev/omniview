@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareDeployment, compareDetail, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail } from './detail.mjs';
+import { compareDeployment, compareDetail, compareGone, goneDeployment, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail } from './detail.mjs';
 
 const pod = (name, nodeName, ip, qosClass) => ({
   metadata: { name },
@@ -116,4 +116,28 @@ test('negative control: one changed character in the strategy is reported, and a
   assert.deepEqual(compareDeployment(read, expectedDeployment(cartApi)), ['Strategy: the page says "Rolling update · max surge 25%, max unavailable 26%", kubectl says "Rolling update · max surge 25%, max unavailable 25%"']);
   const bare = { metadata: { name: 'cart-api' }, spec: {} };
   assert.match(compareDeployment(deploymentReading(cartApi), expectedDeployment(bare)).join('\n'), /Revision: kubectl has no value/);
+});
+
+// A Deployment deleted while its page is open (K2c-2, plugin #279): the title says it was deleted and the message says where it no longer exists, and nothing on the page says "not found".
+test('the deleted Deployment is the check\'s own, in the namespace the fixture has, and its page says what the mock does', () => {
+  assert.deepEqual(goneDeployment, { namespace: 'checkout', name: 'gone-check' });
+  assert.notEqual(goneDeployment.name, DETAIL_DEPLOYMENT.name);
+});
+
+test('a page that titles the deleted Deployment "was deleted" over where it no longer exists agrees', () => {
+  assert.deepEqual(compareGone({ h1: 'gone-check', title: 'gone-check was deleted', hint: 'It no longer exists in namespace checkout.' }, goneDeployment), []);
+});
+
+test('negative control: the earlier plugin\'s page, "was not found" over a body that says it was deleted, is reported (the page contradicted itself)', () => {
+  const problems = compareGone({ h1: 'gone-check', title: 'gone-check was not found', hint: 'Deployment gone-check was deleted. It no longer exists in namespace checkout.' }, goneDeployment);
+  assert.equal(problems.length, 2, problems.join('; '));
+  assert.match(problems.join('\n'), /title: the page says "gone-check was not found", the page of a deleted object says "gone-check was deleted"/);
+  assert.match(problems.join('\n'), /message: /);
+});
+
+test('negative control: a page that has no state yet, another object\'s title, and a wrong namespace are each reported', () => {
+  assert.match(compareGone({ h1: 'gone-check', title: null, hint: null }, goneDeployment).join('\n'), /title: the page says null/);
+  assert.match(compareGone({ h1: 'gone-check', title: 'cart-api was deleted', hint: 'It no longer exists in namespace checkout.' }, goneDeployment).join('\n'), /title: /);
+  assert.match(compareGone({ h1: 'gone-check', title: 'gone-check was deleted', hint: 'It no longer exists in namespace monitoring.' }, goneDeployment).join('\n'), /message: /);
+  assert.match(compareGone({ h1: 'other', title: 'gone-check was deleted', hint: 'It no longer exists in namespace checkout.' }, goneDeployment).join('\n'), /heading: /);
 });

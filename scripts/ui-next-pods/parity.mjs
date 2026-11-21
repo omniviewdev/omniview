@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareCounts, countLines } from './counts.mjs';
-import { compareDeployment, compareDetail, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail } from './detail.mjs';
+import { compareDeployment, compareDetail, compareGone, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail, goneDeployment } from './detail.mjs';
 import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
@@ -287,6 +287,60 @@ export async function checkDeploymentDetail({ browser, baseURL, kubeconfig, depl
     compare: compareDeployment,
     what: `${deployment.namespace}/${deployment.name}`,
     timeoutMs,
+  });
+}
+
+// A Deployment deleted while its page is open (K2c-2): the check makes its own Deployment (no replicas, so no Pod), opens its page from the Deployments list, deletes it with kubectl and reads the state the page
+// shows: the title `<name> was deleted` over `It no longer exists in namespace <namespace>.` (compareGone). The earlier plugin said `<name> was not found` over a body that said it was deleted. The Deployment is
+// removed whatever happens, and nothing else is touched.
+export async function checkDeploymentGone({ browser, baseURL, kubeconfig, deployment = goneDeployment, timeoutMs = 30_000 }) {
+  const { namespace, name } = deployment;
+  const gone = ['delete', 'deployment', name, '-n', namespace, '--ignore-not-found', '--wait=false'];
+  await kubectl(kubeconfig, gone);
+  await kubectl(kubeconfig, ['create', 'deployment', name, '-n', namespace, '--image=busybox:1.37.0', '--replicas=0']);
+  let page;
+  try {
+    page = await openPods(browser, baseURL);
+    await page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem', { name: /^Deployments/ }).click({ timeout: timeoutMs });
+    const link = page.locator(`a[href="${deploymentHref(deployment)}"]`).first();
+    try {
+      await link.waitFor({ timeout: timeoutMs });
+    } catch {
+      throw new ParityError('GONE_MISMATCH', `${namespace}/${name}: the Deployments list does not link it to its page`, { problems: ['no link'] });
+    }
+
+    await link.click();
+    await page.locator('[data-detail-section=details]').waitFor({ timeout: timeoutMs });
+    await kubectl(kubeconfig, gone);
+    const deadline = Date.now() + timeoutMs;
+    let read;
+    let problems;
+    do {
+      await page.waitForTimeout(100);
+      read = await readGone(page);
+      problems = read.title === null ? ['the page does not say the Deployment is gone'] : compareGone(read, deployment);
+    } while (problems.length > 0 && Date.now() < deadline);
+    if (problems.length > 0) {
+      throw new ParityError('GONE_MISMATCH', `${namespace}/${name}: ${problems.join('; ')}`, { problems, read });
+    }
+    return { read };
+  } finally {
+    await page?.close();
+    await kubectl(kubeconfig, gone).catch(() => undefined);
+  }
+}
+
+// The state of a detail page that has no object: the visible page slot's header title and the title and message of its state body.
+async function readGone(page) {
+  return page.evaluate(() => {
+    const norm = (text) => (text ?? '').replace(/\s+/g, ' ').trim();
+    const slot = [...document.querySelectorAll('[data-page-slot]')].find((candidate) => candidate.getClientRects().length > 0) ?? document.querySelector('[data-shell-part=page]');
+    const state = slot?.querySelector('[role=status]:has(> b)') ?? null;
+    return {
+      h1: norm(slot?.querySelector('[data-detail-part=header] h1')?.textContent) || null,
+      title: state === null ? null : norm(state.querySelector(':scope > b')?.textContent),
+      hint: state === null ? null : norm(state.querySelector(':scope > span')?.textContent),
+    };
   });
 }
 
