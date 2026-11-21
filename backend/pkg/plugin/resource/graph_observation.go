@@ -12,7 +12,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const maxGraphObservationsPerOwner = 64
@@ -115,34 +114,62 @@ type graphObservation struct {
 	metadataCharge int
 }
 
+// graphRealm is the window realm as the registry uses it: the scope of a window, and the signal that a window is gone.
+// A fixed Scope is a ContextScope without windows to retire, so it serves no graph window.
+type graphRealm interface {
+	invocation.ContextScope
+	AdmitWindow(application.Window) (*invocation.Scope, error)
+	OnRetire(func(invocation.WindowIdentity))
+}
+
+// maxGraphFrontendWindows bounds the windows the registry holds. Every one has a scope of the realm, which serves 64, so the realm refuses first.
+const maxGraphFrontendWindows = 64
+
+// retireWindow is the realm's signal that a window is gone: its observations end and its slot is free.
+// A server-mode page never fires its window's close event, so the registry does not listen to it.
+func (s *GraphService) retireWindow(key invocation.WindowIdentity) {
+	s.mu.Lock()
+	session := s.windows[key]
+	delete(s.windows, key)
+	s.mu.Unlock()
+	if session != nil {
+		session.cancel()
+	}
+}
+
 func (s *GraphService) graphWindow(ctx context.Context) (context.Context, *graphWindow, application.Window, error) {
 	window, ok := ctx.Value(application.WindowKey).(application.Window)
 	if !ok || window == nil || s.realm == nil {
+		return ctx, nil, nil, resourcev2.NewError("FORBIDDEN", "Graph observations require an authenticated frontend window.")
+	}
+	realm, windowed := s.realm.(graphRealm)
+	if !windowed {
 		return ctx, nil, nil, resourcev2.NewError("FORBIDDEN", "Graph observations require an authenticated frontend window.")
 	}
 	ctx = s.realm.Context(ctx)
 	identity := invocation.IdentityOf(window)
 	s.mu.Lock()
 	if s.windows == nil {
+		// The first window: subscribe, under the lock a window is made under, so a retirement cannot fall between a scope and its session.
 		s.windows = make(map[invocation.WindowIdentity]*graphWindow)
+		realm.OnRetire(s.retireWindow)
 	}
 	session := s.windows[identity]
 	if session == nil {
-		if len(s.windows) >= 64 {
+		if _, err := realm.AdmitWindow(window); err != nil {
+			s.mu.Unlock()
+			if errors.Is(err, invocation.ErrWindowLimit) {
+				return ctx, nil, nil, err
+			}
+			return ctx, nil, nil, resourcev2.NewError("FORBIDDEN", "Graph observations require an authenticated frontend window.")
+		}
+		if len(s.windows) >= maxGraphFrontendWindows {
 			s.mu.Unlock()
 			return ctx, nil, nil, resourcev2.NewError("RESOURCE_LIMIT", "Graph frontend session limit reached.")
 		}
 		life, cancel := context.WithCancel(context.WithoutCancel(ctx))
 		session = &graphWindow{ctx: life, cancel: cancel}
 		s.windows[identity] = session
-		window.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
-			cancel()
-			s.mu.Lock()
-			if s.windows[identity] == session {
-				delete(s.windows, identity)
-			}
-			s.mu.Unlock()
-		})
 	}
 	s.mu.Unlock()
 	if err := session.ctx.Err(); err != nil {
