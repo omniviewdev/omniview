@@ -1,0 +1,15 @@
+# The scenario label of the seam workflow, before and after (the step's awk over ui-next/plugins/e2e/seam.check.mjs, for a failure inside each function).
+# function (line): old program -> new program; the marker of the doc comment above it is the id the annotation must say.
+checkRail        (line  532): old g   -> new g
+checkPanel       (line  613): old h   -> new h
+checkPanelLate   (line  679): old h   -> new h2
+checkLogs        (line  731): old j   -> new j
+checkPalette     (line  827): old j   -> new j
+checkTwins       (line  992): old j   -> new j2
+checkConnection  (line 1028): old j   -> new j3
+checkProviders   (line 1121): old l   -> new l
+checkKept        (line 1283): old k   -> new k
+checkIdentity    (line 1499): old m   -> new m
+checkSession     (line 2347): old i   -> new i
+checkToasts      (line 2498): old i   -> new o
+checkCentre      (line 2623): old i   -> new q

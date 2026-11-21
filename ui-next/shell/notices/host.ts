@@ -1,5 +1,6 @@
 import type { NoticesStore } from '../core/notices';
 import { createAnnouncer, type Announcer } from '../palette/host';
+import type { Centre } from './centreControl';
 
 // What the shell asks of its host to draw the toast layer (the notices model is ../core/notices; this draws it). The model is the host's: it makes the store with the seam it needs (the tab model's open,
 // the commands, what a route can do, the live region below) and hands the shell this. The shell knows no plugin and no producer: it draws the stack's snapshot and calls the store's operations. Plain data
@@ -33,8 +34,9 @@ export type NoticesBindings = {
   readonly store: NoticesStore;
   readonly announcer: NoticesAnnouncer;
   /**
-   * The window has a notification centre, so the summary toast's Show (S79) has somewhere to go. Absent or false: the summary says how many more there are and has no button, because a button that
-   * does nothing is a stub. The host passes the store's seam `openCenter` along with it.
+   * The window's notification centre (`centre.ts`): the bell in the status bar and the popover of history it opens, and the summary toast's Show (S79), which asks the store, and so the host's `openCenter`, which is
+   * this. The host makes it with the store (`createCentre`) and hands the same one to both. Absent: the window has no bell and no centre, and the summary says how many more there are and has no button, because a
+   * button that does nothing is a stub.
    */
-  readonly centre?: boolean | undefined;
+  readonly centre?: Centre | undefined;
 };

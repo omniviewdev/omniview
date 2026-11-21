@@ -1,0 +1,19 @@
+# Red run: the day headings, before the fix (TZ=UTC, vitest run ui-next/shell/notices/Centre.test.tsx).
+# 12 roll-over tests fail (2 tests x 6 zones); the 6 zone-matrix list tests pass in every zone, UTC and Paris included, with the times built from local fields.
+      Tests  12 failed | 41 passed (53)
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > puts the first notice of a new day under Today in America/Chicago, whatever day the centre was opened on
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > puts the first notice of a new day under Today in Asia/Kolkata, whatever day the centre was opened on
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > puts the first notice of a new day under Today in Europe/Paris, whatever day the centre was opened on
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > puts the first notice of a new day under Today in Pacific/Kiritimati, whatever day the centre was opened on
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > puts the first notice of a new day under Today in Pacific/Pago_Pago, whatever day the centre was opened on
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > puts the first notice of a new day under Today in UTC, whatever day the centre was opened on
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > turns Today into Yesterday at midnight, and puts what arrives after it under Today, in America/Chicago
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > turns Today into Yesterday at midnight, and puts what arrives after it under Today, in Asia/Kolkata
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > turns Today into Yesterday at midnight, and puts what arrives after it under Today, in Europe/Paris
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > turns Today into Yesterday at midnight, and puts what arrives after it under Today, in Pacific/Kiritimati
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > turns Today into Yesterday at midnight, and puts what arrives after it under Today, in Pacific/Pago_Pago
+ FAIL  ui-next/shell/notices/Centre.test.tsx > a day that ends while the centre is open > turns Today into Yesterday at midnight, and puts what arrives after it under Today, in UTC
+ Test Files  1 failed (1)
+AssertionError: expected [ '# Recent', '# M11 15, Sun', …(3) ] to deeply equal [ '# Recent', '# Today', …(3) ]
+AssertionError: expected [ '# Recent', '# Today', 'Late', …(2) ] to deeply equal [ '# Recent', '# Yesterday', …(3) ]
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯

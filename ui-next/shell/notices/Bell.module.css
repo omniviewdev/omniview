@@ -1,0 +1,70 @@
+/* The bell of the status bar (ch16 S81, S90, S91; the mock's `button.statusitem` with the bell's glyph and `.statusitem__dot`, shell-widgets.css): a 24 px target, 4 px above and below and 8 px beside a 16 px glyph, radius 4,
+   muted until it is hovered, open or pressed; the dot is 6 px, on the glyph's top right corner, ringed in the window's own colour so that it reads on any fill. Host composition, so every rule sits in ov.shell.
+   No geometry transition and no motion. The dot's size and its place are the shell's own metrics, as the toggle's 24 px: they are track sizes, not spacing. */
+@layer ov.shell {
+  .bell {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 24px;
+    min-block-size: 24px;
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg-muted);
+    font: inherit;
+    cursor: default;
+  }
+
+  .bell:hover {
+    background-color: var(--ov-hover-toolbar);
+    color: var(--ov-fg);
+  }
+
+  .bell:active,
+  .bell[aria-expanded='true'] {
+    background-color: var(--ov-pressed);
+    color: var(--ov-fg);
+  }
+
+  .bell:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .glyph {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 16px;
+    inline-size: 16px;
+    block-size: 16px;
+  }
+
+  .glyph > svg {
+    color: var(--ov-icon);
+  }
+
+  .dot {
+    position: absolute;
+    inset-block-start: -2px;
+    inset-inline-end: -2px;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    background-color: var(--ov-accent);
+    box-shadow: 0 0 0 1px var(--ov-bg-window);
+  }
+
+  .dot[data-tone='error'] {
+    background-color: var(--ov-error-fg);
+  }
+
+  .dot[data-tone='warning'] {
+    background-color: var(--ov-warning-fg);
+  }
+}

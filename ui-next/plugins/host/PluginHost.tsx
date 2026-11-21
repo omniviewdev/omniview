@@ -16,6 +16,7 @@ import {
   platformOf,
   Shell,
   type Contributions,
+  type LoadedNotices,
   type LoadedSession,
   type LogStreams,
   type ModifierEvent,
@@ -86,6 +87,8 @@ export type PluginHostProps = {
    * the window is hidden. Absent: the empty window, which restores nothing and saves nothing. The window opens no page by itself in either case (decision A17); a session is what puts one there.
    */
   readonly session?: LoadedSession | undefined;
+  /** The window's saved notification history, read before the window draws (`loadNotices`): it comes back as the centre's history and is saved from then on. Absent: the history starts empty and is not saved. */
+  readonly savedNotices?: LoadedNotices | undefined;
 };
 
 type Host = {
@@ -121,7 +124,7 @@ type Host = {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -133,7 +136,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
   const routes = new Published<Route>();
   const panelHosts = panelHostsOf(logs);
-  const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator) });
+  const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
   return {
     frames,
     names,
@@ -522,9 +525,9 @@ function logsBodyOf(streams: LogStreams, session: PanelSession, visible: boolean
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session, savedNotices }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;

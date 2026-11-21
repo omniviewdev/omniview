@@ -1,0 +1,40 @@
+  2  |  import { clockOf, emptyOf, mutedNote, olderLabel, plural, said, undoLabel } from "./centreWords";
+     |                                                                                    ^
+  3  |  describe("plural", () => {
+  4  |    it("counts with the noun in its right number", () => {
+ ❯ TransformPluginContext._formatLog node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:29250:43
+ ❯ TransformPluginContext.error node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:29247:14
+ ❯ normalizeUrl node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:27370:18
+ ❯ node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:27428:32
+ ❯ TransformPluginContext.transform node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:27396:4
+ ❯ EnvironmentPluginContainer.transform node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:29048:14
+ ❯ loadAndTransform node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:22914:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  ui-next/shell/notices/storage.test.ts [ ui-next/shell/notices/storage.test.ts ]
+Error: Failed to resolve import "./storage" from "ui-next/shell/notices/storage.test.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-o1b2-notice-centre/ui-next/shell/notices/storage.test.ts:4:98
+  1  |  import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+  2  |  import { makeNotices } from "../core/notices/testing";
+  3  |  import { loadNotices, NOTICES_SLOT, noticesStorage, QUARANTINE_PREFIX } from "./storage";
+     |                                                                                ^
+  4  |  const NOW = 17e11;
+  5  |  function fakeStorage(saved) {
+ ❯ TransformPluginContext._formatLog node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:29250:43
+ ❯ TransformPluginContext.error node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:29247:14
+ ❯ normalizeUrl node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:27370:18
+ ❯ node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:27428:32
+ ❯ TransformPluginContext.transform node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:27396:4
+ ❯ EnvironmentPluginContainer.transform node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:29048:14
+ ❯ loadAndTransform node_modules/.pnpm/vite@7.3.7_patch_hash=55ffb6ad9b36f4688de4e8af70aefe91c183768ceb21076b7886a0e597cf599b__351cf6cd2784f8aa173c01bef8b0c8b5/node_modules/vite/dist/node/chunks/config.js:22914:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  4 failed (4)
+      Tests  no tests
+   Start at  06:51:02
+   Duration  1.85s (environment 59%, transform 25%, setup 16%)
+

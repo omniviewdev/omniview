@@ -179,7 +179,7 @@ function SummaryToast({ item, first }: { readonly item: ToastItem; readonly firs
       }}
     >
       <Head severity={summary.severity} title={title} quiet={quiet} />
-      {centre === true ? (
+      {centre !== undefined ? (
         <div className={styles.actions} data-notices-part="actions">
           <Button
             onClick={() => {

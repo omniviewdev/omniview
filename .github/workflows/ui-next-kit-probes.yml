@@ -79,7 +79,7 @@ jobs:
       fail-fast: false
       matrix:
         # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
       - name: Match checkout directory ownership to container user

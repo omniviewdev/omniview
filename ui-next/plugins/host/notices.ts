@@ -1,5 +1,5 @@
 import { parseAppError } from '@omniviewdev/runtime/ui/v1';
-import { createNoticesAnnouncer, createNoticesStore, type Contributions, type NoticesBindings, type NoticesStore, type Route, type TabsStore } from '../../shell';
+import { createCentre, createNoticesAnnouncer, createNoticesStore, type Contributions, type LoadedNotices, type NoticesBindings, type NoticesStore, type Route, type TabsStore } from '../../shell';
 import { routeKey, type PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
 
@@ -26,6 +26,8 @@ export type HostNoticesDeps = {
   /** What the tab model asks the host: whether a route can open. */
   readonly contributions: Contributions;
   readonly platform: 'mac' | 'other';
+  /** The history the window saved (`loadNotices`): it is where the model starts, and it is saved from the moment the window is on screen. Absent: no history comes back and none is saved. */
+  readonly saved?: LoadedNotices | undefined;
 };
 
 /** What the shell is given (`NoticesBindings`), and what the host starts once the window is on screen. */
@@ -59,9 +61,13 @@ function nameOf(entries: readonly PluginEntry[], id: string): string | undefined
 }
 
 export function createHostNotices(deps: HostNoticesDeps): HostNotices {
-  const { tabs, plugins, contributions, platform } = deps;
+  const { tabs, plugins, contributions, platform, saved } = deps;
   const announcer = createNoticesAnnouncer();
+  // The notification centre: the bell and the summary toast's Show share it (the store's `openCenter` is its `open`).
+  const centre = createCentre();
   const store = createNoticesStore({
+    initial: saved?.initial,
+    openCenter: centre.open,
     open: (destination, options) => tabs.open(destination, options),
     availability: contributions.availability,
     current: (route) => {
@@ -88,8 +94,16 @@ export function createHostNotices(deps: HostNoticesDeps): HostNotices {
     };
 
     syncModal();
+    // A modal owns the window (S89a; the browser's own modal would close a popover): the centre closes when the palette opens.
+    const stopModal = modal.subscribe(() => {
+      if (modal.open()) {
+        centre.close();
+      }
+    });
+    const stopSaving = saved?.attach(store);
     const stops = [
       modal.subscribe(syncModal),
+      stopModal,
       // A plugin that is not ready any more (reloaded, failed, gone) has left: the code of its notices is gone with it, and every notice asks again what its actions can do.
       plugins.subscribe(() => {
         const now = ready();
@@ -116,6 +130,9 @@ export function createHostNotices(deps: HostNoticesDeps): HostNotices {
         stop();
       }
 
+      // The history is written once more before the window goes, and the saver is let go of.
+      stopSaving?.();
+
       if (held) {
         held = false;
         store.hold('modal', false);
@@ -123,5 +140,5 @@ export function createHostNotices(deps: HostNoticesDeps): HostNotices {
     };
   };
 
-  return { store, announcer, attach };
+  return { store, announcer, centre, attach };
 }

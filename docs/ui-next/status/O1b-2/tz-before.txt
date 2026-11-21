@@ -1,0 +1,41 @@
+# Before the fix (HEAD 1bee9f2f): the whole root suite (vitest run, 5,150 tests) and the kit's own suite (2,340 tests) under six time zones. CI runs in UTC.
+== TZ=UTC exit 1 in 25 s | load 36.53 18.10 15.22
+      Tests  1 failed | 5146 passed | 3 skipped (5150)
+ FAIL  ui-next/shell/notices/Centre.test.tsx > the list > lists the history newest first, under Recent and a heading for each day
+ Test Files  1 failed | 318 passed | 1 skipped (320)
+== TZ=Pacific/Kiritimati exit 0 in 26 s | load 44.78 21.74 16.63
+      Tests  5147 passed | 3 skipped (5150)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Pacific/Pago_Pago exit 0 in 25 s | load 48.43 24.67 17.85
+      Tests  5147 passed | 3 skipped (5150)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Asia/Kolkata exit 0 in 25 s | load 51.42 27.15 18.93
+      Tests  5147 passed | 3 skipped (5150)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Europe/Paris exit 1 in 25 s | load 57.48 30.65 20.44
+      Tests  1 failed | 5146 passed | 3 skipped (5150)
+ FAIL  ui-next/shell/notices/Centre.test.tsx > the list > lists the history newest first, under Recent and a heading for each day
+ Test Files  1 failed | 318 passed | 1 skipped (320)
+== TZ=America/Chicago exit 0 in 26 s | load 62.95 34.00 21.93
+      Tests  5147 passed | 3 skipped (5150)
+ Test Files  319 passed | 1 skipped (320)
+== all zones done
+== kit TZ=UTC exit 0 in 9 s
+      Tests  2340 passed (2340)
+ Test Files  90 passed (90)
+== kit TZ=Pacific/Kiritimati exit 0 in 8 s
+      Tests  2340 passed (2340)
+ Test Files  90 passed (90)
+== kit TZ=Pacific/Pago_Pago exit 0 in 8 s
+      Tests  2340 passed (2340)
+ Test Files  90 passed (90)
+== kit TZ=Asia/Kolkata exit 0 in 9 s
+      Tests  2340 passed (2340)
+ Test Files  90 passed (90)
+== kit TZ=Europe/Paris exit 0 in 8 s
+      Tests  2340 passed (2340)
+ Test Files  90 passed (90)
+== kit TZ=America/Chicago exit 0 in 5 s
+      Tests  2340 passed (2340)
+ Test Files  90 passed (90)
+== kit zones done

@@ -28,9 +28,14 @@ const LOG_TOOLBAR_GLYPHS = ['eraser', 'pause'];
 // FM2a: the form parts add the number field's decrease step (Int UI), and the secret field's show and hide of the TYPED text (Int UI and Lucide).
 const FORM_GLYPHS = ['eye', 'eye-off', 'minus'];
 
+// O1b-2: the notification centre adds the mock's bell and bell-off (the status bar item), check-check (mark all read), trash (clear), undo and
+// list-filter (the bar). Bell, trash and undo are Int UI in the mock (16 artboard); bell-off, check-check and list-filter are Lucide (24 artboard).
+const CENTRE_LUCIDE_GLYPHS = ['bell-off', 'check-check', 'list-filter'];
+const CENTRE_INT_UI_GLYPHS = ['bell', 'trash', 'undo'];
+
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
-    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS].sort());
+    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS].sort());
   });
 
   it('is plain data: nothing in it is a function, a markup string or an element', () => {
@@ -91,15 +96,15 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs and for the key, whose pin is a filled dot', () => {
-    const twoTone = ['key-round', 'status-error', 'status-info', 'status-success', 'status-warning'];
+  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs, for the key (a filled dot) and for the bell (a clapper at its own stroke width)', () => {
+    const twoTone = ['bell', 'key-round', 'status-error', 'status-info', 'status-success', 'status-warning'];
     for (const name of names) {
       const elements = 1 + GLYPHS[name].layers.length;
       expect(elements, name).toBe(twoTone.includes(name) ? 3 : 2);
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 16,300: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three)', () => {
+  it('stays within its byte budget (one glyph 800 bytes, the registry 18,100: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three, then 1,774 bytes for the six notification centre glyphs; the real total is 18,055 with 76 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -107,7 +112,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(16300);
+    expect(total).toBeLessThanOrEqual(18100);
   });
 
   it('draws the per-kind glyphs as the Lucide family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke', () => {
@@ -125,6 +130,39 @@ describe('the glyph registry', () => {
       // Only a paint of its own is a second layer: the key's pin is a dot that is filled as well as stroked.
       expect(glyph.layers.filter((layer) => layer.fill !== undefined).length, name).toBe(name === 'key-round' ? 1 : 0);
     }
+  });
+
+  it('draws the notification centre glyphs from Lucide as the family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke, no relative moveto', () => {
+    for (const name of CENTRE_LUCIDE_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(24);
+      expect(glyph.layers.length, name).toBe(1);
+      for (const layer of glyph.layers) {
+        expect(layer.stroke, name).toBe('ink');
+        expect(layer.fill, name).toBeUndefined();
+        expect(layer.width, name).toBe(2);
+        expect(layer.cap, name).toBe('round');
+        expect(layer.join, name).toBe('round');
+        expect(layer.d, name).not.toMatch(/m/);
+      }
+    }
+  });
+
+  it('draws the notification centre glyphs from Int UI on its 16 artboard in ink only: the bell and undo as strokes, the bin as an even-odd fill', () => {
+    for (const name of CENTRE_INT_UI_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(16);
+      for (const layer of glyph.layers) {
+        expect(layer.stroke ?? layer.fill, name).toBe('ink');
+        expect(layer.d, name).not.toMatch(/m/);
+      }
+    }
+
+    expect(GLYPHS.trash.layers[0].fill).toBe('ink');
+    expect(GLYPHS.trash.layers[0].evenodd).toBe(true);
+    expect(GLYPHS.undo.layers[0].stroke).toBe('ink');
+    expect(GLYPHS.undo.layers[0].cap).toBe('round');
+    expect(GLYPHS.bell.layers.every((layer) => layer.stroke === 'ink' && layer.fill === undefined)).toBe(true);
   });
 
   it('merges shapes into one path without a relative moveto: a lower-case m after the start would begin at the end of the previous shape, not at the artboard origin', () => {

@@ -399,3 +399,79 @@ test('NEGATIVE: e2e-tests fails when the classifier did not succeed and the suit
     }
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The seam workflow names the scenario that failed (.github/workflows/ui-next-seam.yml, the step "The seam")
+//
+// A failed run of the seam is annotated with the id of the last marker (`// <id>.` or ` * <id>.` in a doc comment) above the line of the failing scenario function, and the function. The step's own awk program is run here, over
+// the check and over a small file: until O1b-2 it knew the letters a to n, so scenario o (`checkToasts`) was reported as the last marker before it, `i`, and a scenario with a digit (h2) could not be named at all.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const SEAM_WORKFLOW = parse(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'));
+const SEAM_CHECK = path.join(repo, 'ui-next/plugins/e2e/seam.check.mjs');
+const SEAM_STEP = Object.values(SEAM_WORKFLOW.jobs).flatMap((job) => job.steps ?? []).find((step) => typeof step.name === 'string' && step.name.startsWith('The seam ('));
+/** The program of the step, as it is written in it. */
+const LABEL_PROGRAM = /letter="\$\(awk -v n="\$line" '([^']+)' "\$check"\)"/.exec(SEAM_STEP?.run ?? '')?.[1];
+/** The program the step had before O1b-2: the letters a to n, one character. */
+const LETTERS_A_TO_N = String.raw`NR > n { exit } match($0, /^[ ]*(\/\/|\*|\/\*\*) [a-n]\. [A-Za-z]/) { s = $0; sub(/^[ ]*(\/\/|\*|\/\*\*) /, "", s); l = substr(s, 1, 1) } END { print l }`;
+
+/** What a program names for a failure at `line` of `file`. */
+function labelAt(program, file, line) {
+  const ran = spawnSync('awk', ['-v', `n=${String(line)}`, program, file], { encoding: 'utf8' });
+  assert.equal(ran.status, 0, ran.stderr);
+  return ran.stdout.trim();
+}
+
+/** A small check of the shape the real one has: doc comments with a marker, scenario functions after them, and one line of work in each (`await <id>;`). */
+function sampleCheck() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'seam-label-'));
+  roots.push(dir);
+  const file = path.join(dir, 'seam.check.mjs');
+  const scenarios = ['a', 'n', 'o', 'h2', 'q', 'z'];
+  const lines = ['// the header of the check', ''];
+  for (const id of scenarios) {
+    lines.push('/**', ` * ${id}. the scenario ${id}, in a page of its own.`, ' */', `async function check${id.toUpperCase()}(page) {`, `  await ${id};`, '}', '');
+  }
+
+  writeFileSync(file, `${lines.join('\n')}\n`);
+  return { file, at: (id) => lines.indexOf(`  await ${id};`) + 1 };
+}
+
+test('the seam workflow has a step that names the scenario, with the program that reads the check', () => {
+  assert.ok(SEAM_STEP, 'the step "The seam (<engine>)" is in a job of ui-next-seam.yml');
+  assert.ok(LABEL_PROGRAM, 'the step has `letter="$(awk -v n="$line" \'<program>\' "$check")"`');
+});
+
+test('a scenario is named by the id of its own marker: a letter past n, and a letter with a digit', () => {
+  const sample = sampleCheck();
+  for (const id of ['a', 'n', 'o', 'h2', 'q', 'z']) assert.equal(labelAt(LABEL_PROGRAM, sample.file, sample.at(id)), id, `a failure inside scenario ${id}`);
+});
+
+test('NEGATIVE: the program the step had named scenario o as the marker before it, and h2 as nothing of its own: the case this test is for', () => {
+  const sample = sampleCheck();
+  assert.equal(labelAt(LETTERS_A_TO_N, sample.file, sample.at('o')), 'n', 'the old program stops at n: o was reported as n (as `checkToasts` was reported as i)');
+  assert.equal(labelAt(LETTERS_A_TO_N, sample.file, sample.at('h2')), 'n', 'and a marker with a digit was not a marker at all');
+  assert.notEqual(labelAt(LETTERS_A_TO_N, sample.file, sample.at('o')), labelAt(LABEL_PROGRAM, sample.file, sample.at('o')));
+});
+
+test('every scenario function of the seam check is named by the marker of its own doc comment, whatever the letter', () => {
+  const lines = readFileSync(SEAM_CHECK, 'utf8').split('\n');
+  const found = [];
+  const wrong = [];
+  for (const [index, text] of lines.entries()) {
+    if (!/^async function check[A-Z]\w*\(/.test(text) || lines[index - 1]?.trim() !== '*/') continue;
+    // The doc block above the function, and the first marker in it.
+    let start = index - 1;
+    while (start > 0 && /^\s*(\/\*\*|\*)/.test(lines[start - 1] ?? '')) start -= 1;
+    const marker = lines.slice(start, index).map((line) => /^\s*\*\s+([a-z][0-9]*)\.\s+[A-Za-z]/.exec(line)?.[1]).find((id) => id !== undefined);
+    if (marker === undefined) continue;
+    found.push(marker);
+    const named = labelAt(LABEL_PROGRAM, SEAM_CHECK, index + 2);
+    if (named !== marker) wrong.push(`${text.slice(0, 40)} (line ${String(index + 1)}): the doc comment says ${marker}, the step says ${named}`);
+  }
+
+  assert.deepEqual(wrong, []);
+  assert.ok(found.length >= 10, `the scenario functions with a marker: ${found.join(', ')}`);
+  assert.ok(found.some((id) => id > 'n' && id.length === 1), `a scenario past n is in the check: ${found.join(', ')}`);
+  assert.ok(found.some((id) => /\d/.test(id)), `a scenario with a digit is in the check: ${found.join(', ')}`);
+});

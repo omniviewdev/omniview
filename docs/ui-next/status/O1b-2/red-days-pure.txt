@@ -1,0 +1,7 @@
+# Red run: the pure day tests, before startOfDay, startOfNextDay, dayAge and the day item exist (vitest run ui-next/shell/notices/centreList.test.ts).
+      3 TypeError: startOfNextDay is not a function
+      2 TypeError: startOfDay is not a function
+      1 ⎯⎯⎯⎯⎯⎯ Failed Tests 61 ⎯⎯⎯⎯⎯⎯⎯
+      1 TypeError: dayAge is not a function
+      1  Test Files  1 failed (1)
+      1       Tests  61 failed | 71 passed (132)

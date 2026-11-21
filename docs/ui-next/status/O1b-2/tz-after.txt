@@ -1,0 +1,37 @@
+# After the fix: the whole root suite (vitest run, 5,282 tests) under six time zones, then the notices, model and host suites (ui-next/shell/notices, ui-next/shell/core/notices, ui-next/plugins/host: 1,525 tests) under sixteen more.
+== TZ=UTC exit 0 in 29 s | load 54.75 25.98 21.99
+      Tests  5279 passed | 3 skipped (5282)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Pacific/Kiritimati exit 0 in 32 s | load 53.72 29.23 23.36
+      Tests  5279 passed | 3 skipped (5282)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Pacific/Pago_Pago exit 0 in 34 s | load 99.00 42.76 28.48
+      Tests  5279 passed | 3 skipped (5282)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Asia/Kolkata exit 0 in 32 s | load 106.41 51.12 32.11
+      Tests  5279 passed | 3 skipped (5282)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=Europe/Paris exit 0 in 33 s | load 100.33 55.47 34.45
+      Tests  5279 passed | 3 skipped (5282)
+ Test Files  319 passed | 1 skipped (320)
+== TZ=America/Chicago exit 0 in 31 s | load 105.86 60.96 37.15
+      Tests  5279 passed | 3 skipped (5282)
+ Test Files  319 passed | 1 skipped (320)
+== all zones done
+=== the notices, model and host suites alone, sixteen more zones ===
+TZ=Africa/Lagos: Tests 1525 passed (1525)
+TZ=Asia/Tehran: Tests 1525 passed (1525)
+TZ=Asia/Kathmandu: Tests 1525 passed (1525)
+TZ=America/St_Johns: Tests 1525 passed (1525)
+TZ=Pacific/Marquesas: Tests 1525 passed (1525)
+TZ=Pacific/Chatham: Tests 1525 passed (1525)
+TZ=Australia/Lord_Howe: Tests 1525 passed (1525)
+TZ=America/Havana: Tests 1525 passed (1525)
+TZ=Asia/Beirut: Tests 1525 passed (1525)
+TZ=Africa/Cairo: Tests 1525 passed (1525)
+TZ=America/Sao_Paulo: Tests 1525 passed (1525)
+TZ=America/Los_Angeles: Tests 1525 passed (1525)
+TZ=Europe/London: Tests 1525 passed (1525)
+TZ=Pacific/Auckland: Tests 1525 passed (1525)
+TZ=Etc/GMT+12: Tests 1525 passed (1525)
+TZ=Etc/GMT-14: Tests 1525 passed (1525)

@@ -26,14 +26,15 @@
 // that grew are the runner's seconds of the pull request's first run (a single run, not a median of 8, which is what the other units have): the logs probe 395 s, and the logs controls 381 s (171 s for the eleven before, which the table
 // had at 161, and 210 s for the eight of this step, 26 s each: each runs the toolbar section's cell); the plugin providers' controls, which moved to shard 8, 107 s against C1f's estimate of 98. The shards below, in seconds of units:
 //   shard 1  panel controls 411, detail 16                                                          = 427
-//   shard 2  logs 395, tour 37                                                                      = 432
+//   shard 2  logs 395                                                                               = 395
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
 //   shard 5  strip 192, list page 76, plugin providers 151                                           = 419
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
-//   shard 7  tooltip 145, palette controls 63, toast layer controls 156, table 62                   = 426
-//   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105, form 35 + its controls 20 = 431
-//   shard 9  logs controls 381, strip controls 28, tour controls 23                                 = 432
+//   shard 7  palette controls 63, toast layer controls 301, table 62                                = 426
+//   shard 8  toast layer 370, tour controls 23                                                      = 393
+//   shard 9  logs controls 381, strip controls 28                                                   = 409
+//   shard 10 tooltip 145, fonts 35, form 35 + its controls 20, rail 16, plugin providers controls 105, tour 37 = 393
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
 // (K3a: the list page probe has two stages more, `sort` (the list's sort in both engines at 1440 x 900 and 1280 x 800) and `perf` (5,000 rows in a production build: a press is one commit), which add about 7 s to a run on a laptop at a load of 15 and about 12 s on a runner
 // slower by the factor the whole probe has: 76 s is an ESTIMATE of 61 + 15 until a run's summary has the runner's. Shard 5 would have been 447 s, so the strip's controls (28 s, which read no PROBE_DIST, as the shard's other units do not) moved to shard 9, which was 381 s
@@ -46,8 +47,20 @@
 // (S3: the tour probe, `ui-next/shell/probes/tour-probe.mjs` (the sidebar's label room and the tooltip of a name that is cut, where a tab's title is cut, what tells twin tabs apart, and the sidebar's groups after a plugin's return: demo findings
 // D4, D5, D7 and D8, each against the mock's own tree or strip, both engines and both viewports) and its six negative controls are ESTIMATES of 37 and 23 s, from a local run on a laptop (33 s, and 20 s for the six controls, which build the fixtures once:
 // `BUILD_CACHE` in the unit's env makes the first control build them into `$RUNNER_TEMP` and the other five read that build, as a unit of controls would otherwise build the same fixtures six times) at the 1.1 to 1.15 the shell, rail and strip probes
-// took on the runner against a laptop, until a run's summary has the runner's. They are two units of their own and not sections of the strip probe because shard 5 had no room for them: the probe went to shard 2 and its controls to shard 9, the two shards
-// with room, and no unit moved. Shard 2 is 432 s and shard 9 is 432 s: both at the limit, as shards 5 and 8 were.)
+// took on the runner against a laptop, until a run's summary has the runner's. They are two units of their own and not sections of the strip probe because shard 5 had no room for them: in the nine-shard table the probe went to shard 2 and its controls
+// to shard 9, the two shards with room, and no unit moved there (both 432 s, at the limit, as shards 5 and 8 were).)
+// (O1b-2, the notification centre: the toast probe gains the section `centre` (the bell and the popover of history against the mock's own in eleven scenes, axe, the keyboard, what 500 records cost, a closed centre that holds nothing, one commit for a new
+// notice) and its controls gain fourteen. Their seconds are ESTIMATES: one local run of each, 2026-11-21, on a laptop at a load of 16 to 17 (the runs after it were at a load of 24 to 42 and are not used), no run of the pull request yet, scaled to the
+// runner by the ratio of what was already there. The probe took 343 s in all locally, 139 s of it the section, so the 204 s that were there against the runner's 220 s is x1.08 and the section is 150 s (toast layer 220 to 370 s). The 20 old
+// controls took 119.5 s locally against the runner's 156 s (x1.31: a control is mostly a build) and the 14 new ones 110.9 s, so 145 s (156 to 301 s). That is 295 s more work: 3,710 to 4,005 s, over 9 x 432 = 3,888 s, so no split into nine shards
+// holds it (the best packing of nine has a longest shard of 448 s) and the table has TEN. Two units moved, the fewest that fit: the tooltip probe and the plugin providers' controls to the new shard 10 (250 s); the toast layer (shard 8, 376 to
+// 421 s) and its controls (shard 7, 426 s before and after) stay where they were. The limit is not raised, and shard 5 is at it. The workflow's matrix line has the tenth shard.)
+// (O1b-2 on top of FM2a (#645), K3a (#648) and S3 (#651), all merged first. FM2a put the form probe (35 s) and its ten controls (20 s) in shard 8, which its nine-shard table had at 431 s; with the toast layer's 370 s (an ESTIMATE, above) that shard would have
+// been 476 s, so the form units and two small ones move to shard 10: the form probe and its controls (FM2a's seconds, kept: the runner's of its first run, a single run), the fonts probe (35 s) and the rail probe (16 s). K3a's table is kept as it is: shard 5
+// at 419 s (the list page probe's 76 s, an estimate) and shard 9 at 409 s (the strip's controls moved there). S3's two units leave the shards that had them (2 and 9, both 432 s: no room at all for a runner slower than the estimates) for the two that have
+// the most room: the tour probe (37 s) to shard 10 and its controls (23 s; their `BUILD_CACHE` is a directory of the shard's own job) to shard 8, each 393 s, 39 s of room. The table was 3,780 s after FM2a and K3a and 3,840 s after S3 and is 4,135 s with this
+// step's 295 s, over 9 x 432 = 3,888 s, so ten shards are still the fewest, and the longest is shard 1 at 427 s. The toast layer's shard reads no ui-next build now (the fonts probe was what made it build), and shard 10, which builds it for the tooltip
+// probe anyway, builds it once for the tooltip, fonts and form probes (the tour probe builds its own fixtures and reads none).)
 // What the margin does not cover is a run slower than the medians: a unit's maximum over the 8 runs is up to 12 % over its median for the longest (the panel probe's controls: 411 median, 462 maximum) and up to 36 % for the smallest (the strip's controls: 28, 38), and 5 of the 64 simulated shard jobs of those runs would have been
 // over 9 minutes. Three units have fewer than 8 runs behind them, because their set of controls or the probe itself is new (the toast layer 4 runs, its controls 3, the plugin providers' controls 3): they are the first to move.
 // Before K2 a probe and its controls had to share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 411 s.
@@ -112,12 +125,6 @@ export const TABLE = {
         // Clear that forgets everything made so far and shows every line made after it, Copy that writes every line the list draws with its source, UTC, what a session chose and keeps, the level filter, and a panel too short for every button, where
         // the last buttons are behind the `⋯` More actions menu. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
-
-        // The sidebar and the tab strip against the pinned mock (S3, the recorded tour's findings D4, D5, D7 and D8): the room a sidebar label gets beside its count in the mock's own tree (ui-next/shell/probes/mock-sidebar.json, measured by
-        // mock-sidebar-measure.mjs from the cases of names.mjs) and the tooltip of a name that is cut; where a tab's title is cut and what tells twin tabs apart in the mock's own strip (mock-strip-text.json, mock-strip-text-measure.mjs, strip-text-cases.mjs): faces
-        // of 208 px at most whatever the title, a head with an ellipsis and a tail that keeps its end, a scope only on a tab that another reads like; and the sidebar's groups after a plugin's unload and return on the host fixture. It builds its
-        // own fixtures, so it does not read PROBE_DIST.
-        { name: 'Probe the sidebar labels, the tab titles and twins and the sidebar groups against the pinned mock reference', script: 'ui-next/shell/probes/tour-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/tour-probe.json' } },
       ],
     },
     {
@@ -217,9 +224,6 @@ export const TABLE = {
     {
       id: '7',
       units: [
-        // The one tooltip host: listeners, cost, delay, Escape layering, placement, motion.
-        { name: 'Probe the tooltip host', script: 'packages/kit/probes/tooltip-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/tooltip-probe.json' } },
-
         // The negative controls of the palette probe (its probe is in shard 4): each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the
         // footer, the paint of the active row, hover that takes the keyboard's row, a palette that does not give the focus back) and passes only when the probe sees it. The widths of the Search control, of its hint and
         // of the footer's keys are not compared, because a key is written for the platform (the mock was measured on a Mac: the Command sign and K; a Linux runner writes Ctrl+K); their heights, edges and gaps are, and every
@@ -231,15 +235,20 @@ export const TABLE = {
           controls: ['frame-width', 'row-height', 'foot-height', 'search-place', 'foot-gap', 'paint', 'hover-steals', 'no-restore'],
         },
 
-        // The negative controls of the toast probe (O1b-1): each perturbs one measured value in the page after it loaded (a toast 20 px too wide, a gap of 14, the Retry's colour, a failure that is not an alert, a layer that is
-        // not live, an announcement made twice, a toast that takes the focus, F6 that reaches the toasts first, a focus not given back, a failure that closes by itself, a pointer that does not hold the clock, a hold that outlives its
-        // toast, a stack drawn over the palette, a timer left after the stack is empty, a control that moves, a stack that does not avoid a control, a toast over a control's centre, a hidden stack that is still an F6 stop) and passes
-        // only when the probe sees it, on the section that must (Chromium, 1440 x 900); with that assertion dropped (ASSERTION_OFF) it is not detected.
+        // The negative controls of the toast probe (O1b-1, O1b-2): each perturbs one measured value in the page after it loaded and passes only when the probe sees it, on the section that must (Chromium, 1440 x 900); with that assertion dropped
+        // (ASSERTION_OFF) it is not detected. The toast layer's twenty (a toast 20 px too wide, a gap of 14, the Retry's colour, a failure that is not an alert, a layer that is not live, an announcement made twice, a toast that takes the focus,
+        // F6 that reaches the toasts first, a focus not given back, a failure that closes by itself, a pointer that does not hold the clock, a hold that outlives its toast, a stack drawn over the palette, a timer left after the stack is empty,
+        // a control that moves, a stack that does not avoid a control, a toast over a control's centre, a hidden stack that is still an F6 stop) and the notification centre's fourteen (a popover 20 px too wide, a row 2 px too tall, the bell's dot
+        // in the wrong colour, a bell dot that is a number, a Filter menu 20 px off, an unnamed dialog, a centre that Escape does not close, a focus not given back to the bell, a press outside that does not close it, two tab stops in the list,
+        // a listener and a timer left after it closes, a second commit for a new notice, an open that takes over two frames). Each control builds the fixtures and runs one part of the section.
         {
           name: 'Probe that the toast probe sees a toast layer that is wrong',
           script: 'ui-next/shell/probes/notices-probe.mjs',
           env: { FONT_DELAY_MS: '40' },
-          controls: ['toast-width', 'gap', 'retry-paint', 'no-alert', 'no-live', 'told-twice', 'steals-focus', 'f6-first', 'no-restore', 'sticky-closes', 'no-hold', 'hover-stuck', 'modal-leaks', 'timer-left', 'layout-shift', 'no-avoid', 'covers', 'yield-stop', 'yield-expires', 'yield-drops-focus'],
+          controls: [
+            'toast-width', 'gap', 'retry-paint', 'no-alert', 'no-live', 'told-twice', 'steals-focus', 'f6-first', 'no-restore', 'sticky-closes', 'no-hold', 'hover-stuck', 'modal-leaks', 'timer-left', 'layout-shift', 'no-avoid', 'covers', 'yield-stop', 'yield-expires', 'yield-drops-focus',
+            'centre-width', 'centre-row', 'centre-dot', 'centre-bell-number', 'centre-menu-offset', 'centre-no-name', 'centre-escape', 'centre-focus', 'centre-outside', 'centre-two-stops', 'centre-listener-left', 'centre-timer-left', 'centre-second-commit', 'centre-slow-open',
+          ],
         },
 
         // The table: header, rows, selection column, sort, hover, selected and focus states, the fit, the nine themes, against the pinned mock reference (packages/kit/probes/mock-table.json).
@@ -249,42 +258,25 @@ export const TABLE = {
     {
       id: '8',
       units: [
-        // The toast layer (O1b-1): the real shell with its panel and its command palette and the real `Toasts` over the notices model (ui-next/shell/probes/notices-fixture.tsx), against the mock's own toast layer
-        // (ui-next/shell/probes/mock-notices.json, measured by mock-notices-measure.mjs in three scenes: an info toast, a failure with its Retry, the stack at the cap) within 1 px and its paint exactly, axe on the layer and the
+        // The toast layer (O1b-1) and the notification centre (O1b-2): the real shell with its panel and its command palette and the real `Toasts`, bell and centre over the notices model (ui-next/shell/probes/notices-fixture.tsx), against the mock's
+        // own toast layer (ui-next/shell/probes/mock-notices.json, measured by mock-notices-measure.mjs in three scenes: an info toast, a failure with its Retry, the stack at the cap) within 1 px and its paint exactly, axe on the layer and the
         // two live regions, the keyboard path (F6 reaches the toasts last, Tab, Escape and the focus given back), what a toast lives for and what holds it (a clock the probe drives), what a screen reader is told (the roles,
         // once, never twice), what 50 notices in one tick cost (one commit for each flush, nothing shifts, nothing held once the stack is empty) and where the stack stands (P7: home, moved, hidden; never over a control's
-        // centre; the palette takes it away and it comes back), at 1440 x 900 and 1280 x 800 in both engines. It builds its own fixtures, so it does not read PROBE_DIST.
+        // centre; the palette takes it away and it comes back); and the section `centre`: the mock's own centre (ui-next/shell/probes/mock-notice-centre.json, measured by mock-notice-centre-measure.mjs in eleven scenes) within 1 px and its paint
+        // exactly (what the shell has not built, the segmented view, the footer and the menu's severity group, is counted and the mock's boxes are moved by it), axe on the bell and the open centre in the nine themes, the keyboard with real key
+        // presses, what 500 records cost (the open in under two frames, 50 rows drawn), a closed centre that holds no listener, observer or timer, and one commit for a new notice; at 1440 x 900 and 1280 x 800 in both engines. It builds its own
+        // fixtures (production, and development for the commit counts), so it does not read PROBE_DIST.
         { name: 'Probe the toast layer against the pinned mock reference', script: 'ui-next/shell/probes/notices-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/notices-probe.json' } },
 
-        // The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
-        // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST.
-        { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
-
-        // The fonts are delivered, used, and the page does not shift.
-        { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
-
-        // The form parts (FM2a: Field, TextInput, NumberInput, Toggle, Select and SecretInput) against the pinned mock reference (packages/kit/probes/mock-form.json, measured from the mock's own helpers by mock-form-measure.mjs): the face, the message lane in each kind, the label, the
-        // switch, the number field, the select and the secret, at rest and in each state with real focus and the pointer, in Void and in Light; every example in every state of the field model; a typed secret that is found nowhere in the page but the live input; the keyboard paths;
-        // the paints of the parts in the nine themes; and axe, at 1440 x 900 and 1280 x 800 in both engines.
-        { name: 'Probe the form parts against the pinned mock reference', script: 'packages/kit/probes/form-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/form-probe.json' } },
-
-        // The negative controls of the form probe: each plants one fault in the page after it loaded, and the fault trips the one assertion it is named for and no other (a text field at rest 4 px taller, a code-face field in the interface face, a lane message 6 px lower, a switch track 4 px wider in the same place, padding in the number field, a label that is for no control, a read-only switch that is not exposed as
-        // unavailable, a stepper button that is a tab stop, a locked select whose keydown is not refused, the typed secret copied into an attribute of its input). A control passes (exit 0) when its assertion sees the fault; with that assertion removed (ASSERTION_OFF=says) nothing at all is left (exit 1, NOT DETECTED), and a fault that trips another assertion is INVALID (exit 2). Chromium at 1440 x 900, the section of the fault only.
+        // The negative controls of the tour probe (its probe is in shard 10; they and it were in shards 9 and 2 in S3's table, both at 432 s: see the header): each makes the page do what one assertion is there to see (a sidebar whose count slot is four characters wide, as it was before S3, and a name that is cut and carries
+        // no clip marker, so that the tooltip never has it; a title whose tail is not drawn; a tab that has no twin and draws a scope, and twin tabs that draw none; a sidebar that comes back after a plugin's unload as a tree that remembered nothing
+        // would draw it) and passes only when that assertion sees it, Chromium at 1440 x 900, the section of the fault only. With ASSERTION_OFF=<control> the assertion is left out and the fault must pass undetected. The first control builds the fixtures into
+        // BUILD_CACHE and the others read that build.
         {
-          name: 'Probe that the form probe sees a form that is wrong',
-          script: 'packages/kit/probes/form-probe.mjs',
-          env: { DIST: '$PROBE_DIST' },
-          controls: ['face-height', 'mono-font', 'lane-offset', 'track-width', 'stepper-pad', 'label-for', 'switch-pressable', 'step-tab-stop', 'select-unblocked', 'secret-attribute'],
-        },
-
-        // The negative controls of the plugin providers probe (its probe is in shard 5): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
-        // with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword, a connection said by its key in a row of the
-        // palette, and by the tab model's faces in the tab strip, its tooltip and the status bar) and passes only when that assertion sees it. Each runs the part it perturbs.
-        {
-          name: 'Probe that the plugin providers probe sees a palette that is wrong',
-          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
-          env: { FONT_DELAY_MS: '40' },
-          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
+          name: 'Probe that the tour probe sees a sidebar and a tab strip that are wrong',
+          script: 'ui-next/shell/probes/tour-probe.mjs',
+          env: { BUILD_CACHE: '$RUNNER_TEMP/tour-fixtures' },
+          controls: ['slot-wide', 'names-no-tip', 'title-cut', 'twin-lone', 'twin-hidden', 'memory-lost'],
         },
       ],
     },
@@ -312,17 +304,50 @@ export const TABLE = {
           script: 'ui-next/shell/probes/strip-probe.mjs',
           controls: ['slot-width', 'slot-undeclared'],
         },
+      ],
+    },
+    {
+      id: '10',
+      units: [
+        // The one tooltip host: listeners, cost, delay, Escape layering, placement, motion (shard 7 until O1b-2).
+        { name: 'Probe the tooltip host', script: 'packages/kit/probes/tooltip-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/tooltip-probe.json' } },
 
-        // The negative controls of the tour probe (its probe is in shard 2): each makes the page do what one assertion is there to see (a sidebar whose count slot is four characters wide, as it was before S3, and a name that is cut and carries
-        // no clip marker, so that the tooltip never has it; a title whose tail is not drawn; a tab that has no twin and draws a scope, and twin tabs that draw none; a sidebar that comes back after a plugin's unload as a tree that remembered nothing
-        // would draw it) and passes only when that assertion sees it, Chromium at 1440 x 900, the section of the fault only. With ASSERTION_OFF=<control> the assertion is left out and the fault must pass undetected. The first control builds the fixtures into
-        // BUILD_CACHE and the others read that build.
+        // The fonts are delivered, used, and the page does not shift (shard 8 until O1b-2, when the form parts merged: shard 10 builds the ui-next build for the tooltip anyway, and the toast layer's shard does not need it).
+        { name: 'Probe the fonts and the layout shift', script: 'packages/kit/probes/fonts-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' } },
+
+        // The form parts (FM2a: Field, TextInput, NumberInput, Toggle, Select and SecretInput) against the pinned mock reference (packages/kit/probes/mock-form.json, measured from the mock's own helpers by mock-form-measure.mjs): the face, the message lane in each kind, the label, the
+        // switch, the number field, the select and the secret, at rest and in each state with real focus and the pointer, in Void and in Light; every example in every state of the field model; a typed secret that is found nowhere in the page but the live input; the keyboard paths;
+        // the paints of the parts in the nine themes; and axe, at 1440 x 900 and 1280 x 800 in both engines. (In shard 8 in FM2a's table; here since O1b-2 merged on it: see the header.)
+        { name: 'Probe the form parts against the pinned mock reference', script: 'packages/kit/probes/form-probe.mjs', env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/form-probe.json' } },
+
+        // The negative controls of the form probe: each plants one fault in the page after it loaded, and the fault trips the one assertion it is named for and no other (a text field at rest 4 px taller, a code-face field in the interface face, a lane message 6 px lower, a switch track 4 px wider in the same place, padding in the number field, a label that is for no control, a read-only switch that is not exposed as
+        // unavailable, a stepper button that is a tab stop, a locked select whose keydown is not refused, the typed secret copied into an attribute of its input). A control passes (exit 0) when its assertion sees the fault; with that assertion removed (ASSERTION_OFF=says) nothing at all is left (exit 1, NOT DETECTED), and a fault that trips another assertion is INVALID (exit 2). Chromium at 1440 x 900, the section of the fault only.
         {
-          name: 'Probe that the tour probe sees a sidebar and a tab strip that are wrong',
-          script: 'ui-next/shell/probes/tour-probe.mjs',
-          env: { BUILD_CACHE: '$RUNNER_TEMP/tour-fixtures' },
-          controls: ['slot-wide', 'names-no-tip', 'title-cut', 'twin-lone', 'twin-hidden', 'memory-lost'],
+          name: 'Probe that the form probe sees a form that is wrong',
+          script: 'packages/kit/probes/form-probe.mjs',
+          env: { DIST: '$PROBE_DIST' },
+          controls: ['face-height', 'mono-font', 'lane-offset', 'track-width', 'stepper-pad', 'label-for', 'switch-pressable', 'step-tab-stop', 'select-unblocked', 'secret-attribute'],
         },
+
+        // The rail (S2a): its entries' targets, faces and glyphs, and the paint of the current entry and of another in six states, against the pinned mock reference (ui-next/shell/probes/mock-rail.json,
+        // measured from the mock's two rails by mock-rail-measure.mjs), at 1440 x 900 and 1280 x 800. It builds its own fixture, so it does not read PROBE_DIST. (In shard 8 until O1b-2, when the form parts merged.)
+        { name: 'Probe the rail against the pinned mock reference', script: 'ui-next/shell/probes/rail-probe.mjs', env: { REPORT: '$RUNNER_TEMP/rail-probe.json' } },
+
+        // The negative controls of the plugin providers probe (its probe is in shard 5; these were in shard 8 until O1b-2): each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late,
+        // a late section that takes the cursor with it, a second commit for a key, a move outside the palette, work done while the palette is closed, an answer shown after the stop, a sidebar keyword that is not read or ranks as a plain keyword,
+        // a connection said by its key in a row of the palette, and by the tab model's faces in the tab strip, its tooltip and the status bar) and passes only when that assertion sees it. Each runs the part it perturbs.
+        {
+          name: 'Probe that the plugin providers probe sees a palette that is wrong',
+          script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
+          env: { FONT_DELAY_MS: '40' },
+          controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
+        },
+
+        // The sidebar and the tab strip against the pinned mock (S3, the recorded tour's findings D4, D5, D7 and D8): the room a sidebar label gets beside its count in the mock's own tree (ui-next/shell/probes/mock-sidebar.json, measured by
+        // mock-sidebar-measure.mjs from the cases of names.mjs) and the tooltip of a name that is cut; where a tab's title is cut and what tells twin tabs apart in the mock's own strip (mock-strip-text.json, mock-strip-text-measure.mjs, strip-text-cases.mjs): faces
+        // of 208 px at most whatever the title, a head with an ellipsis and a tail that keeps its end, a scope only on a tab that another reads like; and the sidebar's groups after a plugin's unload and return on the host fixture. It builds its
+        // own fixtures, so it does not read PROBE_DIST. (In shard 2 in S3's table; here since O1b-2 merged on it, with its controls in shard 8: see the header.)
+        { name: 'Probe the sidebar labels, the tab titles and twins and the sidebar groups against the pinned mock reference', script: 'ui-next/shell/probes/tour-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/tour-probe.json' } },
       ],
     },
   ],
@@ -369,8 +394,9 @@ export const MEASURED_SECONDS = {
   'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference': 197,
   'Probe the row menu on the 5,000-row example': 22,
   'Probe that the row menu probe sees a trigger that does not say it is open': 2,
-  'Probe the toast layer against the pinned mock reference': 220,
-  'Probe that the toast probe sees a toast layer that is wrong': 156,
+  // O1b-2: ESTIMATES (header comment): the toast layer's 220 s and the section `centre`, 150 s; its controls' 156 s and the notification centre's fourteen, 145 s. Local seconds of one run at a load of 16 to 17, scaled to the runner by the ratio of the units that were already there (x1.08 for the probe, x1.31 for the controls), until a run's summary has the runner's.
+  'Probe the toast layer against the pinned mock reference': 370,
+  'Probe that the toast probe sees a toast layer that is wrong': 301,
   // FM2a: the runner's seconds of the first run of the change that added the form probe (a single run, not a median of 8; the laptop's were 32 and 17).
   'Probe the form parts against the pinned mock reference': 35,
   'Probe that the form probe sees a form that is wrong': 20,

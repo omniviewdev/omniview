@@ -52,7 +52,8 @@
 //      the host's health check is up to 30 s); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
 //   o  a page command that fails is a toast (O1b-1): on the item's detail page the fixture's Restart rejects as the runtime's hooks do (`window.__fixtureDetail`); the host's toast says `Timed out` with its one sentence and a Retry,
 //      is an alert, is sticky (it is still there after 9 s, when a timed one would be gone) and takes no focus; F6 reaches it and Escape closes it and gives the focus back to where it was; a failure that is not the host's says
-//      `Operation failed` and none of its text (a password in it is nowhere in the document); a cancelled command makes no toast; Retry asks the command again and the one toast says `Timed out 2 times`
+//      `Operation failed` and none of its text (a password in it is nowhere in the document); a cancelled command makes no toast; a failure that comes back after its toast was dismissed is the same record and its toast says `Timed out 2 times`,
+//      and Retry makes the third: `Timed out 3 times` (each wait is on a state that lasts, never on the frame between them: O1b-2, status/O1b-2.md)
 //
 //   p  a plugin whose load fails reaches the window and can be retried (PU2, PU1-01 and PU1-02): the same host and fixture process as n, whose NEXT START the check makes fail with a file next to its binary (`start-mode`:
 //      `exit` ends the process before it says it is ready, `hang` keeps it silent). The host is asked to reload the plugin (`ReloadPlugin`, as a rebuild does) and its load fails: the frames of the window's event socket are
@@ -63,6 +64,13 @@
 //      load ends as failed with the cause `timeout` within the loader's own start timeout (15 s); the sentence says it took too long. With the file gone, Retry runs the plugin: the host says it runs, and the window shows
 //      one of everything again with no reload (SEAM_SHOTS=<dir> writes WebKit's pictures of the four states). SEAM_CONTROL=failed-load runs p alone with every perturbation of its controls (FAILED_CONTROLS) made in turn just before the assertion each must trip; SEAM_CONTROL=<one of them>
 //      makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected (the proof that each control trips its own assertion and no other)
+//
+//   q  the notification centre (O1b-2): the history a failed page command leaves, read from the bell, over the real host. A failure whose toast the person DISMISSES is read (the model: S81): the bell has no dot (its name is
+//      exactly `Notifications`), the centre opened from the bell lists the record, read, the focus is on its row's title, and Escape closes it and gives the focus back to the bell. A failure whose toast is NOT dismissed is an
+//      unread record (`Notifications, 1 unread, 1 error`); opening the centre takes the toast out of the layer (one presenter: the stack waits while the centre is open) and a failure that arrives while it is open is in the
+//      list with no toast; closing it with Escape after more than 1 s reads what it listed (the bell is `Notifications` again, no toast comes back, the focus is on the bell). After a RELOAD, once the window service holds the
+//      history (the first time the history is read from it), the window restores it: the bell has no dot, the restored records raised no toast and no announcement, and a restored record's Retry is not offered: its row says
+//      `Retry is unavailable. Not available after restart.`
 //
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
@@ -242,12 +250,13 @@ async function callHost(base, method, ...args) {
 }
 
 /**
- * Nothing saved for the main window: what a first run of the app finds. (The slot holds JSON, and JSON `null` is no session.) A page that was just left may still have a write on its way (the quiet
- * time of the saver, then the call), and it would replace what is forgotten here: it lands first.
+ * Nothing saved for the main window: what a first run of the app finds, no session and no notification history. (The slots hold JSON, and JSON `null` is nothing: no session, no history.) A page that was just left may
+ * still have a write on its way (the quiet time of the saver, then the call), and it would replace what is forgotten here: it lands first.
  */
 async function forgetSession(base) {
   await new Promise((resolve) => setTimeout(resolve, 1200));
   await callHost(base, 'SaveState', 'main', 'session', 'null');
+  await callHost(base, 'SaveState', 'main', 'notices', 'null');
 }
 
 /** A page of a window with nothing saved. A scenario that follows another starts here, so it never restores what the one before left. */
@@ -2603,14 +2612,18 @@ async function checkToasts(page, base, engine) {
   await noToast();
   assert.deepEqual(await focused(), onRestart, `${engine}: Escape closed the toast and the focus went back to the Restart button`);
 
-  // Retry asks the same command again; the second failure is the same toast.
+  // Retry asks the same command again. A failure that comes back is the SAME record whether or not its toast was dismissed: the model folds the same notice inside a minute (core/notices/store.ts, post(); the mock's `foldTarget`,
+  // shell-notify.js:315-324) and raises the toast again, because a failure must not vanish (S78; the mock's `decide`, :1062-1065). So the press after the Escape above is the second failure and the toast that comes back says `Timed out 2
+  // times`; Retry makes the third and it says `Timed out 3 times`. Each is a state that lasts (a failure toast is sticky), and each wait is on its state, never on the frame between them: the model tells the view at most once a frame,
+  // and a wait for the label the toast had before the third failure passed in the 15 ms before the next frame and timed out when the page was a little late (about one run in twenty, with or without load, in both builds).
   await fail('timeout');
   await press();
-  await timeout.waitFor({ timeout: 10_000 });
-  await timeout.getByRole('button', { name: 'Retry', exact: true }).click();
+  const second = layer.getByRole('alert', { name: 'Error: Timed out 2 times' });
+  await second.waitFor({ timeout: 10_000 });
+  await second.getByRole('button', { name: 'Retry', exact: true }).click();
   await page.waitForFunction(() => window.__fixtureDetail.runs.length === 2);
-  await layer.getByRole('alert', { name: 'Error: Timed out 2 times' }).waitFor({ timeout: 10_000 });
-  assert.equal(await toasts.count(), 1, `${engine}: the second failure folded into the one toast`);
+  await layer.getByRole('alert', { name: 'Error: Timed out 3 times' }).waitFor({ timeout: 10_000 });
+  assert.equal(await toasts.count(), 1, `${engine}: the second and the third failure are counts on the one toast`);
   assert.equal(await runs(), 2, `${engine}: Retry asked the command again, once`);
   await toasts.first().getByRole('button', { name: /^Dismiss/ }).click();
   await noToast();
@@ -2635,6 +2648,180 @@ async function checkToasts(page, base, engine) {
   assert.equal(await runs(), 1, `${engine}: and the cancelled command ran once`);
 
   assert.deepEqual(errors, [], `${engine}: the failing commands wrote no page error`);
+  await page.close();
+}
+
+/**
+ * Watches the notices of the page from the first script of every document: it counts the toasts the page DRAWS (a toast node added to the document: a toast that came and went between two reads of the check is still counted)
+ * and keeps what the window's two live regions are TOLD, one entry for each announcement (the region draws a new node with its words each time).
+ */
+const WATCH_NOTICES = `(() => {
+  window.__toastsDrawn = 0;
+  window.__told = [];
+  new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches('[data-notices-part="toast"]') || node.querySelector('[data-notices-part="toast"]') !== null) window.__toastsDrawn += 1;
+        const part = node.parentElement?.getAttribute('data-notices-part');
+        if ((part === 'live' || part === 'alert') && (node.textContent ?? '') !== '') window.__told.push(part + ': ' + node.textContent);
+      }
+    }
+  }).observe(document, { childList: true, subtree: true });
+})()`;
+
+/**
+ * q. the notification centre (O1b-2), over the real host: the fixture's item page and its failing Restart (as `checkToasts`), the bell of the status bar and the centre it opens. The focus is put on Restart with the keyboard's
+ * own focus call and Enter presses it (a click may not focus a button in WebKit, and the check is about where the focus is). Three failures of three kinds, so that a repeat never folds into the record before it (the model folds
+ * the same notice within 60 s): a timeout whose toast is dismissed, a refusal whose toast is not, and a failure of the plugin's own that arrives while the centre is open.
+ */
+async function checkCentre(page, base, engine) {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  await page.addInitScript(WATCH_NOTICES);
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  await openFirstPlugin(page);
+  await page.getByRole('link', { name: 'orders-api' }).click();
+  await page.getByRole('heading', { level: 2, name: 'Details' }).waitFor({ timeout: 30_000 });
+
+  const layer = page.locator('[data-notices-part="layer"]');
+  const toasts = layer.locator('[data-notices-part="toast"]');
+  const restart = page.getByRole('button', { name: 'Restart', exact: true });
+  const bell = page.locator('[data-notices-part="bell"]');
+  const centre = page.locator('[data-notices-part="centre"]');
+  const rows = centre.locator('[data-notices-part="row"]');
+  const toggleOf = (row) => row.locator('[data-notices-part="rowToggle"]');
+  const quiet = () => page.waitForTimeout(500);
+  const drawn = () => page.evaluate(() => window.__toastsDrawn);
+  const told = () => page.evaluate(() => window.__told);
+  const forgetNotices = () =>
+    page.evaluate(() => {
+      window.__toastsDrawn = 0;
+      window.__told = [];
+    });
+  const bellName = () => bell.getAttribute('aria-label');
+  const onBell = () => page.evaluate(() => document.activeElement?.matches('[data-notices-part="bell"]') ?? false);
+  /** The row the focus is in, and whether the focus is on its title button: the title's words and its id. */
+  const focusedRow = () =>
+    page.evaluate(() => {
+      const active = document.activeElement;
+      return {
+        title: active?.matches('[data-notices-part="rowToggle"]') ? (active.querySelector('[data-notices-part="rowTitle"]')?.textContent ?? '') : '',
+        id: active?.closest('[data-notices-part="row"]')?.getAttribute('data-notices-id') ?? '',
+      };
+    });
+  const fail = (failure) =>
+    page.evaluate((name) => {
+      window.__fixtureDetail = { failure: name, runs: [] };
+    }, failure);
+  const press = async () => {
+    await restart.focus();
+    await page.keyboard.press('Enter');
+  };
+  const openCentre = async () => {
+    await bell.click();
+    await centre.waitFor({ timeout: 10_000 });
+  };
+  const closeWithEscape = async () => {
+    await page.keyboard.press('Escape');
+    await centre.waitFor({ state: 'detached', timeout: 10_000 });
+  };
+
+  assert.equal(await bellName(), 'Notifications', `${engine}: a window with no history has a bell with no dot`);
+  assert.equal(await centre.count(), 0, `${engine}: a closed centre is not drawn`);
+
+  // (a) a failure whose toast is dismissed: the record is READ (S81). Nothing is unread, the bell has no dot, and the centre lists the record, read.
+  await fail('timeout');
+  await press();
+  const timeout = layer.getByRole('alert', { name: 'Error: Timed out' });
+  await timeout.waitFor({ timeout: 10_000 });
+  assert.equal(await bellName(), 'Notifications, 1 unread, 1 error', `${engine}: a failure that nobody has seen is unread, and the bell says so in words`);
+  await timeout.getByRole('button', { name: /^Dismiss/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-notices-part="layer"] [data-notices-part="toast"]').length === 0);
+  await quiet();
+  assert.equal(await bellName(), 'Notifications', `${engine}: a dismissed toast's record is read: the bell's name is exactly Notifications`);
+  assert.equal(await bell.locator('[data-notices-part="bellDot"]').count(), 0, `${engine}: and the bell has no dot`);
+
+  await openCentre();
+  assert.equal(await rows.count(), 1, `${engine}: the centre lists the one record`);
+  const dismissed = rows.first();
+  assert.match(await dismissed.locator('[data-notices-part="rowTitle"]').innerText(), /Timed out/, `${engine}: the record's title is Timed out`);
+  assert.match(await dismissed.locator('[data-notices-part="rowText"]').innerText(), /The cluster did not complete the request in time\./, `${engine}: and its sentence is the plugin's`);
+  assert.equal(await dismissed.getAttribute('data-unread'), null, `${engine}: the dismissed toast's row is read (no data-unread)`);
+  assert.doesNotMatch(await dismissed.textContent(), /Unread/, `${engine}: and does not say Unread`);
+  assert.deepEqual(await focusedRow(), { title: await dismissed.locator('[data-notices-part="rowTitle"]').textContent(), id: await dismissed.getAttribute('data-notices-id') }, `${engine}: opening the centre puts the focus on its row's title`);
+  // The record can be run again while this window is the one that made it (the contrast to the restored record, below).
+  await page.keyboard.press('Enter');
+  assert.notEqual(await dismissed.getAttribute('data-expanded'), null, `${engine}: Enter on the title opens the row`);
+  assert.equal(await dismissed.getByRole('button', { name: 'Retry', exact: true }).count(), 1, `${engine}: the row of a record of this window offers Retry`);
+  await closeWithEscape();
+  assert.equal(await centre.count(), 0, `${engine}: Escape closes the centre and a closed centre is not drawn`);
+  assert.equal(await onBell(), true, `${engine}: and the focus is on the bell`);
+  assert.equal(await toasts.count(), 0, `${engine}: no toast came back`);
+
+  // (b) a failure whose toast is NOT dismissed is unread; the centre takes the toast out of the layer while it is open (one presenter), a failure that arrives then is in the list with no toast, and
+  // closing it after more than 1 s reads what it listed.
+  await fail('forbidden');
+  await press();
+  await toasts.first().waitFor({ timeout: 10_000 });
+  assert.equal(await toasts.count(), 1, `${engine}: the second failure is a toast`);
+  assert.equal(await bellName(), 'Notifications, 1 unread, 1 error', `${engine}: one unread error, in words`);
+  await forgetNotices();
+  await openCentre();
+  await quiet();
+  assert.equal(await toasts.count(), 0, `${engine}: opening the centre takes the toast out of the layer (one presenter)`);
+  assert.equal(await rows.count(), 2, `${engine}: the centre lists both records`);
+  assert.equal(await centre.locator('[data-notices-part="row"][data-unread]').count(), 1, `${engine}: one of them is unread: the one whose toast nobody dismissed`);
+  assert.equal(await rows.first().getAttribute('data-unread'), '', `${engine}: and it is the newest`);
+  await page.waitForTimeout(1500);
+  // a failure that arrives while the centre is open: in the list, no toast. (Restart is pressed from the page: the centre is not modal.)
+  await fail('generic');
+  await press();
+  await page.waitForFunction(() => document.querySelectorAll('[data-notices-part="centre"] [data-notices-part="row"]').length === 3);
+  await quiet();
+  assert.equal(await toasts.count(), 0, `${engine}: a notice that arrives while the centre is open has no toast`);
+  assert.equal(await drawn(), 0, `${engine}: and none was drawn and taken away again while it was open`);
+  assert.equal(await rows.first().getAttribute('data-unread'), '', `${engine}: the notice that arrived while the centre was open is in the list, unread`);
+  assert.match(await rows.first().locator('[data-notices-part="rowTitle"]').innerText(), /Operation failed/, `${engine}: and it is the plugin's own failure, said in the generic words`);
+  const announced = await told();
+  assert.equal(announced.length, 1, `${engine}: and it was told ONCE, in the window's live regions, as a notice without a toast is: ${JSON.stringify(announced)}`);
+  assert.match(announced[0] ?? '', /^(alert|live): .*Operation failed/, `${engine}: and the words are the failure's title: ${JSON.stringify(announced)}`);
+  await page.waitForTimeout(1500);
+  await toggleOf(rows.first()).focus();
+  await closeWithEscape();
+  await quiet();
+  assert.equal(await bellName(), 'Notifications', `${engine}: closing the centre after more than 1 s reads what it listed: the bell's name is exactly Notifications`);
+  assert.equal(await toasts.count(), 0, `${engine}: no toast came back when the centre closed`);
+  assert.equal(await drawn(), 0, `${engine}: and none was drawn from the moment the second failure's toast was there`);
+  assert.equal(await onBell(), true, `${engine}: Escape gave the focus back to the bell`);
+
+  // (c) the history comes back after a reload: it is in the window service's slot of its own, and the window restores it, read, with no toast and no announcement.
+  const slot = async () => JSON.stringify((await callHost(base, 'GetState', 'main')).notices ?? null);
+  for (let attempt = 0; attempt < 60 && !(await slot()).includes('Operation failed'); attempt += 1) await page.waitForTimeout(250);
+  assert.match(await slot(), /Operation failed/, `${engine}: the window service holds the history (the saver's 400 ms, then the write)`);
+  await page.waitForTimeout(1500);
+  await page.reload({ waitUntil: 'load' });
+  await bell.waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await bellName(), 'Notifications', `${engine}: the restored history is read, as it was saved: the bell has no dot`);
+  assert.equal(await toasts.count(), 0, `${engine}: the restore raised no toast`);
+  assert.equal(await drawn(), 0, `${engine}: and no toast was drawn by the restore`);
+  for (const part of ['live', 'alert']) assert.equal(((await page.locator(`[data-notices-part="${part}"]`).textContent()) ?? '').trim(), '', `${engine}: the restore told nothing in the window's ${part} region`);
+  await openCentre();
+  assert.equal(await rows.count(), 3, `${engine}: the centre lists the three restored records`);
+  assert.equal(await centre.locator('[data-notices-part="row"][data-unread]').count(), 0, `${engine}: none of them is unread`);
+  const restored = rows.filter({ hasText: 'Timed out' });
+  assert.equal(await restored.count(), 1, `${engine}: one of them is the Timed out record`);
+  await toggleOf(restored).focus();
+  await page.keyboard.press('Enter');
+  assert.notEqual(await restored.getAttribute('data-expanded'), null, `${engine}: Enter on the restored title opens its row`);
+  assert.equal(await restored.getByRole('button', { name: 'Retry', exact: true }).count(), 0, `${engine}: a restored record offers no Retry`);
+  assert.match(await restored.innerText(), /Retry is unavailable\. Not available after restart\./, `${engine}: and its row says why`);
+  await closeWithEscape();
+  assert.equal(await onBell(), true, `${engine}: Escape gave the focus back to the bell after the reload`);
+
+  assert.deepEqual(errors, [], `${engine}: the centre wrote no page error`);
   await page.close();
 }
 
@@ -2775,10 +2962,11 @@ try {
       await phase('kept', name, async () => checkKept(await freshPage(browser, host.base), host.base, name));
       await phase('identity', name, async () => checkIdentity(await freshPage(browser, host.base), host.base, name));
       await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
+      await phase('centre', name, async () => checkCentre(await freshPage(browser, host.base), host.base, name));
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout)`);
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout)`);
     } finally {
       await browser.close();
     }
