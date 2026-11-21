@@ -6,6 +6,7 @@ import { compareCounts, countLines } from './counts.mjs';
 import { compareDeployment, compareDetail, compareGone, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail, goneDeployment } from './detail.mjs';
 import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
+import { compareSorted, deploymentsByAge, directionOf, opposite, podsByRestarts, sortCanBeTold } from './sort.mjs';
 
 const run = promisify(execFile);
 
@@ -356,6 +357,130 @@ async function readDetail(page) {
       kv: [...(details?.querySelectorAll('[data-ov-part=row]') ?? [])].map((row) => [norm(row.querySelector('[data-ov-part=label]')?.textContent), norm(row.querySelector('[data-ov-part=value]')?.textContent)]),
     };
   });
+}
+
+// The sort check (K3a, plugin #282): a press on a column header of a list sorts its rows. The list is opened as a person opens it (the Pods list from the window's list of plugins, the Deployments list from the
+// sidebar), the header's button is pressed, and the column must say a direction (`aria-sort`, read and not assumed) and the rows on screen must stand in the order `kubectl get <kind> -A -o json` gives for that
+// direction (sort.mjs: numbers as numbers, a time as its instant, a missing value last, a tie in name order); pressed again, the column must say the other direction and the rows must reverse. The cluster is read
+// before and after every reading of the page (a crash-looping Pod's restart count moves under the check): a reading whose cluster moved is read again.
+// Throws ParityError('SORT_FIXTURE') when the cluster cannot tell a press from none, ParityError('SORT_MISMATCH') when the page does not agree before the deadline.
+export const SORT_CASES = {
+  pods: {
+    listEntry: undefined,
+    header: 'Restarts',
+    what: 'the Pods list sorted by Restarts',
+    read: async (kubeconfig) => podsByRestarts(JSON.parse(await kubectl(kubeconfig, ['get', 'pods', '-A', '-o', 'json']))),
+  },
+  deployments: {
+    listEntry: 'Deployments',
+    header: 'Age',
+    what: 'the Deployments list sorted by Age',
+    read: async (kubeconfig) => deploymentsByAge(JSON.parse(await kubectl(kubeconfig, ['get', 'deployments', '-A', '-o', 'json']))),
+  },
+};
+
+// The list on screen: the visible page slot's table (a page the keep-alive holds hidden is not read). `ariaSort` and `button` are the header's, `ids` are `namespace/name` of the rows in the order they stand (their
+// `aria-rowindex`; the object a row stands for is the one its link opens), `rowCount` is how many rows the table says it holds.
+async function readSortedList(page, header) {
+  return page.evaluate((wanted) => {
+    const norm = (text) => (text ?? '').replace(/\s+/g, ' ').trim();
+    const slot = [...document.querySelectorAll('[data-page-slot]')].find((candidate) => candidate.getClientRects().length > 0);
+    const table = slot?.querySelector('table') ?? null;
+    const th = [...(table?.querySelectorAll('thead th') ?? [])].find((candidate) => norm(candidate.textContent) === wanted) ?? null;
+    const rows = [...(table?.querySelectorAll('tbody tr') ?? [])]
+      .map((row) => {
+        const href = row.querySelector('a[href^="#/kubernetes/"]')?.getAttribute('href') ?? '';
+        const query = new URLSearchParams(href.split('?')[1] ?? '');
+        const namespace = query.get('namespace');
+        const name = query.get('name');
+        return { at: Number(row.getAttribute('aria-rowindex')), id: name === null ? null : namespace === null || namespace === '' ? name : `${namespace}/${name}` };
+      })
+      .filter((row) => row.id !== null)
+      .sort((a, b) => a.at - b.at);
+    return {
+      header: th !== null,
+      button: th?.querySelector('button') != null,
+      ariaSort: th?.getAttribute('aria-sort') ?? null,
+      ids: rows.map((row) => row.id),
+      rowCount: table === null ? 0 : Number(table.getAttribute('aria-rowcount')) - 1,
+    };
+  }, header);
+}
+
+async function settleSorted(page, spec, kubeconfig, wanted, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let read;
+  let problems;
+  do {
+    await page.waitForTimeout(100);
+    const before = await spec.read(kubeconfig);
+    read = await readSortedList(page, spec.header);
+    const after = await spec.read(kubeconfig);
+    problems = read.rowCount < 1 || read.ids.length !== read.rowCount ? ['the list is not fully on screen'] : compareSorted({ ariaSort: read.ariaSort, ids: read.ids, before, after, wanted });
+  } while (problems.length > 0 && Date.now() < deadline);
+  return { read, problems };
+}
+
+export async function checkSort({ browser, baseURL, kubeconfig, kind, timeoutMs = 45_000 }) {
+  const spec = SORT_CASES[kind];
+  if (spec === undefined) {
+    throw new Error(`no such sort case: ${String(kind)}`);
+  }
+
+  // The fixture's crash-looping Pod has restarted at least once before the Restarts column is tried: without a Pod that restarted every number is 0 and the column's order is the name's.
+  const fixtureDeadline = Date.now() + 120_000;
+  let items = await spec.read(kubeconfig);
+  while (!sortCanBeTold(items) && Date.now() < fixtureDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    items = await spec.read(kubeconfig);
+  }
+
+  if (!sortCanBeTold(items)) {
+    throw new ParityError('SORT_FIXTURE', `${spec.what}: the cluster's objects have one value in the column (or none): a press cannot be told from no press`, { items });
+  }
+
+  const page = await openPods(browser, baseURL);
+  try {
+    if (spec.listEntry !== undefined) {
+      await page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem', { name: new RegExp(`^${spec.listEntry}`) }).click({ timeout: timeoutMs });
+    }
+
+    const header = page.locator('[data-page-slot]:visible').first().getByRole('columnheader', { name: new RegExp(`^${spec.header}`) });
+    const fail = (message, detail) => new ParityError('SORT_MISMATCH', `${spec.what}: ${message}`, detail);
+
+    // Before any press: the list is on screen and the column has a button and is not the sort in force (the list opens on Name).
+    const deadline = Date.now() + timeoutMs;
+    let initial = await readSortedList(page, spec.header);
+    while ((initial.rowCount < 1 || initial.ids.length !== initial.rowCount) && Date.now() < deadline) {
+      await page.waitForTimeout(100);
+      initial = await readSortedList(page, spec.header);
+    }
+
+    if (!initial.header || !initial.button) {
+      throw fail(`the ${spec.header} header has no sort button (header ${String(initial.header)}, button ${String(initial.button)}, ${String(initial.ids.length)} rows)`, { initial });
+    }
+
+    if (initial.ariaSort !== 'none') {
+      throw fail(`before any press the ${spec.header} column says aria-sort ${JSON.stringify(initial.ariaSort)}, wanted "none"`, { initial });
+    }
+
+    await header.getByRole('button').click({ timeout: timeoutMs });
+    const first = await settleSorted(page, spec, kubeconfig, undefined, timeoutMs);
+    if (first.problems.length > 0) {
+      throw fail(`first press: ${first.problems.join('; ')}`, { initial, first: first.read });
+    }
+
+    const direction = directionOf(first.read.ariaSort);
+    await header.getByRole('button').click({ timeout: timeoutMs });
+    const second = await settleSorted(page, spec, kubeconfig, opposite(direction), timeoutMs);
+    if (second.problems.length > 0) {
+      throw fail(`second press (after ${direction}): ${second.problems.join('; ')}`, { initial, first: first.read, second: second.read });
+    }
+
+    return { initial, first: { direction, ids: first.read.ids }, second: { direction: directionOf(second.read.ariaSort), ids: second.read.ids }, header: spec.header };
+  } finally {
+    await page.close();
+  }
 }
 
 // The SDK's log sessions, asked of the host as the page asks (`ServiceWrapper.ListSessions` of the log service): every session its log manager holds, ended ones included, until something closes them. The old UI
