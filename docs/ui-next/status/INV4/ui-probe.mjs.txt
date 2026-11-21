@@ -1,0 +1,36 @@
+// INV4: first load of the Pods list against a cluster with an unavailable aggregated API; then Retry, only if the first load offers one; the RPC trace of the calls that matter.
+//   BASE=http://127.0.0.1:<port> [OUT=<shot prefix>] [RETRY=0] [ALL=1] node ui-probe.mjs        (INV4_HOST_CHECKOUT: see ui-lib.mjs)
+import os from 'node:os';
+import path from 'node:path';
+import { webkit, forgetSession, sleep, methodNames } from './ui-lib.mjs';
+const base = process.env.BASE, out = process.env.OUT ?? path.join(process.env.INV4_WORK ?? os.tmpdir(), 'shots');
+const t0 = Date.now(); const at = () => `+${((Date.now() - t0) / 1000).toFixed(1).padStart(5)} s`;
+await forgetSession(base);
+const browser = await webkit.launch();
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+const page = await ctx.newPage();
+const ids = methodNames();
+const rpc = [];
+page.on('request', (rq) => { if (rq.url().endsWith('/wails/runtime') && rq.method() === 'POST') { try { const b = JSON.parse(rq.postData()); const m = b.args?.methodName ?? ids.get(b.args?.methodID ?? b.method) ?? ('id:' + (b.args?.methodID ?? b.method)); if (process.env.ALL === "1" || /(StartConnection|CheckConnection|StopConnection|Catalog|OpenSourceView|ConnectionStates|ConnectionStatus)$/.test(m)) rpc.push({ id: b.args['call-id'], m: m.split('.').pop(), t: at() }); } catch {} } });
+page.on('response', async (rs) => { if (rs.url().endsWith('/wails/runtime') && rs.request().method() === 'POST') { try { const b = JSON.parse(rs.request().postData()); const e = rpc.find((x) => x.id === b.args?.['call-id']); if (e) { e.status = rs.status(); e.done = at(); } } catch {} } });
+await page.goto(base + '/');
+await page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ }).click();
+const read = () => page.evaluate(() => ({ state: document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') ?? null, alert: document.querySelector('[role=alert]')?.innerText.replace(/\s+/g, ' ') ?? null, footer: document.querySelector('[data-ov-part=footer]')?.innerText.replace(/\s+/g, ' ') ?? null }));
+await page.waitForFunction(() => ['ready', 'error'].includes(document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') ?? ''), undefined, { timeout: 60000 }).catch(() => undefined);
+await sleep(1500);
+console.log(at(), 'FIRST LOAD:', JSON.stringify(await read()));
+await page.screenshot({ path: `${out}-1-first-load.png` });
+if (process.env.RETRY !== '0') {
+  // Retry is offered only by a first load that failed. A first load that is ready offers none, and is the result: the run goes on to the trace.
+  if (await page.getByRole('button', { name: 'Retry' }).count() > 0) {
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await sleep(4000);
+    console.log(at(), 'AFTER RETRY:', JSON.stringify(await read()));
+    await page.screenshot({ path: `${out}-2-after-retry.png` });
+  } else {
+    console.log(at(), 'NO RETRY OFFERED: the first load is the result');
+  }
+}
+console.log('\nRPC trace (the calls that matter):');
+for (const e of rpc) console.log(`  ${e.t}  ${e.m.padEnd(22)} -> ${e.status ?? '...'}`);
+await browser.close();

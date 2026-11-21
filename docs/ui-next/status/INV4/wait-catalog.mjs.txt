@@ -1,0 +1,21 @@
+// Waits for the catalog to grow without a reconnect: the healed group's types are in it AND the fact that names the unavailable groups has cleared. Exits 0 then; 1 when 330 s pass first; 2 without a connection.
+//   BASE=http://127.0.0.1:<port> node wait-catalog.mjs
+import { call, sleep, short, unavailableFact } from './lib.mjs';
+const base = process.env.BASE, P = 'kubernetes', t0 = Date.now(), LIMIT_MS = Number(process.env.INV4_WAIT_LIMIT_MS ?? 330000), POLL_MS = Number(process.env.INV4_POLL_MS ?? 5000);
+if (!base) { console.error('BASE is required'); process.exit(2); }
+const l = await call(base, 'ListConnections', P);
+if (!l.ok || !Array.isArray(l.body) || l.body.length === 0) { console.error(`no connection to wait for: ${l.status} ${short(l.body)}`); process.exit(2); }
+const id = l.body[0].id;
+let last = '';
+while (Date.now() - t0 < LIMIT_MS) {
+  const c = await call(base, 'Catalog', P, { route: { connection: id }, refresh: false });
+  const f = await unavailableFact(base, P, id);
+  const metrics = c.ok ? !!c.body?.types?.some((x) => x.type.startsWith('k8s:metrics.k8s.io')) : null;
+  const s = JSON.stringify({ cov: c.ok ? c.body?.coverage?.kind : `ERR ${c.status} ${short(c.body, 80)}`, types: c.ok ? c.body?.types?.length : null, metrics, fact: f.ok ? (f.fact ? f.fact.value : null) : `ERR ${f.error}` });
+  if (s !== last) { console.log(`+${((Date.now() - t0) / 1000).toFixed(0).padStart(3)} s ${s}`); last = s; }
+  // Pickup is recorded only when both calls answered, the group is in the catalog and the fact is gone: a catalog that keeps earlier types, or a call that failed, is not the group healing.
+  if (c.ok && f.ok && metrics && !f.fact) process.exit(0);
+  await sleep(POLL_MS);
+}
+console.error(`the catalog did not grow, with the fact cleared, within ${LIMIT_MS / 1000} s`);
+process.exit(1);
