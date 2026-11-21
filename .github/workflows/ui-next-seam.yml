@@ -1,0 +1,266 @@
+name: UI next seam check
+
+# The seam check (ui-next/plugins/e2e/seam.check.mjs, docs/ui-next/slices/n19-plugin-seam.md): the REAL Go host in server mode, built from `OMNIVIEW_UI=next`, loading the fixture plugins that
+# ui-next/plugins/fixture/build.mjs builds outside the host's tree, driven by a browser. Plugin loading, the pages, the rail, the bottom panel and the Logs tool, the command palette and its plugin providers,
+# the session (reload and a restart of the host), a plugin's unload, the identity of a Logs session, and a plugin's process that is killed and comes back. It is the only check that drives the real host with a
+# browser; until this workflow nothing ran it but agents, by hand (docs/ui-next/AGENTS.md, rule 17: "the seam check").
+#
+# THE JOBS. One job per engine (WebKit and Chromium run at the same time), each in the CI image pinned by digest (the guard step below, as in the kit probes workflow): install, `task packages`, the host the way agents
+# build it for the seam (`OMNIVIEW_UI=next task build:server`, with `GOWORK=off GOTOOLCHAIN=local`), then the whole seam in that engine, then the seam's NEGATIVE CONTROLS in that engine. A control runs the scenario it
+# belongs to alone with one perturbation and exits 0 when the assertion it is named for saw it (`SEAM_CONTROL=<name>`). The step takes the list of controls from the check itself, so a control added there is run here
+# with no change to this file, and it runs every one even when one fails. The seam and the controls run in a clean environment: only the engine and the control are set, nothing of the build's (the check starts the host
+# with a minimal environment of its own, and the Go toolchain settings it needs for the fixture plugin's process are its own). The job named `Seam check` waits for both engines and is green only when both are;
+# when one is not, it names the scenario that failed and the assertion, from the annotation the failed step wrote.
+#
+# Why two jobs that each build the host, and the controls in them (measured, docs/ui-next/status/CI4.md): one job for both engines is as many runner-minutes less as it is minutes longer (about 10 minutes, more than the
+# kit probes' 8 to 11 and growing with every scenario); a job for each of seam and controls in each engine is 4 slots of the 20 that the plan runs at once for a gain of 1.5 minutes. No Go cache: restoring the module
+# and build caches (512 MB) saved 10 s of 95 and the repository's caches are over their limit.
+#
+# NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull request blocks the merge. The lead makes `Seam check` (the aggregating job,
+# whose name does not change) required once it has been green for a while.
+#
+# PATHS. What the seam reads: the new UI and the kit (`ui-next/**`, `packages/**`: the kit, the runtime's curated entry the fixture imports, the providers and the Vite plugin that `vite.config.ts` and `task packages`
+# build), the dependency lock, the flavour switch and the frontend build inputs, and the Go host that `build:server` compiles (`go list -deps -tags production,server .`: the root package, `backend/`, `internal/`, `pkg/`,
+# `go.mod`, `go.sum`, the host module bootstrap in `scripts/hostmod/`, the Taskfiles). Markdown is never an input. A pull request that changes only documentation does not start this workflow.
+
+on:
+  pull_request:
+    paths:
+      - "ui-next/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "public/**"
+      - "patches/**"
+      - "tsconfig*.json"
+      - "*.go"
+      - "backend/**"
+      - "internal/**"
+      - "pkg/**"
+      - "go.mod"
+      - "go.sum"
+      - "scripts/hostmod/**"
+      - "Taskfile.yml"
+      - "build/Taskfile.yml"
+      - ".github/ci/image.lock"
+      - ".github/workflows/ui-next-seam.yml"
+      - "!**/*.md"
+  push:
+    branches: [main]
+    paths:
+      - "ui-next/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "public/**"
+      - "patches/**"
+      - "tsconfig*.json"
+      - "*.go"
+      - "backend/**"
+      - "internal/**"
+      - "pkg/**"
+      - "go.mod"
+      - "go.sum"
+      - "scripts/hostmod/**"
+      - "Taskfile.yml"
+      - "build/Taskfile.yml"
+      - ".github/ci/image.lock"
+      - ".github/workflows/ui-next-seam.yml"
+      - "!**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ui-next-seam-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  seam:
+    name: Seam ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    # Measured: 6.5 to 8 minutes for scenarios a to m, 9.3 minutes with scenario n (a plugin's process killed: the host finds it on its health check, up to 30 s, twice: once in the seam and once in its control).
+    timeout-minutes: 20
+    # The CI image holds Node, pnpm, Task, Go, the native libraries of the host (GTK 4 and WebKitGTK, which the Wails bindings need to be generated) and the Playwright browsers of the version pnpm-lock.yaml
+    # resolves. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private:
+    # the job token reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do.
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci@sha256:289353ab91800166914d98c79ab71fa06b2261e7963c72a695dca606e36dd784
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      # Both engines run to the end: one push shows what fails in each.
+      fail-fast: false
+      matrix:
+        engine: [webkit, chromium]
+    steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Is the image the one this checkout needs? A stale image fails here, in a second, naming the input that moved, and not as a browser that cannot be found.
+      - name: The image is not stale
+        run: node scripts/ci/check-image.mjs check --manifest /opt/ci/manifest.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the workspace packages (the kit among them)
+        run: |
+          task packages
+          # `task packages` rewrites this tracked shim (docs/ui-next/AGENTS.md, Commands); it is not part of the change under test.
+          git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+
+      # The host as agents build it for the seam: the frontend (`vite build` with OMNIVIEW_UI=next into dist/, embedded), the Wails bindings, then bin/Omniview-server.
+      - name: Build the host (OMNIVIEW_UI=next task build:server)
+        env:
+          OMNIVIEW_UI: next
+          GOWORK: "off"
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+        run: task build:server
+
+      # The whole seam in this engine. A failure is written as one annotation that names the scenario (the letter of the last `// <letter>.` marker or doc comment above the line of the failing check function, and the
+      # function) and the assertion; `Seam check` repeats it.
+      - name: The seam (${{ matrix.engine }})
+        env:
+          ENGINES: ${{ matrix.engine }}
+        run: |
+          set -o pipefail
+          check=ui-next/plugins/e2e/seam.check.mjs
+          log="$RUNNER_TEMP/seam-$ENGINES.log"
+          if node "$check" 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          # The first frame of a scenario function (checkHealthy, checkRail, ...) and its line: where in the check the failing assertion or wait is.
+          frame="$(grep -m1 -oE 'at (async )?check[A-Z][A-Za-z]* \([^)]*seam\.check\.mjs:[0-9]+' "$log" | sed -E 's/^at (async )?//; s/ \(.*seam\.check\.mjs:/ at line /' || true)"
+          line="${frame##* }"
+          letter=""
+          if [[ "$line" =~ ^[0-9]+$ ]]; then
+            letter="$(awk -v n="$line" 'NR > n { exit } match($0, /^[ ]*(\/\/|\*|\/\*\*) [a-n]\. [A-Za-z]/) { s = $0; sub(/^[ ]*(\/\/|\*|\/\*\*) /, "", s); l = substr(s, 1, 1) } END { print l }' "$check")"
+          fi
+          if [ -n "$frame" ]; then
+            scenario="${letter:-?} (${frame})"
+          else
+            scenario="none: no scenario function in the stack, the host did not start or the fixture build failed"
+          fi
+          # The assertion: an Error's first line, or (a Playwright timeout has none) the last line before the first stack frame that is not blank or call log, and the first line the call log waited for.
+          message="$(grep -m1 -E '^[A-Za-z]*Error' "$log" | head -c 500 || true)"
+          if [ -z "$message" ]; then
+            message="$(awk '/^    at / { exit } !/^$/ && !/^Call log:/ && !/^  - / { last = $0 } END { print last }' "$log" | head -c 300)"
+            waited="$(awk '/^    at / { exit } /^  - / { print; exit }' "$log" | head -c 300)"
+            [ -z "$waited" ] || message="$message ${waited# }"
+          fi
+          message="${message//'%'/'%25'}"
+          echo "::error title=Seam $ENGINES::scenario $scenario: $message"
+          {
+            echo "### Seam $ENGINES failed"
+            echo
+            echo "Scenario $scenario"
+            echo
+            echo '```'
+            echo "$message"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      # Every negative control the check names, in this engine, one after the other. Each runs the scenario it belongs to alone with one perturbation and passes when the assertion it is named for saw it; one that is not
+      # detected, or that fails on another assertion, fails the step. All of them run when one fails.
+      - name: The seam's negative controls (${{ matrix.engine }})
+        env:
+          ENGINES: ${{ matrix.engine }}
+        run: |
+          controls="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const text = readFileSync("ui-next/plugins/e2e/seam.check.mjs", "utf8");
+            const block = /^const CONTROLS = \{\n([\s\S]*?)^\};$/m.exec(text);
+            if (block === null) throw new Error("seam.check.mjs has no `const CONTROLS = {` block");
+            const names = [...block[1].matchAll(/^  \x27([a-z0-9-]+)\x27: \//gm)].map((match) => match[1]);
+            // Scenario n runs every one of its controls from one kill: `process` runs them all (the names of PROCESS_CONTROLS make one only).
+            if (/PROCESS_CONTROLS/.test(text)) names.push("process");
+            console.log(names.join(" "));
+          ')"
+          [ -n "$controls" ] || { echo "::error::no negative control found in seam.check.mjs"; exit 1; }
+          echo "controls: $controls"
+          failed=""
+          {
+            echo "### Seam negative controls ($ENGINES)"
+            echo
+            echo "| control | result | seconds |"
+            echo "|---|---|--:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for control in $controls; do
+            echo "::group::SEAM_CONTROL=$control ENGINES=$ENGINES"
+            start=$SECONDS
+            if SEAM_CONTROL="$control" node ui-next/plugins/e2e/seam.check.mjs 2>&1 | tee "$RUNNER_TEMP/control.log"; then
+              verdict="detected"
+            else
+              verdict="NOT DETECTED"
+              failed="$failed $control"
+              echo "::error title=Seam control $control ($ENGINES)::$(grep -m1 -E 'NEGATIVE CONTROL|Error' "$RUNNER_TEMP/control.log" | head -c 400 | sed 's/%/%25/g')"
+            fi
+            echo "::endgroup::"
+            echo "control $control: $verdict ($((SECONDS - start)) s)"
+            echo "| $control | $verdict | $((SECONDS - start)) |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          [ -z "$failed" ] || { echo "::error::controls that failed:$failed"; exit 1; }
+
+  # The check that keeps the name `Seam check`. Green only when both engines succeeded; a failed, cancelled or skipped job fails it, and so does an empty or unknown result. A cancelled run does not run it.
+  # The jobs that did not succeed are named with the scenario and the assertion their failed step annotated (the token reads the annotations with `checks: read`).
+  seam-check:
+    name: Seam check
+    needs: seam
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: read
+    steps:
+      - name: Require every engine to have succeeded
+        env:
+          RESULT: ${{ needs.seam.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$RESULT" = success ]; then
+            echo "The seam passed in WebKit and Chromium."
+            exit 0
+          fi
+          echo "::error title=Seam check::the seam jobs finished as '${RESULT:-unknown}', not as success"
+          if jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+              --jq '.jobs[] | select(.name | startswith("Seam ")) | select(.name != "Seam check") | select(.conclusion != "success") | "\(.id)\t\(.name)\t\(.conclusion // .status)\t\(.html_url)"' 2>&1); then
+            while IFS=$'\t' read -r id name conclusion url; do
+              [ -n "$id" ] || continue
+              echo "::error title=Seam check::$name finished as $conclusion: $url"
+              if found=$(gh api "repos/$GITHUB_REPOSITORY/check-runs/$id/annotations?per_page=50" \
+                  --jq '.[] | select(.annotation_level == "failure") | select(.title | startswith("Seam ")) | "\(.title) - \(.message)"' 2>&1); then
+                if [ -n "$found" ]; then
+                  while IFS= read -r line; do echo "::error title=Seam check::${line//'%'/'%25'}"; done <<< "$found"
+                fi
+              else
+                echo "::warning title=Seam check::could not read the annotations of $name: $found"
+              fi
+            done <<< "$jobs"
+          else
+            echo "::warning title=Seam check::could not list the jobs of this run: $jobs"
+          fi
+          exit 1
