@@ -256,7 +256,7 @@ export class StateWriteErrorPayload {
 }
 
 /**
- * UnloadCause says why a plugin stopped serving the window. It is one of the four words below and nothing else: the window words each for the person itself, so no text of the plugin, of
+ * UnloadCause says why a plugin is not serving the window. It is one of the six words below and nothing else: the window words each for the person itself, so no text of the plugin, of
  * its process or of an error ever travels with the event (docs/development-plugin-lifecycle.md, "What the window is told when a plugin stops").
  */
 export enum UnloadCause {
@@ -284,6 +284,17 @@ export enum UnloadCause {
      * UnloadDisabled: the person turned the plugin off.
      */
     UnloadDisabled = "disabled",
+
+    /**
+     * UnloadFailed: the plugin's load ended in an error: its files did not pass validation, its process did not start, or the host could not start what the plugin brings. Told by the load that failed, whether it was a reload (UnloadReloaded
+     * came first), a retry or a first load; the plugin is then a failed record, which RetryFailedPlugin can load again.
+     */
+    UnloadFailed = "failed",
+
+    /**
+     * UnloadTimedOut: the load ran out of time: the plugin's process did not answer within the loader's own start timeout (pluginStartTimeout).
+     */
+    UnloadTimedOut = "timeout",
 };
 
 /**

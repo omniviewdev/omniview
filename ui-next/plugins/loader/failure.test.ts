@@ -57,7 +57,7 @@ describe('classify', () => {
   });
 });
 
-// A plugin that was loaded and then stopped (PU1) has no bundle that failed: the host said it stopped, in one of four words, and the page words each itself.
+// A plugin that was loaded and then stopped (PU1), or whose load failed (PU2), has no bundle that failed: the host said it stopped or could not start, in one of six words, and the page words each itself.
 
 describe('unloadedFailure', () => {
   it('says a crashed plugin stopped unexpectedly, in the words of the mock\'s failed plugin (ch16 S89)', () => {
@@ -68,16 +68,21 @@ describe('unloadedFailure', () => {
     expect(unloadedFailure('reloaded')).toEqual({ kind: 'unloaded', cause: 'reloaded', message: 'The plugin is starting again. The page opens when it is ready.' });
   });
 
+  it('says a plugin whose load failed could not start, and one that ran out of time took too long (PU2)', () => {
+    expect(unloadedFailure('failed')).toEqual({ kind: 'unloaded', cause: 'failed', message: 'The plugin could not start, so its pages can\'t load data.' });
+    expect(unloadedFailure('timeout')).toEqual({ kind: 'unloaded', cause: 'timeout', message: 'The plugin took too long to start, so its pages can\'t load data.' });
+  });
+
   it('has no detail and no text of the plugin: nothing but the host\'s sentence', () => {
-    for (const cause of ['crashed', 'reloaded'] as const) {
+    for (const cause of ['crashed', 'reloaded', 'failed', 'timeout'] as const) {
       expect(Object.keys(unloadedFailure(cause)).sort()).toEqual(['cause', 'kind', 'message']);
     }
   });
 });
 
-describe('the four causes', () => {
-  it('are the host\'s four words: what the event of backend/pkg/plugin/events.go can carry', () => {
-    expect([...UNLOAD_CAUSES]).toEqual(['crashed', 'reloaded', 'uninstalled', 'disabled']);
+describe('the six causes', () => {
+  it('are the host\'s six words: what the event of backend/pkg/plugin/events.go can carry', () => {
+    expect([...UNLOAD_CAUSES]).toEqual(['crashed', 'reloaded', 'uninstalled', 'disabled', 'failed', 'timeout']);
   });
 });
 
@@ -94,5 +99,10 @@ describe('failureWords', () => {
 
   it('says a plugin that is reloading is starting again, and no fault: nothing failed', () => {
     expect(failureWords(unloadedFailure('reloaded'))).toEqual({ label: 'starting again', caption: 'Starting again', faulted: false });
+  });
+
+  it('says a plugin whose load failed did not start, and one that ran out of time timed out: both are faults', () => {
+    expect(failureWords(unloadedFailure('failed'))).toEqual({ label: 'did not start', caption: 'Did not start', faulted: true });
+    expect(failureWords(unloadedFailure('timeout'))).toEqual({ label: 'timed out', caption: 'Timed out', faulted: true });
   });
 });

@@ -128,6 +128,14 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return info, err
 	}
+	// The window was told the old build is gone (UnloadReloaded, when it held the plugin): a link that fails before the load, in the copy of the metadata, the dev server or the build, tells it the new build did not start,
+	// so it does not wait for a plugin that is not coming. The load tells the window itself when it fails.
+	loadAttempted := false
+	defer func() {
+		if err != nil && !loadAttempted {
+			emitUnloaded(pm.emitter, metadata.ID, UnloadFailed)
+		}
+	}()
 	if err = pm.prepareDevInstallDir(path, metadata); err != nil {
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return info, err
@@ -145,6 +153,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info plugintypes
 		return pm.failedDevInstall(metadata, path, lifecycle.PhaseBuildFailed, buildErr)
 	}
 
+	loadAttempted = true
 	info, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{DevMode: true, DevModePath: path})
 	if err != nil {
 		return pm.failedDevInstall(metadata, path, lifecycle.PhaseFailed,

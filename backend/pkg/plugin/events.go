@@ -41,8 +41,8 @@ const (
 	// Lifecycle state changes.
 	EventStateChange = "plugin/state_change"
 
-	// A plugin that was serving the window stopped: its process crashed, it is being reloaded, it was uninstalled or it was turned off. The window drops the interface it drew from the plugin
-	// and learns that the plugin runs again from EventStateChange (To == Running). The payload is the plugin's id and one of four codes (UnloadCause), never text.
+	// A plugin that was serving the window stopped, or could not start: its process crashed, it is being reloaded, it was uninstalled, it was turned off, or its load failed. The window drops the interface it drew from the plugin
+	// and learns that the plugin runs again from EventStateChange (To == Running). The payload is the plugin's id and one of six codes (UnloadCause), never text.
 	EventUnloaded = "plugin/unloaded"
 
 	// Install flow.
@@ -95,7 +95,7 @@ type StateChangePayload struct {
 	Timestamp time.Time             `json:"timestamp"`
 }
 
-// UnloadCause says why a plugin stopped serving the window. It is one of the four words below and nothing else: the window words each for the person itself, so no text of the plugin, of
+// UnloadCause says why a plugin is not serving the window. It is one of the six words below and nothing else: the window words each for the person itself, so no text of the plugin, of
 // its process or of an error ever travels with the event (docs/development-plugin-lifecycle.md, "What the window is told when a plugin stops").
 type UnloadCause string
 
@@ -108,6 +108,11 @@ const (
 	UnloadUninstalled UnloadCause = "uninstalled"
 	// UnloadDisabled: the person turned the plugin off.
 	UnloadDisabled UnloadCause = "disabled"
+	// UnloadFailed: the plugin's load ended in an error: its files did not pass validation, its process did not start, or the host could not start what the plugin brings. Told by the load that failed, whether it was a reload (UnloadReloaded
+	// came first), a retry or a first load; the plugin is then a failed record, which RetryFailedPlugin can load again.
+	UnloadFailed UnloadCause = "failed"
+	// UnloadTimedOut: the load ran out of time: the plugin's process did not answer within the loader's own start timeout (pluginStartTimeout).
+	UnloadTimedOut UnloadCause = "timeout"
 )
 
 // UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. It has no other member, and a member that carried text would put the plugin's words in the window's hands.
