@@ -53,6 +53,19 @@ function shownView(source: DetailSource): DetailView | undefined {
 /** The article before a name: "orders-api was not found", or the kind alone when the route names nothing. */
 const subject = (name: string, kind: string): string => (name === '' ? kind : name);
 
+/** The longest title a plugin may give a state, in characters: a title is a heading of one line, not a paragraph. */
+const MAX_STATE_TITLE = 120;
+
+/** The title a plugin gave a state: text on one line (white space of any kind is one space, the ends are trimmed) of 1 to `MAX_STATE_TITLE` characters. Anything else is no title: the page's own stands. */
+function givenTitle(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > MAX_STATE_TITLE * 8) {
+    return undefined;
+  }
+
+  const one = value.replace(/\s+/g, ' ').trim();
+  return one.length > 0 && one.length <= MAX_STATE_TITLE ? one : undefined;
+}
+
 function bodyOf(definition: DetailPageDefinition, name: string, source: DetailSource, view: DetailView | undefined, tab: string): DetailBody {
   if (view !== undefined) {
     return { kind: 'tab', tab, content: view.tabs[tab] };
@@ -64,7 +77,7 @@ function bodyOf(definition: DetailPageDefinition, name: string, source: DetailSo
     case 'not-found':
       return {
         kind: 'not-found',
-        title: `${who} was not found`,
+        title: givenTitle(state.title) ?? `${who} was not found`,
         hint: state.message ?? `${definition.kind}${name === '' ? '' : ` ${name}`} doesn't exist here. It may have been deleted.`,
       };
     case 'denied':

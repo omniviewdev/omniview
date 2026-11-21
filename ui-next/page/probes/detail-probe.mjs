@@ -10,7 +10,8 @@
 // Stages: rects (the header and its parts, the strip and its faces, the summary, the columns, the Details list, the table cards, the aside, each against the mock's node of the
 // same name: 1 px, 2 px for what depends on its text; a text box whose words differ from the mock's is compared by y and height), shift (no part of the page moves by 0.001 px from
 // the loading state to the ready one: the header, the identity line, the strip, the first face, the panel's top), keys (Tab reaches the strip's one stop, the arrows move and select,
-// Home and End), counts (DOM elements of the page).
+// Home and End), counts (DOM elements of the page), gone (an object that is not there, K2c-2: a plugin that titles it "deleted" has its title over its message, one that gives no title has the page's
+// "was not found", the header and the strip stay where the loading page had them, and the page never says both; the design mock words the two states, and a control swaps the expectations).
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { ENGINES, VIEWPORTS as KIT_VIEWPORTS, launch } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -158,6 +159,68 @@ async function keys(browser, engine, viewportName, origin) {
   await context.close();
 }
 
+const GONE = {
+  deleted: { title: 'orders-api was deleted', hint: 'It no longer exists in north.' },
+  'not-found': { title: 'orders-api was not found', hint: 'Item orders-api doesn\'t exist in north. It may have been deleted.' },
+};
+
+/** What the not-found body of the page says, and what is wrong with it against `want`. */
+async function goneProblems(page, want) {
+  const read = await page.evaluate(() => {
+    const body = document.querySelector('[role="tabpanel"] [role="status"]');
+    return {
+      title: body?.querySelector('b')?.textContent ?? null,
+      hint: body?.querySelector('span')?.textContent ?? null,
+      heading: document.querySelector('header h1')?.textContent ?? null,
+      tabs: document.querySelectorAll('[data-ov-part="tabs"] [role="tab"]').length,
+      said: document.body.innerText,
+    };
+  });
+  const problems = [];
+  if (read.title !== want.title) problems.push(`title ${JSON.stringify(read.title)}, wanted ${JSON.stringify(want.title)}`);
+  if (read.hint !== want.hint) problems.push(`hint ${JSON.stringify(read.hint)}, wanted ${JSON.stringify(want.hint)}`);
+  if (read.heading !== 'orders-api') problems.push(`the page's heading is ${JSON.stringify(read.heading)}`);
+  if (read.tabs !== 5) problems.push(`${read.tabs} tabs, wanted 5`);
+  if (read.said.includes('was deleted') && read.said.includes('was not found')) problems.push('the page says both "was deleted" and "was not found"');
+  return problems;
+}
+
+/** An object that is not there (K2c-2): each of the two states says its own title and message, keeps the header and the strip where the loading page had them, and a swapped expectation is caught. */
+async function gone(browser, engine, viewportName, origin) {
+  const where = `${engine} ${viewportName} gone`;
+  const specs = [
+    { name: 'header', sel: 'header' },
+    { name: 'row', sel: 'header [data-ov-row]' },
+    { name: 'title', sel: 'header h1' },
+    { name: 'meta', sel: 'header [data-ov-meta]' },
+    { name: 'tabs', sel: '[data-ov-part="tabs"]' },
+    { name: 'tab0', sel: '[data-ov-part="tab"]' },
+    { name: 'panel', sel: '[role="tabpanel"][aria-labelledby]' },
+  ];
+  const loading = await openCase(browser, origin, 'detail', NATIVE[viewportName], { ready: '[data-ov-part="tabs"]', extra: '&state=loading' });
+  const before = await readRects(loading.page, specs);
+  await loading.context.close();
+  for (const state of ['deleted', 'not-found']) {
+    const { page, context, errors } = await openCase(browser, origin, 'detail', NATIVE[viewportName], { ready: '[role="tabpanel"] [role="status"]', extra: `&state=${state}` });
+    for (const error of errors) say(false, where, `page error: ${error}`);
+    const problems = await goneProblems(page, GONE[state]);
+    say(problems.length === 0, where, `${state}: the page says "${GONE[state].title}" over "${GONE[state].hint}", with its heading and five tabs`, problems.join('; '));
+    // The same reading with the other state's words must fail: the reading is not satisfied by any page.
+    const other = state === 'deleted' ? 'not-found' : 'deleted';
+    say((await goneProblems(page, GONE[other])).length > 0, where, `${state}: control, the reading with the words of ${other} reports a problem`);
+    const after = await readRects(page, specs);
+    for (const { name } of specs.filter((spec) => spec.name !== 'panel')) {
+      const a = before[name];
+      const b = after[name];
+      const stayed = a !== null && b !== null && [0, 1, 3].every((k) => round2(Math.abs(a[k] - b[k])) <= 0.001);
+      say(stayed, where, `${state}: ${name} stays where the loading page had it`, stayed ? '' : `loading ${JSON.stringify(a)} ${state} ${JSON.stringify(b)}`);
+    }
+
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `K2c-2-detail-${state}-${engine}-void-${viewportName}.png`) });
+    await context.close();
+  }
+}
+
 const dist = buildFixture();
 const { server, origin } = await serve(dist);
 try {
@@ -168,6 +231,7 @@ try {
         await rects(browser, engine, viewportName, origin);
         await shift(browser, engine, viewportName, origin);
         await keys(browser, engine, viewportName, origin);
+        await gone(browser, engine, viewportName, origin);
       }
     } finally {
       await browser.close();

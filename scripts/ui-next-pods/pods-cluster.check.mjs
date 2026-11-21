@@ -5,7 +5,7 @@
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
-//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the Logs command of a Pod
+//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says; the Logs command of a Pod
 //                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
@@ -20,7 +20,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareLane } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 
@@ -136,6 +136,14 @@ if (mode === 'control-fixture-absent') {
   test('the Pod detail page, opened from the list, prints the name, node, Pod IP, host IP and QoS class kubectl says', async () => {
     const { read, expected } = await checkDetail({ browser, baseURL, kubeconfig });
     assert.equal(read.h1, expected.name);
+  });
+
+  // The generic detail page (K2c-2), opened from the Deployments list the sidebar's Deployments entry opens: the click on `cart-api` shows its Details rows, and the Strategy, the Revision and the Revision history
+  // are what `kubectl get deployment -o json` says (detail.mjs). A plugin before the generic page has no such link and fails here. Parity mode only.
+  test('the Deployment detail page, opened from the Deployments list, prints the strategy, revision and revision history kubectl says', async () => {
+    const { read, expected } = await checkDeploymentDetail({ browser, baseURL, kubeconfig });
+    assert.equal(read.h1, expected.name);
+    assert.ok(read.kv.length >= 3, `the page draws the Details rows: ${JSON.stringify(read.kv)}`);
   });
 
   // The first real log stream of the new stack (P1b-3b): the Logs command of a Pod's page opens a session in the host's Logs tool, whose rows are the lines `kubectl logs --timestamps` prints, and closing its tab

@@ -52,7 +52,8 @@ export type DetailPageDefinition = {
  *
  * - `loading`: the object is on its way.
  * - `ready`: the view is the object.
- * - `not-found`: the object does not exist (never did, or was deleted). `message` is the plugin's detail, in the person's words.
+ * - `not-found`: the object does not exist (never did, or was deleted). `message` is the plugin's detail, in the person's words. `title` (K2c-2) is the plugin's own title for the state, one line of at most
+ *   120 characters, for the plugin that knows more than "not found" ("lathe-4 was deleted" over "It no longer exists in north."); without it the title is the page's, "<name> was not found".
  * - `denied`: the person may not read it.
  * - `failed`: a read failed. `retry` is given only when asking again can help; without it the page draws no Retry (a button that does nothing is a stub).
  *
@@ -61,7 +62,7 @@ export type DetailPageDefinition = {
 export type DetailState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'ready' }
-  | { readonly kind: 'not-found'; readonly message?: string | undefined }
+  | { readonly kind: 'not-found'; readonly title?: string | undefined; readonly message?: string | undefined }
   | { readonly kind: 'denied'; readonly message?: string | undefined }
   | { readonly kind: 'failed'; readonly message?: string | undefined; readonly retry?: (() => void) | undefined };
 

@@ -106,6 +106,49 @@ describe('deriveDetailModel: the states', () => {
     expect(model(source({ kind: 'failed', message: 'The read timed out.', retry })).body).toEqual({ kind: 'failed', title: 'Couldn\'t load lathe-4', message: 'The read timed out.', retry });
   });
 
+  describe('the title of a not-found state (K2c-2): the plugin\'s when it gives one, the page\'s own when it does not', () => {
+    const body = (state: DetailState, route: Record<string, unknown> = params) => model(source(state), undefined, route).body;
+
+    it('takes the plugin\'s title for an object that was deleted, with its message under it, as the mock does (the mock: "<name> was deleted" over "It no longer exists in <connection>.")', () => {
+      expect(body({ kind: 'not-found', title: 'lathe-4 was deleted', message: 'It no longer exists in north.' })).toEqual({ kind: 'not-found', title: 'lathe-4 was deleted', hint: 'It no longer exists in north.' });
+    });
+
+    it('keeps today\'s title, and today\'s message, for a plugin that gives none (an object that never was: the mock says "<name> was not found")', () => {
+      expect(body({ kind: 'not-found' })).toEqual({ kind: 'not-found', title: 'lathe-4 was not found', hint: 'Widget lathe-4 doesn\'t exist here. It may have been deleted.' });
+      expect(body({ kind: 'not-found', message: 'Widget lathe-4 doesn\'t exist in north. It may have been deleted.' })).toEqual({ kind: 'not-found', title: 'lathe-4 was not found', hint: 'Widget lathe-4 doesn\'t exist in north. It may have been deleted.' });
+    });
+
+    it('takes a title with no message: the page\'s own hint stays under it', () => {
+      expect(body({ kind: 'not-found', title: 'lathe-4 was deleted' })).toEqual({ kind: 'not-found', title: 'lathe-4 was deleted', hint: 'Widget lathe-4 doesn\'t exist here. It may have been deleted.' });
+    });
+
+    it('reads the title as one line of words and falls back to the page\'s own for anything that is not: empty, white space, not text, or longer than a title can be', () => {
+      expect(body({ kind: 'not-found', title: '  lathe-4 \n was   deleted ' })).toMatchObject({ title: 'lathe-4 was deleted' });
+      for (const title of ['', '   ', '\n', 7, null, {}, ['lathe-4 was deleted'], 'x'.repeat(200)]) {
+        expect(body({ kind: 'not-found', title: title as unknown as string }), JSON.stringify(title)).toMatchObject({ title: 'lathe-4 was not found' });
+      }
+    });
+
+    it('does not let a title change the other states, or the header: the heading is still the name', () => {
+      const given = source({ kind: 'not-found', title: 'lathe-4 was deleted' });
+      const state: unknown = { ...given.state, kind: 'denied' };
+
+      expect(model(given).heading).toBe('lathe-4');
+      expect(model({ ...given, state: state as DetailState }).body).toMatchObject({ kind: 'denied', title: 'Access to lathe-4 is denied' });
+    });
+
+    it('a plugin\'s source with a title is a source of the contract without it, member for member: the one member it adds is `title`, which a host before it never reads', () => {
+      const READ_BEFORE = ['kind', 'message'];
+      const newer: DetailState = { kind: 'not-found', title: 'lathe-4 was deleted', message: 'It no longer exists in north.' };
+      const { title: _title, ...before } = newer;
+
+      expect(Object.keys(newer).filter((name) => !READ_BEFORE.includes(name))).toEqual(['title']);
+      expect(Object.keys(before).filter((name) => !READ_BEFORE.includes(name))).toEqual([]);
+      const asBefore: { readonly kind: 'not-found'; readonly message?: string | undefined } = newer;
+      expect(asBefore.message).toBe('It no longer exists in north.');
+    });
+  });
+
   it('offers a Retry only when the plugin gave one', () => {
     const body = model(source({ kind: 'failed' })).body;
 

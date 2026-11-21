@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareCounts, countLines } from './counts.mjs';
-import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
+import { compareDeployment, compareDetail, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail } from './detail.mjs';
 import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 
@@ -220,12 +220,22 @@ export async function checkCounts({ browser, baseURL, kubeconfig, timeoutMs = 45
   }
 }
 
-export async function checkDetail({ browser, baseURL, kubeconfig, pod = DETAIL_POD, timeoutMs = 30_000 }) {
-  const oracle = async () => expectedDetail(JSON.parse(await kubectl(kubeconfig, ['get', 'pod', pod.name, '-n', pod.namespace, '-o', 'json'])));
+// Opens a detail page from its kind's list (the click on the object's name link) and polls until the page agrees with `oracle` or the deadline, then throws ParityError('DETAIL_MISMATCH') with the last problems.
+// `listEntry` is the sidebar entry that opens the list when the Pods list is not the page on screen (a name or `undefined`); `what` names the object in a failure.
+async function checkDetailOf({ browser, baseURL, href, listEntry, oracle, compare, what, timeoutMs }) {
   const page = await openPods(browser, baseURL);
   try {
-    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
-    await link.waitFor({ timeout: timeoutMs });
+    if (listEntry !== undefined) {
+      await page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem', { name: new RegExp(`^${listEntry}`) }).click({ timeout: timeoutMs });
+    }
+
+    const link = page.locator(`a[href="${href}"]`).first();
+    try {
+      await link.waitFor({ timeout: timeoutMs });
+    } catch {
+      throw new ParityError('DETAIL_MISMATCH', `${what}: the ${listEntry ?? 'Pods'} list does not link it to its page (${href})`, { problems: ['no link'], href });
+    }
+
     await link.click();
     const deadline = Date.now() + timeoutMs;
     let read;
@@ -233,23 +243,51 @@ export async function checkDetail({ browser, baseURL, kubeconfig, pod = DETAIL_P
     let problems;
     do {
       await page.waitForTimeout(100);
-      // Each page reading is bracketed by two reads of the Pod: a Pod replaced in between (a StatefulSet Pod keeps its name and gets a new IP) is read again, it is not a defect of the page.
+      // Each page reading is bracketed by two reads of the object: one replaced in between (a StatefulSet Pod keeps its name and gets a new IP) is read again, it is not a defect of the page.
       const before = await oracle();
       read = await readDetail(page);
       expected = await oracle();
       if (JSON.stringify(before) !== JSON.stringify(expected)) {
-        problems = ['the Pod changed while the page was read'];
+        problems = ['the object changed while the page was read'];
       } else {
-        problems = read.h1 === null ? ['the detail page is not on screen'] : compareDetail(read, expected);
+        problems = read.h1 === null ? ['the detail page is not on screen'] : compare(read, expected);
       }
     } while (problems.length > 0 && Date.now() < deadline);
     if (problems.length > 0) {
-      throw new ParityError('DETAIL_MISMATCH', `${pod.namespace}/${pod.name}: ${problems.join('; ')}`, { problems, read, expected });
+      throw new ParityError('DETAIL_MISMATCH', `${what}: ${problems.join('; ')}`, { problems, read, expected });
     }
     return { read, expected };
   } finally {
     await page.close();
   }
+}
+
+export async function checkDetail({ browser, baseURL, kubeconfig, pod = DETAIL_POD, timeoutMs = 30_000 }) {
+  return checkDetailOf({
+    browser,
+    baseURL,
+    href: detailHref(pod),
+    listEntry: undefined,
+    oracle: async () => expectedDetail(JSON.parse(await kubectl(kubeconfig, ['get', 'pod', pod.name, '-n', pod.namespace, '-o', 'json']))),
+    compare: compareDetail,
+    what: `${pod.namespace}/${pod.name}`,
+    timeoutMs,
+  });
+}
+
+// The generic detail page (K2c-2), opened from the Deployments list: the sidebar's Deployments entry, then the click on the Deployment's name. The page's Details rows (Strategy, Revision, Revision history)
+// and its title must print what `kubectl get deployment -o json` says. A plugin without the generic page has no link to click: the check reports it.
+export async function checkDeploymentDetail({ browser, baseURL, kubeconfig, deployment = DETAIL_DEPLOYMENT, timeoutMs = 30_000 }) {
+  return checkDetailOf({
+    browser,
+    baseURL,
+    href: deploymentHref(deployment),
+    listEntry: 'Deployments',
+    oracle: async () => expectedDeployment(JSON.parse(await kubectl(kubeconfig, ['get', 'deployment', deployment.name, '-n', deployment.namespace, '-o', 'json']))),
+    compare: compareDeployment,
+    what: `${deployment.namespace}/${deployment.name}`,
+    timeoutMs,
+  });
 }
 
 // The detail page on screen: the visible page slot's header title and the rows of its Details section, as printed.

@@ -35,7 +35,7 @@ import { createRoot } from 'react-dom/client';
 import { ListPage, type ListPageDefinition, type ListSource } from '..';
 import type { ShellRegistration } from '../../shell';
 import { StaticShell, STATIC_RAIL, staticTabs } from '../../shell/testing';
-import { DetailCase } from './detailCase';
+import { DetailCase, type DetailStart } from './detailCase';
 import styles from './fixture.module.css';
 const noop = () => undefined;
 
@@ -453,10 +453,12 @@ const expose = (ready: () => void): void => {
   window.__fixture = { counts, release: noop, ready, header: noop, operation: noop };
 };
 
+const detailStart = (state: string | null): DetailStart => (state === 'loading' || state === 'deleted' || state === 'not-found' ? state : 'ready');
+
 createRoot(document.getElementById('root')!).render(
   <ThemeProvider>
     {name === 'detail' ? (
-      <DetailCase start={new URLSearchParams(window.location.search).get('state') === 'loading' ? 'loading' : 'ready'} expose={expose} />
+      <DetailCase start={detailStart(new URLSearchParams(window.location.search).get('state'))} expose={expose} />
     ) : config === undefined ? (
       <HeaderCase />
     ) : (

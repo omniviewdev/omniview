@@ -47,6 +47,8 @@ const sourceOf = (name: string): DetailSource => {
   switch (name) {
     case 'gone':
       return { ...base, state: { kind: 'not-found' }, view: undefined };
+    case 'removed':
+      return { ...base, state: { kind: 'not-found', title: 'removed was deleted', message: 'It no longer exists in north.' }, view: undefined };
     case 'locked':
       return { ...base, state: { kind: 'denied' }, view: undefined };
     case 'broken':
@@ -203,6 +205,18 @@ describe('the detail page of a route', () => {
     expect(screen.getByRole('heading', { level: 1, name })).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: 'Sprocket sections' })).toBeInTheDocument();
     expect(document.body).toHaveTextContent(name === 'slow' ? /Loading/ : words);
+  });
+
+  it('says what the plugin titles a deleted object, over its message, with the name still the heading (K2c-2); a plugin that gives no title keeps the page\'s own', () => {
+    mount({ link: deep('removed') });
+
+    expect(screen.getByRole('heading', { level: 1, name: 'removed' })).toBeInTheDocument();
+    expect(screen.getByText('removed was deleted')).toBeInTheDocument();
+    expect(screen.getByText('It no longer exists in north.')).toBeInTheDocument();
+    expect(screen.queryByText('removed was not found')).toBeNull();
+    cleanup();
+    mount({ link: deep('gone') });
+    expect(screen.getByText('gone was not found')).toBeInTheDocument();
   });
 
   it('offers the plugin\'s Retry for a failed read, and no Retry for a denied one', async () => {
