@@ -1,0 +1,32 @@
+// INV2: the realm's cap counts LIVE pages. Open N pages and keep them all open, close them all, wait, and open one more: on the unmodified host the cap is permanent, on the fixed host it recovers.
+import { log, playwright, RESOURCE, sleep, startHost } from './lib.mjs';
+const { HOST_ROOT, BIN, PLUGIN_ARCHIVE, KUBECONFIG_PATH, OUT, N = '70', WAIT_MS = '8000' } = process.env;
+const pw = playwright(HOST_ROOT);
+const h = await startHost({ bin: BIN, archive: PLUGIN_ARCHIVE, kubeconfig: KUBECONFIG_PATH, out: OUT, countersFile: process.env.INV2_COUNTERS });
+const browser = await pw.chromium.launch();
+const probe = (page) => page.evaluate(async (methodName) => { const r = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails?.clientId ?? '' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `p-${Math.random()}`, methodName, args: ['kubernetes'] } }) }); return r.status; }, `${RESOURCE}.ListConnections`);
+const pages = [];
+const statuses = [];
+for (let i = 1; i <= Number(N); i += 1) {
+  const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
+  await page.goto(`${h.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+  await sleep(700); // the page's events socket is registered and its first calls are made
+  statuses.push(await probe(page));
+  pages.push(page);
+}
+log(`${N} pages open at once: ListConnections statuses (in order of opening):`, statuses.join(' '));
+log('counters with all open', JSON.stringify(h.counters()));
+for (const page of pages) await page.close();
+log(`all closed; waiting ${WAIT_MS} ms`);
+await sleep(Number(WAIT_MS));
+log('counters after the wait', JSON.stringify(h.counters()));
+const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
+await page.goto(`${h.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+await sleep(1500);
+const after = await probe(page);
+const rows = await page.evaluate(() => document.querySelectorAll('[data-ov-state] tbody tr').length);
+log(`a new page after all closed: ListConnections ${after}, rows ${rows}`);
+await browser.close();
+await h.cleanup();
+log('done');
+process.exit(0);

@@ -1,0 +1,95 @@
+diff --git a/backend/pkg/plugin/resource/source_coordinator.go b/backend/pkg/plugin/resource/source_coordinator.go
+index c419df65..bfe60545 100644
+--- a/backend/pkg/plugin/resource/source_coordinator.go
++++ b/backend/pkg/plugin/resource/source_coordinator.go
+@@ -625,6 +625,7 @@ func (c *controller) RetireSourceOwner(owner string) {
+ 	if owner == "" {
+ 		return
+ 	}
++	debugRetireCalls.Add(1)
+ 	sc := c.sources
+ 	sc.mu.Lock()
+ 	if sc.retiredOwners == nil {
+diff --git a/main.go b/main.go
+index 676a9e7d..d0e0f484 100644
+--- a/main.go
++++ b/main.go
+@@ -541,6 +541,7 @@ func main() {
+ 	resourceBoundary := invocation.NewBoundary(mcpAuthority)
+ 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore, resourceBoundary)
+ 	resourceUIRealm := invocation.NewWindowRealm(resourceController.RetireSourceOwner)
++	go inv2Counters(resourceUIRealm, resourceController)
+ 	activityService, err := activity.NewService(stateDir.RootDir(), func(topic string, change sdkactivity.Change) {
+ 		app.Event.Emit(topic, change)
+ 	})
+diff --git a/backend/pkg/invocation/inv2_debug.go b/backend/pkg/invocation/inv2_debug.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/backend/pkg/invocation/inv2_debug.go
+@@ -0,0 +1,8 @@
++package invocation
++
++// DebugCounts is an INV2 investigation probe (never committed).
++func (r *WindowRealm) DebugCounts() map[string]int {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	return map[string]int{"realmScopes": len(r.scopes), "realmClosed": len(r.closed)}
++}
+diff --git a/backend/pkg/plugin/resource/inv2_debug.go b/backend/pkg/plugin/resource/inv2_debug.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/backend/pkg/plugin/resource/inv2_debug.go
+@@ -0,0 +1,17 @@
++package resource
++
++import "sync/atomic"
++
++var debugRetireCalls atomic.Int64
++
++// DebugSourceCounts is an INV2 investigation probe (never committed).
++func (c *controller) DebugSourceCounts() map[string]int {
++	sc := c.sources
++	sc.mu.Lock()
++	defer sc.mu.Unlock()
++	return map[string]int{
++		"sourceSessions": len(sc.sessions), "sourceViews": len(sc.views), "sourceInterests": len(sc.interests),
++		"sourceViewInterests": len(sc.viewInterests), "sourceConnInterests": len(sc.connectionInterests),
++		"retiredOwners": len(sc.retiredOwners), "retireCalls": int(debugRetireCalls.Load()),
++	}
++}
+diff --git a/inv2_debug.go b/inv2_debug.go
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/inv2_debug.go
+@@ -0,0 +1,28 @@
++package main
++
++import (
++	"encoding/json"
++	"os"
++	"time"
++
++	"github.com/omniviewdev/omniview/backend/pkg/invocation"
++)
++
++// inv2Counters writes the realm's and the source coordinator's counts to the file named by INV2_COUNTERS every 250 ms. INV2 investigation probe (never committed).
++func inv2Counters(realm *invocation.WindowRealm, ctrl any) {
++	path := os.Getenv("INV2_COUNTERS")
++	if path == "" {
++		return
++	}
++	for range time.Tick(250 * time.Millisecond) {
++		out := realm.DebugCounts()
++		if c, ok := ctrl.(interface{ DebugSourceCounts() map[string]int }); ok {
++			for k, v := range c.DebugSourceCounts() {
++				out[k] = v
++			}
++		}
++		data, _ := json.Marshal(out)
++		_ = os.WriteFile(path+".tmp", data, 0o600)
++		_ = os.Rename(path+".tmp", path)
++	}
++}

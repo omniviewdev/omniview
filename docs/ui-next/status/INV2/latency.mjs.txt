@@ -1,0 +1,34 @@
+// INV2: how long after a page closes is its scope (and its sources) released by the fixed host? Opens a page, waits for its table, closes it, and polls the instrumented counters until the realm's
+// scopes and the source coordinator's sessions are back at what they were before the page opened.
+//   HOST_ROOT=<host checkout> BIN=<fixed instrumented build> PLUGIN_ARCHIVE=<archive> KUBECONFIG_PATH=<kubeconfig> OUT=<dir> INV2_COUNTERS=<file> [ROUNDS=12] node latency.mjs
+import { log, playwright, sleep, startHost } from './lib.mjs';
+
+const { HOST_ROOT, BIN, PLUGIN_ARCHIVE, KUBECONFIG_PATH, OUT, INV2_COUNTERS, ROUNDS = '12' } = process.env;
+const pw = playwright(HOST_ROOT);
+const host = await startHost({ bin: BIN, archive: PLUGIN_ARCHIVE, kubeconfig: KUBECONFIG_PATH, out: OUT, countersFile: INV2_COUNTERS, pluginPprof: false });
+const browser = await pw.chromium.launch();
+const times = [];
+for (let round = 1; round <= Number(ROUNDS); round += 1) {
+  await sleep(5000); // the earlier page is retired and the counters are at rest
+  const rest = host.counters();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 2000 } });
+  await page.goto(`${host.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+  for (let i = 0; i < 100 && (await page.evaluate(() => document.querySelectorAll('[data-ov-state] tbody tr').length)) === 0; i += 1) await sleep(100);
+  await sleep(500);
+  const open = host.counters();
+  await page.close();
+  const closedAt = Date.now();
+  let back = null;
+  while (Date.now() - closedAt < 30_000) {
+    const now = host.counters();
+    if (now && now.realmScopes <= rest.realmScopes && now.sourceSessions <= rest.sourceSessions && now.sourceViews <= rest.sourceViews) { back = Date.now() - closedAt; break; }
+    await sleep(50);
+  }
+  times.push(back);
+  log(`round ${round}: at rest scopes ${rest.realmScopes} sessions ${rest.sourceSessions}; open scopes ${open.realmScopes} sessions ${open.sourceSessions}; back to rest ${back === null ? 'NEVER (30 s)' : `${back} ms`} after the page closed`);
+}
+const done = times.filter((t) => t !== null).sort((a, b) => a - b);
+log(`released after: min ${done[0]} ms, median ${done[Math.floor(done.length / 2)]} ms, max ${done.at(-1)} ms (${done.length} of ${times.length})`);
+await browser.close();
+await host.cleanup();
+process.exit(0);

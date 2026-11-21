@@ -1,0 +1,64 @@
+// INV2: is there a cap on source sessions (gRPC streams host -> plugin, watches plugin -> apiserver) that stalls the host regardless of the window realm? ONE page (one realm scope) opens N distinct
+// single-object source sessions (the detail page's `name` dimension with names of objects that do not exist), by replaying the page's own OpenSourceView and SyncSourceView calls.
+import path from 'node:path';
+import { log, playwright, sh, sleep, startHost } from './lib.mjs';
+const { HOST_ROOT, BIN, PLUGIN_ARCHIVE, KUBECONFIG_PATH, OUT, N = '400', STEP = '50' } = process.env;
+const pw = playwright(HOST_ROOT);
+const h = await startHost({ bin: BIN, archive: PLUGIN_ARCHIVE, kubeconfig: KUBECONFIG_PATH, out: OUT, countersFile: process.env.INV2_COUNTERS });
+// The API server's open WATCH requests (all resources): one for each informer the plugin keeps.
+const watchers = () => { let n = 0; for (const line of sh('kubectl', ['--kubeconfig', KUBECONFIG_PATH, 'get', '--raw', '/metrics']).split('\n')) if (line.startsWith('apiserver_longrunning_requests{') && /verb="WATCH"/.test(line)) n += Number(line.split(' ').pop()); return n; };
+const browser = await pw.chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 2000 } });
+let template;
+page.on('request', (r) => { if (r.url().endsWith('/wails/runtime')) { const b = r.postData() ?? ''; if (b.includes('ServiceWrapper.OpenSourceView') && b.includes('"values":["cart-api"]')) template = JSON.parse(b); } });
+await page.goto(`${h.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+await sleep(2500);
+await page.evaluate(() => { location.hash = '#/kubernetes/deployment?namespace=checkout&name=cart-api'; });
+for (let i = 0; i < 100 && !template; i++) await sleep(100);
+if (!template) throw new Error('no template captured');
+log('template captured', JSON.stringify(template.args.args[1].target.scope));
+const base0 = await h.sample();
+log('baseline', JSON.stringify({ hostG: base0.host.goroutines, pluginG: base0.plugin.goroutines, hostFiles: base0.host.files.total, watchers: watchers(), counters: base0.counters }));
+const rows = [];
+let opened = 0, failures = [];
+async function openMany(from, to) {
+  return page.evaluate(async ({ template, from, to }) => {
+    const out = [];
+    for (let i = from; i < to; i += 1) {
+      const body = structuredClone(template);
+      body.args['call-id'] = `inv2-open-${i}-${Math.random()}`;
+      const request = body.args.args[1];
+      request.targetId = crypto.randomUUID();
+      request.target.scope = request.target.scope.map((s) => (s.dimension === 'name' ? { ...s, values: [`inv2-missing-${i}`] } : s));
+      const t0 = performance.now();
+      const r = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId }, body: JSON.stringify(body) });
+      const text = await r.text();
+      let viewId = null; try { viewId = JSON.parse(text).viewId; } catch { /* error */ }
+      let syncStatus = null;
+      if (viewId) {
+        const sync = structuredClone(template); sync.args['call-id'] = `inv2-sync-${i}-${Math.random()}`; sync.args.methodName = sync.args.methodName.replace('OpenSourceView', 'SyncSourceView'); sync.args.args = ['kubernetes', viewId];
+        const s = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId }, body: JSON.stringify(sync) });
+        syncStatus = s.status; await s.text();
+      }
+      out.push({ i, status: r.status, ms: Math.round(performance.now() - t0), viewId, syncStatus, err: viewId ? null : text.slice(0, 160) });
+    }
+    return out;
+  }, { template, from, to });
+}
+for (let from = 0; from < Number(N); from += Number(STEP)) {
+  const res = await openMany(from, from + Number(STEP));
+  opened += res.filter((r) => r.viewId).length;
+  failures.push(...res.filter((r) => !r.viewId || r.syncStatus !== 200).slice(0, 3));
+  await sleep(1500);
+  // is the host still answering, from a brand-new page (a new window)?
+  const probe = await page.evaluate(async () => { const r = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': 'p' + Math.random(), methodName: 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper.ListConnections', args: ['kubernetes'] } }) }); return r.status; });
+  const s = await h.sample();
+  const row = { opened, avgMs: Math.round(res.reduce((a, r) => a + r.ms, 0) / res.length), maxMs: Math.max(...res.map((r) => r.ms)), probe, hostG: s.host.goroutines, pluginG: s.plugin.goroutines, hostFiles: s.host.files.total, pluginFiles: s.plugin.files.total, hostRss: s.host.rssMb, pluginRss: s.plugin.rssMb, watchers: watchers(), counters: s.counters, load: s.load1, failures: res.filter((r) => !r.viewId).length };
+  rows.push(row); log(JSON.stringify(row));
+  if (row.failures > 0) { log('FIRST FAILURES', JSON.stringify(res.filter((r) => !r.viewId).slice(0, 3))); }
+}
+await h.dumps('end');
+await browser.close();
+await h.cleanup();
+log('done');
+process.exit(0);

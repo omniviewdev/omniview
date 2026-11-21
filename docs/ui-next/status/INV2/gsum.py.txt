@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Summarise a Go goroutine dump (debug=2): count goroutines by (state, top frame function, created-by function)."""
+import re, sys, collections
+def parse(path):
+    text = open(path, errors='replace').read()
+    blocks = re.split(r'\n\n+', text.strip())
+    out = []
+    for b in blocks:
+        lines = b.split('\n')
+        if not lines or not lines[0].startswith('goroutine '): continue
+        m = re.match(r'goroutine (\d+) \[([^\]]*)\]', lines[0])
+        if not m: continue
+        state = re.sub(r', \d+ minutes', '', m.group(2))
+        funcs = [l for l in lines[1:] if l and not l.startswith('\t') and not l.startswith('created by')]
+        top = re.sub(r'\(.*$', '', funcs[0]) if funcs else '?'
+        # first non-runtime/non-sync frame
+        app = next((re.sub(r'\(.*$', '', f) for f in funcs if not re.match(r'(runtime|sync|internal/|time\.|net\.|syscall|os\.|bufio|io\.|context\.|golang.org/x/net/http2|google.golang.org/grpc/internal/transport)', f)), top)
+        cb = next((re.sub(r' in goroutine \d+$', '', l[len('created by '):]) for l in lines if l.startswith('created by')), '-')
+        cb = re.sub(r'\+0x[0-9a-f]+$', '', cb)
+        out.append((state, top, app, cb))
+    return out
+if __name__ == '__main__':
+    paths = sys.argv[1:]
+    data = [collections.Counter((a, c, s) for s, t, a, c in parse(p)) for p in paths]
+    keys = set().union(*data)
+    rows = sorted(keys, key=lambda k: -data[-1][k])
+    print('%-5s' % 'n' + ' ' * 2 + 'first app frame  <-  created by  [state]' + ('   (columns: ' + ' | '.join(p.split('/')[-1] for p in paths) + ')'))
+    for k in rows[:int(__import__('os').environ.get('TOP', '40'))]:
+        print(' | '.join('%4d' % d[k] for d in data), ' ', k[0][:90], ' <- ', k[1][:70], ' [', k[2], ']')

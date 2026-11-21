@@ -1,0 +1,38 @@
+// INV2: the native app's pattern, emulated in server mode: ONE window identity that lives for the whole run (the page's events socket is held back, so every call is attributed to the host's main
+// window, Wails' windows[0], which no page ever closes), and in it (T) many pages mounted and unmounted in one tab and (R) many reloads of the document. Do the host's counters return to baseline?
+import { log, playwright, sleep, startHost } from './lib.mjs';
+const { HOST_ROOT, BIN, PLUGIN_ARCHIVE, KUBECONFIG_PATH, OUT, NAV = '120', RELOADS = '60' } = process.env;
+const pw = playwright(HOST_ROOT);
+const h = await startHost({ bin: BIN, archive: PLUGIN_ARCHIVE, kubeconfig: KUBECONFIG_PATH, out: OUT, countersFile: process.env.INV2_COUNTERS });
+const browser = await pw.chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 2000 } });
+await page.routeWebSocket(/\/wails\/events/, () => { /* never connects to the host: the page keeps the identity of the host's first window */ });
+const state = () => page.evaluate(() => { const root = document.querySelector('[data-ov-state]'); return { state: root?.getAttribute('data-ov-state'), rows: root ? root.querySelectorAll('tbody tr').length : 0, h1: document.querySelector('[data-detail-part=header] h1')?.textContent?.trim() ?? null }; });
+const settle = async (ms = 1500) => { await sleep(ms); };
+const ROUTES = ['#/kubernetes/pods', '#/kubernetes/deployments', '#/kubernetes/statefulsets', '#/kubernetes/deployment?namespace=checkout&name=cart-api', '#/kubernetes/daemonsets', '#/kubernetes/jobs', '#/kubernetes/services', '#/kubernetes/pod?namespace=checkout&name=cart-cache-0'];
+await page.goto(`${h.base}/${ROUTES[0]}`, { waitUntil: 'load' });
+await settle(3000);
+const s0 = await h.sample();
+const mark = (label, s) => ({ label, ...s.counters, hostG: s.host.goroutines, pluginG: s.plugin.goroutines, hostFiles: s.host.files.total });
+log('baseline', JSON.stringify(mark('baseline', s0)));
+const rows = [mark('baseline', s0)];
+// T: navigations in one document
+for (let i = 1; i <= Number(NAV); i += 1) {
+  await page.evaluate((hash) => { location.hash = hash; }, ROUTES[i % ROUTES.length]);
+  await sleep(350);
+  if (i % 20 === 0) { await settle(); const s = await h.sample(); const row = mark(`T after ${i} navigations`, s); rows.push(row); log(JSON.stringify(row), JSON.stringify(await state())); }
+}
+// back to a single list, then count again: what the page holds open now is what the last page needs
+await page.evaluate((hash) => { location.hash = hash; }, ROUTES[0]); await settle(2500);
+const sT = await h.sample(); rows.push(mark('T settled on one list', sT)); log(JSON.stringify(rows.at(-1)));
+// R: reloads of the document
+for (let i = 1; i <= Number(RELOADS); i += 1) {
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelectorAll('[data-ov-state] tbody tr').length > 0, null, { timeout: 15000 }).catch(() => undefined);
+  if (i % 10 === 0) { await settle(); const s = await h.sample(); const row = mark(`R after ${i} reloads`, s); rows.push(row); log(JSON.stringify(row)); }
+}
+await h.dumps('end');
+await browser.close();
+await h.cleanup();
+log('done');
+process.exit(0);
