@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"reflect"
 	"sort"
 	"strconv"
 	"sync"
@@ -642,7 +641,7 @@ func (r *Relay) discover(revision uint64) {
 		// Keep the inventory and project only the current revision.
 		revision = r.configRevision
 	}
-	catalogChanged := !reflect.DeepEqual(r.catalog, catalog)
+	catalogChanged := !sameCatalog(r.catalog, catalog)
 	r.catalog = catalog
 	r.inventoryReady = true
 	r.discoveredConnections = connected
@@ -689,7 +688,7 @@ func (r *Relay) toolsChanged() {
 		}
 	}
 	finalizeCatalog(catalog)
-	changed := !reflect.DeepEqual(r.catalog, catalog)
+	changed := !sameCatalog(r.catalog, catalog)
 	r.catalog = catalog
 	if changed {
 		r.authority.UpdateCatalog(catalog)
@@ -771,7 +770,7 @@ func (r *Relay) projectPolicyLocked(revision uint64, catalogChanged bool) {
 	var added []ToolInfo
 	for name, tool := range desired {
 		r.registered[name] = true
-		if prior, exists := r.published[name]; !exists || (catalogChanged && !reflect.DeepEqual(prior, tool)) {
+		if prior, exists := r.published[name]; !exists || (catalogChanged && !sameTool(prior, tool)) {
 			r.published[name] = tool
 			added = append(added, tool)
 		}

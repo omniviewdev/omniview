@@ -1,0 +1,16 @@
+# github.com/omniviewdev/omniview/internal/mcprelay.test
+--- FAIL: TestSameToolComparesWhatAdvertisesAndBinds (0.00s)
+    catalog_equal_test.go:83: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/b41a-lint-real-defects/internal/mcprelay/catalog_equal_test.go:83
+        	Error:      	Should be false
+        	Test:       	TestSameToolComparesWhatAdvertisesAndBinds
+        	Messages:   	another read lane is another tool: the handler would call the old one
+--- FAIL: TestRebuiltCatalogKeepsBoundCallsAndChangedLaneCancelsThem (0.00s)
+    catalog_equal_test.go:183: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/b41a-lint-real-defects/internal/mcprelay/catalog_equal_test.go:183
+        	Error:      	An error is expected but got nil.
+        	Test:       	TestRebuiltCatalogKeepsBoundCallsAndChangedLaneCancelsThem
+        	Messages:   	a tool bound to another read lane is not the tool the call was bound to
+FAIL
+FAIL	github.com/omniviewdev/omniview/internal/mcprelay	0.050s
+FAIL
