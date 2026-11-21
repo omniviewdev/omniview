@@ -2,7 +2,7 @@
 // in the window when they render, never for every line at ingest. The mock shows it in the viewer's local time, and in UTC (with a `Z` after it) when the reader
 // chose that (`shell-panel.js` 129-132 `clock`, 1572 `ts: 'local'`, 1708 the UTC span, 2666 the Timestamps option).
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatClock, formatStamp } from './time';
+import { formatClock, formatStamp, instantOf } from './time';
 
 // Local time is the machine's: a test that tells it from UTC puts the process in a zone of its own (V8 follows `process.env.TZ` as it is written) and takes it out again.
 afterEach(() => {
@@ -73,5 +73,19 @@ describe('formatStamp: the clock as a row shows it and a copy carries it', () =>
       expect(formatStamp('yesterday', zone)).toBe('');
       expect(formatStamp('2024-13-45T99:99:99Z', zone)).toBe('');
     }
+  });
+});
+
+describe('instantOf: the instant a line says it was written', () => {
+  it('reads the backend\'s text, nine digits of fraction and all, to the millisecond', () => {
+    expect(instantOf('2026-11-21T09:29:00.123456789Z')).toBe(Date.UTC(2026, 10, 21, 9, 29, 0, 123));
+    expect(instantOf('2026-11-21T09:29:00Z')).toBe(Date.UTC(2026, 10, 21, 9, 29, 0, 0));
+    expect(instantOf('2026-11-21T11:29:00.5+02:00')).toBe(Date.UTC(2026, 10, 21, 9, 29, 0, 500));
+  });
+
+  it('has none for a line with no time or text that is not one', () => {
+    expect(instantOf('')).toBeUndefined();
+    expect(instantOf('0001-13-01T00:00:00Z')).toBeUndefined();
+    expect(instantOf('yesterday')).toBeUndefined();
   });
 });

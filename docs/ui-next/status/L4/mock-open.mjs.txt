@@ -1,0 +1,33 @@
+// L4 dev tool (a .txt: copy it without the suffix beside itself, docs/ui-next/status/L4/, and run it from the repository root). The design mock's strip at open: opens the AWS plugin's log session (two sources, 5 lines a second in all) and
+// reads the strip's text every 250 ms for 10 s, in Chromium and WebKit. The mock seeds a log with its tail pushed `quiet` (shell-panel.js 1596-1615, 1679): the backlog is never counted, and the strip reads `0.0 lines/s` until live lines make a rate.
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import path from 'node:path';
+import { launch, sleep } from '../../../../packages/kit/probes/probe-lib.mjs';
+const MOCK_DIR = path.join(homedir(), 'Repos/omniviewdev/aws-wails-native-lab/app/OmniviewNativeLab/frontend/mock');
+const copy = path.join(mkdtempSync(path.join(tmpdir(), 'l4-mock-')), 'server.cjs');
+writeFileSync(copy, readFileSync(path.join(MOCK_DIR, 'server.js'), 'utf8').replace('const root=__dirname', `const root=${JSON.stringify(MOCK_DIR)}`));
+const server = spawn(process.execPath, [copy], { env: { ...process.env, PORT: '49482' }, stdio: 'ignore' });
+await sleep(1500);
+const out = {};
+try {
+  for (const engine of ['chromium', 'webkit']) {
+    const browser = await launch(engine);
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'UTC', locale: 'en-US' });
+    const page = await context.newPage();
+    await page.goto('http://127.0.0.1:49482/', { waitUntil: 'load' });
+    await sleep(3000);
+    await page.waitForFunction(() => typeof Shell !== 'undefined' && Shell.panel?.logs !== undefined);
+    await sleep(1500);
+    await page.evaluate(() => { window.__t0 = performance.now(); Shell.panel.logs.open('plugin:aws'); });
+    const series = [];
+    for (let i = 0; i < 40; i++) {
+      series.push(await page.evaluate(() => `${Math.round(performance.now() - window.__t0)}ms ` + (document.querySelector('shell-panel-leaf[data-leaf="logstat"]')?.textContent ?? '(no strip)')));
+      await sleep(250);
+    }
+    out[engine] = series;
+    await context.close(); await browser.close();
+  }
+} finally { server.kill(); }
+console.log(JSON.stringify(out, null, 1));
