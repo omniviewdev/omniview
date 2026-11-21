@@ -16,6 +16,13 @@ func activityObserverService(t *testing.T) *hostactivity.Service {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The state directory holds a lock file that Windows cannot remove while the
+	// service is open: the test's directory is removed after this cleanup runs.
+	t.Cleanup(func() {
+		if closeErr := state.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 	service, err := hostactivity.NewService(state.RootDir(), nil)
 	if err != nil {
 		t.Fatal(err)

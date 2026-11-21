@@ -18,8 +18,8 @@ import (
 // the roots the host holds on the plugin's store and data directories open
 // beneath it, and Windows refuses to move or remove a directory with anything
 // open beneath it. These tests run the transactions with such roots held, with a
-// plugin that needs no binary, so that they run on every OS: the credential
-// fixture's archive carries a Unix shell script as its binary and skips on Windows.
+// plugin that needs no binary; the credential fixture's archive, which carries
+// the fixture executable, runs them again with one (plugin_roots_release_test.go).
 
 const rootsPluginID = "flux"
 

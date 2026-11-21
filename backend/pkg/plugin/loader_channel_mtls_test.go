@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -153,34 +152,32 @@ func (*channelPeerReporter) ResolveAlert(context.Context, sdkactivity.ResolveAle
 }
 
 // channelWrapperFixture lays out a plugin directory whose executable runs the
-// test binary as the broker child. preamble is shell run before the exec.
-func channelWrapperFixture(t *testing.T, preamble string) string {
+// test binary as the broker child. before is what the executable does first.
+func channelWrapperFixture(t *testing.T, before *pluginFixtureBehaviour) string {
 	t.Helper()
-	root := channelWrapperFor(t, "TestActivityBrokerChildProcess", preamble)
+	root := channelWrapperFor(t, "TestActivityBrokerChildProcess", before)
 	t.Setenv(activityBrokerChildEnv, channelAuthChildMode)
 	return root
 }
 
-// channelWrapperFor lays out a plugin directory whose executable runs the test
-// function childTest of this test binary. preamble is shell run before the exec.
-func channelWrapperFor(t *testing.T, childTest, preamble string) string {
+// channelWrapperFor lays out a plugin directory whose executable (the fixture
+// program, a real executable on every OS) runs the test function childTest of
+// this test binary. before, which may be nil, says what it does first: files it
+// writes and variables it changes.
+func channelWrapperFor(t *testing.T, childTest string, before *pluginFixtureBehaviour) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fixture uses a Unix executable wrapper")
-	}
 	binary, err := os.Executable()
 	require.NoError(t, err)
 	// The child makes its listener under TMPDIR, and a child that is killed (or
 	// that the host stops without a graceful exit) leaves the socket behind: give
 	// the child a short directory of its own that the test removes.
-	sockets, err := os.MkdirTemp("/tmp", "ch-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(sockets)) })
-	t.Setenv("TMPDIR", sockets)
+	shortSocketRoot(t, "ch-")
 	root := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(root, "bin"), 0o700))
-	wrapper := "#!/bin/sh\n" + preamble + "\nexec \"$CHANNEL_TEST_BINARY\" -test.run='^" + childTest + "$'\n"
-	require.NoError(t, os.WriteFile(filepath.Join(root, "bin", "plugin"), []byte(wrapper), 0o700))
+	behaviour := pluginFixtureRunsTestBinary("CHANNEL_TEST_BINARY", childTest)
+	if before != nil {
+		behaviour.Records, behaviour.Env = before.Records, before.Env
+	}
+	writePluginFixture(t, filepath.Join(root, "bin"), behaviour)
 	t.Setenv("CHANNEL_TEST_BINARY", binary)
 	return root
 }
@@ -191,7 +188,9 @@ func TestCreateBackendChannelIsMutuallyAuthenticated(t *testing.T) {
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "host-cert")
 	peerFile := filepath.Join(dir, "peers")
-	root := channelWrapperFixture(t, `printf '%s' "$PLUGIN_CLIENT_CERT" > "$CHANNEL_TEST_CERT_FILE"`)
+	root := channelWrapperFixture(t, &pluginFixtureBehaviour{Records: []pluginFixtureRecord{
+		{File: "${CHANNEL_TEST_CERT_FILE}", Text: "${PLUGIN_CLIENT_CERT}"},
+	}})
 	t.Setenv("CHANNEL_TEST_CERT_FILE", certFile)
 	t.Setenv(channelPeerFileEnv, peerFile)
 
@@ -263,7 +262,7 @@ func TestCreateBackendChannelIsMutuallyAuthenticated(t *testing.T) {
 // channel is ever used. The load path's first call (binding activities) fails
 // with it, so the plugin is not admitted.
 func TestCreateBackendRefusesPluginThatIgnoresChannelCertificate(t *testing.T) {
-	root := channelWrapperFixture(t, "unset PLUGIN_CLIENT_CERT")
+	root := channelWrapperFixture(t, &pluginFixtureBehaviour{Env: map[string]*string{"PLUGIN_CLIENT_CERT": nil}})
 	pm := newTestManager(t)
 	pm.activities = activityBrokerManager(activityObserverService(t)).activities
 
@@ -324,8 +323,8 @@ func channelTestCertificate(t *testing.T) (tls.Certificate, string) {
 // that the only thing under test is whether the plugin accepts the client.
 func channelRogueHealth(t *testing.T, grantedPEM string, clientCertificates []tls.Certificate) error {
 	t.Helper()
-	root := channelWrapperFixture(t, "")
-	command := exec.Command(filepath.Join(root, "bin", "plugin"))
+	root := channelWrapperFixture(t, nil)
+	command := exec.Command(filepath.Join(root, "bin", types.BinaryName()))
 	command.Env = append(os.Environ(),
 		"PLUGIN_CLIENT_CERT="+grantedPEM,
 		activityBrokerHandshake.MagicCookieKey+"="+activityBrokerHandshake.MagicCookieValue,

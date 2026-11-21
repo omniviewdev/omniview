@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -93,8 +92,12 @@ func TestInstalledNativeUpgradeChildProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-func installedNativeWrapper(mode string) string {
-	return fmt.Sprintf("#!/bin/sh\nexport %s=%s\nexec \"$OMNIVIEW_INSTALLED_NATIVE_TEST_BINARY\" -test.run='^TestInstalledNativeUpgradeChildProcess$'\n", installedNativeChildEnv, mode)
+// installedNativeBehaviour is what the installed executable does: run this test
+// binary as the plugin, in the given mode.
+func installedNativeBehaviour(mode string) *pluginFixtureBehaviour {
+	behaviour := pluginFixtureRunsTestBinary("OMNIVIEW_INSTALLED_NATIVE_TEST_BINARY", "TestInstalledNativeUpgradeChildProcess")
+	behaviour.Env = map[string]*string{installedNativeChildEnv: &mode}
+	return behaviour
 }
 
 func installedNativeMetadata(id, version string) string {
@@ -103,9 +106,6 @@ func installedNativeMetadata(id, version string) string {
 
 func newInstalledNativeManager(t *testing.T) (*pluginManager, hostresource.Controller) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fixture uses the established Unix executable wrapper")
-	}
 	pm := newTestManager(t)
 	pm.ctx = context.Background()
 	service, err := appstate.New(appstate.WithRoot(pm.stateRoot.ResolvePath("")), appstate.WithFlock(false))
@@ -131,12 +131,7 @@ func newInstalledNativeManager(t *testing.T) (*pluginManager, hostresource.Contr
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
-	sockets, err := os.MkdirTemp("/tmp", "ov-upgrade-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(sockets)) })
-	t.Setenv("TMPDIR", sockets)
-	t.Setenv("TMP", sockets)
-	t.Setenv("TEMP", sockets)
+	shortSocketRoot(t, "ov-upgrade-")
 	pm.telemetryConfigFn = func(string) (TelemetryEnvConfig, error) { return TelemetryEnvConfig{}, nil }
 	return pm, controller
 }
@@ -161,17 +156,15 @@ func installNativeProcessFixture(t *testing.T, pm *pluginManager, id, version, m
 	t.Helper()
 	installPluginFixture(t, pm, id, []string{"resource"}, true)
 	require.NoError(t, pm.pluginsRoot.WriteFile(id+"/plugin.yaml", []byte(installedNativeMetadata(id, version)), 0644))
-	require.NoError(t, pm.pluginsRoot.WriteFile(id+"/bin/plugin", []byte(installedNativeWrapper(mode)), 0755))
+	writePluginFixture(t, filepath.Join(pm.pluginsRoot.ResolvePath(id), "bin"), installedNativeBehaviour(mode))
 	writeInstalledNativeCatalog(t, id, "native/object")
 }
 
 func installedNativeArchive(t *testing.T, id, version, mode string) string {
 	t.Helper()
-	return writeTestTarball(t, []tarEntry{
+	return writeTestTarball(t, append([]tarEntry{
 		{name: "plugin.yaml", mode: 0644, body: installedNativeMetadata(id, version)},
-		{name: "bin/", mode: 0755, dir: true},
-		{name: "bin/plugin", mode: 0755, body: installedNativeWrapper(mode)},
-	})
+	}, pluginFixtureArchiveEntries(t, installedNativeBehaviour(mode))...))
 }
 
 func assertInstalledNativeServing(t *testing.T, pm *pluginManager, controller hostresource.Controller, id, resourceType string) int {

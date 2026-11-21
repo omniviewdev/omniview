@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 
@@ -168,14 +167,9 @@ func credentialArchive(t *testing.T) string {
 
 func credentialArchiveVersion(t *testing.T, version string) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the fixture archive carries a Unix shell script as bin/plugin; a Windows host requires bin/plugin.exe")
-	}
-	return writeTestTarball(t, []tarEntry{
+	return writeTestTarball(t, append([]tarEntry{
 		{name: "plugin.yaml", mode: 0o644, body: "id: flux\nversion: " + version + "\ncapabilities: [settings]\n"},
-		{name: "bin/", mode: 0o755, dir: true},
-		{name: "bin/plugin", mode: 0o755, body: "#!/bin/sh\n"},
-	})
+	}, pluginFixtureArchiveEntries(t, nil)...))
 }
 
 // install runs the real archive install; the plugin starts and the settings
