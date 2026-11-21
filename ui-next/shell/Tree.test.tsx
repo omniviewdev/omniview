@@ -281,7 +281,7 @@ describe('the open groups a tree keeps while it is not on screen (the plugin sto
     await user.click(screen.getByRole('treeitem', { name: 'More' }));
     first.unmount();
 
-    const again = renderTree([nodes[0]!, nodes[2]!], { ...kept, open: [], current: 'top' });
+    const again = renderTree([nodes[0], nodes[2]], { ...kept, open: [], current: 'top' });
     expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
     again.again({ nodes });
 

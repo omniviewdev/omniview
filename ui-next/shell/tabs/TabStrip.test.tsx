@@ -145,9 +145,10 @@ describe('what tells two tabs apart: the connection by its name (the mock: a fac
     const store = createTabsStore({
       contributions: {
         describe: (route) => {
-          const connection = route.params.connection === KEYS.north ? 'north' : 'south';
+          const key = route.params.connection === KEYS.north ? KEYS.north : KEYS.south;
+          const connection = key === KEYS.north ? 'north' : 'south';
           const title = route.contribution === 'nodes' ? 'Nodes' : 'Services';
-          return { title, icon: 'box', pluginName: 'Acme', scope: { id: String(route.params.connection), label: connection }, path: ['Acme', connection, title], facets: [] };
+          return { title, icon: 'box', pluginName: 'Acme', scope: { id: key, label: connection }, path: ['Acme', connection, title], facets: [] };
         },
         home: () => undefined,
       },

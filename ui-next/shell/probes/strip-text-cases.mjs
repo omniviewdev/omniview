@@ -7,14 +7,12 @@
 const filler = (count) => Array.from({ length: count }, (_, index) => ({ title: `Page ${String(index + 2)}` }));
 
 export const TEXT_CASES = [
-  // One tab, 208 px, the title as long as the case says: a title of twelve graphemes or fewer is one part; longer is a head and a tail (a separator, else the midpoint).
+  // One tab, 208 px, the title as long as the case says: a title of twelve graphemes or fewer is one part; longer is a head and a tail (a separator, else the midpoint: `core/title.test.ts` has every rule, these are the ones
+  // a tour shows).
   { id: 'short', pages: [{ title: 'Entries' }] },
-  { id: 'twelve', pages: [{ title: 'Twelve chars' }] },
   { id: 'thirteen', pages: [{ title: 'Thirteen char' }] },
   { id: 'named-kind', pages: [{ title: 'payment-gateway · Deployment' }] },
   { id: 'path', pages: [{ title: 'storage/backups/2026-11-20/archive.tar' }] },
-  { id: 'colon', pages: [{ title: 'queue:payments:retry-worker' }] },
-  { id: 'unbroken', pages: [{ title: 'abcdefghijklmnopqrstuvwxyzabcdefghij' }] },
   // The same title when the strip is full: the faces share the strip and give way together, to 96 px at the least.
   { id: 'five', pages: [{ title: 'payment-gateway · Deployment' }, ...filler(4)] },
   { id: 'crowded', pages: [{ title: 'payment-gateway · Deployment' }, ...filler(11)] },
