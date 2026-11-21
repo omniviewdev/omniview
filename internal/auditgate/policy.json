@@ -360,7 +360,7 @@
     {"match": "exact", "name": "plugin/init_complete", "decision": "allow", "reason": "boot signal of the plugin system"},
     {"match": "exact", "name": "plugin/inventory_changed", "decision": "allow", "reason": "plugin inventory refresh"},
     {"match": "exact", "name": "plugin/enablement_changed", "decision": "allow", "reason": "plugin inventory refresh"},
-    {"match": "exact", "name": "plugin/unloaded", "decision": "allow", "reason": "a plugin stopped serving the window (crashed, reloaded, uninstalled or disabled); carries the plugin id and the cause code, no text"},
+    {"match": "exact", "name": "plugin/unloaded", "decision": "allow", "reason": "a plugin stopped serving the window or could not start (crashed, reloaded, uninstalled, disabled, failed or timeout); carries the plugin id and the cause code, no text"},
     {"match": "exact", "name": "plugin/crash", "decision": "allow", "reason": "plugin readiness banner; carries the plugin's last error log line, filtered for token-like text but not for paths"},
     {"match": "exact", "name": "plugin/crash_recovery_failed", "decision": "allow", "reason": "plugin readiness banner; carries recovery error text"},
     {"match": "exact", "name": "plugin/recovered", "decision": "allow", "reason": "plugin readiness banner"},

@@ -164,6 +164,15 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	}
 	pm.recordsMu.RUnlock()
 
+	// From here on the load is the plugin's own: a load that ends in an error leaves the plugin a failed record to retry and tells the window why, in a code (failedLoad, load_failed.go).
+	var metadata config.PluginMeta
+	var record *plugintypes.PluginRecord
+	defer func() {
+		if resultErr != nil {
+			pm.failedLoad(id, opts, metadata, record, resultErr)
+		}
+	}()
+
 	location := pm.pluginsRoot.ResolvePath(id)
 	log.Debugw(pm.ctx, "loading plugin from location", "location", location, "pluginID", id)
 
@@ -171,7 +180,8 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 		return plugintypes.PluginInfo{}, apperror.PluginNotFound(id)
 	}
 
-	metadata, err := sdktypes.LoadPluginMetadata(location)
+	var err error
+	metadata, err = sdktypes.LoadPluginMetadata(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusNotFound,
@@ -201,7 +211,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	}
 
 	// Build the record directly.
-	record := newLoadRecord(id, metadata, opts)
+	record = newLoadRecord(id, metadata, opts)
 	if !record.Enabled {
 		record.Phase = lifecycle.PhaseInstalled
 		record.StateMachine.ForcePhase(record.Phase, "plugin disabled")
@@ -567,7 +577,7 @@ func (pm *pluginManager) createBackend(
 		GRPCDialOptions:  sdk.GRPCDialOptions(),
 		Cmd:              cmd,
 		SkipHostEnv:      true,
-		StartTimeout:     pluginStartTimeout,
+		StartTimeout:     pm.loaderStartTimeout(),
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
@@ -576,11 +586,17 @@ func (pm *pluginManager) createBackend(
 		}),
 	})
 
+	started := time.Now()
 	rpcClient, err := pluginClient.Client()
 	if err != nil {
+		// A plugin that neither said it was ready nor ended within the start timeout is a timeout, whatever go-plugin calls it (startTimeoutError).
+		overran := time.Since(started) >= pm.loaderStartTimeout()
 		// Client errors do not imply process exit. Kill waits for go-plugin's
 		// runner before deferred cleanup may remove a Windows executable.
 		pluginClient.Kill()
+		if overran {
+			err = startTimeoutError{err: err}
+		}
 		return nil, err
 	}
 
@@ -621,6 +637,7 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 		existing.DevMode = record.DevMode
 		existing.DevPath = record.DevPath
 		existing.ReleaseChannel = record.ReleaseChannel
+		existing.Metadata = record.Metadata
 	}
 	pm.recordsMu.RUnlock()
 	if !ok {
@@ -641,7 +658,12 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 	}
 	// The plugin is stopped and about to start again: the window is told it is gone before it is told it runs again (EventStateChange to Running, from the load below), so what it reads last is true.
 	emitUnloaded(pm.emitter, id, UnloadReloaded)
-	return pm.loadPluginLocked(id, opts)
+	info, err := pm.loadPluginLocked(id, opts)
+	if err != nil && !pm.holds(id) {
+		// The load was refused before it began (a recovery that is pending, a source the workspace does not select): it stored no failed record, and the window was just told the plugin starts again, so it is told that it will not.
+		emitUnloaded(pm.emitter, id, loadFailureCause(err))
+	}
+	return info, err
 }
 
 // RetryFailedPlugin resets the crash budget and reloads the plugin.

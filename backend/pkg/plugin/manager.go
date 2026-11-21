@@ -227,6 +227,9 @@ type pluginManager struct {
 	// lifecycleCtxs maps a plugin ID to the span context of the lifecycle
 	// operation currently running for it, so nested steps become child spans.
 	lifecycleCtxs sync.Map
+
+	// startTimeout is how long a plugin's process may take to start. Zero is the loader's own timeout (pluginStartTimeout): only a test holds another.
+	startTimeout time.Duration
 }
 
 // managedDevServers is the process boundary used by initialization and install

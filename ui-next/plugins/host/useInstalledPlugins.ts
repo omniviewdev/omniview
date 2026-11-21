@@ -2,6 +2,7 @@ import { PluginManager } from '@omniviewdev/runtime/api';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
+import { describePlugins } from './inventory';
 import type { PluginDescriptor } from './pluginStore';
 
 // The installed plugins whose interface the host should load, read from the host's own inventory. The query key is the one the old shell's inventory uses
@@ -48,14 +49,7 @@ export function useInstalledPlugins(): Inventory {
     refetchInterval: (current) => (current.state.status === 'success' ? false : POLL_UNTIL_READ_MS),
   });
 
-  const plugins = useMemo(
-    () =>
-      (query.data ?? [])
-        // Product-owned frontends and plugins the user turned off have no bundle to load here.
-        .filter((plugin) => plugin.origin !== 'builtin' && plugin.enabled)
-        .map((plugin): PluginDescriptor => ({ id: plugin.id, name: plugin.metadata.name === '' ? plugin.id : plugin.metadata.name })),
-    [query.data],
-  );
+  const plugins = useMemo(() => describePlugins(query.data ?? []), [query.data]);
 
   const { refetch } = query;
   const retry = () => {

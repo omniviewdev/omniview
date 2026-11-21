@@ -8,7 +8,7 @@ import type { ContextV1, ContributionV1, LogSessionV1, PaletteRowV1, PanelBodyPr
 import { acme, answering, fakeEvents, startedOn, widgetPage, WIDGETS, type FakeEvents } from '../testing';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
-import { PluginStore } from './pluginStore';
+import { MAX_CONCURRENT_LOADS, PluginStore } from './pluginStore';
 import { NO_ROUTE } from './route';
 
 // A plugin that stops, through the real chain (PU1, decision A21): what the host says (`plugin/unloaded`, then `plugin/state_change` when the plugin runs again) is delivered to the window's listener,
@@ -49,6 +49,8 @@ type Mounted = RenderResult & {
   readonly seen: Seen;
   /** How many times each plugin's bundle was read. */
   readonly imported: ReadonlyMap<string, number>;
+  /** The plugins the window asked the host to start again, in order: the host's side of the Retry of a plugin that stopped. */
+  readonly retried: readonly string[];
   readonly user: UserEvent;
   /** The host says a plugin stopped. */
   readonly unloaded: (id: string, cause: string) => void;
@@ -61,6 +63,7 @@ async function mount(): Promise<Mounted> {
   const events = fakeEvents();
   const seen: Seen = { context: undefined };
   const imported = new Map<string, number>();
+  const retried: string[] = [];
   const bundles: Readonly<Record<string, () => ContributionV1>> = {
     acme: () =>
       acme({
@@ -89,6 +92,12 @@ async function mount(): Promise<Mounted> {
     },
     clearBundle: () => undefined,
     log: () => undefined,
+  },
+  MAX_CONCURRENT_LOADS,
+  // The host starts the plugin again when it is asked (PU2: the Retry of a plugin that stopped is the host's).
+  async (id) => {
+    retried.push(id);
+    return true;
   });
   await store.load({ id: 'acme', name: 'Acme plugin' });
   await store.load({ id: 'beta', name: 'Beta plugin' });
@@ -118,6 +127,7 @@ async function mount(): Promise<Mounted> {
     panel,
     seen,
     imported,
+    retried,
     user: userEvent.setup(),
     unloaded: (id, cause) => {
       act(() => {
@@ -191,8 +201,8 @@ describe('a plugin whose process crashed', () => {
     expect(screen.queryByText(CRASHED)).toBeNull();
   });
 
-  it('reads the interface again from the tab\'s Retry, the one affordance the mock has for a failed plugin', async () => {
-    const { unloaded, user, store, imported } = await mount();
+  it('asks the host to start the plugin again from the tab\'s Retry, the one affordance the mock has for a failed plugin, and reads the interface when the host says it runs (PU2: reading it alone would show a page with no process behind it)', async () => {
+    const { unloaded, user, store, imported, retried } = await mount();
     unloaded('acme', 'crashed');
 
     await user.click(screen.getByRole('button', { name: 'Retry' }));
@@ -200,6 +210,7 @@ describe('a plugin whose process crashed', () => {
     await waitFor(() => {
       expect(phases(store)).toEqual(['acme:ready', 'beta:ready']);
     });
+    expect(retried).toEqual(['acme']);
     expect(imported.get('acme')).toBe(2);
     expect(screen.getByRole('heading', { name: 'Widgets' })).toBeInTheDocument();
   });
