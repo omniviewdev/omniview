@@ -2,17 +2,23 @@ import { Icon, Text } from '@omniviewdev/kit';
 import { useLayoutEffect, useState, type KeyboardEvent } from 'react';
 import { countText, type CountText } from './core/count';
 import type { ModifierEvent } from './core/tabs';
-import { expandedIds, hasNode, press, revealed, stopOf, toggled, visibleRows } from './core/tree';
+import { expandedIds, hasNode, press, revealed, stopOf, toggled, visibleRows, type TreeMemory } from './core/tree';
 import type { ShellAccent, ShellCount, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
 type TreeProps = {
   readonly label: string;
   readonly nodes: readonly ShellTreeNode[];
-  /** The groups open at first, and the entry that is current: read once, when the tree mounts. */
+  /** The groups open at first, and the entry that is current: read once, when the tree mounts. A tree that was on screen before under its key (`memory`) starts where its user left it instead of from `open`. */
   readonly open: readonly string[] | undefined;
   readonly current: string | undefined;
   readonly accent: ShellAccent | undefined;
+  /**
+   * What the window remembers of its trees, and the key of this one: the tree keeps its record there while it is on screen and recalls it when it mounts, so a sidebar that went away (its plugin stopped and was
+   * loaded again, the rail showed another entry) comes back with its groups as they were left. Absent: the tree remembers nothing and always starts from `open` and `current`.
+   */
+  readonly memory?: TreeMemory | undefined;
+  readonly memoryKey?: string | undefined;
   /**
    * An entry (not a group) was chosen, by click, Enter or Space: its id, and the click when it was one (its modifiers pick where the page opens, ch16 S64; a key opens the plain way).
    * What it opens is the host's to decide.
@@ -103,7 +109,8 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       <span className={styles.glyph}>
         <Icon name={icon} />
       </span>
-      <span className={styles.label}>
+      {/* A name that is cut at its end says its whole name when it is pointed at, and only then (ch12 SB1; the mock's clipped-cell tip): the kit's tooltip measures it when the pointer or the focus arrives. */}
+      <span className={styles.label} data-ov-clip="">
         <Text>{label}</Text>
       </span>
       {count === undefined ? null : <CountSlot text={text} />}
@@ -120,21 +127,31 @@ type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | u
 
 /**
  * The tree view of a sidebar: a roving tab stop on the current entry, the WAI-ARIA tree view keys (core/tree.ts holds every rule), and a
- * click on a group to open or close it. What a user opened or closed lives here and survives the screen registering again.
+ * click on a group to open or close it. What a user opened or closed lives here, survives the screen registering again, and (with a `memory`) survives the tree going away and coming back: the groups
+ * are the user's, and a plugin that stopped and was loaded again, or a rail that went to another entry and returned, shows them as they were left.
  * Choosing an entry (a click, Enter or Space) tells the host which one; the tree does not move the current entry itself: the host registers the page
  * it opened, and that entry becomes current. Kit part it should become: Tree.
  */
-export function Tree({ label, nodes, open, current, accent, onChoose, onOpenChange }: TreeProps) {
-  const [state, setState] = useState<TreeState>(() => ({ open: revealed(nodes, open ?? [], current), stop: undefined }));
+export function Tree({ label, nodes, open, current, accent, memory, memoryKey = label, onChoose, onOpenChange }: TreeProps) {
+  const [state, setState] = useState<TreeState>(() => ({ open: memory?.recall(memoryKey)?.open ?? revealed(nodes, open ?? [], current), stop: undefined }));
   // The current entry is never hidden: when it is, or becomes, an entry inside a group that is closed (another tab was activated, the plugin's frame registered after the tree did, or the entry only
-  // comes with the nodes the plugin's data hook answers after the page did), its ancestors open, once. What the user opened or closed stays when the same entry registers again.
-  const [shown, setShown] = useState(() => (current !== undefined && hasNode(nodes, current) ? current : undefined));
+  // comes with the nodes the plugin's data hook answers after the page did), its ancestors open, once. What the user opened or closed stays when the same entry registers again, and when the tree
+  // comes back after it went away: `shown` is what it last made sure of, so a tree that returns on the same entry opens nothing the user closed.
+  const [shown, setShown] = useState(() => {
+    const recalled = memory?.recall(memoryKey);
+    return recalled === undefined ? (current !== undefined && hasNode(nodes, current) ? current : undefined) : recalled.shown;
+  });
   if (current === undefined ? shown !== undefined : shown !== current && hasNode(nodes, current)) {
     setShown(current);
     if (current !== undefined) {
-      setState((before) => ({ ...before, open: revealed(nodes, before.open, current) }));
+      // What the user opened stays, a group the nodes do not hold yet included: the skeleton of a plugin's sidebar comes before its data.
+      setState((before) => ({ ...before, open: new Set([...before.open, ...revealed(nodes, [], current)]) }));
     }
   }
+
+  useLayoutEffect(() => {
+    memory?.keep(memoryKey, { open: state.open, shown });
+  }, [memory, memoryKey, state.open, shown]);
 
   const rows = visibleRows(nodes, state.open);
   const stop = stopOf(rows, state.stop, current);

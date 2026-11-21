@@ -26,14 +26,14 @@
 // that grew are the runner's seconds of the pull request's first run (a single run, not a median of 8, which is what the other units have): the logs probe 395 s, and the logs controls 381 s (171 s for the eleven before, which the table
 // had at 161, and 210 s for the eight of this step, 26 s each: each runs the toolbar section's cell); the plugin providers' controls, which moved to shard 8, 107 s against C1f's estimate of 98. The shards below, in seconds of units:
 //   shard 1  panel controls 411, detail 16                                                          = 427
-//   shard 2  logs 395                                                                               = 395
+//   shard 2  logs 395, tour 37                                                                      = 432
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
 //   shard 5  strip 192, list page 76, plugin providers 151                                           = 419
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  tooltip 145, palette controls 63, toast layer controls 156, table 62                   = 426
 //   shard 8  toast layer 220, rail 16, fonts 35, plugin providers controls 105, form 35 + its controls 20 = 431
-//   shard 9  logs controls 381, strip controls 28                                                   = 409
+//   shard 9  logs controls 381, strip controls 28, tour controls 23                                 = 432
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
 // (K3a: the list page probe has two stages more, `sort` (the list's sort in both engines at 1440 x 900 and 1280 x 800) and `perf` (5,000 rows in a production build: a press is one commit), which add about 7 s to a run on a laptop at a load of 15 and about 12 s on a runner
 // slower by the factor the whole probe has: 76 s is an ESTIMATE of 61 + 15 until a run's summary has the runner's. Shard 5 would have been 447 s, so the strip's controls (28 s, which read no PROBE_DIST, as the shard's other units do not) moved to shard 9, which was 381 s
@@ -43,6 +43,11 @@
 // (C1g: the plugin providers probe and its controls are ESTIMATES of 151 and 105 s now, over the 148 and 98 of C1f: the `names` part (about 0.7 s a pair of an engine and a viewport) and its control, until a run's summary has the runner's. Shard 5
 // would have been 434 s, so two units swapped, the fewest that fit under the limit and the pair that leaves shard 5 not reading the ui-next build (a unit that reads it adds a build to the job, which is not in these seconds): the palette's
 // controls to shard 7 and the list page's probe to shard 5. The limit is not raised, and shards 5 and 8 are at it.)
+// (S3: the tour probe, `ui-next/shell/probes/tour-probe.mjs` (the sidebar's label room and the tooltip of a name that is cut, where a tab's title is cut, what tells twin tabs apart, and the sidebar's groups after a plugin's return: demo findings
+// D4, D5, D7 and D8, each against the mock's own tree or strip, both engines and both viewports) and its six negative controls are ESTIMATES of 37 and 23 s, from a local run on a laptop (33 s, and 20 s for the six controls, which build the fixtures once:
+// `BUILD_CACHE` in the unit's env makes the first control build them into `$RUNNER_TEMP` and the other five read that build, as a unit of controls would otherwise build the same fixtures six times) at the 1.1 to 1.15 the shell, rail and strip probes
+// took on the runner against a laptop, until a run's summary has the runner's. They are two units of their own and not sections of the strip probe because shard 5 had no room for them: the probe went to shard 2 and its controls to shard 9, the two shards
+// with room, and no unit moved. Shard 2 is 432 s and shard 9 is 432 s: both at the limit, as shards 5 and 8 were.)
 // What the margin does not cover is a run slower than the medians: a unit's maximum over the 8 runs is up to 12 % over its median for the longest (the panel probe's controls: 411 median, 462 maximum) and up to 36 % for the smallest (the strip's controls: 28, 38), and 5 of the 64 simulated shard jobs of those runs would have been
 // over 9 minutes. Three units have fewer than 8 runs behind them, because their set of controls or the probe itself is new (the toast layer 4 runs, its controls 3, the plugin providers' controls 3): they are the first to move.
 // Before K2 a probe and its controls had to share a shard, so the panel probe with its controls (687 s) was the floor of the job at 13 minutes; the longest unit is now 411 s.
@@ -107,6 +112,12 @@ export const TABLE = {
         // Clear that forgets everything made so far and shows every line made after it, Copy that writes every line the list draws with its source, UTC, what a session chose and keeps, the level filter, and a panel too short for every button, where
         // the last buttons are behind the `⋯` More actions menu. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
+
+        // The sidebar and the tab strip against the pinned mock (S3, the recorded tour's findings D4, D5, D7 and D8): the room a sidebar label gets beside its count in the mock's own tree (ui-next/shell/probes/mock-sidebar.json, measured by
+        // mock-sidebar-measure.mjs from the cases of names.mjs) and the tooltip of a name that is cut; where a tab's title is cut and what tells twin tabs apart in the mock's own strip (mock-strip-text.json, mock-strip-text-measure.mjs, strip-text-cases.mjs): faces
+        // of 208 px at most whatever the title, a head with an ellipsis and a tail that keeps its end, a scope only on a tab that another reads like; and the sidebar's groups after a plugin's unload and return on the host fixture. It builds its
+        // own fixtures, so it does not read PROBE_DIST.
+        { name: 'Probe the sidebar labels, the tab titles and twins and the sidebar groups against the pinned mock reference', script: 'ui-next/shell/probes/tour-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/tour-probe.json' } },
       ],
     },
     {
@@ -301,6 +312,17 @@ export const TABLE = {
           script: 'ui-next/shell/probes/strip-probe.mjs',
           controls: ['slot-width', 'slot-undeclared'],
         },
+
+        // The negative controls of the tour probe (its probe is in shard 2): each makes the page do what one assertion is there to see (a sidebar whose count slot is four characters wide, as it was before S3, and a name that is cut and carries
+        // no clip marker, so that the tooltip never has it; a title whose tail is not drawn; a tab that has no twin and draws a scope, and twin tabs that draw none; a sidebar that comes back after a plugin's unload as a tree that remembered nothing
+        // would draw it) and passes only when that assertion sees it, Chromium at 1440 x 900, the section of the fault only. With ASSERTION_OFF=<control> the assertion is left out and the fault must pass undetected. The first control builds the fixtures into
+        // BUILD_CACHE and the others read that build.
+        {
+          name: 'Probe that the tour probe sees a sidebar and a tab strip that are wrong',
+          script: 'ui-next/shell/probes/tour-probe.mjs',
+          env: { BUILD_CACHE: '$RUNNER_TEMP/tour-fixtures' },
+          controls: ['slot-wide', 'names-no-tip', 'title-cut', 'twin-lone', 'twin-hidden', 'memory-lost'],
+        },
       ],
     },
   ],
@@ -352,6 +374,9 @@ export const MEASURED_SECONDS = {
   // FM2a: the runner's seconds of the first run of the change that added the form probe (a single run, not a median of 8; the laptop's were 32 and 17).
   'Probe the form parts against the pinned mock reference': 35,
   'Probe that the form probe sees a form that is wrong': 20,
+  // S3: ESTIMATES, from a local run (33 s for the probe, 20 s for its six controls with the fixtures built once) at 1.1 to 1.15, until a run's summary has the runner's.
+  'Probe the sidebar labels, the tab titles and twins and the sidebar groups against the pinned mock reference': 37,
+  'Probe that the tour probe sees a sidebar and a tab strip that are wrong': 23,
 };
 
 /** The wall time a shard job is held to: 9 minutes, the job (its setup and its probes) from start to end. */
