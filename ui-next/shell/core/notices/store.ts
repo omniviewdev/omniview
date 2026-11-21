@@ -217,7 +217,7 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
   const muted = new Map<string, number>();
   const retired = new Set<string>();
   const generations = new Map<string, number>();
-  const holds: Record<HoldReason, boolean> = { pointer: false, focus: false, modal: false, center: false };
+  const holds: Record<HoldReason, boolean> = { pointer: false, focus: false, modal: false, center: false, yield: false };
   const rate = createRate({ perSecond: LIMITS.perSecond, perMinute: LIMITS.perMinute });
   const a11yPending = new Set<Rec>();
   const slots = new Map<string, { readonly view: RecordView; readonly value: PageOperationView }>();
@@ -379,7 +379,7 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
 
   function buildToasts(previous: ToastStack | undefined): ToastStack {
     const suspended = holds.modal || holds.center;
-    const paused = suspended || holds.pointer || holds.focus;
+    const paused = suspended || holds.pointer || holds.focus || holds.yield;
     let items: readonly ToastItem[] = [];
     if (!suspended) {
       const fresh = composeStack(toastList.map((toast) => ({ id: toast.id, sticky: toast.sticky })), (id) => {
@@ -549,7 +549,7 @@ export function createNoticesStore(options: NoticesOptions = {}): NoticesStore {
     mark();
   }
 
-  const paused = (): boolean => holds.pointer || holds.focus || holds.modal || holds.center;
+  const paused = (): boolean => holds.pointer || holds.focus || holds.modal || holds.center || holds.yield;
 
   function expire(id: string): void {
     const rec = recs.get(id);

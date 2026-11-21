@@ -109,8 +109,17 @@ export function yieldText(items: readonly ToastItem[]): string {
  * Where the stack stands. `layer` is home (it does not move: it is the box the stack comes home to and the window's live region), `host` is the stack, which is the one that moves, and `items` is what the model
  * composed. The stack is decided again whenever `items` is a new list, before it is painted, so that a toast is never seen over a control for a frame; and then while the page changes under it. A stack that has no
  * room at all is hidden and inert, and the toasts that nobody can see are told once, politely, or assertively when one of them is an error the user caused: no toast, no live region, so nothing else would tell them.
+ * While it yields (the lead's ruling of 2026-11-21, "never lose a message unseen"): the model's clocks are HELD (`hold`), as on hover and focus, so that a timed toast cannot expire where nobody can read it (there is no
+ * centre yet; the mock's clocks keep running); and a focus that is inside the stack is given back (`giveBack`) before the browser drops it to the body, because the stack is inert.
  */
-export function usePlacement(layer: RefObject<HTMLElement | null>, host: RefObject<HTMLElement | null>, items: readonly ToastItem[], tell: (text: string, options: { readonly urgent: boolean }) => void): Place {
+export function usePlacement(
+  layer: RefObject<HTMLElement | null>,
+  host: RefObject<HTMLElement | null>,
+  items: readonly ToastItem[],
+  tell: (text: string, options: { readonly urgent: boolean }) => void,
+  holds: { readonly hold: (reason: 'yield', on: boolean) => boolean },
+  giveBack: () => void,
+): Place {
   const [place, setPlace] = useState<Place>(HOME);
   const stands = useRef<Place>(HOME);
   const told = useRef(new Set<string>());
@@ -156,6 +165,24 @@ export function usePlacement(layer: RefObject<HTMLElement | null>, host: RefObje
       tell(yieldText(fresh), { urgent: fresh.some((item) => item.urgent) });
     }
   }, [place.mode, items, tell]);
+
+  useEffect(() => {
+    if (place.mode !== 'yield') {
+      return undefined;
+    }
+
+    holds.hold('yield', true);
+    return () => {
+      holds.hold('yield', false);
+    };
+  }, [place.mode, holds]);
+
+  // Before the browser's own fixing of a focus that is in an element that has just become inert (it drops it to the body), the commit that made the stack inert has just been made and nothing has been painted.
+  useLayoutEffect(() => {
+    if (place.mode === 'yield') {
+      giveBack();
+    }
+  }, [place.mode, giveBack]);
 
   return place;
 }

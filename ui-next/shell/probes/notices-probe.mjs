@@ -7,8 +7,9 @@
 //   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds (production, and development for the commit counts)     FONT_DELAY_MS=40   as a runner serves fonts
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)      AXE=<axe.min.js>      REPORT=<file>   the full report as JSON      SHOTS=<dir>   a screenshot per scene (toast-<scene>-<engine>-<viewport>.png)
 //   SECTIONS=geometry,a11y,keyboard,lifetime,announce,perf,placement   (default: all of them)
-//   NEGATIVE_CONTROL=<name>   perturb ONE measured value in the page (toast-width, gap, retry-paint, no-alert, no-live, told-twice, steals-focus, f6-first, no-restore, sticky-closes, no-hold, hover-stuck, modal-leaks, timer-left,
-//                             layout-shift, no-avoid, covers, yield-stop; see PERTURBATIONS), run the section that must see it, and exit 0 when it did and 1 when it did not (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise)
+//   NEGATIVE_CONTROL=<name>   perturb ONE measured value in the page (toast-width, gap, retry-paint, no-alert, no-live, steals-focus, sticky-closes, no-hold, hover-stuck, modal-leaks, timer-left, layout-shift, no-avoid, covers,
+//                             yield-stop, told-twice, f6-first, no-restore, yield-expires, yield-drops-focus: the 20 of PERTURBATIONS, in its order), run the section that must see it, and exit 0 when it did and 1 when it did not
+//                             (Chromium at 1440 x 900 unless ENGINES and VIEWPORTS say otherwise)
 //   ASSERTION_OFF=<regex>     drops the failures whose line matches, as if the assertion that says them were not there: a control is shown to depend on its assertion by running it with its own pattern
 //                             (PERTURBATIONS[<name>].expected) here, and it must then print NOT DETECTED (the rule for a negative control)
 //
@@ -27,7 +28,8 @@
 //               to the control it came from; the last toast closed leaves no landmark, no F6 stop and no host, and the layer stays, still a polite live region.
 //   lifetime    on a clock the probe drives: an info toast closes after 8000 ms and is still there at 7999; a failure is still there after 60 s; a pointer over a toast and the focus in it each stop the clock, and when both are gone the
 //               toast has at least 2 s more; a toast removed under the pointer, or that had the focus, lets the clock go; a modal (the palette, wired as the host wires it) takes the stack away from the DOM and brings it back when it
-//               closes, with at least 2 s more.
+//               closes, with at least 2 s more; a stack that has no room (a probe-only button over the whole window) is hidden and holds the clocks (after 20 s hidden its toast is still in the DOM and in the model's list), and when it
+//               comes home the toast has the 5 s it had left (still there at 4990 ms, gone at 5010).
 //   announce    what a screen reader is told, recorded by a MutationObserver installed before the page's scripts run: the layer and the window's two live regions exist, empty, before the first notice; a failure the user caused is
 //               told assertively (it is role=alert) and an info toast politely, once each; a repeat that folds into the toast ("Timed out 2 times") is not told again.
 //   perf        production build: 50 notices raised in one tick show the cap (the summary and the two newest) and nothing outside the layer moves (the page's controls and the shell's regions are read before and after, and
@@ -36,7 +38,9 @@
 //               the probe drives), and nothing runs while it is empty.
 //   placement   (P7, S79) on the real shell at both sizes, with the panel closed and open, and with the palette open, and with probe-only controls where the stack stands (a button 2 px from home, a column of row buttons, a button
 //               over the whole window): `data-place`, the stack's box and the nearest control to it are recorded in a table; no toast is ever over the centre of a control (every control's centre is hit-tested), at home no control is
-//               nearer than 4 px and moved none is nearer than 8, the palette takes the stack away and it comes back, and a stack with no room is hidden, inert, no F6 stop, told once, and comes home when room is made.
+//               nearer than 4 px and moved none is nearer than 8, the palette takes the stack away and it comes back, and a stack with no room is hidden, inert, no F6 stop, told once, and comes home when room is made. With the focus in the
+//               stack when it yields (F6 into the first toast, then the button over the window) the focus goes back to the control it came from, or, when that was removed, to a control before the stack in the document (here the status
+//               bar's panel toggle); never to the body, never left in the stack.
 // Exit code 1 when anything differs.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -507,6 +511,33 @@ const PERTURBATIONS = {
     }),
     sections: ['keyboard'],
     expected: /^keyboard [^:]*: Escape in a toast did not give the focus back/,
+  },
+  // A stack that has no room and lets its clocks run: the hold the hook puts on them while it is hidden is let go (the hook puts it in an effect, after the page's first look at the attribute, so the release is repeated while the
+  // stack yields), and a toast that nobody could read goes on its way to its end.
+  'yield-expires': {
+    init: script(() => {
+      const release = () => {
+        if (document.querySelector('[data-notices-part="host"][data-place="yield"]') !== null) window.__notices?.hold('yield', false);
+      };
+      new MutationObserver(release).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-place'] });
+      window.setInterval(release, 10);
+    }),
+    sections: ['lifetime'],
+    parts: ['yield'],
+    expected: /^lifetime [^:]* yield: the clocks did not wait while the stack had no room/,
+  },
+  // The focus ends on the body once the stack has yielded, as the engine leaves it when the element that had it goes inert: whatever the layer did before, it is dropped after it (once as the stack yields, and for as long as it is hidden).
+  'yield-drops-focus': {
+    init: script(() => {
+      const drop = () => {
+        if (document.querySelector('[data-notices-part="host"][data-place="yield"]') !== null && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
+      };
+      new MutationObserver(() => queueMicrotask(drop)).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-place'] });
+      window.setInterval(drop, 10);
+    }),
+    sections: ['placement'],
+    scenes: ['yield-focus'],
+    expected: /^placement [^:]* yield-focus: the focus was lost when the stack yielded/,
   },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
@@ -980,6 +1011,39 @@ async function lifetime(browser, engine, viewportName, viewport, origin, only) {
     if (await paused()) fail(`lifetime ${where} gone`, 'the clocks are still held after the toast that had the focus was removed');
   });
 
+  // A stack that has no room is hidden and nobody can read it, so the clocks wait for it (the lead's ruling, "never lose a message unseen"); when it is home again each toast has what it had left, and at least 2 s. A probe-only
+  // button over the whole window takes every room away, as the placement section's yield does. The model's clock is the probe's; the view's 120 ms before it decides again is real.
+  await part('yield', async (page) => {
+    const paused = () => page.evaluate(() => window.__notices.getSnapshot().toasts.paused);
+    const listed = () => page.evaluate(() => window.__notices.getSnapshot().toasts.items.length);
+    const placeIs = (wanted) =>
+      page.waitForFunction((place) => (document.querySelector('[data-notices-part="host"]')?.getAttribute('data-place') ?? null) === place, wanted, { timeout: WAIT }).then(
+        () => true,
+        () => false,
+      );
+    await page.evaluate(RAISE.info);
+    if (!(await waitStack(page, 1))) return fail(`lifetime ${where} yield`, 'the info toast was not drawn');
+    await advance(page, 3000);
+    await page.evaluate(addControls, [{ label: 'probe: the whole window', left: 0, top: 0, width: viewport.width, height: viewport.height, cover: true }]);
+    if (!(await placeIs('yield'))) return fail(`lifetime ${where} yield`, 'the stack did not yield with a control over the whole window');
+    await sleep(200);
+    const held = await paused();
+    await advance(page, 20000);
+    await sleep(120);
+    const hidden = { paused: held, inTheDom: await toastCount(page), inTheModel: await listed() };
+    notes.yield = hidden;
+    if (!hidden.paused || hidden.inTheDom !== 1 || hidden.inTheModel !== 1) return fail(`lifetime ${where} yield`, `the clocks did not wait while the stack had no room: ${JSON.stringify(hidden)}, wanted the clocks paused and the toast in the DOM and in the model's list after 20 s hidden`);
+    await page.evaluate(() => document.querySelector('[data-probe-holder]')?.remove());
+    if (!(await placeIs(null))) return fail(`lifetime ${where} yield`, 'the stack did not come home when the control over the whole window left');
+    await sleep(250);
+    if (await paused()) return fail(`lifetime ${where} yield`, 'the clocks are still held after the stack came home');
+    await advance(page, 4990);
+    await sleep(120);
+    if ((await toastCount(page)) !== 1) return fail(`lifetime ${where} yield`, 'the toast had less than the 5 s it had left (3 s of its 8 were gone when the stack yielded) after the stack came home');
+    await advance(page, 20);
+    if (!(await waitStack(page, 0, 3000))) fail(`lifetime ${where} yield`, 'the toast was still there 5 s after the stack came home: it had only 5 s left');
+  });
+
   // A modal (the palette) takes the stack away, and brings it back when it closes, with at least 2 s more; a toast raised while it is open waits for it, and is drawn with the one that was there.
   await part('modal', async (page) => {
     await page.evaluate(RAISE.info);
@@ -1309,7 +1373,23 @@ function addControls(specs) {
   document.body.append(holder);
 }
 
-const PLACE_STATES = ['closed', 'open', 'cap', 'tall', 'palette', 'near', 'column', 'column-open', 'yield'];
+/** Where the focus is, for the scene that hides the stack with the focus in it: the element, and whether it comes before the layer in the document (a control the layer could have given the focus back to). */
+function focusFacts() {
+  const layer = document.querySelector('[data-notices-part="layer"]');
+  const active = document.activeElement;
+  return {
+    tag: active?.tagName ?? null,
+    label: (active?.getAttribute('aria-label') ?? active?.textContent ?? '').trim().slice(0, 40),
+    region: active?.closest('[data-shell-region]')?.getAttribute('data-shell-region') ?? null,
+    part: active?.getAttribute('data-shell-part') ?? active?.getAttribute('data-notices-part') ?? null,
+    fixture: active?.getAttribute('data-fixture') ?? null,
+    inLayer: active?.closest('[data-notices-part="layer"]') != null,
+    first: active != null && active === document.querySelector('[data-notices-part="toast"]'),
+    precedes: active != null && layer !== null && active !== document.body && !active.contains(layer) && (active.compareDocumentPosition(layer) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+  };
+}
+
+const PLACE_STATES = ['closed', 'open', 'cap', 'tall', 'palette', 'near', 'column', 'column-open', 'yield', 'yield-focus'];
 const STATE_NOTES = {
   closed: 'the real shell, panel closed',
   open: 'the real shell, panel open',
@@ -1448,6 +1528,57 @@ async function placement(browser, engine, viewportName, viewport, origin, only) 
         expectPlace(state, got, 'moved');
         rowOf(state, got, state === 'column' ? 'a probe-only column of row buttons at the right edge, panel closed' : 'the same column, panel open: the stack stands beside it, over the panel');
         if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `toast-moved-column-${state === 'column' ? 'closed' : 'open'}-${engine}-${viewportName}.png`) });
+      } else if (state === 'yield-focus') {
+        // The focus is in the stack when it yields. The stack becomes inert, which the engine answers by dropping the focus to the body; the layer gives it back first (S12: a layer that goes never drops the focus), to the control it
+        // came from, and, when that is gone, to the nearest control before the stack in the document (the mock's `rescueFocus`): never to the body, never left in the stack. Two runs in one page: the control it came from kept, and removed.
+        const here = () => page.evaluate(focusFacts);
+        const placeIs = (wanted) =>
+          page.waitForFunction((place) => (document.querySelector('[data-notices-part="host"]')?.getAttribute('data-place') ?? null) === place, wanted, { timeout: WAIT }).then(
+            () => true,
+            () => false,
+          );
+        const named = (found) => `${found.tag} "${found.label}" (region ${found.region}, part ${found.part})`;
+        /** From the control `selector`, F6 until the first toast has the focus: the origin the layer will give it back to. */
+        const enter = async (selector) => {
+          await page.locator(selector).focus();
+          for (let press = 0; press < 12; press += 1) {
+            await page.keyboard.press('F6');
+            await sleep(60);
+            if ((await here()).first) return true;
+          }
+
+          return false;
+        };
+        for (const [run, short, selector, removed] of [['the control it came from kept', 'origin kept', '[data-fixture="page-control"]', false], ['the control it came from removed', 'origin gone', '[data-fixture="page-other"]', true]]) {
+          if (!(await enter(selector))) {
+            fail(label, `F6 did not bring the focus into the first toast (${run})`);
+            break;
+          }
+
+          if (removed) await page.evaluate((target) => document.querySelector(target)?.remove(), selector);
+          await page.evaluate(addControls, [{ label: 'probe: the whole window', left: 0, top: 0, width, height, cover: true }]);
+          if (!(await placeIs('yield'))) {
+            fail(label, `the stack did not yield with a control over the whole window (${run})`);
+            break;
+          }
+
+          await sleep(300);
+          const found = await here();
+          const got = await stand(page);
+          judge(state, got);
+          const right = removed ? found.tag !== 'BODY' && !found.inLayer && found.precedes : found.fixture === 'page-control';
+          if (!right) fail(label, `the focus was lost when the stack yielded (${run}): it is on ${named(found)}, wanted ${removed ? 'a control that comes before the stack in the document' : 'the control it came from (page-control)'}`);
+          if (got.host !== null && (got.host.visibility !== 'hidden' || !got.host.inert)) fail(label, `the yielded stack is not hidden and inert (${run}): ${JSON.stringify(got.host)}`);
+          if (got.host !== null && got.host.region !== null) fail(label, `the yielded stack is still a region of F6 (${run}): data-shell-region=${got.host.region}`);
+          rowOf(`yield-focus: ${short}`, got, `the focus was in the stack when it yielded (${run}): it went to ${named(found)}`);
+          await page.evaluate(() => document.querySelector('[data-probe-holder]')?.remove());
+          if (!(await placeIs(null))) {
+            fail(label, `the stack did not come home when the control over the whole window left (${run})`);
+            break;
+          }
+
+          await sleep(300);
+        }
       } else if (state === 'yield') {
         // A control over the whole window: no room anywhere. The stack is hidden, inert and no stop of F6, and tells once; when the control goes, the stack comes home.
         const told = () => page.evaluate(() => window.__told.slice());

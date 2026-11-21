@@ -24,7 +24,7 @@ export function Toasts() {
   const layer = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const events = useStack(layer, store, items.length);
-  const place = usePlacement(layer, host, items, announcer.announce);
+  const place = usePlacement(layer, host, items, announcer.announce, store, events.giveBack);
   const moved = place.mode === 'moved' ? place : undefined;
   return (
     <>

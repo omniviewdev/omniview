@@ -17,7 +17,7 @@ const make = (over = false) => {
   const calls: Array<readonly [string, boolean]> = [];
   const under = { over };
   const store = {
-    hold: (reason: 'pointer' | 'focus' | 'modal' | 'center', on: boolean) => {
+    hold: (reason: 'pointer' | 'focus' | 'modal' | 'center' | 'yield', on: boolean) => {
       calls.push([reason, on]);
       return true;
     },

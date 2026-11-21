@@ -270,3 +270,87 @@ describe('the stack when it is not there', () => {
     expect(vi.getTimerCount()).toBe(timers);
   });
 });
+
+// The lead's ruling of 2026-11-21, "never lose a message unseen" and "never drop the focus": while the stack yields nothing expires where nobody can read it (no centre yet; the mock's clocks keep running), and a focus that
+// is inside the stack goes back to where it came from, else to the mock's fallback (the nearest control), never to the body.
+describe('the stack that yields', () => {
+  const wall = { left: 0, top: 0, right: 1440, bottom: 900 };
+  const fakeTimers = (): void => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+  };
+
+  it('holds the model\'s clocks: a timed toast is still there after twenty seconds with no room, and closes after its remaining time once there is', async () => {
+    fakeTimers();
+    controls.set('Everything', wall);
+    const m = mount({ around: <button type="button">Everything</button> });
+    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    await m.flush();
+    expect(hostOf()).toHaveAttribute('data-place', 'yield');
+    expect(m.f.store.getSnapshot().toasts.paused).toBe(true);
+    await act(async () => {
+      await m.clock.advance(20_000);
+    });
+    expect(toastsOf()).toHaveLength(1);
+    controls.delete('Everything');
+    fireEvent(window, new Event('resize'));
+    settle();
+    expect(hostOf()).not.toHaveAttribute('data-place');
+    expect(m.f.store.getSnapshot().toasts.paused).toBe(false);
+    await act(async () => {
+      await m.clock.advance(7990);
+    });
+    expect(toastsOf()).toHaveLength(1);
+    await act(async () => {
+      await m.clock.advance(20);
+    });
+    expect(toastsOf()).toEqual([]);
+  });
+
+  it('lets go of the hold when the window goes while it yields', async () => {
+    controls.set('Everything', wall);
+    const m = mount({ around: <button type="button">Everything</button> });
+    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    await m.flush();
+    expect(m.f.store.getSnapshot().toasts.paused).toBe(true);
+    m.unmount();
+    expect(m.f.store.getSnapshot().toasts.paused).toBe(false);
+  });
+
+  it('gives a focus that is in the stack back to where it came from before the stack is inert: never the body', async () => {
+    fakeTimers();
+    const m = mount({ around: <button type="button">Everything</button> });
+    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    await m.flush();
+    m.opener.focus();
+    const toast = toastsOf()[0];
+    act(() => {
+      toast.focus();
+    });
+    expect(document.activeElement).toBe(toast);
+    controls.set('Everything', wall);
+    fireEvent(window, new Event('resize'));
+    settle();
+    expect(hostOf()).toHaveAttribute('data-place', 'yield');
+    expect(document.activeElement).toBe(m.opener);
+  });
+
+  it('gives it to the mock\'s fallback, the nearest control that comes before the stack, when where it came from is gone: never the body', async () => {
+    fakeTimers();
+    // jsdom lays nothing out: every element has a box here, so that a control can be a place to land.
+    vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(() => [rectOf({ left: 0, top: 0, right: 10, bottom: 10 })] as unknown as DOMRectList);
+    const m = mount({ around: <button type="button">Everything</button> });
+    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    await m.flush();
+    m.opener.focus();
+    const toast = toastsOf()[0];
+    act(() => {
+      toast.focus();
+    });
+    m.opener.remove();
+    controls.set('Everything', wall);
+    fireEvent(window, new Event('resize'));
+    settle();
+    expect(hostOf()).toHaveAttribute('data-place', 'yield');
+    expect(document.activeElement?.textContent).toBe('Everything');
+  });
+});

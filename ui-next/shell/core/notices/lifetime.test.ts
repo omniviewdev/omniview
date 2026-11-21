@@ -402,3 +402,52 @@ describe('a source that is muted (Settings > Notifications, S82)', () => {
     expect(store.getSnapshot().muted).toEqual([]);
   });
 });
+
+// The lead's ruling of 2026-11-21, "never lose a message unseen": while the stack is not drawn, no timed toast expires, as on hover and focus. There is no notification centre yet, so a toast that closed while it was hidden
+// is a message the person can never read. The mock's clocks keep running while its stack yields; this is a recorded deviation.
+describe('the clocks while the stack is not drawn', () => {
+  it('holds a timed toast while the stack yields (no room anywhere): it is still there after twenty seconds, still drawable, and has its remaining time when the stack is drawn again', async () => {
+    const { store, clock } = makeNotices();
+    store.notify({ title: 'Snapshot created', severity: 'success' });
+    await clock.advance(5000);
+    expect(store.hold('yield', true)).toBe(true);
+    await clock.advance(20_000);
+    const held = store.getSnapshot().toasts;
+    expect(ids(held.items)).toHaveLength(1);
+    expect(held).toMatchObject({ paused: true, suspended: false });
+    expect(store.hold('yield', false)).toBe(true);
+    await clock.advance(2999);
+    expect(store.getSnapshot().toasts.items).toHaveLength(1);
+    await clock.advance(2);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(store.getSnapshot().recent[0]).toMatchObject({ unread: true });
+  });
+
+  it('says a yield and a pointer are two holds: the clocks run again only when both are gone', async () => {
+    const { store, clock } = makeNotices();
+    store.notify({ title: 'Snapshot created', severity: 'success' });
+    store.hold('yield', true);
+    store.hold('pointer', true);
+    store.hold('yield', false);
+    await clock.advance(30_000);
+    expect(store.getSnapshot().toasts.items).toHaveLength(1);
+    store.hold('pointer', false);
+    await clock.advance(8001);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+  });
+
+  it('holds a timed toast while a modal owns the window: an 8 s toast, the palette open for 20 s, closed: the toast is still there with its remaining time', async () => {
+    const { store, clock } = makeNotices();
+    store.notify({ title: 'Snapshot created', severity: 'success' });
+    await clock.advance(3000);
+    store.hold('modal', true);
+    expect(store.getSnapshot().toasts).toMatchObject({ suspended: true, items: [] });
+    await clock.advance(20_000);
+    store.hold('modal', false);
+    expect(store.getSnapshot().toasts.items).toHaveLength(1);
+    await clock.advance(4999);
+    expect(store.getSnapshot().toasts.items).toHaveLength(1);
+    await clock.advance(2);
+    expect(store.getSnapshot().toasts.items).toEqual([]);
+  });
+});

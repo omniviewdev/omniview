@@ -327,8 +327,12 @@ export type NoticesState = {
   readonly undo: { readonly count: number; readonly until: number } | undefined;
 };
 
-/** What a view reports (S78, S89a): the pointer or the focus is in the stack (the clocks wait), a modal owns the window or the centre is open (the stack is suspended). */
-export type HoldReason = 'pointer' | 'focus' | 'modal' | 'center';
+/**
+ * What a view reports (S78, S89a): the pointer or the focus is in the stack (the clocks wait), a modal owns the window or the centre is open (the stack is suspended), or the stack has no room anywhere and is not drawn
+ * (`yield`, the placement rule's last resort: the clocks wait and the stack stays in the list, because the view still measures it; the lead's ruling of 2026-11-21, "never lose a message unseen": with no centre yet a toast that
+ * expired while hidden could never be read; the mock's clocks keep running).
+ */
+export type HoldReason = 'pointer' | 'focus' | 'modal' | 'center' | 'yield';
 
 /**
  * What the page header's operation slot takes (the kit's `PageOperation`, structurally: a test proves one is assignable to the other): a record the page hands over, with nothing wired behind it but
