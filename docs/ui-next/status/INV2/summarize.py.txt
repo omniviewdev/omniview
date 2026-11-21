@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+import json, sys, statistics, os, glob
+def load(name):
+    p = f'/tmp/inv2/out/{name}/rounds.jsonl'
+    if not os.path.exists(p): return None
+    return [json.loads(l) for l in open(p)]
+def pct(xs, q):
+    xs = sorted(xs); 
+    if not xs: return None
+    return xs[min(len(xs)-1, int(round(q*(len(xs)-1))))]
+def summarize(name):
+    rows = load(name)
+    if not rows: print(name, 'no data'); return
+    base = rows[0]; rounds = [r for r in rows if not r.get('baseline')]
+    first_fail = next((r['round'] for r in rounds if any((not p.get('rowsOk', True)) or (p.get('probe') and p['probe'].get('status') != 200) or p.get('detailOk') is False or p.get('logsOk') is False for p in r['pages'])), None)
+    ok = [p['firstRowMs'] for r in rounds for p in r['pages'] if p.get('rowsOk')]
+    last = rounds[-1]
+    def g(r, k1, k2): 
+        try: return r[k1][k2]
+        except Exception: return None
+    print(f'== {name}: {len(rounds)} rounds, pages {last.get("pagesOpenedSoFar")}, first failed round {first_fail}')
+    if ok: print(f'   time to first row (ok rounds): n={len(ok)} median {statistics.median(ok):.0f} ms p95 {pct(ok,.95)} ms max {max(ok)} ms')
+    for label, r in [('baseline', base)] + ([('round %d (last ok)' % (first_fail-1), next(x for x in rounds if x['round']==first_fail-1))] if first_fail and first_fail>1 else []) + ([('round %d (first failed)' % first_fail, next(x for x in rounds if x['round']==first_fail))] if first_fail else []) + [('last round %d' % last['round'], last)]:
+        c = r.get('counters')
+        print(f'   {label:24s} hostG {g(r,"host","goroutines")} hostFiles {r["host"]["files"]["total"]} hostRssMb {r["host"]["rssMb"]} hostThreads {r["host"]["threads"]} | pluginG {g(r,"plugin","goroutines")} pluginFiles {r["plugin"]["files"]["total"] if r.get("plugin") else None} pluginRssMb {g(r,"plugin","rssMb")} pluginThreads {g(r,"plugin","threads")} | logSessions {r.get("logSessions")} | load1 {r.get("load1")}' + (f' | counters {json.dumps(c)}' if c else ''))
+    fp = rounds[min(len(rounds)-1, (first_fail or len(rounds)) - 2)] if rounds else None
+    if first_fail and first_fail > 2:
+        n = first_fail - 1
+        print(f'   growth per closed page before the stall ({n} pages): host goroutines +{(fp["host"]["goroutines"]-base["host"]["goroutines"])/n:.2f}, plugin goroutines +{(fp["plugin"]["goroutines"]-base["plugin"]["goroutines"])/n:.2f}, host files {base["host"]["files"]["total"]}->{fp["host"]["files"]["total"]}, plugin files {base["plugin"]["files"]["total"]}->{fp["plugin"]["files"]["total"]}')
+if __name__ == '__main__':
+    for n in sys.argv[1:]: summarize(n)

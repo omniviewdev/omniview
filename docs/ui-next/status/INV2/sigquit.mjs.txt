@@ -1,0 +1,15 @@
+// INV2: what does SIGQUIT do to the host? Starts the real host, sends it SIGQUIT (the signal a Go process answers with a goroutine dump and an exit), and looks at its log for ten seconds.
+// Result on origin/main 2a1924ce: the host neither exits nor writes a dump: backend/pkg/terminal/manager.go registers SIGQUIT with signal.Notify. Use OMNIVIEW_PPROF_PORT.
+//   BIN=<Omniview-server> PLUGIN_ARCHIVE=<archive> KUBECONFIG_PATH=<kubeconfig> OUT=<dir> node sigquit.mjs
+import { log, sleep, startHost } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+const h = await startHost({ bin: process.env.BIN, archive: process.env.PLUGIN_ARCHIVE, kubeconfig: process.env.KUBECONFIG_PATH, out: process.env.OUT });
+log('host up pid', h.hostPid, 'plugin pid', h.pluginPid);
+process.kill(h.hostPid, 'SIGQUIT');
+for (let i = 0; i < 20 && !h.exited; i += 1) await sleep(500);
+log('after SIGQUIT: host exited =', h.exited);
+const text = readFileSync(h.out + '/host.log', 'utf8');
+log('goroutine dump in host log:', /goroutine \d+ \[/.test(text), '| SIGQUIT lines:', (text.match(/SIGQUIT|quit/gi) ?? []).length);
+log(text.split('\n').slice(-6).join('\n'));
+await h.cleanup();
+process.exit(0);

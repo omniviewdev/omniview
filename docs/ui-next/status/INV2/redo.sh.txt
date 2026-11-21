@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# INV2: the stall of a host that has served 64 pages, from nothing: a kind cluster with the host's slice fixture, the plugin packaged, and the loop (docs/ui-next/status/INV2.md, "Dev tools").
+# Copy this file and the other tools of this directory into one directory WITHOUT the `.txt`, then:
+#
+#   HOST=<host checkout> PLUGIN=<plugin checkout> /opt/homebrew/bin/bash redo.sh
+#
+#   HOST     a checkout of omniviewdev/omniview, `pnpm install` done and built with `OMNIVIEW_UI=next task build:server` (bin/Omniview-server, dist/); its Playwright is used (Chromium and WebKit installed)
+#            and its docs/ui-next/slices/1a-pods-list/fixture.yaml is the cluster's fixture
+#   PLUGIN   a checkout of omniviewdev/omniview-plugin-kubernetes at `feature/ui-next` (5b0a205 or later): hack/package.sh builds it
+#   BIN      optional: the host binary to run (default $HOST/bin/Omniview-server); run the script twice, once with an unmodified build and once with a build of the fix
+#   ENGINE   optional: chromium (default) or webkit;  MODE: list (default), detail or logs;  CLOSE: clean (default), context, kill or none;  ITER: rounds (default 70)
+#   WORK     optional: a scratch directory (default: a new one under $TMPDIR)
+#
+# Needs docker, kind, kubectl, go, pnpm and node; about four minutes. It reads and writes no kubeconfig but the one it makes in $WORK, and deletes ITS OWN cluster at the end, whatever happens.
+# Prints one line a round. On an unmodified host the 64th round is the first FAILED one: `ListConnections` answers 422 FORBIDDEN in a few milliseconds and the page says `Couldn't load Deployments
+# No connections`; on a host with the fix no round fails. Exit status: 0 when no round failed.
+set -euo pipefail
+
+: "${HOST:?HOST is required: a host checkout with bin/Omniview-server built}"
+: "${PLUGIN:?PLUGIN is required: a plugin checkout}"
+HOST="$(cd "$HOST" 2>/dev/null && pwd)" || { echo "HOST is not a directory" >&2; exit 1; }
+PLUGIN="$(cd "$PLUGIN" 2>/dev/null && pwd)" || { echo "PLUGIN is not a directory" >&2; exit 1; }
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/inv2-redo.XXXXXX")}"
+mkdir -p "$WORK"
+WORK="$(cd "$WORK" && pwd)"
+BIN="${BIN:-$HOST/bin/Omniview-server}"
+NAME="inv2-$$"
+KUBECONFIG_PATH="$WORK/kubeconfig"
+test -x "$BIN" || { echo "missing $BIN: run OMNIVIEW_UI=next task build:server in $HOST" >&2; exit 1; }
+test -f "$HERE/loop.mjs" && test -f "$HERE/lib.mjs" || { echo "missing $HERE/loop.mjs or lib.mjs: copy loop.mjs.txt and lib.mjs.txt next to this file, without the .txt" >&2; exit 1; }
+
+case "$(uname -s)_$(uname -m)" in
+  Darwin_arm64) PLATFORM=darwin_arm64 ;;
+  Darwin_x86_64) PLATFORM=darwin_amd64 ;;
+  Linux_x86_64) PLATFORM=linux_amd64 ;;
+  Linux_aarch64 | Linux_arm64) PLATFORM=linux_arm64 ;;
+  *) echo "no plugin platform for $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+
+cleanup() {
+  (unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" 2>&1 | tail -n 1) || true
+}
+trap cleanup EXIT
+
+echo "== cluster $NAME: kind, node v1.35.0 (the image the host's CI pins), the slice fixture"
+(unset KUBECONFIG; kind create cluster --name "$NAME" --kubeconfig "$KUBECONFIG_PATH" --wait 240s \
+  --image 'kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661' 2>&1 | tail -n 1)
+export KUBECONFIG="$KUBECONFIG_PATH"
+kubectl apply -f "$HOST/docs/ui-next/slices/1a-pods-list/fixture.yaml" >/dev/null
+kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s | tail -n 1
+kubectl -n checkout rollout status sts/cart-cache --timeout=240s | tail -n 1
+kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s | tail -n 1
+
+echo "== the plugin, packaged from $PLUGIN ($PLATFORM)"
+version="$(sed -n 's/^version: //p' "$PLUGIN/plugin.yaml" | head -n 1)"
+(cd "$PLUGIN" && GOTOOLCHAIN="${GOTOOLCHAIN:-local}" hack/package.sh "$version" "$PLATFORM" >"$WORK/package.log" 2>&1) || { tail -n 30 "$WORK/package.log" >&2; exit 1; }
+echo "plugin commit $(git -C "$PLUGIN" rev-parse HEAD)"
+
+echo "== the loop: $BIN"
+mkdir -p "$WORK/out"
+status=0
+(cd "$HERE" && env -u INV2_COUNTERS HOST_ROOT="$HOST" BIN="$BIN" PLUGIN_ARCHIVE="$PLUGIN/dist/kubernetes-$PLATFORM.tar.gz" KUBECONFIG_PATH="$KUBECONFIG_PATH" OUT="$WORK/out" \
+  ENGINE="${ENGINE:-chromium}" MODE="${MODE:-list}" CLOSE="${CLOSE:-clean}" ITER="${ITER:-70}" ROW_TIMEOUT_MS=5000 STOP_AFTER_STALL=3 DUMP_AT=0 node loop.mjs) 2>&1 | tee "$WORK/out/loop.log" | cut -c1-260 || status=1
+if grep -q 'FIRST FAILED ROUND' "$WORK/out/loop.log"; then status=1; fi
+echo "rounds, host log and goroutine dumps: $WORK/out"
+exit "$status"

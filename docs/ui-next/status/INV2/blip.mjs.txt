@@ -1,0 +1,53 @@
+// INV2: what does a page do when its events socket drops and reconnects (a new BrowserWindow with the same client id)? Does the live feed of its list continue, what does the host hold, and what does
+// the host answer to the page's resync? Needs the instrumented build for the counters (INV2_COUNTERS); the rest works on any build.
+//   HOST_ROOT=<host checkout> BIN=<Omniview-server> PLUGIN_ARCHIVE=<archive> KUBECONFIG_PATH=<kubeconfig> OUT=<dir> [INV2_COUNTERS=<file>] node blip.mjs
+import { spawnSync } from 'node:child_process';
+import { log, playwright, sleep, startHost } from './lib.mjs';
+
+const { HOST_ROOT, BIN, PLUGIN_ARCHIVE, KUBECONFIG_PATH, OUT, INV2_COUNTERS } = process.env;
+const pw = playwright(HOST_ROOT);
+const host = await startHost({ bin: BIN, archive: PLUGIN_ARCHIVE, kubeconfig: KUBECONFIG_PATH, out: OUT, countersFile: INV2_COUNTERS, pluginPprof: false });
+const kubectl = (...args) => spawnSync('kubectl', ['--kubeconfig', KUBECONFIG_PATH, ...args], { encoding: 'utf8' });
+const browser = await pw.chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 4000 } });
+// The page's WebSocket objects are kept, so the page can close its own events socket (the runtime reconnects after 1 s).
+await page.addInitScript(() => {
+  const Original = window.WebSocket;
+  window.__sockets = [];
+  const Wrapped = function (...args) { const socket = new Original(...args); window.__sockets.push(socket); socket.__messages = 0; socket.addEventListener('message', () => { socket.__messages += 1; }); return socket; };
+  Wrapped.prototype = Original.prototype;
+  for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) Wrapped[key] = Original[key];
+  window.WebSocket = Wrapped;
+});
+page.on('response', async (response) => {
+  if (!response.url().endsWith('/wails/runtime')) return;
+  const method = /"methodName":"[^"]*\.(\w+)"/.exec(response.request().postData() ?? '')?.[1];
+  if (method && /SourceView/.test(method)) log('  [call]', method, response.status(), (await response.text().catch(() => '')).slice(0, 150));
+});
+const rowsOf = () => page.evaluate(() => document.querySelectorAll('[data-ov-state] tbody tr').length);
+const sockets = () => page.evaluate(() => window.__sockets.map((socket) => [socket.readyState, socket.__messages]));
+const change = async (label, act) => {
+  const before = await rowsOf();
+  act();
+  const t0 = Date.now();
+  while (Date.now() - t0 < 15_000 && (await rowsOf()) === before) await sleep(100);
+  const after = await rowsOf();
+  log(`${label}: rows ${before} -> ${after} in ${Date.now() - t0} ms ${after === before ? 'NO LIVE UPDATE' : 'live update'}`);
+};
+await page.goto(`${host.base}/#/kubernetes/deployments`, { waitUntil: 'load' });
+for (let i = 0; i < 100 && (await rowsOf()) === 0; i += 1) await sleep(100);
+await sleep(1500);
+log('rows', await rowsOf(), 'counters', JSON.stringify(host.counters()));
+kubectl('delete', 'deployment', 'blip-a', '-n', 'checkout', '--ignore-not-found');
+await change('before the blip, a Deployment made', () => kubectl('create', 'deployment', 'blip-a', '-n', 'checkout', '--image=busybox:1.37.0', '--', 'sleep', '3600'));
+log('--- the page closes its events socket');
+await page.evaluate(() => window.__sockets.at(-1).close());
+await sleep(5000);
+log('after the reconnect: sockets [readyState, messages]', JSON.stringify(await sockets()), 'counters', JSON.stringify(host.counters()));
+await change('after the blip, the Deployment deleted', () => kubectl('delete', 'deployment', 'blip-a', '-n', 'checkout', '--ignore-not-found'));
+await change('after the blip, another made', () => kubectl('create', 'deployment', 'blip-b', '-n', 'checkout', '--image=busybox:1.37.0', '--', 'sleep', '3600'));
+log('sockets', JSON.stringify(await sockets()));
+kubectl('delete', 'deployment', 'blip-b', '-n', 'checkout', '--ignore-not-found');
+await browser.close();
+await host.cleanup();
+process.exit(0);

@@ -1,0 +1,182 @@
+#!/usr/bin/env node
+// INV2: a host that has served many page sessions stops answering. One host, one plugin, one kind cluster; a loop that opens a page, waits for rows, closes it, N times, and after each round
+// samples the host and the plugin. Throwaway tool of the investigation (docs/ui-next/status/INV2.md).
+//
+//   HOST_ROOT=<host checkout with node_modules/playwright> BIN=<Omniview-server> PLUGIN_ARCHIVE=<kubernetes-darwin_arm64.tar.gz> KUBECONFIG_PATH=<kubeconfig> OUT=<dir> \
+//   ENGINE=chromium|webkit MODE=list|detail|logs CLOSE=clean|context|kill|none PARALLEL=1 ITER=300 node loop.mjs
+//
+//   ENGINE   default chromium            MODE   list (the Deployments list), detail (then one Deployment's page, the `name` source), logs (the Pods list, a finished Job's Pod page, its Logs command)
+//   CLOSE    clean: page.close(); context: context.close(); kill: a browser per round, killed with SIGKILL (Chromium); none: pages are left open
+//   PARALLEL pages opened at once in a round (all closed together)      ITER   rounds      ROW_TIMEOUT_MS   how long a table may take (default 20000)
+//   STOP_AFTER_STALL   stop this many rounds after the first failed round (0: never)      DUMP_AT   rounds at which goroutine dumps of host and plugin are written (default 1,30,60,63,64,65,100,200)
+//   LOGS_CLOSE_TAB=1   (MODE logs) close the Logs tab before the page closes      KEEP_SESSION=1   keep the host's saved window session between rounds (default: forget it, so each round is a first run)
+//   INV2_COUNTERS=<file>   the instrumented build's counters file (instr.patch)      PLUGIN_PPROF=0   do not opt the plugin's pprof in
+//
+// Per round: the page's time to its first row, its own ListConnections call (status, time, body), the host's goroutines (pprof), open files by type, RSS and threads, the plugin's, the SDK's log sessions,
+// the load average, the counters. One JSON line per round in OUT/rounds.jsonl; goroutine dumps in OUT/dumps/ at the rounds named in DUMP_AT and at the first failed round.
+import { appendFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { LOGS, log, playwright, RESOURCE, sh, sleep, startHost, childrenOf } from './lib.mjs';
+
+const env = (name, fallback) => process.env[name] ?? fallback ?? (() => { throw new Error(`${name} is required`); })();
+const hostRoot = path.resolve(env('HOST_ROOT'));
+const out = path.resolve(env('OUT'));
+const engineName = env('ENGINE', 'chromium');
+const iterations = Number(env('ITER', '300'));
+const mode = env('MODE', 'list');
+const closeMode = env('CLOSE', 'clean');
+const parallel = Number(env('PARALLEL', '1'));
+const rowTimeout = Number(env('ROW_TIMEOUT_MS', '20000'));
+const keepSession = env('KEEP_SESSION', '0') === '1';
+const stopAfterStall = Number(env('STOP_AFTER_STALL', '0'));
+const dumpAt = new Set(env('DUMP_AT', '1,30,60,63,64,65,100,200').split(',').filter(Boolean).map(Number));
+const settleMs = Number(env('SETTLE_MS', '1500'));
+const kubeconfig = path.resolve(env('KUBECONFIG_PATH'));
+
+const pw = playwright(hostRoot);
+const engine = engineName === 'webkit' ? pw.webkit : pw.chromium;
+const host = await startHost({ bin: path.resolve(env('BIN', path.join(hostRoot, 'bin/Omniview-server'))), archive: path.resolve(env('PLUGIN_ARCHIVE')), kubeconfig, out, countersFile: process.env.INV2_COUNTERS, pluginPprof: env('PLUGIN_PPROF', '1') === '1' });
+const { base } = host;
+log(`host pid ${host.hostPid} port ${host.port} pprof ${host.pprofBase} plugin pid ${host.pluginPid} pprof ${host.pluginPprofUrl}`);
+process.on('SIGINT', () => { host.cleanup().then(() => process.exit(130)); });
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// One page: the list, then (MODE detail) the detail of one object, (MODE logs) the Pod page of a finished Job's Pod and its Logs command.
+async function readState(page) {
+  return page.evaluate(() => {
+    const text = (element) => (element?.innerText ?? '').replace(/\s+/g, ' ').trim();
+    const root = document.querySelector('[data-ov-state]');
+    return { state: root?.getAttribute('data-ov-state') ?? null, rows: root ? root.querySelectorAll('tbody tr').length : 0, alert: text(root?.querySelector('[role=alert]')).slice(0, 200), body: text(document.body).slice(0, 160) };
+  });
+}
+async function waitRows(page, timeout) {
+  const t0 = Date.now();
+  let last = {};
+  while (Date.now() - t0 < timeout) {
+    last = await readState(page).catch(() => ({}));
+    if (last.state === 'ready' && last.rows > 0) return { ok: true, ms: Date.now() - t0, last };
+    await sleep(100);
+  }
+  return { ok: false, ms: Date.now() - t0, last };
+}
+/** The page's own call, as its runtime makes it: the client id of its events socket, so it is attributed to the page's window. */
+async function listConnectionsFromPage(page) {
+  return page.evaluate(async (methodName) => {
+    const t0 = performance.now();
+    try {
+      const r = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails?.clientId ?? '' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `inv2-page-${Math.random()}`, methodName, args: ['kubernetes'] } }), signal: AbortSignal.timeout(10_000) });
+      const text = await r.text();
+      return { status: r.status, ms: Math.round(performance.now() - t0), body: text.slice(0, 200) };
+    } catch (error) { return { status: 0, ms: Math.round(performance.now() - t0), body: String(error).slice(0, 120) }; }
+  }, `${RESOURCE}.ListConnections`);
+}
+const LOGS_POD = (() => {
+  if (mode !== 'logs') return null;
+  const names = sh('kubectl', ['--kubeconfig', kubeconfig, 'get', 'pods', '-n', 'batch', '-l', 'job-name=nightly-report', '-o', 'name']).split('\n').filter(Boolean).map((line) => line.replace(/^pod\//, ''));
+  return { namespace: 'batch', name: names[0] };
+})();
+
+async function onePage(factory, slot) {
+  const rec = { slot };
+  const t0 = Date.now();
+  const { page, context } = await factory();
+  rec.ctx = { page, context };
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`.slice(0, 160)));
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(`console: ${message.text()}`.slice(0, 160)); });
+  try {
+    await page.goto(`${base}/${mode === 'logs' ? '#/kubernetes/pods' : '#/kubernetes/deployments'}`, { waitUntil: 'load', timeout: 30_000 });
+    rec.gotoMs = Date.now() - t0;
+    const rows = await waitRows(page, rowTimeout);
+    rec.rowsOk = rows.ok;
+    rec.firstRowMs = rows.ms;
+    if (!rows.ok) rec.stuck = rows.last;
+    rec.probe = await listConnectionsFromPage(page);
+    if (rows.ok && mode === 'detail') {
+      const t1 = Date.now();
+      await page.evaluate(() => { location.hash = '#/kubernetes/deployment?namespace=checkout&name=cart-api'; });
+      rec.detailOk = await page.waitForFunction(() => document.querySelector('[data-detail-part=header] h1')?.textContent?.trim() === 'cart-api', null, { timeout: rowTimeout }).then(() => true, () => false);
+      rec.detailMs = Date.now() - t1;
+      if (!rec.detailOk) rec.detailStuck = (await readState(page).catch(() => ({}))).body;
+    }
+    if (rows.ok && mode === 'logs') {
+      const t1 = Date.now();
+      await page.evaluate((pod) => { location.hash = `#/kubernetes/pod?namespace=${pod.namespace}&name=${pod.name}`; }, LOGS_POD);
+      const clicked = await page.getByRole('button', { name: 'Logs', exact: true }).first().click({ timeout: rowTimeout }).then(() => true, () => false);
+      rec.logsOk = clicked ? await page.waitForFunction(() => document.querySelectorAll('[data-log-session] [role=grid] [role=row][data-n]').length > 0, null, { timeout: rowTimeout }).then(() => true, () => false) : false;
+      rec.logsMs = Date.now() - t1;
+      if (rec.logsOk && env('LOGS_CLOSE_TAB', '0') === '1') {
+        await page.locator('[data-shell-part=sessionTab]').first().hover().catch(() => undefined);
+        await page.locator('[data-shell-part=sessionTab] [data-shell-part=sessionClose]').first().click({ force: true, timeout: 5_000 }).catch(() => undefined);
+        await sleep(400);
+      }
+    }
+  } catch (error) {
+    rec.error = String(error).slice(0, 200);
+  }
+  rec.errors = errors.slice(0, 3);
+  return rec;
+}
+
+async function newBrowser() {
+  const before = new Set(childrenOf(process.pid));
+  const instance = await engine.launch();
+  return { instance, pids: childrenOf(process.pid).filter((pid) => !before.has(pid)) };
+}
+/** Forget the host's saved window session (what the host's own check does), so a round is a first run and not a page that restores the tabs of the earlier ones. */
+const forgetSession = async () => { if (!keepSession) await host.scriptCall('github.com/omniviewdev/omniview/backend/window.Service.SaveState', ['main', 'session', 'null'], 'inv2-forget'); };
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+let firstStall = null;
+let browser = closeMode === 'kill' ? null : (await newBrowser()).instance;
+log(`start: engine ${engineName} mode ${mode} close ${closeMode} parallel ${parallel} iterations ${iterations} load ${os.loadavg()[0].toFixed(1)}`);
+const baseline = await host.sample();
+appendFileSync(path.join(out, 'rounds.jsonl'), `${JSON.stringify({ round: 0, baseline: true, ...baseline })}\n`);
+log('baseline', JSON.stringify({ hostG: baseline.host.goroutines, hostFiles: baseline.host.files.total, pluginG: baseline.plugin?.goroutines, pluginFiles: baseline.plugin?.files.total, counters: baseline.counters }));
+if (dumpAt.has(0)) await host.dumps('0');
+
+for (let round = 1; round <= iterations && !host.exited && !host.stopping; round += 1) {
+  await forgetSession();
+  let killable = null;
+  if (closeMode === 'kill') { killable = await newBrowser(); browser = killable.instance; }
+  const factory = async () => {
+    if (closeMode === 'context') { const context = await browser.newContext({ viewport: { width: 1440, height: 4000 } }); return { page: await context.newPage(), context }; }
+    return { page: await browser.newPage({ viewport: { width: 1440, height: 4000 } }), context: null };
+  };
+  const t0 = Date.now();
+  const results = await Promise.all(Array.from({ length: parallel }, (_, slot) => onePage(factory, slot)));
+  const busyMs = Date.now() - t0;
+  if (closeMode === 'clean') for (const r of results) await r.ctx.page.close().catch(() => undefined);
+  else if (closeMode === 'context') for (const r of results) await r.ctx.context.close().catch(() => undefined);
+  else if (closeMode === 'kill') {
+    for (const pid of killable.pids) { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+    await sleep(300);
+    await killable.instance.close().catch(() => undefined);
+  }
+  await sleep(settleMs);
+  const sampled = await host.sample();
+  const record = {
+    round, pagesOpenedSoFar: round * parallel, busyMs,
+    pages: results.map((r) => ({ slot: r.slot, gotoMs: r.gotoMs, rowsOk: r.rowsOk, firstRowMs: r.firstRowMs, probe: r.probe, detailOk: r.detailOk, detailMs: r.detailMs, logsOk: r.logsOk, logsMs: r.logsMs, stuck: r.stuck, error: r.error, errors: r.errors })),
+    ...sampled,
+  };
+  appendFileSync(path.join(out, 'rounds.jsonl'), `${JSON.stringify(record)}\n`);
+  const failed = results.some((r) => !r.rowsOk || (mode === 'detail' && !r.detailOk) || (mode === 'logs' && !r.logsOk) || (r.probe && r.probe.status !== 200));
+  log(`round ${round}${failed ? ' FAILED' : ''} rows ${results.map((r) => r.firstRowMs).join('/')}ms probe ${results.map((r) => r.probe?.status).join('/')} hostG ${sampled.host.goroutines} hostFiles ${sampled.host.files.total} pluginG ${sampled.plugin?.goroutines} pluginFiles ${sampled.plugin?.files.total} logSessions ${sampled.logSessions} counters ${sampled.counters ? JSON.stringify(sampled.counters) : '-'} load ${sampled.load1}`);
+  if (failed && firstStall === null) {
+    firstStall = round;
+    log(`FIRST FAILED ROUND ${round}: ${JSON.stringify(results.map((r) => ({ rowsOk: r.rowsOk, probe: r.probe, stuck: r.stuck, error: r.error })))}`);
+    await host.dumps(`stall-${round}`);
+    writeFileSync(path.join(out, 'host-files-at-stall.txt'), sh('lsof', ['-p', String(host.hostPid), '-n', '-P']));
+    if (host.pluginPid) writeFileSync(path.join(out, 'plugin-files-at-stall.txt'), sh('lsof', ['-p', String(host.pluginPid), '-n', '-P']));
+  }
+  if (dumpAt.has(round)) await host.dumps(String(round));
+  if (firstStall !== null && stopAfterStall > 0 && round >= firstStall + stopAfterStall) { log(`stopping ${stopAfterStall} rounds after the first failed round`); break; }
+}
+if (!host.exited) await host.dumps('end');
+writeFileSync(path.join(out, 'summary.json'), JSON.stringify({ engine: engineName, mode, closeMode, parallel, iterations, firstStall, load: os.loadavg() }, null, 1));
+await browser?.close().catch(() => undefined);
+await host.cleanup();
+log('done');
+process.exit(0);
