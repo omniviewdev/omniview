@@ -9,10 +9,10 @@ export const toolIdOf = (plugin: string, local: string): ToolId => `${plugin}:${
 
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
-/** Where a tool that says no place sits: after every tool that does, in the order they registered. */
+/** Where a tool that says no place sits: after every tool that does; the tools that tie are settled by their owners' places and their own (`visibleTools`). */
 const UNORDERED = Number.MAX_SAFE_INTEGER;
 
-/** A tool as the registry holds it, or the reason it is not valid. `seq` is the place in the order of registration it keeps. */
+/** A tool as the registry holds it, or the reason it is not valid. `seq` is the place it keeps among its owner's tools: the order they were declared in (`Tool.seq`). */
 function read(input: ToolInput, id: ToolId, owner: string, seq: number): Tool | undefined {
   const label = text(input.label);
   const icon = text(input.icon);
@@ -24,7 +24,7 @@ function read(input: ToolInput, id: ToolId, owner: string, seq: number): Tool | 
   return Object.freeze({ id, owner, label, icon, order, seq });
 }
 
-const same = (a: Tool, b: Tool): boolean => a.owner === b.owner && a.label === b.label && a.icon === b.icon && a.order === b.order;
+const same = (a: Tool, b: Tool): boolean => a.owner === b.owner && a.label === b.label && a.icon === b.icon && a.order === b.order && a.seq === b.seq;
 
 /**
  * Registers a tool of the host. The same id registered again changes its words and keeps its place; the same words change nothing. An id with a colon is refused: that is how a plugin's
@@ -64,12 +64,16 @@ export type PluginTools = { readonly id: string; readonly tools: readonly ToolIn
  * plugin brought before and brings no more is removed; a plugin that is no longer listed loses its tools, its sessions in them are hidden and the ones that were running end (the session is
  * a record of work that was running in the plugin, and the plugin is gone), and a plugin that returns has its sessions back, ended. The host's own tools are not touched.
  *
+ * The ORDER of the list is the answer too (R2): a plugin's place in it is the place its tools take among the tools that tie in `order` (`visibleTools`), and the model keeps it for as long as the plugin is live. It is
+ * not the order the plugins arrived in: a plugin that is listed ahead of the plugins already live takes its place ahead of them, whenever it arrived, and the same plugins listed in the same order give the same strip
+ * whichever finished loading first. The host lists them in the order of its rail (`plugins/host/rail.ts`, `inRailOrder`). The tools of one plugin keep the order the plugin brought them in.
+ *
  * One thing is not hidden (A21, widened by the lead's ruling): the sessions a plugin has in a tool of the HOST are `held` when it leaves, whatever their state. They stay listed and mounted until their tab
  * closes, whether the plugin is off or has come back, and nothing changes them. A session that was starting or running is ended with the same cause; one that had ended or failed on its own is kept AS IT
  * WAS (its state, its cause and its time). A session in a tool that is not registered was never drawn and is hidden as before.
  */
 export function syncPlugins(state: PanelState, plugins: readonly PluginTools[], now: number, cause: string): Step<PanelResult> {
-  const live = [...new Set(plugins.map((plugin) => plugin.id).filter((id) => id !== '' && id !== HOST))].sort();
+  const live = [...new Set(plugins.map((plugin) => plugin.id).filter((id) => id !== '' && id !== HOST))];
   // A map, not an object: an id the prototype also names (`__proto__`) must stay an entry of the tools it is.
   const kept = new Map<ToolId, Tool>();
   for (const [id, tool] of Object.entries(state.tools)) {
@@ -78,25 +82,20 @@ export function syncPlugins(state: PanelState, plugins: readonly PluginTools[], 
     }
   }
 
-  let registered = state.registered;
   for (const plugin of plugins) {
     if (!live.includes(plugin.id)) {
       continue;
     }
 
-    for (const input of plugin.tools) {
+    for (const [place, input] of plugin.tools.entries()) {
       const local = identifier(input.id);
       const id = toolIdOf(plugin.id, local);
-      const previous = own(state.tools, id);
-      const tool = read(input, id, plugin.id, previous?.seq ?? registered + 1);
+      const tool = read(input, id, plugin.id, place);
       if (tool === undefined || local === '') {
         continue;
       }
 
-      if (previous === undefined) {
-        registered += 1;
-      }
-
+      const previous = own(state.tools, id);
       kept.set(id, previous !== undefined && same(previous, tool) ? previous : tool);
     }
   }
@@ -128,6 +127,6 @@ export function syncPlugins(state: PanelState, plugins: readonly PluginTools[], 
   }
 
   const sessions = ended.length === 0 ? state.sessions : Object.freeze({ ...state.sessions, ...Object.fromEntries(ended) });
-  const next = patch(state, { live: Object.freeze(live), tools: Object.freeze(Object.fromEntries(kept)), sessions, registered });
+  const next = patch(state, { live: Object.freeze(live), tools: Object.freeze(Object.fromEntries(kept)), sessions });
   return { state: settle(next), result: { status: 'done' } };
 }
