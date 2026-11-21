@@ -104,3 +104,21 @@ describe('the user\'s own Refresh', () => {
     expect(screen.getByText(REPORT)).toBeInTheDocument();
   });
 });
+
+describe('a not-found state (K2c-2): the title and the message say the one thing', () => {
+  it('draws the plugin\'s title over its message, and keeps the object\'s name as the page\'s one heading', () => {
+    render(page(source({ kind: 'not-found', title: 'lathe-4 was deleted', message: 'It no longer exists in north.' }, undefined)));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'lathe-4' })).toBeInTheDocument();
+    expect(screen.getByText('lathe-4 was deleted')).toBeInTheDocument();
+    expect(screen.getByText('It no longer exists in north.')).toBeInTheDocument();
+    expect(screen.queryByText('lathe-4 was not found')).toBeNull();
+  });
+
+  it('draws the page\'s own title for a plugin that gives none', () => {
+    render(page(source({ kind: 'not-found', message: 'Widget lathe-4 doesn\'t exist in north. It may have been deleted.' }, undefined)));
+
+    expect(screen.getByText('lathe-4 was not found')).toBeInTheDocument();
+    expect(screen.getByText('Widget lathe-4 doesn\'t exist in north. It may have been deleted.')).toBeInTheDocument();
+  });
+});

@@ -1,7 +1,7 @@
 import { Link, LinkProvider, type DataTableColumn, type LinkHandler } from '@omniviewdev/kit';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { DetailPage, type DetailPageDefinition, type DetailSource, type DetailTableSection, type DetailView } from '..';
+import { DetailPage, type DetailPageDefinition, type DetailSource, type DetailState, type DetailTableSection, type DetailView } from '..';
 import type { ShellRegistration } from '../../shell';
 import { StaticShell, STATIC_RAIL, staticTabs } from '../../shell/testing';
 
@@ -146,8 +146,16 @@ const registration: ShellRegistration = {
 };
 const path = [{ label: 'Acme', onSelect: noop }, { label: 'north' }, { label: 'Items', onSelect: noop }, { label: 'orders-api' }] as const;
 
-/** `?case=detail&state=ready` (default) or `loading` until the probe lets the object arrive (`window.__fixture.ready()`). */
-export function DetailCase({ start, expose }: { readonly start: 'ready' | 'loading'; readonly expose: (ready: () => void) => void }) {
+/** The two states of an object that is not there (K2c-2), as the design mock words them: a plugin that knows the object was deleted titles it, and one that gives no title has the page's own. */
+const NOT_THERE = {
+  deleted: { kind: 'not-found', title: 'orders-api was deleted', message: 'It no longer exists in north.' },
+  'not-found': { kind: 'not-found', message: 'Item orders-api doesn\'t exist in north. It may have been deleted.' },
+} as const satisfies Record<string, DetailState>;
+
+export type DetailStart = 'ready' | 'loading' | keyof typeof NOT_THERE;
+
+/** `?case=detail&state=ready` (default) or `loading` until the probe lets the object arrive (`window.__fixture.ready()`); `deleted` and `not-found` are the two states of an object that is not there. */
+export function DetailCase({ start, expose }: { readonly start: DetailStart; readonly expose: (ready: () => void) => void }) {
   const [loaded, setLoaded] = useState(start === 'ready');
   useEffect(() => {
     expose(() => {
@@ -157,7 +165,8 @@ export function DetailCase({ start, expose }: { readonly start: 'ready' | 'loadi
     });
   }, [expose]);
 
-  const source: DetailSource = { state: loaded ? { kind: 'ready' } : { kind: 'loading' }, view: loaded ? view : undefined, refreshing: false, refresh: async () => undefined };
+  const state: DetailState = loaded ? { kind: 'ready' } : start === 'deleted' || start === 'not-found' ? NOT_THERE[start] : { kind: 'loading' };
+  const source: DetailSource = { state, view: loaded ? view : undefined, refreshing: false, refresh: async () => undefined };
   return (
     <LinkProvider handler={handler}>
       <StaticShell registration={registration} tabs={tabs}>

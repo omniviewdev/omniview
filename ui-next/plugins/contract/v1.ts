@@ -87,6 +87,13 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // all: a sidebar hook answers its nodes anew on every render, so the words are read where they are used (`sidebarKeywords.ts`), one at a time, and a keyword that is not one word of at most 32 characters, or comes after the
 // eighth, is left out with a problem for the plugin's author and costs the node nothing else. Only the keywords of an entry (a leaf, a page the palette can go to) are read: a group is not a page.
 //
+// The title of a not-found detail state (K2c-2) is minor, on the terms of the sidebar's keywords: `title` is a NEW optional member of the `not-found` state a detail hook answers, the plugin's own title for the state ("lathe-4 was deleted"
+// over its `message`, "It no longer exists in north."), where the page's is "<name> was not found" for an object that was deleted as well as for one that never was. (1) Nothing that exists is removed, renamed or given another meaning.
+// (2) Every bundle written before it is drawn as before: a `not-found` with no `title` has the page's title and, with no `message`, the page's message (`detailView.test.ts`, `PluginHost.detail.test.tsx`). (3) Rule (3) cannot be kept by the
+// letter for a new member, as for `keywords`: a host that predates it never reads `title`, so a bundle that gives one is admitted and drawn with the old title over its message (`detailView.test.ts` shows the member is the only difference,
+// and that a state of either contract is a state of the other in types); nothing is refused. The page reads `title` where it is used and never refuses for it: a title that is not text, is empty, or is longer than 120 characters is
+// no title, and white space in one is one space.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareDetail, DETAIL_POD, detailHref, expectedDetail } from './detail.mjs';
+import { compareDeployment, compareDetail, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail } from './detail.mjs';
 
 const pod = (name, nodeName, ip, qosClass) => ({
   metadata: { name },
@@ -58,4 +58,62 @@ test('a missing row, or a Pod kubectl has no value for, is a problem and never a
   assert.match(compareDetail(read, expectedDetail(cacheZero)).join('\n'), /Node: the page says null/);
   const unscheduled = { ...cacheZero, spec: {} };
   assert.match(compareDetail(reading(cacheZero), expectedDetail(unscheduled)).join('\n'), /Node: kubectl has no value/);
+});
+
+// The generic detail page of a Deployment (K2c-2): opened from the Deployments list, its Details rows say what `kubectl get deployment -o json` says.
+const deployment = (name, { revision = '1', limit = 10, strategy = { type: 'RollingUpdate', rollingUpdate: { maxSurge: '25%', maxUnavailable: '25%' } } } = {}) => ({
+  metadata: { name, namespace: 'checkout', annotations: { 'deployment.kubernetes.io/revision': revision } },
+  spec: { replicas: 3, revisionHistoryLimit: limit, strategy },
+});
+const cartApi = deployment('cart-api');
+
+/** What the page reads when it prints exactly `value`'s rows. */
+const deploymentReading = (value, over = {}) => ({
+  h1: value.metadata.name,
+  kv: [
+    ['Strategy', 'Rolling update · max surge 25%, max unavailable 25%'],
+    ['Revision', value.metadata.annotations['deployment.kubernetes.io/revision']],
+    ['Selector', 'app=cart-api'],
+    ['Revision history', `${String(value.spec.revisionHistoryLimit)} revisions`],
+  ],
+  ...over,
+});
+
+test('the Deployment route is the one the Deployments list links to', () => {
+  assert.deepEqual(DETAIL_DEPLOYMENT, { namespace: 'checkout', name: 'cart-api' });
+  assert.equal(deploymentHref(DETAIL_DEPLOYMENT), '#/kubernetes/deployment?namespace=checkout&name=cart-api');
+});
+
+test('expectedDeployment reads the strategy, the revision and the history limit as the page words them', () => {
+  assert.deepEqual(expectedDeployment(cartApi), { name: 'cart-api', strategy: 'Rolling update · max surge 25%, max unavailable 25%', revision: '1', history: '10 revisions' });
+  assert.equal(expectedDeployment(deployment('x', { limit: 1 })).history, '1 revision');
+  assert.equal(expectedDeployment(deployment('x', { strategy: { type: 'Recreate' } })).strategy, 'Recreate');
+  assert.equal(expectedDeployment(deployment('x', { strategy: { type: 'RollingUpdate', rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } } })).strategy, 'Rolling update · max surge 1, max unavailable 0');
+});
+
+test('a page that prints what kubectl says of the Deployment agrees', () => {
+  assert.deepEqual(compareDeployment(deploymentReading(cartApi), expectedDeployment(cartApi)), []);
+});
+
+test('negative control: the page of another Deployment, or of an older revision, does not agree', () => {
+  const other = deployment('payment-gateway', { revision: '4', limit: 3 });
+  const problems = compareDeployment(deploymentReading(other), expectedDeployment(cartApi));
+  assert.equal(problems.length, 3, problems.join('; '));
+  assert.match(problems.join('\n'), /name: the page says "payment-gateway", kubectl says "cart-api"/);
+  assert.match(problems.join('\n'), /Revision: the page says "4", kubectl says "1"/);
+  assert.match(problems.join('\n'), /Revision history: the page says "3 revisions", kubectl says "10 revisions"/);
+});
+
+test('negative control: a page that has no Details rows, as the Deployments list of a plugin without the page, is reported for each row and never passes', () => {
+  const problems = compareDeployment({ h1: null, kv: [] }, expectedDeployment(cartApi));
+  assert.equal(problems.length, 4, problems.join('; '));
+  assert.match(problems.join('\n'), /Strategy: the page says null/);
+});
+
+test('negative control: one changed character in the strategy is reported, and a value kubectl does not have is a problem and never a pass', () => {
+  const read = deploymentReading(cartApi);
+  read.kv[0] = ['Strategy', 'Rolling update · max surge 25%, max unavailable 26%'];
+  assert.deepEqual(compareDeployment(read, expectedDeployment(cartApi)), ['Strategy: the page says "Rolling update · max surge 25%, max unavailable 26%", kubectl says "Rolling update · max surge 25%, max unavailable 25%"']);
+  const bare = { metadata: { name: 'cart-api' }, spec: {} };
+  assert.match(compareDeployment(deploymentReading(cartApi), expectedDeployment(bare)).join('\n'), /Revision: kubectl has no value/);
 });
