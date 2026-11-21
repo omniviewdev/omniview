@@ -31,3 +31,31 @@ export function compareLane(read, { context, id }) {
 
   return problems;
 }
+
+/**
+ * C1h: the ID of the connection is a key and is drawn nowhere. `drawn` is every text the window draws and every `aria-label`, `title`, `alt`, `placeholder` and value it carries (`readDrawn`, below);
+ * the problems are readable lines, empty when the ID is nowhere in it. An unknown ID is a problem, never a pass.
+ */
+export function compareDrawn(drawn, id) {
+  if (id === undefined || id === '') {
+    return ['the host lists no connection ID, so the check cannot tell whether the window draws it'];
+  }
+
+  const at = drawn.indexOf(id);
+  return at === -1 ? [] : [`the window draws the connection's ID (${id}): "${drawn.slice(Math.max(0, at - 40), at + id.length + 40)}"`];
+}
+
+/** Everything the page draws or names, as one text: for `compareDrawn`. */
+export function readDrawn(page) {
+  return page.evaluate(() => {
+    const attributes = ['aria-label', 'aria-description', 'title', 'alt', 'placeholder', 'value'];
+    const parts = [document.body.innerText];
+    for (const element of document.querySelectorAll('*')) {
+      for (const name of attributes) {
+        const value = element.getAttribute(name);
+        if (value) parts.push(value);
+      }
+    }
+    return parts.join('\n');
+  });
+}
