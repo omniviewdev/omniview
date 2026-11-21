@@ -13,13 +13,21 @@ import { parse } from 'yaml';
 
 import {
   BY_HAND,
+  DRIFT_FLOOR_SECONDS,
+  DRIFT_RATIO,
+  LIMIT_SECONDS,
+  MEASURED_SECONDS,
   PROBE_DIRS,
+  SETUP_P90_SECONDS,
   TABLE,
+  WALL_BUDGET_SECONDS,
   WORKFLOW,
   checkTable,
+  driftWarnings,
   expandUnit,
   findProbeScripts,
   isProbeScript,
+  main,
   planShard,
   readWorkflowShards,
   renderSummary,
@@ -362,39 +370,8 @@ test('the three probes CI never ran before K2 are in shards now: the list page, 
   for (const candidate of [...bc, ...rowMenu]) assert.equal(candidate.env?.DIST, '$PROBE_DIST', candidate.name);
 });
 
-// The balance (N24 K2, after B1). Seconds of each unit (a probe, or a probe's negative controls) on the RUNNER, as the job summary of a shard prints them (`### Kit probes shard N`): the median of the last green runs of the sharded
-// workflow (see docs/ui-next/status/N24-K2.md for the runs). A unit that is not here fails the test below: measure it (the job summary of its first run) and add it.
-const MEASURED_SECONDS = {
-  'Probe the bottom panel against the pinned mock reference': 288,
-  'Probe that the panel probe sees a panel that is wrong': 399,
-  'Probe the Logs tool in a real engine': 319,
-  'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved': 161,
-  'Probe the command palette against the pinned mock reference': 258,
-  'Probe that the palette probe sees a palette that is wrong': 60,
-  'Probe the tab strip, the page host and the load against the pinned mock reference': 191,
-  'Probe that the strip probe sees a label that gives way to a count': 26,
-  'Probe the log view against the pinned mock reference': 180,
-  'Probe that the log probe sees a log view that is wrong': 106,
-  'Probe the tooltip host': 144,
-  'Probe the parts against the pinned mock reference': 163,
-  // C1e: the runner's seconds of the first run of its PR (shard 6's log: the aliases part adds about 4 s to the probe, 140 to 144, and the two new controls take 6 s and 7 s, so its nine controls take 91 s, 80 before).
-  'Probe what the providers of a plugin do to the command palette': 144,
-  'Probe that the plugin providers probe sees a palette that is wrong': 91,
-  'Probe the table against the pinned mock reference': 63,
-  'Probe the shell frame against the pinned mock reference': 45,
-  'Probe the fonts and the layout shift': 35,
-  'Probe the rail against the pinned mock reference': 17,
-  'Probe the detail page against the pinned mock reference': 10,
-  // The three that no workflow ran before K2: the median of the three dispatches of 2026-11-21 that had them (44860748108, 44862158926, 44862163420; docs/ui-next/status/N24-K2.md).
-  'Probe the list page chrome and its layout shift against the pinned mock reference': 60,
-  'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference': 192,
-  'Probe the row menu on the 5,000-row example': 22,
-  'Probe that the row menu probe sees a trigger that does not say it is open': 2,
-  // The two units of the toast probe (O1b-1) are an ESTIMATE, not a runner's median: one run of the probe on a laptop at a load of 25 to 116 took 214 s (3 m 34 s, fixture builds included), and its eighteen controls about 130 s (41 s of runs with
-  // the build reused, and eighteen builds of about 5 s). Replace both with the job summary of the first run on the runner.
-  'Probe the toast layer against the pinned mock reference': 214,
-  'Probe that the toast probe sees a toast layer that is wrong': 130,
-};
+// The balance (N24 K2 and K3). The seconds of each unit (a probe, or a probe's negative controls) on the RUNNER are `MEASURED_SECONDS` of the module: the median of the last 8 green runs, rounded up (docs/ui-next/status/N24-K3.md), which the drift
+// guard of the run reads too. A unit that has no value there fails the first test below: measure it (the job summary of its first run) and add it.
 /** The seconds of every shard of a table, and the units no measurement is known for. */
 function balance(table, measured = MEASURED_SECONDS) {
   const unmeasured = [];
@@ -408,19 +385,24 @@ function balance(table, measured = MEASURED_SECONDS) {
   }));
   return { totals, unmeasured };
 }
-// The shard jobs wait for the slowest. Since K2 a probe's controls may run in another shard than the probe, so the floor is no longer the panel probe with its controls (598 s) but the longest single unit: the work is shared out over as
-// few shards as keep the slowest at about 8 minutes with the setup of a shard (about 90 s on the runner with the CI image, N24-B1). The limit is the slowest shard of the best split found (exhaustively, from the numbers above) and a few
-// seconds; it moves when a probe grows (put its new seconds above) and the table is rebalanced.
-const LIMIT_SECONDS = 490;
+// The shard jobs wait for the slowest. Since K2 a probe's controls may run in another shard than the probe, so the floor is the longest single unit (the panel probe's controls). LIMIT_SECONDS is the wall budget of a job (9 minutes) less the
+// setup a slow shard job has (the 90th percentile of the 56 jobs of the runs behind the table); it moves only with that data (N24-K3.md), never to make a table fit.
 
-test('every unit of the table has a measurement, and every measurement is of a unit', () => {
+test('every unit of the table has a measurement (a whole, positive number of seconds), and every measurement is of a unit', () => {
   const { unmeasured } = balance(TABLE);
   assert.deepEqual(unmeasured, []);
   const names = new Set(TABLE.shards.flatMap((shard) => shard.units.map((candidate) => candidate.name)));
   assert.deepEqual(Object.keys(MEASURED_SECONDS).filter((name) => !names.has(name)), []);
+  for (const [name, seconds] of Object.entries(MEASURED_SECONDS)) assert.ok(Number.isInteger(seconds) && seconds > 0, `${name}: ${seconds} is not a whole number of seconds`);
 });
 
-test('no shard is over the limit: the slowest shard, probes only, is about 8 minutes with its setup', () => {
+test('the limit is the wall budget of a job less the setup of a slow job: 9 minutes less the 90th percentile (108 s) is 432 s', () => {
+  assert.equal(WALL_BUDGET_SECONDS, 9 * 60);
+  assert.equal(SETUP_P90_SECONDS, 108);
+  assert.equal(LIMIT_SECONDS, 432);
+});
+
+test('no shard is over the limit: the slowest shard, probes only, is a job of 9 minutes at most with a slow setup', () => {
   const { totals } = balance(TABLE);
   for (const entry of totals) assert.ok(entry.seconds <= LIMIT_SECONDS, `shard ${entry.id} is ${entry.seconds} s, over ${LIMIT_SECONDS}: move a unit to a shard with room, or add a shard (and put it in the workflow's matrix)`);
 });
@@ -444,6 +426,72 @@ test('negative control: the longest unit moved onto the longest other shard is s
   const after = balance(moved);
   assert.ok(after.totals.some((entry) => entry.seconds > LIMIT_SECONDS), JSON.stringify(after.totals));
   assert.deepEqual(balance(moved, { ...MEASURED_SECONDS, [unit.name]: undefined }).unmeasured, [unit.name], 'a unit without a measurement is named');
+});
+
+// The drift guard (N24 K3). A unit that runs more than a quarter, and more than 10 s, over its MEASURED_SECONDS value is one `::warning::` line in the shard's log, naming the unit: the table drifted once because nothing said so.
+const ran = (name, seconds, extra = {}) => ({ label: name, unit: name, script: 'ui-next/shell/probes/a-probe.mjs', control: null, ok: true, code: 0, seconds, ...extra });
+const control = (name, which, seconds, extra = {}) => ran(name, seconds, { label: `${name} (${which})`, control: which, ...extra });
+const VALUES = { 'Probe a': 100, 'Probe that a sees': 40, 'Small probe': 28 };
+
+test('the drift guard warns for a unit more than a quarter and more than 10 s over its value, once, naming the unit, the seconds, the table value and the shard', () => {
+  assert.equal(DRIFT_RATIO, 0.25);
+  assert.equal(DRIFT_FLOOR_SECONDS, 10);
+  const lines = driftWarnings('4', [ran('Probe a', 127)], VALUES);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^::warning title=Kit probe unit seconds \(shard 4\)::Probe a took 127 s on this runner, 100 s in MEASURED_SECONDS \(27 percent over; the warning is at 25 percent and 10 s\)/);
+  assert.match(lines[0], new RegExp(`no shard is over ${LIMIT_SECONDS} s`));
+  assert.equal(lines[0].includes('\n'), false, 'a workflow command is one line');
+});
+
+test('negative control: a unit at its value, under it, exactly a quarter over, or over by 25 % and no more than 10 s is not a warning (a slow run is not a drift)', () => {
+  assert.deepEqual(driftWarnings('4', [ran('Probe a', 100), ran('Probe that a sees', 31)], VALUES), []);
+  assert.deepEqual(driftWarnings('4', [ran('Probe a', 60)], VALUES), [], 'faster than the table is not a drift');
+  assert.deepEqual(driftWarnings('4', [ran('Probe a', 125)], VALUES), [], 'a quarter over is not more than a quarter');
+  assert.deepEqual(driftWarnings('4', [ran('Small probe', 38)], VALUES), [], '36 % over, but 10 s: under the floor, as the strip controls were on 2 of 8 runs');
+  assert.equal(driftWarnings('4', [ran('Small probe', 39)], VALUES).length, 1, '11 s and 39 %');
+});
+
+test('the drift guard counts a unit as the sum of its runs: controls that are each under the line are one warning when together they are over it', () => {
+  const rows = (a, b) => [control('Probe that a sees', 'x', a), control('Probe that a sees', 'y', b)];
+  assert.deepEqual(driftWarnings('2', rows(25, 24), VALUES), [], '49 s is 22 % over 40');
+  const lines = driftWarnings('2', rows(26, 26), VALUES);
+  assert.equal(lines.length, 1, '52 s is 30 % and 12 s over 40');
+  assert.match(lines[0], /Probe that a sees took 52 s on this runner, 40 s in MEASURED_SECONDS \(30 percent over/);
+});
+
+test('negative control: a unit with a failed run is left out (its seconds are not its cost), a unit with no value is named, and each unit of a shard is judged on its own', () => {
+  assert.deepEqual(driftWarnings('1', [ran('Probe a', 400, { ok: false, code: 1 })], VALUES), []);
+  assert.deepEqual(driftWarnings('1', [control('Probe that a sees', 'x', 5), control('Probe that a sees', 'y', 300, { ok: false, code: 3 })], VALUES), []);
+  const unknown = driftWarnings('1', [ran('Probe z', 12)], VALUES);
+  assert.equal(unknown.length, 1);
+  assert.match(unknown[0], /^::warning title=Kit probe unit seconds \(shard 1\)::Probe z took 12 s on this runner and has no value in MEASURED_SECONDS/);
+  const two = driftWarnings('1', [ran('Probe a', 150), ran('Probe that a sees', 41), ran('Small probe', 50)], VALUES);
+  assert.deepEqual(two.map((line) => /::(Probe [a-z ]+|Small probe) took/.exec(line)?.[1]), ['Probe a', 'Small probe']);
+});
+
+test('a message with a percent sign, a CR or an LF in a unit name stays one workflow command line', () => {
+  const [line] = driftWarnings('1', [ran('Probe 100%\nof it', 40)], {});
+  assert.equal(line.includes('\n'), false);
+  assert.match(line, /Probe 100%25%0Aof it took 40 s/);
+});
+
+test('a shard run reports the unit of each run, and the run command prints the drift guard\'s warnings after the summary without failing the shard', async () => {
+  const root = scratch(PROBES);
+  const table = shardsTable();
+  table.shards[0].units.splice(1, 1);
+  const { results } = await run(table, '1', root);
+  assert.deepEqual(results.map((result) => result.unit), ['First fine', 'Control runs', 'Control runs']);
+  const chunks = [];
+  const env = { ...callerEnv(), RUNNER_TEMP: '/tmp/runner', GITHUB_STEP_SUMMARY: '' };
+  const unmeasured = await main(['--root', root, 'run', '1'], { table, measured: { 'First fine': 10 }, env, out: (text) => chunks.push(text), err: (text) => chunks.push(text) });
+  assert.equal(unmeasured, 0, 'a warning is not a failure');
+  const log = chunks.join('');
+  assert.match(log, /^::warning title=Kit probe unit seconds \(shard 1\)::Control runs took \d+ s on this runner and has no value in MEASURED_SECONDS/m);
+  assert.doesNotMatch(log, /::warning[^\n]*First fine/);
+  assert.ok(log.indexOf('### Kit probes shard 1') < log.indexOf('::warning'), 'after the summary');
+  const quiet = [];
+  await main(['--root', root, 'run', '1'], { table, measured: { 'First fine': 10, 'Control runs': 10 }, env, out: (text) => quiet.push(text), err: (text) => quiet.push(text) });
+  assert.doesNotMatch(quiet.join(''), /::warning/);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

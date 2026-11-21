@@ -56,7 +56,7 @@ jobs:
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # A shard takes 8 to 9 minutes (measured: the pull of the image 24 to 46 s, the rest of the setup 50 s, probes 5 to 7.1; the table's balance note has the seconds of each unit), so 20 is more than twice the longest. The 30 it had
+    # A shard takes 8 to 9 minutes (setup 88 s median, probes at most 432 s of table seconds: scripts/ci/probe-shards.mjs, LIMIT_SECONDS; the table's balance note has the seconds of each unit), so 20 is more than twice the longest. The 30 it had
     # was for the bounded browser install of #557 (a first attempt killed after 15 minutes, then a second): the browsers are in the image now, there is no install to hang, and a pull that hangs is what this limit is for.
     timeout-minutes: 20
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
@@ -79,7 +79,7 @@ jobs:
       fail-fast: false
       matrix:
         # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
-        shard: [1, 2, 3, 4, 5, 6, 7]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
       - name: Match checkout directory ownership to container user
