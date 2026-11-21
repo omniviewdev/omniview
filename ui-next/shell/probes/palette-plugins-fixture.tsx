@@ -9,8 +9,9 @@
 //   ?aliases=1   the plugin's sidebar is Group > Widgets, Gadgets (the keyword `gz`) and Gazebo (a title that holds the keyword's letters in one word), and the plugin's own providers stay quiet: what answers is the
 //                host's pages source, from the sidebar's keywords (C1e). `window.__aliasFault('ignored' | 'loose')` is the probe's negative control: the keyword is not the host's to read, or it ranks as a keyword did before
 //                an alias was a name (a source of the host's own that holds the same word as a keyword, below a loose match in a title)
-//   ?connection=1  (C1f; the plugin's own providers stay quiet) the tab on screen is the detail page of an item read in a connection whose KEY is `north-57a082bd74` (the shape the host's own keys have) and whose NAME, in the scope lane its
-//                page published, is `north`; the sidebar has a page in a group and a page in none. `window.__connectionFault()` is the probe's negative control: a source of the host's own that says the key
+//   ?connection=1  (C1f, C1g; the plugin's own providers stay quiet) the tab on screen is the detail page of an item read in a connection whose KEY is `north-57a082bd74` (the shape the host's own keys have) and whose NAME, in the scope lane its
+//                page published (the face marked `role: 'connection'`, labelled Cluster: the marker, and not the label, says what it is), is `north`; the sidebar has a page in a group and a page in none. `window.__connectionFault(fault)` is
+//                the probe's negative control: `row` (the default) is a source of the host's own that says the key in a row of the palette, `face` makes the tab model's faces carry the connection parameter as a crumb and a qualifier
 //
 // `window.__palette` is the model's store; `window.__tabs` the tab model; `window.__plugin` takes a plugin's interface out of the live set (`unload(id)`, `fail(id)`) and brings it back (`reload(id)`, a new contribution, as a
 // reload of its bundle makes); `window.__commits` lists every commit of the tree (React's profiler: the probe builds this entry with the development build of React DOM for the counts); `window.__announced` lists what the
@@ -22,12 +23,12 @@ import { Profiler } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ContributionV1, DetailPageV1, FrameV1, SidebarNodeV1 } from '../../plugins/contract/v1';
 import { createFixturePalette } from '../../plugins/fixture/src/palette';
-import { createContributions, routeKey, type PluginSource } from '../../plugins/host/contributions';
+import { connectionOf, createContributions, routeKey, type PluginSource } from '../../plugins/host/contributions';
 import { createHostPalette } from '../../plugins/host/palette';
 import type { PluginEntry } from '../../plugins/host/pluginStore';
 import { Published } from '../../plugins/host/published';
 import { acme, answering, widgetPage } from '../../plugins/testing';
-import { createTabsStore, platformOf } from '..';
+import { createTabsStore, platformOf, type Contributions, type Description, type Route } from '..';
 import { StaticShell, STATIC_RAIL } from '../testing';
 
 const params = new URLSearchParams(window.location.search);
@@ -144,7 +145,32 @@ Reflect.set(window, '__sources', () => heard.size);
 
 const frames = new Published<FrameV1>();
 const nodes = new Published<readonly SidebarNodeV1[] | null>();
-const contributions = createContributions({ plugins, frames });
+const real = createContributions({ plugins, frames });
+/** The probe's control for the shell's own surfaces (`window.__connectionFault('face')`): once it is on, the connection parameter of a route reaches the face the tab model holds, as a crumb of its path and as a qualifier. */
+let keyed = false;
+const heardFaces = new Set<() => void>();
+const withKey = (face: Description | undefined, route: Route): Description | undefined => {
+  const key = connectionOf(route);
+  if (!keyed || face === undefined || key === undefined) {
+    return face;
+  }
+
+  const path = face.path ?? [];
+  return { ...face, path: [...path.slice(0, -1), key, ...path.slice(-1)], facets: [...(face.facets ?? []), key] };
+};
+
+const contributions: Contributions = {
+  ...real,
+  describe: (route) => withKey(real.describe(route), route),
+  subscribe: (listener) => {
+    heardFaces.add(listener);
+    const stop = real.subscribe?.(listener);
+    return () => {
+      heardFaces.delete(listener);
+      stop?.();
+    };
+  },
+};
 const tabs = createTabsStore({ contributions });
 /** The page on screen: with `?connection=1` the detail page of an item read in the connection, else a list page, in a connection with `?scoped=1`. */
 const ON_SCREEN = CONNECTION
@@ -162,7 +188,7 @@ if (CONNECTION) {
     frames.publish(routeKey(shown), {
       tab: { title: face?.title ?? 'Item', icon: 'box' },
       path: (face?.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)),
-      scope: [{ label: 'Connection', icon: 'server', text: NAME }],
+      scope: [{ label: 'Cluster', icon: 'server', text: NAME, role: 'connection' }],
     });
   }
 }
@@ -206,10 +232,20 @@ Reflect.set(window, '__aliasFault', (fault: 'ignored' | 'loose'): void => {
 });
 
 /**
- * The probe's negative control for the connection a row says (`?connection=1`): a palette that says the key. A source of the host's own whose row for a page carries the route's connection parameter where the name belongs,
- * which is what the pages source did before it read the name from the page's lane.
+ * The probe's negative controls for the connection a row says (`?connection=1`). `row`: a palette that says the key, a source of the host's own whose row for a page carries the route's connection parameter where the name
+ * belongs, which is what the pages source did before it read the name from the page's lane. `face`: the faces of the tab model carry the connection parameter, which is what `contributions.describe` did before the names (C1g): the
+ * tab strip, its tooltip and the status bar then say the key.
  */
-Reflect.set(window, '__connectionFault', (): void => {
+Reflect.set(window, '__connectionFault', (fault: 'row' | 'face' = 'row'): void => {
+  if (fault === 'face') {
+    keyed = true;
+    for (const listener of [...heardFaces]) {
+      listener();
+    }
+
+    return;
+  }
+
   host.store.registerProvider({
     id: 'probe:key',
     plugin: 'host',

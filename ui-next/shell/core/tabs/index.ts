@@ -14,4 +14,5 @@ export { DEFAULT_KEEP_ALIVE } from './keepAlive';
 export { normaliseRoute, sameRoute } from './route';
 export type { ErrorHook } from './plugins';
 export { LIMITS, STATE_VERSION } from './types';
+export { clip } from './face';
 export type * from './types';

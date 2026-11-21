@@ -94,6 +94,14 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // and that a state of either contract is a state of the other in types); nothing is refused. The page reads `title` where it is used and never refuses for it: a title that is not text, is empty, or is longer than 120 characters is
 // no title, and white space in one is one space.
 //
+// The connection marker (C1g) is minor, on the terms of the keywords: `role` is a NEW optional member of a FACE of the scope lane (`ShellScopeFace`), and its one value, `'connection'`, says the face's text is the NAME of the connection the
+// page is read in. A route carries a connection by a KEY, a plugin's own id for it, which is not for reading: the host says a connection by its name wherever it says one (the tab strip, the status bar, a detail page's header, the palette)
+// and by the key nowhere, and where it knows no name it says no connection. (1) Nothing that exists is removed, renamed or given another meaning: a face with no `role` is what it was. (2) Every bundle written before it is admitted and
+// drawn as before: a lane whose connection face is labelled Connection is still read as the connection by that label, the convention the marker replaces and the host keeps for the plugins built before it (`connectionName.test.ts` keeps the
+// reading, and `PluginHost.names.test.tsx` runs a window with one). (3) Rule (3) cannot be kept by the letter for a new member, as for `keywords`: admission does not read a lane (a hook answers it anew on every render), so a host that
+// predates the marker draws a marked face as a face and has no other name for the connection. A lane that marks a face is read by the mark alone (a face labelled Connection beside it is not the connection), a marked face with no text
+// says no connection, and a face that is not valid is not the connection and costs the page nothing else.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 

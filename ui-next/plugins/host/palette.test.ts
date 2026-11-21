@@ -822,6 +822,27 @@ describe('the connection a row says: its name, and never the key a route carries
       expect(contextOf(w, 'Gadgets')).toBe('Group');
     });
 
+    it('reads the face the plugin marked as the connection, whatever it is labelled: the marker is the contract\'s, the label Connection is the convention for a plugin built before it', () => {
+      const marked = onScreen(false);
+      marked.frames.publish(routeKey(ROUTE), { tab: { title: 'Widgets', icon: 'box' }, path: ['Widgets'], scope: [{ label: 'Cluster', icon: 'server', text: NAME, role: 'connection' }] });
+      marked.store.open({ kind: 'goto' });
+      expect(contextOf(marked, 'Gadgets')).toBe(`${NAME} · Group`);
+      expect(keysIn(marked)).toEqual([]);
+
+      // The marker decides: a face labelled Connection that is not the marked one is not the connection.
+      const other = onScreen(false);
+      other.frames.publish(routeKey(ROUTE), {
+        tab: { title: 'Widgets', icon: 'box' },
+        path: ['Widgets'],
+        scope: [
+          { label: 'Connection', icon: 'server', text: 'not-the-one' },
+          { label: 'Cluster', icon: 'server', text: NAME, role: 'connection' },
+        ],
+      });
+      other.store.open({ kind: 'goto' });
+      expect(contextOf(other, 'Gadgets')).toBe(`${NAME} · Group`);
+    });
+
     it('reads a lane that is not what the contract says as no name, and never throws: what a plugin publishes is not trusted', () => {
       const w = onScreen(false);
       const lanes: unknown[] = ['north', 42, null, [], [null, 3, 'x', { label: 3, text: NAME }, { label: 'Connection' }, { label: 'Connection', text: 7 }, { label: 'Connection', text: '  ' }]];

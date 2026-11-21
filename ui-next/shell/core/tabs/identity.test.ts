@@ -142,6 +142,17 @@ describe('what every surface reads from a tab (ch16 TI1)', () => {
     expect(identity(h, b)).toMatchObject({ qualifier: 'eu-west-1', name: 'Instances, eu-west-1' });
   });
 
+  it('reads the scope\'s label and never its id (C1g): the id tells places apart, and no surface of a tab says it', () => {
+    const h = boot({ home: false });
+    const a = h.open(cloudPage('instances', { region: 'us-east-1' }));
+    const b = h.open(cloudPage('instances', { region: 'eu-west-1' }), { how: 'new' });
+    for (const id of [a, b]) {
+      const { label, name, tip, qualifier, path } = identity(h, id);
+      // The harness's scope has the id `acme/<region>` and the label `<region>`.
+      expect(JSON.stringify([label, name, tip, qualifier, path.map((crumb) => crumb.label)])).not.toContain('acme/');
+    }
+  });
+
   it('keeps the identity object of a tab whose face and whose neighbours did not change', () => {
     const h = boot({ home: false });
     const a = h.open(service('api', 'shop', 'one'));

@@ -90,6 +90,11 @@ export type Contributions = {
   readonly complete?: ((route: Route, context: { readonly from: Route | undefined; readonly source: string }) => Route | undefined) | undefined;
   /** Runs on a saved or recently closed tab before it comes back: the plugin may rewrite its route or drop the tab (`false`) (ch16 DM1). */
   readonly restore?: ((route: Route) => Route | false) | undefined;
+  /**
+   * Runs on the face a saved tab comes back with, whether or not its plugin has said anything yet: the host takes out of it what it must not draw (a build before the names saved a connection's key in it) and may learn from it
+   * (the name it holds). Returns the face to keep. A plugin that has said something is described again and its face replaces this one.
+   */
+  readonly restoreFace?: ((face: Face, route: Route) => Face) | undefined;
   /** The route a window opens with, or a plugin's own first page when given its id. */
   readonly home?: ((plugin?: string) => RouteInput | undefined) | undefined;
   /** Called when what the plugins say changed (one loaded, one left): the model describes its tabs again. */

@@ -20,6 +20,7 @@ import {
 import { openable } from '../contract/admit';
 import { readKeywords } from '../contract/sidebarKeywords';
 import type { ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
+import { laneNameOf } from './connectionName';
 import { connectionOf, routeKey, type PluginSource } from './contributions';
 import { commandOf, providersOf, runCommand } from './paletteProviders';
 import type { PluginEntry } from './pluginStore';
@@ -61,7 +62,7 @@ export type HostPaletteDeps = {
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
   /**
    * What each mounted page published for the frame around it, by `routeKey` (the host's `frames`): the scope lane is where the shell knows the NAME of a connection. A route carries a connection by its key, which is not for
-   * reading; the palette says the text of the lane's face labelled Connection, and no connection when none is known. Absent: no name is known, so no row says a connection.
+   * reading; the palette says the text of the lane's face marked as the connection, or labelled Connection in a plugin built before the marker (`connectionName.ts`), and no connection when none is known. Absent: no name is known, so no row says a connection.
    */
   readonly frames?: Published<FrameV1> | undefined;
   /** What each plugin may ask of the bottom panel: handed to the plugin's commands as `context.panel`. Absent: the commands are given none. */
@@ -288,25 +289,12 @@ function pagesOf({ tabs, plugins, contributions, nodes, frames, remembered }: Ho
 }
 
 /**
- * The name a person knows the connection of a route by, as the shell already has it: the text of the face labelled Connection in the scope lane the page at `route` published (`frames`; `FrameV1.scope`, the lane the shell draws above
- * the page). A route carries a connection by its KEY, a plugin's own id for it (`kind-kind-57a082bd74`), which is not for reading and which the palette never says. The contract does not say which face is the connection, so it is the one
- * the plugins label Connection (the design lab's lane does); a plugin whose lane labels it otherwise has no name here. `undefined` when none is known: the page published no lane, or none of its faces says a connection, or it was
- * never drawn in this window. A row then says no connection.
+ * The name the scope lane the page at `route` published says for its connection (`connectionName.ts`: the face marked as the connection, else the one labelled Connection). A route that names a connection has its face made by
+ * `contributions.describe`, which says the name and never the key; this reads the lane for a route that names none (the plugin reads its own connection, and its page says which), and for a row of a page that was not drawn.
+ * `undefined` when none is known: a row then says no connection.
  */
 function connectionNameOf(frames: Published<FrameV1> | undefined, route: Route | undefined): string | undefined {
-  const lane: unknown = route === undefined ? undefined : frames?.get(routeKey(route))?.scope;
-  if (!Array.isArray(lane)) {
-    return undefined;
-  }
-
-  for (const face of lane as readonly unknown[]) {
-    if (typeof face === 'object' && face !== null && 'label' in face && 'text' in face && typeof face.label === 'string' && typeof face.text === 'string' && face.label.trim().toLowerCase() === 'connection') {
-      const text = face.text.trim();
-      return text === '' ? undefined : text;
-    }
-  }
-
-  return undefined;
+  return route === undefined ? undefined : (laneNameOf(frames?.get(routeKey(route))?.scope) ?? undefined);
 }
 
 /**
@@ -327,15 +315,14 @@ function tabsOf({ tabs, plugins, frames }: HostPaletteDeps, only: string | null)
 
     const { route } = tab.location;
     const { pluginName } = tab.face;
-    // The tab model makes the scope's label and, for a detail page, a crumb of the path from the route, so both hold the connection's KEY. The row says the connection by the NAME the page's lane gave, once, or says none.
-    const key = connectionOf(route);
-    const named = connectionNameOf(frames, route);
-    const above = identity.path.slice(0, -1).flatMap((crumb) => (key !== undefined && crumb.label === key ? (named === undefined ? [] : [named]) : [crumb.label]));
+    // The face the tab model made says the connection by its name or not at all (`contributions.describe`): the crumbs above the page's own, then the scope. A route that carries no key has no scope, and its page's lane says
+    // the connection it is read in.
+    const above = identity.path.slice(0, -1).map((crumb) => crumb.label);
     if (above[0]?.toLowerCase() === pluginName.toLowerCase()) {
       above.shift();
     }
 
-    const where = placesOf([above.join(' › '), named ?? '']);
+    const where = placesOf([above.join(' › '), connectionNameOf(frames, route) ?? tab.face.scope?.label ?? '']);
     rows.push({
       id,
       kind: 'tab',
@@ -452,31 +439,13 @@ function activeRoute(tabs: TabsStore): Route | undefined {
 export function createHostPalette(deps: HostPaletteDeps): HostPalette {
   const { tabs, plugins, contributions, nodes, frames, platform } = deps;
   /**
-   * What the model is told of a place when it lists Recent: the plugin's description, with the connection said by its NAME. The tab model makes the description's scope, and a detail page's path crumb, from the route, so they hold
-   * the connection's KEY; here they say the name the page's lane gave, and nothing when none is known. A route that carries no key has nothing made from one, but its page's lane still says which connection it is read in, as Go to
-   * and Tabs say it: Recent says it too, in a scope that has no key (there is none to give).
+   * What the model is told of a place when it lists Recent: the plugin's description, which says a connection by its name or not at all (`contributions.describe`). A route that carries no key has no scope, but its page's lane
+   * still says which connection it is read in, as Go to and Tabs say it: Recent says it too, in a scope that has no key to give.
    */
   const described = (route: Route): Description | undefined => {
     const description = contributions.describe(route);
-    if (description === undefined) {
-      return undefined;
-    }
-
-    const key = connectionOf(route);
-    const named = connectionNameOf(frames, route);
-    if (key === undefined) {
-      return named === undefined ? description : { ...description, scope: { id: '', label: named } };
-    }
-
-    const path = description.path?.flatMap((crumb) => {
-      const label = typeof crumb === 'string' ? crumb : crumb.label;
-      if (label !== key) {
-        return [crumb];
-      }
-
-      return named === undefined ? [] : [typeof crumb === 'string' ? named : { ...crumb, label: named }];
-    });
-    return { ...description, path, scope: named === undefined ? undefined : { id: key, label: named } };
+    const named = description === undefined || connectionOf(route) !== undefined ? undefined : connectionNameOf(frames, route);
+    return description === undefined || named === undefined ? description : { ...description, scope: { id: '', label: named } };
   };
 
   const announcer = createAnnouncer();
@@ -662,7 +631,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     const pluginIcon = railOf(entries).find((candidate) => candidate.id === entry.id)?.icon;
     const { scope } = tab.face;
     // The chips say the connection by its name; its key stays the chip's id, which is what a plugin's provider is asked with. With no name known the palette is narrowed to the plugin alone: a chip would have to say the key.
-    const named = connectionNameOf(frames, tab.location.route);
+    const named = connectionNameOf(frames, tab.location.route) ?? (scope === undefined || scope.label === '' ? undefined : scope.label);
     const chips = seedChips({ plugin: entry.id, pluginName: entry.contribution.plugin.name, pluginIcon, scope: scope === undefined ? undefined : { id: scope.id, label: named ?? scope.label } });
     return { current: tab.location.route, scope: named === undefined ? chips.slice(0, 1) : chips };
   };

@@ -6,7 +6,8 @@ import { LIMITS, type Crumb, type CrumbInput, type Description, type Face, type 
 
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
-const clip = (value: string, length: number): string => (value.length > length ? `${value.slice(0, length - 1).trimEnd()}…` : value);
+/** Clips a label to `length` characters the way every label of a face is clipped: the cut ends with an ellipsis. */
+export const clip = (value: string, length: number): string => (value.length > length ? `${value.slice(0, length - 1).trimEnd()}…` : value);
 
 /** The title a route gives itself when its plugin says none: the page's id, as a sentence. */
 function titleOf(route: Route): string {
@@ -21,7 +22,8 @@ function scopeOf(value: unknown): Scope | undefined {
   }
 
   const id = text(value.id) || text(value.label);
-  return id === '' ? undefined : Object.freeze({ id, label: clip(text(value.label) || id, LIMITS.scopeLabel) });
+  // A label that is there and empty is a scope with no name a person could read: it stays empty. A label that is absent is the id.
+  return id === '' ? undefined : Object.freeze({ id, label: clip(typeof value.label === 'string' ? text(value.label) : id, LIMITS.scopeLabel) });
 }
 
 function crumbOf(input: unknown): Crumb | undefined {

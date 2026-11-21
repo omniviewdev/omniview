@@ -205,10 +205,12 @@ function readTab(entry: unknown, plugins: Plugins, note: (why: string) => void):
     return undefined;
   }
 
-  const looked = plugins.look(route);
   const same = sameRoute(route, saved);
-  const face = looked.described || !same ? looked.face : savedFace(entry.face, route);
-  const key = looked.described || !same ? looked.key : text(entry.key) || keyOf(route, undefined, face);
+  // The face the tab was saved with, as the host lets it stand (and what the host learns from it) before the plugin is asked: the plugin's description then has what the window learned.
+  const kept = same ? plugins.restoreFace(savedFace(entry.face, route), route) : undefined;
+  const looked = plugins.look(route);
+  const face = looked.described || kept === undefined ? looked.face : kept;
+  const key = looked.described || kept === undefined ? looked.key : text(entry.key) || keyOf(route, undefined, face);
   const history = repairHistory(entry.history, route, (other) => plugins.restore(other));
   if (isPlainObject(entry.history) && !sameHistory(entry.history, history)) {
     note('had a history that was repaired');

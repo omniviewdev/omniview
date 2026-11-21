@@ -3,7 +3,8 @@ import type { Route } from '../../shell';
 import type { FrameV1 } from '../contract/v1';
 import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
-import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
+import { ConnectionNames } from './connectionName';
+import { createContributions, describeDetail, HOME_PAGE, routeKey, type PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
 
@@ -32,8 +33,10 @@ function world(initial: readonly PluginEntry[]) {
     },
   };
   const frames = new Published<FrameV1>();
-  const contributions = createContributions({ plugins, frames });
+  const names = new ConnectionNames();
+  const contributions = createContributions({ plugins, frames, names });
   return {
+    names,
     contributions,
     frames,
     listeners,
@@ -64,16 +67,52 @@ describe('describe', () => {
     });
   });
 
-  it('reads the scope from the connection the route names, and puts the connection in the path', () => {
-    const description = world([ready()]).contributions.describe(route('acme', 'widgets', { connection: 'north' }));
+  it('reads the scope from the connection the route names, by the name its page said: the key is the scope\'s id and is never drawn', () => {
+    const { contributions, frames } = world([ready()]);
+    const at = route('acme', 'widgets', { connection: 'north-0123456789' });
+    frames.publish(routeKey(at), { tab: { title: 'Widgets', icon: 'box' }, path: ['Acme', 'north', 'Widgets'], scope: [{ label: 'Connection', icon: 'server', text: 'north' }] });
 
-    expect(description?.scope).toEqual({ id: 'north', label: 'north' });
+    const description = contributions.describe(at);
+    expect(description?.scope).toEqual({ id: 'north-0123456789', label: 'north' });
     expect(description?.facets).toEqual(['north']);
     expect(description?.path).toEqual(['Acme', 'north', 'Widgets']);
   });
 
-  it('ignores a connection that is not text', () => {
-    expect(world([ready()]).contributions.describe(route('acme', 'widgets', { connection: 7 }))?.scope).toBeUndefined();
+  it('says no connection when no name is known, and never the key: a scope with an empty label and no crumb and no facet that is the key', () => {
+    const description = world([ready()]).contributions.describe(route('acme', 'widgets', { connection: 'north-0123456789' }));
+
+    expect(description?.scope).toEqual({ id: 'north-0123456789', label: '' });
+    expect(description?.facets).toEqual([]);
+    expect(description?.path).toEqual(['Acme', 'Widgets']);
+  });
+
+  it('takes the name from the face a page marked as the connection, whatever it is labelled, and from the face labelled Connection of a plugin written before the marker', () => {
+    const { contributions, frames } = world([ready()]);
+    const marked = route('acme', 'widgets', { connection: 'a-0123456789' });
+    const labelled = route('acme', 'gadgets', { connection: 'b-0123456789' });
+    frames.publish(routeKey(marked), { tab: { title: 'Widgets', icon: 'box' }, path: ['Widgets'], scope: [{ label: 'Zone', icon: 'server', text: 'all' }, { label: 'Cluster', icon: 'server', text: 'alpha', role: 'connection' }] });
+    frames.publish(routeKey(labelled), { tab: { title: 'Gadgets', icon: 'box' }, path: ['Gadgets'], scope: [{ label: 'Connection', icon: 'server', text: 'beta' }] });
+
+    expect(contributions.describe(marked)?.scope).toEqual({ id: 'a-0123456789', label: 'alpha' });
+    expect(contributions.describe(labelled)?.scope).toEqual({ id: 'b-0123456789', label: 'beta' });
+  });
+
+  it('takes the name the window learned for the connection when the route\'s own page has published nothing: a page of the same connection that was never drawn', () => {
+    const { contributions, names } = world([ready()]);
+    names.learn('acme', 'north-0123456789', 'north');
+
+    expect(contributions.describe(route('acme', 'gadgets', { connection: 'north-0123456789' }))).toMatchObject({ scope: { id: 'north-0123456789', label: 'north' }, path: ['Acme', 'north', 'Gadgets'], facets: ['north'] });
+    expect(contributions.describe(route('acme', 'gadgets', { connection: 'other-0123456789' }))?.scope?.label).toBe('');
+  });
+
+  it('puts the name where a path a page published has the key as a crumb, and leaves the crumb out when no name is known', () => {
+    const { contributions, frames } = world([ready()]);
+    const at = route('acme', 'widgets', { connection: 'north-0123456789' });
+    frames.publish(routeKey(at), { tab: { title: 'Widgets', icon: 'box' }, path: ['Acme', 'north-0123456789', 'Widgets'] });
+    expect(contributions.describe(at)?.path).toEqual(['Acme', 'Widgets']);
+
+    frames.publish(routeKey(at), { tab: { title: 'Widgets', icon: 'box' }, path: ['Acme', 'north-0123456789', 'Widgets'], scope: [{ label: 'Connection', icon: 'server', text: 'north' }] });
+    expect(contributions.describe(at)?.path).toEqual(['Acme', 'north', 'Widgets']);
   });
 
   it('describes a page the plugin does not have as its home', () => {
@@ -84,7 +123,7 @@ describe('describe', () => {
   it('takes the title, glyph and path a mounted page published over its own definition', () => {
     const { contributions, frames } = world([ready()]);
     const at = route('acme', 'widgets', { connection: 'north' });
-    frames.publish(routeKey(at), { tab: { title: 'Widgets · north', icon: 'server' }, path: ['Acme', 'north', 'Widgets'] });
+    frames.publish(routeKey(at), { tab: { title: 'Widgets · north', icon: 'server' }, path: ['Acme', 'north', 'Widgets'], scope: [{ label: 'Connection', icon: 'server', text: 'north' }] });
 
     expect(contributions.describe(at)).toMatchObject({ title: 'Widgets · north', icon: 'server', path: ['Acme', 'north', 'Widgets'] });
     // Another route has published nothing.
@@ -110,8 +149,41 @@ describe('describe', () => {
     expect(contributions.describe(route('crashed', HOME_PAGE))).not.toHaveProperty('provisional');
   });
 
-  it('keeps the connection of a plugin that is not ready, so its tab is told from a twin', () => {
-    expect(world([loading()]).contributions.describe(route('slow', HOME_PAGE, { connection: 'north' }))).toMatchObject({ scope: { id: 'north', label: 'north' }, facets: ['north'] });
+  it('keeps the connection of a plugin that is not ready by its name when one is known, so its tab is told from a twin, and by nothing when none is: never by the key', () => {
+    const { contributions, names } = world([loading()]);
+    expect(contributions.describe(route('slow', HOME_PAGE, { connection: 'north-0123456789' }))).toMatchObject({ scope: { id: 'north-0123456789', label: '' }, facets: [] });
+
+    names.learn('slow', 'north-0123456789', 'north');
+    expect(contributions.describe(route('slow', HOME_PAGE, { connection: 'north-0123456789' }))).toMatchObject({ scope: { id: 'north-0123456789', label: 'north' }, facets: ['north'] });
+  });
+
+  it('describes a detail page by the name of its connection in its path and its facets, and by none without one: the key is only in the route a crumb opens', () => {
+    const definition = { kind: 'Sprocket', tile: { icon: 'box' as const }, identity: { name: 'name', facets: ['bay'] }, list: { page: 'widgets', label: 'Widgets' }, tabs: [{ id: 'overview', label: 'Overview' }] };
+    const at = route('acme', 'sprocket', { name: 'a', bay: 'east', connection: 'north-0123456789' });
+    const labels = (description: ReturnType<typeof describeDetail>): string[] => (description.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label));
+    const named = describeDetail('Acme', at, definition, 'north');
+    const unnamed = describeDetail('Acme', at, definition, undefined);
+
+    expect(labels(named)).toEqual(['Acme', 'north', 'Widgets', 'a']);
+    expect(named.facets).toEqual(['east', 'north']);
+    expect(named.scope).toEqual({ id: 'north-0123456789', label: 'north' });
+    expect(labels(unnamed)).toEqual(['Acme', 'Widgets', 'a']);
+    expect(unnamed.facets).toEqual(['east']);
+    expect(unnamed.scope).toEqual({ id: 'north-0123456789', label: '' });
+  });
+
+  it('takes the key out of a face a saved tab comes back with, and teaches the window the name a saved face holds', () => {
+    const { contributions, names } = world([loading()]);
+    const at = route('slow', HOME_PAGE, { connection: 'north-0123456789' });
+    const saved = { title: 'Slow plugin', icon: 'box', scope: { id: 'north-0123456789', label: 'north-0123456789' }, path: [{ label: 'Slow plugin' }, { label: 'north-0123456789' }], facets: ['north-0123456789'], pluginName: 'Slow plugin', singleton: false, identity: 'key' as const };
+
+    const restored = contributions.restoreFace?.(saved, at);
+    expect(restored?.scope).toEqual({ id: 'north-0123456789', label: '' });
+    expect(restored?.facets).toEqual([]);
+
+    const named = contributions.restoreFace?.({ ...saved, scope: { id: 'north-0123456789', label: 'north' } }, at);
+    expect(named?.scope).toEqual({ id: 'north-0123456789', label: 'north' });
+    expect(names.get('slow', 'north-0123456789')).toBe('north');
   });
 });
 
