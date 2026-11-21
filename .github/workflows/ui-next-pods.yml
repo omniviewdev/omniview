@@ -7,9 +7,9 @@ name: UI next Pods cluster check
 # The job also runs three negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
 #   a cluster without the fixture, a host without the plugin, and the plugin installed without its bundle (`assets/` empty).
 #
-# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 7a06766582a1f9a8b4dc946324684f256f3d97e3, the squash-merge commit of PR #273 (Q2: the sidebar draws counts, 2026-11-20), the branch
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 28a6ddf7359c116ecb79b4651ee4405936e678fa, the squash-merge commit of PR #274 (Q2b: the kinds wear the kit's glyphs, 2026-11-20), the branch
 # head with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268), the Logs command (#267), the
-# counts the plugin's backend says (Q1 #270) and the counts its sidebar draws (Q2 #273). The check opens the Pod page from the list, and a Pod's Logs from its page, and holds the sidebar's counts to kubectl's. To bump it, in a pull request of this repository that changes nothing else about the check:
+# counts the plugin's backend says (Q1 #270), the counts its sidebar draws (Q2 #273) and the glyphs of its kinds (Q2b #274). The check opens the Pod page from the list, and a Pod's Logs from its page, and holds the sidebar's counts to kubectl's. To bump it, in a pull request of this repository that changes nothing else about the check:
 #   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next`, or the merge commit of the plugin pull request you want;
 #   2. put it in KUBERNETES_PLUGIN_REF, check the plugin out at it and run `node scripts/ui-next-pods/pin.mjs <that checkout>`: it fails when the plugin's list of shared
 #      names (`ui/vendor/shared-specifiers.json`) is not this host's `SHARED_SPECIFIERS_V1`, or when the host commit the plugin vendored from (`ui/vendor/HOST_COMMIT`) is not
@@ -75,7 +75,7 @@ env:
   # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
   KUBERNETES_PLUGIN_BRANCH: feature/ui-next
-  KUBERNETES_PLUGIN_REF: 7a06766582a1f9a8b4dc946324684f256f3d97e3
+  KUBERNETES_PLUGIN_REF: 28a6ddf7359c116ecb79b4651ee4405936e678fa
   # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
   # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
