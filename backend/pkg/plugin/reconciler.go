@@ -7,8 +7,8 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 // Reconciler audits the filesystem against persisted state and
@@ -77,7 +77,7 @@ func (r *Reconciler) Reconcile(
 		location := filepath.Join(pluginDir, id)
 
 		// Try to load metadata.
-		meta, metaErr := sdktypes.LoadPluginMetadata(location)
+		meta, metaErr := pluginmeta.Load(location)
 		if metaErr != nil {
 			r.logger.Warnw(ctx, "plugin directory missing metadata, skipping",
 				"pluginID", id, "error", metaErr)
@@ -176,7 +176,7 @@ func (r *Reconciler) ReconcileFromFilesystem(
 		id := entry.Name()
 		location := filepath.Join(pluginDir, id)
 
-		meta, metaErr := sdktypes.LoadPluginMetadata(location)
+		meta, metaErr := pluginmeta.Load(location)
 		if metaErr != nil {
 			r.logger.Warnw(ctx, "skipping directory without valid metadata",
 				"dir", id, "error", metaErr)

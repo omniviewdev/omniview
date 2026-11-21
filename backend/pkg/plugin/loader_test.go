@@ -21,6 +21,15 @@ import (
 // a backendFactory seam and a temp plugin directory.
 func newTestManager(t *testing.T) *pluginManager {
 	t.Helper()
+	pm, _ := newTestManagerWithState(t)
+	return pm
+}
+
+// newTestManagerWithState is newTestManager and also returns the state service
+// the manager's roots belong to, for a test that holds the store and data roots a
+// controller holds.
+func newTestManagerWithState(t *testing.T) (*pluginManager, *appstate.Service) {
+	t.Helper()
 	svc := appstate.NewTestService(t)
 
 	return &pluginManager{
@@ -34,7 +43,7 @@ func newTestManager(t *testing.T) *pluginManager {
 		pidTracker:          NewPIDTracker(svc.RootDir()),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 		emitter:             testNoopEmitter{},
-	}
+	}, svc
 }
 
 // installPluginFixture creates a plugin directory with plugin.yaml and optional binary.

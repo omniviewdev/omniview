@@ -261,10 +261,6 @@ func TestUninstallErasesSensitiveSettingValues(t *testing.T) {
 }
 
 func TestUninstallErasesSettingValuesItCannotClassify(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	f := newCredentialFixture(t)
 	installLoadedUIPlugin(t, f.pm)
 	// The legacy case: this plugin has no settings capability, so it never
@@ -285,7 +281,6 @@ func TestUninstallErasesSettingValuesItCannotClassify(t *testing.T) {
 }
 
 func TestUninstallRemovesHostSavedConnectionState(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	store, err := f.svc.PluginStore("flux")
@@ -316,7 +311,6 @@ func TestUninstallRemovesHostSavedConnectionState(t *testing.T) {
 }
 
 func TestUninstallLeavesCredentialStateAloneWhenRolledBack(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	observer := newUninstallObserverStub()
 	f.pm.connlessControllers[sdktypes.CapabilityExec] = observer
@@ -352,10 +346,6 @@ func TestUninstallLeavesCredentialStateAloneWhenRolledBack(t *testing.T) {
 }
 
 func TestUninstallRunsTheErasureAfterDisposalAndBeforeTheMarkerIsRemoved(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, dev := range []bool{false, true} {
 		name := "installed"
 		if dev {
@@ -413,10 +403,6 @@ func TestUninstallRunsTheErasureAfterDisposalAndBeforeTheMarkerIsRemoved(t *test
 }
 
 func TestUninstallDoesNotNotifyObserversWhenItFails(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// WINDOWS DEFECT: CI5-W1.
-		t.Skip("WINDOWS DEFECT CI5-W1: plugin-sdk LoadPluginMetadata never closes plugin.yaml, so a loaded plugin's directory cannot be renamed")
-	}
 	for _, failure := range []string{"unload", "persist", "missing", "not-dev"} {
 		t.Run(failure, func(t *testing.T) {
 			pm := newTestManager(t)
@@ -447,7 +433,6 @@ func TestUninstallDoesNotNotifyObserversWhenItFails(t *testing.T) {
 }
 
 func TestReinstallAfterUninstallStartsFreshAndKeepsHostStoresWritable(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})

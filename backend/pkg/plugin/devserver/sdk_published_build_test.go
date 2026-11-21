@@ -21,8 +21,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsdk/sdktest"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 const publishedPluginID = "published-fixture"
@@ -170,7 +170,7 @@ func TestPublishedManagedBuildCompilesAgainstTheDeclaredRelease(t *testing.T) {
 	require.Len(t, after, len(entries), "no vendor tree or workspace file may appear in the plugin repository")
 	require.NoError(t, instance.VerifyPluginArtifact(build.workspace, publishedPluginID, build.installed()),
 		"the published build attests through the same artifact record")
-	installed, err := sdktypes.LoadPluginMetadata(build.state.Plugins().ResolvePath(publishedPluginID))
+	installed, err := pluginmeta.Load(build.state.Plugins().ResolvePath(publishedPluginID))
 	require.NoError(t, err)
 	require.Nil(t, installed.StateIsolation, "private host evidence authorizes a published launch, not installed provenance")
 }

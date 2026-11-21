@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -20,6 +18,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -204,7 +203,7 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 	if err != nil {
 		return DevServerState{}, err
 	}
-	metadata, err := sdktypes.LoadPluginMetadata(devPath)
+	metadata, err := pluginmeta.Load(devPath)
 	if err != nil {
 		return DevServerState{}, fmt.Errorf("load source metadata: %w", err)
 	}

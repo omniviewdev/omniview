@@ -5,8 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 // TestReinstallWithoutAStateReleaserWritesThroughTheOldRoots shows what the
@@ -17,7 +15,6 @@ import (
 // TestPluginManagerReleasesTheStateRootsOfAnUninstalledPlugin; the fixture of the
 // other uninstall tests wires the releaser the way main.go does.
 func TestReinstallWithoutAStateReleaserWritesThroughTheOldRoots(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.pm.SetPluginStateReleaser(nil)
 	f.install(t)

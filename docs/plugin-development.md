@@ -344,11 +344,21 @@ Failed publication moves that same state back before restarting the original
 plugin. Runtime unload does not close appstate-owned roots, and no lookup does:
 a cached root stays until the plugin manager releases it, and a holder may keep
 one for as long as it likes (the resource controller keeps one for the life of
-the process). Between publishing the new plugin directory and moving the state
-directories into it, the plugin directory exists without them, so a lookup there
-must neither close a root nor create a directory the move needs free. The manager
-releases a plugin's roots only when its installation is disposed of for good, an
-uninstall that is durable or a first installation that rolled back
+the process). Windows refuses to rename or remove a directory that has anything open
+beneath it, whatever the share mode, so the plugins root, through which the manager
+stages, publishes and deletes plugin directories, closes the roots cached beneath a
+directory for exactly as long as it moves it, on every platform, and opens each one
+again where its directory went, under the same `ScopedRoot`: a holder notices only a
+wait, because a lookup or an operation that arrives during the move waits for it.
+A root whose directory is not where the move said it went is not pointed at whatever
+is there: it is closed and forgotten like a released root. Deleting a tree closes the
+roots beneath it for good. A file or a child root a caller opened through a held root
+belongs to the caller, and on Windows it blocks the move: close it before the plugin
+is updated or uninstalled. Between publishing the new plugin directory and moving
+the state directories into it, the plugin directory exists without them, so a lookup
+there must neither close a root nor create a directory the move needs free. The
+manager releases a plugin's roots only when its installation is disposed of for good,
+an uninstall that is durable or a first installation that rolled back
 (`appstate.Service.ReleasePluginRoots`). A holder that kept a released root gets
 `os.ErrClosed` on its next use; a lookup creates nothing for that plugin until its
 plugin directory exists again, so an uninstalled plugin's directory is never

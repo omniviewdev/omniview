@@ -32,11 +32,11 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	"github.com/omniviewdev/omniview/internal/instance"
+	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -573,7 +573,7 @@ func (p *sdkRPCProfile) launchPlugin() error {
 	if err != nil {
 		return err
 	}
-	metadata, err := sdktypes.LoadPluginMetadata(p.state.Plugins().ResolvePath(sdkRPCContractID))
+	metadata, err := pluginmeta.Load(p.state.Plugins().ResolvePath(sdkRPCContractID))
 	if err != nil {
 		cleanup()
 		return err
