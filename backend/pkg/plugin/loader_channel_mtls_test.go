@@ -23,8 +23,10 @@ import (
 
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	sdkactivity "github.com/omniviewdev/plugin-sdk/pkg/activity"
@@ -154,17 +156,32 @@ func (*channelPeerReporter) ResolveAlert(context.Context, sdkactivity.ResolveAle
 // test binary as the broker child. preamble is shell run before the exec.
 func channelWrapperFixture(t *testing.T, preamble string) string {
 	t.Helper()
+	root := channelWrapperFor(t, "TestActivityBrokerChildProcess", preamble)
+	t.Setenv(activityBrokerChildEnv, channelAuthChildMode)
+	return root
+}
+
+// channelWrapperFor lays out a plugin directory whose executable runs the test
+// function childTest of this test binary. preamble is shell run before the exec.
+func channelWrapperFor(t *testing.T, childTest, preamble string) string {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses a Unix executable wrapper")
 	}
 	binary, err := os.Executable()
 	require.NoError(t, err)
+	// The child makes its listener under TMPDIR, and a child that is killed (or
+	// that the host stops without a graceful exit) leaves the socket behind: give
+	// the child a short directory of its own that the test removes.
+	sockets, err := os.MkdirTemp("/tmp", "ch-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(sockets)) })
+	t.Setenv("TMPDIR", sockets)
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "bin"), 0o700))
-	wrapper := "#!/bin/sh\n" + preamble + "\nexec \"$CHANNEL_TEST_BINARY\" -test.run='^TestActivityBrokerChildProcess$'\n"
+	wrapper := "#!/bin/sh\n" + preamble + "\nexec \"$CHANNEL_TEST_BINARY\" -test.run='^" + childTest + "$'\n"
 	require.NoError(t, os.WriteFile(filepath.Join(root, "bin", "plugin"), []byte(wrapper), 0o700))
 	t.Setenv("CHANNEL_TEST_BINARY", binary)
-	t.Setenv(activityBrokerChildEnv, channelAuthChildMode)
 	return root
 }
 
@@ -241,23 +258,36 @@ func TestCreateBackendChannelIsMutuallyAuthenticated(t *testing.T) {
 // TestCreateBackendRefusesPluginThatIgnoresChannelCertificate removes the
 // certificate from the child's environment, as a plugin built on a go-plugin
 // that did not honour PLUGIN_CLIENT_CERT would behave: it serves plaintext.
-// go-plugin dials lazily, so createBackend itself can return; the first call
-// the host makes to the plugin (binding activities, in the load path) must then
-// fail, and no plaintext channel is ever used.
+// go-plugin dials lazily, so createBackend itself returns; the main channel's
+// first call must then fail with a TLS handshake error, and no plaintext
+// channel is ever used. The load path's first call (binding activities) fails
+// with it, so the plugin is not admitted.
 func TestCreateBackendRefusesPluginThatIgnoresChannelCertificate(t *testing.T) {
 	root := channelWrapperFixture(t, "unset PLUGIN_CLIENT_CERT")
 	pm := newTestManager(t)
 	pm.activities = activityBrokerManager(activityObserverService(t)).activities
 
 	backend, err := pm.createBackend("activity-broker-test", config.PluginMeta{ID: "activity-broker-test"}, root)
-	if err != nil {
-		t.Logf("createBackend error for a plaintext plugin: %v", err)
-		return
-	}
+	require.NoError(t, err, "go-plugin dials lazily: createBackend returns, the first call must fail")
 	defer backend.Kill()
-	err = pm.bindActivities("activity-broker-test", backend)
-	require.Error(t, err, "a plugin that serves plaintext must not be usable")
-	t.Logf("first host call error for a plaintext plugin: %v", err)
+
+	// The main channel itself must refuse: the plugin answers in plaintext, the
+	// host speaks TLS. A bare error assertion would also pass when only the
+	// broker leg failed, so assert the code and the cause.
+	external, ok := backend.(*types.ExternalBackend)
+	require.True(t, ok)
+	raw, err := external.Dispense("lifecycle")
+	require.NoError(t, err)
+	lifecycle, ok := raw.(*lc.Client)
+	require.True(t, ok)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	_, callErr := lifecycle.GetInfo(ctx)
+	require.Equal(t, codes.Unavailable, status.Code(callErr), "%v", callErr)
+	require.Contains(t, callErr.Error(), "authentication handshake failed")
+
+	require.Error(t, pm.bindActivities("activity-broker-test", backend),
+		"a plugin that serves plaintext must not be admitted")
 }
 
 func channelTestCertificate(t *testing.T) (tls.Certificate, string) {
@@ -317,11 +347,13 @@ func channelRogueHealth(t *testing.T, grantedPEM string, clientCertificates []tl
 	})
 	t.Cleanup(func() {
 		// A rejected client cannot ask the plugin to shut down, and go-plugin would
-		// wait out its grace period; the process is the test's own child.
+		// wait out its grace period; the process is the test's own child. Kill it,
+		// then let go-plugin reap it, so nothing outlives the test.
 		if command.Process != nil {
 			_ = command.Process.Kill()
 		}
 		client.Kill()
+		require.True(t, client.Exited(), "child process must exit")
 	})
 
 	rpc, err := client.Client()
