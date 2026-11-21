@@ -7,9 +7,10 @@ name: UI next Pods cluster check
 # The job also runs three negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
 #   a cluster without the fixture, a host without the plugin, and the plugin installed without its bundle (`assets/` empty).
 #
-# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: fdbe9c092b31b065f0e4c82254e481fb0c4f33ab (#277: the plugin's Go CI; the same bundle as f4fdab1, the squash-merge commit of PR #272, H6: every connection has a unique, stable ID, `<slug>-<10 hex>`, and the
-# plugin's pages say its NAME, 2026-11-20), the branch head with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268),
-# the Logs command (#267), the counts the plugin's backend says (Q1 #270), the counts its sidebar draws (Q2 #273), the glyphs of its kinds (Q2b #274) and the derived connection IDs (H6 #272). The check opens the Pod page from the list,
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 700e16e0c992e90592ff214d02fff104cd780631 (#275, C1d: the kinds are found by their kubectl short names, as keywords of the sidebar entries, 2026-11-21), the branch head
+# with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268), the Logs command (#267), the counts the plugin's
+# backend says (Q1 #270), the counts its sidebar draws (Q2 #273), the glyphs of its kinds (Q2b #274), the derived connection IDs (H6 #272), the plugin's Go CI (#277) and the short names (#275). K2c-1 (the generic detail page, plugin PR
+# from `ui-next/k2c1-generic-detail`) is NOT in this pin: one more bump is needed after it merges. The check opens the Pod page from the list,
 # and a Pod's Logs from its page, holds the sidebar's counts to kubectl's, and holds the scope lane's Connection text to the context's NAME: the ID is derived from the path of the check's temporary kubeconfig, so it differs on every run
 # and the check reads it from the host's list of connections (lane.mjs). To bump it, in a pull request of this repository that changes nothing else about the check:
 #   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next`, or the merge commit of the plugin pull request you want;
@@ -77,7 +78,7 @@ env:
   # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
   KUBERNETES_PLUGIN_BRANCH: feature/ui-next
-  KUBERNETES_PLUGIN_REF: fdbe9c092b31b065f0e4c82254e481fb0c4f33ab
+  KUBERNETES_PLUGIN_REF: 700e16e0c992e90592ff214d02fff104cd780631
   # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
   # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
