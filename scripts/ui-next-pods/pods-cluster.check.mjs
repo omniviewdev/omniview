@@ -7,6 +7,7 @@
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
 //   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
 //                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
+//                             a press on a column header sorts a list (K3a): the Pods list by Restarts and the Deployments list by Age, twice each, against `kubectl get <kind> -A -o json` (sort.mjs)
 //                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
@@ -20,9 +21,10 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, checkSort, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
+import { opposite } from './sort.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
 const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
@@ -163,6 +165,21 @@ if (mode === 'control-fixture-absent') {
   test('a Deployment deleted while its page is open is titled "was deleted", over where it no longer exists', async () => {
     const { read } = await checkDeploymentGone({ browser, baseURL, kubeconfig });
     assert.equal(read.title, 'gone-check was deleted');
+  });
+
+  // The sort (K3a, plugin #282): a press on a column header sorts the list, and the rows stand in the order `kubectl get <kind> -A -o json` gives (sort.mjs, `checkSort` in parity.mjs). The Pods list by Restarts: the
+  // crash-looping Pod has restarted, a Pod with no container status has no value and is last in either direction, and the Pods of one count stand in name order; pressed again, the order reverses. Parity mode only.
+  test('a press on the Restarts header of the Pods list sorts its rows as kubectl counts them, and a second press reverses them', async () => {
+    const { first, second } = await checkSort({ browser, baseURL, kubeconfig, kind: 'pods' });
+    assert.ok(first.ids.length > 0, 'the list has rows');
+    assert.equal(second.direction, opposite(first.direction), 'the second press turns the column round');
+  });
+
+  // The Deployments list by Age: the rows stand in the order of their creation times (`creationTimestamp`), the oldest first when the column says ascending, and Deployments made in one second stand in name order.
+  test('a press on the Age header of the Deployments list sorts its rows by creation time, and a second press reverses them', async () => {
+    const { first, second } = await checkSort({ browser, baseURL, kubeconfig, kind: 'deployments' });
+    assert.ok(first.ids.length > 0, 'the list has rows');
+    assert.equal(second.direction, opposite(first.direction), 'the second press turns the column round');
   });
 
   // The first real log stream of the new stack (P1b-3b): the Logs command of a Pod's page opens a session in the host's Logs tool, whose rows are the lines `kubectl logs --timestamps` prints, and closing its tab

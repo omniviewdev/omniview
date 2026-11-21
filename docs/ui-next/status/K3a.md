@@ -61,3 +61,26 @@ The click to the commit is the sort, the render and the commit (React flushes a 
 ## Backend catalog
 
 Nothing new for the SDK, a plugin backend or the host's Go side. The tab model's step (history entries carry the page state) is a UI step, listed above.
+
+## K3a-pin: the host cluster check pins plugin #282 and holds two sorts to kubectl (2026-11-21)
+
+- Worktree `~/Repos/omniviewdev/worktrees/k3a-pin-sort`, branch `ui-next/k3a-pin-sort`, base `origin/main` d2ab851d. Plugin worktree (detached, for the local runs) `~/Repos/omniviewdev/worktrees/k3a-pin-sort-plugin`.
+- `KUBERNETES_PLUGIN_REF` is `ec5a06ea15e4b03217c8936e032876f12f0ef65c`, the head of the plugin's `feature/ui-next` after #282 (`git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next` said so on 2026-11-21; `node scripts/ui-next-pods/pin.mjs <checkout> HEAD`: "pin ok", its vendored host commit c707712d is in this history). The workflow file changed, so CI classifies the PR as `all`: expected (rule 32).
+- Two tests join the cluster check's parity mode (9 tests became 11), `scripts/ui-next-pods/sort.mjs` (the oracle: pure) and `checkSort` in `parity.mjs` (the page side):
+  - **Pods by Restarts.** The list is opened from the plugin list, the Restarts header is pressed. The column must say a direction (`aria-sort`, read and not assumed: it said `ascending` on the first press, the mock's rule, and `none` before it) and the rows on screen must stand in the order `kubectl get pods -A -o json` gives for it: the sum of the containers' `restartCount` as a number, a Pod with no container status (the fixture's `unschedulable`) last in either direction, Pods of one count in name order in either direction. Pressed again: `descending`, the order reversed (the fixture's `crashloop`, which has restarted, first). The check waits (up to 120 s) for a value that tells a press from none, the crash-looping Pod's first restart; `ParityError('SORT_FIXTURE')` otherwise.
+  - **Deployments by Age.** The Deployments list is opened from the sidebar, Age pressed twice, the rows held to `kubectl get deployments -A -o json` by `creationTimestamp` (ascending is the oldest first). The fixture's three Deployments made by one `kubectl apply` share a second, so the tie rule (name order, `alertmanager`, `cart-api`, `payment-gateway`) is in the order that is checked.
+  - Each reading of the page is bracketed by two reads of the cluster; a cluster that moved between them (a restart count) is read again until the deadline. The page is read from the visible page slot only (the keep-alive holds the Pods list hidden), rows in `aria-rowindex` order, each row's object from the link it carries.
+- Negative proofs, each run once on a local cluster (`sort.mjs` altered, tests run, then restored; the page and the plugin are the real ones):
+  - comparison inverted (`sign` turned round): both tests fail, `SORT_MISMATCH ... first press: the rows are out of order at row 1: the page has monitoring/alertmanager-..., the cluster's order has checkout/crashloop` (Pods), `... the page has kube-system/coredns, the cluster's order has monitoring/alertmanager` (Deployments). The same fault with the order assertion removed (the `compareOrder` result dropped): both pass (rule 28: the assertion is the one that catches it).
+  - tie in name order turned round: both fail (Pods row 1, Deployments row 3); a missing value placed first: Pods fails (`unschedulable` expected last), Deployments passes (no missing Age).
+  - the plugin's previous pin, fb7e5719 (built and run on the same cluster): both fail at once, `the Restarts header has no sort button (header true, button false, 25 rows)` and `the Age header has no sort button`.
+- Three runs of the whole cluster check from a clean environment (new kind cluster, node v1.35.0 by the CI's digest, the fixture applied as the job applies it, a new host with the plugin built from the pin, `darwin_arm64`; the check under `env -i PATH HOME TMPDIR` with only its two `OMNIVIEW_CHECK_*` variables; Chromium; the cluster deleted after each, only the one the run made). 11 of 11 tests each time.
+
+  | Run | `uptime` load averages (1, 5, 15 min) | cluster + fixture | the check (11 tests) | the two sort tests |
+  |---|---|---|---|---|
+  | 1 | 19.42 21.75 17.86 | 42 s | 31 s (node's `duration_ms` 31.1 s) | 2.4 s + 2.2 s |
+  | 2 | 21.33 22.10 18.35 | 49 s | 29 s (28.6 s) | 2.3 s + 2.2 s |
+  | 3 | 41.06 28.85 21.32 | 54 s | 32 s (31.7 s) | 3.0 s + 2.4 s |
+
+  Time budget: the job's `timeout-minutes` is 30. The check before this change (9 tests) took about 24 to 28 s here (its 11 tests less the two sort tests); after, 29 to 32 s: **about 5 s more**, in a machine at load 19 to 41 (rule 27: not a benchmark). The slow steps of the job are the cluster, the builds and the browser install, which this change does not touch; the three negative-control steps are unchanged.
+- Not verified: the job on GitHub's runner (`ubuntu-24.04`, linux_amd64 plugin): CI answers it; the three negative-control steps (their tests are in the cluster check's other modes and are not touched); Firefox and WebKit (the check is Chromium only); the sort tests were not given a permanent control test of their own in CI: the negative proofs above are one-time local proofs, as the step asked.
