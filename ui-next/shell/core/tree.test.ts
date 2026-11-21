@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedIds, press, revealed, stopOf, toggled, visibleRows, type TreeLike } from './tree';
+import { createTreeMemory, expandedIds, press, revealed, stopOf, toggled, visibleRows, type TreeLike } from './tree';
 
 // Two groups and a lone entry, one level of nesting deeper in the second group: enough shape for every rule, none of a real screen.
 const nodes: readonly TreeLike[] = [
@@ -198,5 +198,30 @@ describe('press (the keys of a tree view)', () => {
     const open = set('alpha');
     run(open, 'alpha', 'ArrowLeft');
     expect([...open]).toEqual(['alpha']);
+  });
+});
+
+describe('createTreeMemory (what a window keeps of a tree that is not on screen)', () => {
+  it('recalls nothing for a tree it was never given', () => {
+    expect(createTreeMemory().recall('acme')).toBeUndefined();
+  });
+
+  it('recalls what was kept for a key, the latest of it, and nothing of another key: what was opened in one entry\'s sidebar stays with that entry', () => {
+    const memory = createTreeMemory();
+    memory.keep('acme', { open: set('alpha'), shown: undefined });
+    memory.keep('beta', { open: set('gamma'), shown: 'gamma-2' });
+    memory.keep('acme', { open: set('alpha', 'gamma'), shown: 'beta' });
+
+    expect(memory.recall('acme')).toEqual({ open: set('alpha', 'gamma'), shown: 'beta' });
+    expect(memory.recall('beta')).toEqual({ open: set('gamma'), shown: 'gamma-2' });
+    expect(memory.recall('gamma')).toBeUndefined();
+  });
+
+  it('is one memory for each window: two memories share nothing', () => {
+    const one = createTreeMemory();
+    const other = createTreeMemory();
+    one.keep('acme', { open: set('alpha'), shown: undefined });
+
+    expect(other.recall('acme')).toBeUndefined();
   });
 });

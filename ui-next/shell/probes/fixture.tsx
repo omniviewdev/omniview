@@ -7,17 +7,20 @@
 //   ?case=long      text longer than its room in the tab, the tree, the lane and the path
 //   ?case=deep      a tree of three levels and enough rows to scroll
 //   ?case=scroll    a page taller than the island
+//   ?case=names&names=<json>   a sidebar whose one open group holds the entries the probe names, `[{ id, label, count }]` with `count` a number, `{ value, approximate: true }` or absent: the rows whose rooms the
+//                   long-name comparison with the mock reads (strip-probe.mjs, section `names`), and what a label that is cut says when it is pointed at (this case mounts the window's one tooltip)
 //   ?case=injected  the registration a probe puts in `window.__registration` before the page runs, an empty page: the frame compared with the mock's reference screen
 //   ?case=tabs&tabs=N&active=K   N tabs (default 5), the K-th on screen (default the last); `window.__tabs` is the model, `window.__commits` counts the commits of every render
+//   ?case=titles&pages=<json>   the tabs the probe names, `[{ title, scope? }]`, the first on screen: the text of the strip against the mock's (strip-probe.mjs, sections `titles` and `twins`; strip-text-cases.mjs)
 //   ?case=panel     the frame `full` and the bottom panel (panel/testing.tsx: the real model over the five tools the mock's host offers, the first of which has a `+`), closed; `window.__panel` is the model
 //                   a probe opens, fills and resizes, and `window.__lines()` reads every stream body's count; `window.__opened` lists the addresses a session card's link was asked to open (A21: a link that
 //                   cannot open must not appear in it)
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { Button, ThemeProvider, type IconName } from '@omniviewdev/kit';
+import { Button, ThemeProvider, TooltipHost, type IconName } from '@omniviewdev/kit';
 import { createRoot } from 'react-dom/client';
 import { Profiler, type ReactNode } from 'react';
-import type { ShellRegistration } from '..';
+import type { ShellRegistration, ShellTreeNode } from '..';
 import { staticTabs, StaticShell, STATIC_RAIL, type StaticPage } from '../testing';
 import type { ToolInput } from '../core/panel';
 import { StreamBody, staticPanel } from '../panel/testing';
@@ -64,6 +67,26 @@ const deep: Described = {
   },
 };
 
+/** The entries of `?case=names`, as the probe wrote them in the address. */
+type NamedEntry = { readonly id: string; readonly label: string; readonly count?: ShellTreeNode['count'] };
+const named: Described = {
+  ...full,
+  sidebar: {
+    label: 'Acme names',
+    title: 'Names',
+    nodes: [
+      {
+        id: 'g',
+        label: 'Group',
+        icon: 'layers',
+        children: (JSON.parse(new URLSearchParams(window.location.search).get('names') ?? '[]') as readonly NamedEntry[]).map(({ id, label, count }) => ({ id, label, icon: 'box' as const, ...(count === undefined ? {} : { count }) })),
+      },
+    ],
+    open: ['g'],
+    current: undefined,
+  },
+};
+
 type Case = { readonly described: Described; readonly page: () => ReactNode };
 
 const cases: Record<string, Case> = {
@@ -83,6 +106,7 @@ const cases: Record<string, Case> = {
     page: () => <p>{words}</p>,
   },
   deep: { described: deep, page: () => <p>A page.</p> },
+  names: { described: named, page: () => <></> },
   // The registration a probe injects as `window.__registration` before the page runs (the words of the mock's reference screen, which the probe owns): this file names none.
   injected: { described: (Reflect.get(window, '__registration') as Described | undefined) ?? full, page: () => <></> },
   scroll: {
@@ -96,6 +120,7 @@ const cases: Record<string, Case> = {
     ),
   },
   tabs: { described: full, page: () => <p>A page.</p> },
+  titles: { described: full, page: () => <p>A page.</p> },
   panel: { described: full, page: () => <></> },
 };
 
@@ -115,8 +140,15 @@ const { tab, path, ...registration } = chosen.described;
 
 /** The tabs of a case: one for a frame case; N for `?case=tabs`, each a page of its own, so no two read alike unless the probe asks. */
 const many = params.get('case') === 'tabs';
+/** `?case=titles`: the tabs a probe names in the address, each a page of its own (a title and, when two read alike, the scope that tells them apart). */
+const titled = params.get('case') === 'titles';
+const titledPages = titled ? (JSON.parse(params.get('pages') ?? '[]') as ReadonlyArray<{ readonly title: string; readonly scope?: string }>) : [];
 const count = many ? Math.max(1, Number(params.get('tabs') ?? '5')) : 1;
-const pages: StaticPage[] = many ? Array.from({ length: count }, (_, index) => ({ title: `Page ${String(index + 1)}`, icon: 'box' as const, path: ['Acme', `Page ${String(index + 1)}`] })) : [{ title: tab.title, icon: tab.icon, path }];
+const pages: StaticPage[] = titled
+  ? titledPages.map(({ title, scope }) => ({ title, icon: 'box' as const, path: ['Acme', title], scope }))
+  : many
+    ? Array.from({ length: count }, (_, index) => ({ title: `Page ${String(index + 1)}`, icon: 'box' as const, path: ['Acme', `Page ${String(index + 1)}`] }))
+    : [{ title: tab.title, icon: tab.icon, path }];
 const tabs = staticTabs(pages, many ? Math.min(count, Math.max(1, Number(params.get('active') ?? count))) - 1 : 0);
 Reflect.set(window, '__tabs', tabs);
 
@@ -184,7 +216,7 @@ createRoot(document.getElementById('root')!).render(
         tabs={tabs}
         panel={panel}
         onNewTab={
-          many
+          many || titled
             ? () => {
               // The strip's `+`: a new page after the last one, through the model (the host's `+` opens a plugin's home page the same way).
               tabs.open({ route: { plugin: 'acme', contribution: `p${String(tabs.getSnapshot().order.length)}` } }, { how: 'new' });
@@ -195,5 +227,7 @@ createRoot(document.getElementById('root')!).render(
         <Page />
       </StaticShell>
     </Profiler>
+    {/* The one tooltip of the window, where the case reads what a label that is cut says when it is pointed at. */}
+    {params.get('case') === 'names' ? <TooltipHost /> : null}
   </ThemeProvider>,
 );

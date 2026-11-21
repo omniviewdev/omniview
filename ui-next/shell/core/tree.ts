@@ -158,3 +158,30 @@ export function press<Node extends TreeShape<Node>>(rows: ReadonlyArray<TreeRow<
       return ignored;
   }
 }
+
+/**
+ * What a tree held when it was last on screen: the groups its user had open (every one they opened and did not close, whether or not the nodes hold it now: a plugin's skeleton comes before its data, and a group that is
+ * not there yet must not be lost with the first answer), and the current entry it last made sure was in view (`undefined`: none yet). The second is what tells a tree that comes back whether its current entry
+ * changed while it was away: only then is the entry brought into view again, so a group the user closed with the current entry inside it stays closed.
+ */
+export type TreeRecord = { readonly open: ReadonlySet<string>; readonly shown: string | undefined };
+
+/**
+ * What a window remembers of its sidebars' trees while a tree is not on screen, by the key of the tree (the rail entry it belongs to and its name): a plugin that stopped and was loaded again, or a rail that went to
+ * another entry and came back, shows the tree it left, with its groups as the user left them. It lives as long as the window does and is not saved: a restart still starts with the groups closed (S3a lists them as
+ * not restored). A tree keeps its record up to date while it is on screen and recalls it when it mounts.
+ */
+export type TreeMemory = {
+  readonly recall: (key: string) => TreeRecord | undefined;
+  readonly keep: (key: string, record: TreeRecord) => void;
+};
+
+export function createTreeMemory(): TreeMemory {
+  const records = new Map<string, TreeRecord>();
+  return {
+    recall: (key) => records.get(key),
+    keep: (key, record) => {
+      records.set(key, record);
+    },
+  };
+}

@@ -553,6 +553,20 @@ describe('the rail', () => {
     expect(screen.queryByRole('treeitem', { name: /Widgets/ })).toBeNull();
   });
 
+  it('shows the sidebar of an entry as it was left when the rail comes back to it: what was opened in the first stays with the first, for the whole life of the window', async () => {
+    const user = userEvent.setup();
+    const closed = { ...registration, sidebar: { ...registration.sidebar!, open: [], current: undefined } };
+    const { again } = renderShell(closed);
+
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    again({ ...closed, rail: { ...STATIC_RAIL, current: 'beta' } });
+    expect(screen.queryByRole('treeitem', { name: /Widgets/ })).toBeNull();
+
+    again(closed);
+    expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: /Widgets/ })).toBeInTheDocument();
+  });
+
   it('opens the groups of the current entry when the entry arrives with the nodes after the current page did, once: what the user closes stays closed', async () => {
     const user = userEvent.setup();
     // The nodes the plugin's data hook answers come after the skeleton the contribution declares, and the entry the page is on is only in the answer.
@@ -756,5 +770,70 @@ describe('what the shell never does', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a plugin whose frame goes away and comes back (it stopped and was loaded again, or its interface was reloaded)', () => {
+  const closed: ShellRegistration = { ...registration, sidebar: { ...registration.sidebar!, open: [], current: undefined } };
+  /** What the window registers while the plugin is not running: no sidebar, no lane, and the rail and the tabs where they were. */
+  const stopped: ShellRegistration = { plugin: { name: 'Acme' }, layout: 'pane', rail: STATIC_RAIL };
+  /** And while it loads: the regions it will have, empty. */
+  const loading: ShellRegistration = { plugin: { name: 'Acme' }, layout: 'pane', pending: true, rail: STATIC_RAIL };
+
+  it('keeps the groups the user opened open, and tells the host so again: the sidebar is the sidebar it was, and its hook asks for the counts of the rows that are on screen', async () => {
+    const user = userEvent.setup();
+    const onSidebarOpen = vi.fn();
+    const tabs = staticTabs([widgets]);
+    const view = render(<Shell registration={closed} tabs={tabs} renderPage={() => page} empty={null} onSidebarOpen={onSidebarOpen} />);
+    const hand = (next: ShellRegistration) => {
+      view.rerender(<Shell registration={next} tabs={tabs} renderPage={() => page} empty={null} onSidebarOpen={onSidebarOpen} />);
+    };
+
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    expect(onSidebarOpen).toHaveBeenLastCalledWith('acme', ['group']);
+
+    hand(stopped);
+    expect(screen.queryByRole('navigation', { name: 'Acme items' })).toBeNull();
+    expect(onSidebarOpen).toHaveBeenLastCalledWith('acme', []);
+    hand(loading);
+    expect(screen.getByRole('navigation', { name: 'Loading navigation' })).toHaveAttribute('aria-busy', 'true');
+    hand(closed);
+
+    expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: /Widgets/ })).toBeInTheDocument();
+    expect(onSidebarOpen).toHaveBeenLastCalledWith('acme', ['group']);
+  });
+
+  it('keeps a group the user closed closed, with the current entry inside it: coming back is not a change of page', async () => {
+    const user = userEvent.setup();
+    const shown: ShellRegistration = { ...registration, sidebar: { ...registration.sidebar!, current: 'widgets' } };
+    const { again } = renderShell(shown);
+    expect(screen.getByRole('treeitem', { name: /Widgets/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+    expect(screen.queryByRole('treeitem', { name: /Widgets/ })).toBeNull();
+    again(stopped);
+    again(shown);
+
+    expect(screen.queryByRole('treeitem', { name: /Widgets/ })).toBeNull();
+    expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('opens the groups of the entry the page is on when it comes back on another one, and keeps the rest as the user left them', async () => {
+    const user = userEvent.setup();
+    const nodes = [
+      { id: 'group', label: 'Group', icon: 'layers' as const, children: [{ id: 'widgets', label: 'Widgets', icon: 'box' as const }] },
+      { id: 'second', label: 'Second', icon: 'layers' as const, children: [{ id: 'sprockets', label: 'Sprockets', icon: 'box' as const }] },
+      { id: 'other', label: 'Other', icon: 'server' as const },
+    ];
+    const at = (current: string): ShellRegistration => ({ ...registration, sidebar: { ...registration.sidebar!, nodes, open: [], current } });
+    const { again } = renderShell(at('other'));
+    await user.click(screen.getByRole('treeitem', { name: 'Group' }));
+
+    again(stopped);
+    again(at('sprockets'));
+
+    expect(screen.getByRole('treeitem', { name: 'Sprockets' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Widgets' })).toBeInTheDocument();
   });
 });

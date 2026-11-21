@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createTreeMemory } from './core/tree';
 import type { ShellTreeNode } from './registration';
 import { Tree } from './Tree';
 
@@ -90,6 +91,22 @@ describe('the count slot of an entry', () => {
 
     for (const name of ['Alpha', 'Beta']) {
       expect(screen.getByRole('treeitem', { name }).querySelector('[data-shell-part="count"]')).toBeEmptyDOMElement();
+    }
+  });
+});
+
+describe('a label that is cut (ch12 SB1: a long name is clipped at its end, with the full name as a tooltip)', () => {
+  it('is a clipping element for the one tooltip of the window, which names it in full while it is cut and says nothing while it is not: its text is its name, and no title or tip of its own repeats it', () => {
+    renderTree([group('things', 'Things', [entry('a', 'A name much too long for the room it is given', 12), entry('b', 'Beta')])]);
+
+    for (const name of [/^A name much too long/, 'Beta', 'Things']) {
+      const row = screen.getByRole('treeitem', { name });
+      const label = row.children[1];
+      expect(label).toHaveAttribute('data-ov-clip');
+      expect(label).not.toHaveAttribute('data-ov-tip');
+      expect(label).not.toHaveAttribute('title');
+      expect(row).not.toHaveAttribute('data-ov-tip');
+      expect(row).not.toHaveAttribute('title');
     }
   });
 });
@@ -185,5 +202,121 @@ describe('the open groups the tree tells its host', () => {
     await user.click(screen.getByRole('treeitem', { name: 'Things' }));
 
     expect(screen.getByRole('treeitem', { name: 'Alpha' })).toBeInTheDocument();
+  });
+});
+
+describe('the open groups a tree keeps while it is not on screen (the plugin stopped and came back, the rail went elsewhere and returned)', () => {
+  const nodes = [
+    group('things', 'Things', [entry('a', 'Alpha'), group('inner', 'Inner', [entry('b', 'Beta')])]),
+    group('more', 'More', [entry('c', 'Gamma')]),
+    entry('top', 'Top'),
+  ];
+  const memoryOf = () => ({ memory: createTreeMemory(), memoryKey: 'acme\u0000Acme items' });
+
+  it('opens again as the user left it: the groups they opened are open when the tree comes back, the ones they did not are not', async () => {
+    const user = userEvent.setup();
+    const kept = memoryOf();
+    const first = renderTree(nodes, { ...kept, open: [], current: 'top' });
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    await user.click(screen.getByRole('treeitem', { name: 'Things' }));
+    await user.click(screen.getByRole('treeitem', { name: 'Inner' }));
+    first.unmount();
+    expect(screen.queryByRole('tree')).toBeNull();
+
+    renderTree(nodes, { ...kept, open: [], current: 'top' });
+
+    expect(screen.getByRole('treeitem', { name: 'Gamma' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Beta' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Things' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps a group the user closed closed, though the current entry is inside it: the entry is brought into view once, not every time the tree comes back', async () => {
+    const user = userEvent.setup();
+    const kept = memoryOf();
+    const first = renderTree(nodes, { ...kept, open: [], current: 'a' });
+    expect(screen.getByRole('treeitem', { name: 'Alpha' })).toBeInTheDocument();
+    await user.click(screen.getByRole('treeitem', { name: 'Things' }));
+    expect(screen.queryByRole('treeitem', { name: 'Alpha' })).toBeNull();
+    first.unmount();
+
+    renderTree(nodes, { ...kept, open: [], current: 'a' });
+
+    expect(screen.queryByRole('treeitem', { name: 'Alpha' })).toBeNull();
+    expect(screen.getByRole('treeitem', { name: 'Things' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('brings another current entry into view when the tree comes back with one: what the user closed stays closed for the entry they were on, and opens for the one they are on now', async () => {
+    const user = userEvent.setup();
+    const kept = memoryOf();
+    const first = renderTree(nodes, { ...kept, open: [], current: 'a' });
+    await user.click(screen.getByRole('treeitem', { name: 'Things' }));
+    first.unmount();
+
+    renderTree(nodes, { ...kept, open: [], current: 'c' });
+
+    expect(screen.getByRole('treeitem', { name: 'Gamma' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: 'Things' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('tells its host the groups it comes back with, once: the plugin\'s hook asks for the counts of the rows that are on screen again', async () => {
+    const user = userEvent.setup();
+    const kept = memoryOf();
+    const first = renderTree(nodes, { ...kept, open: [], current: 'top', onOpenChange: vi.fn() });
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    first.unmount();
+    const onOpenChange = vi.fn();
+
+    renderTree(nodes, { ...kept, open: [], current: 'top', onOpenChange });
+
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenCalledWith(['more']);
+  });
+
+  it('keeps a group that is not in the nodes yet: the plugin\'s skeleton comes first and its data after, and what the user opened is not lost with the first', async () => {
+    const user = userEvent.setup();
+    const kept = memoryOf();
+    const first = renderTree(nodes, { ...kept, open: [], current: 'top' });
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    first.unmount();
+
+    const again = renderTree([nodes[0], nodes[2]], { ...kept, open: [], current: 'top' });
+    expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
+    again.again({ nodes });
+
+    expect(screen.getByRole('treeitem', { name: 'Gamma' })).toBeInTheDocument();
+  });
+
+  it('starts from the registration, as a tree always did, when it was never on screen under its key: the groups it asks for, and the ancestors of the current entry', () => {
+    renderTree(nodes, { ...memoryOf(), open: ['more'], current: 'b' });
+
+    expect(screen.getByRole('treeitem', { name: 'Gamma' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Beta' })).toBeInTheDocument();
+  });
+
+  it('lets what the user did win over the groups the registration asks for: a group they closed is not opened again by `open` when the tree comes back', async () => {
+    const user = userEvent.setup();
+    const kept = memoryOf();
+    const first = renderTree(nodes, { ...kept, open: ['more'], current: 'top' });
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
+    first.unmount();
+
+    renderTree(nodes, { ...kept, open: ['more'], current: 'top' });
+
+    expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
+  });
+
+  it('keeps one memory for each key: the tree of another entry starts afresh, and a tree under a key it shares with none is not changed by it', async () => {
+    const user = userEvent.setup();
+    const { memory } = memoryOf();
+    const first = renderTree(nodes, { memory, memoryKey: 'acme', open: [], current: 'top' });
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    first.unmount();
+
+    renderTree(nodes, { memory, memoryKey: 'beta', open: [], current: 'top' });
+
+    expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
   });
 });

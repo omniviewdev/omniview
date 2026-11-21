@@ -45,9 +45,11 @@
 //      finds the process gone on its next health check (up to 30 s) and says so with `plugin/unloaded` (the frames of the window's event socket are read: the plugin's id and `crashed`, no other member); what the
 //      window shows is read: the rail names the plugin stopped, with the cause in its tip, its sidebar and its tool leave, its page's tab says why with a Retry, and the Logs session STAYS, ended with "The plugin was
 //      unloaded." in the same view with its lines; the host's recovery reloads the plugin (a second `plugin/unloaded`, `reloaded`) and fails, and the rail still says stopped (the first cause stands); with the binary
-//      back and the plugin loaded again the host says it runs (`plugin/state_change`), and the window shows one of everything again with no reload: one rail entry, one tab on its page, one tool, the session as it was.
+//      back and the plugin loaded again the host says it runs (`plugin/state_change`), and the window shows one of everything again with no reload: one rail entry, one tab on its page, one tool, the session as it was, and the
+//      sidebar as the user left it (S3, demo finding D5): the group of the page on screen is closed by the user before the plugin is killed, and it is still closed when the plugin is back (a tree that remembered nothing would open
+//      it again for the entry the page is on), and the plugin's hook is told that no group is open (SEAM_SHOTS=<dir> writes WebKit's `sidebar-after-restart-webkit-void-1440x900.png` of the window then).
 //      SEAM_CONTROL=process runs n alone with every perturbation of its controls (PROCESS_CONTROLS) made in turn just before the assertion each must trip, and passes when each tripped its own (one kill serves all of them:
-//      the host's health check is up to 30 s); SEAM_CONTROL=<one of them> makes that one only
+//      the host's health check is up to 30 s); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
 //   o  a page command that fails is a toast (O1b-1): on the item's detail page the fixture's Restart rejects as the runtime's hooks do (`window.__fixtureDetail`); the host's toast says `Timed out` with its one sentence and a Retry,
 //      is an alert, is sticky (it is still there after 9 s, when a timed one would be gone) and takes no focus; F6 reaches it and Escape closes it and gives the focus back to where it was; a failure that is not the host's says
 //      `Operation failed` and none of its text (a password in it is nowhere in the document); a cancelled command makes no toast; Retry asks the command again and the one toast says `Timed out 2 times`
@@ -119,6 +121,7 @@ const PROCESS_CONTROLS = {
   'rail-moved-on': /the first cause stands while the host recovers the plugin: the rail still says stopped/,
   'rail-stuck': /the rail names the plugin that runs again, with no word of its stop/,
   'two-pages': /one of everything: one page, one sidebar entry, one tool/,
+  'sidebar-reset': /the sidebar comes back as the user left it/,
 };
 // The negative controls of scenario p, a plugin whose load fails (PU2). As in n each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no other.
 // One run serves them all (SEAM_CONTROL=failed-load); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
@@ -143,8 +146,8 @@ const REMOVE = process.env.SEAM_REMOVE ?? '';
 if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined) {
   throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS)].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(FAILED_CONTROLS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 async function freePort() {
@@ -1748,17 +1751,19 @@ async function checkProcess(browser, engine, binary, work) {
     if (CONTROL === 'process' || CONTROL === name) {
       await perturb();
       let message = '';
-      try {
-        await assertion();
-      } catch (error) {
-        message = String(error?.message ?? error);
+      if (REMOVE !== name) {
+        try {
+          await assertion();
+        } catch (error) {
+          message = String(error?.message ?? error);
+        }
       }
 
       await undo();
       controlled.push({ name, message });
     }
 
-    await assertion();
+    if (REMOVE !== name) await assertion();
   };
   const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
   const railNames = async () => entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
@@ -1797,6 +1802,12 @@ async function checkProcess(browser, engine, binary, work) {
     assert.equal(await streams.count(), 1, `${engine}: before the process ends the plugin's tool is in the panel`);
     assert.equal(await copyStreams.count(), 1, `${engine}: and so is the other plugin's`);
     assert.deepEqual(await counters(), { opened: 1, closed: 0, listeners: 3 }, `${engine}: before the process ends one feed is open, and the registry and the view listen to it`);
+    // The sidebar: the page on screen is an object of the list `Items`, in the group `Things`, which is open for it. The user closes the group; whether it is still closed when the plugin is back is what D5 is about.
+    const things = page.getByRole('treeitem', { name: 'Things', exact: true });
+    assert.equal(await things.getAttribute('aria-expanded'), 'true', `${engine}: before the process ends the group of the page on screen is open in the sidebar`);
+    await things.click();
+    assert.equal(await things.getAttribute('aria-expanded'), 'false', `${engine}: and the user closed it`);
+    assert.deepEqual(await page.evaluate(() => Reflect.get(window, '__fixtureSidebar')), { open: [] }, `${engine}: the plugin's hook was told that no group is open`);
 
     // The process is the host's to name. It reports each plugin's pid with the executable behind it; the check kills what the host reported and nothing it found by a name.
     const snapshot = await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot');
@@ -1990,6 +2001,26 @@ async function checkProcess(browser, engine, binary, work) {
         assert.equal(await copyStreams.count(), 1, `${engine}: and the other plugin's tool is as it was`);
       },
     );
+    // The sidebar is the sidebar the user left (S3, D5): the group they closed is closed, though the entry the page is on is inside it, and the plugin's hook, which runs again, is told that no group is open. The window's own
+    // memory of its trees is what keeps it: the sidebar left with the plugin and its tree was drawn again.
+    await asserting(
+      'sidebar-reset',
+      async () => {
+        await things.click();
+      },
+      async () => {
+        await things.click();
+      },
+      async () => {
+        assert.equal(await things.getAttribute('aria-expanded'), 'false', `${engine}: the sidebar comes back as the user left it: the group they closed is closed (the group)`);
+        assert.equal(await page.getByRole('treeitem', { name: /^Items/ }).count(), 0, `${engine}: the sidebar comes back as the user left it: the group they closed is closed (its entries)`);
+        assert.deepEqual(await page.evaluate(() => Reflect.get(window, '__fixtureSidebar')), { open: [] }, `${engine}: the sidebar comes back as the user left it: the plugin's hook is told that no group is open`);
+      },
+    );
+    if (process.env.SEAM_SHOTS !== undefined && engine === 'webkit') {
+      await mkdir(process.env.SEAM_SHOTS, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.SEAM_SHOTS, 'sidebar-after-restart-webkit-void-1440x900.png') });
+    }
     // The Logs session is as it was: still ended, the same view, nothing resumed, nothing opened or closed again.
     assert.equal(await kept.count(), 1, `${engine}: the kept session is still there, ended, when the plugin is back`);
     assert.equal(await grid.evaluate((element) => element.__kept === true), true, `${engine}: and is still the same view`);
@@ -2000,7 +2031,11 @@ async function checkProcess(browser, engine, binary, work) {
     if (controlled.length > 0) {
       const lost = [];
       for (const { name, message } of controlled) {
-        if (PROCESS_CONTROLS[name].test(message)) console.log(`NEGATIVE CONTROL "${name}": detected in ${engine}: ${message.split('\n')[0]}`);
+        if (REMOVE === name) {
+          // The assertion the control is named for is left out (SEAM_REMOVE): its perturbation must pass undetected, as the proof that it trips that assertion and no other.
+          if (message === '') console.log(`NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine} with its assertion removed, as it must be`);
+          else lost.push(`NEGATIVE CONTROL "${name}": detected in ${engine} with its assertion removed, by ${message}`);
+        } else if (PROCESS_CONTROLS[name].test(message)) console.log(`NEGATIVE CONTROL "${name}": detected in ${engine}: ${message.split('\n')[0]}`);
         else lost.push(message === '' ? `NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine}` : `NEGATIVE CONTROL "${name}": failed in ${engine}, but not the assertion it is named for: ${message}`);
       }
 

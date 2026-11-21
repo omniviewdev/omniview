@@ -156,11 +156,13 @@
     flex: 0 0 auto;
   }
 
-  /* The qualifier that tells twin tabs apart: it gives way first, and from a content width of 64 px keeps room for about five characters. */
+  /* The qualifier that tells twin tabs apart: it gives way first, and from a content width of 64 px keeps room for about five characters. Those five are characters of ITS type, 12 px as the mock's `.tab__scope` has it
+     (`font-size: 12px`): measured in the face's 13 px they were 36.1 px against the mock's 33.4, which took 2.8 px from the title of a tab that has a twin (S3, the strip probe's `twins` section). */
   .qualifier {
     flex: 0 100000 auto;
     min-inline-size: 0;
     overflow: hidden;
+    font-size: var(--ov-fs-12);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
