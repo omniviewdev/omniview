@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInvariants, restoreTabs, type CloseScope, type Destination, type OpenHow } from './index';
+import { checkInvariants, LIMITS, restoreTabs, type CloseScope, type Destination, type OpenHow } from './index';
 import { boot, cloudPage, dest, hostPage, stackPage, type Harness } from './testing';
 
 // Random operations keep every invariant (the harness's 4000-operation fuzz and its CO-20 fuzz of 3000 over singletons): after each one the strip is sound, one
@@ -90,7 +90,8 @@ describe('4000 random operations', () => {
       () => h.store.replace(any(), pick(destinations).route),
       () => h.store.reload(any(), { confirmed: true }),
       () => h.store.setUnsaved(any(), next(3) === 0),
-      () => h.store.setPageState(any(), { n: next(5) }),
+      // What a page keeps (a small state, one with where it was scrolled, one that is only that, none, one that is over the limit and is refused): the saved states of the history stay in step with its entries whatever comes.
+      () => h.store.setPageState(any(), pick<unknown>([{ n: next(5) }, { n: next(5), scroll: { top: next(900), left: 0 } }, { scroll: { top: next(900) } }, null, { pad: 'x'.repeat(LIMITS.pageStateBytes) }])),
       () => h.store.markAttention(any(), pick(['warning', 'error', false] as const)),
       () => h.store.consumeReveal(any(), next(40)),
       () => h.store.setKeepAlive({ cap: pick([1, 2, 3, 5, null]) }),

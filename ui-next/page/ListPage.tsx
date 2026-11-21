@@ -1,20 +1,22 @@
 import { Button, DataView, PageHeader, SearchField, WorkspaceToolbar, type DataTableSort, type PageHeaderCommands } from '@omniviewdev/kit';
-import { useState, type MouseEvent } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import type { ListPageDefinition, ListSource } from './definition';
+import { keepFilter, keepSearch, keptFilter, keptSearch } from './kept';
 import styles from './ListPage.module.css';
 import type { PageMemory } from './memory';
 import { refreshReason } from './refresh';
 import { keepSort, keptSort, sortInForce } from './sort';
 import { useRefreshFeedback } from './useRefreshFeedback';
-import { useSearchDraft } from './useSearchDraft';
+import { SEARCH_DELAY_MS, useSearchDraft } from './useSearchDraft';
+import { useScrollMemory } from './useScrollMemory';
 import { deriveListView, normalizeSearch } from './view';
 
 export type ListPageProps<TRow> = {
   readonly definition: ListPageDefinition<TRow>;
   readonly source: ListSource<TRow>;
   /**
-   * Where the page keeps the sort the person chose, for the host to give back when the page is drawn again (`PageMemory`). Absent: the sort lives as long as the page is mounted. The page writes it when the
-   * person chooses, and reads it once, when it opens.
+   * Where the page keeps what the person chose in it, for the host to give back when the page is drawn again (`PageMemory`): the sort, the search they applied, the quick filter, and where the table is
+   * scrolled (H7). Absent: they live as long as the page is mounted. The page writes each when the person chooses it, and reads them once, when it opens.
    */
   readonly memory?: PageMemory | undefined;
 };
@@ -32,11 +34,23 @@ export type ListPageProps<TRow> = {
  *
  * The search is applied 500 ms after the last key, at once on Enter or when it is cleared. A filter chosen twice is cleared. One Clear
  * filters command, in the toolbar, drops both (not the sort). The user's own Refresh is felt: the header's slot says "Refreshing…" and then "Updated".
+ *
+ * What the person chose is kept for the host to give back (H7, `kept.ts`): the sort, the applied search, the chosen filter and where the table is scrolled (`useScrollMemory`) are written as they change and read
+ * once, as the page opens, so a page that is drawn again (Back, Forward, a reload, a page the keep-alive cap let go) is as it was left. Nothing is written when the page opens or while it is left alone.
  */
 export function ListPage<TRow>({ definition, source, memory }: ListPageProps<TRow>) {
-  const search = useSearchDraft();
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [chosenSort, setChosenSort] = useState<DataTableSort | undefined>(() => keptSort(definition.columns, memory?.read()));
+  // What the host held when the page was drawn: the sort, the search, the filter and the position it was left with. Read once.
+  const [opened] = useState(() => memory?.read());
+  const search = useSearchDraft(SEARCH_DELAY_MS, {
+    initial: keptSearch(opened),
+    onApply: (query) => {
+      memory?.write(keepSearch(memory.read(), query));
+    },
+  });
+  const [chosen, setChosen] = useState<string | null>(() => keptFilter(opened, definition.quickFilters?.filters));
+  const [chosenSort, setChosenSort] = useState<DataTableSort | undefined>(() => keptSort(definition.columns, opened));
+  const page = useRef<HTMLDivElement>(null);
+  const scroll = useScrollMemory({ root: page, memory, opened, label: definition.title, settled: source.complete && source.state.kind === 'ready' });
   const sort = sortInForce(definition.columns, chosenSort, definition.defaultSort);
   const failed = source.state.kind === 'failed';
   const feedback = useRefreshFeedback({ title: definition.title, refresh: source.refresh, failed });
@@ -57,7 +71,11 @@ export function ListPage<TRow>({ definition, source, memory }: ListPageProps<TRo
     // The command is about to go: the focus goes back to the search it clears, as the mock's does, not to the page.
     const toolbar = event.currentTarget.closest('[role="group"]');
     search.clear();
-    setChosen(null);
+    if (chosen !== null) {
+      setChosen(null);
+      memory?.write(keepFilter(memory.read(), null));
+    }
+
     toolbar?.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
   };
 
@@ -67,8 +85,9 @@ export function ListPage<TRow>({ definition, source, memory }: ListPageProps<TRo
     memory?.write(keepSort(memory.read(), next));
   };
 
+  // The wrapper takes no room (`display: contents`): it is the element that hears the table's scrolling and the presses that may take the page away, and where the table is looked for to put it back.
   return (
-    <>
+    <div className={styles.page} ref={page} onScrollCapture={scroll.onScrollCapture} onPointerDownCapture={scroll.flush} onKeyDownCapture={scroll.flush}>
       <DataView<TRow>
         label={definition.title}
         header={<PageHeader title={definition.title} tile={definition.tile} commands={commands} operation={feedback.operation} />}
@@ -81,7 +100,11 @@ export function ListPage<TRow>({ definition, source, memory }: ListPageProps<TRo
               filters: view.quickFilters.filters,
               selected: chosen,
               onSelect: (id) => {
-                setChosen((current) => (id === null || id === current ? null : id));
+                const next = id === null || id === chosen ? null : id;
+                if (next !== chosen) {
+                  setChosen(next);
+                  memory?.write(keepFilter(memory.read(), next));
+                }
               },
             }
         }
@@ -103,6 +126,6 @@ export function ListPage<TRow>({ definition, source, memory }: ListPageProps<TRo
       <span className={styles.live} role="status">
         {feedback.announcement}
       </span>
-    </>
+    </div>
   );
 }

@@ -1,5 +1,11 @@
 /* The page's own rules, host composition: layer ov.shell, above the kit's parts. */
 @layer ov.shell {
+  /* The element that hears the table's scrolling and the presses that may take the page away (`useScrollMemory`). It takes no room and draws nothing: the header, the table and the footer are laid
+     out in the pane as they were before it was there, and the page's live region below stays where it was. */
+  .page {
+    display: contents;
+  }
+
   /* The page's polite announcements: in the page and read, never drawn. It takes no room and holds no focus. */
   .live {
     position: absolute;

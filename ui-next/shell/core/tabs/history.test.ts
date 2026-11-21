@@ -118,13 +118,15 @@ describe('history (ch16 S60)', () => {
     sound(h);
   });
 
-  it('drops the page state when stepping to another entry, and what was never shown is not asked for', () => {
+  it('gives the page it steps to what that page kept when it was left, and a clean page when it kept nothing (the rest of the rule is in historyState.test.ts)', () => {
     const h = boot({ home: false });
     const a = h.open(cloudPage('instances'));
     h.store.navigate(a, cloudPage('instances', { item: 'i-1' }));
     h.store.setPageState(a, { x: 1 });
     h.store.back(a);
     expect(tab(h, a).pageState).toBeNull();
+    h.store.forward(a);
+    expect(tab(h, a).pageState).toEqual({ x: 1 });
   });
 
   it('refuses a step for a tab that is not there', () => {
