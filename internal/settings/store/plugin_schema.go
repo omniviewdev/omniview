@@ -223,12 +223,17 @@ func rememberedOrdinary(tx *bolt.Tx, pluginID string) (map[string]struct{}, bool
 // with its schema, because its values cannot be told apart. It is a no-op if the
 // plugin has no entry.
 //
-// The erase reaches the live database only. bbolt is copy-on-write and does not
-// zero the pages it frees, so an erased value may stay readable in the file until
-// a later write reuses its page; copies of the database made by corruption
-// recovery (settings.db.corrupt.<unix>, never pruned) and by a channel switch
-// that copies data hold every plugin's values and are not touched. Compacting the
-// database on its next open, and pruning the corrupt copies, are separate changes.
+// The erase reaches the file too, not only the live database. bbolt is
+// copy-on-write and does not zero the pages it frees, so the erased value would
+// stay readable in the file until a later write happened to reuse its page. The
+// transaction therefore sets the scrub marker, and once it has committed the
+// store replaces the database file with a compacted copy and overwrites the old
+// file (see scrub.go). When that fails the values are still erased; the error
+// wraps ErrScrubFailed, the result is returned with it, and the marker keeps the
+// scrub owed: erasing again retries it, and so does the next start. Copies of the
+// database made by corruption recovery (settings.db.corrupt.<unix>) are kept for
+// a week at most (corrupt.go); the copy a channel switch that copies data makes
+// is another profile's, and is not touched.
 func (s *Store) ErasePluginSettings(pluginID string, current *DeclaredSettings) (EraseResult, error) {
 	var result EraseResult
 	err := s.persistOperation("settings.Erase", "", pluginID, func() error {
@@ -245,41 +250,9 @@ func (s *Store) erasePluginSettings(pluginID string, current *DeclaredSettings) 
 	}
 	var result EraseResult
 	err := s.db.Update(func(tx *bolt.Tx) error {
-		result = EraseResult{Erased: 0, Kept: 0, Basis: EraseBasisNone, Unreadable: false}
-		values := tx.Bucket(pluginsBucket)
-		schemas, bucketErr := tx.CreateBucketIfNotExists([]byte(pluginSchemasBucketName))
-		if bucketErr != nil {
-			return fmt.Errorf("create plugin schemas bucket: %w", bucketErr)
-		}
-		key := []byte(pluginID)
-		ordinary, basis := ordinaryForErase(tx, pluginID, current)
-		result.Basis = basis
-		data := values.Get(key)
-		if data == nil {
-			// Nothing stored: nothing is left for a remembered schema to describe.
-			return schemas.Delete(key)
-		}
-		var stored map[string]json.RawMessage
-		if decodeErr := json.Unmarshal(data, &stored); decodeErr != nil {
-			result.Unreadable = true
-			return errors.Join(values.Delete(key), schemas.Delete(key))
-		}
-		for id := range stored {
-			if _, isOrdinary := ordinary[id]; isOrdinary {
-				result.Kept++
-				continue
-			}
-			delete(stored, id)
-			result.Erased++
-		}
-		if len(stored) == 0 {
-			return errors.Join(values.Delete(key), schemas.Delete(key))
-		}
-		kept, encodeErr := json.Marshal(stored)
-		if encodeErr != nil {
-			return fmt.Errorf("encode plugin settings %q: %w", pluginID, encodeErr)
-		}
-		return values.Put(key, kept)
+		var eraseErr error
+		result, eraseErr = eraseInTx(tx, pluginID, current)
+		return eraseErr
 	})
 	if err != nil {
 		return EraseResult{}, err
@@ -288,7 +261,56 @@ func (s *Store) erasePluginSettings(pluginID string, current *DeclaredSettings) 
 		s.logger().Warnw(context.Background(), "plugin settings entry could not be decoded; removed whole",
 			"pluginID", pluginID)
 	}
-	return result, nil
+	// The erase is committed whether or not the scrub works, so the result stands.
+	return result, s.scrubPending()
+}
+
+// eraseInTx erases the credential-class values of one plugin in the transaction,
+// and sets the scrub marker when it destroyed one.
+func eraseInTx(tx *bolt.Tx, pluginID string, current *DeclaredSettings) (EraseResult, error) {
+	result := EraseResult{Erased: 0, Kept: 0, Basis: EraseBasisNone, Unreadable: false}
+	values := tx.Bucket(pluginsBucket)
+	schemas, bucketErr := tx.CreateBucketIfNotExists([]byte(pluginSchemasBucketName))
+	if bucketErr != nil {
+		return result, fmt.Errorf("create plugin schemas bucket: %w", bucketErr)
+	}
+	key := []byte(pluginID)
+	ordinary, basis := ordinaryForErase(tx, pluginID, current)
+	result.Basis = basis
+	data := values.Get(key)
+	if data == nil {
+		// Nothing stored: nothing is left for a remembered schema to describe.
+		return result, schemas.Delete(key)
+	}
+	var stored map[string]json.RawMessage
+	if decodeErr := json.Unmarshal(data, &stored); decodeErr != nil {
+		// What the entry held is unknown, so it may have held a credential.
+		result.Unreadable = true
+		return result, errors.Join(markScrubPending(tx), values.Delete(key), schemas.Delete(key))
+	}
+	leaked := false
+	for id, raw := range stored {
+		if _, isOrdinary := ordinary[id]; isOrdinary {
+			result.Kept++
+			continue
+		}
+		delete(stored, id)
+		result.Erased++
+		leaked = leaked || !isEmptyValue(raw)
+	}
+	if leaked {
+		if markErr := markScrubPending(tx); markErr != nil {
+			return result, markErr
+		}
+	}
+	if len(stored) == 0 {
+		return result, errors.Join(values.Delete(key), schemas.Delete(key))
+	}
+	kept, encodeErr := json.Marshal(stored)
+	if encodeErr != nil {
+		return result, fmt.Errorf("encode plugin settings %q: %w", pluginID, encodeErr)
+	}
+	return result, values.Put(key, kept)
 }
 
 // ordinaryForErase picks what classifies the stored values: the schema this

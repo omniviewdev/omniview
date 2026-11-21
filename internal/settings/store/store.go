@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
-	"time"
+	"sync"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -58,65 +59,110 @@ func isCorruptionError(err error) bool {
 	return false
 }
 
-// config holds optional configuration for the Store.
-// Reserved for future use (e.g., encryption support).
-type config struct{}
-
-// Option configures the Store. Reserved for future encryption support.
-type Option func(*config)
-
 // Store wraps bbolt for settings persistence.
 type Store struct {
-	db  *bolt.DB
-	log logging.Logger
+	db   *guardedDB
+	log  logging.Logger
+	path string
+	cfg  config
 }
 
 // Open opens (or creates) a bbolt database at path.
-// The top-level buckets ("core", "plugins", "mcp" and "plugin-schemas") are
-// pre-created.
+// The top-level buckets ("core", "plugins", "mcp", "plugin-schemas" and "meta")
+// are pre-created.
 // If the file is corrupt, it is renamed with a .corrupt.<unix-timestamp> suffix
-// and a fresh database is created in its place.
+// and a fresh database is created in its place; corrupt.go says how long that
+// copy is kept. A scrub that a crash interrupted is resolved before the file is
+// opened, and one the database says is owed is done before Open returns.
 func Open(path string, opts ...Option) (*Store, error) {
-	// Apply options (currently unused, reserved for future use).
-	_ = opts
-
-	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: 1 * time.Second})
+	cfg := newConfig(opts)
+	path = resolveDatabasePath(path)
+	entries := readDirectory(filepath.Dir(path))
+	if err := recoverScrub(path, cfg); err != nil {
+		return nil, fmt.Errorf("resolve an interrupted scrub: %w", err)
+	}
+	db, current, err := openDatabase(path, cfg)
 	if err != nil {
-		if !isCorruptionError(err) {
-			return nil, fmt.Errorf("failed to open database: %w", err)
-		}
-		// Attempt corruption recovery: rename the corrupt file and retry.
-		backupPath := fmt.Sprintf("%s.corrupt.%d", path, time.Now().Unix())
-		if renameErr := os.Rename(path, backupPath); renameErr != nil {
-			return nil, fmt.Errorf("failed to open database and could not rename corrupt file: %w (rename error: %v)", err, renameErr)
-		}
-		db, err = bolt.Open(path, 0o600, &bolt.Options{Timeout: 1 * time.Second})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create fresh database after corruption recovery: %w", err)
-		}
+		return nil, err
 	}
-
-	// Pre-create buckets.
-	if updateErr := db.Update(func(tx *bolt.Tx) error {
-		if _, bucketErr := tx.CreateBucketIfNotExists(coreBucket); bucketErr != nil {
-			return fmt.Errorf("create core bucket: %w", bucketErr)
-		}
-		if _, bucketErr := tx.CreateBucketIfNotExists(pluginsBucket); bucketErr != nil {
-			return fmt.Errorf("create plugins bucket: %w", bucketErr)
-		}
-		if _, bucketErr := tx.CreateBucketIfNotExists(mcpBucket); bucketErr != nil {
-			return fmt.Errorf("create mcp bucket: %w", bucketErr)
-		}
-		if _, bucketErr := tx.CreateBucketIfNotExists([]byte(pluginSchemasBucketName)); bucketErr != nil {
-			return fmt.Errorf("create plugin schemas bucket: %w", bucketErr)
-		}
-		return nil
-	}); updateErr != nil {
+	scrubIsOwed, err := prepareBuckets(db)
+	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("initialize buckets: %w", updateErr)
+		return nil, fmt.Errorf("initialize buckets: %w", err)
 	}
+	s := &Store{db: &guardedDB{mu: sync.RWMutex{}, inner: db}, log: nil, path: path, cfg: cfg}
+	s.finishOpen(entries, current, scrubIsOwed)
+	return s, nil
+}
 
-	return &Store{db: db}, nil
+// maxLinkHops bounds how many symbolic links resolveDatabasePath follows.
+const maxLinkHops = 16
+
+// resolveDatabasePath follows the symbolic links at path, one at a time, so that a
+// scrub replaces the file the links lead to and leaves them where they are. The
+// file at the end need not exist yet. Anything that is not a link is returned as it
+// is.
+func resolveDatabasePath(path string) string {
+	for range maxLinkHops {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			return path
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return path
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		path = target
+	}
+	return path
+}
+
+// openDatabase opens the file at path. A corrupt file is set aside first, and the
+// name of the copy it becomes is returned; it is "" when nothing was set aside.
+func openDatabase(path string, cfg config) (*bolt.DB, string, error) {
+	db, err := bolt.Open(path, settingsFileMode, &bolt.Options{Timeout: openTimeout})
+	if err == nil {
+		return db, "", nil
+	}
+	if !isCorruptionError(err) {
+		return nil, "", fmt.Errorf("failed to open database: %w", err)
+	}
+	// Attempt corruption recovery: rename the corrupt file and retry.
+	backupPath := corruptCopyPath(path, cfg.clock())
+	if renameErr := os.Rename(path, backupPath); renameErr != nil {
+		return nil, "", fmt.Errorf("failed to open database and could not rename corrupt file: %w (rename error: %w)", err, renameErr)
+	}
+	// A scrub that was cut short may have left the intact old file beside the copy
+	// that proved unreadable: that file, not an empty database, is what to open.
+	if oldLeft, lookErr := pathExists(path + scrubOldSuffix); lookErr == nil && oldLeft {
+		if restoreErr := renameBack(path+scrubOldSuffix, path); restoreErr != nil {
+			return nil, "", fmt.Errorf("failed to restore the file a scrub replaced: %w", restoreErr)
+		}
+	}
+	db, err = bolt.Open(path, settingsFileMode, &bolt.Options{Timeout: openTimeout})
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create fresh database after corruption recovery: %w", err)
+	}
+	return db, filepath.Base(backupPath), nil
+}
+
+// prepareBuckets pre-creates the top-level buckets and reports whether the
+// marker says a scrub is owed.
+func prepareBuckets(db *bolt.DB) (bool, error) {
+	scrubIsOwed := false
+	err := db.Update(func(tx *bolt.Tx) error {
+		for _, name := range [][]byte{coreBucket, pluginsBucket, mcpBucket, []byte(pluginSchemasBucketName), []byte(metaBucketName)} {
+			if _, bucketErr := tx.CreateBucketIfNotExists(name); bucketErr != nil {
+				return fmt.Errorf("create %s bucket: %w", name, bucketErr)
+			}
+		}
+		scrubIsOwed = scrubIsPending(tx)
+		return nil
+	})
+	return scrubIsOwed, err
 }
 
 // Close closes the underlying bbolt database.
@@ -157,15 +203,26 @@ func (s *Store) saveCategories(categories map[string]map[string]any) error {
 		}
 		encoded[id] = data
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
+	scrubNeeded := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(coreBucket)
 		for id, data := range encoded {
+			if credentialsDied(b.Get([]byte(id)), data, s.cfg.coreCredentials(id)) {
+				scrubNeeded = true
+			}
 			if err := b.Put([]byte(id), data); err != nil {
 				return fmt.Errorf("save category %q: %w", id, err)
 			}
 		}
+		if scrubNeeded {
+			return markScrubPending(tx)
+		}
 		return nil
 	})
+	if err == nil && scrubNeeded {
+		s.scrubAfterWrite()
+	}
+	return err
 }
 
 // PatchSettings merges scoped host setting IDs into persisted categories atomically.
@@ -196,15 +253,25 @@ func (s *Store) patchSettings(values map[string]any) error {
 		}
 		categories[category][setting] = value
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
+	scrubNeeded := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(coreBucket)
 		for category, patch := range categories {
-			if err := patchValues(b, category, patch); err != nil {
+			died, err := patchValues(b, category, patch, s.cfg.coreCredentials(category))
+			if err != nil {
 				return fmt.Errorf("patch category %q: %w", category, err)
 			}
+			scrubNeeded = scrubNeeded || died
+		}
+		if scrubNeeded {
+			return markScrubPending(tx)
 		}
 		return nil
 	})
+	if err == nil && scrubNeeded {
+		s.scrubAfterWrite()
+	}
+	return err
 }
 
 // PatchPluginSettings merges raw setting IDs into one plugin's persisted values.
@@ -216,19 +283,33 @@ func (s *Store) patchPluginSettings(pluginID string, values map[string]any) erro
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
-		if err := patchValues(tx.Bucket(pluginsBucket), pluginID, values); err != nil {
+	scrubNeeded := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		ordinary, _ := rememberedOrdinary(tx, pluginID)
+		died, err := patchValues(tx.Bucket(pluginsBucket), pluginID, values, ordinaryCredentials(ordinary))
+		if err != nil {
 			return fmt.Errorf("patch plugin settings %q: %w", pluginID, err)
+		}
+		scrubNeeded = died
+		if died {
+			return markScrubPending(tx)
 		}
 		return nil
 	})
+	if err == nil && scrubNeeded {
+		s.scrubAfterWrite()
+	}
+	return err
 }
 
-func patchValues(bucket *bolt.Bucket, id string, patch map[string]any) error {
+// patchValues merges patch into the stored document of id and reports whether
+// that destroyed a credential, as the classifier names it (see credentialsDied).
+func patchValues(bucket *bolt.Bucket, id string, patch map[string]any, isCredential credentialClassifier) (bool, error) {
 	values := make(map[string]any)
-	if data := bucket.Get([]byte(id)); data != nil {
-		if err := json.Unmarshal(data, &values); err != nil {
-			return fmt.Errorf("decode saved settings: %w", err)
+	old := bucket.Get([]byte(id))
+	if old != nil {
+		if err := json.Unmarshal(old, &values); err != nil {
+			return false, fmt.Errorf("decode saved settings: %w", err)
 		}
 	}
 	if values == nil {
@@ -239,9 +320,10 @@ func patchValues(bucket *bolt.Bucket, id string, patch map[string]any) error {
 	}
 	data, err := json.Marshal(values)
 	if err != nil {
-		return fmt.Errorf("encode settings: %w", err)
+		return false, fmt.Errorf("encode settings: %w", err)
 	}
-	return bucket.Put([]byte(id), data)
+	died := credentialsDied(old, data, isCredential)
+	return died, bucket.Put([]byte(id), data)
 }
 
 // LoadCategory retrieves a category's settings from the "core" bucket.
@@ -312,10 +394,23 @@ func (s *Store) savePluginSettings(pluginID string, values map[string]any) error
 	if err != nil {
 		return fmt.Errorf("marshal plugin settings %q: %w", pluginID, err)
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
+	scrubNeeded := false
+	err = s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(pluginsBucket)
-		return b.Put([]byte(pluginID), data)
+		key := []byte(pluginID)
+		ordinary, _ := rememberedOrdinary(tx, pluginID)
+		if credentialsDied(b.Get(key), data, ordinaryCredentials(ordinary)) {
+			scrubNeeded = true
+			if markErr := markScrubPending(tx); markErr != nil {
+				return markErr
+			}
+		}
+		return b.Put(key, data)
 	})
+	if err == nil && scrubNeeded {
+		s.scrubAfterWrite()
+	}
+	return err
 }
 
 // LoadPluginSettings retrieves a plugin's settings from the "plugins" bucket.
@@ -339,16 +434,29 @@ func (s *Store) LoadPluginSettings(pluginID string) (map[string]any, error) {
 	return result, nil
 }
 
-// DeletePluginSettings removes a plugin's settings from the "plugins" bucket.
-// It is a no-op if the plugin does not exist.
+// DeletePluginSettings removes a plugin's settings from the "plugins" bucket and
+// scrubs the database file of any credential they held (see scrub.go). It is a
+// no-op if the plugin does not exist. An error that wraps ErrScrubFailed means the
+// settings are gone but their old bytes may remain in the file.
 func (s *Store) DeletePluginSettings(pluginID string) error {
 	if s == nil || s.db == nil {
 		return ErrUnavailable
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(pluginsBucket)
-		return b.Delete([]byte(pluginID))
+		key := []byte(pluginID)
+		ordinary, _ := rememberedOrdinary(tx, pluginID)
+		if credentialsDied(b.Get(key), nil, ordinaryCredentials(ordinary)) {
+			if markErr := markScrubPending(tx); markErr != nil {
+				return markErr
+			}
+		}
+		return b.Delete(key)
 	})
+	if err != nil {
+		return err
+	}
+	return s.scrubTraced()
 }
 
 // LoadAllPluginSettings returns all plugin settings keyed by plugin ID.

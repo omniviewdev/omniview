@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/plugin-sdk/settings"
@@ -30,9 +31,14 @@ func init() {
 
 // MigrateFromGOB checks for old GOB settings files and migrates them to bbolt.
 // stateRoot is the absolute path to the state directory (e.g., ~/.omniview).
-// Old files are renamed to .gob.bak after successful migration.
+// Old files are renamed to .gob.bak after successful migration, and a backup
+// goes a week later (see backups.go).
 // Corrupt or unreadable files are skipped and reported in a single aggregated log.
 func MigrateFromGOB(stateRoot string, s *Store) error {
+	// Backups of earlier migrations first, so that the ones this call makes are not
+	// looked at.
+	s.pruneMigrationBackups(stateRoot)
+
 	var skipped []string
 
 	// Migrate core settings.
@@ -106,7 +112,7 @@ func migrateCore(path string, s *Store, skipped *[]string) error {
 		}
 	}
 
-	return renameToBackup(path)
+	return renameToBackup(path, s.cfg.clock())
 }
 
 // migratePlugin reads a plugin GOB settings file, extracts values from the
@@ -142,7 +148,7 @@ func migratePlugin(path, pluginID string, s *Store, skipped *[]string) error {
 		}
 	}
 
-	return renameToBackup(path)
+	return renameToBackup(path, s.cfg.clock())
 }
 
 // decodeGOB decodes a GOB-encoded settings.Store from raw bytes.
@@ -167,8 +173,10 @@ func extractValues(cat settings.Category) map[string]any {
 	return values
 }
 
-// renameToBackup renames a file to .gob.bak, avoiding overwrites.
-func renameToBackup(path string) error {
+// renameToBackup renames a file to .gob.bak, avoiding overwrites, and sets the
+// backup's modification time to now: the week it is kept counts from its
+// migration, not from the last time the old host wrote the file.
+func renameToBackup(path string, now time.Time) error {
 	backup := path + ".gob.bak"
 	if _, err := os.Stat(backup); err == nil {
 		// .gob.bak already exists, try numbered suffix.
@@ -185,5 +193,10 @@ func renameToBackup(path string) error {
 			return fmt.Errorf("too many backup files for %q (100 limit reached)", path)
 		}
 	}
-	return os.Rename(path, backup)
+	if err := os.Rename(path, backup); err != nil {
+		return err
+	}
+	// Best effort: without it the backup is dated by the last write of the old host.
+	_ = os.Chtimes(backup, now, now)
+	return nil
 }
