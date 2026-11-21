@@ -32,6 +32,29 @@ func pluginDirectory(t *testing.T, files map[string]string) string {
 	return dir
 }
 
+// scratchDirectory returns a directory holding the named files, for a test that
+// calls the pinned SDK's loader on it. That loader leaves the file open until the
+// collector finalizes it, and Windows cannot remove the directory until then, so
+// the removal retries after a collection and is no verdict on the test.
+func scratchDirectory(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "pluginmeta-")
+	require.NoError(t, err)
+	for name, content := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+	t.Cleanup(func() {
+		for range 20 {
+			runtime.GC()
+			if os.RemoveAll(dir) == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	return dir
+}
+
 // openDescriptors counts the process's open file descriptors through /dev/fd.
 // ok is false where the system cannot list them (Windows).
 func openDescriptors() (count int, ok bool) {
@@ -69,12 +92,13 @@ func TestLoadReturnsWhatTheSDKLoaderReturns(t *testing.T) {
 	}
 	for name, files := range cases {
 		t.Run(name, func(t *testing.T) {
-			dir := pluginDirectory(t, files)
+			dir := scratchDirectory(t, files)
 			if files == nil {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "plugin.yaml"), 0o700))
 			}
 
 			got, gotErr := Load(dir)
+			// The SDK's loader leaves its file open: see scratchDirectory.
 			want, wantErr := sdktypes.LoadPluginMetadata(dir)
 
 			require.Equal(t, want, got)
@@ -143,25 +167,11 @@ func TestLoadClosesItsFileOnEveryPath(t *testing.T) {
 // call types.LoadPluginMetadata at the places that call Load: its caller list is
 // what TestNoHostCodeCallsTheLeakingSDKLoaders guarded.
 func TestPinnedSDKStillLeavesTheManifestOpen(t *testing.T) {
-	dir, err := os.MkdirTemp("", "pluginmeta-tripwire-")
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(manifest), 0o600))
-	t.Cleanup(func() {
-		// Where the SDK leaks the file, Windows cannot remove the directory until the
-		// collector has finalized it. Removal here is best effort: the directory is a
-		// scratch directory, and a failed removal is no verdict on the pinned SDK.
-		for range 20 {
-			runtime.GC()
-			if os.RemoveAll(dir) == nil {
-				return
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-	})
+	dir := scratchDirectory(t, map[string]string{"plugin.yaml": manifest})
 	holdTheCollectorOff(t)
 
 	before, listed := openDescriptors()
-	_, err = sdktypes.LoadPluginMetadata(dir)
+	_, err := sdktypes.LoadPluginMetadata(dir)
 	require.NoError(t, err)
 
 	var leaked bool
@@ -171,7 +181,7 @@ func TestPinnedSDKStillLeavesTheManifestOpen(t *testing.T) {
 	} else {
 		leaked = os.Rename(dir, dir+".renamed") != nil
 		if !leaked {
-			_ = os.Rename(dir+".renamed", dir)
+			require.NoError(t, os.Rename(dir+".renamed", dir))
 		}
 	}
 	require.True(t, leaked,

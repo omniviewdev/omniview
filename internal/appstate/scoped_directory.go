@@ -16,18 +16,18 @@ type FilesystemIdentity struct {
 	File   [16]byte `json:"file"`
 }
 
-func (s *ScopedRoot) openIdentityFile(name string, flag int) (*os.File, os.FileInfo, error) {
+func openIdentityFile(root *os.Root, name string, flag int) (*os.File, os.FileInfo, error) {
 	if err := validate(name); err != nil {
 		return nil, nil, err
 	}
-	before, err := s.root.Lstat(name)
+	before, err := root.Lstat(name)
 	if err != nil {
 		return nil, nil, err
 	}
 	if before.Mode()&os.ModeSymlink != 0 {
 		return nil, nil, fmt.Errorf("appstate: identity path %q is redirected", name)
 	}
-	file, err := s.root.OpenFile(name, flag, 0)
+	file, err := root.OpenFile(name, flag, 0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,7 +42,9 @@ func (s *ScopedRoot) openIdentityFile(name string, flag int) (*os.File, os.FileI
 // DirectoryIdentity reads the durable identity of a contained, non-redirected
 // directory owned by the current OS user. The root itself may be inspected as ".".
 func (s *ScopedRoot) DirectoryIdentity(name string) (FilesystemIdentity, error) {
-	file, info, err := s.openIdentityFile(name, os.O_RDONLY)
+	root, done := s.acquire()
+	defer done()
+	file, info, err := openIdentityFile(root, name, os.O_RDONLY)
 	if err != nil {
 		return FilesystemIdentity{}, err
 	}
@@ -59,7 +61,9 @@ func (s *ScopedRoot) OpenPrivateFile(name string, flag int) (*os.File, Filesyste
 	if flag != os.O_RDONLY && flag != os.O_RDWR {
 		return nil, FilesystemIdentity{}, errors.New("appstate: private file open must not create or truncate")
 	}
-	file, info, err := s.openIdentityFile(name, flag)
+	root, done := s.acquire()
+	defer done()
+	file, info, err := openIdentityFile(root, name, flag)
 	if err != nil {
 		return nil, FilesystemIdentity{}, err
 	}
@@ -88,14 +92,16 @@ func (s *ScopedRoot) RenameDirectoryNoReplace(oldpath, newpath string) error {
 	if filepath.Clean(oldpath) == "." || filepath.Clean(newpath) == "." {
 		return errors.New("appstate: refusing to rename a scope root")
 	}
-	info, err := s.root.Lstat(oldpath)
+	root, done := s.acquire()
+	defer done()
+	info, err := root.Lstat(oldpath)
 	if err != nil {
 		return err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("appstate: rename source %q is not an ordinary directory", oldpath)
 	}
-	return renameDirectoryNoReplace(s.root, oldpath, newpath)
+	return s.relocating(oldpath, newpath, func() error { return renameDirectoryNoReplace(root, oldpath, newpath) })
 }
 
 // MkdirTemp creates a private, exclusive directory through the held root
@@ -107,9 +113,11 @@ func (s *ScopedRoot) MkdirTemp(prefix string) (string, error) {
 	if filepath.Base(prefix) != prefix || prefix == "." {
 		return "", errors.New("appstate: temporary directory prefix must be one component")
 	}
+	root, done := s.acquire()
+	defer done()
 	for range 10 {
 		name := prefix + rand.Text()
-		if err := s.root.Mkdir(name, 0700); err == nil {
+		if err := root.Mkdir(name, 0700); err == nil {
 			return name, nil
 		} else if !os.IsExist(err) {
 			return "", err

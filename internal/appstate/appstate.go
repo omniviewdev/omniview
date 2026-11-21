@@ -136,6 +136,9 @@ func New(opts ...Option) (*Service, error) {
 		svc.closePartial()
 		return nil, err
 	}
+	// The plugin manager moves and removes plugin directories through this root,
+	// and the roots the service caches beneath them let go for the move.
+	svc.plugins.relocator = svc
 	svc.logs, err = newScopedRoot(filepath.Join(root, "logs"))
 	if err != nil {
 		svc.closePartial()

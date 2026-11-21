@@ -281,7 +281,6 @@ func TestUninstallErasesSettingValuesItCannotClassify(t *testing.T) {
 }
 
 func TestUninstallRemovesHostSavedConnectionState(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	store, err := f.svc.PluginStore("flux")
@@ -312,7 +311,6 @@ func TestUninstallRemovesHostSavedConnectionState(t *testing.T) {
 }
 
 func TestUninstallLeavesCredentialStateAloneWhenRolledBack(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	observer := newUninstallObserverStub()
 	f.pm.connlessControllers[sdktypes.CapabilityExec] = observer
@@ -435,7 +433,6 @@ func TestUninstallDoesNotNotifyObserversWhenItFails(t *testing.T) {
 }
 
 func TestReinstallAfterUninstallStartsFreshAndKeepsHostStoresWritable(t *testing.T) {
-	appstate.SkipIfOpenRootBlocksRename(t)
 	f := newCredentialFixture(t)
 	f.install(t)
 	f.save(t, map[string]any{"apiToken": credentialToken, "clientSecret": credentialSecret, "theme": "dark"})
