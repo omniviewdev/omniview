@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { platformOf } from './core/chords';
 import type { ModifierEvent, TabsStore } from './core/tabs';
+import { createTreeMemory } from './core/tree';
 import { NoticesProvider } from './notices/context';
 import type { NoticesBindings } from './notices/host';
 import { Toasts } from './notices/Toasts';
@@ -84,6 +85,8 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
   const panelId = `${ids}-panel`;
   const root = useRef<HTMLDivElement>(null);
   const [platform] = useState(() => platformOf(navigator));
+  // What the window remembers of its sidebars' trees, for as long as it lives: the sidebar itself goes away while its plugin is not running, and its groups are what the user left open (S3).
+  const [treeMemory] = useState(createTreeMemory);
   useRegionKeys(root);
   usePanelChords(panel?.store);
   useTabChords(tabs, onCloseWindow);
@@ -97,7 +100,7 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
         <TopRow prefix={prefix} panelId={panelId} onNewTab={onNewTab} />
         <div className={styles.frame} data-shell-part="frame" data-rail={hasRail ? '' : undefined} data-sidebar={hasSidebar ? '' : undefined}>
           {hasRail ? <Rail rail={rail} onSelect={onSelectRail} /> : null}
-          {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} onOpen={onSidebarOpen} /> : null}
+          {hasSidebar ? <Sidebar sidebar={sidebar} owner={rail?.current} onChoose={onChoose} onOpen={onSidebarOpen} memory={treeMemory} /> : null}
           <main className={styles.island} data-shell-region="island" data-shell-focus="" tabIndex={-1} aria-label={`${plugin.name} workspace`}>
             {hasLane ? <ScopeLane label={scope === undefined || scope.length === 0 ? undefined : `${plugin.name} scope`} faces={scope ?? []} /> : null}
             {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text
