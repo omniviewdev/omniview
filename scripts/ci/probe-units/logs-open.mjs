@@ -1,12 +1,6 @@
 // The rate on the Logs strip at open (L4, demo defect D2): the host's own Logs session body over a feed that replays the last 5,000 lines of a source that has been writing for a while, each stamped with the time it was
 // written and with nothing to mark it a replay (what the runtime's stream does), and then writes 5 lines a second; the strip's text is read every 250 ms for 8 s and never reads above 10 lines/s, tells a rate near 5 within
 // 5 s and settles on it (ui-next/shell/probes/logs-open-fixture.tsx), in both engines at 1440 x 900. It builds its own fixture, so it does not read PROBE_DIST.
-const PATHS = [
-  'ui-next/shell/probes/logs-open-*',
-  'ui-next/shell/panel/logs/**',
-  'packages/kit/src/log/**',
-  'packages/kit/src/components/{LogView,IconButton,RovingGroup}/**',
-];
 
 export const units = [
   {
@@ -15,7 +9,6 @@ export const units = [
     script: 'ui-next/shell/probes/logs-open-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/logs-open-probe.json' },
     seconds: 20,
-    paths: PATHS,
   },
 
   // The negative control of the probe of the rate at open: the replay is stamped with the instant it is delivered, so the view has no way to tell it from lines the source wrote just now and the strip reads the burst
@@ -27,6 +20,5 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['fresh'],
     seconds: 12,
-    paths: PATHS,
   },
 ];

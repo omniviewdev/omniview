@@ -1,35 +1,42 @@
-// The kit probes' units, the check that no probe is left out, the plan that decides at run time which controls run and which shard runs what, and the runner of a shard (N24 K1 to K3, then N25).
+// The kit probes' units, the check that no probe is left out, the plan that packs the units into shards at run time, the runner of a shard and the verification of the whole run (N24 K1 to K3, then N25).
 //
-//   node scripts/ci/probe-shards.mjs check                       exit 1, one line per problem: a probe script that no unit runs, a unit that does not hold together, a glob that matches no file
-//   node scripts/ci/probe-shards.mjs plan [--base <ref>]         what this run runs: selects the controls, packs the units into the fewest shards, writes `matrix=<json>` to $GITHUB_OUTPUT and the summary to the job summary
-//   node scripts/ci/probe-shards.mjs run <shard> <unit>,<unit>   runs the units of one shard, one after the other, and exits 1 when any run failed or a unit took more than its seconds allow
-//   --root <dir>                                                 another tree than this repository (the tests)
+//   node scripts/ci/probe-shards.mjs check                                 exit 1, one line per problem: a probe script that no unit runs, a unit that does not hold together, a probe or a control the manifest lists and the table lacks
+//   node scripts/ci/probe-shards.mjs plan                                  packs every unit into the fewest shards under LIMIT_SECONDS; writes `matrix=<json>` and `shards=<n>` to $GITHUB_OUTPUT and the plan to the job summary; fails when it would plan no shard
+//   node scripts/ci/probe-shards.mjs run <shard> <unit>,<unit>,...         runs the units of one shard, one after the other; exits 1 when a run failed, a unit took more than its seconds allow or the shard passed its ceiling;
+//                                                                          writes ran-<shard>-probe.json to $RUNNER_TEMP: the units it ran, whether each passed and the controls it ran
+//   node scripts/ci/probe-shards.mjs verify --reports <dir> --shards <n>   what the shards reported against the table: every unit, every control, once, passed, in as many shards as the plan made
+//   --root <dir>                                                           another tree than this repository (the tests)
 //
-// THE TABLE IS A DIRECTORY. One file for each probe in scripts/ci/probe-units/<probe>.mjs exports `units`: the unit that runs the probe and the units that run its negative controls (a probe's controls may be several
-// units, each one run once). A unit is `{ id, name, script, env?, controls?, seconds, paths }`: its id (the word the plan and the matrix use), its name (the step it replaced), the probe script, the env it runs with (`$RUNNER_TEMP`
-// and `$PROBE_DIST` are expanded from the runner's environment; a variable that is not set is an error), the controls it runs (one run each, with NEGATIVE_CONTROL set to it), the seconds it takes on the runner, and the globs
-// that select it. It declares no shard: no pull request chooses where a unit runs, so two that add units cannot conflict on that, and a PR that adds a probe adds a file.
+// EVERY PROBE AND EVERY CONTROL RUNS ON EVERY RUN. N25 first ran the controls by the paths a pull request changed, and dropped that after an independent review (docs/ui-next/status/N25.md): a control can go inert through a path no unit
+// lists while the probe and the kit's tests stay green, nothing reads the one run that would notice, and a pull request that touches only the new UI saves 9 percent on average. What is kept is what does not depend on it.
 //
-// WHICH CONTROLS RUN (scripts/ci/probe-select.mjs). A pull request runs every probe and the controls whose globs its changed paths match; everything else is a full run (a push to main, the nightly run, a re-run, a diff that
-// cannot be read, a change to what every control depends on). The summary of the plan says which control ran, which was skipped, and why.
+// THE TABLE IS A DIRECTORY. One file for each probe in scripts/ci/probe-units/<probe>.mjs exports `units`: the unit that runs the probe and the units that run its negative controls (a probe's controls may be several units, each control
+// run once). A unit is `{ id, name, script, env?, controls?, seconds }`: its id (the word the plan and the matrix use), its name (the step it replaced), the probe script, the env it runs with (`$RUNNER_TEMP` and `$PROBE_DIST` are expanded
+// from the runner's environment; a variable that is not set is an error), the controls it runs (one run each, with NEGATIVE_CONTROL set to it) and the seconds it takes on the runner. It declares no shard: no pull request chooses where
+// a unit runs, so two that add units cannot conflict on that, and a pull request that adds a probe adds a file.
 //
-// WHICH SHARD (scripts/ci/probe-pack.mjs). The selected units are packed at run time into the fewest shards that each stay under LIMIT_SECONDS, as even as that allows; the matrix of the shard jobs is the plan's output.
+// THE MANIFEST IS THE FLOOR. scripts/ci/probe-units.manifest.json lists every probe script that runs as a probe and every control of each: what CI proves. `check` fails when the manifest lists a probe or a control that no unit runs, so
+// a deleted control or probe is a diff in the manifest that a reviewer reads, and not a line that left a unit file. It is not a mirror: a unit that is not in it is not an error, so two pull requests that add probes do not both edit it.
 //
-// THE SECONDS ARE THE RUNNER'S AND ARE HELD. After a shard ran, each unit's real seconds are compared with the unit's `seconds`: past DRIFT_RATIO and DRIFT_FLOOR_SECONDS over, the shard FAILS and the message has the
-// number to put in the unit's file; past the same margin under, it warns. So the pull request that slowed a unit updates one number, and a shard cannot silently pass its limit again (K3 found shard 5 at 562 s on the runner
-// against 489 s in the table: a warning nobody acted on).
+// WHICH SHARD (scripts/ci/probe-pack.mjs). Every unit is packed at run time into the fewest shards that each stay under LIMIT_SECONDS, as even as that allows; the matrix of the shard jobs is the plan's output.
 //
-// ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units: a unit for the probe, and one for its negative controls. Run `node scripts/ci/probe-shards.mjs check`: it fails, naming
-// the file, for a probe that no unit runs. Put the seconds of the first run of the unit in `seconds` (the summary of its shard prints them). A probe CI is not to run goes in BY_HAND with the reason.
+// THE SECONDS ARE THE RUNNER'S AND ARE HELD. After a shard ran, each unit's real seconds are compared with the unit's `seconds`: past DRIFT_RATIO and DRIFT_FLOOR_SECONDS over, the shard FAILS and the message has the number to put in
+// the unit's file; past the same margin under, it warns. And the SHARD is held: the real seconds of all its units added up may not pass SHARD_CEILING_SECONDS, so that units that are each just inside their margin cannot make a shard
+// of 866 s (K3 found shard 5 at 562 s on the runner against 489 s in the table: a warning nobody acted on).
+//
+// THE WHOLE RUN IS VERIFIED. Each shard writes what it ran; the job named `Kit probes` reads them all and compares them with the table of its own checkout: every unit, every control of it, once, passed, in as many shards as the plan
+// made. A plan that was short, a shard that never reported and a unit that dropped out of the matrix are red, whatever the shards' own results said.
+//
+// ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units: a unit for the probe, and one for its negative controls. Run `node scripts/ci/probe-shards.mjs check`: it fails, naming the file,
+// for a probe that no unit runs. Put the seconds of the first run of the unit in `seconds` (the summary of its shard prints them). Add the probe and its controls to the manifest to keep them from being deleted unseen. A probe CI is not
+// to run goes in BY_HAND with the reason.
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, readdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { changedPaths } from './changes.mjs';
 import { pack } from './probe-pack.mjs';
-import { contextOf, globToRegExp, matches, selectControls, show } from './probe-select.mjs';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -42,27 +49,38 @@ export const WORKFLOW = '.github/workflows/ui-next-kit-probes.yml';
 /** The table: one file for each probe, each exporting `units`. */
 export const UNITS_DIRECTORY = 'scripts/ci/probe-units';
 
+/** The floor of what CI proves: `{ "<probe script>": { "probe": true, "controls": ["<control>", ...] } }`. */
+export const MANIFEST = 'scripts/ci/probe-units.manifest.json';
+
 /** Probe scripts CI does not run: each is run by hand, and is listed here, with the reason, so that "no unit runs it" is a decision someone wrote down and not something nobody noticed. Empty since N24 K2. */
 export const BY_HAND = [];
 
 /** The wall time a shard job is held to: 9 minutes, the job (its setup and its probes) from start to end. */
 export const WALL_BUDGET_SECONDS = 540;
-/** The 90th percentile of a shard job's setup (the job minus its probes' step) on the 56 shard jobs of 8 runs (median 88 s, maximum 118 s; docs/ui-next/status/N24-K3.md). */
+/** The 90th percentile of a shard job's setup (the job minus its probes' step) on the 70 shard jobs of 7 runs (median 87.5 s, maximum 137 s; docs/ui-next/status/N24-K3.md and N25.md). */
 export const SETUP_P90_SECONDS = 108;
-/** The most unit seconds a shard may hold: the budget less the setup, so that a shard at its seconds and a slow (90th percentile) setup is a job of 9 minutes. It moves only with that data, never to make a table fit. */
+/** The most unit seconds a shard may be PLANNED to hold: the budget less the setup, so that a shard at its seconds and a slow (90th percentile) setup is a job of 9 minutes. It moves only with that data, never to make a table fit. */
 export const LIMIT_SECONDS = WALL_BUDGET_SECONDS - SETUP_P90_SECONDS;
 
 /**
  * A unit that took more than this over its `seconds` fails its shard (a quarter of them)...
  * ...and more than this many seconds more. The two together are the margin: a quarter of the unit's seconds or this many seconds, whichever is more. Seven runs of 2026-11-21 and 22 (4,364 to 4,471 s of units, 235 unit runs)
- * against the seconds of run 44929041191: the most any unit took over them was 45 s (the controls of the log view on a slow machine, 166 s for 121 s; a unit is many short runs that each build the fixtures, and the shards of that
- * run took 30 percent more than the rest), and the floor is that and a third: 60 s. With 45 s none fails and the nearest is at the margin; with 30 s two do (docs/ui-next/status/N25.md has the data; probe-shards.test.mjs replays it).
+ * against the seconds of run 44929041191: the most any unit took over them was 45 s (the controls of the log view on a slow machine, 166 s for 121 s; a unit is many short runs that each build the fixtures), and the floor is that
+ * and a third: 60 s. With 45 s none fails and the nearest is at the margin; with 30 s two do (docs/ui-next/status/N25.md has the data; probe-shards.test.mjs replays it).
  */
 export const DRIFT_RATIO = 0.25;
 export const DRIFT_FLOOR_SECONDS = 60;
 
+/**
+ * The most the real seconds of ALL the units of a shard may add up to, whatever each unit's own margin allowed: the limit a shard is planned to (432 s) and a third more. Units that are each just inside their margin add up to 866 s in a
+ * shard of 386 s (the independent review of #656, `drift-bounds.mjs`); this is what stops that. From the data: the most a shard's units took, against what they were planned to, was +29 percent in 70 shard jobs of seven runs of the ten-shard table
+ * (569 s of units for 441 s on a slow machine), and +12 percent in the runs of this table (452 s for 407 s); a shard planned at the limit on a machine 29 percent slow is 557 s. The job is at most 600 s of units and 137 s of setup
+ * (the slowest of 70): 12.3 minutes, 61 percent of the 20 minutes its timeout allows (which the workflow test pins).
+ */
+export const SHARD_CEILING_SECONDS = 600;
+
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Which files are probe scripts, and what the tree holds
+// Which files are probe scripts
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /** A probe script is named `<thing>-probe.mjs`, or `<thing>-probe-<suffix>.mjs`: not `probe-lib.mjs`, the fixtures, the helpers, the mock measurers or the dev tools that share its directory. */
@@ -90,23 +108,8 @@ export function findProbeScripts(root, dirs = PROBE_DIRS) {
   return found.sort();
 }
 
-/** Every file of the tree under `root`, repository-relative with `/`, sorted: what a glob must match at least once. Neither `.git` nor `node_modules` is read. */
-export function listFiles(root) {
-  const files = [];
-  const walk = (relative) => {
-    for (const entry of readdirSync(path.join(root, relative), { withFileTypes: true })) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue;
-      const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
-      if (entry.isDirectory()) walk(child);
-      else files.push(child);
-    }
-  };
-  walk('');
-  return files.sort();
-}
-
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The table
+// The table and the manifest
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const firstLine = (text) => String(text).split('\n')[0].slice(0, 300);
@@ -153,19 +156,38 @@ export async function loadUnits(root = REPO_ROOT) {
   return { units, problems };
 }
 
+/** The manifest, `{ manifest, problems }`: `manifest` is null when the file cannot be read or has another shape, and `problems` says which. */
+export function loadManifest(root = REPO_ROOT) {
+  const problems = [];
+  const add = (message) => problems.push({ message, file: MANIFEST, title: 'Kit probe manifest' });
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(root, MANIFEST), 'utf8'));
+    const bad =
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      Object.values(parsed).some((entry) => entry === null || typeof entry !== 'object' || typeof entry.probe !== 'boolean' || !Array.isArray(entry.controls) || entry.controls.some((control) => typeof control !== 'string' || control === ''));
+    if (bad) add(`${MANIFEST} is not { "<probe script>": { "probe": true or false, "controls": ["<control>", ...] } }`);
+    else return { manifest: parsed, problems };
+  } catch (error) {
+    add(`${MANIFEST} cannot be read: ${firstLine(error.message)}`);
+  }
+  return { manifest: null, problems };
+}
+
 const ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const say = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 const quoted = (ids) => say(ids.map((id) => `"${id}"`));
 
 /**
  * The problems of a table, as `{ message, file?, title }`, one sentence each, each naming the file or the unit it is about.
- *   units    the units `loadUnits` gave
- *   byHand   `[{ script, reason }]`: probe scripts CI does not run
- *   found    the probe scripts that are on disk under the probe directories (findProbeScripts)
- *   exists   whether a repository-relative file is on disk
- *   files    every file of the tree (listFiles): what the globs of a unit must match
+ *   units     the units `loadUnits` gave
+ *   byHand    `[{ script, reason }]`: probe scripts CI does not run
+ *   found     the probe scripts that are on disk under the probe directories (findProbeScripts)
+ *   exists    whether a repository-relative file is on disk
+ *   manifest  the floor `loadManifest` gave, or null when it could not be read (loadManifest says why)
  */
-export function checkUnits({ units, byHand = BY_HAND, found, exists, files }) {
+export function checkUnits({ units, byHand = BY_HAND, found, exists, manifest = null }) {
   const problems = [];
   const add = (message, file, title = 'Kit probe units') => problems.push(file === undefined ? { message, title } : { message, file, title });
 
@@ -196,6 +218,7 @@ export function checkUnits({ units, byHand = BY_HAND, found, exists, files }) {
       if (typeof value !== 'string') add(`${where} sets ${key} to a ${typeof value}: an env value is a string`);
     }
     if (unit.env !== undefined && 'NEGATIVE_CONTROL' in unit.env) add(`${where} sets NEGATIVE_CONTROL in env: a negative control is listed in controls, which sets it`);
+    if ('paths' in unit) add(`${where} declares paths: units carry no globs since N25, every probe and every control runs on every run (${unit.file})`, unit.file);
     if (unit.controls !== undefined) {
       if (!Array.isArray(unit.controls) || unit.controls.length === 0) {
         add(`${where} has an empty controls list: it would run the probe zero times`);
@@ -212,33 +235,6 @@ export function checkUnits({ units, byHand = BY_HAND, found, exists, files }) {
 
     if (!Number.isInteger(unit.seconds) || unit.seconds < 1) add(`${where} has ${JSON.stringify(unit.seconds)} seconds: a whole, positive number of seconds is needed to plan it (the runner's, from the summary of its shard)`);
     else if (unit.seconds > LIMIT_SECONDS) add(`${where} is ${unit.seconds} s, over the ${LIMIT_SECONDS} s a shard may hold: split it (${unit.file})`);
-
-    if (!Array.isArray(unit.paths) || unit.paths.length === 0) {
-      add(`${where} declares no paths: a unit with no globs would never be selected (${unit.file})`, unit.file);
-    } else {
-      for (const glob of unit.paths) {
-        try {
-          globToRegExp(glob);
-        } catch (error) {
-          add(`${where} has a path glob that cannot be read: ${error.message}`, unit.file);
-          continue;
-        }
-        if (!files.some((file) => matches(glob, file))) {
-          add(`the glob ${JSON.stringify(glob)} of ${where} (${unit.file}) matches no file of the tree: the path moved or was mistyped, and a control that is never selected proves nothing`, unit.file);
-        }
-      }
-      if (typeof unit.script === 'string' && unit.script !== '') {
-        const readable = unit.paths.filter((glob) => {
-          try {
-            globToRegExp(glob);
-            return true;
-          } catch {
-            return false;
-          }
-        });
-        if (!readable.some((glob) => matches(glob, unit.script))) add(`${where} does not list its own script ${unit.script} in paths: a change to the probe must select it`, unit.file);
-      }
-    }
   }
 
   for (const [id, declaring] of ids) if (declaring.length > 1) add(`the id "${id}" is used by two units (${say(declaring)}): an id is one unit`);
@@ -266,6 +262,19 @@ export function checkUnits({ units, byHand = BY_HAND, found, exists, files }) {
         file,
         'Kit probe is in no unit',
       );
+    }
+  }
+
+  // The floor: what the manifest lists, the table must still run. A control may move to another unit of its probe; it may not leave.
+  if (manifest !== null) {
+    const edit = `If that is the change, delete it from ${MANIFEST} in the same pull request, so that the removal is a diff a reviewer reads`;
+    for (const [script, entry] of Object.entries(manifest)) {
+      const mine = units.filter((unit) => unit.script === script);
+      if (entry.probe && !mine.some((unit) => unit.controls === undefined)) add(`the probe ${script} is in ${MANIFEST} and no unit runs it: a probe was removed from CI. ${edit}`, script, 'Kit probe manifest');
+      const have = new Set(mine.flatMap((unit) => (Array.isArray(unit.controls) ? unit.controls : [])));
+      for (const control of entry.controls) {
+        if (!have.has(control)) add(`the control "${control}" of ${script} is in ${MANIFEST} and no unit runs it: a control was removed from CI. ${edit}`, script, 'Kit probe manifest');
+      }
     }
   }
   return problems;
@@ -300,17 +309,15 @@ export const readsDist = (unit) => Object.values(unit.env ?? {}).some((value) =>
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
- * What a run does: the controls selected by `changed` and `context` (probe-select.mjs), every probe, and the units packed into the fewest shards under `limit`. `shards` is `[{ shard, units: [{ id, seconds }], seconds, dist }]`
- * numbered from 1, the longest first; `dist` says whether a unit of it reads the ui-next build.
+ * What a run does: every unit, packed into the fewest shards under `limit`. `shards` is `[{ shard, units: [{ id, seconds }], seconds, dist }]` numbered from 1, the longest first; `dist` says whether a unit of it reads the ui-next
+ * build. A table with no unit plans no shard and is an error: an empty matrix is never emitted, and what GitHub does with one is not relied on.
  */
-export function planRun({ units, changed, context, limit = LIMIT_SECONDS }) {
-  const selection = selectControls({ units, changed, context });
-  const running = new Set(selection.units.filter((entry) => entry.run).map((entry) => entry.id));
-  const selected = units.filter((unit) => running.has(unit.id));
-  const packed = pack(selected.map((unit) => ({ id: unit.id, seconds: unit.seconds })), limit);
-  const dist = new Set(selected.filter(readsDist).map((unit) => unit.id));
+export function planRun({ units, limit = LIMIT_SECONDS }) {
+  const packed = pack(units.map((unit) => ({ id: unit.id, seconds: unit.seconds })), limit);
+  if (packed.length === 0) throw new Error('the plan has no shard: the table has no unit, and a run that runs nothing must not look green');
+  const dist = new Set(units.filter(readsDist).map((unit) => unit.id));
   const shards = packed.map((shard, index) => ({ shard: index + 1, units: shard.units, seconds: shard.seconds, dist: shard.units.some((entry) => dist.has(entry.id)) }));
-  return { selection, shards, changed: Array.isArray(changed) ? new Set(changed).size : null };
+  return { shards };
 }
 
 /** The matrix the shard jobs read: `{ include: [{ shard, units, seconds, dist }] }`, the units as their ids joined by commas. */
@@ -318,34 +325,19 @@ export function matrixOf(shards) {
   return { include: shards.map((shard) => ({ shard: shard.shard, units: shard.units.map((entry) => entry.id).join(','), seconds: shard.seconds, dist: shard.dist })) };
 }
 
-const SHOWN = 12;
-const cell = (text) => String(text).replaceAll('|', '\\|');
-const code = (text) => `\`${cell(text)}\``;
-
-/** The summary of a plan (Markdown): the mode and why, every control unit and whether it runs, the paths that decided it, and the shards. */
-export function renderPlan(result) {
-  const { selection, shards } = result;
-  const lines = [`### Kit probes plan: ${selection.mode === 'full' ? 'full run' : 'pull request, controls by change'}`, ''];
-  const probes = selection.units.filter((entry) => !entry.controls);
-  const controls = selection.units.filter((entry) => entry.controls);
-  const skipped = controls.filter((entry) => !entry.run);
-  lines.push(`${selection.mode === 'full' ? 'Every probe and every control runs' : 'Every probe runs, and the controls the changed paths reach'} (${selection.reason}).`, '');
-  const total = controls.reduce((sum, entry) => sum + entry.seconds, 0);
-  lines.push(`${probes.length} probes (always) and ${controls.length} control units: ${controls.length - skipped.length} run, ${skipped.length} skipped${result.changed === null ? '' : `, of ${result.changed} changed path${result.changed === 1 ? '' : 's'}`}. **${selection.skippedSeconds} s** of controls skipped, of ${total} s.`, '');
-  lines.push('| Control unit | Seconds | Result | Why |', '|---|--:|---|---|');
-  for (const entry of controls) lines.push(`| ${entry.id} | ${entry.seconds} | ${entry.run ? 'runs' : 'skipped'} | ${code(entry.why)} |`);
-  lines.push('');
-  const list = (title, items) => {
-    if (items.length === 0) return;
-    lines.push(`${title}`, '');
-    for (const item of items.slice(0, SHOWN)) lines.push(`- ${item}`);
-    if (items.length > SHOWN) lines.push(`- (${items.length - SHOWN} more)`);
-    lines.push('');
-  };
-  list('These paths made every control run:', selection.forced.map((entry) => `${code(entry.path)}: ${cell(entry.why)}`));
-  list('Paths of the new UI that no unit declares (they select nothing):', selection.undeclared.map((file) => code(show(file))));
-  if (selection.ignored.length > 0) lines.push(`${selection.ignored.length} changed path${selection.ignored.length === 1 ? ' is' : 's are'} read by no probe (documentation, Markdown, tests of vitest).`, '');
-  lines.push(`${shards.length} shard${shards.length === 1 ? '' : 's'}, at most ${LIMIT_SECONDS} s of units each:`, '', '| Shard | Seconds | Units |', '|---|--:|---|');
+/** The summary of a plan (Markdown): the counts, and every shard with its units. */
+export function renderPlan({ shards }, units) {
+  const controlUnits = units.filter((unit) => unit.controls !== undefined);
+  const controls = controlUnits.reduce((sum, unit) => sum + unit.controls.length, 0);
+  const work = units.reduce((sum, unit) => sum + unit.seconds, 0);
+  const lines = [
+    '### Kit probes plan',
+    '',
+    `Every probe and every control runs: ${units.length - controlUnits.length} probes and ${controlUnits.length} control units (${controls} controls), ${work} s of units in ${shards.length} shard${shards.length === 1 ? '' : 's'} of at most ${LIMIT_SECONDS} s each.`,
+    '',
+    '| Shard | Seconds | Units |',
+    '|---|--:|---|',
+  ];
   for (const shard of shards) lines.push(`| ${shard.shard} | ${shard.seconds} | ${shard.units.map((entry) => `${entry.id} ${entry.seconds}`).join(', ')} |`);
   return `${lines.join('\n')}\n`;
 }
@@ -424,11 +416,12 @@ export function renderSummary(id, results) {
 }
 
 /**
- * The drift of each unit of the shard from its seconds: `{ failures, warnings, rows }`. A unit's seconds on this runner are those of its runs added up (a unit with a run that failed is left out: the seconds of a probe that
- * stopped early or hung say nothing of its cost). It FAILS when it took more than `max(floor, ratio of its seconds)` over its seconds, with the number to put in its file in the message; it only warns when it took more than
- * that under. A unit the table does not have fails: a run that is not in the table is a table that is out of date.
+ * The drift of each unit of the shard from its seconds, and of the shard from its ceiling: `{ failures, warnings, rows, shard }`. A unit's seconds on this runner are those of its runs added up (a unit with a run that failed is left
+ * out of the unit rows: the seconds of a probe that stopped early or hung say nothing of its cost). It FAILS when it took more than `max(floor, ratio of its seconds)` over its seconds, with the number to put in its file in the
+ * message; it only warns when it took more than that under. A unit the table does not have fails: a run that is not in the table is a table that is out of date. The SHARD fails when all its runs added up (a failed one too) passed
+ * `ceiling`, with the numbers of every unit in the message.
  */
-export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS } = {}) {
+export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS, ceiling = SHARD_CEILING_SECONDS } = {}) {
   const ran = new Map();
   for (const result of results) {
     if (result.unit === undefined) continue;
@@ -453,7 +446,7 @@ export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor =
     const delta = took - unit.seconds;
     const margin = Math.max(floor, ratio * unit.seconds);
     const verdict = delta > margin ? 'slower' : -delta > margin ? 'faster' : 'ok';
-    rows.push({ id: unit.id, name: unit.name, file: unit.file, table: unit.seconds, took, delta, verdict: verdict === 'ok' ? 'ok' : verdict });
+    rows.push({ id: unit.id, name: unit.name, file: unit.file, table: unit.seconds, took, delta, verdict });
     if (verdict === 'ok') continue;
     const percent = whole((Math.abs(delta) / unit.seconds) * 100);
     const lead = `${unit.name} (${unit.id}) took ${took} s on this runner, ${unit.seconds} s in ${unit.file} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s, ${percent} percent`;
@@ -463,45 +456,151 @@ export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor =
       warnings.push(`::warning title=${title}::${escapeData(`${lead}; a unit warns past ${quarter} and ${floor} s under): put \`seconds: ${took}\` there so that the planner can use the room`)}`);
     }
   }
-  return { failures, warnings, rows };
+
+  const took = whole(results.reduce((sum, result) => sum + result.seconds, 0));
+  const planned = [...ran.keys()].reduce((sum, unitId) => sum + (units.find((candidate) => candidate.id === unitId)?.seconds ?? 0), 0);
+  const shard = { took, planned, ceiling, units: ran.size };
+  if (took > ceiling) {
+    const parts = [...ran.entries()].map(([unitId, entry]) => `${unitId} ${whole(entry.seconds)} s of ${units.find((candidate) => candidate.id === unitId)?.seconds ?? '?'}`);
+    failures.push(
+      `::error title=Kit probe shard seconds (shard ${id})::${escapeData(
+        `shard ${id} took ${took} s of units on this runner, over the ${ceiling} s a shard may take (${planned} s in the table for its ${ran.size} unit${ran.size === 1 ? '' : 's'}: ${parts.join(', ')}): a shard is planned at ${LIMIT_SECONDS} s at most, so a machine or a probe that is more than ${whole((ceiling / LIMIT_SECONDS - 1) * 100)} percent slow got past the margin of each unit; find which and put its new seconds in its file (${UNITS_DIRECTORY})`,
+      )}`,
+    );
+  }
+  return { failures, warnings, rows, shard };
 }
 
-/** The seconds of each unit of a shard against the table's (Markdown). */
-export function renderDrift(id, rows) {
+const cell = (text) => String(text).replaceAll('|', '\\|');
+
+/** The seconds of each unit of a shard against the table's, and the shard's against its ceiling (Markdown). */
+export function renderDrift(id, rows, shard) {
   const lines = [`#### Kit probes shard ${id}: seconds against the table`, '', '| Unit | Table s | This run s | Difference | |', '|---|--:|--:|--:|---|'];
   for (const row of rows) lines.push(`| ${cell(row.id)} | ${row.table} | ${row.took} | ${row.delta > 0 ? '+' : ''}${row.delta} | ${row.verdict === 'ok' ? '' : row.verdict === 'slower' ? '**over**' : 'under'} |`);
+  lines.push('', `The shard took ${shard.took} s of units against ${shard.planned} s in the table; it fails past ${shard.ceiling} s.`);
   return `${lines.join('\n')}\n`;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// What a shard ran, and the verification of the whole run
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** What a shard reports of itself: `{ shard, units: [{ id, ok, runs, controls }] }`, for each unit whether every run passed, how many runs it made and which controls it ran. */
+export function ranReport(shard, results) {
+  const units = new Map();
+  for (const result of results) {
+    if (result.unit === undefined) continue;
+    const entry = units.get(result.unit) ?? { id: result.unit, ok: true, runs: 0, controls: [] };
+    entry.ok &&= result.ok;
+    entry.runs += 1;
+    if (result.control !== null && result.control !== undefined) entry.controls.push(result.control);
+    units.set(result.unit, entry);
+  }
+  return { shard: Number.isInteger(Number(shard)) ? Number(shard) : shard, units: [...units.values()] };
+}
+
+/** Every `ran-<n>-probe.json` under `dir`, parsed, at any depth (each artifact is a directory of its own). A directory that is not there is an error for the caller. */
+export function readReports(dir) {
+  const reports = [];
+  const problems = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (/^ran-\d+-probe\.json$/.test(entry.name)) {
+        try {
+          reports.push(JSON.parse(readFileSync(file, 'utf8')));
+        } catch (error) {
+          problems.push(`${entry.name} is not JSON: ${firstLine(error.message)}`);
+        }
+      }
+    }
+  };
+  walk(dir);
+  return { reports, problems };
+}
+
+/**
+ * The problems of a whole run, one sentence each: what the shards reported against the table of this checkout (`units`) and the number of shards the plan made (`shards`, as the plan's output gave it). Every unit must have run once, in a
+ * shard that was planned, passed, with every control it has; no shard may be missing, nor any unit be one the table does not have; and a plan of no shard, or of one that cannot be read, runs nothing.
+ */
+export function verifyRan({ units, reports, shards }) {
+  const problems = [];
+  const planned = /^\d+$/.test(String(shards)) ? Number(shards) : Number.NaN;
+  if (!Number.isInteger(planned) || planned < 1) problems.push(`the plan says "${shards}" shards: a run has at least one shard, and an empty or unreadable plan runs nothing`);
+
+  const seen = new Map();
+  for (const report of reports) {
+    if (report === null || typeof report !== 'object' || !Number.isInteger(report.shard) || !Array.isArray(report.units)) {
+      problems.push(`a shard report is not { shard, units }: ${JSON.stringify(report)?.slice(0, 120)}`);
+      continue;
+    }
+    if (seen.has(report.shard)) problems.push(`shard ${report.shard} reported twice`);
+    seen.set(report.shard, report);
+  }
+  if (planned >= 1) {
+    const missing = [];
+    for (let n = 1; n <= planned; n += 1) if (!seen.has(n)) missing.push(n);
+    if (missing.length > 0) problems.push(`the plan made ${planned} shards and ${missing.length === 1 ? 'shard' : 'shards'} ${say(missing)} did not report: its units did not run, or the shard stopped before it could say`);
+    for (const n of seen.keys()) if (n > planned) problems.push(`shard ${n} reported and the plan made ${planned} shards`);
+  }
+
+  const where = new Map();
+  for (const [n, report] of seen) {
+    for (const entry of report.units) where.set(entry.id, [...(where.get(entry.id) ?? []), { shard: n, entry }]);
+  }
+  const known = new Set(units.map((unit) => unit.id));
+  for (const unit of units) {
+    const found = where.get(unit.id) ?? [];
+    if (found.length === 0) {
+      problems.push(`the unit "${unit.id}" ran in no shard`);
+      continue;
+    }
+    if (found.length > 1) problems.push(`the unit "${unit.id}" ran in ${found.length} shards (${say(found.map((one) => one.shard))}): a unit runs once`);
+    const { shard, entry } = found[0];
+    if (entry.ok !== true) problems.push(`the unit "${unit.id}" did not pass in shard ${shard}`);
+    const expected = unit.controls?.length ?? 1;
+    if (unit.controls !== undefined) {
+      const ran = new Set(entry.controls ?? []);
+      const lacking = unit.controls.filter((control) => !ran.has(control));
+      if (lacking.length > 0) problems.push(`the unit "${unit.id}" ran in shard ${shard} without the control${lacking.length === 1 ? '' : 's'} ${lacking.join(', ')}`);
+    }
+    if (entry.runs !== expected) problems.push(`the unit "${unit.id}" made ${entry.runs} runs in shard ${shard} and the table has ${expected}`);
+  }
+  for (const id of where.keys()) if (!known.has(id)) problems.push(`a shard ran the unit "${id}", which the table does not have`);
+  return problems;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The command
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const USAGE = 'usage: node scripts/ci/probe-shards.mjs [--root <repository>] check | plan [--base <ref>] [--head <ref>] | run <shard> <unit>,<unit>,...';
+const USAGE = 'usage: node scripts/ci/probe-shards.mjs [--root <repository>] check | plan | run <shard> <unit>,<unit>,... | verify --reports <directory> --shards <n>';
 
 export async function main(
   argv = process.argv.slice(2),
   { units: given, byHand = BY_HAND, env = process.env, out = (text) => process.stdout.write(text), err = (text) => process.stderr.write(text), margin = {} } = {},
 ) {
   let root = REPO_ROOT;
-  let base = 'HEAD^1';
-  let head = 'HEAD';
+  let reportsDir;
+  let planned;
   const words = [];
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--root' && argv[i + 1] !== undefined) root = path.resolve(argv[(i += 1)]);
-    else if (argv[i] === '--base' && argv[i + 1] !== undefined) base = argv[(i += 1)];
-    else if (argv[i] === '--head' && argv[i + 1] !== undefined) head = argv[(i += 1)];
+    else if (argv[i] === '--reports' && argv[i + 1] !== undefined) reportsDir = argv[(i += 1)];
+    else if (argv[i] === '--shards' && argv[i + 1] !== undefined) planned = argv[(i += 1)];
     else words.push(argv[i]);
   }
   const [verb, shard, ids] = words;
-  const arity = { check: 1, plan: 1, run: 3 };
-  if (!Object.hasOwn(arity, verb) || words.length !== arity[verb] || (verb === 'run' && (shard === undefined || ids === undefined || ids === ''))) {
+  const arity = { check: 1, plan: 1, run: 3, verify: 1 };
+  if (!Object.hasOwn(arity, verb) || words.length !== arity[verb] || (verb === 'run' && (shard === undefined || ids === undefined || ids === '')) || (verb === 'verify' && (reportsDir === undefined || planned === undefined))) {
     err(`${USAGE}\n`);
     return 2;
   }
 
   const loaded = given === undefined ? await loadUnits(root) : { units: given, problems: [] };
   const units = loaded.units;
+  const controlsOf = units.reduce((sum, unit) => sum + (unit.controls?.length ?? 0), 0);
 
   if (verb === 'check') {
     let found;
@@ -511,14 +610,15 @@ export async function main(
       err(`probe-shards: ${error.message}\n`);
       return 1;
     }
-    const problems = [...loaded.problems, ...checkUnits({ units, byHand, found, exists: (file) => existsSync(path.join(root, file)), files: listFiles(root) })];
+    const { manifest, problems: manifestProblems } = loadManifest(root);
+    const problems = [...loaded.problems, ...manifestProblems, ...checkUnits({ units, byHand, found, exists: (file) => existsSync(path.join(root, file)), manifest })];
     for (const problem of problems) {
       if (env.GITHUB_ACTIONS === 'true') out(`::error ${problem.file === undefined ? '' : `file=${problem.file},`}title=${problem.title}::${escapeData(problem.message)}\n`);
       else err(`probe-shards: ${problem.message}\n`);
     }
     if (problems.length > 0) return 1;
     const scripts = new Set(units.map((unit) => unit.script));
-    out(`probe-shards: ok (${units.length} units, ${units.filter((unit) => unit.controls !== undefined).length} control units, ${scripts.size} probe scripts, ${byHand.length} by hand)\n`);
+    out(`probe-shards: ok (${units.length} units, ${units.filter((unit) => unit.controls !== undefined).length} control units, ${controlsOf} controls, ${scripts.size} probe scripts, ${byHand.length} by hand)\n`);
     return 0;
   }
 
@@ -528,48 +628,48 @@ export async function main(
   }
 
   if (verb === 'plan') {
-    const event = env.GITHUB_EVENT_NAME;
-    let context = contextOf({ event, attempt: env.GITHUB_RUN_ATTEMPT });
-    let changed = null;
-    const typed = String(env.CHANGED_PATHS ?? '').split('\n').map((line) => line.trim()).filter((line) => line !== '');
-    if (event === 'workflow_dispatch' && typed.length > 0) {
-      // A dispatch that lists paths rehearses the pull request that would change them (the same selection, on the runner, without a pull request).
-      context = { mode: 'by-change', reason: `a rehearsal of a pull request that changes the ${typed.length} path${typed.length === 1 ? '' : 's'} of the dispatch input` };
-      changed = typed;
-    } else if (context.mode === 'by-change') {
-      try {
-        changed = changedPaths({ root, base, head, env });
-      } catch (error) {
-        const message = show(error.message);
-        err(`probe-shards: ${message}\n`);
-        if (env.GITHUB_ACTIONS === 'true') out(`::warning title=Kit probes plan::${escapeData(`${message}: every control runs`)}\n`);
-      }
-    }
     let result;
     try {
-      result = planRun({ units, changed, context });
+      result = planRun({ units });
     } catch (error) {
       err(`probe-shards: ${error.message}\n`);
       return 1;
     }
-    const text = renderPlan(result);
+    const text = renderPlan(result, units);
     out(text);
     const matrix = matrixOf(result.shards);
     try {
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\n`);
-      if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nshards=${matrix.include.length}\nmode=${result.selection.mode}\n`);
+      if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nshards=${matrix.include.length}\n`);
     } catch (error) {
-      err(`probe-shards: could not write the outputs: ${show(error.message)}\n`);
+      err(`probe-shards: could not write the outputs: ${firstLine(error.message)}\n`);
       return 1;
     }
     return 0;
   }
 
+  if (verb === 'verify') {
+    let read;
+    try {
+      read = readReports(path.resolve(reportsDir));
+    } catch (error) {
+      err(`probe-shards: cannot read the reports in ${reportsDir}: ${firstLine(error.message)}\n`);
+      return 1;
+    }
+    const problems = [...read.problems, ...verifyRan({ units, reports: read.reports, shards: planned })];
+    for (const message of problems) {
+      if (env.GITHUB_ACTIONS === 'true') out(`::error title=Kit probes::${escapeData(message)}\n`);
+      else err(`probe-shards: ${message}\n`);
+    }
+    if (problems.length > 0) return 1;
+    out(`probe-shards: ok (${units.length} units and ${controlsOf} controls ran once and passed, in ${read.reports.length} shards)\n`);
+    return 0;
+  }
+
   // run
-  const wanted = ids.split(',');
   const table = new Map(units.map((unit) => [unit.id, unit]));
   const chosen = [];
-  for (const unitId of wanted) {
+  for (const unitId of ids.split(',')) {
     if (!table.has(unitId)) {
       err(`probe-shards: no unit "${unitId}" (the units are ${[...table.keys()].join(', ')})\n`);
       return 2;
@@ -589,10 +689,19 @@ export async function main(
   }
   const summary = renderSummary(shard, results);
   const found = driftFindings(shard, results, units, margin);
-  const drift = renderDrift(shard, found.rows);
+  const drift = renderDrift(shard, found.rows, found.shard);
   out(`\n${summary}\n${drift}\n`);
   for (const line of [...found.warnings, ...found.failures]) out(`${line}\n`);
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n${drift}\n`);
+  if (env.RUNNER_TEMP) {
+    try {
+      mkdirSync(env.RUNNER_TEMP, { recursive: true });
+      writeFileSync(path.join(env.RUNNER_TEMP, `ran-${shard}-probe.json`), `${JSON.stringify(ranReport(shard, results), null, 2)}\n`);
+    } catch (error) {
+      err(`probe-shards: could not write what this shard ran: ${firstLine(error.message)}\n`);
+      return 1;
+    }
+  }
   return results.every((result) => result.ok) && found.failures.length === 0 ? 0 : 1;
 }
 

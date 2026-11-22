@@ -7,6 +7,5 @@ export const units = [
     script: 'ui-next/shell/probes/rail-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/rail-probe.json' },
     seconds: 17,
-    paths: ['ui-next/shell/**'],
   },
 ];

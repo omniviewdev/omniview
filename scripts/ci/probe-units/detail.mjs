@@ -6,6 +6,5 @@ export const units = [
     name: 'Probe the detail page against the pinned mock reference',
     script: 'ui-next/page/probes/detail-probe.mjs',
     seconds: 19,
-    paths: ['ui-next/page/**', 'ui-next/shell/**', 'packages/kit/probes/{mock-detail.json,mock-detail-measure.mjs}'],
   },
 ];

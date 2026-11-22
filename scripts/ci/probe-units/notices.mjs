@@ -6,8 +6,6 @@
 // eleven scenes) within 1 px and its paint exactly, axe on the bell and the open centre in the nine themes, the keyboard with real key presses, what 500 records cost (the open in under two frames, 50 rows drawn), a closed
 // centre that holds no listener, observer or timer, and one commit for a new notice; at 1440 x 900 and 1280 x 800 in both engines. It builds its own fixtures (production, and development for the commit counts), so it does
 // not read PROBE_DIST.
-const PROBE = ['ui-next/shell/probes/{notices-*,centre-targets.mjs,mock-notices.json,mock-notices-measure.mjs,mock-notice-centre.json,mock-notice-centre-measure.mjs,palette-perf.mjs}'];
-const NOTICES = ['ui-next/shell/{notices,core/notices}/**', 'ui-next/shell/StatusBar.*', 'ui-next/shell/testing.tsx'];
 
 export const units = [
   {
@@ -16,7 +14,6 @@ export const units = [
     script: 'ui-next/shell/probes/notices-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/notices-probe.json' },
     seconds: 363,
-    paths: [...PROBE, 'ui-next/shell/**'],
   },
 
   // The negative controls of the toast probe, each perturbs one measured value in the page after it loaded and passes only when the probe sees it, on the section that must (Chromium, 1440 x 900); with that assertion
@@ -32,7 +29,6 @@ export const units = [
       'toast-width', 'gap', 'retry-paint', 'no-alert', 'no-live', 'told-twice', 'steals-focus', 'f6-first', 'no-restore', 'sticky-closes', 'no-hold', 'hover-stuck', 'modal-leaks', 'timer-left', 'layout-shift', 'no-avoid', 'covers', 'yield-stop', 'yield-expires', 'yield-drops-focus',
     ],
     seconds: 214,
-    paths: [...PROBE, ...NOTICES],
   },
 
   // The notification centre's fourteen: a popover 20 px too wide, a row 2 px too tall, the bell's dot in the wrong colour, a bell dot that is a number, a Filter menu 20 px off, an unnamed dialog, a centre that Escape does
@@ -47,6 +43,5 @@ export const units = [
       'centre-width', 'centre-row', 'centre-dot', 'centre-bell-number', 'centre-menu-offset', 'centre-no-name', 'centre-escape', 'centre-focus', 'centre-outside', 'centre-two-stops', 'centre-listener-left', 'centre-timer-left', 'centre-second-commit', 'centre-slow-open',
     ],
     seconds: 170,
-    paths: [...PROBE, ...NOTICES],
   },
 ];

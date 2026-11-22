@@ -11,8 +11,6 @@
 // replacement. The toolbar (P1b-4a, section `toolbar`): the column and its five buttons, their glyphs and paint, against the mock's own measurement (mock-logs-toolbar.json, both engines), their names, states, tooltips and
 // reasons, the keys of a vertical toolbar, Pause that holds the stream and counts the lines it holds, Follow, Clear, Copy that writes every line the list draws with its source, UTC, what a session chose and keeps, the level
 // filter, and a panel too short for every button, where the last buttons are behind the `⋯` More actions menu. It builds its own fixtures, so it does not read PROBE_DIST.
-const PROBE = ['ui-next/shell/probes/{logs-probe.mjs,host-fixture.*,mock-logs-toolbar.json,mock-logs-toolbar-measure.mjs}'];
-const KIT = ['packages/kit/src/components/{LogView,IconButton,RovingGroup}/**', 'packages/kit/src/log/**'];
 
 export const units = [
   {
@@ -21,7 +19,6 @@ export const units = [
     script: 'ui-next/shell/probes/logs-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/logs-probe.json' },
     seconds: 395,
-    paths: [...PROBE, ...KIT, 'ui-next/shell/**', 'ui-next/plugins/**', 'ui-next/page/**'],
   },
 
   // The negative controls of the Logs probe, first group: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other
@@ -34,7 +31,6 @@ export const units = [
     script: 'ui-next/shell/probes/logs-probe.mjs',
     controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines'],
     seconds: 170,
-    paths: [...PROBE, ...KIT, 'ui-next/shell/{panel,core/panel,session}/**', 'ui-next/plugins/{host,contract}/**', 'ui-next/plugins/fixture/src/logs.ts', 'ui-next/plugins/testing.ts'],
   },
 
   // The negative controls of the Logs probe, second group, the toolbar's (P1b-4a): the toolbar's column stands 3 px from where the mock's does, the view draws lines while the toolbar says paused, a copy names no source, the
@@ -46,6 +42,5 @@ export const units = [
     script: 'ui-next/shell/probes/logs-probe.mjs',
     controls: ['toolbar-moved', 'pause-leaks', 'copy-no-source', 'clear-miscount', 'state-lost', 'more-missing', 'pause-commits', 'toolbar-timer'],
     seconds: 212,
-    paths: [...PROBE, ...KIT, 'ui-next/shell/{panel,core/panel}/**', 'ui-next/plugins/host/{PluginHost,panel,panelHost}.*', 'ui-next/plugins/fixture/src/logs.ts', 'ui-next/plugins/testing.ts'],
   },
 ];

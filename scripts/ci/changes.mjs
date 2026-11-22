@@ -43,10 +43,8 @@ const NEW_UI_ROOTS = ['ui-next/', 'packages/kit/', 'docs/ui-next/'];
 
 // The new UI's own tooling: files that only a check which stays for a change to the new UI reads, or that no workflow reads at all (docs/ui-next/status/N24-D1.md has the search for each).
 // A new probe or control is a unit file of the probe table, so every pull request that adds one changes it: it must not turn a change to the new UI into a change to everything.
-//   scripts/ci/probe-units/                             the probe table, one file for each probe (N25): the kit probes workflow (the plan and every shard) is the only reader
-//   scripts/ci/probe-shards.mjs, probe-shards.test.mjs  the engine of the table (the same workflow is the only reader), and since N25 its selection and packing, their tests and their data:
-//   scripts/ci/probe-select.*, probe-pack.*, probe-shards.runs.json
-//   scripts/ci/probe-shards.mjs imports ./changes.mjs (the classifier below) and nothing else of scripts/ci reads the files above
+//   scripts/ci/probe-units/, probe-units.manifest.json  the probe table, one file for each probe, and the floor of what it must hold (N25): the kit probes workflow (the plan, every shard and `Kit probes`) is the only reader
+//   scripts/ci/probe-shards.mjs, probe-pack.mjs, their tests and probe-shards.runs.json  the engine of the table (the same workflow is the only reader): the check, the packing, the runner and the verification
 //   scripts/ui-next-pods/                               the Pods cluster check is the only reader
 //   scripts/ui-next-bundle.mjs                          scripts/ui-flavour.test.mjs, in the UI build job
 //   bench/table/, bench/log/                            the kit's benches: no workflow runs them (the UI lint job lints them)
@@ -55,11 +53,9 @@ const NEW_UI_TOOLING_FILES = new Set([
   'scripts/ci/probe-shards.mjs',
   'scripts/ci/probe-shards.test.mjs',
   'scripts/ci/probe-shards.runs.json',
-  'scripts/ci/probe-select.mjs',
-  'scripts/ci/probe-select.test.mjs',
-  'scripts/ci/probe-select.prs.json',
   'scripts/ci/probe-pack.mjs',
   'scripts/ci/probe-pack.test.mjs',
+  'scripts/ci/probe-units.manifest.json',
   'scripts/ui-next-bundle.mjs',
 ]);
 

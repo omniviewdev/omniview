@@ -2,11 +2,6 @@
 // the face, the message lane in each kind, the label, the switch, the number field, the select and the secret, at rest and in each state with real focus and the pointer, in Void and in Light; every example in every state of
 // the field model; a typed secret that is found nowhere in the page but the live input; the keyboard paths; the paints of the parts in the nine themes; and axe, at 1440 x 900 and 1280 x 800 in both engines. It reads the
 // ui-next build the shard makes.
-const PATHS = [
-  'packages/kit/probes/{form-probe.mjs,form-cases.mjs,mock-form.json,mock-form-measure.mjs}',
-  'packages/kit/src/components/{Field,FormControl,TextInput,NumberInput,Toggle,Select,SecretInput}/**',
-  'ui-next/parts/**',
-];
 
 export const units = [
   {
@@ -15,7 +10,6 @@ export const units = [
     script: 'packages/kit/probes/form-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/form-probe.json' },
     seconds: 37,
-    paths: PATHS,
   },
 
   // The negative controls of the form probe: each plants one fault in the page after it loaded, and the fault trips the one assertion it is named for and no other (a text field at rest 4 px taller, a code-face field in the
@@ -29,6 +23,5 @@ export const units = [
     env: { DIST: '$PROBE_DIST' },
     controls: ['face-height', 'mono-font', 'lane-offset', 'track-width', 'stepper-pad', 'label-for', 'switch-pressable', 'step-tab-stop', 'select-unblocked', 'secret-attribute'],
     seconds: 36,
-    paths: PATHS,
   },
 ];

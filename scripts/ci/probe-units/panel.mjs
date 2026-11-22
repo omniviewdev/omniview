@@ -7,8 +7,6 @@
 //
 // The negative controls (14, 480 s in one unit until N25) are three units, split by what the control perturbs and not by what it asserts; no control was changed. Each perturbs one measured value in the page and
 // passes only when the probe sees it.
-const PROBE = ['ui-next/shell/probes/{panel-probe.mjs,fixture.*,host-fixture.*,mock-panel.json,mock-panel-measure.mjs}'];
-const PANEL = ['ui-next/shell/{panel,core/panel}/**', 'ui-next/shell/testing.tsx'];
 
 export const units = [
   {
@@ -17,7 +15,6 @@ export const units = [
     script: 'ui-next/shell/probes/panel-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/panel-probe.json' },
     seconds: 291,
-    paths: [...PROBE, 'ui-next/shell/**', 'ui-next/plugins/{host,contract,fixture,loader}/**', 'ui-next/plugins/testing.ts', 'ui-next/page/**'],
   },
 
   // The frame of the panel: the region's height, the gap between a session's glyph and its name, the toggle's place, a tool tab's padding, the sidebar's place when the panel opens, and a write at the document root during a
@@ -28,7 +25,6 @@ export const units = [
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write'],
     seconds: 215,
-    paths: [...PROBE, ...PANEL, 'ui-next/shell/{Shell,StatusBar,StatusToggle,Sidebar}.*', 'ui-next/shell/core/regions.ts'],
   },
 
   // The sessions their plugin's unload kept (A21): the tab of the held session is not drawn, nor is the tab of the one that had ended on its own, a tab moves, the Open button can be pressed while the plugin is off. They run
@@ -39,7 +35,6 @@ export const units = [
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled'],
     seconds: 160,
-    paths: [...PROBE, ...PANEL, 'ui-next/shell/session/**', 'ui-next/plugins/{host,contract}/**', 'ui-next/plugins/fixture/src/{logs,panel}.*', 'ui-next/plugins/testing.ts'],
   },
 
   // The scope of a session tab (A22): the twins' scope part is 3 px off the mock's, a tab with no twin draws a scope, the tab left when its twin closes still draws one, the name of a scoped tab leaves its scope out.
@@ -49,6 +44,5 @@ export const units = [
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'],
     seconds: 105,
-    paths: [...PROBE, ...PANEL, 'ui-next/plugins/host/{panel,panelHost,PluginHost}.*'],
   },
 ];

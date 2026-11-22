@@ -8,10 +8,5 @@ export const units = [
     script: 'packages/kit/probes/kit-probe-bc.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/bc-probe.json' },
     seconds: 206,
-    paths: [
-      'packages/kit/probes/{kit-probe-bc.mjs,mock-atoms-bc.json,mock-measure-bc.mjs}',
-      'packages/kit/src/components/{Chip,Status,MissingValue,KindTile,QuickFilters,RovingGroup,MiddleEllipsis}/**',
-      'ui-next/parts/**',
-    ],
   },
 ];

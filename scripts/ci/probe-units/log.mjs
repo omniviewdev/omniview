@@ -2,12 +2,6 @@
 // header, the rows, the filter row in five states (nothing in it moves), the Tab stops and the list's keys with real key presses, the `copy` event as plain text, the Source column of a log that follows several sources (the
 // mock's own measurement of it, and the tooltip a cut name shows on a real hover), and axe, in WebKit and Chromium at 1440 x 900 and 1280 x 800. What differs from the mock on purpose is listed in the probe (KNOWN_DEVIATIONS),
 // each with its approval. It reads the ui-next build the shard makes.
-const PATHS = [
-  'packages/kit/probes/{log-probe.mjs,log-shots.mjs,mock-log.json,mock-log-measure.mjs}',
-  'packages/kit/src/components/{LogView,IconButton,RovingGroup}/**',
-  'packages/kit/src/log/**',
-  'ui-next/parts/**',
-];
 
 export const units = [
   {
@@ -16,7 +10,6 @@ export const units = [
     script: 'packages/kit/probes/log-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/log-probe.json' },
     seconds: 188,
-    paths: PATHS,
   },
 
   // The negative controls of the log view probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's height, the copy event,
@@ -28,6 +21,5 @@ export const units = [
     env: { DIST: '$PROBE_DIST' },
     controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
     seconds: 121,
-    paths: PATHS,
   },
 ];

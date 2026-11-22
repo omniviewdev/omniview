@@ -3,7 +3,6 @@
 // the slow one's, the active row where the user left it when a late section arrives), what a key costs a page that a provider holds, the commits of a key and of an answer, nothing outside the palette moving, a closed
 // palette doing no provider work, and the states (a provider that throws, never answers or answers after it was told to stop; a plugin that leaves while the palette is open), with axe. It builds its own fixtures, so it does
 // not read PROBE_DIST.
-const PROBE = ['ui-next/shell/probes/palette-*'];
 
 export const units = [
   {
@@ -12,7 +11,6 @@ export const units = [
     script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/palette-plugins-probe.json' },
     seconds: 154,
-    paths: [...PROBE, 'ui-next/shell/**', 'ui-next/plugins/{host,contract,fixture,loader}/**', 'ui-next/plugins/testing.ts', 'ui-next/page/detailIdentity.ts'],
   },
 
   // The negative controls of the plugin providers probe: each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
@@ -25,15 +23,5 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
     seconds: 113,
-    paths: [
-      ...PROBE,
-      'ui-next/shell/testing.tsx',
-      'ui-next/shell/{palette,core/palette,tabs,core/tabs}/**',
-      'ui-next/shell/StatusBar.*',
-      'ui-next/plugins/host/{palette,paletteProviders,contributions,published,rail,route,connectionName,panel}.ts',
-      'ui-next/plugins/contract/**',
-      'ui-next/plugins/fixture/src/{palette,items}.ts',
-      'ui-next/plugins/testing.ts',
-    ],
   },
 ];

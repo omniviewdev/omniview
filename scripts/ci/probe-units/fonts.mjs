@@ -6,6 +6,5 @@ export const units = [
     script: 'packages/kit/probes/fonts-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' },
     seconds: 35,
-    paths: ['packages/kit/probes/fonts-probe.mjs', 'packages/kit/fonts/**', 'packages/kit/src/styles/fonts.css'],
   },
 ];

@@ -77,11 +77,9 @@ const NEW_UI_TOOLING = [
   'scripts/ci/probe-shards.mjs', // read by the kit probes workflow only
   'scripts/ci/probe-shards.test.mjs',
   'scripts/ci/probe-shards.runs.json',
-  'scripts/ci/probe-select.mjs',
-  'scripts/ci/probe-select.test.mjs',
-  'scripts/ci/probe-select.prs.json',
   'scripts/ci/probe-pack.mjs',
   'scripts/ci/probe-pack.test.mjs',
+  'scripts/ci/probe-units.manifest.json',
   'scripts/ci/probe-units/panel.mjs', // the probe table, one file for each probe (N25): a pull request that adds a probe adds one
   'scripts/ci/probe-units/a-new-probe.mjs',
   'scripts/ui-next-pods/host.sh', // the Pods cluster check
@@ -170,8 +168,6 @@ test('NEGATIVE: what only looks like that tooling is "other": a sibling script, 
     'scripts/ci/probe-units',
     'scripts/ci/probe-units-extra/panel.mjs',
     'scripts/ci/probe-units/helper.go',
-    'scripts/ci/probe-selector.mjs',
-    'scripts/ci/probe-select.mjs.bak',
     'scripts/ci/changes.mjs',
     'scripts/ci/check-image.mjs',
     'scripts/ci/probe-shard.mjs',
@@ -787,7 +783,7 @@ test('on a runner the command also writes one notice that names the class and th
 
 // "Nothing reads a path under docs/ui-next/status/" is what makes it documentation whatever it holds. Searched at the time: the mentions outside docs/ are comments, Markdown, messages and the e2e selector's classification (a regular
 // expression and its test data). This reads the repository and fails when another file names the path on a line of code, or builds it from parts.
-const STATUS_MENTIONS_ALLOWED = new Set(['scripts/ci/changes.mjs', 'scripts/ci/changes.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'e2e/scripts/select-tests.mjs', 'e2e/scripts/select-tests.test.mjs', 'scripts/ci/probe-shards.mjs', 'scripts/ci/probe-select.prs.json']);
+const STATUS_MENTIONS_ALLOWED = new Set(['scripts/ci/changes.mjs', 'scripts/ci/changes.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'e2e/scripts/select-tests.mjs', 'e2e/scripts/select-tests.test.mjs', 'scripts/ci/probe-shards.mjs']);
 
 test('TRIPWIRE: no code, test or workflow outside docs/ names a path under docs/ui-next/status/ on a line of code, or joins "ui-next" and "status" into one', () => {
   const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');

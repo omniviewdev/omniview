@@ -8,6 +8,5 @@ export const units = [
     script: 'ui-next/shell/probes/shell-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/shell-probe.json' },
     seconds: 47,
-    paths: ['ui-next/shell/**'],
   },
 ];

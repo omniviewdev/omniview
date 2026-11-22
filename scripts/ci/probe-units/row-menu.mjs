@@ -2,7 +2,6 @@
 // listeners an open menu adds (a press, a scroll and a resize on the window, none left), observers, focus after open and after Escape, placement and flip, no clipping in the top layer, an element count that does not depend
 // on the rows, row heights, arrows, Home, End, Escape and Tab, and no write to <html> or <body>. `aria-expanded` is read on the menu's TRIGGERS (`button[aria-haspopup="menu"]`), as the kit's contract says: the handle writes it
 // on the one trigger that is open. It reads the ui-next build the shard makes.
-const PATHS = ['packages/kit/probes/row-menu-probe.mjs', 'packages/kit/src/components/{RowMenu,IconButton}/**', 'ui-next/parts/**'];
 
 export const units = [
   {
@@ -11,7 +10,6 @@ export const units = [
     script: 'packages/kit/probes/row-menu-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/row-menu-probe.json' },
     seconds: 25,
-    paths: PATHS,
   },
 
   // The negative controls of the row menu probe, each in the page after it loaded, on the one opening that must see it (Chromium, 1440 x 900): the open trigger carries no `aria-expanded` (`trigger-not-expanded`), and the next
@@ -24,6 +22,5 @@ export const units = [
     env: { DIST: '$PROBE_DIST' },
     controls: ['trigger-not-expanded', 'expanded-twice'],
     seconds: 2,
-    paths: PATHS,
   },
 ];

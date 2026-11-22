@@ -10,11 +10,5 @@ export const units = [
     name: 'Probe the list page chrome and its layout shift against the pinned mock reference',
     script: 'ui-next/page/probes/page-probe.mjs',
     seconds: 70,
-    paths: [
-      'ui-next/page/**',
-      'ui-next/shell/**',
-      'packages/kit/probes/{mock-page.json,mock-page-measure.mjs}',
-      'packages/kit/src/components/{PageHeader,DataTable,DataView,TableFit,SearchField,QuickFilters,Chip,Status,KindTile,MiddleEllipsis,CollectionFooter,ListRows}/**',
-    ],
   },
 ];
