@@ -72,6 +72,16 @@
 //      history (the first time the history is read from it), the window restores it: the bell has no dot, the restored records raised no toast and no announcement, and a restored record's Retry is not offered: its row says
 //      `Retry is unavailable. Not available after restart.`
 //
+//   s  Settings (ST1) over the real host, in the sheet and in the Settings window: a host of its own with no plugins (Settings needs the host's settings service, its window service and a state root nothing else wrote), six independent
+//      parts, then the watch over errors that covers them. The sheet (what a browser has in place of the native window): the chord, the gear and the palette's command open it with the host's own rows; a toggle applies at once
+//      and is still applied after a reload; a value the host refuses (`developer.pprof_port` 70000) says the host's words in its lane and the host keeps what it had; Escape closes it and the focus goes back. The window
+//      (`/?screen=settings-window`, what the native window of kind `settings` draws): no shell, no dialog, a caption with Close; `OpenSettings` names its page and shows it, `HideSettings` hides it, a show again asks the host what it
+//      holds now, and Escape, the close chord and Close hide it by asking the host. The two together: a change in one reaches the other within 2 s through the host's `settings/changed`, and a draft typed in the sheet survives a
+//      change of another setting made in the window. The slots: 100 window pages opened and closed one after another all read their rows, and the window service lists the windows it listed before (the realm refuses a 64th LIVE
+//      window and retires a closed page after about 3.4 s: INV2). The secrets (the host declares three, in Telemetry): one is saved through the sheet, is said to be saved after a reload, is cleared, and its value is never in the document,
+//      in the host's snapshot or in the host's log. The popups: a tooltip inside the open sheet is shown above it, and a native select takes type-ahead. The log: no page error and no settings error in the host's log.
+//      SEAM_CONTROL=settings runs s alone with every control of SETTINGS_PARTS made in turn; SEAM_CONTROL=<name> makes one, in the part it belongs to alone; SEAM_REMOVE=<name> leaves that control's assertion out, and its perturbation must then pass undetected
+//
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
 //
@@ -112,10 +122,42 @@ const CONTROLS = {
   'same-name': /no two session tabs are named alike/,
   // The watch over failed requests (INV1): a request the allow-list does not name fails its phase. The control plants one 422 in a page that is otherwise clean, and the assertion of the phase must see it; with SEAM_REMOVE=runtime-4xx that assertion is left out and the planted one must pass undetected.
   'runtime-4xx': /the requests that failed are all in the allow-list \(phase runtime-4xx\)/,
+  // Scenario s, Settings (ST1): SEAM_CONTROL=<name> runs the part of s that holds the control alone, and makes one perturbation just before the assertion it is named for, which must fail with ITS words and no other (SETTINGS_PARTS). An assertion of s is a
+  // read of what the perturbation changes: the acts that lead to it are made again under the perturbation, and again once it is undone. A page's own calls to the host are changed by a route of the page (a copy of what the host answers, never the host).
+  'settings-persist': /a toggle applied in the sheet is still applied after the page is reloaded/,
+  'settings-words': /the lane says the host's own words for a value it refuses/,
+  'settings-hide': /Escape in the Settings window asks the host to hide it/,
+  'settings-reach': /a change made in the Settings window reaches the sheet within 2 s/,
+  'settings-draft': /a draft typed in the sheet is not replaced by a change made in the window/,
+  'settings-slots': /window page 64 of 100 read its rows/,
+  'settings-secret-saved': /after a reload the secret row says Saved · hidden/,
+  'settings-secret-dom': /the secret is nowhere in the document/,
+  'settings-secret-log': /the secret is not in the host's log/,
+  'settings-tooltip': /the tooltip is painted above the sheet/,
+  'settings-typeahead': /typing the first letters of an option in the sheet's select chooses it/,
+  'settings-error': /no page of the scenario wrote an error/,
+  'settings-log': /the host's log holds no settings error/,
 };
 const RUNTIME_CONTROL = 'runtime-4xx';
 /** The controls that belong to scenario m; every other one runs scenario k. */
 const IDENTITY_CONTROLS = ['second-stream', 'scope-lone', 'scope-kept', 'same-name'];
+/** Scenario s runs alone under SEAM_CONTROL=settings with every control made in turn, or under the name of one control, in the part of the scenario that holds it (`checkSettings`). */
+const SETTINGS_GROUP = 'settings';
+const SETTINGS_PARTS = {
+  'settings-persist': 'sheet',
+  'settings-words': 'sheet',
+  'settings-hide': 'window',
+  'settings-reach': 'truth',
+  'settings-draft': 'truth',
+  'settings-slots': 'slots',
+  'settings-secret-saved': 'secrets',
+  'settings-secret-dom': 'secrets',
+  'settings-secret-log': 'secrets',
+  'settings-tooltip': 'popups',
+  'settings-typeahead': 'popups',
+  'settings-error': 'log',
+  'settings-log': 'log',
+};
 // The negative controls of scenario n, the plugin that stops (PU1). Each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no
 // other. One run serves them all (SEAM_CONTROL=process: the host finds a killed process on its next health check, up to 30 s, so a run for each would cost minutes); SEAM_CONTROL=<name> makes that one only. A page
 // that is wrong in another way fails an assertion of its own, outside a perturbation, and is never taken for a detection.
@@ -151,11 +193,11 @@ const FAILED_CONTROLS = {
 const FAILED_GROUP = 'failed-load';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 const REMOVE = process.env.SEAM_REMOVE ?? '';
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS)].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 async function freePort() {
@@ -226,6 +268,7 @@ async function open(page, base, hash = '') {
 const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
 const PLUGIN_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper';
 const PROCESS_SERVICE = 'github.com/omniviewdev/omniview/internal/processinfo.Service';
+const SETTINGS_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/settings.Binding';
 
 /** A call of a bound method of the host, by service and name, as the page's own runtime makes one, whatever the host answers: the status and the text of the answer. */
 async function tryBound(base, service, method, ...args) {
@@ -982,7 +1025,7 @@ async function checkPalette(page, base, engine) {
   await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
   assert.deepEqual(
     await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
-    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs'],
+    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs'],
     `${engine}: the commands are the host's, and only those`,
   );
   await shot('commands');
@@ -2852,6 +2895,895 @@ async function checkCentre(page, base, engine) {
   await page.close();
 }
 
+/**
+ * A page's call of the host is `POST /wails/runtime` with the method's id (the bindings write `$Call.ByID(<id>, ...)`): the 32-bit FNV-1a hash of the method's full name, the name `callBound` sends.
+ */
+function methodId(service, method) {
+  let hash = 0x811c9dc5;
+  for (const byte of Buffer.from(`${service}.${method}`)) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  return hash;
+}
+
+const SETTINGS_CALLS = {
+  snapshot: methodId(SETTINGS_SERVICE, 'GetSnapshot'),
+  validate: methodId(SETTINGS_SERVICE, 'Validate'),
+  hide: methodId(WINDOW_SERVICE, 'HideSettings'),
+};
+
+/** The bound method a request of a page asks for, or `undefined` when it is not a call of the runtime. */
+function calledMethod(request) {
+  try {
+    return JSON.parse(request.postData() ?? '{}')?.args?.methodID;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Answers a call of a page in the host's place, with `body` (JSON text, or what is turned into it). Returns true: the call is taken. */
+async function answerWith(route, body, status = 200) {
+  await route.fulfill({ status, contentType: 'application/json', body: typeof body === 'string' ? body : JSON.stringify(body) });
+  return true;
+}
+
+/**
+ * Takes the host's place in one page for the calls `answer` wants: `answer(route, id)` takes the call (`answerWith`) and returns true, or returns false and the call goes on to the host. This is how a control changes what the host
+ * answers a page: in a copy of the page's view of the host, never in the host. Returns what puts the page back.
+ */
+async function standIn(page, answer) {
+  const handler = async (route) => {
+    if (!(await answer(route, calledMethod(route.request())))) await route.continue();
+  };
+  await page.route('**/wails/runtime', handler);
+  return async () => page.unroute('**/wails/runtime', handler);
+}
+
+/** The pages of Settings in the order the sheet lists them (the design's table), and what it leaves out of its first slice: two settings that are pickers in the old window, and whatever is for developers only. */
+const SETTINGS_PAGE_ORDER = ['appearance', 'general', 'editor', 'terminal', 'notifications', 'telemetry', 'developer'];
+const SETTINGS_NOT_DRAWN = ['appearance.theme', 'terminal.nativeApplication'];
+const SETTINGS_DRAWN_TYPES = ['toggle', 'integer', 'float', 'password', 'text', 'select'];
+
+/** The rows a page of Settings draws for one category of the host's snapshot, in the order it draws them (by id) and with the host's own label: what the host declares, less what the first slice leaves out. */
+function settingsRowsOf(snapshot, category) {
+  const settings = snapshot.categories[category]?.settings ?? {};
+  return Object.keys(settings)
+    .sort()
+    .map((key) => ({ id: `${category}.${key}`, setting: settings[key] }))
+    .filter(({ id, setting }) => {
+      const secret = setting.sensitive === true || setting.type === 'password';
+      return !SETTINGS_NOT_DRAWN.includes(id) && setting.devOnly !== true && SETTINGS_DRAWN_TYPES.includes(setting.type) && (!secret || snapshot.stored?.[id] !== undefined);
+    })
+    .map(({ id, setting }) => ({ id, label: setting.label === '' ? setting.id : setting.label }));
+}
+
+/** The pages the sheet lists for the host's snapshot: the categories that have a row to draw, the design's order first and the others after them, by label. */
+function settingsPagesOf(snapshot) {
+  const rank = (id) => {
+    const index = SETTINGS_PAGE_ORDER.indexOf(id);
+    return index === -1 ? SETTINGS_PAGE_ORDER.length : index;
+  };
+  return Object.entries(snapshot.categories)
+    .filter(([id]) => settingsRowsOf(snapshot, id).length > 0)
+    .sort(([a, left], [b, right]) => rank(a) - rank(b) || (left.label || a).localeCompare(right.label || b, 'en'))
+    .map(([id, entry]) => ({ id, title: entry.label === '' ? id : entry.label }));
+}
+
+/** The rows a root has drawn, with the labels they carry. */
+const rowsDrawn = async (root) => root.locator('[data-settings-row]').evaluateAll((rows) => rows.map((row) => ({ id: row.getAttribute('data-settings-row'), label: row.querySelector('label')?.textContent ?? '' })));
+
+/** The part of a box that two boxes share, or `undefined` when they do not meet. */
+function overlap(a, b) {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const width = Math.min(a.x + a.width, b.x + b.width) - x;
+  const height = Math.min(a.y + a.height, b.y + b.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : undefined;
+}
+
+/** A picture of a part of the page once it holds still: two pictures of it in a row are the same bytes. */
+async function stillPicture(page, clip, engine) {
+  let last = await page.screenshot({ clip });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const next = await page.screenshot({ clip });
+    if (next.equals(last)) return next;
+    last = next;
+  }
+
+  throw new Error(`${engine}: the sheet holds still for a picture`);
+}
+
+/** Two frames of the page have been drawn: what a commit scheduled for after it has run, as the effect that puts the shell's chords on the window does after the first frame of the shell. */
+async function afterFrames(page) {
+  await page.evaluate(
+    async () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve(undefined);
+          });
+        });
+      }),
+  );
+}
+
+/** The sheet of a page of the shell, opened by the platform's chord from wherever the focus is, once the shell's chords are on the window; returned when its pages and rows are drawn. */
+async function sheetByChord(page) {
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  await page.locator('[data-shell-part="settings"]').waitFor({ timeout: 30_000 });
+  await afterFrames(page);
+  await page.keyboard.press(`${mac ? 'Meta' : 'Control'}+Comma`);
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.locator('[data-settings-part="layout"]').waitFor({ timeout: 15_000 });
+  return dialog;
+}
+
+/**
+ * Part of s, the sheet: the chord, the chord a browser tab answers, the gear and the palette's command each open it, from a control that holds the focus, with the host's own rows, and Escape closes it and gives the focus back; a
+ * toggle pressed in it is applied on the host at once and is still applied after the page is reloaded; a value the host refuses says the host's words in the lane, keeps the typed text and leaves the host's value alone.
+ */
+async function settingsSheet(c) {
+  const { engine, base, asserting } = c;
+  await c.commit({ 'terminal.cursorBlink': true });
+  const page = await c.page(1440, 900);
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  const mod = mac ? 'Meta' : 'Control';
+  await open(page, base);
+  const gear = page.locator('[data-shell-part="settings"]');
+  const search = page.locator('[data-shell-part="search"]');
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  const palette = page.getByRole('dialog', { name: 'Search' });
+  const nav = dialog.getByRole('navigation', { name: 'Settings pages' });
+  const toPage = async (title) => nav.getByRole('button', { name: title, exact: true }).click();
+  const hasFocus = async (locator) => locator.evaluate((element) => element === document.activeElement);
+  const onPage = async () => nav.locator('[aria-current="page"]').getAttribute('data-settings-page');
+  await gear.waitFor({ timeout: 30_000 });
+  await afterFrames(page);
+  const snapshot = await c.snapshot();
+  const pages = settingsPagesOf(snapshot);
+  assert.equal(await page.locator('[data-settings-part="sheet"]').count(), 0, `${engine}: a closed sheet draws nothing`);
+
+  const chord = async () => {
+    await search.focus();
+    await page.keyboard.press(`${mod}+Comma`);
+  };
+  const openers = [
+    { how: 'the chord', origin: search, opens: chord },
+    { how: 'the gear', origin: gear, opens: async () => gear.click() },
+    {
+      how: 'the chord a browser tab answers',
+      origin: search,
+      opens: async () => {
+        await search.focus();
+        await page.keyboard.press('Control+Alt+Comma');
+      },
+    },
+    {
+      how: 'the palette command',
+      origin: search,
+      opens: async () => {
+        await search.focus();
+        await page.keyboard.press(`${mod}+KeyK`);
+        await palette.waitFor();
+        await page.keyboard.type('>Settings', { delay: 20 });
+        const command = palette.getByRole('option', { name: /^Command: Settings/ });
+        await command.waitFor();
+        assert.equal(await command.getAttribute('aria-label'), `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, `${engine}: the palette lists the Settings command with the chord a browser tab answers`);
+        await page.keyboard.press('Enter');
+      },
+    },
+  ];
+  for (const { how, origin, opens } of openers) {
+    await opens();
+    await dialog.waitFor();
+    await dialog.locator('[data-settings-part="layout"]').waitFor({ timeout: 15_000 });
+    assert.equal(await page.locator('dialog[open]').count(), 1, `${engine}: ${how} opens one dialog`);
+    assert.equal(await dialog.getAttribute('data-settings-part'), 'sheet', `${engine}: ${how} opens the Settings sheet`);
+    const frame = await dialog.locator('[data-ov-part="frame"]').boundingBox();
+    assert.deepEqual([Math.round(frame.width), Math.round(frame.height)], [1060, 640], `${engine}: ${how}: the sheet is 1060 by 640 px`);
+    assert.ok(Math.abs(frame.x + frame.width / 2 - 720) <= 1 && Math.abs(frame.y + frame.height / 2 - 450) <= 1, `${engine}: ${how}: and is centred in the window`);
+    assert.equal(Math.round((await dialog.locator('[data-ov-part="header"]').boundingBox()).height), 41, `${engine}: ${how}: its header is 41 px`);
+    assert.equal(await dialog.locator('[data-ov-part="header"]').getByRole('button', { name: 'Close', exact: true }).count(), 1, `${engine}: ${how}: and holds its Close`);
+    assert.deepEqual(await nav.getByRole('button').allInnerTexts(), pages.map((entry) => entry.title), `${engine}: ${how}: the pages are the host's categories, in the design's order`);
+    assert.equal(await onPage(), pages[0].id, `${engine}: ${how}: the sheet opens on the first page`);
+    assert.deepEqual(await rowsDrawn(dialog), settingsRowsOf(snapshot, pages[0].id), `${engine}: ${how}: the rows are the host's own, with the host's labels`);
+    assert.ok(await hasFocus(nav.locator('[aria-current="page"]')), `${engine}: ${how}: the focus is on the page that is on screen`);
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+    assert.ok(await c.until(5000, async () => hasFocus(origin)), `${engine}: Escape closes the sheet that ${how} opened and gives the focus back to the control that had it`);
+  }
+
+  // A toggle: pressed, applied on the host at once, and still applied after the page is reloaded (the reload is the sheet's own: a copy of the host's answer that forgets it makes the assertion fail).
+  await chord();
+  await dialog.waitFor();
+  await toPage('Terminal');
+  const blink = dialog.getByRole('switch', { name: 'Cursor Blink' });
+  const reset = dialog.getByRole('button', { name: 'Reset Cursor Blink to default' });
+  assert.equal(await blink.getAttribute('aria-checked'), 'true', `${engine}: the cursor blinks, which is the host's default`);
+  assert.equal(await reset.count(), 0, `${engine}: and a row at its default has no Reset`);
+  await blink.click();
+  assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorBlink')) === false), `${engine}: a toggle pressed in the sheet is applied on the host at once, with no Save`);
+  await reset.waitFor();
+  const reopen = async () => {
+    await page.reload({ waitUntil: 'load' });
+    await sheetByChord(page);
+    await toPage('Terminal');
+    await blink.waitFor();
+  };
+  const forgetsBlink = async (route, id) => {
+    if (id !== SETTINGS_CALLS.snapshot) return false;
+    const response = await route.fetch();
+    const answer = await response.json();
+    answer.categories.terminal.settings.cursorBlink.value = true;
+    return answerWith(route, answer);
+  };
+  let putBack;
+  await reopen();
+  await asserting(
+    'settings-persist',
+    async () => {
+      putBack = await standIn(page, forgetsBlink);
+      await reopen();
+    },
+    async () => {
+      await putBack();
+      await reopen();
+    },
+    async () => {
+      assert.equal(await blink.getAttribute('aria-checked'), 'false', `${engine}: a toggle applied in the sheet is still applied after the page is reloaded`);
+    },
+  );
+  await reset.waitFor();
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  await page.keyboard.press(`${mod}+Comma`);
+  await dialog.waitFor();
+  assert.equal(await onPage(), 'terminal', `${engine}: the sheet opens on the page it was left on`);
+  await blink.click();
+  assert.ok(await c.until(5000, async () => (await c.held('terminal.cursorBlink')) === true), `${engine}: pressed again, the toggle is applied again`);
+  await reset.waitFor({ state: 'detached' });
+
+  // A value the host refuses: its words in the lane, the typed text kept, the host's value untouched. Escape takes the draft first and closes the sheet second.
+  await toPage('Developer Settings');
+  const port = dialog.getByRole('spinbutton', { name: 'Host profiling port' });
+  const lane = dialog.locator('[data-settings-row="developer.pprof_port"] [data-ov-part="lane"]');
+  const kept = await c.held('developer.pprof_port');
+  const refusal = await c.call(SETTINGS_SERVICE, 'Validate', { kind: 'host' }, 'developer.pprof_port', 70000);
+  assert.equal(refusal.valid, false, `${engine}: the host refuses port 70000`);
+  const refuse = async () => {
+    if ((await port.inputValue()) !== String(kept)) await port.press('Escape');
+    await port.fill('70000');
+    await port.press('Enter');
+    assert.ok(await c.until(10_000, async () => (await port.getAttribute('aria-invalid')) === 'true' && ((await lane.textContent()) ?? '') !== ''), `${engine}: a value the host refuses is marked invalid, with a word in its lane`);
+  };
+  const plantsWords = async (route, id) => (id === SETTINGS_CALLS.validate ? answerWith(route, { valid: false, code: 'planted', message: 'Planted words.' }) : false);
+  await refuse();
+  await asserting(
+    'settings-words',
+    async () => {
+      putBack = await standIn(page, plantsWords);
+      await refuse();
+    },
+    async () => {
+      await putBack();
+      await refuse();
+    },
+    async () => {
+      assert.equal(await lane.textContent(), `Error: ${refusal.message}`, `${engine}: the lane says the host's own words for a value it refuses`);
+    },
+  );
+  assert.equal(await port.inputValue(), '70000', `${engine}: the field keeps the text that was typed`);
+  assert.equal(await c.held('developer.pprof_port'), kept, `${engine}: and the host keeps the port it had`);
+  assert.ok(await c.until(5000, async () => (await dialog.locator('[data-settings-part="live"]').textContent()) === `Host profiling port: ${refusal.message}`), `${engine}: the sheet says the refusal in its own polite live region`);
+  await port.press('Escape');
+  assert.equal(await port.inputValue(), String(kept), `${engine}: Escape in a field with a refused draft takes the draft`);
+  assert.equal(await dialog.count(), 1, `${engine}: and the sheet stays`);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+}
+
+/**
+ * Part of s, the Settings window: what the native window of kind `settings` draws, in a browser page (`/?screen=settings-window`), with no shell and no dialog and a 41 px caption that moves the window and holds Close; it follows
+ * the host's request (`OpenSettings` shows it, on the page it names; `HideSettings` hides it; shown again it asks the host what it holds now) and hides itself, by asking the host, on Escape, the close chord and Close.
+ */
+async function settingsWindow(c) {
+  const { engine, base, asserting } = c;
+  const snapshot = await c.snapshot();
+  await c.call(WINDOW_SERVICE, 'HideSettings');
+  const page = await c.page(1060, 640);
+  const mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+  const mod = mac ? 'Meta' : 'Control';
+  let asked = 0;
+  page.on('request', (request) => {
+    if (calledMethod(request) === SETTINGS_CALLS.snapshot) asked += 1;
+  });
+  await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
+  const frame = page.locator('[data-settings-part="window"]');
+  const state = async () => c.call(WINDOW_SERVICE, 'GetSettingsState');
+  const shown = async (want) => c.until(10_000, async () => (await frame.getAttribute('data-visible')) === String(want));
+  const skipped = async () => frame.evaluate((element) => getComputedStyle(element).contentVisibility);
+  const read = async () =>
+    page.evaluate(() => {
+      const caption = document.querySelector('[data-settings-part="caption"]');
+      const close = caption?.querySelector('button');
+      return {
+        shell: document.querySelectorAll('[data-shell-part="window"]').length,
+        dialogs: document.querySelectorAll('dialog').length,
+        caption: caption === null ? null : { height: Math.round(caption.getBoundingClientRect().height), title: caption.querySelector('h1')?.textContent, close: close?.getAttribute('aria-label'), drag: getComputedStyle(caption).getPropertyValue('--wails-draggable').trim(), closeDrag: close === null || close === undefined ? '' : getComputedStyle(close).getPropertyValue('--wails-draggable').trim() },
+        current: document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page'),
+        rows: [...document.querySelectorAll('[data-settings-row]')].map((row) => ({ id: row.getAttribute('data-settings-row'), label: row.querySelector('label')?.textContent ?? '' })),
+      };
+    });
+  const onPage = async (id) =>
+    page.waitForFunction(
+      (wanted) => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === wanted && document.querySelectorAll('[data-settings-row]').length > 0,
+      id,
+      { timeout: 15_000 },
+    );
+
+  assert.ok(await shown(false), `${engine}: a window the host has not asked to show draws nothing visible`);
+  assert.equal(await skipped(), 'hidden', `${engine}: its content is skipped, not laid out`);
+  assert.equal(await c.show('/settings?category=terminal'), 'settings', `${engine}: the host answers OpenSettings with the window it shows`);
+  await onPage('terminal');
+  assert.deepEqual(
+    await read(),
+    { shell: 0, dialogs: 0, caption: { height: 41, title: 'Settings', close: 'Close', drag: 'drag', closeDrag: 'no-drag' }, current: 'terminal', rows: settingsRowsOf(snapshot, 'terminal') },
+    `${engine}: the window draws the page the host named with the host's rows, and nothing of the shell: no shell, no dialog, a 41 px caption that moves the window, with a Close that does not`,
+  );
+  const first = await state();
+  assert.deepEqual([first.target, first.visible], ['/settings?category=terminal', true], `${engine}: the host's request names the page and says it is shown`);
+  await c.show('/settings?category=developer');
+  await onPage('developer');
+  const second = await state();
+  assert.deepEqual([second.requestId - first.requestId, second.target], [1, '/settings?category=developer'], `${engine}: a second request makes a new request id and names another page`);
+  assert.deepEqual((await read()).rows, settingsRowsOf(snapshot, 'developer'), `${engine}: and the window is on it, with the host's rows`);
+
+  await c.call(WINDOW_SERVICE, 'HideSettings');
+  assert.ok(await shown(false), `${engine}: HideSettings hides the window`);
+  assert.equal(await skipped(), 'hidden', `${engine}: and its content is skipped`);
+  assert.equal((await state()).visible, false, `${engine}: the host says it is hidden`);
+  const before = asked;
+  await c.show('');
+  assert.ok(await shown(true), `${engine}: an empty request shows it again`);
+  assert.equal((await read()).current, 'developer', `${engine}: on the page it was left on`);
+  assert.equal((await state()).requestId, second.requestId, `${engine}: an empty request makes no new request id`);
+  assert.ok(await c.until(5000, async () => asked > before), `${engine}: a window shown again asks the host what it holds now`);
+
+  // Three ways to close it, each of them by asking the host: the Escape is the one with a control.
+  const show = async () => {
+    await c.show('');
+    assert.ok(await shown(true), `${engine}: the window is shown`);
+  };
+  const hidByHost = async () => c.until(5000, async () => (await state()).visible === false);
+  const swallowsHide = async (route, id) => (id === SETTINGS_CALLS.hide ? answerWith(route, '{}') : false);
+  let putBack;
+  const closers = [
+    { how: 'Escape', press: async () => page.keyboard.press('Escape') },
+    { how: 'the close chord', press: async () => page.keyboard.press(`${mod}+KeyW`) },
+    { how: 'Close', press: async () => page.getByRole('button', { name: 'Close', exact: true }).click() },
+  ];
+  for (const { how, press } of closers) {
+    await show();
+    await press();
+    if (how === 'Escape') {
+      await asserting(
+        'settings-hide',
+        async () => {
+          putBack = await standIn(page, swallowsHide);
+          await show();
+          await press();
+        },
+        async () => {
+          await putBack();
+          await show();
+          await press();
+        },
+        async () => {
+          assert.ok(await hidByHost(), `${engine}: Escape in the Settings window asks the host to hide it`);
+        },
+      );
+    } else {
+      assert.ok(await hidByHost(), `${engine}: ${how} in the Settings window asks the host to hide it`);
+    }
+
+    assert.ok(await shown(false), `${engine}: ${how}: and the window draws nothing visible`);
+  }
+}
+
+/**
+ * Part of s, the two together: the sheet in one page and the Settings window in another, on one host. A change in either reaches the other through the host's `settings/changed` within 2 s (the milliseconds are reported),
+ * and a draft typed in the sheet is not replaced when the window changes another setting.
+ */
+async function settingsTruth(c) {
+  const { engine, base, asserting } = c;
+  await c.commit({ 'terminal.cursorBlink': true });
+  const sheet = await c.page(1440, 900);
+  await open(sheet, base);
+  const dialog = await sheetByChord(sheet);
+  await dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Terminal', exact: true }).click();
+  const windowPage = await c.page(1060, 640);
+  await windowPage.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
+  await c.show('/settings?category=terminal');
+  await windowPage.waitForFunction(
+    () => document.querySelector('[data-settings-part="window"]')?.getAttribute('data-visible') === 'true' && document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0,
+    null,
+    { timeout: 15_000 },
+  );
+  const toggle = '[data-settings-row="terminal.cursorBlink"] [role="switch"]';
+  const inSheet = dialog.locator(toggle);
+  const inWindow = windowPage.locator(toggle);
+  // Whether the toggle of a page shows what the host holds, within `ms` and polling every 20 ms on the page's own clock.
+  const reaches = async (page, ms) => {
+    const value = String(await c.held('terminal.cursorBlink'));
+    return page.waitForFunction(({ selector, wanted }) => document.querySelector(selector)?.getAttribute('aria-checked') === wanted, { selector: toggle, wanted: value }, { polling: 20, timeout: ms }).then(
+      () => true,
+      () => false,
+    );
+  };
+  // The clock starts when the press has been delivered: what is measured is the way from one page to the other through the host, not the time the engine takes to find the button stable.
+  let pressedAt = 0;
+  const press = async (locator) => {
+    await locator.click();
+    pressedAt = Date.now();
+  };
+  const change = async () => press(inWindow);
+  const lag = { toSheet: 0, toWindow: 0 };
+  const reachesSheet = async () => {
+    const reached = await reaches(sheet, 2000);
+    lag.toSheet = Date.now() - pressedAt;
+    assert.ok(reached && lag.toSheet < 2000, `${engine}: a change made in the Settings window reaches the sheet within 2 s (${reached ? `${String(lag.toSheet)} ms` : 'it did not arrive'})`);
+  };
+  const staleSnapshot = (text) => async (route, id) => (id === SETTINGS_CALLS.snapshot ? answerWith(route, text) : false);
+  let putBack;
+  await change();
+  await asserting(
+    'settings-reach',
+    async () => {
+      putBack = await standIn(sheet, staleSnapshot(JSON.stringify(await c.snapshot())));
+      await change();
+    },
+    async () => {
+      await putBack();
+      await change();
+    },
+    reachesSheet,
+  );
+  await press(inSheet);
+  const reached = await reaches(windowPage, 2000);
+  lag.toWindow = Date.now() - pressedAt;
+  assert.ok(reached && lag.toWindow < 2000, `${engine}: a change made in the sheet reaches the Settings window within 2 s (${reached ? `${String(lag.toWindow)} ms` : 'it did not arrive'})`);
+  console.log(`${engine}: a change made in the Settings window reached the sheet in ${String(lag.toSheet)} ms, and a change made in the sheet reached the window in ${String(lag.toWindow)} ms (the bound is 2000)`);
+
+  // A draft in the sheet, and the window changes a different setting: the sheet takes the change and keeps the draft.
+  const shell = dialog.getByRole('textbox', { name: 'Default Shell' });
+  const lane = dialog.locator('[data-settings-row="terminal.defaultShell"] [data-ov-part="lane"]');
+  const had = await c.held('terminal.defaultShell');
+  const draft = '/bin/ba';
+  await shell.fill(draft);
+  await change();
+  assert.ok(await reaches(sheet, 2000), `${engine}: the sheet that holds a draft follows a change made in the window`);
+  await asserting(
+    'settings-draft',
+    async () => {
+      await shell.fill('/bin/clobbered');
+    },
+    async () => {
+      await shell.fill(draft);
+    },
+    async () => {
+      assert.equal(await shell.inputValue(), draft, `${engine}: a draft typed in the sheet is not replaced by a change made in the window`);
+    },
+  );
+  assert.equal(await c.held('terminal.defaultShell'), had, `${engine}: the host keeps the shell it had: the draft was never sent`);
+  assert.equal(((await lane.textContent()) ?? '').trim(), '', `${engine}: and the draft's row says nothing of a change elsewhere: the setting that changed is another`);
+  await shell.press('Escape');
+  assert.equal(await shell.inputValue(), had, `${engine}: Escape takes the draft`);
+  assert.equal(await dialog.count(), 1, `${engine}: and the sheet stays`);
+  await c.commit({ 'terminal.cursorBlink': true });
+}
+
+/**
+ * Part of s, the slots: a Settings window page opened and closed 100 times in a row (goto, wait for its rows, close the page). The realm of the host's window service refuses a 64th LIVE window and retires a closed page after about
+ * 3.4 s (INV2): every one of the 100 reads its rows, and the window service lists the windows it listed before the first. Reports the seconds.
+ */
+async function settingsSlots(c) {
+  const { engine, base, asserting } = c;
+  const PAGES = 100;
+  await c.show('/settings?category=terminal');
+  const expected = settingsRowsOf(await c.snapshot(), 'terminal').map((row) => row.id);
+  const windows = async () => (await c.call(WINDOW_SERVICE, 'List')).map((entry) => `${entry.name}:${entry.kind}`).sort();
+  const baseline = await windows();
+  let refused = false;
+  const refusal = async (route, id) => (id === SETTINGS_CALLS.snapshot ? answerWith(route, { message: 'The operation exceeds a host resource limit.', code: 'RESOURCE_LIMIT' }, 429) : false);
+  const read = async (number) => {
+    const page = await c.page(1060, 640);
+    try {
+      if (refused) await standIn(page, refusal);
+      await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
+      await page.waitForFunction(() => (document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
+      assert.deepEqual(
+        await page.locator('[data-settings-row]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-settings-row'))),
+        expected,
+        `${engine}: window page ${String(number)} of ${String(PAGES)} read its rows`,
+      );
+    } finally {
+      await page.close();
+    }
+  };
+  // The control plants the realm's refusal in the 64th page and needs no page after it.
+  const limit = CONTROL === 'settings-slots' ? 64 : PAGES;
+  const started = Date.now();
+  for (let number = 1; number <= limit; number += 1) {
+    if (number === 64) {
+      await asserting(
+        'settings-slots',
+        async () => {
+          refused = true;
+        },
+        async () => {
+          refused = false;
+        },
+        async () => read(number),
+      );
+    } else {
+      await read(number);
+    }
+  }
+
+  const seconds = (Date.now() - started) / 1000;
+  assert.deepEqual(await windows(), baseline, `${engine}: the window service lists the windows it listed before the pages: they are the browser's, not the host's`);
+  console.log(`${engine}: ${String(limit)} Settings window pages opened and closed one after another in ${seconds.toFixed(1)} s (${((seconds * 1000) / limit).toFixed(0)} ms a page), every one read its rows; the window service lists ${baseline.join(', ')} as before`);
+}
+
+/**
+ * Part of s, the secrets. The host declares three sensitive settings, all in Telemetry (`internal/settings/telemetry.go`: the OTLP, Loki and OTLP-log auth values), and its snapshot says for each whether it holds a value (`stored`) and
+ * never what the value is. One is saved through the sheet, reads as saved after a reload, and is cleared by its Reset; at every step its text is nowhere in the document, in the host's snapshot or in the host's log.
+ */
+async function settingsSecrets(c) {
+  const { engine, host, base, asserting } = c;
+  const ID = 'telemetry.auth_value';
+  const SECRET = `seam-secret-${crypto.randomUUID()}`;
+  c.secrets.push(SECRET);
+  const snapshot = await c.snapshot();
+  const sensitive = Object.entries(snapshot.categories)
+    .flatMap(([category, entry]) => Object.entries(entry.settings).filter(([, setting]) => setting.sensitive === true || setting.type === 'password').map(([key]) => `${category}.${key}`))
+    .sort();
+  assert.ok(sensitive.includes(ID), `${engine}: the host declares ${ID} as a sensitive setting (it declares ${sensitive.join(', ')})`);
+  assert.deepEqual(Object.keys(snapshot.stored ?? {}).sort(), sensitive, `${engine}: the snapshot says whether each sensitive setting holds a value, and no other`);
+  for (const id of sensitive) {
+    const [category, key] = id.split('.');
+    const { value, default: initial } = snapshot.categories[category].settings[key];
+    assert.deepEqual([value, initial, snapshot.stored[id]], [null, null, false], `${engine}: ${id} carries no value and no default, and the host holds none`);
+  }
+
+  const page = await c.page(1440, 900);
+  await open(page, base);
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  const row = dialog.locator(`[data-settings-row="${ID}"]`);
+  const reopen = async () => {
+    await sheetByChord(page);
+    await dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: 'Telemetry', exact: true }).click();
+    await row.waitFor();
+  };
+  const field = row.locator('[data-ov-part="secret"]');
+  const input = row.locator('input');
+  const saved = async () => ({ state: await field.getAttribute('data-ov-state'), placeholder: await input.getAttribute('placeholder') });
+  const reads = {
+    document: async () => page.evaluate(() => `${document.documentElement.outerHTML}\n${[...document.querySelectorAll('input, textarea')].map((control) => control.value).join('\n')}`),
+    snapshot: async () => JSON.stringify(await c.snapshot()),
+    log: async () => host.output(),
+  };
+  const noneInDocument = async () => {
+    assert.ok(!(await reads.document()).includes(SECRET), `${engine}: the secret is nowhere in the document`);
+  };
+  const noneInLog = async () => {
+    assert.ok(!(await reads.log()).includes(SECRET), `${engine}: the secret is not in the host's log`);
+  };
+  // The three places the secret must not be in. The first time they are read, the controls plant the text in two of them in turn; every other time they are read as they stand.
+  const holdsNone = async (controlled) => {
+    assert.ok(!(await reads.snapshot()).includes(SECRET), `${engine}: the secret is not in the host's snapshot`);
+    if (!controlled) {
+      await noneInDocument();
+      await noneInLog();
+      return;
+    }
+
+    await asserting(
+      'settings-secret-dom',
+      async () => {
+        await page.evaluate((text) => {
+          const planted = document.createElement('i');
+          planted.id = 'seam-planted';
+          planted.textContent = text;
+          document.body.append(planted);
+        }, SECRET);
+      },
+      async () => {
+        await page.evaluate(() => {
+          document.getElementById('seam-planted')?.remove();
+        });
+      },
+      noneInDocument,
+    );
+    await asserting(
+      'settings-secret-log',
+      async () => {
+        reads.log = async () => `${host.output()}\n${SECRET}`;
+      },
+      async () => {
+        reads.log = async () => host.output();
+      },
+      noneInLog,
+    );
+  };
+  await reopen();
+  assert.deepEqual(await saved(), { state: 'unset', placeholder: 'Not set' }, `${engine}: a secret the host holds no value for reads Not set`);
+  await input.fill(SECRET);
+  await input.press('Enter');
+  assert.ok(await c.until(10_000, async () => (await field.getAttribute('data-ov-state')) === 'locked'), `${engine}: a secret typed in the sheet and committed with Enter is saved`);
+  assert.equal(await input.inputValue(), '', `${engine}: the field lets go of the text it was given`);
+  assert.equal((await c.snapshot()).stored[ID], true, `${engine}: and the host holds the value`);
+  await holdsNone(true);
+
+  const forgetsStored = async (route, id) => {
+    if (id !== SETTINGS_CALLS.snapshot) return false;
+    const response = await route.fetch();
+    const answer = await response.json();
+    answer.stored[ID] = false;
+    return answerWith(route, answer);
+  };
+  let putBack;
+  await page.reload({ waitUntil: 'load' });
+  await reopen();
+  await asserting(
+    'settings-secret-saved',
+    async () => {
+      putBack = await standIn(page, forgetsStored);
+      await page.reload({ waitUntil: 'load' });
+      await reopen();
+    },
+    async () => {
+      await putBack();
+      await page.reload({ waitUntil: 'load' });
+      await reopen();
+    },
+    async () => {
+      assert.deepEqual(await saved(), { state: 'locked', placeholder: 'Saved · hidden' }, `${engine}: after a reload the secret row says Saved · hidden`);
+    },
+  );
+  await holdsNone();
+
+  await row.getByRole('button', { name: /^Reset .* to default$/ }).click();
+  assert.ok(await c.until(10_000, async () => (await field.getAttribute('data-ov-state')) === 'unset'), `${engine}: a cleared secret reads as not saved`);
+  assert.deepEqual(await saved(), { state: 'unset', placeholder: 'Not set' }, `${engine}: and says Not set`);
+  assert.ok(await c.until(5000, async () => (await c.snapshot()).stored[ID] === false), `${engine}: the host holds no value`);
+  await holdsNone();
+}
+
+/**
+ * Part of s, the popups of the open sheet. A row that differs from its default draws a Reset: hovered, its tooltip (the kit's one TooltipHost popover, which lives outside the dialog) is open, is not inert, lies inside the
+ * viewport and is painted above the sheet; a native select inside the sheet takes type-ahead. The tooltip cannot be hit-tested here: a modal dialog blocks the rest of the document for hit-testing, a popover that is opened after
+ * it included (`document.elementFromPoint` at the tooltip's centre answers the row under it, in both engines, and answers the tooltip itself when no dialog is open), so what is on top is read from the pixels: the part of the
+ * tooltip that lies over the sheet is a picture that changes when the tooltip goes.
+ */
+async function settingsPopups(c) {
+  const { engine, base, asserting } = c;
+  await c.commit({ 'terminal.cursorBlink': false, 'appearance.density': 'comfortable' });
+  const page = await c.page(1440, 900);
+  await open(page, base);
+  const dialog = await sheetByChord(page);
+  const toPage = async (title) => dialog.getByRole('navigation', { name: 'Settings pages' }).getByRole('button', { name: title, exact: true }).click();
+  await toPage('Terminal');
+  const reset = dialog.getByRole('button', { name: 'Reset Cursor Blink to default' });
+  await reset.waitFor();
+  const tipSelector = '[role="tooltip"][popover]';
+  const tip = page.locator(tipSelector);
+  let facts;
+  let shown;
+  let hidden;
+  let inside;
+  const paint = async (covered) => {
+    await reset.hover();
+    await page.waitForFunction((selector) => document.querySelector(selector)?.matches(':popover-open') === true, tipSelector, { timeout: 10_000 });
+    facts = await tip.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return { open: element.matches(':popover-open'), text: element.textContent, inert: element.inert || element.closest('[inert]') !== null, box: { x: box.x, y: box.y, width: box.width, height: box.height }, viewport: { width: innerWidth, height: innerHeight } };
+    });
+    inside = overlap(facts.box, await dialog.locator('[data-ov-part="frame"]').boundingBox());
+    assert.ok(inside !== undefined && inside.width >= 20 && inside.height >= 20, `${engine}: the tooltip lies over the sheet, so that what is on top shows in the pixels`);
+    const clip = { x: Math.ceil(inside.x), y: Math.ceil(inside.y), width: Math.floor(inside.width) - 1, height: Math.floor(inside.height) - 1 };
+    if (covered) {
+      // Something shown after the tooltip, as a tooltip that the sheet covers would be.
+      await page.evaluate(() => {
+        const cover = document.createElement('div');
+        cover.id = 'seam-cover';
+        cover.setAttribute('popover', 'manual');
+        cover.style.cssText = 'position:fixed;inset:0;margin:0;padding:0;border:0;width:100vw;height:100vh;background:rgb(255,0,255)';
+        document.body.append(cover);
+        cover.showPopover();
+      });
+    }
+
+    shown = await stillPicture(page, clip, engine);
+    await page.mouse.move(5, 5);
+    await page.waitForFunction((selector) => document.querySelector(selector)?.matches(':popover-open') !== true, tipSelector, { timeout: 10_000 });
+    hidden = await stillPicture(page, clip, engine);
+    if (covered) {
+      await page.evaluate(() => {
+        const cover = document.getElementById('seam-cover');
+        cover?.hidePopover();
+        cover?.remove();
+      });
+    }
+  };
+  await paint(false);
+  assert.equal(facts.open, true, `${engine}: the tooltip of the Reset button is open inside the open sheet (:popover-open)`);
+  assert.equal(facts.text, 'Reset Cursor Blink to default', `${engine}: and says what the button does`);
+  assert.equal(facts.inert, false, `${engine}: the tooltip is not inert`);
+  assert.ok(facts.box.x >= 0 && facts.box.y >= 0 && facts.box.x + facts.box.width <= facts.viewport.width && facts.box.y + facts.box.height <= facts.viewport.height, `${engine}: and lies inside the viewport`);
+  await asserting(
+    'settings-tooltip',
+    async () => paint(true),
+    async () => paint(false),
+    async () => {
+      assert.ok(!shown.equals(hidden), `${engine}: the tooltip is painted above the sheet: the pixels under it change when it goes`);
+    },
+  );
+
+  // Type-ahead in a native select inside the sheet: the first letters of an option choose it, and the host takes the choice.
+  await toPage('Appearance');
+  const density = dialog.locator('[data-settings-row="appearance.density"] select');
+  const typeAhead = async () => {
+    await c.commit({ 'appearance.density': 'comfortable' });
+    assert.ok(await c.until(5000, async () => (await density.inputValue()) === 'comfortable'), `${engine}: the sheet follows the host to the first option of the select`);
+    await density.focus();
+    await page.keyboard.type('Compa', { delay: 30 });
+  };
+  await typeAhead();
+  await asserting(
+    'settings-typeahead',
+    async () => {
+      await density.evaluate((element) => {
+        element.disabled = true;
+      });
+      await typeAhead();
+    },
+    async () => {
+      await density.evaluate((element) => {
+        element.disabled = false;
+      });
+      await typeAhead();
+    },
+    async () => {
+      assert.equal(await density.inputValue(), 'compact', `${engine}: typing the first letters of an option in the sheet's select chooses it`);
+    },
+  );
+  assert.ok(await c.until(5000, async () => (await c.held('appearance.density')) === 'compact'), `${engine}: and the host holds the choice`);
+  await c.commit({ 'terminal.cursorBlink': true, 'appearance.density': 'comfortable' });
+}
+
+/** Part of s, the watch over errors, after the others: no page of the scenario wrote an error, the host's log holds no settings error, and none of the secrets that were typed is in it. */
+async function settingsLog(c) {
+  const { engine, host, errors, secrets, asserting } = c;
+  let scratch;
+  let planted = '';
+  const logged = () =>
+    `${host.output()}${planted}`
+      .split('\n')
+      .filter((line) => /\[settings\]|window realm refused/.test(line) || (/\b(ERROR|WARN|FATAL|PANIC)\b/.test(line) && /settings/i.test(line)));
+  let at = 0;
+  await asserting(
+    'settings-error',
+    async () => {
+      at = errors.length;
+      scratch = await c.page(800, 600);
+      await scratch.evaluate(() => {
+        setTimeout(() => {
+          throw new Error('planted page error');
+        }, 0);
+      });
+      assert.ok(await c.until(5000, async () => errors.length > at), `${engine}: the planted page error was heard`);
+    },
+    async () => {
+      errors.splice(at);
+      await scratch.close();
+    },
+    async () => {
+      assert.deepEqual(errors, [], `${engine}: no page of the scenario wrote an error`);
+    },
+  );
+  await asserting(
+    'settings-log',
+    async () => {
+      planted = '\n2026-11-22T00:00:00.000+0000\tERROR\tsettings persist failed\t{"planted": true}';
+    },
+    async () => {
+      planted = '';
+    },
+    async () => {
+      assert.deepEqual(logged(), [], `${engine}: the host's log holds no settings error`);
+    },
+  );
+  for (const secret of secrets) assert.ok(!host.output().includes(secret), `${engine}: and none of the secrets that were typed is in it`);
+}
+
+/**
+ * s. Settings (ST1) on the real host, in server mode, in six independent parts over a host of its own that has no plugins, then the watch over errors: the sheet (`settingsSheet`), the Settings window (`settingsWindow`), the two
+ * together (`settingsTruth`), the slots (`settingsSlots`), the secrets (`settingsSecrets`), the popups of the sheet (`settingsPopups`) and the log (`settingsLog`). A part makes its own pages and leaves the host as it found it, so
+ * that a negative control runs the part it belongs to alone. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; SETTINGS_PARTS).
+ */
+async function checkSettings(browser, engine, work) {
+  const dir = await mkdtemp(path.join(work, `settings-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async () => []);
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  const { asserting, verdict } = withControls(SETTINGS_GROUP, CONTROLS);
+  const pages = [];
+  const call = async (service, method, ...args) => callBound(host.base, service, method, ...args);
+  const snapshot = async () => call(SETTINGS_SERVICE, 'GetSnapshot', { kind: 'host' });
+  const c = {
+    engine,
+    host,
+    base: host.base,
+    asserting,
+    errors: [],
+    secrets: [],
+    call,
+    snapshot,
+    commit: async (values) => call(SETTINGS_SERVICE, 'Commit', { kind: 'host' }, values),
+    // OpenSettings answers with the name of the window it shows, as plain text (the other answers are JSON).
+    show: async (target) => {
+      const { status, text } = await tryBound(host.base, WINDOW_SERVICE, 'OpenSettings', target);
+      assert.equal(status, 200, `${engine}: OpenSettings was answered ${String(status)}: ${text}`);
+      return text;
+    },
+    held: async (id) => {
+      const [category, key] = id.split('.');
+      return (await snapshot()).categories[category].settings[key].value;
+    },
+    // Polls `ready` until it answers true or `ms` have passed: whether it did, so that the assertion says its own words.
+    until: async (ms, ready) => {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        if (await ready()) return true;
+        if (Date.now() >= deadline) return false;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    },
+    // A page of the engine, whose errors are kept: a script error, and a console error that Settings itself wrote (`[settings] ...`).
+    page: async (width, height) => {
+      const page = await browser.newPage({ viewport: { width, height } });
+      pages.push(page);
+      page.on('pageerror', (error) => c.errors.push(`pageerror: ${error.message}`));
+      page.on('console', (message) => {
+        if (message.type() === 'error' && message.text().startsWith('[settings]')) c.errors.push(`console: ${message.text()}`);
+      });
+      return page;
+    },
+  };
+  const only = SETTINGS_PARTS[CONTROL];
+  const started = Date.now();
+  try {
+    for (const [name, part] of [['sheet', settingsSheet], ['window', settingsWindow], ['truth', settingsTruth], ['slots', settingsSlots], ['secrets', settingsSecrets], ['popups', settingsPopups]]) {
+      if (only !== undefined && only !== name) continue;
+      const partStarted = Date.now();
+      try {
+        await part(c);
+      } finally {
+        for (const page of pages.splice(0)) if (!page.isClosed()) await page.close();
+      }
+
+      console.log(`${engine}: settings, the ${name} part: ${((Date.now() - partStarted) / 1000).toFixed(1)} s`);
+    }
+
+    await settingsLog(c);
+    verdict(engine);
+    console.log(`${engine}: scenario s (Settings) ran in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  } finally {
+    for (const page of pages.splice(0)) if (!page.isClosed()) await page.close();
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+  }
+}
+
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
 let host;
 try {
@@ -2912,6 +3844,18 @@ try {
             await page.close();
             console.log(`${label} ${name} run ${String(run)} ok`);
           }
+        }
+
+        continue;
+      }
+
+      if (CONTROL === SETTINGS_GROUP || SETTINGS_PARTS[CONTROL] !== undefined) {
+        // The negative controls of scenario s: it runs alone, once (the part the control belongs to, or every part for the group), with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkSettings`).
+        try {
+          await checkSettings(browser, name, work);
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
         }
 
         continue;
@@ -2990,6 +3934,7 @@ try {
       await phase('identity', name, async () => checkIdentity(await freshPage(browser, host.base), host.base, name));
       await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
       await phase('centre', name, async () => checkCentre(await freshPage(browser, host.base), host.base, name));
+      await phase('settings', name, async () => checkSettings(browser, name, work));
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
