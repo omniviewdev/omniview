@@ -26,13 +26,13 @@
 // that grew are the runner's seconds of the pull request's first run (a single run, not a median of 8, which is what the other units have): the logs probe 395 s, and the logs controls 381 s (171 s for the eleven before, which the table
 // had at 161, and 210 s for the eight of this step, 26 s each: each runs the toolbar section's cell); the plugin providers' controls, which moved to shard 8, 107 s against C1f's estimate of 98. The shards below, in seconds of units:
 //   shard 1  panel controls 411, detail 16                                                          = 427
-//   shard 2  logs 395                                                                               = 395
+//   shard 2  logs 395, rate at open 20                                                              = 415 (L4)
 //   shard 3  panel 292, log view controls 109, row menu 22 + its controls 2                         = 425
 //   shard 4  palette 260, parts 164                                                                 = 424
 //   shard 5  strip 192, list page 76, plugin providers 151                                           = 419
 //   shard 6  log view 181, shell 46, kit-probe-bc 197                                               = 424
 //   shard 7  palette controls 63, toast layer controls 301, table 62                                = 426
-//   shard 8  toast layer 370, tour controls 23                                                      = 393
+//   shard 8  toast layer 370, tour controls 23, rate at open control 12                             = 405 (L4)
 //   shard 9  logs controls 381, strip controls 28                                                   = 409
 //   shard 10 tooltip 145, fonts 35, form 35 + its controls 20, rail 16, plugin providers controls 105, tour 37 = 393
 // (K2c-2: the detail probe's `gone` stage took it from 10 s to 14 s (the pull request's run) and 18 s (main's run after it merged) on the runner: 16 s, the median of those two, is the value; shard 1 is 427 s, 5 s under the limit.)
@@ -125,6 +125,11 @@ export const TABLE = {
         // Clear that forgets everything made so far and shows every line made after it, Copy that writes every line the list draws with its source, UTC, what a session chose and keeps, the level filter, and a panel too short for every button, where
         // the last buttons are behind the `⋯` More actions menu. It builds its own fixtures, so it does not read PROBE_DIST.
         { name: 'Probe the Logs tool in a real engine', script: 'ui-next/shell/probes/logs-probe.mjs', env: { REPORT: '$RUNNER_TEMP/logs-probe.json' } },
+
+        // The rate on the Logs strip at open (L4, demo defect D2): the host's own Logs session body over a feed that replays the last 5,000 lines of a source that has been writing for a while, each stamped with the time it was written
+        // and with nothing to mark it a replay (what the runtime's stream does), and then writes 5 lines a second; the strip's text is read every 250 ms for 8 s and never reads above 10 lines/s, tells a rate near 5 within 5 s and
+        // settles on it (ui-next/shell/probes/logs-open-fixture.tsx), in both engines at 1440 x 900. It builds its own fixture, so it does not read PROBE_DIST.
+        { name: 'Probe the rate on the Logs strip at open', script: 'ui-next/shell/probes/logs-open-probe.mjs', env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/logs-open-probe.json' } },
       ],
     },
     {
@@ -278,6 +283,10 @@ export const TABLE = {
           env: { BUILD_CACHE: '$RUNNER_TEMP/tour-fixtures' },
           controls: ['slot-wide', 'names-no-tip', 'title-cut', 'twin-lone', 'twin-hidden', 'memory-lost'],
         },
+
+        // The negative control of the probe of the rate at open (its probe is in shard 2): the replay is stamped with the instant it is delivered, so the view has no way to tell it from lines the source wrote just now and the strip reads the
+        // burst (about 10,000 lines/s in the control's first sample); the probe must fail `rate.max` with it and pass it without (Chromium, 1440 x 900), and the step passes only when it did.
+        { name: 'Probe that the rate at open probe sees a replay counted as live', script: 'ui-next/shell/probes/logs-open-probe.mjs', env: { FONT_DELAY_MS: '40' }, controls: ['fresh'] },
       ],
     },
     {
@@ -403,6 +412,9 @@ export const MEASURED_SECONDS = {
   // S3: ESTIMATES, from a local run (33 s for the probe, 20 s for its six controls with the fixtures built once) at 1.1 to 1.15, until a run's summary has the runner's.
   'Probe the sidebar labels, the tab titles and twins and the sidebar groups against the pinned mock reference': 37,
   'Probe that the tour probe sees a sidebar and a tab strip that are wrong': 23,
+  // L4: the runner's seconds of the first run of the change that added the rate at open probe (a single run, not a median of 8; the laptop's were 19 and 10): the build of its one fixture, then 8.5 s of the page in each of two engines, and in the control's step the clean and the perturbed run side by side in one.
+  'Probe the rate on the Logs strip at open': 20,
+  'Probe that the rate at open probe sees a replay counted as live': 12,
 };
 
 /** The wall time a shard job is held to: 9 minutes, the job (its setup and its probes) from start to end. */
