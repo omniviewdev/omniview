@@ -55,8 +55,8 @@
 //                         closes it and leaves the focus on what was pressed; the list is one tab stop (the current row's title and Dismiss, and no other row's), the arrows, Home and End move between rows, Tab goes through the row's own
 //                         buttons and leaves the list, Delete removes the row; the Filter menu: Enter opens it on its first item, the arrows, Home and End move in it, Escape closes only the menu and the focus is back on Filter.
 //               open      production build, 500 records: the page's work from a real click on the bell to the layout of the popover (the click is timed at the window, capture to bubble; a microtask lets React render, then the popover's
-//                         box is read) is under two frames (33.3 ms on the reference machine) at its median of nine opens, and the first 50 rows are drawn and "Show 450 older" offered. The bound is scaled by how much slower this
-//                         page is than the reference (a calibration measured in the same page just before, never under x1, never over x3: the rule above `TWO_FRAMES`). Every sample, the calibration and the load are printed.
+//                         box is read) is under `OPEN_BOUND_MS` at its median of nine opens (a constant for each engine, taken from the runner's record: the rule above it), and the first 50 rows are drawn and "Show 450 older" offered.
+//                         Every sample and the machine's load are printed.
 //               closed    production build: a closed centre holds nothing: the registrations on the window and the document, the observers and the timers and frames outstanding are what they were before the first open, after it was opened,
 //                         used and closed three times and after a notice arrived while it was closed (a source that is muted, so that no toast stands: the tooltip host's own observer is the host's, so the pointer and the focus are off the bell), and
 //                         no timer or frame callback runs while it is closed.
@@ -345,20 +345,17 @@ const RAISE = {
 };
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// A bound in milliseconds (N25, docs/ui-next/status/N25.md). The claim "the centre opens in under two frames" is a claim about the page's work, and the same page is 2 to 4 times slower on a CI runner than on a laptop (WebKit: 9 ms
-// on the laptop, 17 to 21 ms on a good runner VM, 35 and 38 on a slow one, the medians that failed pull request #650 once), so a constant of the laptop fails on a slow VM and says nothing about the page. The rule: the bound is the
-// claim's bound on the REFERENCE machine times how much slower THIS page is than that machine, which the page measures itself, in the same engine, just before it measures the open (`calibrate`, below). The scale is never
-// under 1 (a faster machine gets no tighter bound than the claim) and never over SCALE_CAP (the hard cap: the bound cannot grow past three times the claim's, whatever the calibration says). The calibration, the reference it is
-// read against, the scale and the bound it gives are printed with every sample. What stays a count (a commit for a notice, the listeners a closed centre holds) is not a time and is not scaled.
-/** Two frames of a 60 Hz display, in ms: the claim's bound on the reference machine. */
-const TWO_FRAMES = 33.3;
-/** The reference machine's calibration, in ms per run of `calibrate`: the fastest of ten trials on a laptop (macOS arm64, Playwright's WebKit and Chromium, load average 9 to 12; WebKit opens the centre in 9 to 10 ms there and Chromium in 3.5 to 4). */
-const CALIBRATION_REFERENCE_MS = { chromium: 1.6, webkit: 3.3 };
-/** The hard cap on the scale: the bound is at most this many times two frames (100 ms). */
-const SCALE_CAP = 3;
-/** The busy loop of the negative control `centre-slow-open`, in ms: more than the hard cap's bound, so that the control fails the assertion on any machine (a fault of 40 ms would pass a bound scaled up to 100). */
-const SLOW_OPEN_MS = 110;
-if (SLOW_OPEN_MS <= TWO_FRAMES * SCALE_CAP) throw new Error('the busy loop of centre-slow-open must be longer than the hard cap of the open budget');
+// The bound of the centre's open, in milliseconds (N25, docs/ui-next/status/N25.md). The claim is "the centre opens in under two frames" (33.3 ms), which is the page's work on a laptop (WebKit 9 to 11 ms, Chromium 3.5 to 4) and not
+// on the CI runner: the runner's virtual machines read WebKit 16 to 27 ms (median 19) and Chromium 6.6 to 10.8 (median 8.2) in the 18 runs of its record, and the slow one that failed pull request #650 once read 38 and 13.4. N25 first
+// scaled the bound by how slow the page itself timed a fixed piece of DOM work in the same page; the independent review showed that a regression in the page's CSS slows that work as much as it slows the open (an open 7 to 9 times slower passed). So the
+// bound is a CONSTANT for each engine, taken from the runner's own record (ui-next/shell/probes/runner-centre-open.json: the nine samples and the median of every run whose job logs have them): 1.5 times the worst median in it,
+// rounded up. scripts/ci/probe-shards.test.mjs holds the constant to that record (a median over it, or a bound that is not that, fails the test). On the runner it fails a change that makes the open take more than 3.0 (WebKit) and
+// 2.6 (Chromium) times what it takes there; the slow machine of #650 passes with a margin of 1.5. What stays a count (a commit for a notice, the listeners a closed centre holds) is not a time. Every sample is printed whatever the verdict.
+/** The most the median of nine opens of the centre may take, in ms, for each engine: 1.5 times the worst median of the runner's record, rounded up (the rule above). */
+const OPEN_BOUND_MS = { chromium: 21, webkit: 57 };
+/** The busy loop of the negative control `centre-slow-open`, in ms: not less than the bound of either engine, so that the control fails the assertion it is named for on any machine, a laptop included. */
+const SLOW_OPEN_MS = 60;
+if (SLOW_OPEN_MS < Math.max(...Object.values(OPEN_BOUND_MS))) throw new Error('the busy loop of centre-slow-open must be at least the bound of the open');
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // The negative controls: one perturbation of one measured value, made in the page (a stylesheet, or a script that runs before the page's own and watches for what it perturbs). The probe must see it. With NEGATIVE_CONTROL
@@ -709,7 +706,7 @@ const PERTURBATIONS = {
     parts: ['commits'],
     expected: /^centre commits [^:]*: a new notice while the centre was open cost \d+ commits/,
   },
-  // An open that takes the page over the most its budget can be scaled to (SCALE_CAP times two frames): a busy loop of SLOW_OPEN_MS in the click that opens it.
+  // An open that takes the page over its bound: a busy loop of SLOW_OPEN_MS (not less than the bound of either engine) in the click that opens it.
   'centre-slow-open': {
     init: `(${(busy) => {
       document.addEventListener(
@@ -2472,59 +2469,14 @@ function openClock() {
   });
 }
 
-/**
- * How slow this page is, in ms: the median of nine samples, each the mean of eight runs of a fixed piece of DOM work (50 rows of 8 cells built, attached, laid out and read), after three warm-up samples. It is the work the open
- * does (elements, style, layout) at a size that does not depend on the page, and eight runs make a sample long enough that WebKit's 1 ms clock is a few percent of it. It runs in the page, in the engine, on the machine that
- * is about to be measured, with the page idle.
- */
-function calibrate() {
-  const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:0;top:0;width:560px;height:480px;overflow:hidden;visibility:hidden;contain:strict';
-  document.body.append(host);
-  const once = () => {
-    const fragment = document.createDocumentFragment();
-    for (let row = 0; row < 50; row += 1) {
-      const line = document.createElement('div');
-      line.style.cssText = 'display:flex;gap:8px;padding:4px 8px';
-      for (let cell = 0; cell < 8; cell += 1) {
-        const span = document.createElement('span');
-        span.textContent = `row ${row} cell ${cell} lorem ipsum`;
-        span.style.cssText = cell === 1 ? 'flex:1 1 auto' : 'flex:0 0 auto';
-        line.append(span);
-      }
-      fragment.append(line);
-    }
-    host.replaceChildren(fragment);
-    host.getBoundingClientRect();
-    host.lastElementChild.getBoundingClientRect();
-  };
-  const sample = () => {
-    const start = performance.now();
-    for (let run = 0; run < 8; run += 1) once();
-    return (performance.now() - start) / 8;
-  };
-  for (let warm = 0; warm < 3; warm += 1) sample();
-  const samples = Array.from({ length: 9 }, sample).sort((a, b) => a - b);
-  host.remove();
-  return samples[4];
-}
-
-/** The budget of the open on this page: two frames scaled by how much slower the page is than the reference machine, between 1 and SCALE_CAP; `scale` and `capped` say how. */
-function openBudget(engine, calibration) {
-  const reference = CALIBRATION_REFERENCE_MS[engine];
-  const raw = reference === undefined ? 1 : calibration / reference;
-  const scale = Math.min(SCALE_CAP, Math.max(1, raw));
-  return { reference: reference ?? null, raw: round(raw), scale: round(scale), capped: raw > SCALE_CAP, budget: round(TWO_FRAMES * scale) };
-}
-
-/** Opens and closes the centre by its bell `CENTRE_OPENS` times, a real click each, and judges the budget, which is two frames scaled by this page's calibration (see the rule above `TWO_FRAMES`). */
+/** Opens and closes the centre by its bell `CENTRE_OPENS` times, a real click each, and judges the budget: `OPEN_BOUND_MS` of the engine (the rule above it). */
 async function centreOpenCost(browser, engine, viewportName, viewport, production) {
   const where = `${engine} ${viewportName}`;
   const load = os.loadavg()[0];
+  const budget = OPEN_BOUND_MS[engine];
+  if (budget === undefined) return fail(`centre open ${where}`, `OPEN_BOUND_MS has no bound for ${engine}: it has ${Object.keys(OPEN_BOUND_MS).join(' and ')}`);
   await centrePart(where, 'open', browser, production.origin, viewport, 'case=real&centre=1&seed=many', { init: [script(openClock)] }, async (page) => {
     await sleep(600);
-    const calibration = round(await page.evaluate(calibrate));
-    const scaled = openBudget(engine, calibration);
     let more = null;
     for (let index = 0; index < CENTRE_OPENS; index += 1) {
       await page.click(BELL);
@@ -2539,19 +2491,14 @@ async function centreOpenCost(browser, engine, viewportName, viewport, productio
     const opens = await page.evaluate(() => window.__opens);
     const times = opens.map((open) => round(open.ms));
     const middle = round(median(times));
-    centreEntry(where).open = { samples: times, median: middle, budget: scaled.budget, twoFrames: TWO_FRAMES, calibration: { ms: calibration, referenceMs: scaled.reference, scale: scaled.scale, capped: scaled.capped }, rows: opens.map((open) => open.rows), loadAverage: round(load) };
-    console.log(
-      `centre open ${where}: ${JSON.stringify(times)} ms, median ${middle} ms of ${scaled.budget} (two frames, ${TWO_FRAMES} ms, x${scaled.scale}${scaled.capped ? ' (the cap)' : ''}: this page's calibration is ${calibration} ms, the reference's ${scaled.reference} ms), ${opens[0]?.rows} rows (load average ${round(load)})`,
-    );
+    centreEntry(where).open = { samples: times, median: middle, budget, rows: opens.map((open) => open.rows), loadAverage: round(load) };
+    console.log(`centre open ${where}: ${JSON.stringify(times)} ms, median ${middle} ms of ${budget}, ${opens[0]?.rows} rows (load average ${round(load)})`);
     if (opens.length !== CENTRE_OPENS) return fail(`centre open ${where}`, `${opens.length} opens were timed, wanted ${CENTRE_OPENS}`);
     if (opens.some((open) => !open.found)) fail(`centre open ${where}`, 'the popover was not in the document, with a box, when the click\'s work was done: the clock did not see the open');
     if (opens.some((open) => open.rows !== 50)) fail(`centre open ${where}`, `the centre drew ${[...new Set(opens.map((open) => open.rows))].join(', ')} rows of 500 records, wanted the first 50 and no more`);
     if (more !== 'Show 450 older') fail(`centre open ${where}`, `the rest of the history is offered as ${JSON.stringify(more)}, wanted "Show 450 older"`);
-    if (middle >= scaled.budget) {
-      fail(
-        `centre open ${where}`,
-        `the centre took ${middle} ms at its median to open (samples ${JSON.stringify(times)}), over the ${scaled.budget} ms it may take: two frames (${TWO_FRAMES} ms) on the reference machine, scaled by x${scaled.scale} for this page, which calibrates at ${calibration} ms against the reference's ${scaled.reference} ms${scaled.capped ? `, and the scale is capped at x${SCALE_CAP}: this page is ${scaled.raw} times slower than the reference` : ''}`,
-      );
+    if (middle >= budget) {
+      fail(`centre open ${where}`, `the centre took ${middle} ms at its median to open (samples ${JSON.stringify(times)}), over the ${budget} ms it may take in ${engine}: 1.5 times the worst median of the runner's record (OPEN_BOUND_MS)`);
     }
   });
 }
