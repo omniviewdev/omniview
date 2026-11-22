@@ -1,4 +1,4 @@
-// The packing of the units a run selected into shards, at run time (N25): the fewest shards that each stay under the limit, each unit in one, the shards as even as that allows.
+// The packing of the units of a run into shards, at run time (N25): the fewest shards that each stay under the limit, each unit in one, the shards as even as that allows.
 //
 // A shard is a job: its time is its setup (about 90 s) plus the seconds of its units, so the number of shards is the first cost (every one repeats the setup and takes a runner) and the longest shard is the wall time.
 // So: find the fewest shards (an exact search over the units, longest first, bounded in its work; first fit decreasing when the bound is reached), then even them out (longest-first onto the shortest shard, and moves and swaps

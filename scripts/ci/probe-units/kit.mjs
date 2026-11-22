@@ -1,5 +1,5 @@
 // The kit's parts on the real `ui-next` page against the pinned mock reference (packages/kit/probes/mock-reference.json): parity with the mock, tokens, counts, keyboard, accessibility with axe-core. It reads the ui-next
-// build the shard makes. It has no negative controls. It is the one probe that stages every part, so its globs are the whole kit.
+// build the shard makes. It has no negative controls.
 export const units = [
   {
     id: 'kit',

@@ -305,6 +305,8 @@ test('negative control: a probe that the manifest lists and no unit runs fails t
   const problems = check({ units: noProbe });
   assert.equal(problems.length, 1);
   assert.match(problems[0].message, /the probe packages\/kit\/probes\/a-probe\.mjs is in scripts\/ci\/probe-units\.manifest\.json and no unit runs it: a probe was removed from CI/);
+  assert.equal(problems[0].title, 'Kit probe manifest');
+  assert.equal(problems[0].file, A);
   const nothing = small().filter((entry) => entry.script !== A);
   const dropped = messages(check({ units: nothing, found: [B, C] })).filter((message) => message.includes(MANIFEST));
   assert.deepEqual(dropped.map((message) => /(?:control "(\w+)"|the probe)/.exec(message)?.[0]), ['the probe', 'control "x"', 'control "y"']);
@@ -568,7 +570,8 @@ test('the matrix is the one line of JSON the workflow reads: `{ include: [{ shar
   matrix.include.forEach((entry, index) => {
     assert.deepEqual(Object.keys(entry), ['shard', 'units', 'seconds', 'dist']);
     assert.equal(entry.shard, index + 1);
-    assert.equal(typeof entry.dist, 'boolean');
+    assert.equal(entry.dist, PLAN.shards[index].dist, 'the shard builds ui-next exactly when a unit of it reads the build');
+    assert.equal(entry.seconds, PLAN.shards[index].seconds);
     assert.match(entry.units, /^[a-z0-9]+(?:-[a-z0-9]+)*(?:,[a-z0-9]+(?:-[a-z0-9]+)*)*$/);
     assert.deepEqual(entry.units.split(','), PLAN.shards[index].units.map((candidate) => candidate.id));
   });
@@ -973,7 +976,7 @@ test('negative control: a unit that failed, that ran twice, that lacked a contro
 });
 
 test('negative control: a plan of no shard, or of one nobody can read, is a problem whatever was reported: an empty or unreadable plan runs nothing', () => {
-  for (const shards of ['', '0', 'abc', '-1', '1.5', undefined, 'null']) {
+  for (const shards of ['', '0', 'abc', '-1', '1.5', undefined, 'null', '1e1', '0x10', ' 3 ', '3.0']) {
     const problems = verify({ shards });
     assert.ok(problems.some((message) => /^the plan says ".*" shards: a run has at least one shard, and an empty or unreadable plan runs nothing$/.test(message)), `${shards}: ${problems.join(' | ')}`);
   }
@@ -1200,7 +1203,10 @@ test('verify on the command: it passes for the reports of a whole run and says w
   const good = cli(root, ['verify', '--reports', reports, '--shards', String(PLAN.shards.length)], { GITHUB_STEP_SUMMARY: summary });
   assert.equal(good.status, 0, good.stderr + good.stdout);
   assert.match(good.stdout, new RegExp(`^probe-shards: ok \\(${probeUnits.length} probes and ${controls} controls, in ${UNITS.length} units, ran once and passed, in ${PLAN.shards.length} shards\\)$`, 'm'));
-  assert.match(readFileSync(summary, 'utf8'), new RegExp(`${probeUnits.length} probes and ${controls} controls`));
+  const written = readFileSync(summary, 'utf8');
+  assert.match(written, new RegExp(`${probeUnits.length} probes and ${controls} controls`));
+  assert.match(written, /^\| Shard \| Units that ran \|$/m);
+  for (const shard of PLAN.shards) assert.ok(written.includes(`| ${shard.shard} | ${shard.units.map((entry) => entry.id).join(', ')} |`), `the summary lists what shard ${shard.shard} ran`);
 
   rmSync(path.join(reports, 'kit-probe-reports-4'), { recursive: true });
   const missing = cli(root, ['verify', '--reports', reports, '--shards', String(PLAN.shards.length)]);
@@ -1284,6 +1290,9 @@ test('nothing in the workflow can turn a failure into a pass: no continue-on-err
   }
   assert.equal(workflow.jobs.plan.if, undefined);
   assert.equal(workflow.jobs.shard.if, undefined);
+  // The steps that are conditional are these and no other: a step that is skipped (`if: false`, or a condition that is never true) is a check that does not run.
+  const conditional = Object.entries(workflow.jobs).flatMap(([id, job]) => job.steps.filter((step) => step.if !== undefined).map((step) => `${id}: ${step.name}: ${step.if}`));
+  assert.deepEqual(conditional, ['shard: Build ui-next once, for the units of this shard that read it: matrix.dist == true', 'shard: Keep the reports: always()']);
 });
 
 test('the workflow starts for the units, the manifest, the engine and its tests, and runs on a pull request, on main and by hand and on nothing else: every probe and every control runs on every run, so there is no run that checks more and no nightly run', () => {
