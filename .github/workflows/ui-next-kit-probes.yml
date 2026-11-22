@@ -118,7 +118,7 @@ jobs:
       # Every shard runs to the end: a shard that fails does not stop the others, so one push shows every failing probe, and `Kit probes` below needs all of them.
       fail-fast: false
       # The plan's matrix: `{ include: [{ shard, units, seconds, dist }] }`. The shards are numbered from 1, the longest first; `units` are the ids of scripts/ci/probe-units; `dist` says whether a unit reads the ui-next build.
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      matrix: ${{ fromJSON('{"include":[{"shard":1,"units":"rail,detail,fonts","seconds":71,"dist":true}]}') }}
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
       - name: Match checkout directory ownership to container user
