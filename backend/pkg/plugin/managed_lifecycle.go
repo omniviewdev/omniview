@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"os"
 	"strings"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/instance"
@@ -143,7 +145,11 @@ func (pm *pluginManager) StopDevPlugin(id string) error {
 	}
 	if err := errors.Join(stopErr, pm.shutdownPlugin(id, record)); err != nil {
 		pm.storeFailedRecord(id, record, err)
-		return err
+		// The CLI of a development build maps the type of the first AppError of this error to its
+		// exit code: it is the host's own failure to stop the plugin, whatever class the provider's
+		// Close answered with, as it is for a reload (reloadPluginLocked).
+		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
+			fmt.Sprintf("Failed to stop plugin '%s'", id)).WithInstance(id)
 	}
 	stopped := *record
 	stopped.Backend = nil

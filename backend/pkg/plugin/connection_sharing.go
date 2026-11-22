@@ -15,7 +15,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	v2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -85,7 +84,7 @@ func (pm *pluginManager) validateDependencies(root config.PluginMeta) error {
 				if entry, builtin := pm.builtin(requirement.Plugin); builtin {
 					owner = entry.Metadata
 				} else {
-					owner, err = pluginmeta.Load(pm.pluginsRoot.ResolvePath(requirement.Plugin))
+					owner, err = types.LoadPluginMetadata(pm.pluginsRoot.ResolvePath(requirement.Plugin))
 				}
 				if err != nil || owner.ID != requirement.Plugin || !slices.Contains(owner.Capabilities, "resource") {
 					return ownerUnavailable()

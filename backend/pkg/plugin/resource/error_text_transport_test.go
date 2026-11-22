@@ -42,28 +42,27 @@ var kubernetesErrors = []struct{ code, title, message string }{
 // the plugin says (the C02 rule in apperror.ForResource).
 var hostOwnsTheSentence = map[string]bool{"FORBIDDEN": true, "UNAUTHORIZED": true, "PROVIDER_ERROR": true}
 
-// carryTheSentence adds to every classified error status what a plugin built on
-// an SDK that carries the provider's sentence adds: a LocalizedMessage detail
-// beside the ErrorInfo. The server and the client around it are the SDK this
-// host is built on, so the host is exercised against the wire such a plugin
-// sends without waiting for that SDK to be pinned.
-func carryTheSentence(sentence map[string]string) grpc.UnaryServerInterceptor {
+// olderPlugin makes the plugin's server answer as one built on an SDK that does not
+// carry the provider's sentence (every release up to v0.20.0): the status keeps the
+// class, the ErrorInfo, and loses the LocalizedMessage that the SDK this host is
+// built on adds. The server and the client around it are that SDK, so what is
+// stripped is exactly what an older server never sent.
+func olderPlugin() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, request any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		response, err := handler(ctx, request)
 		st, ok := status.FromError(err)
 		if !ok || err == nil {
 			return response, err
 		}
-		for _, detail := range st.Details() {
-			if info, isInfo := detail.(*errdetails.ErrorInfo); isInfo && sentence[info.Reason] != "" {
-				carried, withErr := st.WithDetails(&errdetails.LocalizedMessage{Locale: "en", Message: sentence[info.Reason]})
-				if withErr != nil {
-					return response, err
-				}
-				return response, carried.Err()
+		p := st.Proto()
+		kept := p.GetDetails()[:0]
+		for _, detail := range p.GetDetails() {
+			if !detail.MessageIs(&errdetails.LocalizedMessage{}) {
+				kept = append(kept, detail)
 			}
 		}
-		return response, err
+		p.Details = kept
+		return response, status.ErrorProto(p)
 	}
 }
 
@@ -107,15 +106,14 @@ func classText(t *testing.T, code string) (title, detail string) {
 	return fallback.Title, fallback.Detail
 }
 
+// A plugin built on this SDK sends the provider's sentence in the status, the SDK
+// client restores it, and the host's gate decides what the UI is given: the sentence
+// for a class that may show it, the host's own words for one that may not.
 func TestKubernetesStyleSentenceReachesTheUI(t *testing.T) {
-	sentences := map[string]string{}
-	for _, k := range kubernetesErrors {
-		sentences[k.code] = k.message
-	}
 	for _, k := range kubernetesErrors {
 		t.Run(k.code, func(t *testing.T) {
 			title, fallback := classText(t, k.code)
-			app := catalogFailure(t, k.code, k.title, k.message, grpc.UnaryInterceptor(carryTheSentence(sentences)))
+			app := catalogFailure(t, k.code, k.title, k.message)
 			require.Equal(t, k.code, app.Code)
 			require.Equal(t, title, app.Title, "the class is the title; the plugin's title is not carried")
 			require.Empty(t, app.Suggestions, "suggestions are the host's to give")
@@ -130,13 +128,13 @@ func TestKubernetesStyleSentenceReachesTheUI(t *testing.T) {
 }
 
 // A plugin built on an SDK that does not carry the sentence sends the class and
-// nothing else. The UI is given the host's sentence for the class, not the
-// SDK's placeholder.
+// nothing else, and every plugin published before the SDK that carries it is one.
+// The UI is given the host's sentence for the class, not a placeholder.
 func TestPluginWithoutCarriedSentenceGetsTheHostsClassText(t *testing.T) {
 	for _, k := range kubernetesErrors {
 		t.Run(k.code, func(t *testing.T) {
 			title, fallback := classText(t, k.code)
-			app := catalogFailure(t, k.code, k.title, k.message)
+			app := catalogFailure(t, k.code, k.title, k.message, grpc.UnaryInterceptor(olderPlugin()))
 			require.Equal(t, k.code, app.Code)
 			require.Equal(t, title, app.Title)
 			require.Equal(t, fallback, app.Detail)

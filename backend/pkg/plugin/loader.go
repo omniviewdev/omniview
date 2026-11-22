@@ -25,10 +25,10 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -199,7 +199,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (i
 	}
 
 	var err error
-	metadata, err = pluginmeta.Load(location)
+	metadata, err = sdktypes.LoadPluginMetadata(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return plugintypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusNotFound,
@@ -428,6 +428,27 @@ func (pm *pluginManager) storeFailedRecord(id string, record *plugintypes.Plugin
 	if machine != nil {
 		machine.ForcePhase(lifecycle.PhaseFailed, cause.Error())
 	}
+}
+
+// controllerFailure is an error a capability controller returned from its lifecycle call, as the
+// load, the unload and the shutdown keep it. They keep its text as the cause the plugin's page
+// shows and hand it to whoever asked (the install that failed on it, the crash recovery that
+// reports it to a window), and a controller that failed on the plugin's own answer holds a typed
+// provider error: the resource controller asks the provider for its features before it registers
+// it, and closes it when it stops. The sentence in such an error is the plugin's to write, and it
+// goes to a window as apperror.ForResource words it, as it does from every call the host makes.
+// An error that is not a provider's keeps its own text.
+func controllerFailure(err error) error {
+	var typed *resourcev2.ResourceOperationError
+	if errors.As(err, &typed) {
+		return apperror.ForResource(err, "")
+	}
+	return err
+}
+
+// startFailure is the error of a capability controller's failed start, as the load reports it.
+func startFailure(capability string, err error) error {
+	return fmt.Errorf("start %s controller: %w", capability, controllerFailure(err))
 }
 
 // trackBackendPID records the PID of an external plugin process so it can be
@@ -795,7 +816,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	// Retire the previous process advertisement before any replacement startup
 	// can fail, including capability detection and manager initialization.
 	if ctrl := pm.connlessControllers[sdktypes.CapabilityTools]; ctrl != nil {
-		if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
+		if err := controllerFailure(ctrl.OnPluginStop(pluginID, record.Metadata)); err != nil {
 			return fmt.Errorf("retire previous tools controller: %w", err)
 		}
 	}
@@ -804,7 +825,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	defer func() {
 		if !committed {
 			for i := len(started) - 1; i >= 0; i-- {
-				resultErr = errors.Join(resultErr, started[i].OnPluginStop(pluginID, record.Metadata))
+				resultErr = errors.Join(resultErr, controllerFailure(started[i].OnPluginStop(pluginID, record.Metadata)))
 			}
 		}
 	}()
@@ -850,7 +871,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
 			started = append(started, ctrl)
 			if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
-				return fmt.Errorf("start settings controller: %w", err)
+				return startFailure("settings", err)
 			}
 		}
 		break
@@ -871,14 +892,14 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 				OnPluginStartWithoutAutoConnect(string, config.PluginMeta, plugintypes.PluginBackend) error
 			}); ok {
 				if err := noAuto.OnPluginStartWithoutAutoConnect(pluginID, record.Metadata, backend); err != nil {
-					return fmt.Errorf("start %s controller: %w", cap.String(), err)
+					return startFailure(cap.String(), err)
 				}
 				continue
 			}
 			return fmt.Errorf("resource controller cannot suppress dependency auto-connect")
 		}
 		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
-			return fmt.Errorf("start %s controller: %w", cap.String(), err)
+			return startFailure(cap.String(), err)
 		}
 	}
 
@@ -922,7 +943,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 		}
 	}
 	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
-		if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
+		if err := controllerFailure(ctrl.OnPluginStop(pluginID, record.Metadata)); err != nil {
 			errs = append(errs, fmt.Errorf("stop settings: %w", err))
 		}
 	}
@@ -931,7 +952,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 			continue
 		}
 		if ctrl := pm.controllerFor(cap); ctrl != nil {
-			if err := ctrl.OnPluginStop(pluginID, record.Metadata); err != nil {
+			if err := controllerFailure(ctrl.OnPluginStop(pluginID, record.Metadata)); err != nil {
 				errs = append(errs, fmt.Errorf("stop %s: %w", cap, err))
 			}
 		}
@@ -964,7 +985,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 		if ctrl == nil {
 			continue
 		}
-		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
+		if err := controllerFailure(ctrl.OnPluginShutdown(pluginID, record.Metadata)); err != nil {
 			errs = append(errs, fmt.Errorf("shutdown %s: %w", cap, err))
 		}
 	}
@@ -972,12 +993,12 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 		if cap == sdktypes.CapabilitySettings || ctrl == nil {
 			continue
 		}
-		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
+		if err := controllerFailure(ctrl.OnPluginShutdown(pluginID, record.Metadata)); err != nil {
 			errs = append(errs, fmt.Errorf("shutdown %s: %w", cap, err))
 		}
 	}
 	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
-		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
+		if err := controllerFailure(ctrl.OnPluginShutdown(pluginID, record.Metadata)); err != nil {
 			errs = append(errs, fmt.Errorf("shutdown settings: %w", err))
 		}
 	}

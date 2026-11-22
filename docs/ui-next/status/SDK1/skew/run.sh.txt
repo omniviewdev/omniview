@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# THROWAWAY (SDK1 skew proof): one server binary, one host client binary, real gRPC over TCP on loopback.
+# The server and the scratch directory are removed on every exit path, a failing client included.
+set -euo pipefail
+server="$1"; client="$2"
+work="$(mktemp -d)"
+"$server" > "$work/addr" 2> "$work/server.err" &
+pid=$!
+cleanup() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$work"; }
+trap cleanup EXIT
+for _ in $(seq 1 50); do [ -s "$work/addr" ] && break; sleep 0.1; done
+addr="$(head -1 "$work/addr")"
+"$client" -addr "$addr"

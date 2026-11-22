@@ -18,8 +18,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -203,7 +203,7 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 	if err != nil {
 		return DevServerState{}, err
 	}
-	metadata, err := pluginmeta.Load(devPath)
+	metadata, err := sdktypes.LoadPluginMetadata(devPath)
 	if err != nil {
 		return DevServerState{}, fmt.Errorf("load source metadata: %w", err)
 	}

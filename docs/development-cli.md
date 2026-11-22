@@ -17,7 +17,7 @@ omniview-dev --help
 
 For source development, bootstrap the CLI through the public task, which prints
 its actual immutable absolute executable path. The host consumes the published
-plugin SDK its `go.mod` declares (currently `v0.17.0`):
+plugin SDK its `go.mod` declares (currently `v0.21.0`):
 
 ```sh
 DEV="$(task --silent dev:cli:build)"
@@ -484,15 +484,17 @@ is cloned, fetched or added automatically, and consumer Go files are never
 edited. `--reviewed-sdk-revision` stays removed.
 
 Published mode accepts a released tag at or above the controller's own pinned
-SDK (`devsdk.FloorVersion`, currently `v0.20.0`) whose module checksum and go.mod
+SDK (`devsdk.FloorVersion`, currently `v0.21.0`) whose module checksum and go.mod
 checksum equal a row of the controller's compiled-in reviewed-release table. The
-table is append-only and retains `v0.17.0`, `v0.18.0`, `v0.19.0`, `v0.19.2` and `v0.19.3`;
+table is append-only and retains `v0.17.0`, `v0.18.0`, `v0.19.0`, `v0.19.2`, `v0.19.3` and `v0.20.0`;
 the current pin's row equals the controller's own `go.sum` lines. A branch's own `go.sum`
 cannot attest itself: it must agree with a
 row the controller already reviewed. An unknown version or a different checksum
 tuple is refused with `sdk_release_untrusted` (exit 4), saying the release is not
-reviewed by this controller; rebuild the controller from a host checkout that
-adopts that release. Pseudo-versions and older releases are refused the same way;
+reviewed by this controller. The refusal names the command that moves the consumer to
+the floor, `go get github.com/omniviewdev/plugin-sdk@<floor> && go mod tidy`, to be run
+in that repository; a release newer than the table needs a controller rebuilt from a
+host checkout that adopts it. Pseudo-versions and older releases are refused the same way;
 there is no compatibility path. Verification against the Go checksum database
 (sumdb) for tuples outside the table is not implemented. It is the way a future
 extension could verify releases beyond the table, but `GOPRIVATE` and `GONOSUMDB`

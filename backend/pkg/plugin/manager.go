@@ -24,7 +24,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/tools"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -783,7 +782,7 @@ func (pm *pluginManager) stubMissingDevBinary(name string, state plugintypes.Plu
 		return false
 	}
 
-	meta, metaErr := pluginmeta.Load(pluginLocation)
+	meta, metaErr := sdktypes.LoadPluginMetadata(pluginLocation)
 	if metaErr != nil {
 		pm.logger.Warnw(pm.ctx, "dev plugin binary missing and metadata unreadable",
 			"pluginID", name, "error", metaErr)

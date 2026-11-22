@@ -1,0 +1,98 @@
+// THROWAWAY (SDK1 skew proof): the host's side of the provider transport, built against whichever plugin SDK (and whichever
+// apperror) the module it sits in has. It asks the skew server for every class and prints, per case, what the SDK client
+// returns and the envelope the host's own normaliser (apperror.ForResource) gives the UI.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+)
+
+type result struct {
+	Case          string   `json:"case"`
+	OK            bool     `json:"ok,omitempty"`
+	CatalogType   string   `json:"catalogType,omitempty"`
+	ClientCode    string   `json:"clientCode,omitempty"`
+	ClientMessage string   `json:"clientMessage,omitempty"`
+	GRPCCode      string   `json:"grpcCode,omitempty"`
+	Details       []string `json:"statusDetails,omitempty"`
+	EnvelopeCode  string   `json:"envelopeCode,omitempty"`
+	EnvelopeTitle string   `json:"envelopeTitle,omitempty"`
+	EnvelopeText  string   `json:"envelopeDetail,omitempty"`
+	LeakedSecret  bool     `json:"leakedSecretInEnvelope,omitempty"`
+}
+
+func main() {
+	address := flag.String("addr", "", "server address")
+	flag.Parse()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, *address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+	client := grpcplugin.NewClient(conn)
+	cases := []string{"OK", "NOT_FOUND", "FORBIDDEN", "CONFLICT", "TIMEOUT", "UNAUTHORIZED", "INVALID_REQUEST", "UNSUPPORTED", "CONTINUATION_EXPIRED",
+		"RESOURCE_LIMIT", "UNAVAILABLE", "CONNECTION_ERROR", "CERTIFICATE_ERROR", "PROVIDER_ERROR", "untyped"}
+	encoder := json.NewEncoder(os.Stdout)
+	for _, name := range cases {
+		out := result{Case: name}
+		catalog, callErr := client.Catalog(ctx, resource.CatalogRequest{Route: resource.AccessRoute{Connection: name}})
+		if callErr == nil {
+			out.OK, out.CatalogType = true, catalog.Types[0].Type
+		} else {
+			var typed *resource.ResourceOperationError
+			if errors.As(callErr, &typed) {
+				out.ClientCode, out.ClientMessage = typed.Code, typed.Message
+				if st, ok := status.FromError(typed.Err); ok {
+					out.GRPCCode = st.Code().String()
+					for _, detail := range st.Details() {
+						switch detail.(type) {
+						case *errdetails.ErrorInfo:
+							out.Details = append(out.Details, "ErrorInfo")
+						case *errdetails.LocalizedMessage:
+							out.Details = append(out.Details, "LocalizedMessage")
+						default:
+							out.Details = append(out.Details, fmt.Sprintf("%T", detail))
+						}
+					}
+				}
+			} else {
+				out.ClientCode = "(not a classified error) " + callErr.Error()
+			}
+			app := apperror.ForResource(callErr, "request")
+			out.EnvelopeCode, out.EnvelopeTitle, out.EnvelopeText = app.Code, app.Title, app.Detail
+			raw, _ := json.Marshal(app)
+			for _, leak := range []string{"NATIVE-SECRET", "PLUGIN-TITLE", "PLUGIN-SUGGESTION"} {
+				if contains(string(raw), leak) {
+					out.LeakedSecret = true
+				}
+			}
+		}
+		_ = encoder.Encode(out)
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

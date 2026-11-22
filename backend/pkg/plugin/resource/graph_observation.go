@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/invocation"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
@@ -459,11 +460,16 @@ func (o *graphObservation) publish(snapshot HostGraphObservationSnapshot) {
 	o.emit(snapshot)
 }
 
+// graphObservationFailure is what the page is told when an observation fails. A provider's
+// error reaches it as every other call's does: the class, and the plugin's sentence only after
+// apperror.ForResource has cleaned it or refused it. The error found may sit under an
+// AppError (finishResource wraps the provider's error and Unwrap gives it back), so the gate
+// is applied to whatever errors.As finds, never a copy of it.
 func graphObservationFailure(err error) HostGraphObservationSnapshot {
 	var operation *resourcev2.ResourceOperationError
 	if errors.As(err, &operation) {
-		copy := *operation
-		return HostGraphObservationSnapshot{State: "failed", Error: &copy}
+		app := apperror.ForResource(err, "")
+		return HostGraphObservationSnapshot{State: "failed", Error: &resourcev2.ResourceOperationError{Code: app.Code, Title: app.Title, Message: app.Detail}} //nolint:exhaustruct // The other fields are unset until an observation is ready, as in the return below.
 	}
 	return HostGraphObservationSnapshot{State: "failed", Error: &resourcev2.ResourceOperationError{Code: resourcev2.ErrorCode(err), Message: "Graph observation is unavailable."}}
 }

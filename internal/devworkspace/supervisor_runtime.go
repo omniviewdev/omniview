@@ -21,7 +21,6 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontrol"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -582,7 +581,7 @@ func managedPluginStartupOrder(workspace *Workspace) ([]devcontract.Plugin, erro
 		if err != nil {
 			return nil, err
 		}
-		metadata, err := pluginmeta.Load(path)
+		metadata, err := sdktypes.LoadPluginMetadata(path)
 		if err != nil {
 			return nil, fmt.Errorf("managed plugin %s metadata: %w", plugin.ID, err)
 		}

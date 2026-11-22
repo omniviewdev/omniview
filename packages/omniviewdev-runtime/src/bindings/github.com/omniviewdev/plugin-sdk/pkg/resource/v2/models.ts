@@ -1490,8 +1490,12 @@ export class ResourceNavigationIntent {
  * never include credentials, private configuration, or raw native diagnostics.
  * Put native diagnostics in Err, which is excluded from JSON and exposed only
  * through Unwrap. Error serializes classification and public text, not Err.
- * The host still owns redaction, canonical AppError provenance, and recovery
- * policy; provider text and classification never grant permission.
+ * Across the resource transport the classification and Message cross: the
+ * provider server carries Message in the gRPC status, bounded (see
+ * plugin.MaxErrorMessageBytes; valid UTF-8; reviewed classes only), and the client
+ * restores it. Title, Suggestions, and Err never cross. The host still owns
+ * redaction, canonical AppError provenance, and recovery policy; provider text
+ * and classification never grant permission.
  */
 export class ResourceOperationError {
     "code": string;

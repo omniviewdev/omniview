@@ -703,8 +703,8 @@ func (c *controller) CheckConnection(ctx context.Context, pluginID, connectionID
 			pluginID,
 			"connectionID",
 			connectionID,
-			"error",
-			err,
+			"errorClass",
+			telemetryutil.ErrorClass(err),
 		)
 		c.checkConnectionError(pluginID, err)
 		return types.ConnectionStatus{}, err
@@ -1240,7 +1240,7 @@ func (c *controller) checkConnectionError(pluginID string, err error) {
 // to avoid duplicate notifications when multiple listeners detect the same crash.
 func (c *controller) triggerCrashRecovery(pluginID string, err error, listener string) {
 	c.logger.Errorw(context.Background(), "plugin event stream died — plugin process may have crashed",
-		"pluginID", pluginID, "error", err, "listener", listener)
+		"pluginID", pluginID, "errorClass", telemetryutil.ErrorClass(err), "listener", listener)
 
 	c.pluginsMu.RLock()
 	ps, ok := c.plugins[pluginID]

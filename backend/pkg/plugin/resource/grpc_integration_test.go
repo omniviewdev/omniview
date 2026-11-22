@@ -4,17 +4,20 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
-	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 const grpcTestBufSize = 1024 * 1024
@@ -151,12 +154,18 @@ func TestL3_05_CatalogOnlyProviderViaGRPC(t *testing.T) {
 	assert.Equal(t, "UNSUPPORTED", resource.ErrorCode(err))
 }
 
+// What crosses the transport for a failed call, and what the host does with it. The
+// class always crosses. The sentence of a typed error is public-safe by the SDK's
+// contract and crosses with it (plugin-sdk after v0.20.0); the text of an error that
+// is not typed is a native diagnostic and never does. Whatever crosses, the envelope
+// the UI is given carries none of it for these two classes, which are the host's to word.
 func TestL3_06_ErrorPropagationViaGRPC(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		err  error
-		code string
-	}{{"typed", resource.NewError("FORBIDDEN", "secret"), "FORBIDDEN"}, {"untyped", errors.New("secret"), "PROVIDER_ERROR"}} {
+		name    string
+		err     error
+		code    string
+		crosses bool
+	}{{"typed", resource.NewError("FORBIDDEN", "secret"), "FORBIDDEN", true}, {"untyped", errors.New("secret"), "PROVIDER_ERROR", false}} {
 		t.Run(test.name, func(t *testing.T) {
 			provider := grpcFiniteFixture()
 			provider.GetFunc = func(context.Context, resource.GetRequest) (resource.Record, error) {
@@ -169,7 +178,8 @@ func TestL3_06_ErrorPropagationViaGRPC(t *testing.T) {
 			_, err = client.Get(ctx, grpcGetRequest())
 			require.Error(t, err)
 			assert.Equal(t, test.code, resource.ErrorCode(err))
-			assert.NotContains(t, err.Error(), "secret")
+			assert.Equal(t, test.crosses, strings.Contains(err.Error(), "secret"))
+			assert.NotContains(t, apperror.ForResource(err, "request").Error(), "secret")
 		})
 	}
 }

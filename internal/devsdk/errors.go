@@ -94,13 +94,17 @@ func IdentityChanged(consumer, message string) error {
 // message states the policy's own cause (below the floor, not a release, not a
 // reviewed release, checksums that differ from the reviewed row, or a missing
 // capability) and the ways forward, never a claim that a range of releases works.
+// The first way forward is the command that moves the consumer to the floor, a
+// release the table names for certain; the controller's own rebuild is for a
+// release newer than the table.
 func releaseUntrusted(consumer string, published Published, cause error) error {
 	typed := devcontract.Fail(4, CodeReleaseUntrusted, fmt.Sprintf(
 		"%s resolves %s %s, which this controller does not accept: %s. "+
-			"Update that repository to a released %s this controller has reviewed (at or above %s), "+
-			"rebuild the controller from a host checkout that adopts this release, "+
+			"Update that repository to a released %s this controller has reviewed (at or above %s) "+
+			"by running, in it: go get %s@%s && go mod tidy. "+
+			"Or rebuild the controller from a host checkout that adopts this release, "+
 			"or select the plugin-sdk repository to build against explicit SDK source",
-		consumer, Module, published.Version, strings.TrimPrefix(cause.Error(), ErrNotAccepted.Error()+": "), Module, FloorVersion))
+		consumer, Module, published.Version, strings.TrimPrefix(cause.Error(), ErrNotAccepted.Error()+": "), Module, FloorVersion, Module, FloorVersion))
 	err := refuse(typed, consumer, published, cause)
 	typed.Details["floor"] = FloorVersion
 	return err

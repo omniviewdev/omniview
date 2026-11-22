@@ -1,0 +1,70 @@
+// THROWAWAY (SDK1 skew proof): a resource provider, built against whichever plugin SDK the module it sits in pins, that fails a
+// Catalog call the way the Kubernetes plugin does: a typed error per class (public sentence in Message, a native diagnostic only
+// in Err), or an untyped error. The connection of the request names the class, so one binary serves every case.
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"net"
+	"os"
+
+	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
+	"google.golang.org/grpc"
+)
+
+var sentences = map[string]string{
+	"NOT_FOUND":            "The requested resource or API group was not found.",
+	"FORBIDDEN":            "You do not have permission to perform this resource operation.",
+	"CONFLICT":             "The resource operation conflicts with the current cluster state.",
+	"TIMEOUT":              "The cluster did not complete the request in time.",
+	"UNAUTHORIZED":         "The cluster could not authenticate the request.",
+	"INVALID_REQUEST":      "The cluster rejected the resource request.",
+	"UNSUPPORTED":          "The cluster does not support this resource operation.",
+	"CONTINUATION_EXPIRED": "The resource listing continuation has expired. Start a new listing.",
+	"RESOURCE_LIMIT":       "The request exceeded a cluster resource or rate limit.",
+	"UNAVAILABLE":          "The cluster is temporarily unavailable.",
+	"CONNECTION_ERROR":     "Unable to connect to the cluster.",
+	"CERTIFICATE_ERROR":    "The cluster certificate could not be verified.",
+	"PROVIDER_ERROR":       "The cluster could not complete the request.",
+}
+
+type provider struct{}
+
+func (provider) Catalog(_ context.Context, request resource.CatalogRequest) (resource.Catalog, error) {
+	name := request.Route.Connection
+	if name == "OK" {
+		return resource.Catalog{Provider: "skew", Revision: "r1", Coverage: resource.Coverage{Kind: "complete", Paths: []string{}}, Types: []resource.ResourceType{{
+			Type: "native::Pod", DisplayName: "native::Pod", IdentityDimensions: []resource.Dimension{}, QueryDimensions: []resource.Dimension{},
+			Representations: []resource.Representation{{ID: "native", Revision: "r1"}},
+			Capabilities:    []resource.Capability{{Operation: resource.OperationGet}, {Operation: resource.OperationEnumerate}},
+		}}}, nil
+	}
+	if sentence, ok := sentences[name]; ok {
+		return resource.Catalog{}, &resource.ResourceOperationError{
+			Err:  errors.New("Get \"https://10.0.0.1:6443/api/v1/pods?token=NATIVE-SECRET\": native diagnostic"),
+			Code: name, Title: "PLUGIN-TITLE", Message: sentence, Suggestions: []string{"PLUGIN-SUGGESTION"},
+		}
+	}
+	return resource.Catalog{}, errors.New("raw native error NATIVE-SECRET")
+}
+
+func main() {
+	address := flag.String("addr", "127.0.0.1:0", "listen address")
+	flag.Parse()
+	listener, err := net.Listen("tcp", *address)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(listener.Addr().String())
+	server := grpc.NewServer(grpcplugin.ServerOptions()...)
+	grpcplugin.RegisterServer(server, provider{})
+	if err := server.Serve(listener); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

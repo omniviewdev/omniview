@@ -14,19 +14,20 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Reading a plugin's error takes three shapes, all of which this host must meet:
+// Reading a plugin's error takes two shapes, both of which this host must meet:
 //
-//   - a plugin built on an SDK that carries the sentence, read by a client that
-//     predates it (the host's SDK pin): the client sets a placeholder and keeps the
-//     status, with the LocalizedMessage, in Err;
-//   - the same plugin read by a client that restores the sentence: it is Message;
-//   - a plugin built on an SDK that does not carry it: a class, and nothing else.
+//   - a plugin built on an SDK that carries the sentence (plugin-sdk after v0.20.0):
+//     the SDK client restores it into Message;
+//   - a plugin built on an SDK that does not (every plugin published before it): the
+//     status holds a class and nothing else, and Message is empty.
 //
-// The first is made by the pinned SDK's own client from a status built the way the
-// carrying SDK builds it, so what is tested is what that client really returns.
+// Both are read by the SDK client this host is built on, from a status built the way
+// each kind of plugin builds it, so what is tested is what that client really returns.
 
 // pluginStatus builds the status a plugin sends: the class in an ErrorInfo and, when
-// sentence is not empty, the sentence in a LocalizedMessage.
+// sentence is not empty, the sentence in a LocalizedMessage, as an SDK that carries
+// it builds it. Without a sentence it is the status of a plugin built on an SDK that
+// does not.
 func pluginStatus(t *testing.T, grpcCode codes.Code, code, sentence string) error {
 	t.Helper()
 	withInfo, err := status.New(grpcCode, "resource operation failed").
@@ -51,12 +52,6 @@ func readByPinnedClient(t *testing.T, wire error) error {
 		t.Fatalf("not a classified error: %v", decoded)
 	}
 	return decoded
-}
-
-// readByRestoringClient is what a client that restores the sentence returns: the
-// sentence in Message (empty when there was none), the status in Err.
-func readByRestoringClient(code, sentence string, wire error) error {
-	return &resource.ResourceOperationError{Err: wire, Code: code, Message: sentence}
 }
 
 type kubernetesCase struct {
@@ -90,52 +85,24 @@ var kubernetesCases = []kubernetesCase{
 func TestKubernetesStyleErrorsReachTheUI(t *testing.T) {
 	for _, k := range kubernetesCases {
 		t.Run(k.code, func(t *testing.T) {
-			carrying := pluginStatus(t, k.grpc, k.code, k.sentence)
-			older := pluginStatus(t, k.grpc, k.code, "")
-			for name, got := range map[string]error{
-				"a carrying plugin, read by the pinned client":  readByPinnedClient(t, carrying),
-				"a carrying plugin, read by a restoring client": readByRestoringClient(k.code, k.sentence, carrying),
-			} {
-				if app := ForResource(got, "req-1"); app.Error() != k.withSentence {
-					t.Errorf("%s:\n got  %s\n want %s", name, app.Error(), k.withSentence)
-				}
+			carrying := readByPinnedClient(t, pluginStatus(t, k.grpc, k.code, k.sentence))
+			if app := ForResource(carrying, "req-1"); app.Error() != k.withSentence {
+				t.Errorf("a plugin that carries the sentence:\n got  %s\n want %s", app.Error(), k.withSentence)
 			}
-			for name, got := range map[string]error{
-				"an older plugin, read by the pinned client":  readByPinnedClient(t, older),
-				"an older plugin, read by a restoring client": readByRestoringClient(k.code, "", older),
-			} {
-				if app := ForResource(got, "req-1"); app.Error() != k.classOnly {
-					t.Errorf("%s:\n got  %s\n want %s", name, app.Error(), k.classOnly)
-				}
+			older := readByPinnedClient(t, pluginStatus(t, k.grpc, k.code, ""))
+			if app := ForResource(older, "req-1"); app.Error() != k.classOnly {
+				t.Errorf("an older plugin:\n got  %s\n want %s", app.Error(), k.classOnly)
 			}
 		})
 	}
 }
 
-// The placeholders the SDK puts where a sentence would be are not sentences, in a
-// call or in an action event.
-func TestSDKPlaceholdersAreNotSentences(t *testing.T) {
-	for _, placeholder := range []string{"resource operation failed", "action operation failed"} {
-		app := ForResource(&resource.ResourceOperationError{Code: "TIMEOUT", Message: placeholder}, "req-1")
-		if app.Detail != "The operation exceeded its deadline." {
-			t.Errorf("%q took the place of the class's sentence: %q", placeholder, app.Detail)
-		}
-	}
-}
-
-// A tripwire for the day this host pins an SDK whose client restores the sentence
-// (plugin-sdk, the release that carries it). Until then the client leaves a
-// placeholder in Message and the sentence in the status, and ForResource reads it
-// from there (providerSentence). When this fails, delete statusSentence, the status
-// branch of providerSentence, the "resource operation failed" entry of
-// sdkPlaceholders, and this test: Message carries the sentence.
-func TestPinnedSDKClientStillLeavesTheSentenceInTheStatus(t *testing.T) {
-	var roe *resource.ResourceOperationError
-	if !errors.As(readByPinnedClient(t, pluginStatus(t, codes.Aborted, "CONFLICT", "A sentence.")), &roe) {
-		t.Fatal("not a classified error")
-	}
-	if roe.Message != "resource operation failed" {
-		t.Fatalf("the pinned SDK client now restores the sentence (Message %q): remove the status reading from ForResource", roe.Message)
+// The placeholder the SDK puts where an action event's sentence would be is not a
+// sentence. (A call that fails has none: its Message is empty.)
+func TestTheActionPlaceholderIsNotASentence(t *testing.T) {
+	app := ForResource(&resource.ResourceOperationError{Code: "TIMEOUT", Message: "action operation failed"}, "req-1")
+	if app.Detail != "The operation exceeded its deadline." {
+		t.Errorf("the placeholder took the place of the class's sentence: %q", app.Detail)
 	}
 }
 
@@ -145,9 +112,8 @@ func TestHostOwnedClassesNeverShowProviderText(t *testing.T) {
 	for _, code := range []string{"FORBIDDEN", "UNAUTHORIZED", "INTERNAL", "PROVIDER_ERROR", "CANCELLED", "GRANT_DENIED", "DELEGATION_NOT_ACTIVE", "OWNER_UNAVAILABLE", "CONNECTION_NOT_STARTED", "A_CLASS_THAT_DOES_NOT_EXIST"} {
 		t.Run(code, func(t *testing.T) {
 			for name, err := range map[string]error{
-				"the restoring client": readByRestoringClient(code, "PLUGIN-SENTENCE", nil),
-				"the pinned client":    &resource.ResourceOperationError{Err: pluginStatus(t, codes.Internal, "INTERNAL", "PLUGIN-SENTENCE"), Code: code, Message: "resource operation failed"},
-				"a typed error":        &resource.ResourceOperationError{Code: code, Title: "PLUGIN-TITLE", Message: "PLUGIN-SENTENCE", Suggestions: []string{"PLUGIN-SUGGESTION"}},
+				"the SDK client": grpcplugin.ResourceDomainError(pluginStatus(t, codes.Internal, code, "PLUGIN-SENTENCE")),
+				"a typed error":  &resource.ResourceOperationError{Code: code, Title: "PLUGIN-TITLE", Message: "PLUGIN-SENTENCE", Suggestions: []string{"PLUGIN-SUGGESTION"}},
 			} {
 				if wire := ForResource(err, "req-1").Error(); strings.Contains(wire, "PLUGIN") {
 					t.Errorf("%s: provider text reached the envelope: %s", name, wire)
@@ -181,8 +147,8 @@ func TestProviderSentenceIsCleanedOrRefused(t *testing.T) {
 		if typed.Detail != tc.want {
 			t.Errorf("%s: detail %q, want %q", name, typed.Detail, tc.want)
 		}
-		// The same text through the status, as the pinned client leaves it. A proto
-		// string cannot hold what is not UTF-8, so such text never gets this far.
+		// The same text through the wire, read by the SDK client. A proto string
+		// cannot hold what is not UTF-8, so such text never gets this far.
 		if utf8.ValidString(tc.in) {
 			wire := readByPinnedClient(t, pluginStatus(t, codes.DeadlineExceeded, "TIMEOUT", tc.in))
 			if got := ForResource(wire, "req-1").Detail; got != tc.want {
