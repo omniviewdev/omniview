@@ -28,6 +28,10 @@ type Scope struct {
 type Snapshot struct {
 	Scope      Scope             `json:"scope"`
 	Categories pkgsettings.Store `json:"categories"`
+	// Stored says, for every sensitive host setting, whether it holds a value now.
+	// Keys are the ids a commit takes ("category.setting"). The value itself is
+	// never carried; the plugin scope leaves the map empty.
+	Stored map[string]bool `json:"stored,omitempty"`
 }
 type CommitResult struct {
 	Snapshot  Snapshot `json:"snapshot"`
@@ -242,6 +246,10 @@ func (s *Service) GetSnapshot(scope Scope) (Snapshot, error) {
 			baseline, ok := s.baseline[catID+"."+id]
 			setting.PendingRestart = ok && !reflect.DeepEqual(baseline, setting.Value)
 			if setting.Sensitive || setting.Type == pkgsettings.Password {
+				if result.Stored == nil {
+					result.Stored = make(map[string]bool)
+				}
+				result.Stored[catID+"."+id] = holdsValue(setting)
 				setting.Sensitive = true
 				setting.Value = nil
 				setting.Default = nil
@@ -344,4 +352,22 @@ func (s *Service) applyHostChanges(values map[string]any, apply func(string, map
 		}
 	}
 	return applied
+}
+
+// holdsValue reports whether the setting's value in effect is a value: nil, an
+// empty string, and an empty slice or map are none; anything else, including a
+// non-empty default, is a value. It is read before the snapshot blanks the
+// setting and is the only function of the value the snapshot carries.
+func holdsValue(setting pkgsettings.Setting) bool {
+	value := setting.Value
+	if value == nil {
+		value = setting.Default
+	}
+	if value == nil {
+		return false
+	}
+	if v := reflect.ValueOf(value); v.Kind() == reflect.String || v.Kind() == reflect.Slice || v.Kind() == reflect.Map {
+		return v.Len() > 0
+	}
+	return true
 }
