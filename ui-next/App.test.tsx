@@ -3,6 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from './App';
 
+// The whole screen, with the page of parts under the controls drawn for real. The tests that are only about the controls and the theme engine are in
+// `App.appearance.test.tsx`, which draws the App without that page: the page is 5,500 nodes, and every lookup in it is dear (docs/ui-next/status/FM2a-fix.md).
+
 const root = document.documentElement;
 
 afterEach(() => {
@@ -25,55 +28,6 @@ describe('ui-next App', () => {
 
     expect(screen.getByRole('heading', { level: 2, name: 'Parts' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Button' })).toBeInTheDocument();
-  });
-
-  it('applies the default theme, density and text size to the document through the kit', () => {
-    render(<App />);
-
-    expect(root.getAttribute('data-ov-theme')).toBe('void');
-    expect(root.getAttribute('data-ov-density')).toBe('comfortable');
-    expect(root.getAttribute('data-ov-text-size')).toBe('100');
-    expect(screen.getByText('Void')).toBeInTheDocument();
-  });
-
-  it('flips the theme, density and text size by attribute, and the screen reads them back', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(screen.getByRole('button', { name: 'Next theme' }));
-    expect(root.getAttribute('data-ov-theme')).toBe('dark');
-    expect(screen.getByText('Dark')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Next density' }));
-    expect(root.getAttribute('data-ov-density')).toBe('compact');
-    expect(screen.getByText('compact')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Next text size' }));
-    expect(root.getAttribute('data-ov-text-size')).toBe('110');
-    expect(screen.getByText('110%')).toBeInTheDocument();
-  });
-
-  it('walks every theme and comes back to the first', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    const seen: Array<string | null> = [root.getAttribute('data-ov-theme')];
-    for (let step = 0; step < 9; step += 1) {
-      await user.click(screen.getByRole('button', { name: 'Next theme' }));
-      seen.push(root.getAttribute('data-ov-theme'));
-    }
-
-    expect(seen).toEqual([
-      'void',
-      'dark',
-      'light',
-      'obsidian',
-      'carbon',
-      'solarized-dark',
-      'solarized-light',
-      'high-contrast-dark',
-      'high-contrast-light',
-      'void',
-    ]);
   });
 
   it('never writes a style or a custom property on the document root', async () => {
