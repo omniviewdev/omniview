@@ -262,9 +262,10 @@ export function checkUnits({ units, byHand = BY_HAND, found, exists, manifest = 
     if (held.has(script)) add(`${script} is run by unit${list.length > 1 ? 's' : ''} ${quoted(list)} and listed in BY_HAND: a probe is run by a unit or by hand, not both`, script);
   }
   for (const file of found) {
-    if (!scriptUnits.has(file) && !held.has(file)) {
+    // A probe is a unit WITHOUT controls: a script that only has units of controls runs its controls and never the probe itself.
+    if (!probes.has(file) && !held.has(file)) {
       add(
-        `${file} is a probe script and no unit runs it: add a unit for it to a file of ${UNITS_DIRECTORY} (and a unit for its negative controls), or list it in BY_HAND with the reason CI does not run it`,
+        `${file} is a probe script and no unit runs it as a probe (a unit of its controls alone does not run the probe): add a unit for it to a file of ${UNITS_DIRECTORY} (and a unit for its negative controls), or list it in BY_HAND with the reason CI does not run it`,
         file,
         'Kit probe is in no unit',
       );

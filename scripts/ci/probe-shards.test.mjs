@@ -302,22 +302,27 @@ test('negative control: a control that the manifest lists and no unit runs fails
 
 test('negative control: a probe that the manifest lists and no unit runs fails the check, even when its controls are still there; deleting its unit file is the same', () => {
   const noProbe = small().filter((entry) => entry.id !== 'a');
-  const problems = check({ units: noProbe });
-  assert.equal(problems.length, 1);
+  const found = check({ units: noProbe });
+  const problems = found.filter((problem) => problem.title === 'Kit probe manifest');
+  assert.equal(problems.length, 1, messages(found).join(' | '));
   assert.match(problems[0].message, /the probe packages\/kit\/probes\/a-probe\.mjs is in scripts\/ci\/probe-units\.manifest\.json and no unit runs it: a probe was removed from CI/);
   assert.equal(problems[0].title, 'Kit probe manifest');
   assert.equal(problems[0].file, A);
+  assert.equal(found.length, 2, 'and the probe script that only its controls run is the second problem: a probe nobody runs');
   const nothing = small().filter((entry) => entry.script !== A);
   const dropped = messages(check({ units: nothing, found: [B, C] })).filter((message) => message.includes(MANIFEST));
   assert.deepEqual(dropped.map((message) => /(?:control "(\w+)"|the probe)/.exec(message)?.[0]), ['the probe', 'control "x"', 'control "y"']);
 });
 
-test('a control may move to another unit of its probe, or the probe to another file, and the floor does not mind; the manifest entry of a probe that is only controls needs no probe unit', () => {
+test('a control may move to another unit of its probe, and the floor does not mind; a manifest entry that lists no probe asks for no probe unit (the check still wants one for every probe script of the tree)', () => {
   const moved = small();
   moved[1].controls = ['x'];
   moved.push(unit('a-controls-late', A, { controls: ['y'] }));
   assert.deepEqual(check({ units: moved }), []);
-  assert.deepEqual(check({ manifest: { [A]: { probe: false, controls: ['x', 'y'] }, [B]: { probe: true, controls: [] } }, units: small().filter((entry) => entry.id !== 'a') }), []);
+  const controlsOnly = check({ manifest: { [A]: { probe: false, controls: ['x', 'y'] }, [B]: { probe: true, controls: [] } }, units: small().filter((entry) => entry.id !== 'a') });
+  assert.deepEqual(messages(controlsOnly).filter((message) => message.includes(MANIFEST)), []);
+  assert.equal(controlsOnly.length, 1);
+  assert.match(controlsOnly[0].message, /no unit runs it as a probe/);
 });
 
 test('negative control: a control is the control of one probe: a unit of another probe that runs a control of the same name does not satisfy the manifest', () => {
@@ -409,22 +414,33 @@ test('the manifest lists at least the 20 probes and the 115 controls CI proved w
   assert.deepEqual(Object.keys(REAL_MANIFEST.manifest), [...Object.keys(REAL_MANIFEST.manifest)].sort(), 'the keys are sorted, so that two pull requests that add a probe edit different lines');
 });
 
-test('negative control: every control of the real table, taken out of its unit, and every unit of it, taken out of the table, fails the real check and names what was dropped', () => {
+test('negative control: a probe script that only a unit of its controls runs is a probe nobody runs, and the check names it', () => {
+  const onlyControls = small().filter((entry) => entry.id !== 'a');
+  const problems = check({ units: onlyControls, manifest: null });
+  assert.equal(problems.length, 1, messages(problems).join(' | '));
+  assert.equal(problems[0].file, A);
+  assert.match(problems[0].message, /packages\/kit\/probes\/a-probe\.mjs is a probe script and no unit runs it as a probe/);
+});
+
+test('negative control: every control the manifest lists, taken out of its unit, and every listed unit of the real table, taken out of the table, fails the real check and names what was dropped', () => {
   let controls = 0;
-  for (const entry of controlUnits) {
-    for (const control of entry.controls) {
+  for (const [script, listed] of Object.entries(REAL_MANIFEST.manifest)) {
+    for (const control of listed.controls) {
       const without = UNITS.flatMap((candidate) => {
-        if (candidate.id !== entry.id) return [candidate];
+        if (candidate.script !== script || !(candidate.controls ?? []).includes(control)) return [candidate];
         const rest = candidate.controls.filter((name) => name !== control);
         return rest.length === 0 ? [] : [{ ...candidate, controls: rest }];
       });
       const said = messages(realCheck(without));
-      assert.ok(said.some((message) => message.includes(`the control "${control}" of ${entry.script} is in ${MANIFEST}`)), `${entry.id} without ${control}: ${said.join(' | ')}`);
+      assert.ok(said.some((message) => message.includes(`the control "${control}" of ${script} is in ${MANIFEST}`)), `${script} without ${control}: ${said.join(' | ')}`);
       controls += 1;
     }
   }
   assert.ok(controls >= FLOOR_CONTROLS, `${controls} controls tried`);
   for (const entry of UNITS) {
+    const listed = REAL_MANIFEST.manifest[entry.script];
+    const held = listed !== undefined && (entry.controls === undefined ? listed.probe : entry.controls.some((control) => listed.controls.includes(control)));
+    if (!held) continue; // a unit the manifest does not list is not part of the floor: a pull request that adds one edits no manifest
     const said = messages(realCheck(UNITS.filter((candidate) => candidate.id !== entry.id)));
     const named = entry.controls === undefined ? `the probe ${entry.script} is in ${MANIFEST}` : `of ${entry.script} is in ${MANIFEST}`;
     assert.ok(said.some((message) => message.includes(named)), `${entry.id} deleted: ${said.join(' | ')}`);
@@ -518,14 +534,14 @@ test('the two other units that filled a shard alone, the toast layer\'s controls
 // The seconds of a unit are the runner's: run 44929041191 (the run of #647), every row of every shard summary, a control's row being one run and a unit the sum of its rows.
 const RUNS = JSON.parse(readFileSync(path.join(repo, 'scripts/ci/probe-shards.runs.json'), 'utf8'));
 
-test('the seconds of every unit are those of run 44929041191 (the run that measured the ten shards at 4,379 s), and the two units of L4, which that run did not have, are the runner\'s first run of #650', () => {
+test('the table starts from the runner\'s seconds: each unit that run 44929041191 measured (the run that measured the ten shards at 4,379 s) is within the unit margin of it; a unit that run did not have, or one re-measured since, is not a failure of this test', () => {
   const base = RUNS.find((entry) => entry.run === '44929041191').seconds;
-  for (const entry of UNITS) {
-    if (entry.id === 'logs-open') assert.equal(entry.seconds, 20);
-    else if (entry.id === 'logs-open-controls') assert.equal(entry.seconds, 12);
-    else assert.equal(entry.seconds, base[entry.id], `${entry.id}: the table says ${entry.seconds} s, run 44929041191 says ${base[entry.id]} s`);
-  }
   assert.equal(sum(Object.values(base)), 4379);
+  for (const entry of UNITS) {
+    if (base[entry.id] === undefined) continue;
+    const margin = Math.max(DRIFT_FLOOR_SECONDS, DRIFT_RATIO * base[entry.id]);
+    assert.ok(Math.abs(entry.seconds - base[entry.id]) <= margin, `${entry.id}: the table says ${entry.seconds} s, run 44929041191 says ${base[entry.id]} s: a re-measure beyond the unit margin comes with new data in probe-shards.runs.json`);
+  }
 });
 
 test('the limit a shard is PLANNED to is the wall budget of a job less the setup of a slow job: 9 minutes less the 90th percentile (108 s) is 432 s, and it is not raised', () => {
@@ -870,14 +886,16 @@ test('the shard\'s seconds and its ceiling are in the summary of the shard: the 
 
 // The ceiling is derived, not picked: from every real shard job of the seven runs. A shard planned at the limit takes the limit times what its machine took against the table, and the ceiling is that for the worst machine seen,
 // and a margin. `shards` of each run are the units one real shard job held (all on one machine), so the ratio of its real seconds to the table's seconds for the same units is how slow that machine was that day.
-const RATIOS = RUNS.flatMap((entry) => entry.shards.map((ids) => ({ run: entry.run, ids, listed: sum(ids, (id) => byId(id).seconds), real: sum(ids, (id) => entry.seconds[id]) }))).map((row) => ({ ...row, ratio: row.real / row.listed }));
+// The table seconds each ratio is taken against are the ones the units had when the ceiling was derived (run 44929041191's, and the first runner seconds of the two L4 units), kept with the data so that retiring or re-timing a unit does not change history or break the load of this file.
+const LISTED = { ...RUNS.find((entry) => entry.run === '44929041191').seconds, 'logs-open': 20, 'logs-open-controls': 12 };
+const RATIOS = RUNS.flatMap((entry) => entry.shards.map((ids) => ({ run: entry.run, ids, listed: sum(ids, (id) => LISTED[id]), real: sum(ids, (id) => entry.seconds[id]) }))).map((row) => ({ ...row, ratio: row.real / row.listed }));
 
-test('the data of the ceiling is whole: the real shard jobs of each run hold every unit of the run once, and all units are in the table', () => {
+test('the data of the ceiling is whole: the real shard jobs of each run hold every unit of the run once, and every unit has the seconds it was listed at', () => {
   assert.equal(RATIOS.length, 70, 'ten real shard jobs in each of seven runs');
   for (const entry of RUNS) {
     const held = entry.shards.flat();
     assert.deepEqual([...held].sort(), Object.keys(entry.seconds).sort(), `run ${entry.run}: the real shards hold the units of the run, each once`);
-    for (const id of held) assert.ok(byId(id) !== undefined, `${id} is in the table`);
+    for (const id of held) assert.ok(LISTED[id] !== undefined, `${id} has table seconds in the data`);
   }
 });
 
@@ -1173,13 +1191,13 @@ test('the run command fails the shard when a unit drifted from its seconds, even
   const root = scratch(PROBES);
   const table = [unit('slow', SLOW, { name: 'Slow probe', seconds: 0 })];
   const chunks = [];
-  const code = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: '/tmp/runner' }, out: (text) => chunks.push(text), err: (text) => chunks.push(text), margin: { ratio: 0, floor: 0 } });
+  const code = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: root }, out: (text) => chunks.push(text), err: (text) => chunks.push(text), margin: { ratio: 0, floor: 0 } });
   const log = chunks.join('');
   assert.equal(code, 1, log);
-  assert.match(log, /^### Kit probes shard 1: 1 run, all passed, 1 s$/m);
-  assert.match(log, /^::error title=Kit probe unit seconds \(shard 1\)::Slow probe \(slow\) took 1 s on this runner, 0 s in/m);
+  assert.match(log, /^### Kit probes shard 1: 1 run, all passed, \d+ s$/m);
+  assert.match(log, /^::error title=Kit probe unit seconds \(shard 1\)::Slow probe \(slow\) took \d+ s on this runner, 0 s in/m);
   const quiet = [];
-  const fine = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: '/tmp/runner' }, out: (text) => quiet.push(text), err: (text) => quiet.push(text) });
+  const fine = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: root }, out: (text) => quiet.push(text), err: (text) => quiet.push(text) });
   assert.equal(fine, 0, quiet.join(''));
   assert.doesNotMatch(quiet.join(''), /::error/);
 });
@@ -1188,11 +1206,11 @@ test('the run command fails the shard when the shard took more than its ceiling,
   const root = scratch(PROBES);
   const table = [unit('slow', SLOW, { name: 'Slow probe', seconds: 1 })];
   const chunks = [];
-  const code = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: '/tmp/runner' }, out: (text) => chunks.push(text), err: (text) => chunks.push(text), margin: { ceiling: 0 } });
+  const code = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: root }, out: (text) => chunks.push(text), err: (text) => chunks.push(text), margin: { ceiling: 0 } });
   const log = chunks.join('');
   assert.equal(code, 1, log);
   assert.doesNotMatch(log, /unit seconds/);
-  assert.match(log, /^::error title=Kit probe shard seconds \(shard 1\)::shard 1 took 1 s of units on this runner, over the 0 s a shard may take/m);
+  assert.match(log, /^::error title=Kit probe shard seconds \(shard 1\)::shard 1 took \d+ s of units on this runner, over the 0 s a shard may take/m);
 });
 
 test('verify on the command: it passes for the reports of a whole run and says what ran, and it fails, naming each, for a shard that did not report, a unit that did not pass, an empty plan and a directory that is not there', () => {

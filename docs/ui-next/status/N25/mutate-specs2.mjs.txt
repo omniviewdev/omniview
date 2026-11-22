@@ -2,7 +2,7 @@ const ENGINE = 'scripts/ci/probe-shards.mjs';
 const WF = '.github/workflows/ui-next-kit-probes.yml';
 const e = (id, find, replace) => ({ id: `E2-${id}`, area: 'engine', file: ENGINE, find, replace });
 const w = (id, find, replace, extra = {}) => ({ id: `W2-${id}`, area: 'workflow', file: WF, find, replace, ...extra });
-import first from './specs.mjs';
+import first from './mutate-specs.mjs';
 export default [
   // the two survivors of the first sweep
   ...first.filter((spec) => ['E-matrix-dist', 'W-image-guard-late'].includes(spec.id)),

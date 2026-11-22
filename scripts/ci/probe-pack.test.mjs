@@ -102,6 +102,7 @@ test('the fewest shards where first fit decreasing is not: four instances that i
     const shards = pack(sizes.map((seconds, index) => ({ id: `u${index}`, seconds })), limit);
     assert.equal(shards.length, fewest, JSON.stringify({ sizes, limit, packed: loads(shards) }));
     for (const shard of shards) assert.ok(shard.seconds <= limit);
+    assert.deepEqual(ids(shards).flat().sort(), sizes.map((_, index) => `u${index}`).sort(), 'every unit is in exactly one shard');
   }
 });
 
@@ -157,7 +158,7 @@ test('the work that fits a shard exactly is one shard, and one second more is tw
   assert.equal(pack(items(200, 233), 432).length, 2);
 });
 
-test('an instance the exact search cannot finish in its budget still gets a packing that is valid (first fit decreasing), and is the same on every call', () => {
+test('a large instance gets a valid packing (every unit once, none over the limit) and the same one on every call; the search ends on its room check here, and no instance of this file exhausts SEARCH_BUDGET', () => {
   const next = generator(99);
   const many = Array.from({ length: 60 }, (_, index) => ({ id: `u${String(index).padStart(2, '0')}`, seconds: 3000 + Math.floor(next() * 4000) }));
   const first = pack(many, 10000);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Mutation harness for N25's engine, plan, verify and workflow (the test suite of scripts/ci/probe-*.test.mjs against each mutant).
-//   node run.mjs --specs <specs.mjs> --out <results.jsonl> --clones <dir,dir,...> [--only id,id]
+//   node mutate-run.mjs --specs <mutate-specs.mjs> --out <results.jsonl> --clones <dir,dir,...> --origin <a pristine copy made by mutate-clone.sh> [--only id,id]
 // specs.mjs default-exports [{ id, edits: [{ file, find, replace, nth?, all? }] }] (single-edit shorthand: { id, file, find, replace }), `file` relative to a clone's root. `find` must occur exactly once (or `nth` picks the n-th of several, 1-based).
 // A clone is a directory that holds scripts/ci, .github, packages/kit/probes, ui-next/{shell,page}/probes and node_modules (see clone.sh); each mutant is applied to the clone's file, detected, and the file is restored from the clone's pristine copy.
 // Detection is what CI runs in every shard: `probe-shards.mjs check`, then `node --test scripts/ci/probe-*.test.mjs` (a mutant is killed by the first of them that fails; `by` says which).
