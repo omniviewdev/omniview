@@ -76,6 +76,14 @@ const NEW_UI = [
 const NEW_UI_TOOLING = [
   'scripts/ci/probe-shards.mjs', // read by the kit probes workflow only
   'scripts/ci/probe-shards.test.mjs',
+  'scripts/ci/probe-shards.runs.json',
+  'scripts/ci/probe-select.mjs',
+  'scripts/ci/probe-select.test.mjs',
+  'scripts/ci/probe-select.prs.json',
+  'scripts/ci/probe-pack.mjs',
+  'scripts/ci/probe-pack.test.mjs',
+  'scripts/ci/probe-units/panel.mjs', // the probe table, one file for each probe (N25): a pull request that adds a probe adds one
+  'scripts/ci/probe-units/a-new-probe.mjs',
   'scripts/ui-next-pods/host.sh', // the Pods cluster check
   'scripts/ui-next-pods/pods-cluster.check.mjs',
   'scripts/ui-next-bundle.mjs', // read by the flavour guard of the UI build
@@ -159,6 +167,13 @@ test('NEGATIVE: what only looks like that tooling is "other": a sibling script, 
   for (const file of [
     'scripts/ci/probe-shards.mjs.bak',
     'scripts/ci/probe-shards-extra.mjs',
+    'scripts/ci/probe-units',
+    'scripts/ci/probe-units-extra/panel.mjs',
+    'scripts/ci/probe-units/helper.go',
+    'scripts/ci/probe-selector.mjs',
+    'scripts/ci/probe-select.mjs.bak',
+    'scripts/ci/changes.mjs',
+    'scripts/ci/check-image.mjs',
     'scripts/ci/probe-shard.mjs',
     'scripts/ui-next-pods-extra/host.sh',
     'scripts/ui-next-pods',
@@ -325,7 +340,8 @@ test('a change to the new UI alone, or with its documentation or its tooling, is
   for (const file of [...NEW_UI, ...NEW_UI_TOOLING]) assert.equal(classOf(file), 'new-ui', file);
   assert.equal(classOf('ui-next/App.tsx', 'docs/ui-next/status/N24-D1.md', 'packages/kit/src/index.ts', 'README.md'), 'new-ui');
   assert.equal(classOf(DOCS, NEW_UI, NEW_UI_TOOLING), 'new-ui');
-  assert.equal(classOf('scripts/ci/probe-shards.mjs', 'docs/ui-next/status/N24-D1.md'), 'new-ui', 'a pull request that adds a probe: the unit, the probe, its status file');
+  assert.equal(classOf('scripts/ci/probe-shards.mjs', 'docs/ui-next/status/N24-D1.md'), 'new-ui', 'a pull request that edits the engine of the probe table: the engine, its status file');
+  assert.equal(classOf('scripts/ci/probe-units/panel.mjs', 'ui-next/shell/probes/panel-probe.mjs', 'docs/ui-next/status/N25.md'), 'new-ui', 'a pull request that adds a control: its unit file, its probe, its status file (N25: it no longer edits scripts/ci/probe-shards.mjs)');
 });
 
 test('NEGATIVE: every path of the plan\'s list runs everything, alone, with documentation and with the new UI, in either order', () => {
@@ -771,7 +787,7 @@ test('on a runner the command also writes one notice that names the class and th
 
 // "Nothing reads a path under docs/ui-next/status/" is what makes it documentation whatever it holds. Searched at the time: the mentions outside docs/ are comments, Markdown, messages and the e2e selector's classification (a regular
 // expression and its test data). This reads the repository and fails when another file names the path on a line of code, or builds it from parts.
-const STATUS_MENTIONS_ALLOWED = new Set(['scripts/ci/changes.mjs', 'scripts/ci/changes.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'e2e/scripts/select-tests.mjs', 'e2e/scripts/select-tests.test.mjs', 'scripts/ci/probe-shards.mjs']);
+const STATUS_MENTIONS_ALLOWED = new Set(['scripts/ci/changes.mjs', 'scripts/ci/changes.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'e2e/scripts/select-tests.mjs', 'e2e/scripts/select-tests.test.mjs', 'scripts/ci/probe-shards.mjs', 'scripts/ci/probe-select.prs.json']);
 
 test('TRIPWIRE: no code, test or workflow outside docs/ names a path under docs/ui-next/status/ on a line of code, or joins "ui-next" and "status" into one', () => {
   const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');

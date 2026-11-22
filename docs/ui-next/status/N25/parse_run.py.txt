@@ -1,0 +1,36 @@
+import json, re, sys, glob, collections, datetime
+def ts(s):
+    return datetime.datetime.strptime(s.replace('Z','+0000'), '%Y-%m-%dT%H:%M:%S%z').timestamp()
+jobs = json.load(open(sys.argv[1]))['jobs']
+rows = []  # (shard, result, seconds, script, control, step)
+shards = {}
+for j in jobs:
+    m = re.match(r'Kit probes shard (\d+)$', j['name'])
+    if not m: continue
+    sid = int(m.group(1))
+    log = open(f"logs/job-{j['id']}.log", errors='replace').read()
+    total=None
+    for line in log.splitlines():
+        line = re.sub(r'^\S+Z ', '', line)
+        mm = re.match(r'### Kit probes shard (\d+): (\d+) runs?, (.*), (\d+) s$', line)
+        if mm: total = int(mm.group(4))
+        r = re.match(r'\| (pass|\*\*fail\*\*[^|]*) \| (\d+) \| ([^|]*) \| ([^|]*) \| (.*) \|$', line)
+        if r:
+            rows.append((sid, r.group(1).strip(), int(r.group(2)), r.group(3).strip(), r.group(4).strip(), r.group(5).strip()))
+    steps = {s['name']: (ts(s['started_at']), ts(s['completed_at'])) for s in j['steps'] if s.get('started_at') and s.get('completed_at')}
+    probes = steps.get('Run the probes of this shard')
+    start = ts(j['started_at']); end = ts(j['completed_at'])
+    shards[sid] = dict(job=end-start, probes=(probes[1]-probes[0]) if probes else None, table_total=total, steps={k:round(v[1]-v[0]) for k,v in steps.items()})
+units = collections.OrderedDict()
+for sid, res, sec, script, control, step in rows:
+    u = units.setdefault((sid, step), dict(shard=sid, step=step, script=script, controls=[], seconds=0))
+    u['seconds'] += sec
+    if control: u['controls'].append((control, sec))
+json.dump(dict(rows=rows, shards=shards, units=list(units.values())), open(sys.argv[2], 'w'), indent=1)
+print('shards:')
+for sid in sorted(shards): 
+    s = shards[sid]; print(sid, 'job', round(s['job']), 'probes', round(s['probes'] or 0), 'summary', s['table_total'], 'setup', round(s['job']-(s['probes'] or 0)))
+print()
+for u in units.values():
+    print(u['shard'], u['seconds'], len(u['controls']) or '', u['step'][:90])
+print('total', sum(u['seconds'] for u in units.values()))
