@@ -1,0 +1,18 @@
+// median / 95th percentile (linear interpolation) / max of the medians in ui-next/shell/probes/runner-centre-open.json, for each engine and size, and of all
+import { readFileSync } from 'node:fs';
+const record = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const quantile = (values, q) => { const s = [...values].sort((a, b) => a - b); const at = (s.length - 1) * q; const lo = Math.floor(at); return s[lo] + (s[Math.ceil(at)] - s[lo]) * (at - lo); };
+const rows = {};
+for (const run of record.runs) for (const [key, read] of Object.entries(run.centre)) (rows[key] ??= []).push({ ...read, run: run.run, attempt: run.attempt });
+const fmt = (n) => (Math.round(n * 10) / 10).toString();
+console.log('runs', record.runs.length, 'distinct run ids', new Set(record.runs.map((r) => r.run)).size);
+for (const engine of ['webkit', 'chromium']) {
+  for (const size of ['1440x900', '1280x800', 'both']) {
+    const reads = Object.entries(rows).filter(([key]) => key.startsWith(engine) && (size === 'both' || key.endsWith(size))).flatMap(([, list]) => list);
+    const med = reads.map((r) => r.median);
+    const samples = reads.flatMap((r) => r.samples);
+    console.log(`${engine.padEnd(8)} ${size.padEnd(8)} medians n=${med.length} median ${fmt(quantile(med, 0.5))} p95 ${fmt(quantile(med, 0.95))} max ${fmt(Math.max(...med))} | samples n=${samples.length} median ${fmt(quantile(samples, 0.5))} p95 ${fmt(quantile(samples, 0.95))} max ${fmt(Math.max(...samples))}`);
+  }
+  const rest = Object.entries(rows).filter(([key]) => key.startsWith(engine)).flatMap(([, list]) => list).filter((r) => !(r.run === '44932365922' && r.attempt === 1)).map((r) => r.median);
+  console.log(`${engine.padEnd(8)} without the slow machine of 44932365922 attempt 1: n=${rest.length} median ${fmt(quantile(rest, 0.5))} p95 ${fmt(quantile(rest, 0.95))} max ${fmt(Math.max(...rest))}`);
+}

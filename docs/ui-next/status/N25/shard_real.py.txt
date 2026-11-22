@@ -1,0 +1,19 @@
+"""Real unit seconds of each shard of a run (the `The shard took X s of units against Y s in the table` line of each shard's log): python3 shard_real.py <run id> [attempt]"""
+import json, re, subprocess, sys
+run = sys.argv[1]; attempt = sys.argv[2] if len(sys.argv) > 2 else None
+path = f'repos/omniviewdev/omniview/actions/runs/{run}' + (f'/attempts/{attempt}' if attempt else '') + '/jobs?per_page=100'
+jobs = json.loads(subprocess.run(['gh', 'api', path], capture_output=True, text=True).stdout)['jobs']
+out = []
+for j in sorted(jobs, key=lambda j: int(re.sub(r'\D', '', j['name'].replace('Kit probes shard', '')) or 0)):
+    m = re.match(r'Kit probes shard (\d+)$', j['name'])
+    if not m: continue
+    log = subprocess.run(['gh', 'api', '--allow-escape-sequences', f'repos/omniviewdev/omniview/actions/jobs/{j["id"]}/logs'], capture_output=True, text=True).stdout
+    t = re.search(r'The shard took (\d+) s of units against (\d+) s in the table; it fails past (\d+) s', log)
+    started = re.findall(r'drift|seconds against', log)
+    unit_rows = re.findall(r'\| ([a-z0-9-]+) \| (\d+) \| (\d+) \| ([+-]?\d+) \| (\*\*over\*\*|under)? \|', log)
+    out.append((int(m.group(1)), j['conclusion'], int(t.group(1)) if t else None, int(t.group(2)) if t else None, [(u, int(a), int(b)) for u, a, b, _, _ in unit_rows]))
+for n, c, real, listed, rows in out:
+    print(f'shard {n:2d} {c:8s} real {real} listed {listed} ratio {real/listed:.3f}' if real else f'shard {n} {c} (no summary)')
+    print('        ' + ', '.join(f'{u} {t}/{l}' for u, l, t in rows))
+ok = [o for o in out if o[2]]
+print('max real', max(o[2] for o in ok), 'max ratio', round(max(o[2]/o[3] for o in ok), 3), 'sum real', sum(o[2] for o in ok), 'sum listed', sum(o[3] for o in ok))

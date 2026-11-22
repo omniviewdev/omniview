@@ -1,0 +1,17 @@
+"""Jobs, runner seconds, slowest shard job and wall time of a run of ui-next-kit-probes.yml (the jobs API): python3 run_stats.py <run id> [attempt]"""
+import json, subprocess, sys, datetime, statistics
+def ts(s): return datetime.datetime.strptime(s, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
+run = sys.argv[1]
+attempt = sys.argv[2] if len(sys.argv) > 2 else None
+path = f'repos/omniviewdev/omniview/actions/runs/{run}' + (f'/attempts/{attempt}' if attempt else '') + '/jobs?per_page=100'
+jobs = json.loads(subprocess.run(['gh', 'api', path], capture_output=True, text=True).stdout)['jobs']
+rows = []
+for j in jobs:
+    if not j.get('started_at') or not j.get('completed_at'): continue
+    rows.append((j['name'], ts(j['completed_at']) - ts(j['started_at']), j['conclusion'], ts(j['started_at']), ts(j['completed_at']), ts(j['created_at']) if j.get('created_at') else None))
+shards = [r for r in rows if r[0].startswith('Kit probes shard ')]
+total = sum(r[1] for r in rows)
+first_created = min(r[5] for r in rows if r[5]); last_done = max(r[4] for r in rows)
+print(f'run {run}: {len(jobs)} jobs ({len(shards)} shards), {round(total)} runner s, slowest shard job {round(max(r[1] for r in shards))} s, median shard job {round(statistics.median(r[1] for r in shards))} s, wall {round(last_done - first_created)} s (first job created to last job done)')
+print('conclusions:', {c: sum(1 for r in rows if r[2] == c) for c in set(r[2] for r in rows)})
+for r in sorted(rows, key=lambda r: r[0]): print(f'  {r[0]:34s} {round(r[1]):4d} s {r[2]}')

@@ -1,0 +1,23 @@
+// The probes and controls CI ran before N25 (the table of origin/main, `TABLE` in scripts/ci/probe-shards.mjs) against the ones the unit directory runs now: the two difference sets must be empty.
+//   git archive origin/main scripts/ci | tar -x -C /tmp/main-ci       (main's engine: it imports only node builtins)
+//   node controls-diff.mjs /tmp/main-ci <this worktree>
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const [mainRoot, root] = process.argv.slice(2).map((p) => path.resolve(p));
+const before = await import(pathToFileURL(path.join(mainRoot, 'scripts/ci/probe-shards.mjs')).href);
+const after = await import(pathToFileURL(path.join(root, 'scripts/ci/probe-shards.mjs')).href);
+const { units, problems } = await after.loadUnits(root);
+if (problems.length > 0) throw new Error(JSON.stringify(problems));
+
+const key = (script, control) => (control === null ? script : `${script} :: ${control}`);
+const probes = (list) => new Set(list.filter((u) => u.controls === undefined).map((u) => key(u.script, null)));
+const controls = (list) => new Set(list.filter((u) => u.controls !== undefined).flatMap((u) => u.controls.map((c) => key(u.script, c))));
+const bUnits = before.TABLE.shards.flatMap((shard) => shard.units);
+const only = (a, b) => [...a].filter((x) => !b.has(x));
+const [bp, ap, bc, ac] = [probes(bUnits), probes(units), controls(bUnits), controls(units)];
+console.log(`probes   before ${bp.size}, after ${ap.size}; only before ${JSON.stringify(only(bp, ap))}; only after ${JSON.stringify(only(ap, bp))}`);
+console.log(`controls before ${bc.size}, after ${ac.size}; only before ${JSON.stringify(only(bc, ac))}; only after ${JSON.stringify(only(ac, bc))}`);
+const env = (list) => new Map(list.flatMap((u) => (u.controls ?? [null]).map((c) => [key(u.script, c), JSON.stringify(Object.entries(u.env ?? {}).sort())])));
+const [be, ae] = [env(bUnits), env(units)];
+console.log(`env differs for ${[...be].filter(([k, v]) => ae.get(k) !== v).length} of ${be.size} runs`);

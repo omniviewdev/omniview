@@ -1,0 +1,25 @@
+// The reviewer's repro for #656 S5 (host-656-data/make-open-only-copies.mjs), for ONE probe: writes zz-open-only-new.mjs next to notices-probe.mjs, the same file but for two places:
+// `const only = { parts: ['open'] }` (the centre section runs its `open` part alone) and an env-driven regression in the page (R656_CSS_RULES = n pairs of selectors every div and span is matched against;
+// R656_BUSY_MS = a busy loop in the click that opens the centre). Delete the copy afterwards.
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+const root = path.resolve(process.argv[2]);
+const INJECT = `
+// ---- review experiment (untracked copy): inject a product-style regression into the page, from the environment ----
+const R656_CSS = Number(process.env.R656_CSS_RULES ?? 0);
+const R656_BUSY = Number(process.env.R656_BUSY_MS ?? 0);
+const R656_INIT = [];
+if (R656_CSS > 0) R656_INIT.push(\`(\${(n) => { document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); let t = ''; for (let i = 0; i < n; i += 1) t += \`div>span:not(.a\${i}):not(.b\${i}) + span:nth-of-type(odd){outline:0}div:not(.a\${i}) div:nth-child(odd){outline:0}\`; s.textContent = t; document.head.append(s); }); }})(\${R656_CSS});\`);
+if (R656_BUSY > 0) R656_INIT.push(\`(\${(busy) => { document.addEventListener('click', (event) => { if (event.target instanceof Element && event.target.closest('[data-notices-part="bell"]') !== null) { const end = performance.now() + busy; while (performance.now() < end); } }, true); }})(\${R656_BUSY});\`);
+`;
+const file = path.join(root, 'ui-next/shell/probes/notices-probe.mjs');
+let text = readFileSync(file, 'utf8');
+const a = "const only = CONTROL === '' ? {} : { scenes: PERTURBATIONS[CONTROL].scenes, parts: PERTURBATIONS[CONTROL].parts };";
+if (!text.includes(a)) throw new Error('the `only` line is not where it was');
+text = text.replace(a, "const only = { parts: ['open'] };");
+const i = text.indexOf('const reference = JSON.parse');
+text = text.slice(0, i) + INJECT + text.slice(i);
+if (!text.includes('{ init: [script(openClock)] }')) throw new Error("the open part's init is not where it was");
+text = text.replace('{ init: [script(openClock)] }', '{ init: [script(openClock), ...R656_INIT] }');
+writeFileSync(path.join(root, 'ui-next/shell/probes/zz-open-only-new.mjs'), text);
+console.log('written ui-next/shell/probes/zz-open-only-new.mjs');

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# the reviewer's calib-experiment.sh for the new probe only; one line per setting and engine
+cd "${1:?worktree}"
+for setting in "R656_CSS_RULES=0" "R656_CSS_RULES=400" "R656_CSS_RULES=1000" "R656_CSS_RULES=2500" "R656_BUSY_MS=20" "R656_BUSY_MS=40" "R656_BUSY_MS=70"; do
+  out=$(env -i HOME="$HOME" PATH="$PATH" "$setting" BUILD_CACHE=/tmp/n25/fx SECTIONS=centre ENGINES=webkit,chromium VIEWPORTS=1440x900 FONT_DELAY_MS=40 node ui-next/shell/probes/zz-open-only-new.mjs 2>&1)
+  code=$?
+  verdict=$(echo "$out" | grep -qE "centre open [a-z]+ 1440x900: the centre took" && echo FAIL || echo pass)
+  echo "$setting  verdict=$verdict exit=$code load=$(uptime | sed 's/.*load averages*: //')"
+  echo "$out" | grep -E "^centre open [a-z]+ 1440x900:" | sed 's/^/      /' | cut -c1-200
+  echo "$out" | grep -E "the centre took" | sed 's/^/      /' | cut -c1-330
+done

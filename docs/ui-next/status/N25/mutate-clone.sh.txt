@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# clone.sh <worktree> <dest>: the files the engine's tests read, as copies (the worktree is never touched), and node_modules linked
+set -euo pipefail
+src="$1"; dest="$2"
+mkdir -p "$dest"
+for d in scripts/ci .github/workflows .github/ci packages/kit/probes ui-next/shell/probes ui-next/page/probes; do
+  mkdir -p "$dest/$(dirname "$d")"
+  rsync -a --delete "$src/$d/" "$dest/$d/"
+done
+ln -sfn "$src/node_modules" "$dest/node_modules"
+echo "$dest ready"
