@@ -1,0 +1,10 @@
+import { listConnections, readConnectionMetadata } from '/Users/joshuapare/Repos/omniviewdev/worktrees/inv4-pin/scripts/ui-next-pods/parity.mjs';
+const base = process.argv[2];
+const connections = await listConnections(base);
+console.log('connections', JSON.stringify(connections.map((c) => ({ id: c.id, context: c.data?.context, status: c.status ?? c.state })), null, 0));
+for (const c of connections) {
+  try {
+    const m = await readConnectionMetadata(base, c.id);
+    console.log('metadata', c.id, JSON.stringify(m, null, 1).slice(0, 2500));
+  } catch (e) { console.log('metadata error', c.id, String(e).slice(0, 300)); }
+}

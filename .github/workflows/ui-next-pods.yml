@@ -4,14 +4,19 @@ name: UI next Pods cluster check
 # window opens it (no URL parameter, no hash), must show the same Pods as `kubectl get pods -A` on a real kind cluster that holds the plan's fixture. The host holds no
 # Pods code: the list is the Kubernetes plugin's own, from the bundle of its `feature/ui-next` branch (decision A16: on that branch the plugin's `ui/` is the new UI),
 # built here from a PINNED commit with the plugin's own packaging script and installed as its archive lays it out (plugin.yaml, bin/plugin, assets/).
-# The job also runs three negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
-#   a cluster without the fixture, a host without the plugin, and the plugin installed without its bundle (`assets/` empty).
+# The job also runs four negative controls, each of which must make the same check fail, so a check that has gone blind turns this job red:
+#   a cluster without the fixture, a host without the plugin, the plugin installed without its bundle (`assets/` empty), and a cluster without the API group that cannot answer (INV4, next).
 #
-# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: ec5a06ea15e4b03217c8936e032876f12f0ef65c (#282, K3a: every kind's list sorts, 2026-11-21; before it #280, C1h: the Connection scope face carries role: 'connection'; and #279, K2c-2), the branch head
+# INV4 (the demo's finding O2, plugin #281). One aggregated API that cannot answer (a metrics-server that is down is the usual one) used to keep the first Pods page of a fresh connection from loading ("Connection admission requires
+# complete discovered support."; a press on Retry made it load). After the main check the job registers an APIService whose Service has no endpoints (scripts/ui-next-pods/unavailable-group.yaml), starts one more host AFTER that, so that
+# the plugin connects to a cluster that already has the group, and reads that host's first Pods page, never pressing Retry: the page must list the Pods as kubectl does, the host must refuse no request of it, and the host's facts for
+# the connection must name the group (`unavailable-group` mode of pods-cluster.check.mjs, unavailable.mjs). Against the plugin before #281 (ec5a06ea) that check fails on the first load.
+#
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 8af576fff40a883ed8c6e799470a3e8c4032f656 (#281, INV4: one unavailable API group no longer refuses the connection, 2026-11-22; before it #283, a cancelled restart reports its context's error; and #282, K3a: every kind's list sorts, 2026-11-21; before them #280, C1h: the Connection scope face carries role: 'connection'; and #279, K2c-2), the branch head
 # with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268), the Logs command (#267), the counts the plugin's
 # backend says (Q1 #270), the counts its sidebar draws (Q2 #273), the glyphs of its kinds (Q2b #274), the derived connection IDs (H6 #272), the plugin's Go CI (#277), the short names (#275), the generic detail page of nine kinds (K2c-1 #278) and the title of a deleted object's page (K2c-2 #279). The check opens the Pod page from the list, and a Deployment's page from the Deployments list (K2c-2: its Details rows against kubectl),
 # and a Pod's Logs from its page, holds the sidebar's counts to kubectl's, and holds the scope lane's Connection text to the context's NAME: the ID is derived from the path of the check's temporary kubeconfig, so it differs on every run
-# and the check reads it from the host's list of connections (lane.mjs). To bump it, in a pull request of this repository that changes nothing else about the check:
+# and the check reads it from the host's list of connections (lane.mjs). To bump it, in a pull request of this repository that changes nothing else about the check (the bump to #281 changed it by the one check named above, which fails against the pin before):
 #   1. take the commit: `git ls-remote https://github.com/omniviewdev/omniview-plugin-kubernetes refs/heads/feature/ui-next`, or the merge commit of the plugin pull request you want;
 #   2. put it in KUBERNETES_PLUGIN_REF, check the plugin out at it and run `node scripts/ui-next-pods/pin.mjs <that checkout>`: it fails when the plugin's list of shared
 #      names (`ui/vendor/shared-specifiers.json`) is not this host's `SHARED_SPECIFIERS_V1`, or when the host commit the plugin vendored from (`ui/vendor/HOST_COMMIT`) is not
@@ -77,7 +82,7 @@ env:
   # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
   KUBERNETES_PLUGIN_BRANCH: feature/ui-next
-  KUBERNETES_PLUGIN_REF: ec5a06ea15e4b03217c8936e032876f12f0ef65c
+  KUBERNETES_PLUGIN_REF: 8af576fff40a883ed8c6e799470a3e8c4032f656
   # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
   # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
@@ -169,6 +174,10 @@ jobs:
       # What the scope lane's Connection face must say against `kubectl config current-context` and the ID the host lists (scripts/ui-next-pods/lane.mjs): the NAME and never the derived ID, with its negative controls.
       - name: Scope lane contracts (no cluster)
         run: node --test scripts/ui-next-pods/lane.test.mjs
+
+      # What the unavailable API group's facts must say and what the check must not take for it (scripts/ui-next-pods/unavailable.mjs), and the order of the steps that register the group and start the host that connects, with its negative controls.
+      - name: Unavailable API group contracts (no cluster)
+        run: node --test scripts/ui-next-pods/unavailable.test.mjs
 
       # Before anything is built: the pin is a commit of the plugin's branch, its list of shared names is this host's, and the host it was vendored from is in this history.
       - name: Check the pin
@@ -311,13 +320,43 @@ jobs:
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
+      # INV4. The same check, on the cluster the main check ran on, which holds no API group that cannot answer: it must stop at the group (GROUP_MISSING) before it opens a page.
+      - name: Negative control, a cluster without the unavailable API group
+        env:
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
+          OMNIVIEW_CHECK_MODE: control-group-absent
+        run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
+
+      # An aggregated API whose Service has no endpoints, the state of a metrics-server that is down, registered BEFORE the host that connects starts. The aggregator marks it Available=False (MissingEndpoints) at once;
+      # the wait is the proof that it did, and the check reads the same fact from the cluster before it opens a page.
+      - name: Register an API group that cannot answer
+        run: |
+          set -euo pipefail
+          export KUBECONFIG="$KUBECONFIG_PATH"
+          kubectl apply -f scripts/ui-next-pods/unavailable-group.yaml
+          kubectl wait --for=condition=Available=false apiservice/v1beta1.inv4-unavailable.example.com --timeout=120s
+          kubectl get apiservice v1beta1.inv4-unavailable.example.com
+
+      # A host with a home of its own and nothing saved, started after the group was registered: its plugin connects to a cluster that has the group, as the demo's host did.
+      - name: Start a host for the cluster with the unavailable API group
+        run: scripts/ui-next-pods/host.sh start unavailable-group 34204 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+
+      - name: Check that the connection starts with an unavailable API group
+        env:
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34204
+          OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
+          OMNIVIEW_CHECK_MODE: unavailable-group
+        run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
+
       - name: Collect diagnostics
         if: failure()
         run: |
           export KUBECONFIG="$KUBECONFIG_PATH"
           kubectl get pods -A -o wide || true
+          kubectl get apiservices || true
           kubectl get events -A --sort-by=.lastTimestamp | tail -n 60 || true
-          for name in with-plugin without-plugin without-bundle; do
+          for name in with-plugin without-plugin without-bundle unavailable-group; do
             echo "::group::host $name log"
             tail -n 120 "$OMNIVIEW_E2E_WORK/$name/host.log" || true
             echo "::endgroup::"
@@ -329,3 +368,4 @@ jobs:
           scripts/ui-next-pods/host.sh stop with-plugin
           scripts/ui-next-pods/host.sh stop without-plugin
           scripts/ui-next-pods/host.sh stop without-bundle
+          scripts/ui-next-pods/host.sh stop unavailable-group

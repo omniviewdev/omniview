@@ -1,0 +1,30 @@
+# An aggregated API that cannot answer, in the state a metrics-server that is down leaves its APIService in (INV4, the demo's finding O2; plugin omniview-plugin-kubernetes#281).
+# The Service selects no Pod, so it has no endpoints, and the aggregator marks the APIService Available=False (MissingEndpoints) at once; discovery then lists the group
+# as Stale, with no resources. The made-up group name means nothing real is registered under it and a cluster that has a real metrics-server is not touched.
+# The cluster check applies it BEFORE a host's plugin connects (.github/workflows/ui-next-pods.yml, "Register an API group that cannot answer"); unavailable.mjs names it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inv4-unavailable
+  namespace: default
+spec:
+  selector:
+    app: inv4-unavailable-has-no-pod
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.inv4-unavailable.example.com
+spec:
+  group: inv4-unavailable.example.com
+  version: v1beta1
+  groupPriorityMinimum: 100
+  versionPriority: 100
+  insecureSkipTLSVerify: true
+  service:
+    name: inv4-unavailable
+    namespace: default
+    port: 443

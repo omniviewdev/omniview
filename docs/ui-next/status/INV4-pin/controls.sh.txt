@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Scratch (not committed): the three older negative controls of the job on the final code (the refactor of openPods and checkParity must not change them).
+#   controls.sh <run-name> <plugin-dir>
+set -uo pipefail
+RUN="$1"; PLUGIN="$2"
+ROOT="$HOME/Repos/omniviewdev/worktrees/inv4-pin"
+SCRATCH=/tmp/inv4-work/pin
+export OMNIVIEW_E2E_WORK="$SCRATCH/work-$RUN"
+KC="$SCRATCH/kc-$RUN"
+NAME="inv4-pin-$RUN"
+IMAGE='kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661'
+cd "$ROOT"
+cleanup() {
+  for h in with-plugin without-plugin without-bundle; do scripts/ui-next-pods/host.sh stop $h 2>/dev/null || true; done
+  kind delete cluster --name "$NAME" --kubeconfig "$KC" 2>&1 | tail -1 || true
+  rm -f "$KC"
+}
+trap cleanup EXIT
+rm -rf "$OMNIVIEW_E2E_WORK"; mkdir -p "$OMNIVIEW_E2E_WORK"
+unset KUBECONFIG
+kind create cluster --name "$NAME" --kubeconfig "$KC" --image "$IMAGE" --wait 180s 2>&1 | tail -1
+check() { # check <mode> <port>
+  env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$2" OMNIVIEW_CHECK_KUBECONFIG="$KC" OMNIVIEW_CHECK_MODE="$1" \
+    node --test --test-reporter=spec scripts/ui-next-pods/pods-cluster.check.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "^(✔|✖)|ℹ (pass|fail) " | cut -c1-200
+}
+scripts/ui-next-pods/host.sh start with-plugin 34231 "$KC" "$PLUGIN" >/dev/null
+echo "== control-fixture-absent (cluster without the fixture)"; check control-fixture-absent 34231
+export KUBECONFIG="$KC"
+kubectl apply -f docs/ui-next/slices/1a-pods-list/fixture.yaml >/dev/null
+kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s >/dev/null
+kubectl -n checkout rollout status sts/cart-cache --timeout=240s >/dev/null
+kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s >/dev/null
+kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s >/dev/null
+unset KUBECONFIG
+scripts/ui-next-pods/host.sh start without-plugin 34232 "$KC" none >/dev/null
+echo "== control-plugin-absent (host without the plugin)"; check control-plugin-absent 34232
+rm -rf "$OMNIVIEW_E2E_WORK/plugin-no-bundle"; cp -R "$PLUGIN" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"; rm -rf "$OMNIVIEW_E2E_WORK/plugin-no-bundle/assets"; mkdir "$OMNIVIEW_E2E_WORK/plugin-no-bundle/assets"
+scripts/ui-next-pods/host.sh start without-bundle 34233 "$KC" "$OMNIVIEW_E2E_WORK/plugin-no-bundle" >/dev/null
+echo "== control-bundle-absent (the plugin without its bundle)"; check control-bundle-absent 34233
+echo CONTROLS-DONE

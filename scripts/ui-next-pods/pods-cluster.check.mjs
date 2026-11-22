@@ -12,6 +12,8 @@
 //                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
 //                                                     window's rail: an entry "Kubernetes, did not load" whose tip says why and whose choice opens the page that names it
+//                             unavailable-group:      INV4 (plugin #281): the host started AFTER an API group that cannot answer was registered (an APIService whose Service has no endpoints: unavailable-group.yaml, applied by the workflow before the host starts): the plugin's page opens from the list of plugins and lists the Pods with no press on Retry, no request the host refused, and the connection's facts name the group (unavailable.mjs)
+//                             control-group-absent:   the check must report GROUP_MISSING (the cluster the main check ran on, which holds no such group)
 //
 // The controls run the same `checkParity` and pass only when it fails with the expected code, so a check that has gone blind
 // (passing on an empty cluster, a missing plugin or a plugin with no bundle) turns the job red. Run: `node --test scripts/ui-next-pods/pods-cluster.check.mjs`.
@@ -21,9 +23,10 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, checkSort, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
+import { compareFacts } from './unavailable.mjs';
 import { opposite } from './sort.mjs';
 
 const baseURL = process.env.OMNIVIEW_CHECK_BASE_URL;
@@ -31,7 +34,7 @@ const kubeconfig = process.env.OMNIVIEW_CHECK_KUBECONFIG;
 const mode = process.env.OMNIVIEW_CHECK_MODE ?? 'parity';
 assert.ok(baseURL, 'OMNIVIEW_CHECK_BASE_URL is required');
 assert.ok(kubeconfig, 'OMNIVIEW_CHECK_KUBECONFIG is required');
-assert.ok(['parity', 'control-fixture-absent', 'control-plugin-absent', 'control-bundle-absent'].includes(mode), `unknown OMNIVIEW_CHECK_MODE ${mode}`);
+assert.ok(['parity', 'control-fixture-absent', 'control-plugin-absent', 'control-bundle-absent', 'control-group-absent', 'unavailable-group'].includes(mode), `unknown OMNIVIEW_CHECK_MODE ${mode}`);
 
 let browser;
 before(async () => {
@@ -41,9 +44,9 @@ after(async () => {
   await browser?.close();
 });
 
-async function failure(options) {
+async function failure(options, check = checkParity) {
   try {
-    await checkParity({ browser, baseURL, kubeconfig, ...options });
+    await check({ browser, baseURL, kubeconfig, ...options });
   } catch (error) {
     assert.ok(error instanceof ParityError, `the check failed for a reason other than a detected defect: ${String(error)}`);
     return error;
@@ -89,6 +92,23 @@ if (mode === 'control-fixture-absent') {
     } finally {
       await page.close();
     }
+  });
+} else if (mode === 'control-group-absent') {
+  // The same check, on the cluster the main check ran on: no API group that cannot answer is registered, so the check must stop at the group before it opens a page, as FIXTURE_MISSING does for the fixture.
+  test('negative control: a cluster without the API group that cannot answer fails the check at the group', async () => {
+    const error = await failure({}, checkUnavailableGroup);
+    assert.equal(error.code, 'GROUP_MISSING', error.message);
+  });
+} else if (mode === 'unavailable-group') {
+  // The demo's finding O2 (INV4, plugin #281): a cluster with a metrics-server that is down (here an APIService whose Service has no endpoints, registered before the host started) kept the first Pods page of a fresh connection from loading,
+  // "Connection admission requires complete discovered support.", and a press on Retry was what made it load. The page below is opened once and never helped. Parity mode's host is not used: it connected before the group was registered.
+  test('the connection starts on the first try with an API group that cannot answer: the Pods list loads with no press on Retry, no request is refused, and the connection\'s facts name the group', async (t) => {
+    const { read, oracle, facts, connectionID, cancelled } = await checkUnavailableGroup({ browser, baseURL, kubeconfig });
+    t.diagnostic(`the page's own cancelled queries the check let through (unavailable.mjs): ${String(cancelled)}`);
+    assert.equal(read.state, 'ready', 'the connection is up and the page lists the Pods');
+    assert.equal(read.count, `${String(oracle.length)} Pods`, 'the footer counts the same Pods, the whole set');
+    assert.ok(connectionID, 'the facts are those of a connection the host lists');
+    assert.deepEqual(compareFacts(facts), [], 'the connection\'s facts name the group that cannot answer');
   });
 } else {
   test('the page and kubectl agree on the Pods of every namespace, on their count and on the quick filters', async () => {
