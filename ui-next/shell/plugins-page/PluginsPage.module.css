@@ -1,0 +1,23 @@
+/* The Plugins page's frame (ch16 S133): the installed list and the detail of the plugin on screen, side by side in the island the shell gives a host page. The mock draws the list in the shell's sidebar slot, 340 px wide, and the detail
+   in the page island, 5 px apart, each an island over the window's colour; here both are drawn by the page, inside the shell's island (docs/ui-next/status/PL1.md, decision on the sidebar), so the page paints the window's colour
+   behind its two panes and the panes paint their own surfaces. The 5 px gutter is a track, as the shell's own gutters are (Shell.module.css). */
+@layer ov.shell {
+  .page {
+    display: grid;
+    grid-template-columns: 340px 5px minmax(0, 1fr);
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    min-inline-size: 0;
+    min-block-size: 0;
+    background-color: var(--ov-bg-window);
+  }
+
+  .page > :first-child {
+    grid-column: 1;
+  }
+
+  .page > :nth-child(2) {
+    grid-column: 3;
+  }
+}

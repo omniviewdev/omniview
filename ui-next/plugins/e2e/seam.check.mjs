@@ -982,7 +982,7 @@ async function checkPalette(page, base, engine) {
   await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
   assert.deepEqual(
     await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
-    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs'],
+    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs', 'Command: Plugins, Window'],
     `${engine}: the commands are the host's, and only those`,
   );
   await shot('commands');

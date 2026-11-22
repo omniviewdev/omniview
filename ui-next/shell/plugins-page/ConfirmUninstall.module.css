@@ -1,0 +1,99 @@
+/* The Uninstall confirm (ch16 S136). One modal dialog: the whole window, transparent, in the browser's top layer (no z-index, and the page behind it inert), as the palette's is; the box hangs in its middle. The box is
+   440 px wide with a 1 px border, so its content is 438: the header 12/12/8/12 with an 8 gap, the body 12 with a 12 gap, the footer 12 around 28 px buttons (52 px), the buttons right-aligned 12 apart. The
+   heading of a section is 20 px above its text (12 and 8), and the sections 12 apart. The widths are the chapter's sizes, not spacing. */
+@layer ov.shell {
+  .scrim {
+    display: none;
+  }
+
+  /* Open: the browser's rules for a modal dialog (its size, its margin, its border, its paint) are put back to nothing; this is only the place the box hangs in. */
+  .scrim[open] {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    max-block-size: none;
+    margin: 0;
+    padding: var(--ov-spacing-24);
+    overflow: visible;
+    border: 0;
+    background-color: transparent;
+    color: inherit;
+  }
+
+  /* The scrim has no tint: the tokens have no translucent scrim colour (the palette's is clear too), and a colour function is not allowed here. */
+  .scrim::backdrop {
+    background-color: transparent;
+  }
+
+  .box {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    inline-size: 440px;
+    max-inline-size: 100%;
+    max-block-size: 100%;
+    min-block-size: 0;
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .head {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: var(--ov-spacing-8);
+    padding: var(--ov-spacing-12) var(--ov-spacing-12) var(--ov-spacing-8) var(--ov-spacing-12);
+  }
+
+  .identity {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* The body scrolls when the window is too short for it, and the header and the footer stay. */
+  .body {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-12);
+    min-block-size: 0;
+    padding: var(--ov-spacing-12);
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-20);
+  }
+
+  .foot {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ov-spacing-12);
+    padding: var(--ov-spacing-12);
+  }
+}

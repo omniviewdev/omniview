@@ -1,0 +1,76 @@
+/* The details card (the mock's `.plug-card`): the inline fill, the control radius and 12 px inside, 8 px between its title and its list, a list of rows 16 px high, 8 px apart, a 130 px label track and the value 16 px after it. It is
+   480 px at most and sits at the start of the pane under the lane (there is no readme column in this slice). Host composition, so it sits in ov.shell. */
+@layer ov.shell {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    inline-size: 100%;
+    max-inline-size: 480px;
+    min-inline-size: 0;
+    padding: var(--ov-spacing-12);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .title {
+    margin: 0;
+    margin-block-end: var(--ov-spacing-8);
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+  }
+
+  .list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ov-spacing-8) var(--ov-spacing-16);
+    margin: 0;
+    padding: var(--ov-spacing-12) 0;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 130px) minmax(0, 1fr);
+    column-gap: var(--ov-spacing-16);
+    min-inline-size: 0;
+  }
+
+  .term {
+    min-inline-size: 0;
+    margin: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  .value,
+  .code {
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+
+  .value {
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  .code {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    font-variant-ligatures: none;
+    line-height: var(--ov-lh-16);
+  }
+}

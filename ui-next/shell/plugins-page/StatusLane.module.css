@@ -1,0 +1,88 @@
+/* The status lane (ch16 S133; the mock's `.plug-lane`): 80 px at least, 12 px of margin above and below and 12 px inside, whatever it says, so a state change moves nothing under it. A notice has the 1 px edge and the fill of its tone;
+   the quiet variant of a running plugin has the inline fill, muted text and no edge. Host composition, so it sits in ov.shell. */
+@layer ov.shell {
+  .lane {
+    --_bg: var(--ov-info-bg);
+    --_border: var(--ov-info-border);
+    --_icon: var(--ov-link);
+
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 80px;
+    margin-block: var(--ov-spacing-12);
+    padding: var(--ov-spacing-12);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_bg);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .lane[data-pl-tone='error'] {
+    --_bg: var(--ov-error-bg);
+    --_border: var(--ov-error-border);
+    --_icon: var(--ov-error-fg);
+  }
+
+  .lane[data-pl-tone='warning'] {
+    --_bg: var(--ov-warning-bg);
+    --_border: var(--ov-warning-border);
+    --_icon: var(--ov-warning-fg);
+  }
+
+  /* A healthy plugin: nothing to flag, so no edge and no glyph, and the text is the muted text of the page. */
+  .lane[data-pl-quiet='true'] {
+    --_bg: var(--ov-bg-inline);
+
+    border-width: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+
+  .lane > svg {
+    flex: none;
+    color: var(--_icon);
+  }
+
+  .text {
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .title {
+    display: block;
+    color: var(--ov-fg);
+    font-weight: 600;
+  }
+
+  .lane[data-pl-quiet='true'] .title {
+    font-size: var(--ov-fs-13);
+  }
+
+  .lane > svg[data-pl-spin='true'] {
+    animation: spin 1.2s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lane > svg[data-pl-spin='true'] {
+      animation: none;
+    }
+  }
+}

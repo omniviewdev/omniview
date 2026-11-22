@@ -32,11 +32,13 @@ import {
   type TabId,
   type TabsStore,
 } from '../../shell';
+import { pluginsPage } from '../../shell/plugins-page';
 import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, laneNameOf } from './connectionName';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
+import { HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
 import { createHostNotices, type HostNotices } from './notices';
@@ -50,6 +52,9 @@ import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
 import { currentRail, failedOf, railOf, type RailEntry } from './rail';
 import { NO_PARAMS, type HostRoute } from './route';
+
+// The Plugins page is the host's own page (ch16 S9): one registration, and a test or a probe registers another in its place.
+registerHostPage(pluginsPage);
 
 // The host of contributed pages: given what each installed plugin's interface came to (`PluginStore`), it drives the shell's tab model with them. A tab is a route in a plugin; the model asks
 // the host what a route is called (`contributions.ts`) and the host draws each mounted tab's page, the list page for the plugin's contribution, or the kit's collection state where there
@@ -229,6 +234,11 @@ function registrationOf({ entries, coming, waiting, held, route, frame, rail, fa
 
   // The rail and the sidebar wait for the plugins: their regions are reserved, and no lane is (it is the frame's, and a frame that is known says whether it has one).
   const holding = held ? { held: true as const } : {};
+  if (route?.plugin === HOST_PLUGIN) {
+    // A page of the host's own (the Plugins page) draws its own list beside its detail: the frame has the rail, no sidebar track and no scope lane, and the page is its own scroll owner.
+    return { plugin: { name: 'Omniview' }, layout: 'pane', rail: railData, ...holding };
+  }
+
   if (route === undefined || active === undefined) {
     // No tab, or a tab of a plugin the host does not have (its page says so). With no tab the window is loading, or it is empty: the empty window is a document (the home content), loading is
     // a collection state (the kit's loading skeleton). A tab is on its way when a link waits for its plugin, or when the tab on screen is one whose plugin is not known yet: its frame is pending.
@@ -383,6 +393,8 @@ type HostPageProps = {
   readonly onRetryInventory: () => void;
   /** What each plugin asks of the bottom panel: its `ctx.panel`. */
   readonly panelHosts: (plugin: string) => PanelHostV1;
+  /** The window's plugin store, for a page of the host's own (`hostPages.ts`). */
+  readonly source: PluginSource;
 };
 
 /**
@@ -390,12 +402,22 @@ type HostPageProps = {
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
-function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts }: HostPageProps) {
+function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts, source }: HostPageProps) {
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
   // What a page keeps is the tab's `pageState`: the same object for as long as the tab is, so the page's own hooks may depend on it.
   const memory = useMemo(() => pageMemoryOf(tabs, tabId), [tabs, tabId]);
+  // A page of the host's own, in a boundary of its own so that a page that throws loses itself and nothing of the window.
+  const hosted = hostPageOf(route);
+  if (hosted !== undefined) {
+    return (
+      <ContributionBoundary name={`host page ${hosted.id}`} resetKey={hosted.id} fallback={(retry) => <PlaceholderPage title={hosted.title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}>
+        <hosted.Page tabs={tabs} tabId={tabId} plugins={source} onRetry={onRetry} />
+      </ContributionBoundary>
+    );
+  }
+
   const entry = entries.find((candidate) => candidate.id === route.plugin);
   if (entry === undefined) {
     const title = pluginName === '' ? route.plugin : pluginName;
@@ -656,7 +678,8 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   // A plugin that did not load has no sidebar to show: choosing its entry opens its page, which names what happened and offers the Retry (as its row of the empty window does), and the rail's current
   // entry and the sidebar stay. Any other entry shows its plugin's sidebar.
   const selectRail = (id: string): void => {
-    if (entries.some((candidate) => candidate.id === id && candidate.phase === 'failed')) {
+    // A host page draws no sidebar for a plugin to take (the Plugins page lists its own): choosing a plugin on the rail opens it.
+    if (route?.plugin === HOST_PLUGIN || entries.some((candidate) => candidate.id === id && candidate.phase === 'failed')) {
       open(id);
     } else {
       setChosen(id);
@@ -729,6 +752,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             onRetry={onRetry}
             onRetryInventory={onRetryInventory}
             panelHosts={panelHosts}
+            source={plugins}
           />
         )}
         empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open })}
