@@ -15,7 +15,15 @@
       "switch-pressable",
       "step-tab-stop",
       "select-unblocked",
-      "secret-attribute"
+      "secret-attribute",
+      "row-glyph-gutter",
+      "row-slot-held",
+      "row-clamp",
+      "row-message-moves",
+      "row-tip-missing",
+      "row-title-weight",
+      "row-unavailable-title",
+      "row-reset-ring"
     ]
   },
   "packages/kit/probes/kit-probe-bc.mjs": {
@@ -44,6 +52,18 @@
     "controls": [
       "trigger-not-expanded",
       "expanded-twice"
+    ]
+  },
+  "packages/kit/probes/sheet-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "no-wrap",
+      "scrim-closes",
+      "escape-ignores-draft",
+      "no-restore-escape",
+      "no-restore-close",
+      "veil-present",
+      "frame-size"
     ]
   },
   "packages/kit/probes/table-probe.mjs": {
