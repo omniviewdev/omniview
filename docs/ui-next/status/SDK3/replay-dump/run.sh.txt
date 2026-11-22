@@ -1,0 +1,15 @@
+# SDK3: the stream of one fixture source, as the host puts it on the wire and as the host's log lane hands it to the window, at SDK v0.21.0 (a plain handler) and at
+# v0.22.0 (a handler that declares ReplayCount; this host never asks for replay markers). The two dumps are byte-identical (sha256 189bdd29bcb514efcccde1d9f7c3e549f682e196d5760b47d7def7bc2b4cca0e).
+# Not in the tree as Go: the three *.go.txt files are copied into backend/pkg/plugin/logs/ under the names without .txt, in a worktree of origin/main (v0.21.0) and in this change's worktree (v0.22.0),
+# each with ITS variant file (zz_variant_v021_test.go or zz_variant_v022_test.go) and not the other.
+#
+#   cd <worktree of origin/main>      # plugin-sdk v0.21.0
+#   cp zz_dump_test.go.txt backend/pkg/plugin/logs/zz_dump_test.go; cp zz_variant_v021_test.go.txt backend/pkg/plugin/logs/zz_variant_v021_test.go
+#   cp <this change>/backend/pkg/plugin/logs/session_start_refused_test.go backend/pkg/plugin/logs/      # it holds aLeaseThatRunsTheCallback
+#   GOWORK=off GOTOOLCHAIN=local SDK3_DUMP=/tmp/v0.21.0-plain.txt go test -count=1 ./backend/pkg/plugin/logs/ -run TestDumpTheStreamOfAFixtureSource
+#
+#   cd <this change's worktree>       # plugin-sdk v0.22.0
+#   cp zz_dump_test.go.txt backend/pkg/plugin/logs/zz_dump_test.go; cp zz_variant_v022_test.go.txt backend/pkg/plugin/logs/zz_variant_v022_test.go
+#   GOWORK=off GOTOOLCHAIN=local SDK3_DUMP=/tmp/v0.22.0-replaycount.txt go test -count=1 ./backend/pkg/plugin/logs/ -run TestDumpTheStreamOfAFixtureSource
+#
+#   diff /tmp/v0.21.0-plain.txt /tmp/v0.22.0-replaycount.txt && echo IDENTICAL; remove the zz_*_test.go files afterwards.

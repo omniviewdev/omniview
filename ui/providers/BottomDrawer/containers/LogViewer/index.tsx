@@ -16,7 +16,7 @@ import { saveLogsNative, copyLogsToClipboard } from './utils/downloadLogs';
 import { findEntryIndexByTime } from './utils/binarySearchTimestamp';
 import { bottomDrawerChannel } from '../../events';
 import type { LogEntry, LogDataSource, LogStreamEvent, SearchMatch } from './types';
-import { StreamEventType } from './types';
+import { isKnownStreamEventType, StreamEventType } from './types';
 import styles from './LogViewer.module.css';
 
 type Props = {
@@ -143,6 +143,10 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   );
 
   const handleEvent = useCallback((event: LogStreamEvent) => {
+    if (!isKnownStreamEventType(event.type)) {
+      return;
+    }
+
     if (event.type === StreamEventType.SESSION_READY) {
       setSessionReady(true);
     }

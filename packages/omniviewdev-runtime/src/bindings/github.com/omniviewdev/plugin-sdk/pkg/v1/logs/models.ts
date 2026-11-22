@@ -99,6 +99,19 @@ export class LogSession {
     "active_sources": LogSource[];
     "created_at": string;
 
+    /**
+     * ReplayMarkers is true when the plugin accepted the session's request for replay
+     * markers ([ParamReplayMarkers]): it flags the lines of each source's replay
+     * ([LogLine.Replay]) and sends [StreamEventSourceCaughtUp] when a source's replay
+     * is delivered. False means no caught-up event will ever come: the reader did not
+     * ask, the plugin's SDK predates replay markers, or its handler has no
+     * [Handler.ReplayCount]. It is known from the create reply and fixed for the
+     * session, so a reader tells "never" from "not yet" without a timeout. The wire
+     * carries it as [ParamReplayMarkersAccepted] in Options.Params, the one place a
+     * create reply can say it without a wire change; [LogSessionFromProto] reads it.
+     */
+    "replay_markers"?: boolean;
+
     /** Creates a new LogSession instance. */
     constructor($$source: Partial<LogSession> = {}) {
         if (!("id" in $$source)) {

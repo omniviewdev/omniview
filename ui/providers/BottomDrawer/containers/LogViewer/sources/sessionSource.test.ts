@@ -93,6 +93,24 @@ describe('SDK session event handoff', () => {
     release();
   });
 
+  // SDK v0.22.0 sends -1 for an event kind it does not know and 7 (SOURCE_CAUGHT_UP) only to a reader that asked: neither may evict a kept event.
+  it('hands a viewer the events it reads after a burst of -1, 7 and 8 sent while the session was created', () => {
+    const { release } = prepareSessionSource('unread');
+    const removed = { type: 1, source_id: 'gone', message: 'Removed', timestamp: '' };
+    emit('core/logs/event/unread', JSON.stringify(removed));
+    for (let i = 0; i < 150; i++) {
+      emit('core/logs/event/unread', JSON.stringify({ type: -1, source_id: `phantom-${i}`, message: 'x', timestamp: '' }));
+      emit('core/logs/event/unread', JSON.stringify({ type: 7, source_id: `caught-up-${i}`, message: '', timestamp: '' }));
+    }
+
+    emit('core/logs/event/unread', JSON.stringify(terminal));
+    const received = handlers();
+    const disconnect = createSessionSource('unread').connect(received);
+    expect(received.onEvent.mock.calls.map(call => call[0])).toEqual([removed, terminal]);
+    disconnect();
+    release();
+  });
+
   it('releases abandoned and failed create listeners', () => {
     prepareSessionSource('abandoned').settled();
     const { release: releaseFailed } = prepareSessionSource('failed');

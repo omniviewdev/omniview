@@ -1,0 +1,12 @@
+wire line  12281203706f641a0d0a06736f757263651203706f64220608a0fa8ad8062a0a6669727374206c696e65
+wire line  12291203706f641a0d0a06736f757263651203706f64220608a1fa8ad8062a0b7365636f6e64206c696e65
+wire line  12281203706f641a0d0a06736f757263651203706f64220608a2fa8ad8062a0a7468697264206c696e65
+wire event 1a2308051a124c6f672073657373696f6e20656e6465642e220b088092b8c398feffffff01
+wire event 1a2608061a15416c6c20736f757263657320636f6e6e6563746564220b088092b8c398feffffff01
+wire event 1a2e1203706f641a1a537461727465642073747265616d696e672066726f6d20706f64220b088092b8c398feffffff01
+window line  {"session_id":"","source_id":"pod","labels":{"source":"pod"},"timestamp":"2026-11-22T10:00:00Z","content":"first line","origin":0,"level":0}
+window line  {"session_id":"","source_id":"pod","labels":{"source":"pod"},"timestamp":"2026-11-22T10:00:01Z","content":"second line","origin":0,"level":0}
+window line  {"session_id":"","source_id":"pod","labels":{"source":"pod"},"timestamp":"2026-11-22T10:00:02Z","content":"third line","origin":0,"level":0}
+window event {"type":0,"source_id":"pod","message":"Started streaming from pod","timestamp":"0001-01-01T00:00:00Z"}
+window event {"type":5,"source_id":"","message":"Log session ended.","timestamp":"0001-01-01T00:00:00Z"}
+window event {"type":6,"source_id":"","message":"All sources connected","timestamp":"0001-01-01T00:00:00Z"}

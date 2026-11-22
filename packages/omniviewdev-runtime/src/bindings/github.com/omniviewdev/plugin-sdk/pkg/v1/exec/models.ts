@@ -174,6 +174,13 @@ export class Session {
  * 
  * Validation and normalization do not acquire a connection or copy mutable
  * containers. Callers must not mutate options concurrently with SDK use.
+ * 
+ * ID must be unique for every session, a restart included (use a UUID). The manager refuses
+ * the ID of a live session with [ErrSessionExists], but it frees an ID when its session ends,
+ * which is before that session's Close signal is sent: a session started with the ID in
+ * between is admitted, and the old session's Close signal then arrives for an ID that is live
+ * again. Whoever keys state on the ID (a host that forgets a session on its Close signal)
+ * would forget the new one.
  */
 export class SessionOptions {
     "params": { [_ in string]?: string };

@@ -302,6 +302,55 @@ describe('LogViewerContainer', () => {
     expect(view.queryByText('No log entries were returned.')).toBeNull();
   });
 
+  // SDK v0.22.0: an event kind the SDK does not know arrives as -1 (v0.21.0 sent it as 0, SOURCE_ADDED), and the opt-in kind 7 (SOURCE_CAUGHT_UP)
+  // arrives as 7. The host asks for neither. A viewer ignores both: they take no slot in the 100 events it keeps and change no banner.
+  describe('an event kind the viewer does not read', () => {
+    const unknown = (type: number, source_id: string) => ({ type, source_id, message: 'x', timestamp: '' });
+
+    it.each([
+      ['-1 with a source', unknown(-1, 'phantom')],
+      ['-1 without a source', unknown(-1, '')],
+      ['7 (SOURCE_CAUGHT_UP) with a source', unknown(7, 'a')],
+      ['8 with a source', unknown(8, 'a')],
+    ])('shows no banner and no error for %s, and the stream is still connecting', (_name, event) => {
+      let handlers!: Parameters<LogDataSource['connect']>[0];
+      const view = render(<LogViewerContainer source={{ connect: (next) => {
+        handlers = next; return vi.fn(); 
+      } }} />);
+      act(() => {
+        handlers.onEvent(event);
+      });
+      expect(view.queryByText(/Log stream ended/)).toBeNull();
+      expect(view.queryByText('Failed to stream logs')).toBeNull();
+      expect(view.queryByText('x')).toBeNull();
+      expect(view.getByText('Connecting to log sources...')).toBeTruthy();
+    });
+
+    it('keeps the end, the removed source and the source error on screen after 150 events of kind -1, 7 and 8', () => {
+      let handlers!: Parameters<LogDataSource['connect']>[0];
+      const view = render(<LogViewerContainer source={{ connect: (next) => {
+        handlers = next; return vi.fn(); 
+      } }} />);
+      act(() => {
+        handlers.onEvent({ type: StreamEventType.STREAM_ERROR, source_id: 'failed-source', message: 'Reader denied', timestamp: '' });
+        handlers.onEvent({ type: StreamEventType.SOURCE_REMOVED, source_id: 'removed-source', message: 'Removed', timestamp: '' });
+        handlers.onEvent({ type: StreamEventType.STREAM_ENDED, source_id: '', message: 'Complete', timestamp: '' });
+      });
+      expect(view.getByText('Log stream ended — 1 source no longer available')).toBeTruthy();
+      act(() => {
+        for (let i = 0; i < 50; i++) {
+          handlers.onEvent(unknown(-1, `phantom-${i}`));
+          handlers.onEvent(unknown(7, `caught-up-${i}`));
+          handlers.onEvent(unknown(8, ''));
+        }
+      });
+      expect(view.getByText('Log stream ended — 1 source no longer available')).toBeTruthy();
+      expect(view.getByText('Reader denied', { exact: false })).toBeTruthy();
+      expect(view.getByText('failed-source:')).toBeTruthy();
+      expect(view.queryByText('Failed to stream logs')).toBeNull();
+    });
+  });
+
   it('keeps removed-source completion truthful across empty output and sibling filtering', () => {
     let handlers!: Parameters<LogDataSource['connect']>[0];
     const source: LogDataSource = {

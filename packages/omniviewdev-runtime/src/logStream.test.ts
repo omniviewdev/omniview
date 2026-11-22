@@ -716,6 +716,106 @@ describe('state', () => {
   });
 });
 
+// SDK v0.22.0: an event kind the SDK does not know arrives as -1 (v0.21.0 sent it as 0, SOURCE_ADDED, with the event's source_id: a phantom source here), and
+// the opt-in kind 7 (SOURCE_CAUGHT_UP) as 7, which the host does not ask for. A reader of the stream ignores both.
+describe('an event kind the stream does not read', () => {
+  const UNKNOWN = -1;
+  const SOURCE_CAUGHT_UP = 7;
+  const unread: ReadonlyArray<readonly [number, string]> = [
+    [UNKNOWN, 'phantom'],
+    [UNKNOWN, ''],
+    [SOURCE_CAUGHT_UP, 'web-0/app'],
+    [SOURCE_CAUGHT_UP, 'late'],
+    [SOURCE_CAUGHT_UP, ''],
+    [8, 'phantom'],
+    [8, ''],
+  ];
+
+  it('adds no source and changes no state, however the session stands: starting, streaming, ended', async () => {
+    vi.useFakeTimers();
+    const { stream, created } = open();
+    await created();
+    const woken = vi.fn();
+    stream.subscribe(woken);
+    const before = stream.getSnapshot();
+    for (const [type, source] of unread) {
+      event(stream, type, source, 'x');
+    }
+    vi.advanceTimersByTime(200);
+    expect(stream.getSnapshot()).toBe(before);
+    expect(before).toMatchObject({ state: 'starting', sources: [] });
+
+    event(stream, SESSION_READY);
+    vi.advanceTimersByTime(60);
+    const ready = stream.getSnapshot();
+    expect(ready).toMatchObject({ state: 'streaming', sources: [] });
+    woken.mockClear();
+    for (const [type, source] of unread) {
+      event(stream, type, source, 'x');
+    }
+    vi.advanceTimersByTime(200);
+    expect(stream.getSnapshot()).toBe(ready);
+
+    event(stream, STREAM_ENDED);
+    vi.advanceTimersByTime(60);
+    const ended = stream.getSnapshot();
+    expect(ended).toMatchObject({ state: 'ended', sources: [] });
+    woken.mockClear();
+    for (const [type, source] of unread) {
+      event(stream, type, source, 'x');
+    }
+    vi.advanceTimersByTime(200);
+    expect(woken).not.toHaveBeenCalled();
+    expect(stream.getSnapshot()).toBe(ended);
+    void stream.close();
+  });
+
+  it('leaves the state, message and set of the sources it was told of as they were', async () => {
+    vi.useFakeTimers();
+    const { stream, created } = open();
+    await created([{ id: 'web-0/app', labels: { container: 'app' } }]);
+    event(stream, RECONNECTING, 'web-0/app', 'Reconnecting (attempt 2/5)');
+    event(stream, STREAM_ERROR, 'web-1/app', 'Reader denied');
+    event(stream, SOURCE_REMOVED, 'web-2/app');
+    vi.advanceTimersByTime(60);
+    const before = stream.getSnapshot();
+    const states = (): string[] => before.sources.map((source) => `${source.id}:${source.state}:${source.message ?? ''}`);
+    expect(states()).toEqual([
+      'web-0/app:reconnecting:Reconnecting (attempt 2/5)',
+      'web-1/app:failed:Reader denied',
+      'web-2/app:removed:',
+    ]);
+    for (const source of ['web-0/app', 'web-1/app', 'web-2/app', 'phantom', '']) {
+      for (const type of [UNKNOWN, SOURCE_CAUGHT_UP, 8]) {
+        event(stream, type, source, 'x');
+      }
+    }
+    vi.advanceTimersByTime(200);
+    expect(stream.getSnapshot()).toBe(before);
+    void stream.close();
+  });
+
+  it('keeps what it was told while the create call was out, through a burst of them', async () => {
+    vi.useFakeTimers();
+    const { stream, created } = open();
+    event(stream, SESSION_READY);
+    event(stream, SOURCE_REMOVED, 'web-0/gone');
+    event(stream, STREAM_ERROR, 'web-1/app', 'Reader denied');
+    for (let index = 0; index < 150; index++) {
+      event(stream, UNKNOWN, `phantom-${String(index)}`, 'x');
+      event(stream, SOURCE_CAUGHT_UP, `caught-up-${String(index)}`);
+      event(stream, UNKNOWN, '');
+    }
+    event(stream, STREAM_ENDED, 'web-1/app');
+    await created();
+    vi.advanceTimersByTime(60);
+    const snapshot = stream.getSnapshot();
+    expect(snapshot.state).toBe('streaming');
+    expect(snapshot.sources.map((source) => `${source.id}:${source.state}`)).toEqual(['web-0/gone:removed', 'web-1/app:ended']);
+    void stream.close();
+  });
+});
+
 describe('close', () => {
   it('releases every listener it took, now, and closes the session once', async () => {
     const { stream, created } = open();
