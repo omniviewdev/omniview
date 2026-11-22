@@ -62,7 +62,10 @@
 //      learns it from the inventory and shows the plugin failed from the first. The Retry asks the host: the plugin starts again, fails
 //      again, and the window is back in the failed state, never in a spinner. With the process told to hang, Retry shows the plugin starting again (a spinner, no Retry to press twice) for as long as the host waits, and the
 //      load ends as failed with the cause `timeout` within the loader's own start timeout (15 s); the sentence says it took too long. With the file gone, Retry runs the plugin: the host says it runs, and the window shows
-//      one of everything again with no reload (SEAM_SHOTS=<dir> writes WebKit's pictures of the four states). SEAM_CONTROL=failed-load runs p alone with every perturbation of its controls (FAILED_CONTROLS) made in turn just before the assertion each must trip; SEAM_CONTROL=<one of them>
+//      one of everything again with no reload (SEAM_SHOTS=<dir> writes WebKit's pictures of the five states). The same process then speaks ANOTHER PLUGIN PROTOCOL (S4): the fixture's manifest says `sdk_protocol_version: 2`, the SDK's own override, so
+//      the real process serves protocol 2 and the host refuses it by the number the handshake negotiated: `plugin/unloaded` says `incompatible` with the two numbers and no other member, the rail says update required, the tab says the host's sentence
+//      and both versions and draws NO Retry (asking again cannot help) and no page, the host lists the plugin as Failed with the same two numbers, and a window opened then shows the same from the inventory; with the manifest put back the host
+//      reloads the plugin and it runs again with no reload. SEAM_CONTROL=failed-load runs p alone with every perturbation of its controls (FAILED_CONTROLS) made in turn just before the assertion each must trip; SEAM_CONTROL=<one of them>
 //      makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected (the proof that each control trips its own assertion and no other)
 //
 //   q  the notification centre (O1b-2): the history a failed page command leaves, read from the bell, over the real host. A failure whose toast the person DISMISSES is read (the model: S81): the bell has no dot (its name is
@@ -160,6 +163,7 @@ const FAILED_CONTROLS = {
   'timeout-ends': /the plugin that did not answer ends as timed out and not as a spinner/,
   'rail-back': /the rail names the plugin that runs again, with no word of its failure/,
   'one-of-all': /after the retry that runs: one page, one sidebar entry, one tool/,
+  incompatible: /a plugin the host refused for its protocol says why, with the two versions and no Retry/,
 };
 // The negative controls of scenario t, the Plugins page (PL1). As in n and p each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no other.
 // One run serves them all (SEAM_CONTROL=plugins-page); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
@@ -2172,7 +2176,8 @@ function withControls(group, table) {
  * its binary (`fixture/process`, `start-mode`): `exit` ends it before it says it is ready, `hang` keeps it silent. The host is asked to reload the plugin (`ReloadPlugin`, the call a rebuild makes) and the load fails; the frames of the window's
  * event socket are the evidence of what the host said, and the page is what the window did with it. Then Retry, in the tab, asks the host: the load fails again and the window returns to the failed state. With the process told to hang,
  * Retry shows the plugin starting again for as long as the host waits and the load ends as failed with the cause `timeout`, within the loader's own start timeout (15 s). With the file gone, Retry runs the plugin and the window shows one of
- * everything again, with no reload. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; FAILED_CONTROLS).
+ * everything again, with no reload. Then the same process speaks another plugin protocol (S4: the fixture's manifest says `sdk_protocol_version: 2`) and the host refuses it by number: the window is told `incompatible` with two numbers, shows the
+ * sentence and both versions with no Retry, and a window opened then shows the same from the inventory. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; FAILED_CONTROLS).
  */
 async function checkFailedLoad(browser, engine, binary, work) {
   const dir = await mkdtemp(path.join(work, `failed-${engine}-`));
@@ -2451,6 +2456,60 @@ async function checkFailedLoad(browser, engine, binary, work) {
     );
     assert.equal(await spinners(), 0, `${engine}: and nothing is loading`);
     await shot('recovered');
+
+    // The same process on another plugin protocol: the manifest says it, the SDK serves it, and the host refuses it by the number the handshake negotiated (S4). Asking again cannot help, so there is no Retry; the page says why.
+    const manifestFile = path.join(stateRoot(dir), 'plugins', OK, 'plugin.yaml');
+    const manifestOf = await readFile(manifestFile, 'utf8');
+    await writeFile(manifestFile, `${manifestOf}sdk_protocol_version: 2\n`);
+    const fifth = frames.length;
+    const refusing = tryBound(host.base, PLUGIN_SERVICE, 'ReloadPlugin', OK);
+    await page.getByRole('button', { name: 'Seam Fixture, update required' }).waitFor({ timeout: 30_000 });
+    const refusal = await refusing;
+    assert.notEqual(refusal.status, 200, `${engine}: the host answered the reload of a plugin that speaks another protocol with an error`);
+    assert.match(refusal.text, /different version of Omniview/, `${engine}: and the error says the host's sentence`);
+    assert.doesNotMatch(refusal.text, /Client versions|incompatible API version/, `${engine}: and none of go-plugin's own words`);
+    const REFUSED_SAYS = 'This plugin was built for a different version of Omniview. It uses plugin protocol 2; this Omniview accepts protocol 1.';
+    const refused = 'a plugin the host refused for its protocol says why, with the two versions and no Retry';
+    await page.getByRole('alert').waitFor();
+    await asserting(
+      'incompatible',
+      async () => decoy('<button data-decoy type="button">Retry</button>'),
+      undecoy,
+      async () => {
+        assert.deepEqual(causes(fifth), ['reloaded', 'incompatible'], `${engine}: ${refused} (what the host said: the reload, then the refusal)`);
+        const said = told(fifth).find((data) => data.cause === 'incompatible');
+        assert.deepEqual(Object.keys(said).sort(), ['cause', 'incompatibility', 'pluginID'], `${engine}: ${refused} (the event carries the id, the cause and the facts, no other member)`);
+        assert.deepEqual(said.incompatibility, { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } }, `${engine}: ${refused} (the two numbers, and no text)`);
+        assert.deepEqual(await railNames(), ['Seam Fixture Copy', 'Seam Fixture, update required'], `${engine}: ${refused} (the rail)`);
+        assert.equal(await entries.nth(1).getAttribute('data-ov-tip'), `Seam Fixture, update required\n${REFUSED_SAYS}`, `${engine}: ${refused} (the tip)`);
+        assert.deepEqual(await pageTabs(), ['Seam Fixture'], `${engine}: ${refused} (the tab keeps its route under the plugin's name)`);
+        assert.match(await page.getByRole('alert').innerText(), new RegExp(`Couldn't load Seam Fixture[\\s\\S]*${escaped(REFUSED_SAYS)}`), `${engine}: ${refused} (the sentence and the versions)`);
+        assert.equal(await retry.count(), 0, `${engine}: ${refused} (the Retry)`);
+        assert.equal(await itemHeading.count(), 0, `${engine}: ${refused} (no page)`);
+        assert.equal(await spinners(), 0, `${engine}: ${refused} (no spinner)`);
+      },
+    );
+    assert.equal((await streams.count()) + (await copyStreams.count()) * 10, 10, `${engine}: its tool left the panel and the other plugin's stayed`);
+    await shot('incompatible');
+    // The host holds the plugin as Failed, with the same two numbers: what a window that was not open reads.
+    const held = await callBound(host.base, PLUGIN_SERVICE, 'GetPlugin', OK);
+    assert.equal(held.phase, 'Failed', `${engine}: the host lists the plugin that speaks another protocol as Failed`);
+    assert.deepEqual(held.incompatible, { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } }, `${engine}: with the two numbers it decided on, in the inventory`);
+    await page.reload({ waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Seam Fixture, update required' }).waitFor({ timeout: 30_000 });
+    await page.getByRole('alert').waitFor();
+    assert.match(await page.getByRole('alert').innerText(), new RegExp(escaped(REFUSED_SAYS)), `${engine}: a window that opens while the plugin is refused shows the sentence and the versions from the first (the sentence)`);
+    assert.equal(await retry.count(), 0, `${engine}: a window that opens while the plugin is refused shows the sentence and the versions from the first (no Retry)`);
+    assert.equal(await spinners(), 0, `${engine}: a window that opens while the plugin is refused shows the sentence and the versions from the first (no spinner)`);
+    // The manifest put back, the host reloads the plugin and it runs: the window shows one of everything again, with no reload.
+    await writeFile(manifestFile, manifestOf);
+    const sixth = frames.length;
+    assert.equal((await tryBound(host.base, PLUGIN_SERVICE, 'ReloadPlugin', OK)).status, 200, `${engine}: the host reloaded the plugin on the protocol it runs`);
+    await page.getByRole('button', { name: 'Seam Fixture', exact: true }).waitFor({ timeout: 30_000 });
+    await details.waitFor({ timeout: 30_000 });
+    assert.ok(ran(sixth), `${engine}: the host said the plugin runs again (plugin/state_change)`);
+    assert.deepEqual(causes(sixth), ['reloaded'], `${engine}: and said nothing more of a refusal`);
+    assert.equal(await retry.count(), 0, `${engine}: and nothing is offered to retry`);
     // A reload of the page cuts the calls that are in flight, which an engine reports as a page error ("Load failed", "due to access control checks", "Failed to fetch"): they are the page's going away, not the plugin's (scenario i does the same).
     const cut = /access control checks|Load failed|Failed to fetch|NetworkError|network connection was lost/i;
     assert.deepEqual(errors.filter((message) => !cut.test(message)), [], `${engine}: the load failing, the retries and the plugin coming back wrote no page error`);

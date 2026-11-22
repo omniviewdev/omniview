@@ -8,6 +8,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
@@ -41,8 +42,8 @@ const (
 	// Lifecycle state changes.
 	EventStateChange = "plugin/state_change"
 
-	// A plugin that was serving the window stopped, or could not start: its process crashed, it is being reloaded, it was uninstalled, it was turned off, or its load failed. The window drops the interface it drew from the plugin
-	// and learns that the plugin runs again from EventStateChange (To == Running). The payload is the plugin's id and one of six codes (UnloadCause), never text.
+	// A plugin that was serving the window stopped, or could not start: its process crashed, it is being reloaded, it was uninstalled, it was turned off, its load failed, or the host refused it. The window drops the interface it drew from the plugin
+	// and learns that the plugin runs again from EventStateChange (To == Running). The payload is the plugin's id and one of seven codes (UnloadCause), never text; the code `incompatible` brings the two numbers of the refusal (UnloadedPayload).
 	EventUnloaded = "plugin/unloaded"
 
 	// Install flow.
@@ -95,7 +96,7 @@ type StateChangePayload struct {
 	Timestamp time.Time             `json:"timestamp"`
 }
 
-// UnloadCause says why a plugin is not serving the window. It is one of the six words below and nothing else: the window words each for the person itself, so no text of the plugin, of
+// UnloadCause says why a plugin is not serving the window. It is one of the seven words below and nothing else: the window words each for the person itself, so no text of the plugin, of
 // its process or of an error ever travels with the event (docs/development-plugin-lifecycle.md, "What the window is told when a plugin stops").
 type UnloadCause string
 
@@ -113,12 +114,17 @@ const (
 	UnloadFailed UnloadCause = "failed"
 	// UnloadTimedOut: the load ran out of time: the plugin's process did not answer within the loader's own start timeout (pluginStartTimeout).
 	UnloadTimedOut UnloadCause = "timeout"
+	// UnloadIncompatible: the plugin's process speaks a plugin protocol this host does not run. Decided from the NUMBER the handshake negotiated (admitProtocol), never from go-plugin's text, before the host dispenses anything
+	// from the plugin. Retrying cannot help: the window offers no Retry for it, and the crash recovery does not try again. The two numbers ride the event and the plugin's inventory entry (types.Incompatibility).
+	UnloadIncompatible UnloadCause = "incompatible"
 )
 
-// UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. It has no other member, and a member that carried text would put the plugin's words in the window's hands.
+// UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. Its only other member is the facts of a refusal by protocol number (Incompatibility, set for the cause `incompatible` and for no other): two public-safe
+// numbers. A member that carried text would put the plugin's words in the window's hands.
 type UnloadedPayload struct {
-	PluginID string      `json:"pluginID"`
-	Cause    UnloadCause `json:"cause"`
+	PluginID        string                       `json:"pluginID"`
+	Cause           UnloadCause                  `json:"cause"`
+	Incompatibility *plugintypes.Incompatibility `json:"incompatibility,omitempty"`
 }
 
 // PluginErrorPayload is sent with EventCrash, EventCrashRecoveryFailed and
@@ -172,5 +178,17 @@ func emitUnloaded(emitter resource.EventEmitter, pluginID string, cause UnloadCa
 	if emitter == nil {
 		return
 	}
-	emitter.Emit(EventUnloaded, UnloadedPayload{PluginID: pluginID, Cause: cause})
+	emitter.Emit(EventUnloaded, UnloadedPayload{PluginID: pluginID, Cause: cause, Incompatibility: nil})
+}
+
+// emitLoadFailed tells the window that a load ended in err: the cause loadFailureCause reads from it, and for a refusal by protocol number the two numbers of the refusal, which the window words.
+func emitLoadFailed(emitter resource.EventEmitter, pluginID string, err error) {
+	if emitter == nil {
+		return
+	}
+	payload := UnloadedPayload{PluginID: pluginID, Cause: loadFailureCause(err), Incompatibility: nil}
+	if facts, refused := plugintypes.IncompatibilityOf(err); refused {
+		payload.Incompatibility = &facts
+	}
+	emitter.Emit(EventUnloaded, payload)
 }

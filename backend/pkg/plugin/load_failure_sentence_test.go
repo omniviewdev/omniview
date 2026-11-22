@@ -331,6 +331,9 @@ func hostMadeFailures() map[string]hostMade {
 		"a refusal of the plugin's SDK release": {
 			err:      devcontract.Fail(4, "sdk_release_untrusted", "kubernetes resolves plugin-sdk v0.20.0, which this controller does not accept: below the floor"),
 			sentence: "which this controller does not accept: below the floor"},
+		"a refusal of the plugin's protocol": {
+			err:      &plugintypes.IncompatibleError{Incompatibility: plugintypes.Incompatibility{PluginProtocol: 2, Accepted: plugintypes.AcceptedProtocols()}},
+			sentence: "It uses plugin protocol 2; this Omniview accepts protocol 1."},
 	}
 }
 

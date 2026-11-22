@@ -60,16 +60,16 @@ export type Operation = 'reload' | 'retry' | 'enable' | 'disable' | 'uninstall';
 
 export const OPERATIONS: readonly Operation[] = ['reload', 'retry', 'enable', 'disable', 'uninstall'];
 
-/** What a person is told of a plugin's state: one word, its tone, and the sentences of the status lane. */
-export type StateKind = 'running' | 'starting' | 'stopping' | 'degraded' | 'disabled' | 'stopped' | 'failed' | 'removing' | 'unknown';
+/** What a person is told of a plugin's state: one word, its tone, and the sentences of the status lane. `incompatible` is a plugin the host refused for the protocol it speaks (S4): it is a fault like `failed`, and asking again cannot help, so no Retry is drawn for it. */
+export type StateKind = 'running' | 'starting' | 'stopping' | 'degraded' | 'disabled' | 'stopped' | 'failed' | 'incompatible' | 'removing' | 'unknown';
 
 export type Tone = 'neutral' | 'success' | 'info' | 'warning' | 'error';
 
 /**
- * Why a plugin is not serving: the host's causes (`UnloadCause`), the interface that did not load, and a development build that failed. A typed incompatibility cause (a plugin built below the accepted SDK) is
- * coming from the producer (docs/ui-next/status/PL1.md): it is one more member of this union and one more kind of `StateKind`, and nothing else changes.
+ * Why a plugin is not serving: the host's causes (`UnloadCause`, `incompatible` included: a plugin the host refused for its protocol, S4, which docs/ui-next/status/PL1.md anticipated as one more member of this union and one more kind of
+ * `StateKind`), the interface that did not load, and a development build that failed.
  */
-export type Cause = 'crashed' | 'reloaded' | 'failed' | 'timeout' | 'interface' | 'build';
+export type Cause = 'crashed' | 'reloaded' | 'failed' | 'timeout' | 'incompatible' | 'interface' | 'build';
 
 export type State = {
   readonly kind: StateKind;

@@ -18,6 +18,7 @@ describe('roleOf', () => {
     ['disabled', 'stopped'],
     ['stopped', 'stopped'],
     ['failed', 'error'],
+    ['incompatible', 'error'],
   ])('a plugin that is %s is drawn with the role %s', (kind, role) => {
     expect(roleOf(state(kind, 'x'))).toBe(role);
   });

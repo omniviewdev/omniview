@@ -35,6 +35,7 @@ import {
 import { pluginsPage } from '../../shell/plugins-page';
 import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
+import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, laneNameOf } from './connectionName';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
@@ -448,9 +449,12 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
         state={{
           kind: 'failed',
           message: entry.failure.message,
-          retry: () => {
-            onRetry(entry.id);
-          },
+          // A plugin the host refused for the protocol it speaks gets no Retry: asking again cannot help, and the page says why instead.
+          retry: canRetry(entry.failure)
+            ? () => {
+              onRetry(entry.id);
+            }
+            : undefined,
         }}
       />
     );

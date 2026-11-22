@@ -1,5 +1,5 @@
 import type { PluginEntry } from '../../../plugins/host/pluginStore';
-import { failureWords, unloadedFailure, type GoneCause } from '../../../plugins/loader/failure';
+import { failureWords, unloadedFailure, type GoneCause, type LoadFailure } from '../../../plugins/loader/failure';
 import { SENTENCES } from './words';
 import type { Cause, Installed, State, StateKind, Tone } from './types';
 
@@ -46,6 +46,7 @@ const GONE_TITLES: Readonly<Record<GoneCause, (name: string) => string>> = {
   reloaded: (name) => `Starting ${name} again…`,
   failed: (name) => `${name} didn't start`,
   timeout: (name) => `${name} took too long to start`,
+  incompatible: (name) => `${name} is not compatible with this version of Omniview`,
 };
 
 const done = (facts: Facts, name: string): State => ({
@@ -59,17 +60,18 @@ const done = (facts: Facts, name: string): State => ({
   faulted: facts.tone === 'error',
 });
 
-/** The state of a plugin the host says is gone or could not start: the rail's word for the cause, and the host's sentence for it. A plugin that is starting again is work, and nothing failed. */
-function goneState(cause: GoneCause, name: string): State {
-  const words = failureWords(unloadedFailure(cause));
+/** The state of a plugin the host says is gone or could not start: the rail's word for the cause, and the host's sentence for it (the failure's own, so that a refusal by protocol says its two versions). A plugin that is starting again is work, and nothing failed; one the host refused for its protocol is a fault of its own kind, for which no Retry is drawn. */
+function goneState(failure: LoadFailure, name: string): State {
+  const cause = failure.cause ?? 'crashed';
+  const words = failureWords(failure);
   return {
-    kind: cause === 'reloaded' ? 'starting' : 'failed',
+    kind: cause === 'reloaded' ? 'starting' : cause === 'incompatible' ? 'incompatible' : 'failed',
     word: words.caption,
     tone: words.faulted ? 'error' : 'neutral',
     busy: !words.faulted,
     cause,
     title: GONE_TITLES[cause](name),
-    sentence: unloadedFailure(cause).message,
+    sentence: failure.message,
     faulted: words.faulted,
   };
 }
@@ -99,7 +101,7 @@ function phaseState(installed: Installed): State {
     case 'Installed':
       return done(FACTS.stopped, name);
     case 'Failed':
-      return goneState('failed', name);
+      return goneState(unloadedFailure('failed'), name);
     case 'BuildFailed':
       return done(FACTS.build, name);
     case 'Uninstalling':
@@ -122,7 +124,7 @@ export function stateOf({ installed, entry, removing }: StateInput): State {
 
   if (entry?.phase === 'failed') {
     const { failure } = entry;
-    return failure.kind === 'unloaded' ? goneState(failure.cause ?? 'crashed', name) : interfaceState(failure.message, name);
+    return failure.kind === 'unloaded' ? goneState(failure, name) : interfaceState(failure.message, name);
   }
 
   return phaseState(installed);

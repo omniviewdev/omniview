@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, unloadedFailure, type GoneCause } from '../../../plugins/loader/failure';
+import { classify, incompatibleFailure, unloadedFailure, type PlainGoneCause } from '../../../plugins/loader/failure';
 import type { PluginEntry } from '../../../plugins/host/pluginStore';
 import { acme } from '../../../plugins/testing';
 import { stateOf } from './state';
@@ -31,7 +31,7 @@ const plugin = (patch: Partial<Installed> = {}): Installed => ({
 
 const ready: PluginEntry = { id: 'alpha', name: 'Alpha Metrics', phase: 'ready', contribution: acme() };
 const loading: PluginEntry = { id: 'alpha', name: 'Alpha Metrics', phase: 'loading' };
-const gone = (cause: GoneCause): PluginEntry => ({ id: 'alpha', name: 'Alpha Metrics', phase: 'failed', failure: unloadedFailure(cause) });
+const gone = (cause: PlainGoneCause): PluginEntry => ({ id: 'alpha', name: 'Alpha Metrics', phase: 'failed', failure: unloadedFailure(cause) });
 const broken: PluginEntry = { id: 'alpha', name: 'Alpha Metrics', phase: 'failed', failure: classify(new Error('boom')) };
 
 describe('a plugin the host holds', () => {
@@ -103,13 +103,28 @@ describe('a plugin the host holds', () => {
 });
 
 describe('what the window says of the plugin\'s interface is the rail\'s word', () => {
-  it.each<[GoneCause, string, boolean, string]>([
+  it.each<[PlainGoneCause, string, boolean, string]>([
     ['crashed', 'Stopped', true, 'failed'],
     ['reloaded', 'Starting again', false, 'starting'],
     ['failed', 'Did not start', true, 'failed'],
     ['timeout', 'Timed out', true, 'failed'],
   ])('a plugin that is gone because it %s says %s (a fault: %s)', (cause, word, faulted, kind) => {
     expect(stateOf({ installed: plugin(), entry: gone(cause), removing: false })).toMatchObject({ kind, word, faulted, cause, sentence: unloadedFailure(cause).message, busy: cause === 'reloaded' });
+  });
+
+  it('a plugin the host refused for the protocol it speaks says update required in the rail\'s word and the host\'s sentence with both versions, and is of its own kind so that no Retry is drawn for it (S4)', () => {
+    const refused: PluginEntry = { id: 'alpha', name: 'Alpha Metrics', phase: 'failed', failure: incompatibleFailure({ pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } }) };
+
+    expect(stateOf({ installed: plugin({ phase: 'Failed' }), entry: refused, removing: false })).toEqual({
+      kind: 'incompatible',
+      word: 'Update required',
+      tone: 'error',
+      busy: false,
+      cause: 'incompatible',
+      title: 'Alpha Metrics is not compatible with this version of Omniview',
+      sentence: 'This plugin was built for a different version of Omniview. It uses plugin protocol 2; this Omniview accepts protocol 1.',
+      faulted: true,
+    });
   });
 
   it('whose interface did not load says it did not load, with the sentence the window gave it', () => {

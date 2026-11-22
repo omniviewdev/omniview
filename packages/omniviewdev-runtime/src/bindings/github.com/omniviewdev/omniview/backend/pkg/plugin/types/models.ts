@@ -16,6 +16,46 @@ import * as config$0 from "../../../../../plugin-sdk/pkg/config/models.js";
 import * as types$0 from "../../../../../plugin-sdk/pkg/types/models.js";
 
 /**
+ * Incompatibility is why the host refused a plugin by protocol number, as numbers and nothing else: public-safe values that travel to the window with the event (`plugin/unloaded`) and in the plugin's inventory
+ * entry, where the window words them. Nothing of go-plugin's, the plugin's or an error's text is in it.
+ */
+export class Incompatibility {
+    /**
+     * PluginProtocol is the plugin protocol the plugin's process negotiated: the number it said in the handshake.
+     */
+    "pluginProtocol": number;
+
+    /**
+     * Accepted is the range of plugin protocols this host runs.
+     */
+    "accepted": ProtocolRange;
+
+    /** Creates a new Incompatibility instance. */
+    constructor($$source: Partial<Incompatibility> = {}) {
+        if (!("pluginProtocol" in $$source)) {
+            this["pluginProtocol"] = 0;
+        }
+        if (!("accepted" in $$source)) {
+            this["accepted"] = (new ProtocolRange());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Incompatibility instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Incompatibility {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("accepted" in $$parsedSource) {
+            $$parsedSource["accepted"] = $$createField1_0($$parsedSource["accepted"]);
+        }
+        return new Incompatibility($$parsedSource as Partial<Incompatibility>);
+    }
+}
+
+/**
  * PluginInfo is the host-owned, frontend-safe plugin inventory descriptor.
  */
 export class PluginInfo {
@@ -30,6 +70,11 @@ export class PluginInfo {
     "origin": string;
     "frontendModule": string;
     "releaseChannel": string;
+
+    /**
+     * Incompatible is set on a plugin the host refused because its process speaks a plugin protocol the host does not run: the two numbers the window words itself, and no text.
+     */
+    "incompatible"?: Incompatibility | null;
 
     /** Creates a new PluginInfo instance. */
     constructor($$source: Partial<PluginInfo> = {}) {
@@ -68,14 +113,18 @@ export class PluginInfo {
      * Creates a new PluginInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginInfo {
-        const $$createField1_0 = $$createType0;
-        const $$createField6_0 = $$createType1;
+        const $$createField1_0 = $$createType1;
+        const $$createField6_0 = $$createType2;
+        const $$createField11_0 = $$createType4;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("metadata" in $$parsedSource) {
             $$parsedSource["metadata"] = $$createField1_0($$parsedSource["metadata"]);
         }
         if ("capabilities" in $$parsedSource) {
             $$parsedSource["capabilities"] = $$createField6_0($$parsedSource["capabilities"]);
+        }
+        if ("incompatible" in $$parsedSource) {
+            $$parsedSource["incompatible"] = $$createField11_0($$parsedSource["incompatible"]);
         }
         return new PluginInfo($$parsedSource as Partial<PluginInfo>);
     }
@@ -127,7 +176,7 @@ export class PluginStateRecord {
      * Creates a new PluginStateRecord instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginStateRecord {
-        const $$createField2_0 = $$createType0;
+        const $$createField2_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("metadata" in $$parsedSource) {
             $$parsedSource["metadata"] = $$createField2_0($$parsedSource["metadata"]);
@@ -136,6 +185,37 @@ export class PluginStateRecord {
     }
 }
 
+/**
+ * ProtocolRange is a closed range of plugin protocol numbers.
+ */
+export class ProtocolRange {
+    "oldest": number;
+    "newest": number;
+
+    /** Creates a new ProtocolRange instance. */
+    constructor($$source: Partial<ProtocolRange> = {}) {
+        if (!("oldest" in $$source)) {
+            this["oldest"] = 0;
+        }
+        if (!("newest" in $$source)) {
+            this["newest"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ProtocolRange instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ProtocolRange {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ProtocolRange($$parsedSource as Partial<ProtocolRange>);
+    }
+}
+
 // Private type creation functions
-const $$createType0 = config$0.PluginMeta.createFrom;
-const $$createType1 = $Create.Array($Create.Any);
+const $$createType0 = ProtocolRange.createFrom;
+const $$createType1 = config$0.PluginMeta.createFrom;
+const $$createType2 = $Create.Array($Create.Any);
+const $$createType3 = Incompatibility.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);

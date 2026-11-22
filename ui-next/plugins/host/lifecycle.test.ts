@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CONTRIBUTION_EXPORT_V1 } from '../contract/admit';
-import type { UnloadCause } from '../loader/failure';
+import type { Incompatibility, UnloadCause } from '../loader/failure';
 import { acme, fakeEvents } from '../testing';
 import { listenForLifecycle, readRunning, readUnloaded } from './lifecycle';
 import { PluginStore } from './pluginStore';
 
-// What the window does with the two things the host says of a plugin that stops and returns (`backend/pkg/plugin/events.go`): `plugin/unloaded` (the plugin's id and one of six words) and
+// What the window does with the two things the host says of a plugin that stops and returns (`backend/pkg/plugin/events.go`): `plugin/unloaded` (the plugin's id and one of seven words) and
 // `plugin/state_change` (read for the plugin's id and whether it runs again). No runtime, no host: the events are a table of handlers the test calls, as the runtime's are.
 
-const plugins = () => ({ unload: vi.fn<(id: string, cause: UnloadCause) => void>(), revive: vi.fn(async (_id: string) => undefined) });
+const plugins = () => ({ unload: vi.fn<(id: string, cause: UnloadCause, incompatibility?: Incompatibility) => void>(), revive: vi.fn(async (_id: string) => undefined) });
 
 describe('what the host says of a plugin that stopped', () => {
   it('is read from the two events and no others: the one that says a plugin stopped, and the one that says what phase a plugin is in', () => {
@@ -27,6 +27,43 @@ describe('what the host says of a plugin that stopped', () => {
     events.emit('plugin/unloaded', { pluginID: 'acme', cause });
 
     expect(target.unload).toHaveBeenCalledExactlyOnceWith('acme', cause);
+  });
+
+  it('unloads a plugin the host refused with the cause incompatible and the two numbers it decided on, and with nothing else of the payload', () => {
+    const events = fakeEvents();
+    const target = plugins();
+    listenForLifecycle(target, events.source);
+
+    events.emit('plugin/unloaded', { pluginID: 'acme', cause: 'incompatible', incompatibility: { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 }, text: 'SECRET' }, error: 'incompatible API version with plugin' });
+
+    expect(target.unload).toHaveBeenCalledExactlyOnceWith('acme', 'incompatible', { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } });
+    expect(JSON.stringify(target.unload.mock.calls)).not.toMatch(/SECRET|API version/);
+  });
+
+  it.each([
+    ['no numbers', { pluginID: 'acme', cause: 'incompatible' }],
+    ['numbers that are text', { pluginID: 'acme', cause: 'incompatible', incompatibility: { pluginProtocol: '2', accepted: { oldest: 1, newest: 1 } } }],
+    ['a range that is not one', { pluginID: 'acme', cause: 'incompatible', incompatibility: { pluginProtocol: 2, accepted: { oldest: 2, newest: 1 } } }],
+    ['the numbers in the place of another member', { pluginID: 'acme', cause: 'incompatible', pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } }],
+  ])('ignores a refusal that comes with %s: it has nothing true to say, so it is not taken for one', (_name, payload) => {
+    const events = fakeEvents();
+    const target = plugins();
+    listenForLifecycle(target, events.source);
+
+    events.emit('plugin/unloaded', payload);
+
+    expect(target.unload).not.toHaveBeenCalled();
+    expect(readUnloaded(payload)).toBeUndefined();
+  });
+
+  it('passes no numbers with any other cause, whatever the payload carries beside it', () => {
+    const events = fakeEvents();
+    const target = plugins();
+    listenForLifecycle(target, events.source);
+
+    events.emit('plugin/unloaded', { pluginID: 'acme', cause: 'failed', incompatibility: { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } } });
+
+    expect(target.unload).toHaveBeenCalledExactlyOnceWith('acme', 'failed');
   });
 
   it('reads the id and the cause and nothing else: what else a payload carries, text above all, goes no further', () => {
@@ -50,7 +87,7 @@ describe('what the host says of a plugin that stopped', () => {
     ['an empty id', { pluginID: '', cause: 'crashed' }],
     ['an id that is not text', { pluginID: 3, cause: 'crashed' }],
     ['no cause', { pluginID: 'acme' }],
-    ['a cause that is not one of the six', { pluginID: 'acme', cause: 'exploded' }],
+    ['a cause that is not one of the seven', { pluginID: 'acme', cause: 'exploded' }],
     ['a cause with the case of another word', { pluginID: 'acme', cause: 'Crashed' }],
     ['a cause that is not text', { pluginID: 'acme', cause: 1 }],
     ['the zero cause the bindings name', { pluginID: 'acme', cause: '' }],
