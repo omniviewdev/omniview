@@ -1110,6 +1110,10 @@ test('NEGATIVE: the plan command fails, and writes no matrix, for a table with n
     assert.equal(result.status, 1, `${what}: ${result.stdout}`);
     assert.match(result.stderr, /scripts\/ci\/probe-units\/rail\.mjs/, what);
     assert.equal(existsSync(out), false, `${what}: a plan that cannot read its table writes no matrix (it would be a short one)`);
+    const ran = cli(root, ['run', '1', 'form'], { RUNNER_TEMP: root });
+    assert.equal(ran.status, 1, `${what}: a shard that cannot read its table runs nothing: ${ran.stdout}`);
+    assert.match(ran.stderr, /scripts\/ci\/probe-units\/rail\.mjs/, what);
+    assert.equal(existsSync(path.join(root, 'ran-1-probe.json')), false, 'and reports nothing');
   }
 
   const unwritable = treeOfTheUnits();

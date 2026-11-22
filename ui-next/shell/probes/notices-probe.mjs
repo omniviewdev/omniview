@@ -346,11 +346,11 @@ const RAISE = {
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // The bound of the centre's open, in milliseconds (N25, docs/ui-next/status/N25.md). The claim is "the centre opens in under two frames" (33.3 ms), which is the page's work on a laptop (WebKit 9 to 11 ms, Chromium 3.5 to 4) and not
-// on the CI runner: the runner's virtual machines read WebKit 16 to 27 ms (median 19) and Chromium 6.6 to 10.8 (median 8.2) in the 18 runs of its record, and the slow one that failed pull request #650 once read 38 and 13.4. N25 first
+// on the CI runner: the runner's virtual machines read WebKit 16 to 38 ms (median 19) and Chromium 6.6 to 13.4 (median 8.4) in the 22 runs of its record, the slowest being the machine that failed pull request #650 once (38 and 13.4). N25 first
 // scaled the bound by how slow the page itself timed a fixed piece of DOM work in the same page; the independent review showed that a regression in the page's CSS slows that work as much as it slows the open (an open 7 to 9 times slower passed). So the
 // bound is a CONSTANT for each engine, taken from the runner's own record (ui-next/shell/probes/runner-centre-open.json: the nine samples and the median of every run whose job logs have them): 1.5 times the worst median in it,
 // rounded up. scripts/ci/probe-shards.test.mjs holds the constant to that record (a median over it, or a bound that is not that, fails the test). On the runner it fails a change that makes the open take more than 3.0 (WebKit) and
-// 2.6 (Chromium) times what it takes there; the slow machine of #650 passes with a margin of 1.5. What stays a count (a commit for a notice, the listeners a closed centre holds) is not a time. Every sample is printed whatever the verdict.
+// 2.5 (Chromium) times what it takes there; the slowest machine of the record passes with a margin of 1.5. What stays a count (a commit for a notice, the listeners a closed centre holds) is not a time. Every sample is printed whatever the verdict.
 /** The most the median of nine opens of the centre may take, in ms, for each engine: 1.5 times the worst median of the runner's record, rounded up (the rule above). */
 const OPEN_BOUND_MS = { chromium: 21, webkit: 57 };
 /** The busy loop of the negative control `centre-slow-open`, in ms: not less than the bound of either engine, so that the control fails the assertion it is named for on any machine, a laptop included. */
