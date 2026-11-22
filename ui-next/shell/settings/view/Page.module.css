@@ -1,0 +1,24 @@
+/* A page of Settings: the heading lane (the mock's `.settings-page .heading`: the title 18/24 and a one-line description 12/16) and the list of rows. The page scrolls in its pane; its width is the pane's. */
+@layer ov.shell {
+  .page {
+    box-sizing: border-box;
+    min-inline-size: 0;
+    padding: var(--ov-spacing-16) var(--ov-spacing-24) var(--ov-spacing-24);
+  }
+
+  .header {
+    display: flex;
+    flex-direction: column;
+    margin-block-end: var(--ov-spacing-12);
+  }
+
+  .header > * {
+    margin: 0;
+  }
+
+  .rows {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+}

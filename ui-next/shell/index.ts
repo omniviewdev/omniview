@@ -29,3 +29,6 @@ export { createCentre } from './notices/centreControl';
 export type { Centre } from './notices/centreControl';
 export { loadNotices, noticesStorage } from './notices/storage';
 export type { LoadedNotices, NoticesStorage } from './notices/storage';
+export { createSettingsControl } from './settings/host';
+export type { SettingsControl, SettingsControlOptions } from './settings/host';
+export { settingsChordText, WEB_SETTINGS_CHORD } from './settings/chords';

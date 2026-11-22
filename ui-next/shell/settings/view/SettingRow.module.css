@@ -1,0 +1,10 @@
+/* The list owns the separators between rows, as the mock's does (`.setting-row + .setting-row--setting`, base.css 1541): a row carries none of its own, so its height is its content's and nothing else. */
+@layer ov.shell {
+  .row {
+    min-inline-size: 0;
+  }
+
+  .row + .row {
+    box-shadow: inset 0 1px 0 var(--ov-border-subtle);
+  }
+}

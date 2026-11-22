@@ -5,6 +5,7 @@ import {
   createLogStreams,
   createPanelStore,
   createRailChoice,
+  createSettingsControl,
   createTabsStore,
   dispositionOf,
   completeLogCard,
@@ -26,6 +27,7 @@ import {
   type PanelStore,
   type RailChoice,
   type Route,
+  type SettingsControl,
   type ShellRail,
   type ShellRegistration,
   type ShellSidebar,
@@ -118,6 +120,8 @@ type Host = {
   readonly palette: HostPalette;
   /** The window's toasts: the store the shell draws, and the one source that feeds it, a plugin's command that failed (`notices.ts`). The window attaches it to the models once it is on screen. */
   readonly notices: HostNotices;
+  /** Settings: whether the sheet is open and where it was left. The sheet's code is a lazy chunk, fetched when it is first asked for (`shell/settings/host.ts`). */
+  readonly settings: SettingsControl;
 };
 
 /**
@@ -137,6 +141,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const routes = new Published<Route>();
   const panelHosts = panelHostsOf(logs);
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
+  const settings = createSettingsControl({ load: async () => import('../../shell/settings/surface') });
   return {
     frames,
     names,
@@ -155,8 +160,9 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts }),
     notices,
+    settings,
   };
 }
 
@@ -740,6 +746,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         panel={bindings}
         palette={host.palette}
         notices={host.notices}
+        settings={host.settings}
       />
     </>
   );
