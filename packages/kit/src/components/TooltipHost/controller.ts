@@ -68,14 +68,15 @@ function clipText(element: Element): string {
 }
 
 /**
- * Whether the text of an element is cut: it clips its overflow and its content is wider than its box by more than the pixel a layout
- * rounds. The mock's `clipped()`: measured when the pointer or focus arrives, never in advance, so no row carries an observer. Overflow
- * that is visible paints outside the box and cuts nothing.
+ * Whether the text of an element is cut: it clips its overflow and its content is wider or taller than its box by more than the pixel a
+ * layout rounds. A line of text is cut in width; a block clamped to some lines wraps, so it is never wider than its box and is cut in height
+ * (the mock's `clipped()` measures `data-clamp` boxes by height too). Measured when the pointer or focus arrives, never in advance, so no row
+ * carries an observer. Overflow that is visible paints outside the box and cuts nothing.
  */
 function isCut(element: Element): boolean {
   const style = getComputedStyle(element);
   const overflow = style.overflowX === '' ? style.overflow : style.overflowX;
-  return /hidden|clip|scroll|auto/.test(overflow) && element.scrollWidth > element.clientWidth + 1;
+  return /hidden|clip|scroll|auto/.test(overflow) && (element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1);
 }
 
 /** What a trigger says, before asking whether it is cut: its own tip wins, else the full text of a clipping element. */

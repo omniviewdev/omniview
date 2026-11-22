@@ -8,7 +8,8 @@
 //
 // Every case of form-cases.mjs is staged (the mock's own helpers rendered into a neutral full-screen stage, as mock-measure-bc.mjs does), measured
 // in WebKit and Chromium, in Void and in Light (`data-theme="light"` on <html>), at rest and in the states the case names, with real focus and the
-// pointer; and read by parts. The stage does not depend on the viewport, so 1440 x 900 stands for the 1280 x 800 run too. Writes mock-form.json:
+// pointer; and read by parts. The stage does not depend on the viewport, so 1440 x 900 stands for the 1280 x 800 run too. A row case (`H.settingRow`) puts its own
+// `.settings-page .setting-list` inside the stage, where the settings page puts a row, and is 880 px wide there (the page's own maximum). Writes mock-form.json:
 // { meta, engines: { [engine]: { [theme]: { [case]: { primary: { [state]: summary }, parts: { [part]: node } } } } } }.
 //
 // Environment: ENGINE=webkit|chromium (comma list), ONLY=<regexp on a case id>: a debug run that writes nothing but mock-form.partial.json into the

@@ -999,6 +999,64 @@ describe('TooltipHost', () => {
       expect(isOpen()).toBe(false);
     });
 
+    // A description that is clamped to some lines wraps, so it is never wider than its box: what is cut is its height, the lines past the clamp.
+    describe('in height', () => {
+      const tall = (target: Element | undefined, scrollHeight: number, clientHeight: number) => {
+        const element = defined(target);
+        Object.defineProperty(element, 'scrollHeight', { configurable: true, value: scrollHeight });
+        Object.defineProperty(element, 'clientHeight', { configurable: true, value: clientHeight });
+      };
+
+      it('shows the full text of a clipping element whose lines are cut, though its width fits, and nothing while its lines fit', () => {
+        mount(<span data-ov-clip="" style={{ overflow: 'hidden' }}>The first two lines of a description that goes on</span>);
+        const text = document.querySelector('span')!;
+        cut(text, 280, 280);
+        tall(text, 32, 32);
+        hover(text, 1000);
+        expect(isOpen()).toBe(false);
+        leave(text);
+        tall(text, 48, 32);
+        hover(text);
+        expect(isOpen()).toBe(true);
+        expect(host().textContent).toBe('The first two lines of a description that goes on');
+      });
+
+      it('allows a pixel of rounding in height as in width: a cut is taller inside than the box by more than 1 px', () => {
+        mount(<span data-ov-clip="" data-ov-full="description" style={{ overflow: 'hidden' }}>description</span>);
+        const text = document.querySelector('span')!;
+        cut(text, 280, 280);
+        tall(text, 33, 32);
+        hover(text, 1000);
+        expect(isOpen()).toBe(false);
+        leave(text);
+        tall(text, 34, 32);
+        hover(text);
+        expect(isOpen()).toBe(true);
+      });
+
+      it('does not call a box cut in height when nothing is clipped: overflow visible paints outside the box', () => {
+        mount(<span data-ov-clip="" data-ov-full="description">description</span>);
+        const text = document.querySelector('span')!;
+        cut(text, 280, 280);
+        tall(text, 48, 32);
+        hover(text, 1000);
+        expect(isOpen()).toBe(false);
+      });
+
+      it('measures when the pointer arrives: the same description is cut after a resize narrows its box', () => {
+        mount(<span data-ov-clip="" data-ov-full="description" style={{ overflow: 'hidden' }}>description</span>);
+        const text = document.querySelector('span')!;
+        cut(text, 280, 280);
+        tall(text, 32, 32);
+        hover(text, 1000);
+        leave(text);
+        expect(isOpen()).toBe(false);
+        tall(text, 64, 32);
+        hover(text);
+        expect(isOpen()).toBe(true);
+      });
+    });
+
     it('takes the text of the element when it names no full text', () => {
       mount(<span data-ov-clip="" style={{ overflow: 'hidden' }}>  Last   seen  4 days ago </span>);
       const name = document.querySelector('span')!;

@@ -1,22 +1,28 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cssRules, declarationsOf } from '../../../scripts/cssRules.ts';
+import { IconButton } from '../IconButton';
 import { TextInput } from '../TextInput';
+import { Toggle } from '../Toggle';
 import { Field, type FieldProps } from './Field';
 import type { FieldMessage } from './message';
 import * as examples from './Field.examples';
 
 const noop = () => undefined;
+/** The props of the two layouts that existed before the row: the trailing slot is the row's alone. */
+type PlainProps = Extract<FieldProps, { readonly layout?: 'aligned' | 'stacked' | undefined }>;
 const input = (props: Partial<Parameters<typeof TextInput>[0]> = {}) => <TextInput value="" onValueChange={noop} {...props} />;
-const field = (props: Partial<FieldProps> = {}, control = input()) => (
+const field = (props: Partial<PlainProps> = {}, control = input()) => (
   <Field label="API URL" {...props}>
     {control}
   </Field>
 );
 const lane = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-ov-part="lane"]');
+/** The element of a part of the Field that was drawn, by its `data-ov-part`. */
+const part = (container: HTMLElement, name: string) => container.querySelector<HTMLElement>(`[data-ov-part="${name}"]`);
 
 /** What describes `element`, as assistive technology reads it: the text of every element its `aria-describedby` names, in order. */
 const description = (element: HTMLElement) =>
@@ -304,7 +310,7 @@ describe('Field', () => {
   });
 
   it('is the few elements it needs: the root, the label, the control and, when asked for, the help and the lane', () => {
-    const count = (props: Partial<FieldProps>) => {
+    const count = (props: Partial<PlainProps>) => {
       const { container, unmount } = render(field(props));
       const total = container.querySelectorAll('*').length;
       unmount();
@@ -320,10 +326,334 @@ describe('Field', () => {
   });
 });
 
+// ---- the layouts that existed before the row ------------------------------------------------------------------------------------
+
+/** The markup with its ids numbered in the order they appear and its class names reduced to the name in the stylesheet, and the artwork of a glyph left out (the Icon's own). */
+const normalise = (html: string) => {
+  const ids = new Map<string, string>();
+  const numbered = (id: string) => {
+    if (!ids.has(id)) {
+      ids.set(id, `#${ids.size + 1}`);
+    }
+
+    return ids.get(id) ?? id;
+  };
+
+  return html
+    .replace(/\b(id|for)="([^"]*)"/g, (_all, attribute: string, id: string) => `${attribute}="${numbered(id)}"`)
+    .replace(/aria-describedby="([^"]*)"/g, (_all, list: string) => `aria-describedby="${list.split(' ').map(numbered).join(' ')}"`)
+    .replace(/<path [^>]*><\/path>/g, '<path></path>')
+    .replace(/class="([^"]*)"/g, (_all, list: string) => `class="${list.split(' ').map((name) => name.replace(/^[A-Za-z0-9]*_([A-Za-z0-9]+)_.*$/, '$1')).join(' ')}"`);
+};
+
+// What the Field drew for `aligned` and for `stacked` before the row layout was added (captured from the code of origin/main 7471b52f, normalised as above; the
+// two layouts differ only in `data-ov-layout`, which LAYOUT stands for). Adding a layout may not change a byte of what the other two draw.
+const BEFORE_THE_ROW = {
+  bare: '<div class="root" data-ov-layout="LAYOUT"><label id="#1" for="#2" class="label" data-ov-part="label">API URL</label><input id="#2" class="face input" autocomplete="off" autocapitalize="off" spellcheck="false" data-ov-width="fill" type="text" value=""></div>',
+  full: '<div data-testid="field" class="root" data-ov-layout="LAYOUT"><label id="#1" for="#2" class="label" data-ov-part="label">API URL<span class="required" data-ov-part="required" aria-hidden="true">*</span> <span class="aside" data-ov-part="aside">optional</span></label><input id="#2" class="face input" required="" autocomplete="off" autocapitalize="off" spellcheck="false" data-ov-width="fill" aria-describedby="#3 #4" aria-invalid="true" type="text" value="x"><div id="#3" class="help" data-ov-part="help">The address of the API.</div><div id="#4" class="lane" data-ov-part="lane" data-ov-kind="error" aria-live="off"><svg class="root" data-ov-glyph="status-error" data-ov-size="16" viewBox="0 0 16 16" aria-hidden="true"><path></path><path></path></svg><span class="word" data-ov-part="word">Error: </span><span class="message" data-ov-part="message" data-ov-tip="Not a valid key. Paste 64 hex characters.\nThe key has 12 characters.">Not a valid key. Paste 64 hex characters.</span><span class="word" data-ov-part="detail"> The key has 12 characters.</span><button type="button" class="retry">Retry</button></div></div>',
+  locked:
+    '<div class="root" data-ov-layout="LAYOUT" data-ov-unavailable="true"><label id="#1" for="#2" class="label" data-ov-part="label">Traces</label><button id="#2" type="button" role="switch" class="root" aria-checked="true" aria-describedby="#3" aria-disabled="true"><span class="track" data-ov-part="track" aria-hidden="true"></span></button><div id="#3" class="lane" data-ov-part="lane" data-ov-kind="info" aria-live="off"><svg class="root" data-ov-glyph="status-info" data-ov-size="16" viewBox="0 0 16 16" aria-hidden="true"><path></path><path></path></svg><span class="message" data-ov-part="message" data-ov-clip="">Turn on Send telemetry to change this.</span></div></div>',
+  checking:
+    '<div class="root" data-ov-layout="LAYOUT"><label id="#1" for="#2" class="label" data-ov-part="label">API URL</label><input id="#2" class="face input" readonly="" autocomplete="off" autocapitalize="off" spellcheck="false" data-ov-width="fill" aria-describedby="#3" type="text" value="x"><div id="#3" class="lane" data-ov-part="lane" data-ov-kind="checking" aria-live="off"><svg data-ov-busy="true" class="root" data-ov-glyph="loader" data-ov-size="16" viewBox="0 0 24 24" aria-hidden="true"><path></path></svg><span class="message" data-ov-part="message" data-ov-clip="">Checking…</span></div></div>',
+} as const;
+
+describe('the aligned and stacked layouts, now that there is a third', () => {
+  const drawn = {
+    bare: (layout: 'aligned' | 'stacked') => (
+      <Field label="API URL" layout={layout}>
+        <TextInput value="" onValueChange={noop} />
+      </Field>
+    ),
+    full: (layout: 'aligned' | 'stacked') => (
+      <Field
+        label="API URL"
+        layout={layout}
+        required
+        aside="optional"
+        help="The address of the API."
+        message={{ kind: 'error', text: 'Not a valid key. Paste 64 hex characters.', detail: 'The key has 12 characters.', retry: true }}
+        onRetry={noop}
+        data-testid="field"
+      >
+        <TextInput value="x" onValueChange={noop} />
+      </Field>
+    ),
+    locked: (layout: 'aligned' | 'stacked') => (
+      <Field label="Traces" layout={layout} lane disabledReason="Turn on Send telemetry to change this.">
+        <Toggle checked onCheckedChange={noop} />
+      </Field>
+    ),
+    checking: (layout: 'aligned' | 'stacked') => (
+      <Field label="API URL" layout={layout} readOnly message={{ kind: 'checking', text: '' }}>
+        <TextInput value="x" onValueChange={noop} />
+      </Field>
+    ),
+  };
+  for (const layout of ['aligned', 'stacked'] as const) {
+    for (const [name, make] of Object.entries(drawn)) {
+      it(`draws ${layout} ${name} byte for byte as it did before the row layout`, () => {
+        const { container } = render(make(layout));
+        expect(normalise(container.innerHTML)).toBe(BEFORE_THE_ROW[name as keyof typeof BEFORE_THE_ROW].replace('LAYOUT', layout));
+      });
+    }
+
+    it(`gives the description of the ${layout} layout no clip marker and no clamp, and draws no column and no trailing slot`, () => {
+      const { container } = render(field({ layout, help: 'The address of the API.', lane: true }));
+      expect(part(container, 'help')?.hasAttribute('data-ov-clip')).toBe(false);
+      expect(part(container, 'text')).toBeNull();
+      expect(part(container, 'control')).toBeNull();
+      expect(part(container, 'trailing')).toBeNull();
+    });
+  }
+
+  it('draws no trailing slot for a caller that passes one anyway (the types refuse it; plain JavaScript and a cast do not)', () => {
+    for (const layout of [undefined, 'aligned', 'stacked']) {
+      const props = { label: 'API URL', layout, trailing: <button type="button">Reset</button>, children: input() } as unknown as FieldProps;
+      const { container, unmount } = render(<Field {...props} />);
+      expect(part(container, 'trailing'), String(layout)).toBeNull();
+      expect(container.textContent, String(layout)).not.toContain('Reset');
+      unmount();
+    }
+  });
+});
+
+// ---- the row layout (design 16 S126, S127) ---------------------------------------------------------------------------------------
+
+type RowOptions = {
+  readonly required?: boolean;
+  readonly aside?: string;
+  readonly help?: string;
+  readonly message?: FieldMessage;
+  readonly lane?: boolean;
+  readonly onRetry?: () => void;
+  readonly disabledReason?: string;
+  readonly readOnly?: boolean;
+  readonly trailing?: ReactNode;
+};
+const row = (props: RowOptions = {}, control = input()) => (
+  <Field label="Font size" layout="row" {...props}>
+    {control}
+  </Field>
+);
+/** The children of an element, each by the part it is: its own part name, else its tag. */
+const partsOf = (element: Element | null) => [...(element?.children ?? [])].map((child) => child.getAttribute('data-ov-part') ?? child.tagName.toLowerCase());
+const resetButton = <IconButton icon="undo" label="Reset Font size to default" variant="ghost" size="row" onClick={noop} />;
+
+describe('Field layout="row": a title, a description and the message lane on one side, the control and a trailing slot on the other', () => {
+  it('is a root that says it is a row, holding the text column and then the control column', () => {
+    const { container } = render(row({ help: 'The size of the text.', lane: true }));
+    const root = container.firstElementChild;
+    expect(root?.getAttribute('data-ov-layout')).toBe('row');
+    expect(partsOf(root)).toEqual(['text', 'control']);
+  });
+
+  it('keeps the title, the description and the lane in the text column, in that order, and the control and then the slot in the control column', () => {
+    const { container } = render(row({ help: 'The size of the text.', message: { kind: 'hint', text: 'Whole numbers.' } }));
+    expect(partsOf(part(container, 'text'))).toEqual(['label', 'help', 'lane']);
+    expect(partsOf(part(container, 'control'))).toEqual(['input', 'trailing']);
+  });
+
+  it('draws only what it has: no description and no lane when there are none, and the slot all the same', () => {
+    const { container } = render(row());
+    expect(partsOf(part(container, 'text'))).toEqual(['label']);
+    expect(partsOf(part(container, 'control'))).toEqual(['input', 'trailing']);
+  });
+
+  it('is the few elements it needs: the root, the two columns, the title, the control and the slot', () => {
+    const count = (props: RowOptions) => {
+      const { container, unmount } = render(row(props));
+      const total = container.querySelectorAll('*').length;
+      unmount();
+      return total;
+    };
+
+    const bare = count({});
+    // root, text column, label, control column, input, trailing slot
+    expect(bare).toBe(6);
+    expect(count({ help: 'Help.' })).toBe(bare + 1);
+    expect(count({ lane: true })).toBe(bare + 1);
+    expect(count({ required: true })).toBe(bare + 1);
+  });
+
+  it('makes the title a real label for the control: it names it, and a click on it goes to the control', () => {
+    const { container } = render(row());
+    const control = screen.getByRole('textbox', { name: 'Font size' });
+    const label = part(container, 'label');
+    expect(label?.tagName).toBe('LABEL');
+    expect(label?.getAttribute('for')).toBe(control.id);
+    expect(control.id).not.toBe('');
+    expect(control.hasAttribute('aria-label')).toBe(false);
+    const clicked = vi.fn();
+    control.addEventListener('click', clicked);
+    fireEvent.click(label!);
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
+  it('names a switch in the row by its title, as the other layouts do', () => {
+    render(row({}, <Toggle checked onCheckedChange={noop} />));
+    expect(screen.getByRole('switch', { name: 'Font size' })).toBeTruthy();
+  });
+
+  it('describes the control by the description and then by the lane, in that order', () => {
+    const { container } = render(row({ help: 'The size of the text.', message: { kind: 'hint', text: 'Whole numbers.' } }));
+    const control = screen.getByRole('textbox');
+    expect(control.getAttribute('aria-describedby')).toBe(`${part(container, 'help')?.id} ${lane(container)?.id}`);
+    expect(description(control)).toBe('The size of the text. Whole numbers.');
+  });
+
+  it('keeps the marks of the title: the asterisk that no assistive technology reads, and the aside', () => {
+    const { container } = render(row({ required: true, aside: 'optional' }));
+    const label = part(container, 'label');
+    expect(label?.querySelector('[data-ov-part="required"]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(label?.querySelector('[data-ov-part="aside"]')?.textContent).toBe('optional');
+    expect(screen.getByRole('textbox', { name: 'Font size optional' })).toBeTruthy();
+  });
+
+  it('makes the description a clipping element, so that the tooltip host shows all of it while it is cut', () => {
+    const { container } = render(row({ help: 'The size of the text.' }));
+    expect(part(container, 'help')?.hasAttribute('data-ov-clip')).toBe(true);
+    expect(part(container, 'help')?.hasAttribute('data-ov-tip')).toBe(false);
+    expect(part(container, 'help')?.hasAttribute('title')).toBe(false);
+  });
+
+  describe('the lane', () => {
+    it('is not there for a row with nothing to say, and is there, empty, for a row that can say something: its height is reserved by `lane` and by a message', () => {
+      const { container, rerender } = render(row());
+      expect(lane(container)).toBeNull();
+      rerender(row({ lane: true }));
+      expect(lane(container)).not.toBeNull();
+      expect(lane(container)?.textContent).toBe('');
+      expect(lane(container)?.hasAttribute('data-ov-kind')).toBe(false);
+      rerender(row({ message: { kind: 'hint', text: 'Whole numbers.' } }));
+      expect(lane(container)?.textContent).toBe('Whole numbers.');
+    });
+
+    it('is in the text column, under the description, and is never a live region', () => {
+      const { container } = render(row({ help: 'The size of the text.', message: { kind: 'error', text: 'Not a number. Use digits.' } }));
+      expect(lane(container)?.parentElement).toBe(part(container, 'text'));
+      expect(lane(container)?.previousElementSibling).toBe(part(container, 'help'));
+      expect(lane(container)?.getAttribute('aria-live')).toBe('off');
+    });
+
+    it('says each kind of the model as the other layouts do: its kind, and the control invalid for an error and for nothing else', () => {
+      const { container, rerender } = render(row({ message: { kind: 'error', text: 'Not a number. Use digits.' } }));
+      expect(lane(container)?.getAttribute('data-ov-kind')).toBe('error');
+      expect(screen.getByRole('textbox').getAttribute('aria-invalid')).toBe('true');
+      for (const kind of ['hint', 'warning', 'checking', 'retry', 'saved', 'info'] as const) {
+        rerender(row({ message: { kind, text: 'Something.' } }));
+        expect(lane(container)?.getAttribute('data-ov-kind'), kind).toBe(kind);
+        expect(screen.getByRole('textbox').hasAttribute('aria-invalid'), kind).toBe(false);
+      }
+    });
+
+    it('offers Retry for a check that could not be made and for an apply that failed', () => {
+      const onRetry = vi.fn();
+      const { container, rerender } = render(row({ message: { kind: 'retry', text: '', retry: true }, onRetry }));
+      fireEvent.click(within(lane(container)!).getByRole('button', { name: 'Retry' }));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+      rerender(row({ message: { kind: 'error', text: 'Couldn’t save this change. Retry.', retry: true }, onRetry }));
+      expect(within(lane(container)!).getByRole('button', { name: 'Retry' })).toBeTruthy();
+    });
+  });
+
+  describe('the trailing slot', () => {
+    it('is in the control column after the control, and empty unless it is given something', () => {
+      const { container } = render(row());
+      const slot = part(container, 'trailing');
+      expect(slot?.parentElement).toBe(part(container, 'control'));
+      expect(slot?.previousElementSibling).toBe(screen.getByRole('textbox'));
+      expect(slot?.childNodes.length).toBe(0);
+    });
+
+    it('holds what it is given, and the control is the same element and in the same place with it and without it', () => {
+      const { container, rerender } = render(row());
+      const control = screen.getByRole('textbox');
+      rerender(row({ trailing: resetButton }));
+      const slot = part(container, 'trailing');
+      expect(within(slot!).getByRole('button', { name: 'Reset Font size to default' })).toBeTruthy();
+      expect(partsOf(part(container, 'control'))).toEqual(['input', 'trailing']);
+      expect(screen.getByRole('textbox')).toBe(control);
+      rerender(row());
+      expect(part(container, 'trailing')?.childNodes.length).toBe(0);
+      expect(screen.getByRole('textbox')).toBe(control);
+    });
+
+    it('is a slot and not a reset: it holds any node, and says nothing of what it holds', () => {
+      const { container } = render(row({ trailing: <span data-testid="held">Pro</span> }));
+      expect(part(container, 'trailing')?.textContent).toBe('Pro');
+      expect(part(container, 'trailing')?.hasAttribute('role')).toBe(false);
+      expect(part(container, 'trailing')?.hasAttribute('aria-label')).toBe(false);
+    });
+  });
+
+  describe('a row that cannot change', () => {
+    it('says why in its lane, keeps the control focusable and described by the reason, and keeps the title legible', () => {
+      const { container } = render(row({ disabledReason: 'Turn on Send telemetry to change this.' }, <Toggle checked onCheckedChange={noop} />));
+      expect(container.firstElementChild?.getAttribute('data-ov-unavailable')).toBe('true');
+      expect(lane(container)?.getAttribute('data-ov-kind')).toBe('info');
+      expect(lane(container)?.textContent).toBe('Turn on Send telemetry to change this.');
+      const control = screen.getByRole('switch');
+      expect(control.getAttribute('aria-disabled')).toBe('true');
+      expect(control.tabIndex).not.toBe(-1);
+      expect(description(control)).toBe('Turn on Send telemetry to change this.');
+      expect(part(container, 'label')?.textContent).toBe('Font size');
+    });
+
+    it('is a fact when it is read-only: the control is read-only and the row is not marked unavailable', () => {
+      const { container } = render(row({ readOnly: true, message: { kind: 'info', text: 'Managed by your organisation.' } }, input({ value: '14' })));
+      expect(screen.getByRole<HTMLInputElement>('textbox').readOnly).toBe(true);
+      expect(container.firstElementChild?.hasAttribute('data-ov-unavailable')).toBe(false);
+      expect(lane(container)?.textContent).toBe('Managed by your organisation.');
+    });
+  });
+
+  it('passes data attributes to its root, takes no class and no style from a caller, and draws no title', () => {
+    const { container } = render(
+      // @ts-expect-error className and style are not props of a kit part
+      <Field label="Font size" layout="row" className="caller" style={{ color: 'red' }} data-testid="row" help="Help.">
+        {input()}
+      </Field>,
+    );
+    const root = screen.getByTestId('row');
+    expect(root).toBe(container.firstElementChild);
+    expect(root.className).not.toContain('caller');
+    expect(root.hasAttribute('style')).toBe(false);
+    expect(container.querySelector('[title], [style]')).toBeNull();
+    expect(part(container, 'text')?.hasAttribute('data-testid')).toBe(false);
+    expect(part(container, 'control')?.hasAttribute('data-testid')).toBe(false);
+  });
+
+  it('has closed props: the trailing slot is the row\'s alone, and a layout is one of three', () => {
+    // Types only: these are never rendered.
+    const slot = <button type="button">Reset</button>;
+    const accepted: FieldProps[] = [
+      { label: 'Font size', children: null },
+      { label: 'Font size', children: null, layout: 'aligned' },
+      { label: 'Font size', children: null, layout: 'stacked', trailing: undefined },
+      { label: 'Font size', children: null, layout: 'row' },
+      { label: 'Font size', children: null, layout: 'row', trailing: slot },
+      { label: 'Font size', children: null, layout: 'row', trailing: undefined, help: 'Help.', lane: true },
+    ];
+    // @ts-expect-error a trailing slot belongs to the row layout: the default layout (aligned) has none
+    const slotInTheDefault: FieldProps = { label: 'Font size', children: null, trailing: slot };
+    // @ts-expect-error a trailing slot belongs to the row layout, not to aligned
+    const slotInAligned: FieldProps = { label: 'Font size', children: null, layout: 'aligned', trailing: slot };
+    // @ts-expect-error a trailing slot belongs to the row layout, not to stacked
+    const slotInStacked: FieldProps = { label: 'Font size', children: null, layout: 'stacked', trailing: slot };
+    // @ts-expect-error a layout outside the closed set
+    const unknownLayout: FieldProps = { label: 'Font size', children: null, layout: 'inline' };
+    // @ts-expect-error className is not a prop of a kit part
+    const withClass: FieldProps = { label: 'Font size', children: null, layout: 'row', className: 'x' };
+    // @ts-expect-error style is not a prop of a kit part
+    const withStyle: FieldProps = { label: 'Font size', children: null, layout: 'row', style: { color: 'red' } };
+    expect([accepted, slotInTheDefault, slotInAligned, slotInStacked, unknownLayout, withClass, withStyle]).toHaveLength(7);
+  });
+});
+
 describe('the examples of Field', () => {
   const entries = Object.entries(examples) as Array<[string, ComponentType]>;
 
-  it('has an example for the label placements, the required mark, the help, every kind of the lane, the unavailable and read-only states and a form column', () => {
+  it('has an example for the label placements, the required mark, the help, every kind of the lane, the unavailable and read-only states, a form column, and the row in every state of the model and with each control', () => {
     expect(entries.map(([name]) => name).sort()).toEqual(
       [
         'Aligned',
@@ -341,8 +671,132 @@ describe('the examples of Field', () => {
         'DisabledWithReason',
         'ReadOnlyNotSupported',
         'FormColumn',
+        'RowDefault',
+        'RowHint',
+        'RowModified',
+        'RowInvalid',
+        'RowWarning',
+        'RowChecking',
+        'RowCouldNotCheck',
+        'RowSaved',
+        'RowApplyFailed',
+        'RowRestartRequired',
+        'RowUnavailable',
+        'RowReadOnly',
+        'RowLongDescription',
+        'RowWithToggle',
+        'RowWithTextInput',
+        'RowWithSelect',
+        'RowWithNumberInput',
       ].sort(),
     );
+  });
+
+  describe('the row examples', () => {
+    const rows = entries.filter(([name]) => name.startsWith('Row'));
+    const drawn = (name: string) => {
+      const Example = entries.find(([entry]) => entry === name)?.[1];
+      if (Example === undefined) {
+        throw new Error(`no example named ${name}`);
+      }
+
+      return render(<Example />);
+    };
+
+    it('are rows with a trailing slot each, a title that is a label, and a description', () => {
+      expect(rows.length).toBe(17);
+      for (const [name, Example] of rows) {
+        const { container, unmount } = render(<Example />);
+        expect(container.querySelector('[data-ov-layout="row"]'), name).not.toBeNull();
+        expect(part(container, 'trailing'), name).not.toBeNull();
+        expect(part(container, 'text')?.querySelector('label'), name).not.toBeNull();
+        expect(part(container, 'help'), name).not.toBeNull();
+        unmount();
+      }
+    });
+
+    it('show every state of the model in the lane: each kind, an apply that failed, a restart, a reason and a read-only fact', () => {
+      const kinds: Record<string, string> = {
+        RowHint: 'hint',
+        RowInvalid: 'error',
+        RowWarning: 'warning',
+        RowChecking: 'checking',
+        RowCouldNotCheck: 'retry',
+        RowSaved: 'saved',
+        RowApplyFailed: 'error',
+        RowRestartRequired: 'info',
+        RowUnavailable: 'info',
+        RowReadOnly: 'info',
+      };
+      for (const [name, kind] of Object.entries(kinds)) {
+        const { container, unmount } = drawn(name);
+        expect(lane(container)?.getAttribute('data-ov-kind'), name).toBe(kind);
+        unmount();
+      }
+
+      const { container } = drawn('RowRestartRequired');
+      expect(lane(container)?.textContent).toBe('Restart required to apply.');
+    });
+
+    it('reserve the lane for the rows that can say something and leave it out of the plain ones', () => {
+      for (const [name, reserved] of [['RowDefault', false], ['RowModified', true], ['RowLongDescription', true], ['RowWithToggle', false]] as const) {
+        const { container, unmount } = drawn(name);
+        expect(lane(container) !== null, name).toBe(reserved);
+        unmount();
+      }
+    });
+
+    it('hold a Reset button in the slot of the modified row only, named for the row, and the consumer decides when it shows', () => {
+      const { container, unmount } = drawn('RowModified');
+      const slot = part(container, 'trailing')!;
+      const button = within(slot).getByRole('button', { name: /^Reset .+ to default$/ });
+      expect(button.getAttribute('data-ov-shape')).toBe('icon');
+      expect(button.querySelector('svg')?.getAttribute('data-ov-glyph')).toBe('undo');
+      fireEvent.click(button);
+      expect(within(part(container, 'trailing')!).queryByRole('button')).toBeNull();
+      expect(part(container, 'trailing')).toBe(slot);
+      unmount();
+      for (const [name] of rows.filter(([entry]) => entry !== 'RowModified')) {
+        const other = drawn(name);
+        expect(part(other.container, 'trailing')?.querySelector('button'), name).toBeNull();
+        other.unmount();
+      }
+    });
+
+    it('ask again when Retry is pressed, and the apply that failed offers it too', () => {
+      const { container, unmount } = drawn('RowCouldNotCheck');
+      fireEvent.click(within(lane(container)!).getByRole('button', { name: 'Retry' }));
+      expect(lane(container)?.getAttribute('data-ov-kind')).not.toBe('retry');
+      unmount();
+      const failed = drawn('RowApplyFailed');
+      expect(within(lane(failed.container)!).getByRole('button', { name: 'Retry' })).toBeTruthy();
+    });
+
+    it('say why a row cannot change, in the lane and on the control, and keep the control a stop of the keyboard', () => {
+      const { container } = drawn('RowUnavailable');
+      expect(container.firstElementChild?.getAttribute('data-ov-unavailable')).toBe('true');
+      const control = screen.getByRole('switch');
+      expect(control.getAttribute('aria-disabled')).toBe('true');
+      expect(control.tabIndex).not.toBe(-1);
+      // The description of the row, and then the reason in the lane: the reason is said once, by the lane.
+      expect(description(control)).toBe(`${part(container, 'help')?.textContent} ${lane(container)?.textContent}`);
+    });
+
+    it('hold a description of more than two lines in the long one, which the row clamps', () => {
+      const { container } = drawn('RowLongDescription');
+      // At 12 px a line of the 70-character measure of design 04 holds about that many characters: a third line starts past twice that.
+      expect((part(container, 'help')?.textContent ?? '').length).toBeGreaterThan(220);
+    });
+
+    it('use the four controls of the form parts, each named by the title of its row', () => {
+      const roles: Record<string, string> = { RowWithToggle: 'switch', RowWithTextInput: 'textbox', RowWithSelect: 'combobox', RowWithNumberInput: 'spinbutton' };
+      for (const [name, role] of Object.entries(roles)) {
+        const { container, unmount } = drawn(name);
+        const title = part(container, 'label')?.textContent ?? '';
+        expect(screen.getByRole(role, { name: title }), name).toBeTruthy();
+        unmount();
+      }
+    });
   });
 
   for (const [name, Example] of entries) {

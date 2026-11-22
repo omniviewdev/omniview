@@ -242,7 +242,7 @@ export function ErrorBody(input: {
 export function Field(input: FieldProps): JSX.Element;
 
 // @public
-export type FieldLayout = 'aligned' | 'stacked';
+export type FieldLayout = 'aligned' | 'stacked' | 'row';
 
 // @public (undocumented)
 export type FieldMessage = {
@@ -261,14 +261,19 @@ export type FieldProps = {
     readonly children: ReactNode;
     readonly required?: boolean | undefined;
     readonly aside?: string | undefined;
-    readonly layout?: FieldLayout | undefined;
     readonly help?: string | undefined;
     readonly message?: FieldMessage | undefined;
     readonly lane?: boolean | undefined;
     readonly onRetry?: (() => void) | undefined;
     readonly disabledReason?: string | undefined;
     readonly readOnly?: boolean | undefined;
-} & DataAttributes;
+} & DataAttributes & ({
+    readonly layout?: Exclude<FieldLayout, 'row'> | undefined;
+    readonly trailing?: undefined;
+} | {
+    readonly layout: 'row';
+    readonly trailing?: ReactNode;
+});
 
 // @public
 export function hoverCard(key: string | undefined, options?: {
