@@ -67,15 +67,18 @@ test('OMNIVIEW_UI=next builds ui-next alone as the entry and replaces the output
       found ||= (await readFile(path.join(output, file), 'utf8')).includes(marker);
     }
     assert.ok(found, `no script renders ${marker}`);
-    // The kit's stylesheet comes first and declares the layer order once; the host entry's own rules sit inside those layers.
+    // The kit's stylesheet comes first and declares the layer order once; the host entry's own rules sit inside those layers. The page links exactly one stylesheet: the entry's.
     const styles = files.filter(file => file.endsWith('.css'));
-    assert.equal(styles.length, 1, 'the entry loads one stylesheet');
+    const linked = [...(await readFile(path.join(output, 'index.html'), 'utf8')).matchAll(/<link[^>]*rel="stylesheet"[^>]*href="\/([^"]+)"/g)].map(match => match[1]);
+    assert.equal(linked.length, 1, 'the entry loads one stylesheet');
     const layers = await readFile(path.join(root, 'packages/kit/src/styles/layers.css'), 'utf8');
+    const entryStyle = await readFile(path.join(output, linked[0]), 'utf8');
+    // A lazy chunk (Settings' is the first with rules of its own) brings its stylesheet when it loads, after the entry's: the two together must hold what the entry's holds alone.
     // The host's bundler takes the kit's font files into assets/ under hashed names; the stylesheet's `url()` follows them there.
-    assert.deepEqual(
-      checkStylesheet(await readFile(path.join(output, styles[0]), 'utf8'), declaredLayerOrder(layers), HOST_FONT_URL),
-      [],
-    );
+    for (const style of styles) {
+      const css = style === linked[0] ? entryStyle : `${entryStyle}\n${await readFile(path.join(output, style), 'utf8')}`;
+      assert.deepEqual(checkStylesheet(css, declaredLayerOrder(layers), HOST_FONT_URL), [], style);
+    }
     assert.ok(files.filter(file => /^assets\/[^/]+\.woff2$/.test(file)).length >= 3, 'the three font files sit in assets/');
   } finally {
     await rm(output, { recursive: true, force: true });

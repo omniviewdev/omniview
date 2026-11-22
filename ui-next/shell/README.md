@@ -110,6 +110,8 @@ The panel is the window's fourth row: the grid is `40px minmax(0,1fr) 5px auto 3
 | a wrapper per clipped text | `Text` gains `truncate` | rows, crumbs and labels clip with an ellipsis in a wrapper here |
 | `.what` in `ScopeLane.module.css` | `VisuallyHidden` | the text a face is read with and never drawn |
 | `palette/Search.tsx` | the window actions' button | a glyph and the chord's key hint, 30 px high; named by its label and the chord |
+| `settings/Gear.tsx` | the window actions' button, with `palette/Search.tsx` | a 20 px glyph in a 30 px face; opens Settings (a window where the app has native windows, a sheet in a browser: `settings/README.md`) |
+| `settings/view/Nav.tsx` | a vertical navigation of pages | the Settings pages on the left, 212 px; the arrows move between them |
 | `palette/Row.tsx` | a destination/option row | the mock's `H.destination`: glyph, name, context and a trailing slot on columns every row of a group shares |
 | the chord drawn in `palette/Row.tsx`, `Foot.tsx` and `Search.tsx` | `Kbd`, a key hint | the muted key cap |
 | `palette/Chips.tsx` | a pressed and removable `Chip` with a glyph | the kit's `Chip` is one mode at a time and has no glyph |

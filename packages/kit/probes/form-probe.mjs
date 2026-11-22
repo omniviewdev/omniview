@@ -1,6 +1,6 @@
 // The form probe: the kit's form parts (Field, TextInput, NumberInput, Toggle, Select, SecretInput) on the real ui-next parts page, in WebKit and
 // Chromium, at 1440 x 900 and 1280 x 800, compared with the design mock's settings form (mock-form.json, measured by mock-form-measure.mjs from the
-// case table of form-cases.mjs) and judged by their own rules. Six sections:
+// case table of form-cases.mjs) and judged by their own rules. Nine sections:
 //
 //   parity     every case of form-cases.mjs against the mock, in Void and in Light: rectangles to half a pixel in y and in height and a pixel in x
 //              and in width, every colour, border, padding, font and outline exactly; the states each case names are measured with real focus and
@@ -13,6 +13,10 @@
 //              stopping on its steps, Space and Enter on a switch, a read-only switch focusable and inert, a locked select, Retry.
 //   themes     the paints of the parts in the nine themes are the tokens they name (nothing is a colour of its own).
 //   axe        axe-core over the six parts, in Void and in Light; serious and critical violations fail (colour contrast included: it is judged here).
+//   row        the Field's row layout (design 16 S126, S127) on every `Field/Row*` example: the trailing slot held at 24 x 24 whatever it holds, the height the content's
+//              (the description two lines at most), the lane's glyph in the gutter and its words where the title starts.
+//   rowstay    a message or a state change moves nothing: Retry and Reset, pressed by pointer and by keyboard, leave the boxes of the row where they were.
+//   rowtip     the whole description is the tooltip while it is cut and none while it fits (a real pointer on the real description, in each engine).
 //
 // Run (the kit and ui-next must be built: DIST=<dir> reuses a build of ui-next, otherwise one is made):
 //   node packages/kit/probes/form-probe.mjs
@@ -28,7 +32,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { awaitFonts, deviations, launch, measure, settle, sleep, summarize } from './probe-lib.mjs';
 import { buildUiNext, serve } from './serve.mjs';
-import { CASES, THEMES, differences, readCase } from './form-cases.mjs';
+import { CASES, ROW_ROOM, THEMES, differences, readCase } from './form-cases.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const reference = JSON.parse(readFileSync(path.join(here, 'mock-form.json'), 'utf8'));
@@ -73,12 +77,19 @@ async function open(browser, size, partsUrl) {
 /** The examples of the six parts run the width of the page, so that a control of a fixed width is measured at its width and a fill one in a room as wide as the mock's stage. */
 async function span(page, on) {
   await page.evaluate(
-    ({ parts, on }) => {
+    ({ parts, on, room }) => {
       for (const figure of document.querySelectorAll('[data-example]')) {
-        if (parts.some((part) => (figure.getAttribute('data-example') ?? '').startsWith(`${part}/`))) figure.style.gridColumn = on ? '1 / -1' : '';
+        const name = figure.getAttribute('data-example') ?? '';
+        if (!parts.some((part) => name.startsWith(`${part}/`))) continue;
+        figure.style.gridColumn = on ? '1 / -1' : '';
+        // A row sits at the end of a line, so it is compared in the room the mock's page gives its own: the stage is a flex row and the row is as wide as it.
+        if (name.startsWith('Field/Row')) {
+          figure.style.width = '';
+          if (on) figure.style.width = `${room + figure.getBoundingClientRect().width - (figure.querySelector(':scope > div')?.clientWidth ?? 0)}px`;
+        }
       }
     },
-    { parts: PARTS, on },
+    { parts: PARTS, on, room: ROW_ROOM },
   );
   await settle(page);
 }
@@ -244,6 +255,23 @@ async function states(page, where) {
   check(!stored.some((b) => /show|hide|reveal/i.test(b.name)), where, id('SecretInput/Set'), 'a stored secret offers a way to show it');
   const fresh = facts['SecretInput/NotSet']?.buttons ?? [];
   check(fresh.some((b) => /^Show /.test(b.name) && b.disabled === 'true'), where, id('SecretInput/NotSet'), `Show is not unavailable while nothing is typed: ${JSON.stringify(fresh)}`);
+
+  // the row (design 16 S126, S127): each state of the model in its lane, and the control told what the lane says
+  for (const [name, kind] of [['Field/RowHint', 'hint'], ['Field/RowInvalid', 'error'], ['Field/RowWarning', 'warning'], ['Field/RowChecking', 'checking'], ['Field/RowCouldNotCheck', 'retry'], ['Field/RowSaved', 'saved'], ['Field/RowApplyFailed', 'error'], ['Field/RowRestartRequired', 'info'], ['Field/RowUnavailable', 'info'], ['Field/RowReadOnly', 'info']]) {
+    check(facts[name]?.lane?.kind === kind, where, id(name), `lane kind is ${JSON.stringify(facts[name]?.lane?.kind)}, wanted ${kind}`);
+  }
+
+  for (const name of ['Field/RowInvalid', 'Field/RowApplyFailed']) expectControl(name, { invalid: 'true' });
+  expectControl('Field/RowWarning', { invalid: null, validation: 'warning' });
+  expectControl('Field/RowUnavailable', { role: 'switch', disabled: 'true' });
+  check(facts['Field/RowUnavailable']?.controls[0]?.tabIndex !== -1, where, id('Field/RowUnavailable'), 'is not focusable');
+  expectControl('Field/RowReadOnly', { readOnly: true, readonlyAria: null });
+  described('Field/RowDefault', 'How the workspace is named in the title bar.');
+  described('Field/RowInvalid', 'Name has a space. Use letters and digits.');
+  described('Field/RowUnavailable', 'Turn on Send telemetry to change this.');
+  described('Field/RowReadOnly', 'Managed by your organisation.');
+  const held = facts['Field/RowModified']?.buttons ?? [];
+  check(held.length === 1 && held[0].name === 'Reset Display name to default', where, id('Field/RowModified'), `the slot of the modified row holds ${JSON.stringify(held.map((b) => b.name))}, wanted the one Reset button named for the row`);
 }
 
 // ---- secret ----------------------------------------------------------------------------------------------------------------
@@ -391,6 +419,133 @@ async function keyboard(page, where, theme, engine) {
   check(writes.length === 0, where, 'keyboard/root', `a part wrote to the root: ${writes.join(', ')}`);
 }
 
+// ---- row ---------------------------------------------------------------------------------------------------------------------
+/** Page side (self-contained): the boxes, relative to the row, of the parts of the row examples named, and what the lane and the slot hold. */
+function readRows(names) {
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const out = {};
+  for (const name of names) {
+    const root = document.querySelector(`[data-example="${name}"] [data-ov-layout="row"]`);
+    if (root === null) {
+      out[name] = null;
+      continue;
+    }
+
+    const origin = root.getBoundingClientRect();
+    const box = (selector) => {
+      const el = root.querySelector(selector);
+      if (el === null) return null;
+      const b = el.getBoundingClientRect();
+      return { x: r2(b.left - origin.left), y: r2(b.top - origin.top), w: r2(b.width), h: r2(b.height), right: r2(b.right - origin.left) };
+    };
+    const help = root.querySelector('[data-ov-part="help"]');
+    out[name] = {
+      root: { x: 0, y: 0, w: r2(origin.width), h: r2(origin.height), right: r2(origin.width) },
+      title: box('[data-ov-part="label"]'),
+      help: box('[data-ov-part="help"]'),
+      lines: help === null ? null : { scroll: help.scrollHeight, client: help.clientHeight },
+      lane: box('[data-ov-part="lane"]'),
+      message: box('[data-ov-part="message"]'),
+      glyph: box('[data-ov-part="lane"] > svg'),
+      control: box('[data-ov-part="control"] > :first-child'),
+      slot: box('[data-ov-part="trailing"]'),
+      held: root.querySelector('[data-ov-part="trailing"]')?.children.length ?? 0,
+      kind: root.querySelector('[data-ov-part="lane"]')?.getAttribute('data-ov-kind') ?? null,
+    };
+  }
+
+  return out;
+}
+
+const rowNames = async (page, ids) => (await page.evaluate(() => [...document.querySelectorAll('[data-example^="Field/Row"]')].map((figure) => figure.getAttribute('data-example')))).filter((name) => ids === undefined || ids.includes(name));
+
+/**
+ * Every row example, whatever it holds or says: its trailing slot is held at 24 x 24 and the control ends 32 px before the row's end (the slot and the 8 px after the control),
+ * its height is its content's (6 + the title's 16 + a line of 16 or two for the description + the lane's 16 when it has one + 6, never more than two lines), and its lane's
+ * glyph hangs in the gutter, so that the words of a message start where the title starts (S126, S127; the settings page's 20 px gutter).
+ */
+async function rowGeometry(page, where, theme, engine, ids) {
+  const names = await rowNames(page, ids);
+  const rows = await page.evaluate(readRows, names);
+  for (const name of names) {
+    const r = rows[name];
+    const id = `row/${name}`;
+    if (r === null) {
+      fail(where, id, 'is not drawn as a row');
+      continue;
+    }
+
+    const room = Math.round((r.root.w - (r.control?.right ?? 0)) * 100) / 100;
+    check(r.slot !== null && Math.abs(r.slot.w - 24) <= 0.5 && Math.abs(r.slot.h - 24) <= 0.5 && Math.abs(room - 32) <= 0.5, where, id, `the trailing slot is ${r.slot?.w} x ${r.slot?.h} and the control ends ${room} px before the row's end: the slot is held at 24 x 24 whatever it holds, 8 px after the control (32 px)`);
+    const lines = r.lines === null ? 0 : Math.min(Math.round(r.lines.scroll / 16), 2);
+    const wanted = Math.max(40, 12 + 16 + lines * 16 + (r.lane === null ? 0 : 16));
+    check(Math.abs(r.root.h - wanted) <= 0.5, where, id, `the row is ${r.root.h} px high and its content says ${wanted} (6 + 16 + ${lines} lines of 16 + ${r.lane === null ? 'no lane' : 'the lane of 16'} + 6): its height is its content's, a description is two lines at most`);
+    if (r.message !== null) {
+      const hung = r.glyph === null || r.glyph.x + r.glyph.w / 2 < r.title.x;
+      check(Math.abs(r.message.x - r.title.x) <= 0.5 && hung, where, id, `the lane's glyph does not hang in the gutter: its words start ${r.message.x} px from the row's start and the title ${r.title.x} px (they start together), the glyph is ${r.glyph === null ? 'not drawn' : `${r.glyph.x} px in`}`);
+    }
+  }
+}
+
+/**
+ * A message or a state change never alters a row (S126: a row's rect is identical before and after a failed commit and a retry): the boxes of the row before and after
+ * Retry (by the pointer, and by the keyboard) and after Reset (by the keyboard), which takes its button out of the slot.
+ */
+async function rowStays(page, where, theme, engine, ids) {
+  const boxes = (r) => JSON.stringify([r.root, r.title, r.help, r.lane, r.control, r.slot]);
+  const stays = async (name, what, press) => {
+    if (ids !== undefined && !ids.includes(name)) return;
+    const id = `row/${name}`;
+    const before = (await page.evaluate(readRows, [name]))[name];
+    await press();
+    await settle(page);
+    const after = (await page.evaluate(readRows, [name]))[name];
+    if (before === null || after === null) return fail(where, id, 'is not drawn as a row');
+    check(before.kind !== after.kind || before.held !== after.held, where, id, `premise: ${what} changed nothing in the row (the lane says ${before.kind} before and after, the slot holds ${before.held})`);
+    check(boxes(before) === boxes(after), where, id, `the row moved when ${what}: ${boxes(before)} became ${boxes(after)}`);
+  };
+  const press = (name, inner, how) => async () => {
+    const button = page.locator(example(name, inner)).first();
+    if (how === 'pointer') return button.click();
+    await button.focus();
+    await page.keyboard.press('Enter');
+  };
+  await stays('Field/RowCouldNotCheck', 'Retry was pressed', press('Field/RowCouldNotCheck', '[data-ov-part="lane"] button', 'pointer'));
+  await stays('Field/RowApplyFailed', 'Retry was pressed with the keyboard', press('Field/RowApplyFailed', '[data-ov-part="lane"] button', 'keyboard'));
+  await stays('Field/RowModified', 'Reset was pressed with the keyboard', press('Field/RowModified', '[data-ov-part="trailing"] button', 'keyboard'));
+}
+
+/**
+ * The whole description of a row is its tooltip while it is cut and there is none while it fits: a real pointer on the real description in each engine, which is what the
+ * tooltip host's measure of a box cut in height (`scrollHeight`) stands on. A tip opens 500 ms after the pointer arrives.
+ */
+async function rowTip(page, where, theme, engine, ids) {
+  if (!where.includes('@1440x900') || (ids !== undefined && !ids.includes('Field/RowLongDescription'))) return;
+  const read = (name) =>
+    page.evaluate((example) => {
+      const help = document.querySelector(`[data-example="${example}"] [data-ov-part="help"]`);
+      return { text: (help?.textContent ?? '').replace(/\s+/g, ' ').trim(), cut: help === null ? null : help.scrollHeight > help.clientHeight + 1 };
+    }, name);
+  const tipOn = async (name) => {
+    await page.locator(example(name, '[data-ov-part="help"]')).first().hover();
+    await sleep(650);
+    const shown = await page.evaluate(() => {
+      const host = document.querySelector('[role="tooltip"]');
+      return host?.matches(':popover-open') ? (host.textContent ?? '').replace(/\s+/g, ' ').trim() : null;
+    });
+    await page.mouse.move(1, 1);
+    await sleep(100);
+    return shown;
+  };
+  const long = await read('Field/RowLongDescription');
+  const short = await read('Field/RowDefault');
+  check(long.cut === true && short.cut === false, where, 'row/premise', `the long description is ${long.cut ? '' : 'not '}cut and the short one is ${short.cut ? '' : 'not '}cut: wanted the first cut and the second whole`);
+  const shown = await tipOn('Field/RowLongDescription');
+  check(shown === long.text, where, 'row/Field/RowLongDescription', `the tooltip of a description that is cut says ${shown === null ? 'nothing' : `"${shown.slice(0, 48)}…"`}, wanted all of it`);
+  const none = await tipOn('Field/RowDefault');
+  check(none === null, where, 'row/Field/RowDefault', `a description that fits has a tooltip ("${none}")`);
+}
+
 // ---- themes ----------------------------------------------------------------------------------------------------------------
 const PAINTS = [
   ['TextInput/Idle', 'input', 'borderTopColor', '--ov-border-control'],
@@ -414,6 +569,12 @@ const PAINTS = [
   ['NumberInput/Idle', '[data-ov-part="stepper"]', 'backgroundColor', '--ov-bg-island'],
   ['NumberInput/Invalid', '[data-ov-part="stepper"]', 'borderTopColor', '--ov-error-control-inactive'],
   ['SecretInput/NotSet', 'input', 'backgroundColor', '--ov-bg-island'],
+  ['Field/RowDefault', '[data-ov-part="label"]', 'color', '--ov-fg'],
+  ['Field/RowDefault', '[data-ov-part="help"]', 'color', '--ov-fg-muted'],
+  ['Field/RowUnavailable', '[data-ov-part="label"]', 'color', '--ov-fg-muted'],
+  ['Field/RowInvalid', '[data-ov-part="lane"]', 'color', '--ov-error-fg'],
+  ['Field/RowWarning', '[data-ov-part="lane"]', 'color', '--ov-warning-fg'],
+  ['Field/RowHint', '[data-ov-part="lane"]', 'color', '--ov-fg-muted'],
 ];
 
 /** Page side: each paint beside the token it names, resolved in the theme in effect. */
@@ -461,7 +622,18 @@ async function axeRun(page, where) {
 async function shots(page, engine, theme) {
   mkdirSync(SHOTS, { recursive: true });
   await sleep(1300); // the loader of a checking lane comes after a second
+  // The rows first, in the room the parity compares them in (880 px): one picture of every row example.
+  const clip = await page.evaluate(() => {
+    const figures = [...document.querySelectorAll('[data-example^="Field/Row"]')];
+    const first = figures[0].getBoundingClientRect();
+    const last = figures.at(-1).getBoundingClientRect();
+    return { x: Math.max(0, first.left + window.scrollX - 8), y: first.top + window.scrollY - 8, width: first.width + 16, height: last.bottom - first.top + 16 };
+  });
+  await page.screenshot({ path: path.join(SHOTS, `${engine}-${theme}-FieldRows.png`), clip, fullPage: true });
   await span(page, false);
+  // The grid of the Field part in three columns has no room for a row, which has its own picture.
+  const rowFigures = '[data-example^="Field/Row"]';
+  await page.evaluate((selector) => document.querySelectorAll(selector).forEach((figure) => (figure.style.display = 'none')), rowFigures);
   await page.evaluate((parts) => {
     for (const part of parts) {
       const grid = document.querySelector(`[data-example^="${part}/"]`)?.parentElement;
@@ -480,6 +652,7 @@ async function shots(page, engine, theme) {
       if (grid) grid.style.gridTemplateColumns = '';
     }
   }, PARTS);
+  await page.evaluate((selector) => document.querySelectorAll(selector).forEach((figure) => (figure.style.display = '')), rowFigures);
   await span(page, true);
 }
 
@@ -507,10 +680,68 @@ const CONTROLS = {
       }),
     fault: 'the typed secret copied into an attribute of its input',
   },
+  // The row (design 16 S126, S127): each plants one fault that one assertion of the row's own sections, or one line of its parity, says.
+  'row-glyph-gutter': {
+    section: 'row',
+    cases: ['Field/RowInvalid'],
+    says: /row\/Field\/RowInvalid: the lane's glyph does not hang in the gutter/,
+    plant: style('[data-example="Field/RowInvalid"] [data-ov-part="lane"] > svg { position: static; }'),
+    fault: 'the lane\'s glyph in the line instead of hanging in the gutter: its words start 20 px late',
+  },
+  'row-slot-held': {
+    section: 'row',
+    cases: ['Field/RowDefault'],
+    says: /row\/Field\/RowDefault: the trailing slot/,
+    plant: style('[data-example="Field/RowDefault"] [data-ov-part="trailing"] { display: none; }'),
+    fault: 'a trailing slot that is not held when it is empty: the control sits 32 px further along, and moves when the slot is filled',
+  },
+  'row-clamp': {
+    section: 'row',
+    cases: ['Field/RowLongDescription'],
+    says: /row\/Field\/RowLongDescription: the row is/,
+    plant: style('[data-example="Field/RowLongDescription"] [data-ov-part="help"] { display: block; -webkit-line-clamp: unset; line-clamp: unset; overflow: visible; }'),
+    fault: 'a description that is not clamped: the row grows with it',
+  },
+  'row-message-moves': {
+    section: 'rowstay',
+    cases: ['Field/RowCouldNotCheck'],
+    says: /row\/Field\/RowCouldNotCheck: the row moved/,
+    plant: style('[data-example="Field/RowCouldNotCheck"] [data-ov-part="lane"][data-ov-kind="retry"] { height: 24px; }'),
+    fault: 'a lane that is taller for one message than for the next: the row moves when the message changes',
+  },
+  'row-tip-missing': {
+    section: 'rowtip',
+    cases: ['Field/RowLongDescription'],
+    says: /row\/Field\/RowLongDescription: the tooltip of a description that is cut/,
+    plant: (page) => page.evaluate(() => document.querySelector('[data-example="Field/RowLongDescription"] [data-ov-part="help"]')?.removeAttribute('data-ov-clip')),
+    fault: 'a description that is cut and carries no clip marker: its tooltip never shows',
+  },
+  'row-title-weight': {
+    section: 'parity',
+    cases: ['row-rest'],
+    says: /parity\/row-rest\/title: font/,
+    plant: style('[data-example="Field/RowDefault"] [data-ov-part="label"] { font-weight: 400; }'),
+    fault: 'a row title in weight 400 where the mock has 600',
+  },
+  'row-unavailable-title': {
+    section: 'parity',
+    cases: ['row-unavailable'],
+    // A text colour is also the colour of the element's border of no width (`currentcolor`), which the part reads as `border`: the one fact is told on two lines.
+    says: /parity\/row-unavailable\/title: (?:color|border)/,
+    plant: style('[data-example="Field/RowUnavailable"] [data-ov-part="label"] { color: var(--ov-fg); }'),
+    fault: 'the title of a row that cannot change in the text colour, where the settings page keeps it muted',
+  },
+  'row-reset-ring': {
+    section: 'parity',
+    cases: ['row-reset'],
+    says: /parity\/row-reset\/focus: outline/,
+    plant: style('[data-example="Field/RowModified"] [data-ov-part="trailing"] > button:focus-visible { outline-offset: 2px; }'),
+    fault: 'the focus ring of the Reset command outside its slot, where the row has no room beyond its end',
+  },
 };
 
 // ---- the run ---------------------------------------------------------------------------------------------------------------
-const SECTIONS = { parity, states, secret, keyboard, themes, axe: axeRun };
+const SECTIONS = { parity, states, secret, keyboard, themes, axe: axeRun, row: rowGeometry, rowstay: rowStays, rowtip: rowTip };
 const wants = (section) => only === null || only.test(section);
 const seconds = {};
 const timed = async (section, run) => {
@@ -534,7 +765,7 @@ async function runAll(partsUrl) {
 
       await setTheme(page, 'void');
       const where = `${engine}@${viewport}/void`;
-      for (const name of ['states', 'themes', 'secret', 'keyboard']) if (wants(name)) await timed(name, () => SECTIONS[name](page, where, 'void', engine));
+      for (const name of ['states', 'themes', 'secret', 'keyboard', 'row', 'rowstay', 'rowtip']) if (wants(name)) await timed(name, () => SECTIONS[name](page, where, 'void', engine));
       for (const message of errors) fail(`${engine}@${viewport}`, 'page', `error: ${message}`);
       await context.close();
     }

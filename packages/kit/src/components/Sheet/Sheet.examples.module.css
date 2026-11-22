@@ -1,0 +1,27 @@
+/* The two columns of the example's body: the list of pages at the left, 200 px wide, and the page at the right. The page scrolls itself, because the sheet's body clips. */
+@layer ov.components {
+  .columns {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .pages {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-2);
+    box-sizing: border-box;
+    min-height: 0;
+    padding: var(--ov-spacing-12);
+    border-right: 1px solid var(--ov-border-subtle);
+    overflow: auto;
+  }
+
+  .page {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--ov-spacing-16);
+    overflow: auto;
+  }
+}

@@ -28,6 +28,7 @@ import * as searchFieldModule from '../components/SearchField/SearchField.exampl
 import * as secretInputModule from '../components/SecretInput/SecretInput.examples';
 import * as sectionCardModule from '../components/SectionCard/SectionCard.examples';
 import * as selectModule from '../components/Select/Select.examples';
+import * as sheetModule from '../components/Sheet/Sheet.examples';
 import * as statusModule from '../components/Status/Status.examples';
 import * as statusSummaryModule from '../components/StatusSummary/StatusSummary.examples';
 import * as tabsModule from '../components/Tabs/Tabs.examples';
@@ -66,6 +67,7 @@ export const partExamples = {
   SecretInput: secretInputModule,
   SectionCard: sectionCardModule,
   Select: selectModule,
+  Sheet: sheetModule,
   Status: statusModule,
   StatusSummary: statusSummaryModule,
   Tabs: tabsModule,

@@ -16,6 +16,9 @@ import { usePanelChords } from './panel/usePanelChords';
 import { Rail } from './Rail';
 import type { ShellRegistration } from './registration';
 import { ScopeLane } from './ScopeLane';
+import { SettingsProvider } from './settings/context';
+import type { SettingsControl } from './settings/host';
+import { Settings } from './settings/Settings';
 import styles from './Shell.module.css';
 import { Sidebar } from './Sidebar';
 import { StatusBar } from './StatusBar';
@@ -70,6 +73,11 @@ export type ShellProps = {
    * toasts, and nothing is mounted for them.
    */
   readonly notices?: NoticesBindings | undefined;
+  /**
+   * Settings (`settings/host.ts`): whether the sheet is open, the page it was last on and the loading of its code, which is a lazy chunk. With one, the top row has a gear, Command comma (Control comma elsewhere) opens the sheet from anywhere, and the
+   * sheet is a modal over the window. Absent: no gear, no chord, nothing mounted.
+   */
+  readonly settings?: SettingsControl | undefined;
 };
 
 /**
@@ -78,7 +86,7 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette, notices }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette, notices, settings }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
@@ -111,6 +119,8 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
         {panel === undefined ? null : <Panel platform={platform} />}
         <StatusBar platform={platform} />
         {notices === undefined ? null : <Toasts />}
+        {/* Settings before the palette: both listen on the window in the capture phase, and Settings' listener must be the first, so that a palette chord pressed over the open sheet is taken before the palette sees it. */}
+        {settings === undefined ? null : <Settings />}
         {palette === undefined ? null : <Palette />}
       </div>
     </TabsProvider>
@@ -125,5 +135,6 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
       </PanelProvider>
     );
   const noticed = notices === undefined ? framed : <NoticesProvider notices={notices}>{framed}</NoticesProvider>;
-  return palette === undefined ? noticed : <PaletteProvider palette={palette}>{noticed}</PaletteProvider>;
+  const settled = settings === undefined ? noticed : <SettingsProvider settings={settings}>{noticed}</SettingsProvider>;
+  return palette === undefined ? settled : <PaletteProvider palette={palette}>{settled}</PaletteProvider>;
 }

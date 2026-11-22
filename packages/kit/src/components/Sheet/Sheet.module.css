@@ -1,0 +1,88 @@
+@layer ov.components {
+  /* The sheet: a modal surface in the window (the mock's `.dlg`, its header and body anatomy; `.sheet > .hd` for the header's 41 px). The dialog is the scrim, as the command palette's is: a native dialog opened
+     with showModal() is in the browser's top layer, so no z-index is needed and the page behind it is inert, and it covers the whole window. It is only the place the frame hangs in. Nothing here moves: no
+     transition, no animation, so reduced motion has nothing to change.
+
+     It draws no veil over the page, like the palette: the page stays sharp and readable, and the frame's edge and shadow lift the sheet from it. A scrim colour is not a token, and a veil in the dialog's own
+     colour fades the page more than it dims it. Looked at in WebKit at 1440 x 900, with the strongest text of the page behind as 11.6 : 1 in Void, 16.5 : 1 in Light and 6.5 : 1 in Solarized Light, a veil at
+     0.5 left 3.8, 3.2 and 2.2: a wash-out in the light themes, where the page turns pale and the dialog is white on white, and at 0.2 (7.9, 8.6 and 4.0) the cue is too faint to read as modal in any theme.
+     The old Settings window, a native window of its own, never dimmed the one behind it. */
+  .scrim[open] {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    max-block-size: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    background-color: transparent;
+    color: inherit;
+  }
+
+  .scrim::backdrop {
+    background-color: transparent;
+  }
+
+  /* The frame is one size so far, the old Settings window's, 1060 x 640 px: the Settings screen is the one that needs it. The window wins where it is smaller, less the 24 px step on each side. The next
+     screen that needs another size adds a `size` prop to the part; there is none now, so no option is dead. */
+  .frame {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    inline-size: min(1060px, 100% - 2 * var(--ov-spacing-24));
+    block-size: min(640px, 100dvh - 2 * var(--ov-spacing-24));
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-dialog);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The header: the title, and Close at the end of the lane, 8 px apart. 41 px at the least with 6 px above and below, as the mock's `.sheet > .hd`; a long title wraps and the header grows. */
+  .header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-height: 41px;
+    padding: var(--ov-spacing-6) var(--ov-spacing-12);
+  }
+
+  .title {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    color: var(--ov-fg);
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  /* The body fills what the header leaves and clips; it has no padding, so the caller lays out its own columns and scrollers. One track, so the caller's layout fills it and a scroller inside it has a height
+     to scroll in. */
+  .body {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+}

@@ -3,6 +3,7 @@ import {
   createPaletteStore,
   normaliseRoute,
   seedChips,
+  settingsChordText,
   toggleChordText,
   togglePanel,
   type Contributions,
@@ -16,6 +17,7 @@ import {
   type PanelStore,
   type Route,
   type TabsStore,
+  WEB_SETTINGS_CHORD,
 } from '../../shell';
 import { openable } from '../contract/admit';
 import { readKeywords } from '../contract/sidebarKeywords';
@@ -59,6 +61,8 @@ export type HostPaletteDeps = {
   readonly platform: 'mac' | 'other';
   /** Closes the window, where the app has one of its own. */
   readonly onCloseWindow: (() => void) | undefined;
+  /** Opens Settings (the shell's control: `shell/settings/host.ts`). Absent: the window has none, and the command is not offered. */
+  readonly openSettings?: (() => void) | undefined;
   /** Where each plugin was last shown. A page of a plugin that is not on screen opens at the connection that plugin was last used in, as the entries of its own sidebar do. Absent: no connection is carried. */
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
   /**
@@ -370,11 +374,11 @@ type HostCommand = {
 };
 
 /**
- * The commands the host can run from here, made from what is true now: Close tab, Toggle panel (when there is a panel), Close window (only on a Mac, and only when the app can close its window:
+ * The commands the host can run from here, made from what is true now: Close tab, Toggle panel (when there is a panel), Settings (when the window has them), Close window (only on a Mac, and only when the app can close its window:
  * elsewhere the main window hides and nothing brings it back, decision A17), and Next tab and Previous tab. The palette lists them and the runner looks them up here, so what it runs is what
  * it checked a moment before.
  */
-function commandsOf({ tabs, panel, platform, onCloseWindow }: HostPaletteDeps): HostCommand[] {
+function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings }: HostPaletteDeps): HostCommand[] {
   const state = tabs.getSnapshot();
   const others = state.order.length > 1 ? undefined : NO_OTHER_TAB;
   // The app's own window gets the chords the shell binds natively; a browser tab keeps those for itself, and the shell's Control Option chords are what work there.
@@ -399,6 +403,22 @@ function commandsOf({ tabs, panel, platform, onCloseWindow }: HostPaletteDeps): 
       shortcut: native ? toggleChordText(platform) : WEB_TOGGLE_CHORD[platform],
       run: () => {
         togglePanel(panel);
+        return true;
+      },
+    });
+  }
+
+  if (openSettings !== undefined) {
+    commands.push({
+      id: 'host.settings.open',
+      title: 'Settings',
+      context: 'Window',
+      icon: 'settings-2',
+      shortcut: native ? settingsChordText(platform) : WEB_SETTINGS_CHORD[platform],
+      // The palette gives the focus back to where it was when it closes, and the sheet gives it back to what had it when it opened: opened now, that would be the palette's input. One task later the palette
+      // is gone and the focus is where the person was, so the sheet remembers that.
+      run: () => {
+        setTimeout(openSettings, 0);
         return true;
       },
     });

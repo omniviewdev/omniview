@@ -337,7 +337,10 @@ explicit `{ kind: "host" }` or `{ kind: "plugin", pluginId }` scope.
 Host setting IDs use `category.setting`; plugin setting IDs remain opaque,
 including dots. Snapshots include category metadata, saved values, and each
 setting's `requiresRestart` and `pendingRestart` flags.
-Sensitive values and value-bearing metadata are redacted. Unknown plugin schema
+Sensitive values and value-bearing metadata are redacted. A host snapshot's
+`stored` map says, for each sensitive host setting (by its `category.setting`
+ID), whether it holds a value now; it is computed at snapshot time and carries
+no other function of the value. The plugin scope leaves it empty. Unknown plugin schema
 fails closed. Replacement clients invalidate old schema before hydration;
 snapshot projection fences schema classification against concurrent reloads.
 
