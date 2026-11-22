@@ -1,0 +1,47 @@
+#!/bin/bash
+# The two controls whose first fault broke the build (so their RED was not the test's), run again, and the
+# one control macOS cannot see (a blocked pty write is woken by the kill there), run on Linux.
+export GOWORK=off GOTOOLCHAIN=local
+WT=/Users/joshuapare/Repos/omniviewdev/worktrees/t1-go-terminal-signals
+M=/tmp/t1go-mut2
+rm -rf "$M" && mkdir -p "$M"
+cd "$WT" || exit 2
+
+run() {
+  name="$1"; pkg="$2"; file="$3"; expr="$4"; test="$5"
+  cp "$WT/$file" "$M/$name.go"
+  sed -i '' -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out=$(go test -overlay="$M/$name.json" "$pkg" -run "$test" -count=1 -timeout 150s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
+  built=$(echo "$out" | grep -c -E "build failed|declared and not used|undefined:")
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"
+  elif [ "$built" != "0" ]; then echo "CONTROL $name: BUILD BROKEN (not a result)"
+  else echo "CONTROL $name: RED  $failed"; fi
+}
+
+run exit-code-always-zero ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/code := status.code$/code := 0/' \
+  '^TestExitedWithACodeIsTypedAndFollowsTheLastOutput$'
+
+run shell-name-empty ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/Name: shellenv.Name(path)}/Name: ""}/' \
+  '^TestTheAnswerNamesTheShellAndTheDirectoryItStartedIn$'
+
+run shell-path-empty ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/Shell: Shell{Path: abs,/Shell: Shell{Path: path,/' \
+  '^TestTheAnswerNamesTheShellAndTheDirectoryItStartedIn$|^TestTheShellNameIsTheTargetOfALinkAndTheLoginShellIsNamedWhenNoCommandIsGiven$'
+
+# Linux: the master must be closed when the session ends, or a write blocked in the kernel is never woken.
+cp "$WT/backend/pkg/terminal/manager.go" "$M/linux-master.go"
+sed -i '' -e 's/^\t_ = s.master.Close()$/\t_ = 0/' "$M/linux-master.go"
+if cmp -s "$WT/backend/pkg/terminal/manager.go" "$M/linux-master.go"; then echo "CONTROL linux-master-not-closed: FAULT NOT APPLIED"; else
+  printf '{"Replace":{"/src/backend/pkg/terminal/manager.go":"/mut/linux-master.go"}}' > "$M/linux-master.json"
+  out=$(docker run --rm -v "$WT":/src -v "$M":/mut -v /Users/joshuapare/go/pkg/mod:/go/pkg/mod:ro -w /src -e GOWORK=off -e GOPROXY=off -e GOTOOLCHAIN=local -e GOFLAGS=-mod=mod golang:1.27.4-bookworm go test -overlay=/mut/linux-master.json ./backend/pkg/terminal/ -run '^TestASessionWhoseShellDoesNotReadDoesNotBlockAnother$' -count=1 -timeout 100s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
+  if [ $code -eq 0 ]; then echo "CONTROL linux-master-not-closed: UNDETECTED (tests passed)"; else echo "CONTROL linux-master-not-closed (Linux arm64): RED  $failed"; fi
+fi
+echo CONTROLS2-DONE

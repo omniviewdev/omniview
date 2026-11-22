@@ -4,8 +4,8 @@ import { encodeRequestJSON } from './resource/v2/requestJSON';
 
 export {
   AttachSession, CloseSession, CreateTerminal, DetachSession, GetHandler,
-  GetHandlers, GetNativeTerminalSupport, GetPluginHandlers, GetSession, HasPlugin, ListPlugins,
-  ListSessions, ResizeSession, WriteSession,
+  GetHandlers, GetNativeTerminalSupport, GetPluginHandlers, GetSession, HasPlugin, IsBusy, ListPlugins,
+  ListSessions, ResizeSession, ResizeTerminal, WriteSession, WriteTerminal,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
 
 /** Wails receives exact JSON text; the public SDK-shaped API remains typed. */

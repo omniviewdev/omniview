@@ -4,217 +4,578 @@ package terminal
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
-	"net/http"
+	"maps"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
-	"github.com/google/uuid" // UUID package for generating unique identifiers.
+	"github.com/creack/pty"
+	"github.com/google/uuid"
+	"golang.org/x/sys/unix"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/shellenv"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 const (
+	// DefaultReadBufferSize is the size of one read of a shell's output: one event is at most this big.
 	DefaultReadBufferSize = 20480
-	InitialRows           = 27
-	InitialCols           = 72
+
+	termEnv = "TERM=xterm-256color"
+
+	// drainWait is how long the master is still read once the shell has exited, counted from the last
+	// byte: what the shell wrote before it exited is delivered, then the session ends.
+	drainWait = time.Second
+	// exitGrace is how long a shell may outlive the end of its pty before the host ends it.
+	exitGrace = 2 * time.Second
+	// killGrace is how long the host waits for a shell it killed to be reaped.
+	killGrace = 2 * time.Second
+	// closeWait is how long a close waits for the session to be gone.
+	closeWait = 5 * time.Second
 )
 
-// Manager manages terminal sessions, allowing creation, attachment, and more.
+// Manager runs the local terminals. Its one lock guards the map of sessions and is never held across
+// I/O: a session whose shell does not read costs its own input queue and nothing else.
 type Manager struct {
-	ctx      context.Context
-	log      logging.Logger
-	sessions map[string]*sdkexec.Session
-	ptys     map[string]*os.File
-	cmds     map[string]*exec.Cmd
-	cancels  map[string]context.CancelFunc
-	buffers  map[string]*sdkexec.OutputBuffer
+	ctx  context.Context
+	log  logging.Logger
+	sink Sink
 
-	inMux     chan sdkexec.StreamInput
-	outMux    chan sdkexec.StreamOutput
-	resizeMux chan sdkexec.StreamResize
-	mux       sync.RWMutex
+	mu       sync.RWMutex
+	sessions map[string]*session
+	starting map[string]struct{}
 }
 
-// NewManager initializes a new Manager instance. Because we want to be a bit more
-// latency sensitive with the local manager, we're going to directly return
-// the channels for in and out that the exec controller will use.
-func NewManager(
-	ctx context.Context,
-	log logging.Logger,
-) (*Manager, chan sdkexec.StreamInput, chan sdkexec.StreamOutput, chan sdkexec.StreamResize) {
-	inMux := make(chan sdkexec.StreamInput)
-	outMux := make(chan sdkexec.StreamOutput)
-	resizeMux := make(chan sdkexec.StreamResize)
-
-	mgr := &Manager{
-		mux:       sync.RWMutex{},
-		ctx:       ctx,
-		log:       log.Named("TerminalManager"),
-		sessions:  make(map[string]*sdkexec.Session),
-		ptys:      make(map[string]*os.File),
-		cmds:      make(map[string]*exec.Cmd),
-		cancels:   make(map[string]context.CancelFunc),
-		buffers:   make(map[string]*sdkexec.OutputBuffer),
-		inMux:     inMux,
-		outMux:    outMux,
-		resizeMux: resizeMux,
+// NewManager makes a manager whose sessions end when ctx ends and whose events go to sink.
+func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
+	m := &Manager{
+		ctx: ctx, log: log.Named("TerminalManager"), sink: sink,
+		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}),
 	}
-
-	go mgr.forwardSignals()
-
-	return mgr, inMux, outMux, resizeMux
+	go m.forwardSignals()
+	return m
 }
 
-// GetSession returns a session by its ID.
+// fate is what decides how a session is told to have ended: the first of the shell's own end, a
+// request of the host and a failure of the pty settles it, and a later one changes nothing.
+type fate struct {
+	set      bool
+	closedBy ClosedBy
+	failure  *Failure
+}
+
+// exitStatus is what the system said when the shell was reaped.
+type exitStatus struct {
+	code       int
+	signal     syscall.Signal
+	coreDumped bool
+	err        error
+}
+
+type session struct {
+	id      string
+	info    Session
+	command []string
+	labels  map[string]string
+	params  map[string]string
+	owner   Owner
+
+	cmd    *exec.Cmd
+	master *os.File
+	cancel context.CancelFunc
+	buffer *sdkexec.OutputBuffer
+	queue  *inputQueue
+
+	// ending is set as soon as the session is on its way out: it is no longer found, listed or written to.
+	ending atomic.Bool
+	// exited is closed when the shell has been reaped; status is read after it.
+	exited chan struct{}
+	status exitStatus
+	// done is closed when the session is gone: its CLOSE delivered and its resources released.
+	done chan struct{}
+
+	mu       sync.Mutex
+	fate     fate
+	attached bool
+}
+
+func (s *session) decide(f fate) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fate.set {
+		return false
+	}
+	s.fate = f
+	return true
+}
+
+func (s *session) settled() fate {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.fate
+}
+
+// beginClose ends the shell at the host's request, unless it had already ended by itself: then its own
+// end stands.
+func (s *session) beginClose(by ClosedBy) {
+	if !s.decide(fate{set: true, closedBy: by, failure: nil}) {
+		return
+	}
+	s.ending.Store(true)
+	s.cancel()
+}
+
+func (s *session) awaitExit(wait time.Duration) bool {
+	select {
+	case <-s.exited:
+		return true
+	case <-time.After(wait):
+		return false
+	}
+}
+
+func (s *session) hasExited() bool {
+	select {
+	case <-s.exited:
+		return true
+	default:
+		return false
+	}
+}
+
+// snapshot is the session as the exec lane's other callers know it.
+func (s *session) snapshot() *sdkexec.Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return &sdkexec.Session{
+		ID: s.id, Command: slices.Clone(s.command), Labels: nonNil(s.labels), Params: nonNil(s.params),
+		Attached: s.attached, CreatedAt: s.info.CreatedAt,
+	}
+}
+
+// nonNil is a copy of m that is a map even when m is none, so that a session is listed with {} and not null.
+func nonNil(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return maps.Clone(m)
+}
+
+// live returns a session that is running: one that is ending is not found.
+func (m *Manager) live(id string) (*session, error) {
+	m.mu.RLock()
+	s := m.sessions[id]
+	m.mu.RUnlock()
+	if s == nil || s.ending.Load() {
+		return nil, apperror.SessionNotFound(id)
+	}
+	return s, nil
+}
+
+// GetSession returns a running session by its ID.
 func (m *Manager) GetSession(sessionID string) (*sdkexec.Session, error) {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
-	session, exists := m.sessions[sessionID]
-	if !exists {
-		return nil, apperror.SessionNotFound(sessionID)
+	s, err := m.live(sessionID)
+	if err != nil {
+		return nil, err
 	}
-	return session, nil
+	return s.snapshot(), nil
 }
 
-// ListSessions returns a list of details for all active sessions.
-func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+// ListSessions returns the running sessions.
+func (m *Manager) ListSessions() []*sdkexec.Session {
+	m.mu.RLock()
 	sessions := make([]*sdkexec.Session, 0, len(m.sessions))
-
-	for _, session := range m.sessions {
-		sessions = append(sessions, session)
+	for _, s := range m.sessions {
+		if !s.ending.Load() {
+			sessions = append(sessions, s.snapshot())
+		}
 	}
-
+	m.mu.RUnlock()
 	m.log.Debugw(context.Background(), "listed sessions", "count", len(sessions))
 	return sessions
 }
 
-// resolveShell shares account-shell detection and login flags with startup.
-func resolveShell(command []string) (string, []string, error) {
-	return shellenv.Resolve(command)
+// Start starts a shell on a pty of the size asked for and returns what the host knows about it. The
+// session belongs to owner and ends with it (CloseOwned); a nil owner is none.
+func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
+	cols, rows, err := resolveSize(opts.Cols, opts.Rows)
+	if err != nil {
+		return Session{}, err
+	}
+	id, err := m.reserve(opts.ID, owner)
+	if err != nil {
+		return Session{}, err
+	}
+	s, err := m.launch(id, opts, cols, rows, owner)
+	if err != nil {
+		m.mu.Lock()
+		delete(m.starting, id)
+		m.mu.Unlock()
+		return Session{}, err
+	}
+	m.mu.Lock()
+	delete(m.starting, id)
+	m.sessions[id] = s
+	m.mu.Unlock()
+	go m.wait(s)
+	go m.pump(s)
+	m.log.Debugw(context.Background(), "session started", "session", id, "shell", s.info.Shell.Path, "cols", cols, "rows", rows)
+	return s.info, nil
 }
 
-// StartSession creates a new terminal session with a given command.
-func (m *Manager) StartSession(
-	_ *types.PluginContext,
-	opts sdkexec.SessionOptions,
-) (*sdkexec.Session, error) {
-	logger := m.log.With(logging.Any("action", "StartSession"))
-	logger.Debugw(context.Background(), "starting session", "command", opts.Command, "tty", opts.TTY)
-
-	// Derive from manager context so shutdown cascades to all sessions.
-	ctx, cancel := context.WithCancel(m.ctx)
-
-	shell, newopts, err := resolveShell(opts.Command)
-	if err != nil {
-		cancel()
-		return nil, err
+// reserve takes an id for a session that is about to start, so that two starts cannot share it.
+func (m *Manager) reserve(requested string, owner Owner) (string, error) {
+	if owner != nil && !reflect.TypeOf(owner).Comparable() {
+		return "", invalidError("the owner of a terminal must be comparable.")
 	}
+	if len(requested) > maxIDLength {
+		return "", invalidError(fmt.Sprintf("id must be at most %d bytes; got %d.", maxIDLength, len(requested)))
+	}
+	id := requested
+	if id == "" {
+		id = uuid.NewString()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, taken := m.sessions[id]; taken {
+		return "", IDInUse(id)
+	}
+	if _, taken := m.starting[id]; taken {
+		return "", IDInUse(id)
+	}
+	m.starting[id] = struct{}{}
+	return id, nil
+}
 
-	// start default shell with commands appended to it. The whole point is to get a local
-	// shell from the local IDE, so this is going to be exactly what the user wants.
-	cmd := exec.CommandContext(ctx, shell, newopts...)
+// launch starts the process on a pty that already has its size.
+func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner) (*session, error) {
+	path, args, err := shellenv.Resolve(opts.Command)
+	if err != nil {
+		return nil, shellError(err)
+	}
+	// The shell starts where the user's own terminals do: in their home.
 	home, err := os.UserHomeDir()
 	if err != nil {
-		cancel()
-		return nil, apperror.Wrap(err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Cannot determine terminal home directory")
+		return nil, startError(fmt.Errorf("cannot determine the terminal's home directory: %w", err))
 	}
+	env, err := instance.RestoreNativeChildEnvironment(os.Environ())
+	if err != nil {
+		return nil, startError(err)
+	}
+	ctx, cancel := context.WithCancel(m.ctx)
+	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = home
+	cmd.Env = slices.Concat(env, []string{"SHELL=" + path, termEnv})
 
-	childEnvironment, err := instance.RestoreNativeChildEnvironment(os.Environ())
+	// The size is set on the pty before the process starts, so the shell's first prompt is laid out for it.
+	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0})
 	if err != nil {
 		cancel()
-		return nil, err
+		return nil, startError(err)
 	}
-	cmd.Env = childEnvironment
-	cmd.Env = append(cmd.Env, "SHELL="+shell, "TERM=xterm-256color")
-
-	if opts.Labels == nil {
-		opts.Labels = make(map[string]string)
-	}
-
-	// Start with an initial size so the pty never runs unsized (which renders badly)
-	// and there is no failure path between starting the process and tracking it.
-	ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: InitialRows, Cols: InitialCols, X: 0, Y: 0})
+	polled, err := pollable(master)
 	if err != nil {
-		err = apperror.Wrap(err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Failed to start terminal")
-		logger.Errorw(ctx, "failed to start terminal", "error", err)
 		cancel()
-		return nil, err
+		_ = master.Close()
+		_ = cmd.Wait()
+		return nil, startError(err)
 	}
-
-	// Generate a unique ID for the session.
-	if opts.ID == "" {
-		opts.ID = uuid.NewString()
+	abs, absErr := filepath.Abs(path)
+	if absErr != nil {
+		abs = path
 	}
-
-	session := &sdkexec.Session{
-		ID:        opts.ID,
-		Command:   opts.Command,
-		Labels:    opts.Labels,
-		Params:    opts.Params,
-		Attached:  false,
-		CreatedAt: time.Now(),
+	s := &session{
+		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params), owner: owner,
+		info: Session{
+			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path)},
+			Cwd: home, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(),
+		},
+		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil,
+		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil}, done: make(chan struct{}),
+		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
 	}
-
-	m.mux.Lock()
-	m.sessions[opts.ID] = session
-	m.ptys[opts.ID] = ptyFile
-	m.cmds[opts.ID] = cmd
-	m.cancels[opts.ID] = cancel
-	m.buffers[opts.ID] = sdkexec.NewDefaultOutputBuffer()
-	m.mux.Unlock()
-
-	logger.Debugw(ctx, "session started",
-		"session", session,
-		"command", session.Command,
-	)
-
-	// Start handling terminal output in a separate goroutine.
-	go m.handleOutStream(ctx, opts.ID, ptyFile)
-	go m.handleSessionClose(ctx, opts.ID)
-	go m.handleWaitForCompletion(ctx, opts.ID, cmd)
-
-	return session, nil
+	s.queue = newInputQueue(ptyDevice{master: polled}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
+	return s, nil
 }
 
-func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
-	ptyFile, exists := m.ptys[sessionID]
-	if !exists {
-		err := apperror.SessionNotFound(sessionID)
-		m.log.Errorw(context.Background(), "session not found", "error", err)
+// wait reaps the shell and tells the reader the shell is gone.
+func (m *Manager) wait(s *session) {
+	s.status = statusOf(s.cmd.Wait())
+	if m.ctx.Err() != nil {
+		s.decide(fate{set: true, closedBy: ClosedByShutdown, failure: nil})
+	} else {
+		s.decide(fate{set: true, closedBy: "", failure: nil})
+	}
+	s.ending.Store(true)
+	close(s.exited)
+	// What the shell wrote before it exited is still in the pty: the reader gets drainWait to read it.
+	_ = s.master.SetReadDeadline(time.Now().Add(drainWait))
+}
+
+func statusOf(err error) exitStatus {
+	none := exitStatus{code: 0, signal: 0, coreDumped: false, err: nil}
+	if err == nil {
+		return none
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		none.err = err
+		return none
+	}
+	if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+		return exitStatus{code: 0, signal: status.Signal(), coreDumped: status.CoreDump(), err: nil}
+	}
+	return exitStatus{code: exit.ExitCode(), signal: 0, coreDumped: false, err: nil}
+}
+
+// pump reads the shell's output until the pty ends, then settles how the session ended.
+func (m *Manager) pump(s *session) {
+	m.finish(s, m.read(s))
+}
+
+// read delivers the shell's output, in order, and returns the error that ended it.
+func (m *Manager) read(s *session) error {
+	buf := make([]byte, DefaultReadBufferSize)
+	for {
+		if s.hasExited() {
+			// The shell is gone: keep reading while bytes come, stop when none have for drainWait.
+			_ = s.master.SetReadDeadline(time.Now().Add(drainWait))
+		}
+		n, err := s.master.Read(buf)
+		if n > 0 {
+			// The event owns its bytes: the read buffer is reused.
+			data := slices.Clone(buf[:n])
+			m.sink.Output(s.id, data)
+			s.buffer.Append(data)
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// readEnded reports whether a read error is the ordinary end of a pty's output: end of file on macOS,
+// input/output error on Linux, and the deadline the host sets once the shell has exited.
+func readEnded(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrDeadlineExceeded)
+}
+
+// finish ends a session whose output has ended: it waits for the shell, closes the input, delivers the
+// one CLOSE after the last output, and lets the id go.
+func (m *Manager) finish(s *session, readErr error) {
+	s.ending.Store(true)
+	end := m.settle(s, readErr)
+	s.queue.close(apperror.SessionNotFound(s.id))
+	// Closing the master wakes a write that is still blocked in the kernel.
+	_ = s.master.Close()
+	m.sink.Closed(s.id, end)
+	m.mu.Lock()
+	delete(m.sessions, s.id)
+	m.mu.Unlock()
+	s.cancel()
+	close(s.done)
+	m.log.Debugw(context.Background(), "session terminated", "session", s.id, "reason", end.Reason)
+}
+
+// settle waits for the shell and decides how the session ended. A shell that outlives its pty, or a
+// read that failed, ends the session: the shell is killed.
+func (m *Manager) settle(s *session, readErr error) End {
+	if !readEnded(readErr) {
+		s.decide(fate{set: true, closedBy: "", failure: &Failure{Stage: StageRead, Message: readErr.Error()}})
+	}
+	exited := s.awaitExit(exitGrace)
+	if !exited {
+		s.decide(fate{set: true, closedBy: "", failure: &Failure{Stage: StagePty, Message: "the pty closed while the shell was still running"}})
+	}
+	if !exited || s.settled().failure != nil {
+		s.cancel()
+		exited = s.awaitExit(killGrace)
+	}
+	f := s.settled()
+	switch {
+	case f.closedBy != "":
+		return endClosed(f.closedBy)
+	case f.failure != nil:
+		return endFailed(f.failure.Stage, f.failure.Message)
+	case !exited:
+		return endFailed(StageWait, "the shell did not exit after it was killed")
+	}
+	return endOfStatus(s.status)
+}
+
+func endOfStatus(status exitStatus) End {
+	switch {
+	case status.err != nil:
+		return endFailed(StageWait, status.err.Error())
+	case status.signal != 0:
+		name := unix.SignalName(status.signal)
+		if name == "" {
+			name = "SIG" + strconv.Itoa(int(status.signal))
+		}
+		return End{Reason: EndSignaled, ExitCode: nil, Signal: name, SignalNumber: int(status.signal), CoreDumped: status.coreDumped, ClosedBy: "", Failure: nil}
+	}
+	code := status.code
+	return End{Reason: EndExited, ExitCode: &code, Signal: "", SignalNumber: 0, CoreDumped: false, ClosedBy: "", Failure: nil}
+}
+
+func endClosed(by ClosedBy) End {
+	return End{Reason: EndClosed, ExitCode: nil, Signal: "", SignalNumber: 0, CoreDumped: false, ClosedBy: by, Failure: nil}
+}
+
+func endFailed(stage FailureStage, message string) End {
+	return End{Reason: EndFailed, ExitCode: nil, Signal: "", SignalNumber: 0, CoreDumped: false, ClosedBy: "", Failure: &Failure{Stage: stage, Message: message}}
+}
+
+// Write applies input to a session's shell. seq is the caller's sequence number, or zero (see
+// inputQueue). It returns when the input has been written.
+func (m *Manager) Write(sessionID string, seq uint64, data []byte) error {
+	s, err := m.live(sessionID)
+	if err != nil {
 		return err
 	}
-	if err := pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0}); err != nil {
-		m.log.Errorw(context.Background(), "error resizing pty", "session", sessionID, "error", err)
+	return s.queue.write(seq, data)
+}
+
+// Resize sets the size of a session's terminal, in the order of the session's other input.
+func (m *Manager) Resize(sessionID string, seq uint64, rows, cols int) error {
+	r, c, err := checkSize(rows, cols)
+	if err != nil {
 		return err
 	}
+	s, err := m.live(sessionID)
+	if err != nil {
+		return err
+	}
+	return s.queue.resize(seq, r, c)
+}
+
+// Busy says whether a program other than the shell holds the terminal's foreground: the foreground
+// process group of the pty (TIOCGPGRP on its master) against the shell's own. A background job does
+// not hold it. Nothing polls: the answer is read when it is asked for.
+func (m *Manager) Busy(sessionID string) (Foreground, error) {
+	s, err := m.live(sessionID)
+	if err != nil {
+		return Foreground{}, err
+	}
+	shell, group, known := s.groups()
+	if s.ending.Load() {
+		// The session ended while it was asked: the descriptor is closed, or about to be.
+		return Foreground{}, apperror.SessionNotFound(sessionID)
+	}
+	if !known {
+		return UnknownForeground(ReasonQueryFailed), nil
+	}
+	return foregroundOf(shell, group), nil
+}
+
+// groups reads the shell's process group and the pty's foreground group. It reports false when the
+// system would not say either.
+func (s *session) groups() (int, int, bool) {
+	foreground, groupErr := foregroundGroup(s.master)
+	shell, shellErr := syscall.Getpgid(s.cmd.Process.Pid)
+	return shell, foreground, groupErr == nil && shellErr == nil && foreground > 0
+}
+
+// foregroundOf compares the foreground group with the shell's.
+func foregroundOf(shellGroup, foreground int) Foreground {
+	if foreground == shellGroup {
+		return Foreground{State: StateIdle, Name: "", PGID: 0, Reason: ""}
+	}
+	return Foreground{State: StateBusy, Name: processName(foreground), PGID: foreground, Reason: ""}
+}
+
+// AttachSession marks a session as attached and returns its current output buffer. The caller renders
+// the returned buffer; it is not also sent on the output stream, where any viewer already listening
+// would print it twice. This matches plugin sessions, whose SDK manager only returns the buffer.
+func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, error) {
+	s, err := m.live(sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	data := s.buffer.GetAll()
+	s.mu.Lock()
+	s.attached = true
+	s.mu.Unlock()
+	m.log.Debugw(context.Background(), "session attached", "session", sessionID, "bufferSize", len(data))
+	return s.snapshot(), data, nil
+}
+
+// DetachSession marks a session as not attached.
+func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
+	s, err := m.live(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	s.attached = false
+	s.mu.Unlock()
+	m.log.Debugw(context.Background(), "session detached", "session", sessionID)
+	return s.snapshot(), nil
+}
+
+// CloseSession ends a session at its caller's request. When it returns the session is gone: the shell
+// is reaped, no event follows the CLOSE and the id is free.
+func (m *Manager) CloseSession(sessionID string) error {
+	s, err := m.live(sessionID)
+	if err != nil {
+		return err
+	}
+	s.beginClose(ClosedByRequest)
+	m.awaitGone([]*session{s})
 	return nil
 }
 
-func (m *Manager) handleWaitForCompletion(_ context.Context, sessionID string, cmd *exec.Cmd) {
-	if err := cmd.Wait(); err != nil {
-		m.log.Errorw(context.Background(), "error waiting for command", "session", sessionID, "error", err)
+// CloseOwned ends every running session of owner, as the owner's window going away does, and returns
+// how many it ended. When it returns they are gone.
+func (m *Manager) CloseOwned(owner Owner, by ClosedBy) int {
+	if owner == nil || !reflect.TypeOf(owner).Comparable() {
+		return 0
 	}
-	m.terminateSession(sessionID)
+	var owned []*session
+	m.mu.RLock()
+	for _, s := range m.sessions {
+		if s.owner == owner && !s.ending.Load() {
+			owned = append(owned, s)
+		}
+	}
+	m.mu.RUnlock()
+	for _, s := range owned {
+		s.beginClose(by)
+	}
+	m.awaitGone(owned)
+	return len(owned)
 }
 
-// forwardSignals listens for host-process signals once and forwards them to
-// all active terminal child processes. Runs for the lifetime of the Manager.
+// awaitGone waits, for at most closeWait in all, until the sessions are gone.
+func (m *Manager) awaitGone(sessions []*session) {
+	deadline := time.NewTimer(closeWait)
+	defer deadline.Stop()
+	for _, s := range sessions {
+		select {
+		case <-s.done:
+		case <-deadline.C:
+			m.log.Warnw(m.ctx, "a terminal session was still ending after a close", "session", s.id)
+			return
+		}
+	}
+}
+
+// forwardSignals listens for host-process signals once and forwards them to all active terminal child
+// processes. Runs for the lifetime of the Manager.
 func (m *Manager) forwardSignals() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
@@ -223,193 +584,18 @@ func (m *Manager) forwardSignals() {
 	for {
 		select {
 		case sig := <-ch:
-			m.mux.RLock()
-			for sid, cmd := range m.cmds {
-				if cmd.Process != nil {
-					if err := cmd.Process.Signal(sig); err != nil {
-						m.log.Debugw(context.Background(), "failed to forward signal",
-							"signal", sig, "session", sid, "error", err)
-					}
+			m.mu.RLock()
+			for id, s := range m.sessions {
+				if s.cmd.Process == nil {
+					continue
+				}
+				if err := s.cmd.Process.Signal(sig); err != nil {
+					m.log.Debugw(m.ctx, "failed to forward signal", "signal", sig, "session", id, "error", err)
 				}
 			}
-			m.mux.RUnlock()
+			m.mu.RUnlock()
 		case <-m.ctx.Done():
 			return
 		}
 	}
-}
-
-// handleSessionClose waits for a session's context to be cancelled and emits
-// a CLOSE signal to the frontend.
-func (m *Manager) handleSessionClose(ctx context.Context, sessionID string) {
-	<-ctx.Done()
-	m.outMux <- sdkexec.StreamOutput{
-		SessionID: sessionID,
-		Target:    sdkexec.StreamTargetStdOut,
-		Data:      []byte("Session terminated"),
-		Signal:    sdkexec.StreamSignalClose,
-		Error:     nil,
-	}
-}
-
-func (m *Manager) handleOutStream(
-	_ context.Context,
-	sessionID string,
-	stream io.Reader,
-) {
-	for {
-		buf := make([]byte, DefaultReadBufferSize)
-		read, err := stream.Read(buf)
-		if err != nil {
-			if err != io.EOF {
-				m.log.Errorw(context.Background(),
-					"error reading from stream",
-					"session", sessionID,
-					"error", err,
-				)
-			}
-
-			m.mux.RLock()
-			_, exists := m.sessions[sessionID]
-			m.mux.RUnlock()
-			if exists {
-				m.terminateSession(sessionID)
-			}
-
-			return
-		}
-
-		if len(buf) > 0 {
-			m.outMux <- sdkexec.StreamOutput{
-				SessionID: sessionID,
-				Target:    sdkexec.StreamTargetStdOut,
-				Data:      buf[:read],
-				Signal:    sdkexec.StreamSignalNone,
-				Error:     nil,
-			}
-
-			m.mux.RLock()
-			buffer, ok := m.buffers[sessionID]
-			m.mux.RUnlock()
-			if !ok {
-				// soft error
-				m.log.Errorw(context.Background(), "failed to write to session buffer: couldn't find session")
-				continue
-			}
-
-			buffer.Append(buf[:read])
-		}
-	}
-}
-
-// WriteToSession writes a string to the session's input.
-func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
-
-	ptyFile, exists := m.ptys[sessionID]
-	if !exists {
-		err := apperror.SessionNotFound(sessionID)
-		m.log.Errorw(context.Background(), "session not found", "error", err)
-		return err
-	}
-
-	if _, err := ptyFile.Write(bytes); err != nil {
-		m.log.Errorw(context.Background(), "error writing to session", "session", sessionID, "error", err)
-		return err
-	}
-
-	return nil
-}
-
-// WriteSession writes data to the session's input.
-func (m *Manager) WriteSession(sessionID string, input []byte) error {
-	return m.writeToSession(sessionID, input)
-}
-
-// AttachSession marks a session as attached and returns its current output
-// buffer. The caller renders the returned buffer; it is not also sent on the
-// output stream, where any viewer already listening would print it twice. This
-// matches plugin sessions, whose SDK manager only returns the buffer.
-func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, error) {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
-	session, exists := m.sessions[sessionID]
-	if !exists {
-		err := apperror.SessionNotFound(sessionID)
-		m.log.Errorw(context.Background(), "session not found", "error", err)
-		return nil, nil, err
-	}
-
-	buffer := m.buffers[sessionID]
-	var data []byte
-	if buffer != nil {
-		data = buffer.GetAll()
-	}
-	m.log.Debugw(context.Background(), "session buffer loaded", "session", sessionID, "bufferSize", len(data))
-
-	// pointer, no need to reassign
-	session.Attached = true
-
-	m.log.Debugw(context.Background(), "session attached", "session", sessionID)
-	return session, data, nil
-}
-
-// DetachFromSession marks a session as not attached, stopping output broadcast.
-func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
-	session, exists := m.sessions[sessionID]
-	if !exists {
-		err := apperror.SessionNotFound(sessionID)
-		m.log.Errorw(context.Background(), "session not found", "error", err)
-		return nil, err
-	}
-
-	session.Attached = false
-
-	m.log.Debugw(context.Background(), "session detached", "session", sessionID)
-	return session, nil
-}
-
-// CloseSession cancels the session's context, effectively terminating
-// its command, and removes it from the manager.
-func (m *Manager) CloseSession(sessionID string) error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-
-	_, exists := m.sessions[sessionID]
-	if !exists {
-		err := apperror.SessionNotFound(sessionID)
-		m.log.Errorw(context.Background(), "session not found", "error", err)
-		return err
-	}
-
-	m.terminateSessionLocked(sessionID)
-	return nil
-}
-
-// terminateSession acquires the lock and terminates the session.
-func (m *Manager) terminateSession(sessionID string) {
-	m.mux.Lock()
-	defer m.mux.Unlock()
-	m.terminateSessionLocked(sessionID)
-}
-
-// terminateSessionLocked terminates a session. Caller must hold m.mux.
-func (m *Manager) terminateSessionLocked(sessionID string) {
-	if cancel, ok := m.cancels[sessionID]; ok {
-		cancel()
-	}
-	if ptyFile, ok := m.ptys[sessionID]; ok {
-		ptyFile.Close()
-	}
-	delete(m.sessions, sessionID)
-	delete(m.ptys, sessionID)
-	delete(m.cmds, sessionID)
-	delete(m.cancels, sessionID)
-	delete(m.buffers, sessionID)
-	m.log.Debugw(context.Background(), "session terminated", "session", sessionID)
 }

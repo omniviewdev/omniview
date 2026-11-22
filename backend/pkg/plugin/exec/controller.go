@@ -39,7 +39,17 @@ type Controller interface {
 	CreateSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
 	OpenNativeSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) error
 	GetNativeTerminalSupport() bool
-	CreateTerminal(opts exec.SessionOptions) (*exec.Session, error)
+	// CreateTerminal starts a shell on this machine for owner, a comparable value that names the window
+	// that opened it: the terminal ends with that window (CloseOwnedTerminals).
+	CreateTerminal(ctx context.Context, owner terminal.Owner, opts terminal.Options) (*terminal.Session, error)
+	// WriteTerminal and ResizeTerminal apply input to a local terminal; seq is the caller's sequence
+	// number, or zero.
+	WriteTerminal(sessionID string, seq uint64, data []byte) error
+	ResizeTerminal(sessionID string, seq uint64, rows, cols int) error
+	// IsBusy says whether something other than the shell holds a terminal's foreground.
+	IsBusy(sessionID string) (terminal.Foreground, error)
+	// CloseOwnedTerminals ends the local terminals of owner and returns how many it ended.
+	CloseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) int
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
 	AttachSession(sessionID string) (*exec.Session, []byte, error)
@@ -135,11 +145,9 @@ func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOp
 
 	// Initialize the terminal manager synchronously so c.terminalManager is
 	// safe to read before any goroutine starts.
-	manager, inMux, outMux, resizeMux := terminal.NewManager(ctx, c.logger)
-	c.terminalManager = manager
+	c.startTerminals(ctx)
 
-	go c.runMux()                              // plugin mux
-	go c.runLocalMux(inMux, outMux, resizeMux) // local terminal should be muxed separately to avoid latency
+	go c.runMux() // plugin mux
 	return nil
 }
 
@@ -158,31 +166,6 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 	}()
 	ch <- input
 	return nil
-}
-
-func (c *controller) runLocalMux(
-	inMux chan exec.StreamInput,
-	outMux chan exec.StreamOutput,
-	resizeMux chan exec.StreamResize,
-) {
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case input := <-inMux:
-			if err := c.terminalManager.WriteSession(input.SessionID, input.Data); err != nil {
-				c.logger.Errorw(c.ctx, "error writing to session", "sessionID", input.SessionID,
-					"errorClass", telemetryutil.ErrorClass(err))
-			}
-		case output := <-outMux:
-			c.dispatchOutput(output)
-		case resize := <-resizeMux:
-			if err := c.terminalManager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
-				c.logger.Errorw(c.ctx, "error resizing session", "sessionID", resize.SessionID,
-					"errorClass", telemetryutil.ErrorClass(err))
-			}
-		}
-	}
 }
 
 // dispatchOutput emits a session output or signal to the UI.
@@ -584,18 +567,6 @@ func (c *controller) GetHandler(
 	return &h
 }
 
-// CreateTerminal creates a local terminal session with TTY enabled.
-// This is a convenience wrapper for CreateSession("local", "local", opts)
-// with TTY forced on.
-//
-//nolint:nonamedreturns // The deferred span records the returned error.
-func (c *controller) CreateTerminal(opts exec.SessionOptions) (_ *exec.Session, err error) {
-	_, end := startOp(context.Background(), "exec.CreateTerminal")
-	defer end(&err)
-	opts.TTY = true
-	return c.CreateSession(context.Background(), "local", "local", opts)
-}
-
 func (c *controller) CreateSession(
 	ctx context.Context,
 	plugin string,
@@ -608,32 +579,17 @@ func (c *controller) CreateSession(
 		attribute.String("plugin_id", plugin),
 		attribute.String("connection_id", connectionID),
 	)
+	if plugin == "local" {
+		// The host's own shell is not a plugin's session. CreateTerminal starts it, for the window that owns
+		// it; this route started one that no window owned and nothing would ever end.
+		return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal starts with CreateTerminal.")
+	}
 	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	var session *exec.Session
-	if plugin == "local" {
-		if opts.HasResourceIntent() {
-			return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.")
-		}
-		// start local terminal
-		session, err = c.terminalManager.StartSession(
-			c.getUnconnectedCtx(context.WithoutCancel(ctx), plugin),
-			opts,
-		)
-		if err != nil {
-			return nil, err
-		}
-		c.mu.Lock()
-		c.sessionIndex[session.ID] = sessionIndex{pluginID: "", connectionID: "", local: true}
-		c.mu.Unlock()
-		trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
-		c.logger.Infow(ctx, "exec session created", "sessionID", session.ID, "pluginID", "local")
-		return session, nil
-	}
-
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
@@ -689,7 +645,7 @@ func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 	}
 
 	// add the local terminal sessions
-	sessions = append(sessions, c.terminalManager.ListSessions(pctx)...)
+	sessions = append(sessions, c.terminalManager.ListSessions()...)
 
 	return sessions, nil
 }
@@ -804,7 +760,7 @@ func (c *controller) WriteSession(
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.WriteSession(sessionID, data)
+		return c.terminalManager.Write(sessionID, 0, data)
 	}
 	if inchan == nil {
 		return apperror.SessionNotFound(sessionID)
@@ -856,7 +812,7 @@ func (c *controller) ResizeSession(
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.ResizeSession(sessionID, rows, cols)
+		return c.terminalManager.Resize(sessionID, 0, int(rows), int(cols))
 	}
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)

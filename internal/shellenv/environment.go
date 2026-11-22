@@ -53,7 +53,7 @@ func Capture(ctx context.Context, base []string) ([]string, error) {
 	// External commands avoid differences between shell builtin implementations.
 	command := "/usr/bin/printf '\\0OMNIVIEW_LOGIN_ENV\\0'; /usr/bin/env -0"
 	var input string
-	switch shellName(shell) {
+	switch Name(shell) {
 	case "csh", "tcsh":
 		// -l cannot be combined with -c. Read the command from standard input.
 		input = command + "\nexit\n"

@@ -2,15 +2,27 @@ package exec
 
 import (
 	"context"
+	"sync"
 
-	"github.com/omniviewdev/omniview/backend/pkg/invocation"
-	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
-	"github.com/omniviewdev/omniview/internal/nativeapps"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	"github.com/omniviewdev/omniview/backend/pkg/terminal"
+	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
+	"github.com/omniviewdev/omniview/internal/nativeapps"
+	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
+
+// WindowRealm is what the wrapper needs of the host's window realm: provenance for a call, the
+// admission of the window that makes it, and the signal that a window is gone.
+type WindowRealm interface {
+	invocation.ContextScope
+	AdmitWindow(window application.Window) (*invocation.Scope, error)
+	OnRetire(fn func(invocation.WindowIdentity))
+}
 
 // ServiceWrapper is an explicit delegation wrapper around exec.Controller.
 // Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
@@ -18,7 +30,9 @@ import (
 //	OnPluginDestroy
 type ServiceWrapper struct {
 	Ctrl  Controller
-	Realm invocation.ContextScope
+	Realm WindowRealm
+	// retire subscribes to the realm's retirement signal once, before the first terminal is made.
+	retire sync.Once
 }
 
 func (s *ServiceWrapper) realmContext(ctx context.Context) context.Context {
@@ -83,8 +97,56 @@ func (s *ServiceWrapper) GetNativeTerminalApplications() (_ []nativeapps.Applica
 	return nativeapps.Discover(ctx)
 }
 
-func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {
-	return s.Ctrl.CreateTerminal(opts)
+// CreateTerminal starts a shell on this machine for the window that asks. opts names it as for any
+// session (its id, if the caller chose one so that it can listen first, and its command; empty is the
+// account's login shell) and size is the size the pty is opened at, before the shell starts. The answer
+// states the shell, the directory it started in and the size that was applied.
+//
+// The shell belongs to the window and ends with it: when the window closes, or the page it served is
+// gone (the realm says so for both), the window's terminals are ended, and a tab restored in a new page
+// says they ended. A call that comes from no window starts nothing: a terminal that nothing could ever
+// retire would outlive everything.
+func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.SessionOptions, size terminal.Size) (*terminal.Session, error) {
+	if opts.HasResourceIntent() {
+		return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.")
+	}
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	owner, err := s.terminalOwner(window)
+	if err != nil {
+		return nil, err
+	}
+	session, err := s.Ctrl.CreateTerminal(ctx, owner, terminal.Options{
+		ID: opts.ID, Command: opts.Command, Cols: size.Cols, Rows: size.Rows, Labels: opts.Labels, Params: opts.Params,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// The window can be retired while the shell starts, and a retirement that came before the session was
+	// registered found nothing to end. The realm refuses a retired window, so asking it again now that the
+	// session is registered closes the gap: a retirement after this point finds the session.
+	if _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {
+		s.Ctrl.CloseOwnedTerminals(owner, terminal.ClosedByWindow)
+		return nil, admitErr
+	}
+	return session, nil
+}
+
+// terminalOwner admits the window and names it as the owner of the terminals it opens.
+func (s *ServiceWrapper) terminalOwner(window application.Window) (invocation.WindowIdentity, error) {
+	var none invocation.WindowIdentity
+	if s.Realm == nil || window == nil {
+		return none, apperror.Forbidden("Access denied", "A terminal belongs to the window that opens it.")
+	}
+	if _, err := s.Realm.AdmitWindow(window); err != nil {
+		return none, err
+	}
+	// Subscribed before the first session is made, so no retirement can fall before it.
+	s.retire.Do(func() {
+		s.Realm.OnRetire(func(key invocation.WindowIdentity) {
+			s.Ctrl.CloseOwnedTerminals(key, terminal.ClosedByWindow)
+		})
+	})
+	return invocation.IdentityOf(window), nil
 }
 func (s *ServiceWrapper) ListSessions() ([]*execsdk.Session, error) {
 	return s.Ctrl.ListSessions()
@@ -106,6 +168,24 @@ func (s *ServiceWrapper) CloseSession(sessionID string) error {
 }
 func (s *ServiceWrapper) ResizeSession(sessionID string, rows, cols uint16) error {
 	return s.Ctrl.ResizeSession(sessionID, rows, cols)
+}
+
+// WriteTerminal applies input to a local terminal. seq is the caller's sequence number for the session,
+// counted up from 1, one for each write or resize: calls the transport delivers out of order are applied
+// in sequence order. Zero is "no number": the call is applied in the order it arrived.
+func (s *ServiceWrapper) WriteTerminal(sessionID string, seq uint64, data []byte) error {
+	return s.Ctrl.WriteTerminal(sessionID, seq, data)
+}
+
+// ResizeTerminal sets the size of a local terminal; seq is as for WriteTerminal.
+func (s *ServiceWrapper) ResizeTerminal(sessionID string, seq uint64, rows, cols int) error {
+	return s.Ctrl.ResizeTerminal(sessionID, seq, rows, cols)
+}
+
+// IsBusy says whether something other than the shell holds the terminal's foreground: idle, busy (with
+// the program's name where the platform gives it) or unknown. The UI asks when the user closes a terminal.
+func (s *ServiceWrapper) IsBusy(sessionID string) (terminal.Foreground, error) {
+	return s.Ctrl.IsBusy(sessionID)
 }
 func (s *ServiceWrapper) GetHandler(plugin, resource string) *execsdk.Handler {
 	return s.Ctrl.GetHandler(plugin, resource)

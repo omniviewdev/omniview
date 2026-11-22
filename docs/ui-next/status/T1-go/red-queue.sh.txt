@@ -1,0 +1,9 @@
+#!/bin/bash
+# red run: each queue test against the naive (pre-change) queue, one process each, 20 s cap
+cd /tmp
+for t in $(/tmp/terminal-naive.test -test.list 'TestQueue'); do
+  out=$(timeout 25 /tmp/terminal-naive.test -test.run "^${t}\$" -test.count=1 -test.timeout 20s 2>&1)
+  code=$?
+  if [ $code -eq 0 ]; then echo "PASS  $t"; elif echo "$out" | grep -q "panic: test timed out"; then echo "RED   $t  (hangs: timed out)"; else first=$(echo "$out" | grep -m1 -E "Error:|Messages:|error|FAIL" | head -1 | cut -c1-140); echo "RED   $t  $first"; fi
+done
+echo DONE

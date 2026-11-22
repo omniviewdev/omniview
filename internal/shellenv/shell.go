@@ -3,6 +3,7 @@ package shellenv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,14 @@ import (
 	"runtime"
 	"strings"
 	"time"
+)
+
+// ErrUnavailable is why Resolve refuses a shell that is not installed; ErrUnsupported, why it refuses a
+// program that is not a shell it can start. Both are wrapped, so errors.Is tells them apart and the
+// text stays what it was.
+var (
+	ErrUnavailable = errors.New("shell executable unavailable")
+	ErrUnsupported = errors.New("unsupported terminal shell")
 )
 
 // Default returns an installed shell, consulting the account when SHELL is absent.
@@ -81,10 +90,10 @@ func Resolve(command []string) (string, []string, error) {
 	}
 	path, err := exec.LookPath(shell)
 	if err != nil {
-		return "", nil, fmt.Errorf("shell executable unavailable: %w", err)
+		return "", nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	var args []string
-	switch shellName(path) {
+	switch Name(path) {
 	case "zsh", "bash", "fish", "sh", "dash", "ksh", "nu", "xonsh":
 		args = []string{"-i", "-l"}
 	case "csh", "tcsh":
@@ -94,16 +103,17 @@ func Resolve(command []string) (string, []string, error) {
 		args = []string{"-Login", "-NoLogo"}
 	case "cmd.exe":
 		if runtime.GOOS != "windows" {
-			return "", nil, fmt.Errorf("unsupported terminal shell %q", shell)
+			return "", nil, fmt.Errorf("%w %q", ErrUnsupported, shell)
 		}
 	default:
-		return "", nil, fmt.Errorf("unsupported terminal shell %q", shell)
+		return "", nil, fmt.Errorf("%w %q", ErrUnsupported, shell)
 	}
 	return path, append(args, extra...), nil
 }
 
-// shellName recognizes custom symlinks without replacing the selected executable.
-func shellName(path string) string {
+// Name is the shell's own name: the file a symlink points at, so a custom link to bash is bash. The
+// selected executable is never replaced by it.
+func Name(path string) string {
 	if target, err := filepath.EvalSymlinks(path); err == nil {
 		return filepath.Base(target)
 	}
