@@ -1,0 +1,36 @@
+# Scratch (not committed): faults in unavailable.mjs, each in a scratch copy inside the worktree (scripts/ui-next-pods-mut), each of which the unit tests must catch.
+import os, re, shutil, subprocess, sys
+ROOT = os.path.expanduser('~/Repos/omniviewdev/worktrees/inv4-pin')
+SRC = os.path.join(ROOT, 'scripts/ui-next-pods')
+DST = os.path.join(ROOT, 'scripts/ui-next-pods-mut')
+M = {
+ 'M1 any availability text is accepted': ("if (text !== 'False/MissingEndpoints') {", "if (false) {"),
+ 'M2 a missing APIService is not reported': ("if (printed === undefined) {", "if (false) {"),
+ 'M3 every refused request is let through': ("return failures\n    .filter(", "return [] || failures\n    .filter("),
+ 'M4 the status is not part of the cancellation allowance': ("!(failure.status === 422 && /CANCELLED/", "!(/CANCELLED/"),
+ 'M5 any 422 is the page\'s own': ("!(failure.status === 422 && /CANCELLED/.test(failure.answered ?? ''))", "!(failure.status === 422)"),
+ 'M6 a fact that is not current passes': ("if (entry.state !== 'current') {", "if (false) {"),
+ 'M7 the reason is not compared': ("const wanted = `${GROUP_VERSION} (${REASON})`;\n  if (named.length !== 1 || named[0] !== wanted) {", "const wanted = `${GROUP_VERSION} (${REASON})`;\n  if (named.length !== 1 || !named[0].startsWith(GROUP_VERSION)) {"),
+ 'M8 the count is not compared': ("if (value.count !== 1) {", "if (false) {"),
+ 'M9 two groups pass': ("if (named.length !== 1 || named[0] !== wanted) {", "if (named.length < 1 || named[0] !== wanted) {"),
+ 'M10 a plugin without the trait passes': ("if (metadata.supported !== true) {", "if (false) {"),
+ 'M11 the text of a value is not read': ("if (typeof entry.value === 'string') {", "if (false) {"),
+ 'M12 a missing fact passes': ("if (entry === undefined) {", "if (entry === undefined && false) {"),
+}
+bad = []
+for name, (old, new) in M.items():
+    shutil.rmtree(DST, ignore_errors=True)
+    shutil.copytree(SRC, DST)
+    p = os.path.join(DST, 'unavailable.mjs')
+    s = open(p).read()
+    if old not in s:
+        print(name, ': DID NOT APPLY'); bad.append(name); continue
+    open(p, 'w').write(s.replace(old, new, 1))
+    r = subprocess.run(['node', '--test', '--test-reporter=spec', os.path.join(DST, 'unavailable.test.mjs')], cwd=ROOT, capture_output=True, text=True, errors='replace')
+    out = r.stdout + r.stderr
+    failed = re.findall(r'^\s*✖ (.{0,90})', out, re.M)
+    status = 'CAUGHT' if r.returncode != 0 else 'NOT CAUGHT'
+    if r.returncode == 0: bad.append(name)
+    print(f'{name}: {status} ({len(set(failed))} failing tests)')
+shutil.rmtree(DST, ignore_errors=True)
+sys.exit(1 if bad else 0)

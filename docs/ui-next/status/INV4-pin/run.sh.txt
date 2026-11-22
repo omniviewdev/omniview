@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Scratch (not committed): the job's flow of .github/workflows/ui-next-pods.yml on a throwaway kind cluster of my own, for the INV4 pin PR.
+#   run.sh <run-name> <plugin-dir> [full|group]
+#     full   cluster, fixture, host with plugin, the main check (11 tests), the new control, the group, the second host, the new check
+#     group  cluster, fixture, the group, one host, the new check only (for negative proofs)
+# KEEP=1 keeps the cluster and hosts for the next command. Only the cluster this run made (by exact name) is ever deleted.
+set -uo pipefail
+RUN="$1"; PLUGIN="$2"; WHAT="${3:-full}"
+ROOT="$HOME/Repos/omniviewdev/worktrees/inv4-pin"
+SCRATCH=/tmp/inv4-work/pin
+export OMNIVIEW_E2E_WORK="$SCRATCH/work-$RUN"
+KC="$SCRATCH/kc-$RUN"
+NAME="inv4-pin-$RUN"
+IMAGE='kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661'
+P1=${P1:-34231}; P4=${P4:-34234}
+cd "$ROOT"
+stamp() { date '+%H:%M:%S'; }
+secs() { echo $(( $(date +%s) - $1 )); }
+echo "== run $RUN plugin=$PLUGIN what=$WHAT at $(stamp)"; uptime
+cleanup() {
+  if [ "${KEEP:-0}" != 1 ]; then
+    scripts/ui-next-pods/host.sh stop with-plugin 2>/dev/null || true
+    scripts/ui-next-pods/host.sh stop unavailable-group 2>/dev/null || true
+    kind delete cluster --name "$NAME" --kubeconfig "$KC" 2>&1 | tail -1 || true
+    rm -f "$KC"
+  fi
+}
+trap cleanup EXIT
+rm -rf "$OMNIVIEW_E2E_WORK"; mkdir -p "$OMNIVIEW_E2E_WORK"
+t=$(date +%s)
+unset KUBECONFIG
+kind create cluster --name "$NAME" --kubeconfig "$KC" --image "$IMAGE" --wait 180s 2>&1 | tail -2
+echo "cluster: $(secs $t) s"
+export KUBECONFIG="$KC"
+t=$(date +%s)
+kubectl apply -f docs/ui-next/slices/1a-pods-list/fixture.yaml >/dev/null
+kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s >/dev/null
+kubectl -n checkout rollout status sts/cart-cache --timeout=240s >/dev/null
+kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s >/dev/null
+kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s >/dev/null
+echo "fixture: $(secs $t) s"
+unset KUBECONFIG
+check() { # check <mode> <port>
+  local t0; t0=$(date +%s)
+  env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$2" OMNIVIEW_CHECK_KUBECONFIG="$KC" OMNIVIEW_CHECK_MODE="$1" \
+    node --test --test-reporter=spec scripts/ui-next-pods/pods-cluster.check.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE '^\s*$' | cut -c1-1500
+  local rc=${PIPESTATUS[0]}
+  echo "check $1 on $2: exit $rc in $(secs $t0) s"
+  return $rc
+}
+register() {
+  export KUBECONFIG="$KC"
+  kubectl apply -f scripts/ui-next-pods/unavailable-group.yaml
+  kubectl wait --for=condition=Available=false apiservice/v1beta1.inv4-unavailable.example.com --timeout=120s
+  kubectl get apiservice v1beta1.inv4-unavailable.example.com
+  unset KUBECONFIG
+}
+if [ "$WHAT" = full ]; then
+  t=$(date +%s.%N); scripts/ui-next-pods/host.sh start with-plugin "$P1" "$KC" "$PLUGIN"; echo "host start (the main host): $(python3 -c "import time,sys; print(round(time.time()-$t,1))") s"
+  check parity "$P1"
+  check control-group-absent "$P1"
+fi
+t=$(date +%s.%N); register; echo "register + wait: $(python3 -c "import time,sys; print(round(time.time()-$t,1))") s"
+t=$(date +%s.%N); scripts/ui-next-pods/host.sh start unavailable-group "$P4" "$KC" "$PLUGIN"; echo "host start: $(python3 -c "import time,sys; print(round(time.time()-$t,1))") s"
+check unavailable-group "$P4"
+rc=$?
+echo "== run $RUN done, new check exit $rc at $(stamp)"
+if [ "${KEEP:-0}" = 1 ]; then echo "KEPT cluster $NAME kubeconfig $KC work $OMNIVIEW_E2E_WORK"; fi
+exit $rc

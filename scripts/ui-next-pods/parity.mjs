@@ -7,6 +7,7 @@ import { compareDeployment, compareDetail, compareGone, DETAIL_DEPLOYMENT, DETAI
 import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 import { compareSorted, deploymentsByAge, directionOf, opposite, podsByRestarts, sortCanBeTold } from './sort.mjs';
+import { APISERVICE, AVAILABLE_JSONPATH, compareAvailability, compareFacts, refusedRequests } from './unavailable.mjs';
 
 const run = promisify(execFile);
 
@@ -114,13 +115,18 @@ export async function openWindow(browser, baseURL, options = {}) {
 // check reads and finds wanting). What the page shows is the plugin's page, named by the plugin's contribution.
 export async function openPods(browser, baseURL, options = {}) {
   const page = await openWindow(browser, baseURL, options);
+  await openPluginPage(page);
+  return page;
+}
+
+// The press on the plugin's row, on a window that is open. A check that has to hear the page from its first request opens the window (`openWindow`), attaches what it listens with, and then presses the row (`checkUnavailableGroup`).
+export async function openPluginPage(page) {
   const row = page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ });
   try {
     await row.click({ timeout: 20_000 });
   } catch {
     // No row: the host has no such plugin. The window's own screen says so, and that is what the check reads.
   }
-  return page;
 }
 
 // Polls until `done(read)` or the deadline; returns the last reading either way.
@@ -148,20 +154,25 @@ export async function checkParity({ browser, baseURL, kubeconfig, timeoutMs = 30
 
   const page = await openPods(browser, baseURL);
   try {
-    const result = await converge({ kubectl: () => oracleRows(kubeconfig), readPage: () => readPage(page), timeoutMs });
-    if (!result.agreed) {
-      const names = result.after.map((row) => row.name);
-      const changed = result.changing.length > 0 ? `; kubectl changed ${result.changing.join(', ')} between its two reads of the last comparison, so that Pod may read either way` : '';
-      throw new ParityError(
-        'PAGE_MISMATCH',
-        `${result.problems.join('; ')}; page status ${JSON.stringify(result.read.status)}; ${String(result.attempt)} comparisons in ${String(timeoutMs / 1000)} s, each with kubectl read before and after the page${changed}`,
-        { diff: diffNames(result.read.names, names), status: result.read.status, pageNames: result.read.names, oracle: names, read: result.read, attempts: result.attempt },
-      );
-    }
-    return { oracle: result.matched.names, status: result.read.status, read: result.read, expected: { count: result.matched.count, filters: result.matched.filters } };
+    return await agreeWithKubectl(page, kubeconfig, timeoutMs);
   } finally {
     await page.close();
   }
+}
+
+// The agreement itself, on a page that is open: kubectl, the page and kubectl again, until the page agrees or `timeoutMs` has passed (see above). Throws ParityError('PAGE_MISMATCH') with the last problems.
+async function agreeWithKubectl(page, kubeconfig, timeoutMs) {
+  const result = await converge({ kubectl: () => oracleRows(kubeconfig), readPage: () => readPage(page), timeoutMs });
+  if (!result.agreed) {
+    const names = result.after.map((row) => row.name);
+    const changed = result.changing.length > 0 ? `; kubectl changed ${result.changing.join(', ')} between its two reads of the last comparison, so that Pod may read either way` : '';
+    throw new ParityError(
+      'PAGE_MISMATCH',
+      `${result.problems.join('; ')}; page status ${JSON.stringify(result.read.status)}; ${String(result.attempt)} comparisons in ${String(timeoutMs / 1000)} s, each with kubectl read before and after the page${changed}`,
+      { diff: diffNames(result.read.names, names), status: result.read.status, pageNames: result.read.names, oracle: names, read: result.read, attempts: result.attempt },
+    );
+  }
+  return { oracle: result.matched.names, status: result.read.status, read: result.read, expected: { count: result.matched.count, filters: result.matched.filters } };
 }
 
 // The Pod detail page, opened the way a person opens it: the click on the Pod's name in the Pods list (the plugin's list draws the name as a link to the detail page).
@@ -705,4 +716,117 @@ export async function expectedLane({ baseURL, kubeconfig }) {
   const context = (await kubectl(kubeconfig, ['config', 'current-context'])).trim();
   const connection = (await listConnections(baseURL)).find((candidate) => candidate?.data?.context === context);
   return { context, id: connection?.id };
+}
+
+// INV4 (plugin omniview-plugin-kubernetes#281, the demo's finding O2). The host's account of one connection's facts, asked as the page asks (`ServiceWrapper.GetConnectionMetadata` of the resource service): the envelope the runtime's
+// `useConnectionMetadata` reads, `{ supported, transportAvailable, snapshot: { entries: { <fact>: { state, value } } } }` (backend/pkg/plugin/resource/connection_metadata.go).
+export async function readConnectionMetadata(baseURL, connectionID, pluginID = KUBERNETES_PLUGIN_ID) {
+  const response = await fetch(new URL('/wails/runtime', baseURL), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'pods-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `pods-metadata-${String(Date.now())}`, methodName: `${RESOURCE_SERVICE}.GetConnectionMetadata`, args: [pluginID, connectionID] } }),
+  });
+  if (!response.ok) {
+    throw new Error(`the facts of the connection ${connectionID} of ${pluginID} could not be read: ${String(response.status)} ${await response.text()}`);
+  }
+
+  return response.json();
+}
+
+// The requests a page makes that the host refuses (status 400 or more), each with what was asked and what the host answered, in the way the seam check records them (ui-next/plugins/e2e/seam.check.mjs, `watchRequests`). It is attached to
+// the page before the plugin's page is opened, so the first request of the first load is seen. The bodies are read in the background: `settled()` waits for them, and a check calls it before it closes the page.
+function recordRequests(page) {
+  const failures = [];
+  const bodies = [];
+  page.on('response', (response) => {
+    if (response.status() < 400) {
+      return;
+    }
+    const request = response.request();
+    const failure = { status: response.status(), method: request.method(), path: new URL(response.url()).pathname, asked: String(request.postData() ?? '').slice(0, 400), answered: '' };
+    failures.push(failure);
+    bodies.push(
+      response.text().then(
+        (body) => {
+          failure.answered = body.slice(0, 400);
+        },
+        () => undefined,
+      ),
+    );
+  });
+  return { failures, settled: () => Promise.all(bodies.splice(0)) };
+}
+
+// The cluster's own account of the API group that cannot answer: what `kubectl get apiservice` prints of its Available condition (unavailable.mjs), or `undefined` when the cluster has no such APIService.
+async function readAvailability(kubeconfig) {
+  try {
+    return await kubectl(kubeconfig, ['get', 'apiservice', APISERVICE, '-o', `jsonpath=${AVAILABLE_JSONPATH}`]);
+  } catch (error) {
+    // kubectl says NotFound on its stderr and exits 1 when there is no such APIService. Anything else (no cluster, a refused credential) is a failure of the check itself and is not hidden as an absent group.
+    if (/\(NotFound\)/.test(String(error?.stderr ?? ''))) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+// INV4: a host whose plugin connects to a cluster that has an API group that cannot answer (unavailable-group.yaml: an APIService whose Service has no endpoints, Available=False, registered BEFORE the plugin connects, which is how
+// the demo met it with a metrics-server that was down). Before plugin #281 the first Pods page of such a connection failed, "Connection admission requires complete discovered support.", and Retry worked. Now:
+//   the page, opened from the plugin list and never helped by a press on Retry, lists the Pods `kubectl get pods -A` lists               ParityError PAGE_MISMATCH
+//   no request the page made was refused by the host (its own cancelled query apart, unavailable.mjs)                                    ParityError REQUEST_REFUSED
+//   the host's facts for the connection name the group: `kubernetes.unavailable_api_groups` (read as the page's hook reads it)          ParityError FACT_MISMATCH
+// and before any of it, the cluster must hold the group (GROUP_MISSING: the control that runs on a cluster without it) and the fixture (FIXTURE_MISSING). When the page fails to agree, the requests the host refused are in its message.
+export async function checkUnavailableGroup({ browser, baseURL, kubeconfig, timeoutMs = 45_000, factsMs = 15_000 }) {
+  const absent = compareAvailability(await readAvailability(kubeconfig));
+  if (absent.length > 0) {
+    throw new ParityError('GROUP_MISSING', `the cluster lacks the API group that cannot answer: ${absent.join('; ')}`, { absent });
+  }
+  const oracle = (await oracleRows(kubeconfig)).map((row) => row.name);
+  const gaps = fixtureGaps(oracle);
+  if (gaps.length > 0) {
+    throw new ParityError('FIXTURE_MISSING', `the cluster lacks the fixture: ${gaps.join('; ')}`, { gaps, oracle });
+  }
+
+  const page = await openWindow(browser, baseURL);
+  const requests = recordRequests(page);
+  try {
+    await openPluginPage(page);
+    let agreed;
+    try {
+      agreed = await agreeWithKubectl(page, kubeconfig, timeoutMs);
+    } catch (error) {
+      await requests.settled();
+      const refused = refusedRequests(requests.failures);
+      if (!(error instanceof ParityError) || refused.length === 0) {
+        throw error;
+      }
+      throw new ParityError(error.code, `${error.message.slice(error.code.length + 2)}; requests the host refused: ${refused.join(' | ')}`, { ...error.detail, refused });
+    }
+    await requests.settled();
+    const refused = refusedRequests(requests.failures);
+    if (refused.length > 0) {
+      throw new ParityError('REQUEST_REFUSED', `the page's first load made requests the host refused: ${refused.join(' | ')}`, { refused });
+    }
+    // What the check let through: the page's own cancelled queries (unavailable.mjs). The test reports how many, so that a run says whether the allowance was used.
+    const cancelled = requests.failures.length - refused.length;
+
+    const { context, id } = await expectedLane({ baseURL, kubeconfig });
+    if (id === undefined || id === '') {
+      throw new ParityError('FACT_MISMATCH', `the host lists no connection for the context ${JSON.stringify(context)}, so its facts cannot be read`, { context });
+    }
+    const deadline = Date.now() + factsMs;
+    for (;;) {
+      const facts = await readConnectionMetadata(baseURL, id);
+      const problems = compareFacts(facts);
+      if (problems.length === 0) {
+        return { ...agreed, facts, connectionID: id, cancelled };
+      }
+      if (Date.now() >= deadline) {
+        throw new ParityError('FACT_MISMATCH', problems.join('; '), { problems, facts, connectionID: id });
+      }
+      await page.waitForTimeout(500);
+    }
+  } finally {
+    await page.close();
+  }
 }

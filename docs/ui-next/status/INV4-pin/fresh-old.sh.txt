@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Scratch: a FRESH old-pin host (new HOME, nothing connected) for each variant: only the first page load of a host's connection is refused.
+export OMNIVIEW_E2E_WORK=/tmp/inv4-work/pin/work-x1
+cd "$HOME/Repos/omniviewdev/worktrees/inv4-pin"
+for spec in "old-noA1 noA1" "old-noA1-noA2 noA1,noA2" "old-noA1-noA2-noA3 noA1,noA2,noA3" "old-base base"; do
+  set -- $spec
+  scripts/ui-next-pods/host.sh stop old-pin 2>/dev/null
+  scripts/ui-next-pods/host.sh start old-pin 34233 /tmp/inv4-work/pin/kc-x1 /tmp/inv4-work/pin/plugin-old >/dev/null || { echo "host did not start"; exit 1; }
+  /tmp/inv4-work/pin/variants.sh x1 "fresh-$1" 34233 "$2"
+done
+scripts/ui-next-pods/host.sh stop old-pin 2>/dev/null
+echo FRESH-DONE

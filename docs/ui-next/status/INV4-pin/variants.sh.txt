@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Scratch (not committed): the negative proofs of the INV4 pin PR. Copies scripts/ui-next-pods to a temporary directory INSIDE the worktree (so that playwright and yaml resolve),
+# applies one fault or one removal of an assertion with python (a scratch copy only), runs checkUnavailableGroup against a host that is already running, and prints the verdict.
+#   variants.sh <run> <label> <port> <edit>[,<edit>...]      edits: base noA1 noA2 noA3 plant
+set -uo pipefail
+RUN="$1"; LABEL="$2"; PORT="$3"; EDITS="$4"
+ROOT="$HOME/Repos/omniviewdev/worktrees/inv4-pin"
+KC="/tmp/inv4-work/pin/kc-$RUN"
+VAR="$ROOT/scripts/ui-next-pods-variant"
+rm -rf "$VAR"; cp -R "$ROOT/scripts/ui-next-pods" "$VAR"
+python3 - "$VAR/parity.mjs" "$EDITS" <<'PY'
+import sys
+path, edits = sys.argv[1], sys.argv[2].split(',')
+s = open(path).read()
+def sub(old, new):
+    global s
+    assert old in s, 'edit does not apply: ' + old[:60]
+    s = s.replace(old, new, 1)
+for e in edits:
+    if e == 'base':
+        pass
+    elif e == 'noA1':  # the agreement with kubectl becomes a plain wait: the page has made its first requests when it ends
+        sub("agreed = await agreeWithKubectl(page, kubeconfig, timeoutMs);", "await page.waitForTimeout(8000);\n      agreed = { read: await readPage(page), oracle: [], status: '', expected: {} };")
+    elif e == 'noA2':  # the refused requests are not held against the page
+        sub("if (refused.length > 0) {\n      throw new ParityError('REQUEST_REFUSED'", "if (false) {\n      throw new ParityError('REQUEST_REFUSED'")
+    elif e == 'noA3':  # the facts are not held against the connection
+        sub("if (problems.length === 0) {\n        return { ...agreed, facts, connectionID: id };", "if (true) {\n        return { ...agreed, facts, connectionID: id };")
+    elif e == 'plant':  # one call the host must refuse, made from the page as its runtime makes a call, after the page has loaded clean
+        sub("    await requests.settled();\n    const refused = refusedRequests(requests.failures);\n    if (refused.length > 0) {\n      throw new ParityError('REQUEST_REFUSED'",
+            "    await page.evaluate(() => fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': 'planted' }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': 'planted', methodName: 'no.such.Service.Method', args: [] } }) }).then((r) => r.status));\n    await requests.settled();\n    const refused = refusedRequests(requests.failures);\n    if (refused.length > 0) {\n      throw new ParityError('REQUEST_REFUSED'")
+    else:
+        raise SystemExit('unknown edit ' + e)
+open(path, 'w').write(s)
+PY
+[ $? -eq 0 ] || { echo "VARIANT $LABEL: edit did not apply"; rm -rf "$VAR"; exit 2; }
+cat > "$VAR/variant-run.mjs" <<'EOF'
+import { checkUnavailableGroup, launchBrowser } from './parity.mjs';
+const [baseURL, kubeconfig] = process.argv.slice(2);
+const browser = await launchBrowser();
+try {
+  const result = await checkUnavailableGroup({ browser, baseURL, kubeconfig, timeoutMs: Number(process.env.TIMEOUT_MS ?? 20000), factsMs: 4000 });
+  console.log('PASS', JSON.stringify({ state: result.read.state, count: result.read.count }));
+} catch (error) {
+  console.log('FAIL', error.code ?? error.name, String(error.message).replace(/\s+/g, ' ').slice(0, 330));
+} finally {
+  await browser.close();
+}
+EOF
+t=$(date +%s)
+out=$(cd "$ROOT" && env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" node "$VAR/variant-run.mjs" "http://127.0.0.1:$PORT" "$KC" 2>&1 | tail -3)
+echo "VARIANT $LABEL [$EDITS] on :$PORT -> $out ($(( $(date +%s) - t )) s)"
+rm -rf "$VAR"

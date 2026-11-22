@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Scratch: the new check against a host with another plugin build, on the kept cluster of run <run>. neg.sh <run> <name> <port> <plugin-dir> [mode]
+set -uo pipefail
+RUN="$1"; NAME="$2"; PORT="$3"; PLUGIN="$4"; MODE="${5:-unavailable-group}"
+ROOT="$HOME/Repos/omniviewdev/worktrees/inv4-pin"
+export OMNIVIEW_E2E_WORK="/tmp/inv4-work/pin/work-$RUN"
+KC="/tmp/inv4-work/pin/kc-$RUN"
+cd "$ROOT"
+scripts/ui-next-pods/host.sh stop "$NAME" 2>/dev/null || true
+scripts/ui-next-pods/host.sh start "$NAME" "$PORT" "$KC" "$PLUGIN" || exit 3
+t=$(date +%s)
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$PORT" OMNIVIEW_CHECK_KUBECONFIG="$KC" OMNIVIEW_CHECK_MODE="$MODE" \
+  node --test --test-reporter=spec scripts/ui-next-pods/pods-cluster.check.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE '^\s*$' | cut -c1-2500 | head -60
+echo "exit ${PIPESTATUS[0]} in $(( $(date +%s) - t )) s"
+scripts/ui-next-pods/host.sh stop "$NAME" 2>/dev/null || true
