@@ -236,6 +236,9 @@ type pluginManager struct {
 
 	// startTimeout is how long a plugin's process may take to start. Zero is the loader's own timeout (pluginStartTimeout): only a test holds another.
 	startTimeout time.Duration
+
+	// minProtocol is the oldest plugin protocol this host runs. Zero is the release channel's own floor (protocolFloor): only a test holds another.
+	minProtocol int
 }
 
 // managedDevServers is the process boundary used by initialization and install

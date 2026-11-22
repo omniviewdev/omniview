@@ -34,9 +34,12 @@ func (pm *pluginManager) loaderStartTimeout() time.Duration {
 	return pluginStartTimeout
 }
 
-// loadFailureCause is the code the window is told for a load that ended in err: UnloadTimedOut when something in it ran out of time (the plugin's process within the start timeout, a call of the host to the plugin
-// within its deadline), else UnloadFailed. Nothing of err's text is read or sent.
+// loadFailureCause is the code the window is told for a load that ended in err: UnloadIncompatible when the host refused the plugin's protocol by number (a typed IncompatibleError), UnloadTimedOut when something in it
+// ran out of time (the plugin's process within the start timeout, a call of the host to the plugin within its deadline), else UnloadFailed. Nothing of err's text is read or sent.
 func loadFailureCause(err error) UnloadCause {
+	if _, incompatible := plugintypes.IncompatibilityOf(err); incompatible {
+		return UnloadIncompatible
+	}
 	var overran interface{ Timeout() bool }
 	if errors.As(err, &overran) && overran.Timeout() {
 		return UnloadTimedOut

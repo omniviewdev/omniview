@@ -65,8 +65,8 @@ func verifyLifecycleClient(client *lc.Client, id string, protocol int) error {
 	if info.GetPluginId() != id {
 		return fmt.Errorf("lifecycle plugin ID %q does not match %q", info.GetPluginId(), id)
 	}
-	if protocol != plugintypes.CurrentProtocolVersion || int(info.GetSdkProtocolVersion()) != protocol {
-		return fmt.Errorf("lifecycle SDK protocol %d / negotiated %d does not match required %d", info.GetSdkProtocolVersion(), protocol, plugintypes.CurrentProtocolVersion)
+	if !plugintypes.RunsProtocol(protocol) || int(info.GetSdkProtocolVersion()) != protocol {
+		return fmt.Errorf("lifecycle SDK protocol %d / negotiated %d is not one this host runs (%d to %d)", info.GetSdkProtocolVersion(), protocol, plugintypes.MinProtocolVersion, plugintypes.CurrentProtocolVersion)
 	}
 	health, err := client.HealthCheck(ctx)
 	if err != nil {

@@ -113,6 +113,9 @@ const (
 	UnloadFailed UnloadCause = "failed"
 	// UnloadTimedOut: the load ran out of time: the plugin's process did not answer within the loader's own start timeout (pluginStartTimeout).
 	UnloadTimedOut UnloadCause = "timeout"
+	// UnloadIncompatible: the plugin's process speaks a plugin protocol this host does not run for its release channel (older than the channel's floor, or newer than the host knows). Decided by number
+	// after the handshake (admitProtocol), never by go-plugin's text. The numbers are on the plugin's inventory record (types.Incompatibility), not in this event.
+	UnloadIncompatible UnloadCause = "incompatible"
 )
 
 // UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. It has no other member, and a member that carried text would put the plugin's words in the window's hands.

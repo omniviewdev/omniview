@@ -135,3 +135,6 @@ replace cel.dev/cel-go => github.com/omniviewdev/cel-go v0.33.2-0.20261028172556
 
 // Source-session receive controls require the scoped grpc-go fork.
 replace google.golang.org/grpc => github.com/omniviewdev/grpc-go v1.85.1-0.20261107225428-6ba964c95af2
+
+// SPIKE S0 (wip/spike/s0-dual-read): the SDK wip branch of the same name (9d8dc600b8d4): resource wire 4 beside wire 3. Not for merge.
+replace github.com/omniviewdev/plugin-sdk => github.com/omniviewdev/plugin-sdk v0.21.1-0.20261122151935-9d8dc600b8d4

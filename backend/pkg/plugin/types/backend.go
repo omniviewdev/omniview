@@ -1,8 +1,9 @@
 package types
 
-// CurrentProtocolVersion is the latest SDK protocol version supported by the engine.
+// CurrentProtocolVersion is the latest SDK protocol version supported by the engine:
+// the protocol of the SDK this host is built on. In-process plugins speak it.
 // Bump this when adding a new protocol version.
-const CurrentProtocolVersion = 1
+const CurrentProtocolVersion = 2
 
 // PluginBackend abstracts access to a plugin's capability providers.
 // ExternalBackend uses a subprocess; InProcessBackend dispatches directly.

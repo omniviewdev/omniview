@@ -299,7 +299,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Pro
 
 	version := backend.NegotiatedVersion()
 	switch version {
-	case 1:
+	case 1, 2: // the exec lane is the same in both protocols; only the resource wire differs (S0)
 		v1, ok := raw.(exec.Provider)
 		if !ok {
 			return nil, apperror.New(
