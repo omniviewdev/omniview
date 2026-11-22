@@ -5,18 +5,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// ErrUnavailable is why Resolve refuses a shell that is not installed; ErrUnsupported, why it refuses a
+// ErrUnavailable is why Resolve refuses when no shell can start; ErrUnsupported, why it refuses a
 // program that is not a shell it can start. Both are wrapped, so errors.Is tells them apart and the
-// text stays what it was.
+// text says what was tried.
 var (
 	ErrUnavailable = errors.New("shell executable unavailable")
 	ErrUnsupported = errors.New("unsupported terminal shell")
@@ -30,20 +32,88 @@ func Default() string {
 	return detect(os.Getenv("SHELL"), accountShell, exec.LookPath)
 }
 
-func detect(environment string, account func() string, lookup func(string) (string, error)) string {
-	candidates := []string{environment}
-	if environment == "" {
-		candidates = append(candidates, account())
-	}
-	candidates = append(candidates, "/bin/zsh", "/bin/bash", "/bin/sh")
-	for _, candidate := range candidates {
-		if candidate != "" {
-			if path, err := lookup(candidate); err == nil {
-				return path
-			}
+// source is one place a shell can come from, in the order Resolve tries them.
+type source struct {
+	label string
+	shell func() string
+}
+
+// sources is the stated order a shell is chosen in: the shell the caller asked for (the user's setting),
+// then $SHELL, then the account's shell (the passwd entry; dscl on macOS), then /bin/bash, then /bin/sh.
+// The account is asked only when the shells before it did not start: asking costs a process on macOS.
+func sources(requested, environment string, account func() string) []source {
+	if runtime.GOOS == "windows" {
+		return []source{
+			{label: "the shell asked for", shell: func() string { return requested }},
+			{label: "the default", shell: func() string { return "powershell.exe" }},
 		}
 	}
-	return "/bin/sh"
+	return []source{
+		{label: "the shell asked for", shell: func() string { return requested }},
+		{label: "$SHELL", shell: func() string { return environment }},
+		{label: "the account's shell", shell: account},
+		{label: "the fallback", shell: func() string { return "/bin/bash" }},
+		{label: "the fallback", shell: func() string { return "/bin/sh" }},
+	}
+}
+
+// choice is what choose found.
+type choice struct {
+	// path is the shell that resolves and is usable; empty when none does.
+	path string
+	// from is which source it came from: 0 is the shell the caller asked for.
+	from int
+	// tried says, for each shell before it, why it did not start.
+	tried []string
+	// refused is set when the shell the caller asked for exists but is not a shell the host starts.
+	refused bool
+}
+
+// choose walks the order and takes the first shell that resolves and that usable accepts. A shell the
+// caller asked for that resolves but is not usable is refused, never replaced: a program that is not a
+// shell does not become bash.
+func choose(requested, environment string, account func() string, lookup func(string) (string, error), usable func(string) error) choice {
+	var tried []string
+	for index, candidate := range sources(requested, environment, account) {
+		shell := candidate.shell()
+		if shell == "" {
+			continue
+		}
+		path, lookErr := lookup(shell)
+		if lookErr != nil {
+			tried = append(tried, fmt.Sprintf("%s %s: %s", candidate.label, strconv.Quote(shell), reason(lookErr)))
+			continue
+		}
+		if useErr := usable(path); useErr != nil {
+			if index == 0 {
+				return choice{path: "", from: index, tried: tried, refused: true}
+			}
+			tried = append(tried, fmt.Sprintf("%s %s: not a shell the host starts", candidate.label, strconv.Quote(shell)))
+			continue
+		}
+		return choice{path: path, from: index, tried: tried, refused: false}
+	}
+	return choice{path: "", from: -1, tried: tried, refused: false}
+}
+
+// reason is why a shell did not resolve, in a few words.
+func reason(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "not found"
+	case errors.Is(err, fs.ErrPermission):
+		return "not executable"
+	default:
+		return err.Error()
+	}
+}
+
+func detect(environment string, account func() string, lookup func(string) (string, error)) string {
+	found := choose("", environment, account, lookup, func(string) error { return nil })
+	if found.path == "" {
+		return "/bin/sh"
+	}
+	return found.path
 }
 
 func accountShell() string {
@@ -78,37 +148,71 @@ func accountShell() string {
 	return ""
 }
 
-// Resolve keeps explicit paths and arguments; unsupported shells return an error.
+// Resolve chooses the shell to start and the arguments that make it an interactive login shell. command is
+// what the caller asked for: its first element is the shell (the user's setting) and the rest follow the
+// login flags. The order is stated: that shell when it exists and is executable, else $SHELL, else the
+// account's shell, else /bin/bash, else /bin/sh; the caller reads which one started from the path it
+// gets back, and the arguments of the caller go with the shell the caller asked for only. A program that
+// exists but is not a shell the host starts is refused (ErrUnsupported), not replaced. When no shell can
+// start the error is ErrUnavailable and names every path that was tried.
 func Resolve(command []string) (string, []string, error) {
-	var shell string
+	var requested string
 	var extra []string
 	if len(command) > 0 && command[0] != "" {
-		shell = command[0]
+		requested = command[0]
 		extra = command[1:]
-	} else {
-		shell = Default()
 	}
+	return resolve(requested, extra, os.Getenv("SHELL"), accountShell, exec.LookPath)
+}
+
+func resolve(requested string, extra []string, environment string, account func() string, lookup func(string) (string, error)) (string, []string, error) {
+	found := choose(requested, environment, account, lookup, func(path string) error {
+		_, err := loginArguments(path)
+		return err
+	})
+	if found.refused {
+		return "", nil, fmt.Errorf("%w %q", ErrUnsupported, requested)
+	}
+	if found.path == "" {
+		return "", nil, fmt.Errorf("%w: tried %s", ErrUnavailable, strings.Join(found.tried, "; "))
+	}
+	args, _ := loginArguments(found.path)
+	if found.from == 0 {
+		args = append(args, extra...)
+	}
+	return found.path, args, nil
+}
+
+// Check is Resolve without the fallback: whether this one shell can start, and where it is. Settings
+// validate the shell a user typed with it, so that a typo is refused and not replaced by another shell.
+func Check(shell string) (string, error) {
 	path, err := exec.LookPath(shell)
 	if err != nil {
-		return "", nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
+		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
-	var args []string
+	if _, argsErr := loginArguments(path); argsErr != nil {
+		return "", fmt.Errorf("%w %q", ErrUnsupported, shell)
+	}
+	return path, nil
+}
+
+// loginArguments are the arguments that make a shell interactive and login, or ErrUnsupported when the
+// host does not start the program.
+func loginArguments(path string) ([]string, error) {
 	switch Name(path) {
 	case "zsh", "bash", "fish", "sh", "dash", "ksh", "nu", "xonsh":
-		args = []string{"-i", "-l"}
+		return []string{"-i", "-l"}, nil
 	case "csh", "tcsh":
 		// C shells require -l to be their only option.
-		args = []string{"-l"}
+		return []string{"-l"}, nil
 	case "pwsh", "powershell", "pwsh.exe", "powershell.exe":
-		args = []string{"-Login", "-NoLogo"}
+		return []string{"-Login", "-NoLogo"}, nil
 	case "cmd.exe":
-		if runtime.GOOS != "windows" {
-			return "", nil, fmt.Errorf("%w %q", ErrUnsupported, shell)
+		if runtime.GOOS == "windows" {
+			return nil, nil
 		}
-	default:
-		return "", nil, fmt.Errorf("%w %q", ErrUnsupported, shell)
 	}
-	return path, append(args, extra...), nil
+	return nil, ErrUnsupported
 }
 
 // Name is the shell's own name: the file a symlink points at, so a custom link to bash is bash. The

@@ -53,6 +53,10 @@ type Options struct {
 
 // Shell names the program that runs in a terminal.
 type Shell struct {
+	// Requested is the shell the caller asked for when another one started in its place: the one asked for
+	// is not installed or not executable, so the next shell of the stated order started (the caller's
+	// setting, $SHELL, the account's shell, bash, sh). Empty when the shell that started is the one asked for.
+	Requested string `json:"requested,omitempty"`
 	// Path is the absolute path of the executable that started.
 	Path string `json:"path"`
 	// Name is the shell's own name (`zsh`, `bash`), the one a tab can show: the file a symlink
@@ -100,6 +104,8 @@ type Session struct {
 	// Flow says whether flow control is on for this session.
 	Flow   bool   `json:"flow"`
 	Limits Limits `json:"limits"`
+	// Environment says where the shell's environment came from and how the host's login probe went.
+	Environment Environment `json:"environment"`
 }
 
 // EndReason says how a session ended. It is the one field every End has.

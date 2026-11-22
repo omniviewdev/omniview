@@ -51,6 +51,13 @@ const (
 // Manager runs the local terminals. Its one lock guards the map of sessions and is never held across
 // I/O: a session whose shell does not read costs its own input queue and nothing else.
 type Manager struct {
+	// base is the environment a shell starts from (shellenv.LaunchEnvironment), resolve picks the shell
+	// (shellenv.Resolve) and probe says how the host's login-environment probe went (shellenv.Probe):
+	// fields, so that a test can state a machine. Nothing else changes them.
+	base    func() []string
+	resolve func(command []string) (string, []string, error)
+	probe   func() shellenv.ProbeResult
+
 	ctx  context.Context
 	log  logging.Logger
 	sink Sink
@@ -63,7 +70,7 @@ type Manager struct {
 // NewManager makes a manager whose sessions end when ctx ends and whose events go to sink.
 func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	m := &Manager{
-		ctx: ctx, log: log.Named("TerminalManager"), sink: sink,
+		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}),
 	}
 	go m.forwardSignals()
@@ -310,7 +317,7 @@ func startDirectory(requested string) (string, error) {
 
 // launch starts the process on a pty that already has its size.
 func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner) (*session, error) {
-	path, args, err := shellenv.Resolve(opts.Command)
+	path, args, err := m.resolve(opts.Command)
 	if err != nil {
 		return nil, shellError(err)
 	}
@@ -318,14 +325,14 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if err != nil {
 		return nil, err
 	}
-	env, err := instance.RestoreNativeChildEnvironment(os.Environ())
+	env, err := instance.RestoreNativeChildEnvironment(m.base())
 	if err != nil {
 		return nil, startError(err)
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
-	cmd.Env = terminalEnvironment(env, path, version.Version)
+	cmd.Env = terminalEnvironment(env, path, dir, version.Version)
 
 	// The size is set on the pty before the process starts, so the shell's first prompt is laid out for it.
 	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0})
@@ -340,6 +347,10 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		_ = cmd.Wait()
 		return nil, startError(err)
 	}
+	if utf8Err := utf8Input(polled); utf8Err != nil {
+		m.log.Debugw(m.ctx, "could not mark the pty as UTF-8", "session", id, "error", utf8Err)
+	}
+	requested := requestedShell(opts.Command, path)
 	abs, absErr := filepath.Abs(path)
 	if absErr != nil {
 		abs = path
@@ -351,8 +362,8 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	s := &session{
 		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params), owner: owner,
 		info: Session{
-			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path)},
-			Cwd: dir, Cols: int(cols), Rows: int(rows), Flow: opts.Flow, Limits: defaultLimits(),
+			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
+			Cwd: dir, Cols: int(cols), Rows: int(rows), Flow: opts.Flow, Limits: defaultLimits(), Environment: environmentOf(m.probe()),
 		},
 		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil, flow: flow,
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil}, done: make(chan struct{}),

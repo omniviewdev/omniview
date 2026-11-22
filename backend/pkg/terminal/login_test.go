@@ -204,7 +204,7 @@ func TestTheShellIsToldItRunsInOmniviewAndWhatItsTerminalCan(t *testing.T) {
 
 func TestTerminalEnvironmentKeepsTheHostsAndStatesTheEmulatorOnce(t *testing.T) {
 	base := []string{"PATH=/a:/b", "TERM=dumb", "SHELL=/bin/csh", "TERM_PROGRAM=iTerm.app", "COLORTERM=", "LANG=", "HOME=/h"}
-	got := terminalEnvironment(base, "/bin/zsh", "1.2.3")
+	got := terminalEnvironment(base, "/bin/zsh", "/work", "1.2.3")
 	assert.Contains(t, got, "PATH=/a:/b")
 	assert.Contains(t, got, "HOME=/h")
 	for _, want := range []string{"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=Omniview", "TERM_PROGRAM_VERSION=1.2.3", "SHELL=/bin/zsh", "LANG=" + defaultLocale()} {
@@ -220,7 +220,7 @@ func TestTerminalEnvironmentKeepsTheHostsAndStatesTheEmulatorOnce(t *testing.T) 
 		assert.Equal(t, 1, count, "%s is stated once", key)
 	}
 
-	got = terminalEnvironment([]string{"LC_ALL=de_DE.UTF-8"}, "/bin/sh", "v")
+	got = terminalEnvironment([]string{"LC_ALL=de_DE.UTF-8"}, "/bin/sh", "/work", "v")
 	for _, entry := range got {
 		assert.False(t, strings.HasPrefix(entry, "LANG="), "a locale the user set is not overridden: %s", entry)
 	}

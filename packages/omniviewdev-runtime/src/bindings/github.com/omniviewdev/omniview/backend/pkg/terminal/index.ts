@@ -3,9 +3,11 @@
 
 export {
     Directory,
+    Environment,
     Foreground,
     Launch,
     Limits,
+    Probe,
     Session,
     Shell,
     State,

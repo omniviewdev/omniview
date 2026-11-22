@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Negative controls for the shell-start contract of T1-go (one environment truth, the stripped host-private
+# variables, PWD, IUTF8, the shell order and fallback, the probe in the answer). Each fault is applied with
+# sed to a scratch copy of ONE file and built with `go test -overlay`; the worktree is never touched. Each
+# line printed is RED when the named tests catch the fault, "GREEN (BAD)" when they do not, "NOT APPLIED"
+# when the sed pattern is gone.
+set -u
+cd "$(git rev-parse --show-toplevel)"
+export GOWORK=off GOTOOLCHAIN=local
+unset CI
+scratch=$(mktemp -d)
+
+run() { # package name file sed-expression test-regex
+	local pkg="$1" name="$2" file="$3" expr="$4" tests="$5"
+	local copy="$scratch/$(basename "$file")"
+	sed -E "$expr" "$file" >"$copy"
+	if cmp -s "$file" "$copy"; then
+		echo "NOT APPLIED  $name (pattern not found)"
+		return
+	fi
+	printf '{"Replace":{"%s":"%s"}}' "$PWD/$file" "$copy" >"$scratch/overlay.json"
+	if out=$(go test "$pkg" -overlay "$scratch/overlay.json" -count=1 -timeout 150s -run "$tests" 2>&1); then
+		echo "GREEN (BAD)  $name"
+	else
+		echo "RED          $name :: $(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')"
+	fi
+}
+
+terminal=./backend/pkg/terminal/
+shellenv=./internal/shellenv/
+mgr=backend/pkg/terminal/manager.go
+env=backend/pkg/terminal/env.go
+shell=internal/shellenv/shell.go
+environment=internal/shellenv/environment.go
+
+run "$terminal" "the shell starts from the restored process environment" "$mgr" 's/instance.RestoreNativeChildEnvironment\(m.base\(\)\)/instance.RestoreNativeChildEnvironment(os.Environ())/' 'TestTheShellStartsFromTheLaunchEnvironment'
+run "$terminal" "OMNIVIEW_ and PLUGIN_ variables reach the shell" "$env" 's/return strings.HasPrefix\(key, "OMNIVIEW_"\) \|\| strings.HasPrefix\(key, "PLUGIN_"\)/return false/' 'TestTheHostsOwnVariables'
+run "$terminal" "GOWORK reaches the shell" "$env" 's/case "GOWORK", /case /' 'TestTheHostsOwnVariables'
+run "$terminal" "the launching terminal's TMUX reaches the shell" "$env" 's/"TMUX", "TMUX_PANE", //' 'TestTheHostsOwnVariables'
+run "$terminal" "PWD is wrong" "$env" 's/"PWD="\+dir,/"PWD=\/",/' 'TestPWDIsTheDirectory'
+run "$terminal" "IUTF8 is never set" "$mgr" 's/if utf8Err := utf8Input\(polled\); utf8Err != nil \{/if utf8Err := error(nil); utf8Err != nil {/' 'TestThePtyCarriesUTF8'
+run "$terminal" "a failed probe is not stated" "$mgr" 's/environmentOf\(m.probe\(\)\)/environmentOf(shellenv.ProbeResult{State: shellenv.ProbeOK, Message: ""})/' 'TestTheAnswerStatesTheEnvironmentSource'
+run "$terminal" "the shell asked for is ignored" "$shell" 's/shell: func\(\) string \{ return requested \}\},$/shell: func() string { return "" }},/' 'TestAShellThatIsNotInstalledFallsBack'
+run "$shellenv" "the stated order is not kept" "$shell" 's/\{label: "\$SHELL", shell: func\(\) string \{ return environment \}\},/{label: "$SHELL", shell: func() string { return "" }},/' 'TestResolveTriesTheCallersShell'
+run "$shellenv" "the refusal does not name what was tried" "$shell" 's/found.tried, "; "\)/nil, "; ")/' 'TestResolveRefusesWithEveryPathItTried'
+run "$shellenv" "the launch environment is the last one remembered" "$environment" 's/if state.environment == nil \{$/if true {/' 'TestTheLaunchEnvironmentIsTheFirstOne'
+rm -rf "$scratch"

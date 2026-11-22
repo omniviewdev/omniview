@@ -375,12 +375,18 @@ func TestAFailedPtyIsTypedAndTheShellIsEnded(t *testing.T) {
 func TestAMissingShellIsRefusedTypedAndLeavesNothing(t *testing.T) {
 	m, _ := newTestManager(t)
 	before := openDescriptors(t)
+	// A machine where no shell of the stated order exists: the refusal names the path that was asked for.
+	m.resolve = func(command []string) (string, []string, error) {
+		return "", nil, fmt.Errorf("%w: tried the shell asked for %q: not found; $SHELL \"/x/fish\": not found", shellenv.ErrUnavailable, command[0])
+	}
 	_, err := m.Start(Options{Command: []string{"/nonexistent/bin/zsh"}}, nil)
 	require.ErrorIs(t, err, shellenv.ErrUnavailable)
 	app := appErr(t, err)
 	assert.Equal(t, TypeShellUnavailable, app.Type)
 	assert.Equal(t, "SHELL_UNAVAILABLE", app.Code)
 	assert.Equal(t, 422, app.Status)
+	assert.Contains(t, app.Detail, "/nonexistent/bin/zsh", "the refusal names the path it tried")
+	m.resolve = shellenv.Resolve
 
 	_, err = m.Start(Options{Command: []string{"/bin/cat"}}, nil)
 	require.ErrorIs(t, err, shellenv.ErrUnsupported)

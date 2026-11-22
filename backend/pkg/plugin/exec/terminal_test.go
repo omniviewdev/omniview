@@ -319,10 +319,10 @@ func TestCreateTerminalRefusesWhatIsNotATerminalBeforeAnythingStarts(t *testing.
 	assert.Equal(t, "INVALID_REQUEST", app.Code)
 	assert.Contains(t, app.Detail, "cols")
 
-	_, err = fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: []string{"/nonexistent/zsh"}}, terminal.Launch{})
-	require.ErrorIs(t, err, shellenv.ErrUnavailable)
+	_, err = fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: []string{"/bin/cat"}}, terminal.Launch{})
+	require.ErrorIs(t, err, shellenv.ErrUnsupported, "a program that is not a shell is refused, never replaced by one")
 	require.ErrorAs(t, err, &app)
-	assert.Equal(t, "SHELL_UNAVAILABLE", app.Code)
+	assert.Equal(t, "SHELL_UNSUPPORTED", app.Code)
 
 	assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
 	assert.Zero(t, fx.indexed(), "a refused terminal leaves nothing in the index")

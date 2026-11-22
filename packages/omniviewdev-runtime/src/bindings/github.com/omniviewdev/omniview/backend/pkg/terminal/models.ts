@@ -37,6 +37,47 @@ export class Directory {
 }
 
 /**
+ * Environment says where a shell's environment came from.
+ */
+export class Environment {
+    /**
+     * Source is where it comes from: EnvironmentLaunch.
+     */
+    "source": string;
+
+    /**
+     * Probe says how the host's own resolution of the user's login environment went at start. It does not
+     * affect this terminal, whose shell computes the user's environment itself; it says whether the tools
+     * the host starts (plugins) have the user's PATH.
+     */
+    "probe": Probe;
+
+    /** Creates a new Environment instance. */
+    constructor($$source: Partial<Environment> = {}) {
+        if (!("source" in $$source)) {
+            this["source"] = "";
+        }
+        if (!("probe" in $$source)) {
+            this["probe"] = (new Probe());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Environment instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Environment {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("probe" in $$parsedSource) {
+            $$parsedSource["probe"] = $$createField1_0($$parsedSource["probe"]);
+        }
+        return new Environment($$parsedSource as Partial<Environment>);
+    }
+}
+
+/**
  * Foreground is the fact "what holds the terminal now". It is a snapshot: it can change the moment
  * it is read.
  */
@@ -203,6 +244,35 @@ export class Limits {
 }
 
 /**
+ * Probe is how the host's resolution of the login environment went (shellenv.Probe).
+ */
+export class Probe {
+    /**
+     * State is "ok" (the host process holds the login environment), "failed" (it could not be resolved:
+     * Message says why) or "not-run" (this platform does not need it).
+     */
+    "state": string;
+    "message"?: string;
+
+    /** Creates a new Probe instance. */
+    constructor($$source: Partial<Probe> = {}) {
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Probe instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Probe {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Probe($$parsedSource as Partial<Probe>);
+    }
+}
+
+/**
  * Session is what the host says about a terminal it started.
  */
 export class Session {
@@ -236,6 +306,11 @@ export class Session {
     "flow": boolean;
     "limits": Limits;
 
+    /**
+     * Environment says where the shell's environment came from and how the host's login probe went.
+     */
+    "environment": Environment;
+
     /** Creates a new Session instance. */
     constructor($$source: Partial<Session> = {}) {
         if (!("id" in $$source)) {
@@ -265,6 +340,9 @@ export class Session {
         if (!("limits" in $$source)) {
             this["limits"] = (new Limits());
         }
+        if (!("environment" in $$source)) {
+            this["environment"] = (new Environment());
+        }
 
         Object.assign(this, $$source);
     }
@@ -273,14 +351,18 @@ export class Session {
      * Creates a new Session instance from a string or object.
      */
     static createFrom($$source: any = {}): Session {
-        const $$createField3_0 = $$createType0;
-        const $$createField8_0 = $$createType1;
+        const $$createField3_0 = $$createType1;
+        const $$createField8_0 = $$createType2;
+        const $$createField9_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
         }
         if ("limits" in $$parsedSource) {
             $$parsedSource["limits"] = $$createField8_0($$parsedSource["limits"]);
+        }
+        if ("environment" in $$parsedSource) {
+            $$parsedSource["environment"] = $$createField9_0($$parsedSource["environment"]);
         }
         return new Session($$parsedSource as Partial<Session>);
     }
@@ -290,6 +372,13 @@ export class Session {
  * Shell names the program that runs in a terminal.
  */
 export class Shell {
+    /**
+     * Requested is the shell the caller asked for when another one started in its place: the one asked for
+     * is not installed or not executable, so the next shell of the stated order started (the caller's
+     * setting, $SHELL, the account's shell, bash, sh). Empty when the shell that started is the one asked for.
+     */
+    "requested"?: string;
+
     /**
      * Path is the absolute path of the executable that started.
      */
@@ -376,5 +465,7 @@ export enum UnknownReason {
 };
 
 // Private type creation functions
-const $$createType0 = Shell.createFrom;
-const $$createType1 = Limits.createFrom;
+const $$createType0 = Probe.createFrom;
+const $$createType1 = Shell.createFrom;
+const $$createType2 = Limits.createFrom;
+const $$createType3 = Environment.createFrom;
