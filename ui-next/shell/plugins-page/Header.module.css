@@ -1,0 +1,194 @@
+/* The header of the detail (the mock's `.plug-head`): a grid of a 28 px tile column and the rest, 8 px apart. The tile and the 18/24 name with the action cluster are the first row; the chips, the facts and the summary sit in the second
+   column, each 4 px under the one before. The cluster is three slots that never change size (176 px, 176 px and a 28 px button, 8 px apart): what a state shows is chosen inside a slot. Host composition, so every rule sits in ov.shell. */
+@layer ov.shell {
+  .head {
+    display: grid;
+    flex: none;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: var(--ov-spacing-4) var(--ov-spacing-8);
+    min-inline-size: 0;
+  }
+
+  /* The tile's cell: the first column, 28 px square, at the header's origin (the mock's `.identity-header__art`). The tile in it is the shared one (`Tile.tsx`), which paints its own fill and radius. */
+  .tile {
+    display: flex;
+    grid-column: 1;
+    inline-size: 28px;
+    block-size: 28px;
+  }
+
+  .line {
+    display: flex;
+    grid-column: 2;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    min-block-size: 28px;
+  }
+
+  .name {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+  }
+
+  /* A slot is a grid of one track, so the button in it fills it (the mock's buttons are the slot's width). */
+  .slot {
+    display: grid;
+    flex: 0 0 176px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    inline-size: 176px;
+    min-inline-size: 0;
+    min-block-size: 28px;
+  }
+
+  .more {
+    display: flex;
+    flex: 0 0 28px;
+    align-items: center;
+    justify-content: center;
+    inline-size: 28px;
+    block-size: 28px;
+  }
+
+  .meta {
+    display: flex;
+    grid-column: 2;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    block-size: 20px;
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The version in the code face: the kit's chip has no code face, so this is its box (12/16, a 1 px subtle edge, the control radius, 6 px inside). */
+  .version {
+    display: inline-block;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    padding: 0 var(--ov-spacing-6);
+    overflow: hidden;
+    border: 1px solid var(--ov-border-subtle);
+    border-radius: var(--ov-radius-control);
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    font-variant-ligatures: none;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .facts,
+  .summary {
+    grid-column: 2;
+    min-inline-size: 0;
+    min-block-size: 16px;
+    margin: 0;
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0;
+  }
+
+  .sep {
+    white-space: pre;
+  }
+
+  .summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* The progress in the primary slot (S134): a step label over a 4 px track, the slot's width. */
+  .progress {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--ov-spacing-4);
+    min-inline-size: 0;
+    min-block-size: 28px;
+    border-radius: var(--ov-radius-control);
+  }
+
+  .progress:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 2px;
+  }
+
+  .progressLabel {
+    overflow: hidden;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-12);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .track {
+    flex: 0 0 4px;
+    inline-size: 100%;
+    min-inline-size: 0;
+    block-size: 4px;
+    overflow: hidden;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-progress-track);
+  }
+
+  .fill {
+    display: block;
+    inline-size: 40%;
+    block-size: 100%;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-accent);
+    animation: sweep 1.4s linear infinite;
+  }
+
+  @keyframes sweep {
+    from {
+      transform: translateX(-100%);
+    }
+
+    to {
+      transform: translateX(250%);
+    }
+  }
+
+  /* Reduced motion: the bar stands still, as stripes that say work is under way. */
+  @media (prefers-reduced-motion: reduce) {
+    .fill {
+      inline-size: 100%;
+      background-image: repeating-linear-gradient(90deg, var(--ov-accent) 0 8px, var(--ov-progress-track) 8px 16px);
+      animation: none;
+    }
+  }
+}

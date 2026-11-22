@@ -179,6 +179,40 @@
       "scope-name"
     ]
   },
+  "ui-next/shell/probes/plugins-page-perf-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "late-change",
+      "second-row",
+      "late-list",
+      "slow-open",
+      "idle-timer"
+    ]
+  },
+  "ui-next/shell/probes/plugins-page-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "list-foot",
+      "row-tile",
+      "facts-down",
+      "more-slot",
+      "lane-down",
+      "card-title",
+      "confirm-button",
+      "empty-body",
+      "list-fill",
+      "selected-fill",
+      "title-colour",
+      "button-radius",
+      "lane-fill",
+      "card-fill",
+      "dialog-radius",
+      "pinned-lane",
+      "no-name",
+      "extra-stop",
+      "focus-lost"
+    ]
+  },
   "ui-next/shell/probes/rail-probe.mjs": {
     "probe": true,
     "controls": []

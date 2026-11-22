@@ -1,0 +1,54 @@
+/* The Installed list's pane (ch16 S133): an island of its own, a 41 px head (the shell sidebar's header), the one scroller, and the count footer as the pane's last lane. The scroller keeps 5 px clear on each side of its
+   rows, the mock's selection clearance, as 5 px tracks, because the spacing scale has no 5; its bottom keeps 8 px. */
+@layer ov.shell {
+  .list {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    block-size: 100%;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-bg-island);
+  }
+
+  .head {
+    display: flex;
+    flex: 0 0 41px;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 41px;
+    padding-inline: var(--ov-spacing-12) var(--ov-spacing-8);
+    overflow: hidden;
+  }
+
+  /* The count beside the heading: muted, in tabular figures, so it does not move as digits change. */
+  .count {
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+  }
+
+  .scroll {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: 5px minmax(0, 1fr) 5px;
+    align-content: start;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding-block-end: var(--ov-spacing-8);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .scroll > * {
+    grid-column: 2;
+  }
+}
