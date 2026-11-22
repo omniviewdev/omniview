@@ -1,0 +1,181 @@
+@layer ov.shell {
+  /* The body of a terminal session: the tool's vertical toolbar at the left, and beside it the screen over a fixed status lane, as the mock lays out `.ptool` (a column of [main][status strip], shell-panel.css 11-21
+     and 30) beside `.panel__tools` (shell.css 127). The panel lays a session's body out as an item of a row, which sizes an item that does not grow to its content: this box is that item, and it takes all the room
+     the panel gives the body. */
+  .terminal {
+    display: flex;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The toolbar's column (the mock's `.panel__tools`: `flex: 0 0 40px`, 28 px buttons centred, 4 px apart, 4 px above and below). Two buttons fit the shortest panel (120 px), so the column never overflows. */
+  .tools {
+    display: flex;
+    flex: 0 0 40px;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    inline-size: 40px;
+    min-block-size: 0;
+    padding-block: var(--ov-spacing-4);
+    overflow: hidden;
+  }
+
+  .main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The screen (the mock's `.pterm__screen`): the editor's plane, taking all the height the lane leaves, and the emulator draws in it. It keeps its focus ring while the emulator has the keyboard (the mock draws
+     the ring on `:focus-visible`: the emulator's input is a text field, which always matches it). The emulator's own rules are the stylesheet it brings (`xtermEngine.ts`); what is the host's is here: the plane, the
+     inset, and the viewport that is transparent so the plane shows. */
+  .screen {
+    position: relative;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+    background-color: var(--ov-bg-editor);
+  }
+
+  .screen:focus-within {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .screen :global(.xterm) {
+    padding-block-start: var(--ov-spacing-4);
+    padding-inline-start: var(--ov-spacing-12);
+  }
+
+  .screen :global(.xterm .xterm-viewport) {
+    background-color: transparent;
+  }
+
+  /* The status lane (the mock's `.ptool__status`): a fixed 28 px lane under the screen, so no state moves the screen above it. It says what the session is doing, and, once it is over, what that means for the
+     person: input is off, the output stays readable. A running session says nothing. */
+  .lane {
+    display: flex;
+    flex: 0 0 28px;
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 28px;
+    padding-inline: var(--ov-spacing-12);
+    border-block-start: 1px solid var(--ov-border-subtle);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .laneWords {
+    flex: 0 0 auto;
+    color: var(--ov-fg);
+  }
+
+  .laneNote {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* What a person who cannot see the lane is told: a copy that was made, and how to leave the terminal. Read and never drawn; it takes no room and holds no focus. */
+  .live,
+  .hint {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* The swatches the look of the screen is read from (`appearance.ts`): each is painted with the theme's own token, and what the engine resolved is what the emulator is given. Never drawn. */
+  .swatches {
+    display: none;
+  }
+
+  .swatches [data-swatch='background'] {
+    color: var(--ov-bg-editor);
+  }
+
+  .swatches [data-swatch='foreground'],
+  .swatches [data-swatch='cursor'] {
+    color: var(--ov-fg-editor);
+  }
+
+  .swatches [data-swatch='cursorAccent'] {
+    color: var(--ov-bg-editor);
+  }
+
+  .swatches [data-swatch='selection'] {
+    color: var(--ov-selection-active);
+  }
+
+  .swatches [data-swatch='selectionInactive'] {
+    color: var(--ov-selection-inactive);
+  }
+
+  .swatches [data-swatch='black'] {
+    color: var(--ov-fg-disabled);
+  }
+
+  .swatches [data-swatch='red'],
+  .swatches [data-swatch='brightRed'] {
+    color: var(--ov-error-fg);
+  }
+
+  .swatches [data-swatch='green'],
+  .swatches [data-swatch='brightGreen'] {
+    color: var(--ov-success-fg);
+  }
+
+  .swatches [data-swatch='yellow'],
+  .swatches [data-swatch='brightYellow'] {
+    color: var(--ov-warning-fg);
+  }
+
+  .swatches [data-swatch='blue'],
+  .swatches [data-swatch='brightBlue'] {
+    color: var(--ov-link);
+  }
+
+  .swatches [data-swatch='magenta'],
+  .swatches [data-swatch='brightMagenta'] {
+    color: var(--ov-chart-purple);
+  }
+
+  .swatches [data-swatch='cyan'],
+  .swatches [data-swatch='brightCyan'] {
+    color: var(--ov-chart-teal);
+  }
+
+  .swatches [data-swatch='white'] {
+    color: var(--ov-fg-editor);
+  }
+
+  .swatches [data-swatch='brightBlack'] {
+    color: var(--ov-fg-muted);
+  }
+
+  .swatches [data-swatch='brightWhite'] {
+    color: var(--ov-fg);
+  }
+
+  .swatches [data-swatch='font'] {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+}
