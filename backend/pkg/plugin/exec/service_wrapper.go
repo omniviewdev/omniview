@@ -99,14 +99,16 @@ func (s *ServiceWrapper) GetNativeTerminalApplications() (_ []nativeapps.Applica
 
 // CreateTerminal starts a shell on this machine for the window that asks. opts names it as for any
 // session (its id, if the caller chose one so that it can listen first, and its command; empty is the
-// account's login shell) and size is the size the pty is opened at, before the shell starts. The answer
-// states the shell, the directory it started in and the size that was applied.
+// account's login shell) and launch says where and how it starts: the directory (empty is the user's
+// home), the size the pty is opened at before the shell starts, and whether the shell's output is paced
+// by flow control (AckTerminal). The answer states the shell, the directory it started in and the size
+// that was applied.
 //
 // The shell belongs to the window and ends with it: when the window closes, or the page it served is
 // gone (the realm says so for both), the window's terminals are ended, and a tab restored in a new page
 // says they ended. A call that comes from no window starts nothing: a terminal that nothing could ever
 // retire would outlive everything.
-func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.SessionOptions, size terminal.Size) (*terminal.Session, error) {
+func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.SessionOptions, launch terminal.Launch) (*terminal.Session, error) {
 	if opts.HasResourceIntent() {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.")
 	}
@@ -116,7 +118,8 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 		return nil, err
 	}
 	session, err := s.Ctrl.CreateTerminal(ctx, owner, terminal.Options{
-		ID: opts.ID, Command: opts.Command, Cols: size.Cols, Rows: size.Rows, Labels: opts.Labels, Params: opts.Params,
+		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd, Flow: launch.Flow,
+		Labels: opts.Labels, Params: opts.Params,
 	})
 	if err != nil {
 		return nil, err
@@ -201,4 +204,18 @@ func (s *ServiceWrapper) ListPlugins() ([]string, error) {
 }
 func (s *ServiceWrapper) HasPlugin(pluginID string) bool {
 	return s.Ctrl.HasPlugin(pluginID)
+}
+
+// GetCwd says which directory a terminal's shell is in now: the shell's own current working directory,
+// read from the system when asked, or why it cannot be read (see terminal.Directory). A session of a plugin
+// runs on another machine and answers unknown.
+func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
+	return s.Ctrl.GetCwd(sessionID)
+}
+
+// AckTerminal tells a terminal started with flow control (Launch.Flow) that n more bytes of its output
+// were taken in: the host reads the shell's output again once the unacknowledged bytes are down to the
+// low mark. A terminal started without flow control ignores it.
+func (s *ServiceWrapper) AckTerminal(sessionID string, n int) error {
+	return s.Ctrl.AckTerminal(sessionID, n)
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/shellenv"
+	"github.com/omniviewdev/omniview/internal/version"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -35,8 +36,6 @@ const (
 	// DefaultReadBufferSize is the size of one read of a shell's output: one event is at most this big.
 	DefaultReadBufferSize = 20480
 
-	termEnv = "TERM=xterm-256color"
-
 	// drainWait is how long the master is still read once the shell has exited, counted from the last
 	// byte: what the shell wrote before it exited is delivered, then the session ends.
 	drainWait = time.Second
@@ -44,7 +43,8 @@ const (
 	exitGrace = 2 * time.Second
 	// killGrace is how long the host waits for a shell it killed to be reaped.
 	killGrace = 2 * time.Second
-	// closeWait is how long a close waits for the session to be gone.
+	// closeWait is how long a close waits for the session to be gone: longer than HangupGrace, which
+	// it has to cover.
 	closeWait = 5 * time.Second
 )
 
@@ -99,6 +99,8 @@ type session struct {
 	cancel context.CancelFunc
 	buffer *sdkexec.OutputBuffer
 	queue  *inputQueue
+	// flow is nil unless the session was started with flow control.
+	flow *flowControl
 
 	// ending is set as soon as the session is on its way out: it is no longer found, listed or written to.
 	ending atomic.Bool
@@ -130,12 +132,37 @@ func (s *session) settled() fate {
 }
 
 // beginClose ends the shell at the host's request, unless it had already ended by itself: then its own
-// end stands.
+// end stands. The end is a hangup first, as when a real terminal closes (hangup).
 func (s *session) beginClose(by ClosedBy) {
 	if !s.decide(fate{set: true, closedBy: by, failure: nil}) {
 		return
 	}
 	s.ending.Store(true)
+	go s.hangup(HangupGrace)
+}
+
+// hangup ends the shell the way closing a real terminal does. The foreground program and the shell get
+// SIGHUP (the kernel sends it to both when the master of a pty closes; the host sends it itself so that
+// the shell's own jobs are hung up too: an interactive bash or zsh that gets SIGHUP sends it on to its
+// background jobs before it exits, so a job the user did not nohup or disown ends with its terminal, as in
+// VS Code and in a terminal window that is closed). What ignored the hangup is killed once the grace
+// has passed: the foreground group and the shell with SIGKILL.
+func (s *session) hangup(grace time.Duration) {
+	shell, group, known := s.groups()
+	if known && group != shell {
+		_ = syscall.Kill(-group, syscall.SIGHUP)
+	}
+	_ = s.cmd.Process.Signal(syscall.SIGHUP)
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-s.exited:
+		return
+	case <-timer.C:
+	}
+	if known && group != shell {
+		_ = syscall.Kill(-group, syscall.SIGKILL)
+	}
 	s.cancel()
 }
 
@@ -261,16 +288,35 @@ func (m *Manager) reserve(requested string, owner Owner) (string, error) {
 	return id, nil
 }
 
+// startDirectory is where a shell starts: the directory the caller named, which has to be an absolute
+// path to a directory that exists, or the user's home.
+func startDirectory(requested string) (string, error) {
+	if requested == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", startError(fmt.Errorf("cannot determine the terminal's home directory: %w", err))
+		}
+		return home, nil
+	}
+	if !filepath.IsAbs(requested) {
+		return "", invalidError("cwd must be an absolute path; got " + strconv.Quote(requested) + ".")
+	}
+	info, err := os.Stat(requested)
+	if err != nil || !info.IsDir() {
+		return "", invalidError("cwd must be a directory that exists; " + strconv.Quote(requested) + " is not one.")
+	}
+	return filepath.Clean(requested), nil
+}
+
 // launch starts the process on a pty that already has its size.
 func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner) (*session, error) {
 	path, args, err := shellenv.Resolve(opts.Command)
 	if err != nil {
 		return nil, shellError(err)
 	}
-	// The shell starts where the user's own terminals do: in their home.
-	home, err := os.UserHomeDir()
+	dir, err := startDirectory(opts.Cwd)
 	if err != nil {
-		return nil, startError(fmt.Errorf("cannot determine the terminal's home directory: %w", err))
+		return nil, err
 	}
 	env, err := instance.RestoreNativeChildEnvironment(os.Environ())
 	if err != nil {
@@ -278,8 +324,8 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Dir = home
-	cmd.Env = slices.Concat(env, []string{"SHELL=" + path, termEnv})
+	cmd.Dir = dir
+	cmd.Env = terminalEnvironment(env, path, version.Version)
 
 	// The size is set on the pty before the process starts, so the shell's first prompt is laid out for it.
 	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0})
@@ -298,13 +344,17 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if absErr != nil {
 		abs = path
 	}
+	var flow *flowControl
+	if opts.Flow {
+		flow = newFlowControl()
+	}
 	s := &session{
 		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params), owner: owner,
 		info: Session{
 			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path)},
-			Cwd: home, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(),
+			Cwd: dir, Cols: int(cols), Rows: int(rows), Flow: opts.Flow, Limits: defaultLimits(),
 		},
-		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil,
+		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil, flow: flow,
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil}, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
 	}
@@ -347,10 +397,15 @@ func (m *Manager) pump(s *session) {
 	m.finish(s, m.read(s))
 }
 
-// read delivers the shell's output, in order, and returns the error that ended it.
+// read delivers the shell's output, in order and untouched (a multi-byte character may be cut between
+// two events: the caller decodes), and returns the error that ended it. With flow control it stops reading
+// while the caller has not acknowledged what it was given.
 func (m *Manager) read(s *session) error {
 	buf := make([]byte, DefaultReadBufferSize)
 	for {
+		if s.flow != nil {
+			s.flow.wait(s.exited)
+		}
 		if s.hasExited() {
 			// The shell is gone: keep reading while bytes come, stop when none have for drainWait.
 			_ = s.master.SetReadDeadline(time.Now().Add(drainWait))
@@ -359,6 +414,9 @@ func (m *Manager) read(s *session) error {
 		if n > 0 {
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
+			if s.flow != nil {
+				s.flow.sent(n)
+			}
 			m.sink.Output(s.id, data)
 			s.buffer.Append(data)
 		}
@@ -463,6 +521,22 @@ func (m *Manager) Resize(sessionID string, seq uint64, rows, cols int) error {
 	return s.queue.resize(seq, r, c)
 }
 
+// Ack tells the host that the caller has taken in n more bytes of the session's output. It matters to a
+// session started with flow control, whose reading it paces; for any other it changes nothing.
+func (m *Manager) Ack(sessionID string, n int) error {
+	if n < 0 {
+		return invalidError("bytes must not be negative.")
+	}
+	s, err := m.live(sessionID)
+	if err != nil {
+		return err
+	}
+	if s.flow != nil {
+		s.flow.ack(n)
+	}
+	return nil
+}
+
 // Busy says whether a program other than the shell holds the terminal's foreground: the foreground
 // process group of the pty (TIOCGPGRP on its master) against the shell's own. A background job does
 // not hold it. Nothing polls: the answer is read when it is asked for.
@@ -496,6 +570,33 @@ func foregroundOf(shellGroup, foreground int) Foreground {
 		return Foreground{State: StateIdle, Name: "", PGID: 0, Reason: ""}
 	}
 	return Foreground{State: StateBusy, Name: processName(foreground), PGID: foreground, Reason: ""}
+}
+
+// Cwd says which directory the shell is in now: its own current working directory, read from the system
+// when asked (`/proc/<pid>/cwd` on Linux, proc_info on macOS), so that a new terminal can open here and a
+// tab can show it. Nothing polls.
+func (m *Manager) Cwd(sessionID string) (Directory, error) {
+	s, err := m.live(sessionID)
+	if err != nil {
+		return Directory{}, err
+	}
+	path, reason := s.directory()
+	if s.ending.Load() {
+		return Directory{}, apperror.SessionNotFound(sessionID)
+	}
+	return Directory{Path: path, Reason: reason}, nil
+}
+
+func (s *session) directory() (string, UnknownReason) {
+	path, err := processCwd(s.cmd.Process.Pid)
+	switch {
+	case err == nil:
+		return path, ""
+	case errors.Is(err, errors.ErrUnsupported):
+		return "", ReasonUnsupported
+	default:
+		return "", ReasonQueryFailed
+	}
 }
 
 // AttachSession marks a session as attached and returns its current output buffer. The caller renders

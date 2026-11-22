@@ -144,7 +144,7 @@ func (fx *terminalFixture) openAs(window application.Window, opts terminal.Optio
 	if window != nil {
 		ctx = context.WithValue(ctx, application.WindowKey, window)
 	}
-	return fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{ID: opts.ID, Command: opts.Command}, terminal.Size{Cols: opts.Cols, Rows: opts.Rows})
+	return fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{ID: opts.ID, Command: opts.Command}, terminal.Launch{Cols: opts.Cols, Rows: opts.Rows})
 }
 
 func (fx *terminalFixture) open(window application.Window, opts terminal.Options) *terminal.Session {
@@ -286,7 +286,7 @@ func TestCreateTerminalRefusesACallThatComesFromNoWindow(t *testing.T) {
 	assert.Empty(t, fx.ctrl.terminalManager.ListSessions(), "a terminal nothing could retire is not started")
 
 	bare := &ServiceWrapper{Ctrl: fx.ctrl}
-	_, err = bare.CreateTerminal(context.WithValue(context.Background(), application.WindowKey, fx.page(2)), execsdk.SessionOptions{Command: shell(t)}, terminal.Size{})
+	_, err = bare.CreateTerminal(context.WithValue(context.Background(), application.WindowKey, fx.page(2)), execsdk.SessionOptions{Command: shell(t)}, terminal.Launch{})
 	require.Error(t, err, "a wrapper with no window realm starts nothing either")
 	assert.Zero(t, fx.indexed())
 }
@@ -308,18 +308,18 @@ func TestCreateTerminalRefusesWhatIsNotATerminalBeforeAnythingStarts(t *testing.
 	fx := newTerminalFixture(t)
 	ctx := context.WithValue(context.Background(), application.WindowKey, fx.page(7))
 
-	_, err := fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: shell(t), ResourcePlugin: "plugin", ResourceKey: "pods"}, terminal.Size{})
+	_, err := fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: shell(t), ResourcePlugin: "plugin", ResourceKey: "pods"}, terminal.Launch{})
 	require.Error(t, err)
 	assert.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
 
-	_, err = fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: shell(t)}, terminal.Size{Cols: 5000, Rows: 24})
+	_, err = fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: shell(t)}, terminal.Launch{Cols: 5000, Rows: 24})
 	require.ErrorIs(t, err, terminal.ErrInvalid)
 	var app *apperror.AppError
 	require.ErrorAs(t, err, &app)
 	assert.Equal(t, "INVALID_REQUEST", app.Code)
 	assert.Contains(t, app.Detail, "cols")
 
-	_, err = fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: []string{"/nonexistent/zsh"}}, terminal.Size{})
+	_, err = fx.wrapper.CreateTerminal(ctx, execsdk.SessionOptions{Command: []string{"/nonexistent/zsh"}}, terminal.Launch{})
 	require.ErrorIs(t, err, shellenv.ErrUnavailable)
 	require.ErrorAs(t, err, &app)
 	assert.Equal(t, "SHELL_UNAVAILABLE", app.Code)

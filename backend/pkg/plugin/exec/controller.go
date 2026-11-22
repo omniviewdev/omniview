@@ -46,8 +46,13 @@ type Controller interface {
 	// number, or zero.
 	WriteTerminal(sessionID string, seq uint64, data []byte) error
 	ResizeTerminal(sessionID string, seq uint64, rows, cols int) error
+	// AckTerminal tells a local terminal started with flow control that n more bytes of its output were
+	// taken in by the caller.
+	AckTerminal(sessionID string, n int) error
 	// IsBusy says whether something other than the shell holds a terminal's foreground.
 	IsBusy(sessionID string) (terminal.Foreground, error)
+	// GetCwd says which directory a terminal's shell is in now.
+	GetCwd(sessionID string) (terminal.Directory, error)
 	// CloseOwnedTerminals ends the local terminals of owner and returns how many it ended.
 	CloseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) int
 	ListSessions() ([]*exec.Session, error)

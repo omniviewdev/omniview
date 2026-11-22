@@ -13,7 +13,8 @@ import (
 
 // Manager manages terminal sessions. The host has no ConPTY backend, so no session can exist on
 // Windows and every call that would reach one answers the typed `unsupported` error. Nothing about
-// a pty (its size, its foreground, how its shell ended) can be said of a session that cannot start.
+// a pty (its size, its foreground, its directory, how its shell ended) can be said of a session that
+// cannot start.
 type Manager struct{}
 
 // NewManager returns a manager that starts nothing.
@@ -41,6 +42,9 @@ func (m *Manager) Write(_ string, _ uint64, _ []byte) error { return unsupported
 // Resize is not supported.
 func (m *Manager) Resize(_ string, _ uint64, _, _ int) error { return unsupportedError() }
 
+// Ack is not supported.
+func (m *Manager) Ack(_ string, _ int) error { return unsupportedError() }
+
 // Busy answers unknown, the third state: a ConPTY has no foreground process group, so whether
 // something other than the shell holds a Windows terminal cannot be read from the system. (The shell's
 // child processes can be listed, but a child that is a background job looks the same as the program
@@ -48,6 +52,12 @@ func (m *Manager) Resize(_ string, _ uint64, _, _ int) error { return unsupporte
 // a child, and idle only when it has none.)
 func (m *Manager) Busy(_ string) (Foreground, error) {
 	return UnknownForeground(ReasonUnsupported), nil
+}
+
+// Cwd answers unknown: a ConPTY session would need the shell's directory from its process, which the
+// host has no cheap way to read (it would be a query of the process's PEB), and no session can start.
+func (m *Manager) Cwd(_ string) (Directory, error) {
+	return Directory{Path: "", Reason: ReasonUnsupported}, nil
 }
 
 // AttachSession is not supported.

@@ -6,6 +6,37 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * Directory is the fact "where is the shell now": its current working directory, read from the system
+ * when asked (`/proc/<pid>/cwd` on Linux, `proc_info` on macOS), so a new terminal can open here and a
+ * tab can show the directory. It is a snapshot.
+ */
+export class Directory {
+    /**
+     * Path is the shell's current directory, when known.
+     */
+    "path"?: string;
+
+    /**
+     * Reason is set when it is not known.
+     */
+    "reason"?: UnknownReason;
+
+    /** Creates a new Directory instance. */
+    constructor($$source: Partial<Directory> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Directory instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Directory {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Directory($$parsedSource as Partial<Directory>);
+    }
+}
+
+/**
  * Foreground is the fact "what holds the terminal now". It is a snapshot: it can change the moment
  * it is read.
  */
@@ -47,6 +78,50 @@ export class Foreground {
 }
 
 /**
+ * Launch is the second argument of CreateTerminal: where the terminal starts, how big it is, and how
+ * its output is paced. Every field is optional; zero is "not given".
+ */
+export class Launch {
+    /**
+     * Cols and Rows are the size of the terminal in cells. The pty is opened at this size before the
+     * shell starts, so the shell lays out its first prompt for it. Zero is "not given" and becomes the
+     * default (DefaultCols by DefaultRows), each dimension on its own; a dimension below zero or over
+     * MaxDimension is refused, naming it.
+     */
+    "cols"?: number;
+    "rows"?: number;
+
+    /**
+     * Cwd is the directory the shell starts in: an absolute path to a directory that exists. Empty: the
+     * user's home. Anything else is refused, naming the field.
+     */
+    "cwd"?: string;
+
+    /**
+     * Flow asks for flow control: the host stops reading the shell's output while FlowHighBytes of what
+     * it delivered are unacknowledged and reads again once the caller has acknowledged it down to
+     * FlowLowBytes (AckTerminal). The shell blocks in its own write meanwhile, so a hidden or slow page
+     * costs the shell time and the host no memory. Off (the default): the host reads and delivers as fast
+     * as the shell writes, which is what a caller that never acknowledges needs.
+     */
+    "flow"?: boolean;
+
+    /** Creates a new Launch instance. */
+    constructor($$source: Partial<Launch> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Launch instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Launch {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Launch($$parsedSource as Partial<Launch>);
+    }
+}
+
+/**
  * Limits are the bounds the host holds a session to, stated so that a caller never hard-codes them.
  */
 export class Limits {
@@ -74,6 +149,20 @@ export class Limits {
      */
     "gap_wait_ms": number;
 
+    /**
+     * FlowHighBytes and FlowLowBytes are the marks of flow control (Launch.Flow): at most
+     * FlowHighBytes of delivered output wait for an acknowledgement, plus one read of
+     * DefaultReadBufferSize; reading resumes at FlowLowBytes.
+     */
+    "flow_high_bytes": number;
+    "flow_low_bytes": number;
+
+    /**
+     * HangupGraceMs is how long a closing session gets, in milliseconds, between the hangup it is sent
+     * and the kill.
+     */
+    "hangup_grace_ms": number;
+
     /** Creates a new Limits instance. */
     constructor($$source: Partial<Limits> = {}) {
         if (!("max_dimension" in $$source)) {
@@ -90,6 +179,15 @@ export class Limits {
         }
         if (!("gap_wait_ms" in $$source)) {
             this["gap_wait_ms"] = 0;
+        }
+        if (!("flow_high_bytes" in $$source)) {
+            this["flow_high_bytes"] = 0;
+        }
+        if (!("flow_low_bytes" in $$source)) {
+            this["flow_low_bytes"] = 0;
+        }
+        if (!("hangup_grace_ms" in $$source)) {
+            this["hangup_grace_ms"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -131,6 +229,11 @@ export class Session {
      */
     "cols": number;
     "rows": number;
+
+    /**
+     * Flow says whether flow control is on for this session.
+     */
+    "flow": boolean;
     "limits": Limits;
 
     /** Creates a new Session instance. */
@@ -156,6 +259,9 @@ export class Session {
         if (!("rows" in $$source)) {
             this["rows"] = 0;
         }
+        if (!("flow" in $$source)) {
+            this["flow"] = false;
+        }
         if (!("limits" in $$source)) {
             this["limits"] = (new Limits());
         }
@@ -168,13 +274,13 @@ export class Session {
      */
     static createFrom($$source: any = {}): Session {
         const $$createField3_0 = $$createType0;
-        const $$createField7_0 = $$createType1;
+        const $$createField8_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
         }
         if ("limits" in $$parsedSource) {
-            $$parsedSource["limits"] = $$createField7_0($$parsedSource["limits"]);
+            $$parsedSource["limits"] = $$createField8_0($$parsedSource["limits"]);
         }
         return new Session($$parsedSource as Partial<Session>);
     }
@@ -217,37 +323,6 @@ export class Shell {
 }
 
 /**
- * Size is the size of a terminal in cells, the second argument of CreateTerminal: the pty is opened at
- * it before the shell starts, so the shell lays out its first prompt for it. Zero is "not given" and
- * becomes the default (DefaultCols by DefaultRows), each dimension on its own; a dimension below zero
- * or over MaxDimension is refused, naming it.
- */
-export class Size {
-    "cols": number;
-    "rows": number;
-
-    /** Creates a new Size instance. */
-    constructor($$source: Partial<Size> = {}) {
-        if (!("cols" in $$source)) {
-            this["cols"] = 0;
-        }
-        if (!("rows" in $$source)) {
-            this["rows"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Size instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Size {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Size($$parsedSource as Partial<Size>);
-    }
-}
-
-/**
  * State is the answer to "is something other than the shell in the foreground of the terminal?".
  * It has three values on purpose: a platform that cannot tell says so instead of guessing.
  */
@@ -274,7 +349,7 @@ export enum State {
 };
 
 /**
- * UnknownReason says why a Foreground is unknown.
+ * UnknownReason says why a Foreground or a Directory is unknown.
  */
 export enum UnknownReason {
     /**
@@ -284,7 +359,8 @@ export enum UnknownReason {
 
     /**
      * ReasonUnsupported: this build cannot run local terminals (Windows: the host has no ConPTY
-     * backend, and a ConPTY has no foreground process group to ask about).
+     * backend, and a ConPTY has no foreground process group to ask about), or the platform has no
+     * cheap way to read the fact.
      */
     ReasonUnsupported = "unsupported",
 

@@ -218,6 +218,8 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		plugin + "/exec.ServiceWrapper.WriteTerminal",
 		plugin + "/exec.ServiceWrapper.ResizeTerminal",
 		plugin + "/exec.ServiceWrapper.IsBusy",
+		plugin + "/exec.ServiceWrapper.GetCwd",
+		plugin + "/exec.ServiceWrapper.AckTerminal",
 		plugin + "/exec.ServiceWrapper.AttachSession",
 		plugin + "/exec.ServiceWrapper.OpenNativeSession",
 		// Arbitrary file write and native dialogs on the host.

@@ -1,8 +1,8 @@
 // Package terminal runs the host's local terminals: a shell on a pseudo-terminal of this machine.
 // It says what it knows about each terminal instead of leaving a reader to guess: which shell
 // started and where, what size the shell started at, whether a program other than the shell holds
-// the terminal, and how the session ended. A session belongs to an owner (the window that opened
-// it) and ends with it.
+// the terminal, which directory it is in, and how the session ended. A session belongs to an owner
+// (the window that opened it) and ends with it.
 package terminal
 
 import "time"
@@ -12,17 +12,28 @@ import "time"
 // closed.
 type Owner any
 
-// Size is the size of a terminal in cells, the second argument of CreateTerminal: the pty is opened at
-// it before the shell starts, so the shell lays out its first prompt for it. Zero is "not given" and
-// becomes the default (DefaultCols by DefaultRows), each dimension on its own; a dimension below zero
-// or over MaxDimension is refused, naming it.
-type Size struct {
-	Cols int `json:"cols"`
-	Rows int `json:"rows"`
+// Launch is the second argument of CreateTerminal: where the terminal starts, how big it is, and how
+// its output is paced. Every field is optional; zero is "not given".
+type Launch struct {
+	// Cols and Rows are the size of the terminal in cells. The pty is opened at this size before the
+	// shell starts, so the shell lays out its first prompt for it. Zero is "not given" and becomes the
+	// default (DefaultCols by DefaultRows), each dimension on its own; a dimension below zero or over
+	// MaxDimension is refused, naming it.
+	Cols int `json:"cols,omitempty"`
+	Rows int `json:"rows,omitempty"`
+	// Cwd is the directory the shell starts in: an absolute path to a directory that exists. Empty: the
+	// user's home. Anything else is refused, naming the field.
+	Cwd string `json:"cwd,omitempty"`
+	// Flow asks for flow control: the host stops reading the shell's output while FlowHighBytes of what
+	// it delivered are unacknowledged and reads again once the caller has acknowledged it down to
+	// FlowLowBytes (AckTerminal). The shell blocks in its own write meanwhile, so a hidden or slow page
+	// costs the shell time and the host no memory. Off (the default): the host reads and delivers as fast
+	// as the shell writes, which is what a caller that never acknowledges needs.
+	Flow bool `json:"flow,omitempty"`
 }
 
 // Options is what the manager starts a terminal from. CreateTerminal builds it from the SDK's session
-// options (the id, the command, the labels and params) and the Size.
+// options (the id, the command, the labels and params) and the Launch.
 type Options struct {
 	// ID is the session id the caller chose, so that it can listen for the session's events before
 	// the shell starts. Empty: the host makes one. An id that is in use is refused.
@@ -33,6 +44,8 @@ type Options struct {
 	Command []string
 	Cols    int
 	Rows    int
+	Cwd     string
+	Flow    bool
 	// Labels and Params are what the caller attached to the session; the exec lane lists them with it.
 	Labels map[string]string
 	Params map[string]string
@@ -61,6 +74,14 @@ type Limits struct {
 	// GapWaitMs is how long an operation waits for its predecessor, in milliseconds, before the
 	// host gives the missing number up.
 	GapWaitMs int `json:"gap_wait_ms"`
+	// FlowHighBytes and FlowLowBytes are the marks of flow control (Launch.Flow): at most
+	// FlowHighBytes of delivered output wait for an acknowledgement, plus one read of
+	// DefaultReadBufferSize; reading resumes at FlowLowBytes.
+	FlowHighBytes int `json:"flow_high_bytes"`
+	FlowLowBytes  int `json:"flow_low_bytes"`
+	// HangupGraceMs is how long a closing session gets, in milliseconds, between the hangup it is sent
+	// and the kill.
+	HangupGraceMs int `json:"hangup_grace_ms"`
 }
 
 // Session is what the host says about a terminal it started.
@@ -74,8 +95,10 @@ type Session struct {
 	// Cwd is the directory the shell started in.
 	Cwd string `json:"cwd"`
 	// Cols and Rows are the size the pty was opened at: the size asked for, or the default.
-	Cols   int    `json:"cols"`
-	Rows   int    `json:"rows"`
+	Cols int `json:"cols"`
+	Rows int `json:"rows"`
+	// Flow says whether flow control is on for this session.
+	Flow   bool   `json:"flow"`
 	Limits Limits `json:"limits"`
 }
 
@@ -152,12 +175,13 @@ const (
 	StateUnknown State = "unknown"
 )
 
-// UnknownReason says why a Foreground is unknown.
+// UnknownReason says why a Foreground or a Directory is unknown.
 type UnknownReason string
 
 const (
 	// ReasonUnsupported: this build cannot run local terminals (Windows: the host has no ConPTY
-	// backend, and a ConPTY has no foreground process group to ask about).
+	// backend, and a ConPTY has no foreground process group to ask about), or the platform has no
+	// cheap way to read the fact.
 	ReasonUnsupported UnknownReason = "unsupported"
 	// ReasonQueryFailed: the system refused the question.
 	ReasonQueryFailed UnknownReason = "query-failed"
@@ -183,11 +207,22 @@ func UnknownForeground(reason UnknownReason) Foreground {
 	return Foreground{State: StateUnknown, Name: "", PGID: 0, Reason: reason}
 }
 
+// Directory is the fact "where is the shell now": its current working directory, read from the system
+// when asked (`/proc/<pid>/cwd` on Linux, `proc_info` on macOS), so a new terminal can open here and a
+// tab can show the directory. It is a snapshot.
+type Directory struct {
+	// Path is the shell's current directory, when known.
+	Path string `json:"path,omitempty"`
+	// Reason is set when it is not known.
+	Reason UnknownReason `json:"reason,omitempty"`
+}
+
 // Sink receives a session's events. All calls for one session come from one goroutine at a time and
 // in order: every Output of a session precedes its one Closed. Calls for different sessions may be
-// concurrent. A Sink must not call back into the Manager for the same session.
+// concurrent. A Sink must not call back into the Manager for the same session, except Ack.
 type Sink interface {
-	// Output delivers bytes the shell wrote. The slice belongs to the receiver.
+	// Output delivers bytes the shell wrote. The slice belongs to the receiver. The bytes are the
+	// shell's, untouched: a multi-byte character may be cut between two calls.
 	Output(sessionID string, data []byte)
 	// Closed delivers how the session ended. It is the last call for the session.
 	Closed(sessionID string, end End)
@@ -211,16 +246,30 @@ const (
 	// missing sequence number up and goes on.
 	GapWait = 2 * time.Second
 
+	// FlowHighBytes and FlowLowBytes are the marks of flow control: the host stops reading a shell's
+	// output while FlowHighBytes of what it delivered are unacknowledged, and reads again at
+	// FlowLowBytes. (VS Code's pty host pauses at 100,000 characters and resumes at 5,000; the unit
+	// here is bytes and the marks are larger because a Wails event costs more than a Node message.)
+	FlowHighBytes = 1 << 20
+	FlowLowBytes  = 256 << 10
+
+	// HangupGrace is how long a closing session gets between the hangup its foreground program and
+	// shell are sent and the kill of what ignored it.
+	HangupGrace = 1500 * time.Millisecond
+
 	maxIDLength = 128
 )
 
 // defaultLimits states the bounds above.
 func defaultLimits() Limits {
 	return Limits{
-		MaxDimension: MaxDimension,
-		PendingOps:   MaxPendingOps,
-		PendingBytes: MaxPendingBytes,
-		SeqAhead:     MaxSeqAhead,
-		GapWaitMs:    int(GapWait / time.Millisecond),
+		MaxDimension:  MaxDimension,
+		PendingOps:    MaxPendingOps,
+		PendingBytes:  MaxPendingBytes,
+		SeqAhead:      MaxSeqAhead,
+		GapWaitMs:     int(GapWait / time.Millisecond),
+		FlowHighBytes: FlowHighBytes,
+		FlowLowBytes:  FlowLowBytes,
+		HangupGraceMs: int(HangupGrace / time.Millisecond),
 	}
 }

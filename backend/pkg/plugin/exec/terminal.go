@@ -102,6 +102,12 @@ func (c *controller) ResizeTerminal(sessionID string, seq uint64, rows, cols int
 	return c.terminalManager.Resize(sessionID, seq, rows, cols)
 }
 
+// AckTerminal tells a local terminal started with flow control that n more bytes of its output were
+// taken in. It runs for every few kilobytes of output, so it opens no span.
+func (c *controller) AckTerminal(sessionID string, n int) error {
+	return c.terminalManager.Ack(sessionID, n)
+}
+
 // IsBusy says whether something other than the shell holds a terminal's foreground. A session of a
 // plugin runs on another machine: the host holds no terminal for it, so it says unknown.
 //
@@ -119,6 +125,25 @@ func (c *controller) IsBusy(sessionID string) (_ terminal.Foreground, err error)
 		return terminal.UnknownForeground(terminal.ReasonRemote), nil
 	}
 	return c.terminalManager.Busy(sessionID)
+}
+
+// GetCwd says which directory a terminal's shell is in now. A session of a plugin runs on another
+// machine, so it says unknown.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) GetCwd(sessionID string) (_ terminal.Directory, err error) {
+	_, span := tracer.Start(context.Background(), "exec.GetCwd")
+	defer finishOp(span, &err)
+	span.SetAttributes(attribute.String("session_id", sessionID))
+	var none terminal.Directory
+	index, _, ok := c.lookupSession(sessionID)
+	if !ok {
+		return none, apperror.SessionNotFound(sessionID)
+	}
+	if !index.local {
+		return terminal.Directory{Path: "", Reason: terminal.ReasonRemote}, nil
+	}
+	return c.terminalManager.Cwd(sessionID)
 }
 
 // CloseOwnedTerminals ends the local terminals of owner, as its window going away does.
