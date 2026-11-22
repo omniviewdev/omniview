@@ -1,4 +1,3 @@
-import { isIconName, type IconName } from '@omniviewdev/kit';
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { platformOf } from '../../core/chords';
 import type { Session } from '../../core/panel';
@@ -19,9 +18,6 @@ import styles from './TerminalBody.module.css';
 // The body of a terminal session in the panel (docs/ui-next/status/T1.md, "The body"): the toolbar, the screen over its fixed status lane, and the words a person who cannot see them is told. The panel keeps
 // every body mounted from the first time it is shown until its session closes, so what a body does while it is NOT on screen is decided here and in `screen.ts`: nothing. The emulator's state (its screen, its
 // scrollback) stays; its listener on the feed, its frames, its observer and its GPU context are released while it is hidden, and the feed holds the output meanwhile, bound and counted.
-
-/** The glyph of the empty state: the tool's own, or the kit's generic one until the kit has it. */
-const ICON: IconName = isIconName(TERMINAL_ICON) ? TERMINAL_ICON : 'box';
 
 /** How long Copy confirms itself with a check (the mock's `confirmCopy`, and the Logs toolbar's). */
 const CONFIRM_MS = 2_000;
@@ -99,7 +95,7 @@ type TerminalBodyProps = {
 export function TerminalBody({ sessions, session, visible, load }: TerminalBodyProps) {
   const feed = sessions.feedOf(session.id);
   if (feed === undefined) {
-    return <EmptyState icon={ICON} title={TERMINAL_GONE.title} hint={TERMINAL_GONE.hint} />;
+    return <EmptyState icon={TERMINAL_ICON} title={TERMINAL_GONE.title} hint={TERMINAL_GONE.hint} />;
   }
 
   return <TerminalView sessions={sessions} session={session} feed={feed} visible={visible} load={load ?? loadXtermEngine} />;

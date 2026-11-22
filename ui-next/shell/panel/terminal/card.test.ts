@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { terminalCardOf } from './card';
+import { TERMINAL_ICON } from './tool';
 import type { TerminalFeedSnapshot } from './feed';
 import type { TerminalSessionRecord } from './TerminalSessions';
 
@@ -10,7 +11,7 @@ const record = (snapshot: TerminalFeedSnapshot, patch: Partial<TerminalSessionRe
 
 describe('the card of a terminal session', () => {
   it('is a Shell, with the tool\'s glyph, and says the state of a terminal: Connected', () => {
-    expect(terminalCardOf(record({ state: 'running' }))).toEqual({ kind: 'Shell', icon: 'square-terminal', resource: undefined, facts: [], state: { label: 'Connected' } });
+    expect(terminalCardOf(record({ state: 'running' }))).toEqual({ kind: 'Shell', icon: TERMINAL_ICON, resource: undefined, facts: [], state: { label: 'Connected' } });
   });
 
   it('says Connecting while it starts, and Failed (to start) with the reason left to the session\'s cause', () => {
@@ -31,7 +32,7 @@ describe('the card of a terminal session', () => {
   it('is the card of an ended terminal for a session that has no record at all (one restored from the last run: its process is gone)', () => {
     expect(terminalCardOf(undefined)).toEqual({
       kind: 'Shell',
-      icon: 'square-terminal',
+      icon: TERMINAL_ICON,
       resource: undefined,
       facts: [],
       state: { label: 'Ended' },

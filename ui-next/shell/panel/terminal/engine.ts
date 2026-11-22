@@ -56,7 +56,11 @@ export type Engine = {
   readonly setAppearance: (appearance: EngineAppearance) => void;
   /** Whether typing reaches the feed. An ended terminal takes none. */
   readonly setInput: (on: boolean) => void;
-  readonly setRenderer: (renderer: EngineRenderer) => void;
+  /**
+   * Switches the renderer. It answers once the new one is in place and never rejects: the GPU's code is a chunk of its own, and its cells are not the DOM's (it rounds the cell to whole device pixels), so
+   * whoever asked measures the host again then.
+   */
+  readonly setRenderer: (renderer: EngineRenderer) => Promise<void>;
   /** The name of the input and what it says to a person who cannot see the screen. */
   readonly describe: (label: string, descriptionId: string) => void;
   readonly focus: () => void;

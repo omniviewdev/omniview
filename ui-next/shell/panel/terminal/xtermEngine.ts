@@ -34,6 +34,9 @@ function themeOf(appearance: EngineAppearance): ITheme {
   };
 }
 
+/** The pitch of a row the host wants, in pixels: the font's size times the multiple it asked for. */
+const pitchOf = (appearance: EngineAppearance): number => Math.round(appearance.fontSize * appearance.lineHeight);
+
 export function createXtermEngine(options: EngineOptions): Engine {
   injectStyles();
   const { appearance } = options;
@@ -43,7 +46,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
     scrollback: options.scrollback,
     fontFamily: appearance.fontFamily,
     fontSize: appearance.fontSize,
-    lineHeight: appearance.lineHeight,
+    lineHeight: 1,
     theme: themeOf(appearance),
     // Idle is zero timers: a blinking cursor is a timer for as long as the terminal has focus.
     cursorBlink: false,
@@ -58,10 +61,36 @@ export function createXtermEngine(options: EngineOptions): Engine {
   let renderer: EngineRenderer = 'dom';
   let gpu: WebglAddon | undefined;
   let disposed = false;
+  let element: HTMLElement | undefined;
+  let pitch = pitchOf(appearance);
+
+  /** The height of the cell the emulator draws now, from the row it made (the emulator's own rows carry it), or nothing before it has drawn. */
+  const cellHeight = (): number | undefined => {
+    const row = element?.querySelector<HTMLElement>('.xterm-rows > div');
+    const height = Number.parseFloat(row?.style.height ?? '');
+    return Number.isFinite(height) && height > 0 ? height : undefined;
+  };
+
+  /**
+   * The emulator's row is the font's own height times `lineHeight`, rounded down: a multiple that is right for one font is not for another. This finds the multiple that makes the row the pitch the host asked for
+   * (the mock's rows are 18 px at 12 px) by looking at the row it makes, and stops when it is, or after a few tries (a font that rounds the other way).
+   */
+  const calibrate = (): void => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const cell = cellHeight();
+      if (cell === undefined || cell === pitch) {
+        return;
+      }
+
+      terminal.options.lineHeight = (terminal.options.lineHeight ?? 1) * (pitch / cell) + (attempt > 1 ? 0.01 : 0);
+    }
+  };
 
   return {
     open: (host) => {
+      element = host;
       terminal.open(host);
+      calibrate();
     },
 
     measure: () => {
@@ -101,14 +130,15 @@ export function createXtermEngine(options: EngineOptions): Engine {
       terminal.options.theme = themeOf(next);
       terminal.options.fontFamily = next.fontFamily;
       terminal.options.fontSize = next.fontSize;
-      terminal.options.lineHeight = next.lineHeight;
+      pitch = pitchOf(next);
+      calibrate();
     },
 
     setInput: (on) => {
       terminal.options.disableStdin = !on;
     },
 
-    setRenderer: (next) => {
+    setRenderer: async (next) => {
       if (next === renderer || disposed) {
         return;
       }
@@ -120,27 +150,29 @@ export function createXtermEngine(options: EngineOptions): Engine {
         return;
       }
 
-      // The GPU renderer is its own chunk; whoever hid the screen again before it came leaves it unused.
-      void import('@xterm/addon-webgl').then(({ WebglAddon: Gpu }) => {
+      try {
+        // The GPU renderer is its own chunk; whoever hid the screen again before it came leaves it unused.
+        const { WebglAddon: Gpu } = await import('@xterm/addon-webgl');
         if (renderer !== 'gpu' || disposed || gpu !== undefined) {
           return;
         }
 
-        try {
-          const addon = new Gpu();
-          // A lost context falls back to the DOM's renderer, with the screen as it was.
-          addon.onContextLoss(() => {
-            addon.dispose();
-            if (gpu === addon) {
-              gpu = undefined;
-            }
-          });
-          terminal.loadAddon(addon);
-          gpu = addon;
-        } catch {
-          gpu = undefined;
-        }
-      });
+        const addon = new Gpu();
+        // A lost context falls back to the DOM's renderer, with the screen as it was.
+        addon.onContextLoss(() => {
+          addon.dispose();
+          if (gpu === addon) {
+            gpu = undefined;
+          }
+        });
+        terminal.loadAddon(addon);
+        gpu = addon;
+        calibrate();
+      } catch {
+        // No chunk, or no context: the DOM's renderer stays, and draws the same screen.
+        renderer = 'dom';
+        gpu = undefined;
+      }
     },
 
     describe: (label, descriptionId) => {

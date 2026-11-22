@@ -72,6 +72,14 @@
 //      history (the first time the history is read from it), the window restores it: the bell has no dot, the restored records raised no toast and no announcement, and a restored record's Retry is not offered: its row says
 //      `Retry is unavailable. Not available after restart.`
 //
+//   r  the Terminal tool on the host's own shell (T1), over the real host. Before the first terminal the emulator's code is not requested (no request for its chunk while the panel is open and says `No terminals`); `New terminal` starts a
+//      shell of this machine (the host lists exactly one session), the code is fetched then, the emulator takes the keyboard (the person who pressed the button types) and a command with a known output is run: what the shell printed,
+//      read from the host's own replay of the session (`AttachSession`: the GPU draws on a canvas, there is no text in the page), holds the output line of `echo SEAM_$((6*7))` and not only its echo. `stty size` says the rows and
+//      columns the page measured (the rows exactly, the columns within a cell), and again, with other numbers, after the panel is raised with the End key on its handle: the resize reached the process. A keyboard user can always leave:
+//      Escape stays in the shell, F6 moves the focus out of it, and on a Mac Command J hides the panel and gives the focus back to the page. Closing the running terminal asks (`Terminate session?`, Cancel has the focus, Escape says no
+//      and the host still lists the session), and Terminate session ends it: the host lists nothing, the tool says `No terminals` and the focus is on the tool's tab. A second terminal that runs `exit` is an ENDED session: its lane says
+//      `Input is off. Its output stays readable here.`, the tab stays, closing it asks nothing, and the host has no session left. No request failed and no page error was raised.
+//
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
 //
@@ -2853,6 +2861,143 @@ async function checkCentre(page, base, engine) {
 }
 
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
+/** The sessions the host lists for the exec lane: the ids, as the page's runtime asks for them. */
+const EXEC_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper';
+async function terminalIds(base) {
+  const sessions = await callBound(base, EXEC_SERVICE, 'ListSessions');
+  return (sessions ?? []).map((session) => session.id);
+}
+
+/** What the shell of a session has printed, from the host's replay of it: the last bytes of the session as text. */
+async function transcriptOf(base, id) {
+  const [, bytes] = await callBound(base, EXEC_SERVICE, 'AttachSession', id);
+  return Buffer.from(bytes ?? '', 'base64').toString('utf8');
+}
+
+/** Types a line into the terminal the page has the keyboard in, and presses Enter. */
+async function typeLine(page, text) {
+  await page.keyboard.type(text);
+  await page.keyboard.press('Enter');
+}
+
+/** The size of the screen the emulator drew, as the page has it: its rows (by the 18 px row of the mock) and its width. */
+function screenSizeOf(page) {
+  return page.evaluate(() => {
+    const box = document.querySelector('.xterm-screen')?.getBoundingClientRect();
+    return box === undefined ? null : { rows: Math.round(box.height / 18), width: box.width, height: box.height };
+  });
+}
+
+/** The rows and columns `stty size` printed last in a transcript (the line of two numbers after the command). */
+function sttyOf(transcript) {
+  const found = [...transcript.matchAll(/\r?\n(\d+) (\d+)\r?\n/g)].at(-1);
+  return found === undefined ? null : { rows: Number(found[1]), cols: Number(found[2]) };
+}
+
+async function checkTerminal(page, base, engine) {
+  const errors = [];
+  const chunks = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('request', (request) => {
+    if (/xtermEngine/.test(request.url())) chunks.push(request.url());
+  });
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+
+  // The panel opens on the Terminal tool, which has no session: its words, and not one byte of the emulator.
+  await page.locator('[data-shell-part="panelToggle"]').click();
+  await page.getByRole('tab', { name: 'Terminal', selected: true }).waitFor({ timeout: 10_000 });
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  assert.deepEqual(await terminalIds(base), [], `${engine}: no shell exists before New terminal`);
+  assert.deepEqual(chunks, [], `${engine}: the emulator's code was not requested before the first terminal`);
+
+  // One press: one shell, the code is fetched, and the emulator has the keyboard.
+  await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
+  await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
+  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  const [id] = await terminalIds(base);
+  assert.ok(chunks.length >= 1, `${engine}: the emulator's code was requested when the terminal was shown`);
+  await waitUntil('the emulator to have the keyboard', () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
+  assert.equal(await page.locator('.xterm-helper-textarea').getAttribute('aria-label'), 'Terminal input, Terminal', `${engine}: the input is named for a person who cannot see the screen`);
+  await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+
+  // A command with a known output: the output line, not only the echo of what was typed.
+  await typeLine(page, 'echo SEAM_$((6*7))');
+  await waitUntil('the output of the command', async () => /\r?\nSEAM_42\r?\n/.test(await transcriptOf(base, id)), 15_000);
+
+  // The resize reached the process: the rows the page drew are the rows the pty has, and the columns are the width in cells.
+  await typeLine(page, 'stty size');
+  await waitUntil('stty size to answer', async () => sttyOf(await transcriptOf(base, id)) !== null, 15_000);
+  const before = await screenSizeOf(page);
+  const first = sttyOf(await transcriptOf(base, id));
+  assert.equal(first.rows, before.rows, `${engine}: the pty has the rows the page drew (${String(before.rows)}), it said ${String(first.rows)}`);
+  assert.ok(first.cols >= Math.floor(before.width / 7.3) && first.cols <= Math.ceil(before.width / 6.9), `${engine}: the pty has the width of the screen in cells (${String(Math.round(before.width))} px), it said ${String(first.cols)}`);
+
+  await page.locator('[data-shell-part="panelHandle"]').focus();
+  await page.keyboard.press('End');
+  await waitUntil('the screen to grow', async () => ((await screenSizeOf(page))?.height ?? 0) > before.height + 40, 10_000);
+  await page.waitForTimeout(600);
+  // The emulator had the keyboard and the handle took it: the person goes back to the terminal with the pointer.
+  await page.locator('.xterm-screen').click();
+  await typeLine(page, 'stty size');
+  await waitUntil('stty size to answer again', async () => {
+    const size = sttyOf(await transcriptOf(base, id));
+    return size !== null && size.rows !== first.rows;
+  }, 15_000);
+  const after = await screenSizeOf(page);
+  const second = sttyOf(await transcriptOf(base, id));
+  assert.ok(after.rows > before.rows, `${engine}: the panel is taller, so the screen has more rows`);
+  assert.equal(second.rows, after.rows, `${engine}: after the panel was raised the pty has the new rows (${String(after.rows)}), it said ${String(second.rows)}`);
+
+  // A keyboard user can always leave (A14): Escape stays in the shell, F6 leaves, and on a Mac Command J hides the panel.
+  await page.keyboard.press('Escape');
+  assert.ok(await page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), `${engine}: Escape does not leave the terminal`);
+  await page.keyboard.press('F6');
+  assert.ok(await page.evaluate(() => !(document.activeElement?.closest('.xterm') ?? null)), `${engine}: F6 moves the focus out of the terminal`);
+  await page.locator('.xterm-screen').click();
+  if (mac) {
+    await page.keyboard.press('Meta+j');
+    await waitUntil('the panel to hide', () => page.evaluate(() => document.querySelector('[data-shell-part="panel"]') === null || getComputedStyle(document.querySelector('[data-shell-part="panel"]')).display === 'none' || document.querySelector('[data-shell-part="panel"]').getBoundingClientRect().height === 0), 5_000);
+    assert.ok(await page.evaluate(() => !(document.activeElement?.closest('.xterm') ?? null)), `${engine}: Command J gives the focus back to the page`);
+    await page.keyboard.press('Meta+j');
+    await page.locator('.xterm-screen').waitFor({ state: 'visible' });
+  }
+
+  // Closing a running terminal asks. Cancel has the focus; Escape says no and the host still lists the shell.
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  const dialog = page.getByRole('alertdialog', { name: 'Terminate session?' });
+  await dialog.waitFor();
+  assert.ok(await page.evaluate(() => document.activeElement?.textContent === 'Cancel'), `${engine}: Cancel has the focus in the question`);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  assert.deepEqual(await terminalIds(base), [id], `${engine}: the shell is still there after a no`);
+  // Terminate session ends it: the host lists nothing, the tool says so, and the focus is on the tool's own tab.
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  await dialog.waitFor();
+  await page.getByRole('button', { name: 'Terminate session', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  assert.ok(await page.evaluate(() => document.activeElement?.getAttribute('role') === 'tab' && document.activeElement.textContent?.includes('Terminal')), `${engine}: the focus is on the tool's tab after the last terminal closed`);
+
+  // A shell that exits is an ended session: kept, with its words, and closing it asks nothing.
+  await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
+  await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
+  await waitUntil('the host to list the second shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  const [second_id] = await terminalIds(base);
+  await waitUntil('the second shell to say its prompt', async () => (await transcriptOf(base, second_id)).trim() !== '', 20_000);
+  await typeLine(page, 'exit');
+  await page.getByText('Input is off. Its output stays readable here.', { exact: true }).waitFor({ timeout: 15_000 });
+  assert.equal(await page.locator('[role="tab"][aria-selected="true"][aria-label^="Terminal"]').count(), 1, `${engine}: the ended session's tab stays`);
+  await waitUntil('the host to have no session left', async () => (await terminalIds(base)).length === 0, 10_000);
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  assert.equal(await page.getByRole('alertdialog').count(), 0, `${engine}: closing an ended terminal asks nothing`);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+
+  assert.deepEqual(errors, [], `${engine}: the page raised no error`);
+}
+
 let host;
 try {
   const port = await freePort();
@@ -2912,6 +3057,16 @@ try {
             await page.close();
             console.log(`${label} ${name} run ${String(run)} ok`);
           }
+        }
+
+        continue;
+      }
+
+      // SEAM_TERMINAL_REPEAT=<n> runs scenario r alone, n times in a row, for a developer who works on the Terminal tool (each run starts two shells of this machine and ends them).
+      if (process.env.SEAM_TERMINAL_REPEAT !== undefined) {
+        for (let run = 0; run < Number(process.env.SEAM_TERMINAL_REPEAT); run += 1) {
+          await phase('terminal', name, async () => checkTerminal(await freshPage(browser, host.base), host.base, name));
+          console.log(`terminal ${name} run ${String(run)} ok`);
         }
 
         continue;
@@ -2990,6 +3145,7 @@ try {
       await phase('identity', name, async () => checkIdentity(await freshPage(browser, host.base), host.base, name));
       await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
       await phase('centre', name, async () => checkCentre(await freshPage(browser, host.base), host.base, name));
+      await phase('terminal', name, async () => checkTerminal(await freshPage(browser, host.base), host.base, name));
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));

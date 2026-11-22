@@ -253,7 +253,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
   /** Listens to the feed and the host, and draws what the feed holds. The emulator is there and the screen is on screen. */
   function attach(emulator: Engine): void {
-    emulator.setRenderer('gpu');
+    // The GPU's cells are not the DOM's (it rounds the cell to whole device pixels): once it is in place the host is measured again.
+    void emulator.setRenderer('gpu').then(fit);
     if (host !== undefined) {
       stopObserving = deps.observe(host, fit);
     }
@@ -354,7 +355,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       visible = false;
       if (engine !== undefined) {
         detach();
-        engine.setRenderer('dom');
+        void engine.setRenderer('dom');
       }
     },
 

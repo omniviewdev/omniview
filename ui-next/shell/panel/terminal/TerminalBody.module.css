@@ -176,6 +176,6 @@
   .swatches [data-swatch='font'] {
     font-family: var(--ov-font-code);
     font-size: var(--ov-fs-12);
-    line-height: var(--ov-lh-16);
+    line-height: var(--ov-lh-18);
   }
 }

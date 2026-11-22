@@ -1,3 +1,4 @@
+import { isIconName } from '@omniviewdev/kit';
 import { describe, expect, it } from 'vitest';
 import { LOGS_TOOL } from '../logs';
 import { NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_GONE, TERMINAL_ICON, TERMINAL_TOOL, TERMINAL_TOOL_ID } from './tool';
@@ -19,7 +20,8 @@ describe('the Terminal tool', () => {
 
   it('names the mock\'s glyph for the tab, the card and the empty state (the kit gets it in the icons step: until then the panel draws its generic one)', () => {
     expect(TERMINAL_TOOL.icon).toBe(TERMINAL_ICON);
-    expect(TERMINAL_ICON).toBe('square-terminal');
+    // The glyph the mock draws is `square-terminal` (icons.js:253): until the kit has it, the nearest one it has (a chevron, the caret of a prompt), and never a name the registry does not know.
+    expect(isIconName(TERMINAL_ICON)).toBe(true);
   });
 
   it('says in the mock\'s words that it has no session and what starts one', () => {

@@ -156,6 +156,8 @@ export type FakeEngine = Engine & {
 export type FakeEngineOptions = {
   /** Parse every write at once (the default), or hold the callbacks until `complete`. */
   readonly auto?: boolean | undefined;
+  /** What `setRenderer` waits for before it answers (default: nothing): a test holds it to see what the screen does in between. */
+  readonly rendererReady?: Promise<void> | undefined;
 };
 
 export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {}): FakeEngine {
@@ -242,8 +244,9 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     setInput: (on) => {
       inputs.push(on);
     },
-    setRenderer: (renderer) => {
+    setRenderer: async (renderer) => {
       renderers.push(renderer);
+      await config.rendererReady;
     },
     describe: (label, descriptionId) => {
       labels.push([label, descriptionId]);

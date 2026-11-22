@@ -29,3 +29,5 @@ export { createCentre } from './notices/centreControl';
 export type { Centre } from './notices/centreControl';
 export { loadNotices, noticesStorage } from './notices/storage';
 export type { LoadedNotices, NoticesStorage } from './notices/storage';
+export { createTerminals, TERMINAL_TOOL, TERMINAL_TOOL_ID } from './panel/terminal';
+export type { Terminals, TerminalsOptions, TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './panel/terminal';

@@ -1,0 +1,6 @@
+// The Terminal tool of the host (docs/ui-next/status/T1.md): what the shell exports of it.
+export { createTerminals } from './terminals';
+export type { Terminals, TerminalsOptions } from './terminals';
+export { TERMINAL_TOOL, TERMINAL_TOOL_ID } from './tool';
+export type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
+export type { Engine, EngineLoader, EngineOptions } from './engine';

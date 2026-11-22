@@ -33,9 +33,9 @@ type Rig = {
   readonly fonts: { readonly release: () => void; readonly asked: () => readonly string[] };
 };
 
-function rig(options: { readonly platform?: Platform; readonly deferred?: boolean; readonly auto?: boolean; readonly fontsHeld?: boolean; readonly copy?: (text: string) => Promise<boolean> } = {}): Rig {
+function rig(options: { readonly platform?: Platform; readonly deferred?: boolean; readonly auto?: boolean; readonly fontsHeld?: boolean; readonly rendererReady?: Promise<void>; readonly copy?: (text: string) => Promise<boolean> } = {}): Rig {
   const feed = fakeTerminalFeed();
-  const loader = fakeEngineLoader({ deferred: options.deferred === true, auto: options.auto ?? true });
+  const loader = fakeEngineLoader({ deferred: options.deferred === true, auto: options.auto ?? true, rendererReady: options.rendererReady });
   const host = document.createElement('div');
   const queue: Array<(() => void) | undefined> = [];
   let asked = 0;
@@ -695,5 +695,36 @@ describe('the end of the screen', () => {
     r.screen.show();
     await r.settle();
     expect(r.loader.loads()).toBe(0);
+  });
+});
+
+describe('the GPU renderer', () => {
+  it('is followed by a new measure of the host once it is in place: its cells are not the DOM\'s, and the size the feed was told must be the one the person sees', async () => {
+    const ready = Promise.withResolvers<void>();
+    const { screen, host, feed, engine, settle } = rig({ rendererReady: ready.promise });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    expect(feed.sizes()).toEqual([[80, 24]]);
+    // The GPU rounds its cells to whole device pixels: the host now fits another count.
+    engine().measured({ cols: 192, rows: 14 });
+    ready.resolve();
+    await settle();
+    expect(engine().resizes).toEqual([[192, 14]]);
+    expect(feed.sizes().at(-1)).toEqual([192, 14]);
+  });
+
+  it('is not measured for when the screen was hidden before it was in place', async () => {
+    const ready = Promise.withResolvers<void>();
+    const { screen, host, feed, engine, settle } = rig({ rendererReady: ready.promise });
+    screen.mount(host);
+    screen.show();
+    await settle();
+    engine().measured({ cols: 192, rows: 14 });
+    screen.hide();
+    ready.resolve();
+    await settle();
+    expect(engine().resizes).toEqual([]);
+    expect(feed.sizes()).toEqual([[80, 24]]);
   });
 });

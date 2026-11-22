@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, ty
 import { DetailPage, ListPage, type PageMemory } from '../../page';
 import {
   createLogStreams,
+  createTerminals,
   createPanelStore,
   createRailChoice,
   createTabsStore,
@@ -14,6 +15,8 @@ import {
   LOGS_TOOL_ID,
   LogsBody,
   platformOf,
+  TERMINAL_TOOL,
+  TERMINAL_TOOL_ID,
   Shell,
   type Contributions,
   type LoadedNotices,
@@ -30,6 +33,8 @@ import {
   type ShellRegistration,
   type ShellSidebar,
   type TabId,
+  type Terminals,
+  type TerminalsOptions,
   type TabsStore,
 } from '../../shell';
 import { openable } from '../contract/admit';
@@ -89,6 +94,8 @@ export type PluginHostProps = {
   readonly session?: LoadedSession | undefined;
   /** The window's saved notification history, read before the window draws (`loadNotices`): it comes back as the centre's history and is saved from then on. Absent: the history starts empty and is not saved. */
   readonly savedNotices?: LoadedNotices | undefined;
+  /** What the Terminal tool starts and loads. Default: the host's own shell and the emulator's lazy chunk; a probe or a test gives a synthetic shell and a fake emulator (`shell/panel/terminal`). */
+  readonly terminals?: TerminalsOptions | undefined;
 };
 
 type Host = {
@@ -107,6 +114,8 @@ type Host = {
   readonly panel: PanelStore;
   /** The feeds of the Logs tool's sessions: the host owns each from the moment a plugin hands over a target until the session goes (`shell/panel/logs`). */
   readonly logs: LogStreams;
+  /** The Terminal tool: the feeds of its sessions, the dialog of its close question and the panel's answers for it (`shell/panel/terminal`). */
+  readonly terminals: Terminals;
   /** What `ctx.panel` is for each plugin: the Logs registry, bound to the plugin that asks (`panelHost.ts`). */
   readonly panelHosts: (plugin: string) => PanelHostV1;
   /** The plugin the user chose on the rail, as the session saves it. The component's own state is the source; this is what the session listens to. */
@@ -124,7 +133,7 @@ type Host = {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, terminalOptions: TerminalsOptions | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -133,6 +142,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
+  const terminals = createTerminals(store, terminalOptions);
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
   const routes = new Published<Route>();
   const panelHosts = panelHostsOf(logs);
@@ -151,6 +161,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     tabs,
     panel: store,
     logs,
+    terminals,
     panelHosts,
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
@@ -525,9 +536,18 @@ function logsBodyOf(streams: LogStreams, session: PanelSession, visible: boolean
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session, savedNotices }: PluginHostProps) {
+/** The body of a session of the host's Terminal tool, in a boundary of its own so that a terminal whose view throws loses that session's body and no other (`shell/panel/terminal`). */
+function terminalBodyOf(terminals: Terminals, session: PanelSession, visible: boolean): ReactElement {
+  return (
+    <ContributionBoundary name="terminal session" fallback={(retry) => <ErrorBody title="Couldn't show this session" onRetry={retry} />}>
+      {terminals.bodyOf(session, visible)}
+    </ContributionBoundary>
+  );
+}
+
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session, savedNotices, terminals: terminalOptions }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, terminalOptions));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -665,34 +685,58 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
   // The panel. What each plugin that is ready brings to it is registered in a layout effect, in the commit the plugin turned ready in, so a tool does not arrive a frame after the interface it
   // belongs to; a plugin that goes away takes its tools and sessions with it in the same transaction (PO1).
-  const { panel, logs, panelHosts } = host;
+  const { panel, logs, terminals, panelHosts } = host;
   // The Logs tool is the host's: it is in the strip whatever the plugins are (the sessions that plugins open in it show when their plugin is ready). Registered before the plugins are, in the
   // first layout effect, so the strip is never drawn without it; registering it again changes nothing.
   useLayoutEffect(() => {
     panel.registerTool(LOGS_TOOL);
+    panel.registerTool(TERMINAL_TOOL);
   }, [panel]);
   useLayoutEffect(() => {
     panel.syncPlugins(panelPluginsOf(entries));
   }, [panel, entries]);
   // The feeds of the Logs sessions belong to the host from the moment a plugin hands over a target: they are released with the session, with the plugin, and with the window.
   useEffect(() => logs.attach(), [logs]);
+  // The terminals are the host's too: each process is released with its session, with its plugin, and with the window.
+  useEffect(() => terminals.attach(), [terminals]);
   const bindings = useMemo<PanelBindings>(
     () => ({
-      store: panel,
-      renderBody: (session, visible) => (session.tool === LOGS_TOOL_ID ? logsBodyOf(logs, session, visible) : panelBodyOf(entries, session, visible)),
+      store: terminals.store,
+      renderBody: (session, visible) => {
+        if (session.tool === TERMINAL_TOOL_ID) {
+          return terminalBodyOf(terminals, session, visible);
+        }
+
+        return session.tool === LOGS_TOOL_ID ? logsBodyOf(logs, session, visible) : panelBodyOf(entries, session, visible);
+      },
       // The Logs card is the host's, completed member by member by what the plugin says for the sessions it opens there (`panel.sessions.logs.card`): the plugin's words win over the host's.
       cardOf: (session) => {
+        if (session.tool === TERMINAL_TOOL_ID) {
+          return terminals.cardOf(session);
+        }
+
         const given = cardOfSession(entries, session);
         return session.tool === LOGS_TOOL_ID ? completeLogCard(logCardOf(session, logs.recordOf(session.id)), given) : given;
       },
-      emptyOf: (toolId) => (toolId === LOGS_TOOL_ID ? LOGS_EMPTY : undefined),
-      newSessionOf: (toolId) =>
-        newSessionOf(entries, toolId, (input) => {
+      emptyOf: (toolId) => {
+        if (toolId === TERMINAL_TOOL_ID) {
+          return terminals.empty;
+        }
+
+        return toolId === LOGS_TOOL_ID ? LOGS_EMPTY : undefined;
+      },
+      newSessionOf: (toolId) => {
+        if (toolId === TERMINAL_TOOL_ID) {
+          return terminals.newSession;
+        }
+
+        return newSessionOf(entries, toolId, (input) => {
           const opened = panel.openSession(input);
           if (opened.status === 'refused') {
             console.warn(`[panel] a session was refused: ${opened.message}`);
           }
-        }),
+        });
+      },
       linkOf: (route) => ({
         href: routeAddressOf(route),
         open: (activation) => {
@@ -701,7 +745,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         },
       }),
     }),
-    [panel, logs, entries, tabs, platform],
+    [panel, logs, terminals, entries, tabs, platform],
   );
 
   const sidebar = shown?.phase === 'ready' ? shown.contribution.sidebar : undefined;
@@ -741,6 +785,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         palette={host.palette}
         notices={host.notices}
       />
+      {terminals.prompt}
     </>
   );
 }

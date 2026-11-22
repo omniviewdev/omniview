@@ -10,15 +10,59 @@ export const PALETTE_ROLES = ['black', 'red', 'green', 'yellow', 'blue', 'magent
 /** Every swatch the body renders: the screen's own colours, then the palette. */
 export const SWATCH_ROLES = ['background', 'foreground', 'cursor', 'cursorAccent', 'selection', 'selectionInactive', ...PALETTE_ROLES] as const;
 
-/** What a font gets when the engine could not say: the mock's 12 px on a 16 px line. */
-const FALLBACK = Object.freeze({ fontSize: 12, lineHeight: 16 / 12 });
+/** What a font gets when the engine could not say: the mock's 12 px on an 18 px row. */
+const FALLBACK = Object.freeze({ fontSize: 12, lineHeight: 18 / 12 });
 
 const swatch = (root: ParentNode, role: string): Element | null => root.querySelector(`[data-swatch="${role}"]`);
 
-/** The colour a swatch resolved to, as the engine writes it (`rgb(…)`). */
+/** What a canvas context offers of its pixel: all that `normaliseColour` needs, so a test can give its own. */
+export type PixelContext = {
+  fillStyle: string | CanvasGradient | CanvasPattern;
+  readonly clearRect: (x: number, y: number, width: number, height: number) => void;
+  readonly fillRect: (x: number, y: number, width: number, height: number) => void;
+  readonly getImageData: (x: number, y: number, width: number, height: number) => { readonly data: ArrayLike<number> };
+};
+
+/** The one pixel the colours that are not `rgb()` are drawn on: made when the first of them is read. */
+let pixel: PixelContext | null | undefined;
+
+function pixelContext(): PixelContext | null {
+  if (pixel === undefined) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    pixel = canvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  return pixel;
+}
+
+/**
+ * A colour as `rgb()`, the one form the emulator reads in both its renderers. `getComputedStyle` gives `rgb()` and `rgba()` for hex, rgb, hsl and names, but `oklch()`, `color()` and `color-mix()` come back in
+ * their own syntax (measured in both engines): those are drawn on a pixel and read back, which is sRGB whatever the colour's space. A colour the context refuses, or no context, is left as it was.
+ */
+export function normaliseColour(value: string, context: PixelContext | null = pixelContext()): string {
+  if (value === '' || /^rgba?\(/.test(value) || context === null) {
+    return value;
+  }
+
+  context.clearRect(0, 0, 1, 1);
+  context.fillStyle = '#000000';
+  context.fillStyle = value;
+  context.fillRect(0, 0, 1, 1);
+  const { data } = context.getImageData(0, 0, 1, 1);
+  const [red, green, blue, alpha] = [data[0], data[1], data[2], data[3]];
+  if (red === undefined || green === undefined || blue === undefined || alpha === undefined) {
+    return value;
+  }
+
+  return alpha === 255 ? `rgb(${String(red)}, ${String(green)}, ${String(blue)})` : `rgba(${String(red)}, ${String(green)}, ${String(blue)}, ${String(Math.round((alpha / 255) * 1000) / 1000)})`;
+}
+
+/** The colour a swatch resolved to, as the emulator reads it (`rgb(…)`). */
 function colourOf(root: ParentNode, role: string): string {
   const element = swatch(root, role);
-  return element === null ? '' : getComputedStyle(element).color;
+  return element === null ? '' : normaliseColour(getComputedStyle(element).color);
 }
 
 /** A length in pixels, or nothing for a word (`normal`, `auto`) and for what is not a length. */
