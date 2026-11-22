@@ -1,4 +1,4 @@
-/* The body of the Settings sheet: the pages on the left (the old window's 212 px) and the page on the right, which is the pane that scrolls. The frame, the header and the Close control are the kit's `Sheet`. */
+/* The body of Settings, in either container: the pages on the left (the old window's 212 px) and the page on the right, which is the pane that scrolls. The frame, the header and the Close control are the kit's `Sheet`. */
 @layer ov.shell {
   .body {
     position: relative;
@@ -26,7 +26,7 @@
     overscroll-behavior: contain;
   }
 
-  /* Loading, could not load, nothing to show: one line in the middle of the sheet, under the header that never goes. */
+  /* Loading, could not load, nothing to show: one line in the middle of the body, under the header that never goes. */
   .state {
     display: flex;
     flex: 1 1 auto;

@@ -1,8 +1,8 @@
 import { readValue, type Constraints, type FieldKind, type FieldSpec, type FormSchema, type Json, type Option, type RemoteValidation, type SectionSpec } from '../../core/fields';
 import type { HostCategory, HostSetting, HostSnapshot } from './types';
 
-// The adapter: what the host's settings service declares (its snapshot: categories of typed settings) written as the form model's schema, so that the Settings sheet draws each field by its kind from DECLARED data and no
-// field is a hand-written form. Plain TypeScript, no React, no DOM, no host call. It is also where the sheet says what it does not draw: a setting a part cannot draw is left out with its reason, never drawn as something it is
+// The adapter: what the host's settings service declares (its snapshot: categories of typed settings) written as the form model's schema, so that Settings draws each field by its kind from DECLARED data and no
+// field is a hand-written form. Plain TypeScript, no React, no DOM, no host call. It is also where Settings says what it does not draw: a setting a part cannot draw is left out with its reason, never drawn as something it is
 // not, and a page left with nothing to draw is not offered (a nav entry that leads to an empty page is a dead end).
 
 /**
@@ -21,7 +21,7 @@ export type NotDrawnReason = 'picker' | 'developer' | 'type' | 'presence';
 
 export type NotDrawn = { readonly id: string; readonly reason: NotDrawnReason };
 
-/** One page of the sheet: a category of the host, with the ids of the fields it draws, in order. */
+/** One page of Settings: a category of the host, with the ids of the fields it draws, in order. */
 export type SettingsPage = {
   readonly id: string;
   readonly title: string;
@@ -122,7 +122,7 @@ function orderOf(categories: HostSnapshot['categories']): readonly HostCategory[
   return present.toSorted((a, b) => rank(a) - rank(b) || (a.label || a.id).localeCompare(b.label || b.id, 'en'));
 }
 
-/** Reads a snapshot of the host's settings into the schema the sheet draws and the values it starts from. */
+/** Reads a snapshot of the host's settings into the schema Settings draws and the values it starts from. */
 export function modelOf(snapshot: HostSnapshot): SettingsModel {
   const pages: SettingsPage[] = [];
   const sections: SectionSpec[] = [];

@@ -1,4 +1,4 @@
-// What the host's settings service answers, as far as the Settings sheet reads it (`backend/pkg/settings/service.go`: `GetSnapshot`, `Validate`, `Commit`; the SDK's `settings` package: `Category`, `Setting`). Structural
+// What the host's settings service answers, as far as Settings reads it (`backend/pkg/settings/service.go`: `GetSnapshot`, `Validate`, `Commit`; the SDK's `settings` package: `Category`, `Setting`). Structural
 // types, not the generated classes: the model below is plain TypeScript over plain data, so a test builds a snapshot as an object and the generated classes satisfy these as they are.
 
 /** The SDK's setting types (`settings.SettingType`), as the wire says them: `text`, `select`, `multiselect`, `integer`, `float`, `toggle`, `color`, `datetime`, `password`. A type this build does not know is read as it is. */
@@ -46,7 +46,7 @@ export type HostValidation = { readonly valid: boolean; readonly code?: string |
 /** What the host answers to a commit (`CommitResult`): the snapshot after it, and whether the live effect took (`applied`, `uncertain`). */
 export type HostCommit = { readonly snapshot: HostSnapshot; readonly applied: boolean; readonly uncertain: boolean; readonly message: string };
 
-/** The host's settings service as the sheet needs it: a seam, so that a test and the probe's fixture answer from memory. The production one is `runtime.ts`. */
+/** The host's settings service as Settings needs it: a seam, so that a test and the probe's fixture answer from memory. The production one is `runtime.ts`. */
 export type SettingsClient = {
   readonly snapshot: () => Promise<HostSnapshot>;
   readonly validate: (id: string, value: unknown) => Promise<HostValidation>;

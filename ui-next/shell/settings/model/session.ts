@@ -2,9 +2,9 @@ import { compileSchema, createFormStore, sameValue, type FormStore, type Json, t
 import { modelOf, type SettingsModel } from './adapter';
 import type { HostSnapshot, SettingsClient } from './types';
 
-// The session is the Settings sheet's whole dealing with the host: it reads the snapshot, makes the form from it (the model of ../../core/fields, in the mode of a setting: a value applies the moment it is chosen or committed),
+// The session is Settings' whole dealing with the host: it reads the snapshot, makes the form from it (the model of ../../core/fields, in the mode of a setting: a value applies the moment it is chosen or committed),
 // sends what the person changes one setting at a time, asks the host about a typed value, and follows what changes elsewhere. Plain TypeScript over the `SettingsClient` seam: no React, no DOM; its only timers are the form's own,
-// on the scheduler it is given. One session lives from the sheet's opening to its closing, and `dispose` leaves nothing behind.
+// on the scheduler it is given. One session lives from the opening of Settings (the sheet's, or the window's load) to its closing, and `dispose` leaves nothing behind.
 
 export type SessionState =
   | { readonly phase: 'loading' }
@@ -33,7 +33,7 @@ export type SettingsSession = {
   /** Asks the host what it holds now and gives it to the form: a window that was hidden and is shown again. A no-op until the first load has finished. */
   readonly refresh: () => void;
   readonly elsewhere: Elsewhere;
-  /** What the form says to a screen reader (a new error or warning raised on commit, S127): the sheet draws it in a polite live region of its own, because the window's are behind the modal. */
+  /** What the form says to a screen reader (a new error or warning raised on commit, S127): Settings draws it in a polite live region of its own, because the window's are behind the sheet's modal. */
   readonly announcements: Announcements;
   /** Stops listening to the host, abandons what is in flight and disposes the form. */
   readonly dispose: () => void;
@@ -189,7 +189,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     try {
       snapshot = await client.snapshot();
     } catch {
-      // The sheet keeps what it shows: the next change the host tells asks again.
+      // Settings keeps what it shows: the next change the host tells asks again.
       return;
     }
 

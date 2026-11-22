@@ -1,7 +1,7 @@
 import type { FieldMessage as LaneMessage } from '@omniviewdev/kit';
 import type { FieldMessage, Json } from '../../core/fields';
 
-// The words the sheet says on a row, as plain functions: the model's message in the kit lane's vocabulary, the note that a setting was changed elsewhere under a draft, and the name of the reset control.
+// The words Settings says on a row, as plain functions: the model's message in the kit lane's vocabulary, the note that a setting was changed elsewhere under a draft, and the name of the reset control.
 
 /** The lane's messages are at most 80 characters (S127). */
 const LIMIT = 80;
