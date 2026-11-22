@@ -30,6 +30,8 @@ export type SettingsSession = {
   readonly subscribe: (listener: () => void) => () => void;
   /** Asks the host again after a failed load. */
   readonly load: () => void;
+  /** Asks the host what it holds now and gives it to the form: a window that was hidden and is shown again. A no-op until the first load has finished. */
+  readonly refresh: () => void;
   readonly elsewhere: Elsewhere;
   /** What the form says to a screen reader (a new error or warning raised on commit, S127): the sheet draws it in a polite live region of its own, because the window's are behind the modal. */
   readonly announcements: Announcements;
@@ -291,6 +293,9 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       };
     },
     load,
+    refresh: () => {
+      void refresh(0);
+    },
     announcements: {
       getSnapshot: () => said,
       subscribe: (listener) => {

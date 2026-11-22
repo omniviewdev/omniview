@@ -32,3 +32,6 @@ export type { LoadedNotices, NoticesStorage } from './notices/storage';
 export { createSettingsControl } from './settings/host';
 export type { SettingsControl, SettingsControlOptions } from './settings/host';
 export { settingsChordText, WEB_SETTINGS_CHORD } from './settings/chords';
+export { WindowKindScreen } from './settings/WindowKindScreen';
+export { resolveWindowKind } from './settings/windowKind';
+export type { WindowKind } from './settings/windowKind';

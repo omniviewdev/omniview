@@ -19,7 +19,7 @@ export function Gear() {
       type="button"
       className={styles.gear}
       aria-label="Settings"
-      aria-haspopup="dialog"
+      aria-haspopup={control.mode === 'sheet' ? 'dialog' : undefined}
       aria-keyshortcuts={settingsChordKeys(platform)}
       data-shell-part="settings"
       {...tip(`Settings\n${chord}`)}

@@ -41,6 +41,40 @@ describe('a control that has not been asked', () => {
   });
 });
 
+describe('where there are native windows', () => {
+  it('asks the host for its Settings window and draws no sheet: the control says so', async () => {
+    const { module } = moduleOf();
+    const load = vi.fn(async () => module);
+    const openWindow = vi.fn(async () => undefined);
+    const control = createSettingsControl({ load, openWindow });
+    expect(control.mode).toBe('window');
+    control.open();
+    await flush();
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    expect(load).not.toHaveBeenCalled();
+    expect(control.getSnapshot()).toEqual({ open: false });
+    control.open();
+    await flush();
+    expect(openWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves the person with the sheet when the host cannot show its window, and says why', async () => {
+    const { module } = moduleOf();
+    const load = vi.fn(async () => module);
+    const failure = new Error('no window');
+    const onError = vi.fn();
+    const control = createSettingsControl({ load, openWindow: async () => Promise.reject(failure), onError });
+    control.open();
+    await flush();
+    expect(onError).toHaveBeenCalledWith(failure);
+    expect(control.getSnapshot().open).toBe(true);
+  });
+
+  it('is a sheet where there is no window to ask', () => {
+    expect(createSettingsControl({ load: vi.fn() }).mode).toBe('sheet');
+  });
+});
+
 describe('open', () => {
   it('loads the sheet\'s code once, and the sheet is open when it has arrived, with a session made for it', async () => {
     const { module, sessions } = moduleOf();

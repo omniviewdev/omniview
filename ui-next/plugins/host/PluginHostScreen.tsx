@@ -19,6 +19,14 @@ function closeWindow(): void {
   });
 }
 
+/**
+ * Where the app has native windows Settings is a window of its own, the original application's (owner's ruling, 2026-11-22): the host shows it, creates it the first time, and focuses the one that is open when it is asked again (`OpenSettings`
+ * with no target keeps where it was). A browser has none, and Settings is a sheet in the window.
+ */
+async function showSettingsWindow(): Promise<void> {
+  await WindowClient.OpenSettings('');
+}
+
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
 
@@ -46,6 +54,7 @@ const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(notice
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
   const [onCloseWindow] = useState(() => (isNativeWindow() ? closeWindow : undefined));
+  const [openSettingsWindow] = useState(() => (isNativeWindow() ? showSettingsWindow : undefined));
   const inventory = useInstalledPlugins();
   const link = useHashLink();
   const [loaded, setLoaded] = useState<{ readonly session: LoadedSession; readonly notices: LoadedNotices } | undefined>(undefined);
@@ -90,6 +99,7 @@ export function PluginHostScreen() {
           }}
           onRetryInventory={inventory.retry}
           onCloseWindow={onCloseWindow}
+          openSettingsWindow={openSettingsWindow}
           session={loaded.session}
           savedNotices={loaded.notices}
         />

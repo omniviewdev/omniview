@@ -9,6 +9,17 @@ import type { SettingsClient } from './model/types';
 /** The page of Settings that was last on screen: kept for the life of the window, so that Settings opens where it was left (the old window kept its location too). Not saved: a new window starts on the first page. */
 export type PageMemory = { readonly get: () => string | undefined; readonly set: (id: string) => void };
 
+/** The page Settings was last on, kept in memory by whoever holds it. */
+export function createPageMemory(): PageMemory {
+  let id: string | undefined;
+  return {
+    get: () => id,
+    set: (next) => {
+      id = next;
+    },
+  };
+}
+
 export type SurfaceProps = {
   readonly session: SettingsSession;
   readonly page: PageMemory;
@@ -26,9 +37,11 @@ export type SettingsSheetState =
   | { readonly open: true; readonly module: SurfaceModule; readonly session: SettingsSession };
 
 export type SettingsControl = {
+  /** Where Settings opens: a `sheet` in this window (a browser has no native windows) or the host's own `window`. */
+  readonly mode: 'sheet' | 'window';
   readonly getSnapshot: () => SettingsSheetState;
   readonly subscribe: (listener: () => void) => () => void;
-  /** Asks for the sheet. It opens when its code has arrived; asked again while it loads or is open, it does nothing. */
+  /** Asks for Settings. As a window, the host shows it (and focuses the one that is open); as a sheet, it opens when its code has arrived. Asked again while it loads or is open, it does nothing. */
   readonly open: () => void;
   /** Closes the sheet, whether it is open or still loading, and gives the focus back to what had it when it was asked for. */
   readonly close: () => void;
@@ -38,6 +51,8 @@ export type SettingsControl = {
 export type SettingsControlOptions = {
   /** Fetches the sheet's code: `() => import('./surface')`. Called at most once while it succeeds. */
   readonly load: () => Promise<SurfaceModule>;
+  /** Where there are native windows: asks the host to show its Settings window (one instance: a second ask focuses it). Absent: Settings is the sheet. A host that cannot show it leaves the person with the sheet. */
+  readonly openWindow?: (() => Promise<unknown>) | undefined;
   /** The host's settings service. Absent: the sheet reads the runtime's. */
   readonly client?: SettingsClient | undefined;
   /** Hears why the code could not be loaded. The sheet stays closed and can be asked for again. Default: the console. */
@@ -46,13 +61,13 @@ export type SettingsControlOptions = {
 
 const CLOSED: SettingsSheetState = Object.freeze({ open: false });
 
-export function createSettingsControl({ load, client, onError }: SettingsControlOptions): SettingsControl {
+export function createSettingsControl({ load, client, openWindow, onError }: SettingsControlOptions): SettingsControl {
   let state: SettingsSheetState = CLOSED;
   let loading: Promise<SurfaceModule> | undefined;
   // Somebody asked and has not closed it again: the sheet is opening or open.
   let wanted = false;
   let opener: Remembered | undefined;
-  let page: string | undefined;
+  const memory = createPageMemory();
   const listeners = new Set<() => void>();
 
   const emit = (): void => {
@@ -63,7 +78,7 @@ export function createSettingsControl({ load, client, onError }: SettingsControl
     }
   };
 
-  const open = (): void => {
+  const openSheet = (): void => {
     if (wanted) {
       return;
     }
@@ -93,6 +108,21 @@ export function createSettingsControl({ load, client, onError }: SettingsControl
     );
   };
 
+  const open = (): void => {
+    if (openWindow === undefined) {
+      openSheet();
+      return;
+    }
+
+    // The host's window: shown, or focused when it is open already. When the host cannot, the sheet is what is left (nothing traps the person).
+    openWindow().catch((error: unknown) => {
+      (onError ?? ((cause) => {
+        console.error('[settings] the host could not show its Settings window', cause);
+      }))(error);
+      openSheet();
+    });
+  };
+
   const close = (): void => {
     if (!wanted) {
       return;
@@ -116,6 +146,7 @@ export function createSettingsControl({ load, client, onError }: SettingsControl
   };
 
   return {
+    mode: openWindow === undefined ? 'sheet' : 'window',
     getSnapshot: () => state,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -125,11 +156,6 @@ export function createSettingsControl({ load, client, onError }: SettingsControl
     },
     open,
     close,
-    page: {
-      get: () => page,
-      set: (id) => {
-        page = id;
-      },
-    },
+    page: memory,
   };
 }

@@ -1,5 +1,5 @@
 import type { SettingsSession } from './session';
-import type { HostCategory, HostCommit, HostOption, HostSetting, HostSettingType, HostSnapshot, HostValidation, SettingsClient } from './types';
+import type { HostCategory, HostCommit, HostOption, HostSetting, HostSettingType, HostSnapshot, HostValidation, SettingsClient, SettingsRequest, SettingsWindowClient } from './types';
 
 // Test support only: nothing in the model imports this file. A host snapshot built as plain data, with the host's own categories as the Go side declares them today (`internal/settings/{general,appearance,terminal,
 // editor,developer,telemetry}.go`: ids, types, labels, descriptions, options and defaults), and a client that answers from memory, the way the host's settings service does (`backend/pkg/settings/service.go`).
@@ -250,8 +250,55 @@ export function fakeSession(dispose: () => void = () => undefined): SettingsSess
     getState: () => ({ phase: 'loading' }),
     subscribe: () => () => undefined,
     load: () => undefined,
+    refresh: () => undefined,
     elsewhere: { getSnapshot: () => ({}), subscribe: () => () => undefined },
     announcements: { getSnapshot: () => ({ text: '', serial: 0 }), subscribe: () => () => undefined },
     dispose,
   };
+}
+
+export type FakeWindows = {
+  readonly client: SettingsWindowClient;
+  /** The host's event: a request to show Settings, or a show or a hide. */
+  readonly emit: (request: SettingsRequest) => void;
+  readonly calls: { hide: number; state: number };
+  /** What `GetSettingsState` answers. */
+  state: SettingsRequest;
+  /** Settles `GetSettingsState` and `HideSettings` by failing, for a test. */
+  failHide: boolean;
+};
+
+/** The host's window service as the Settings window reads it, answering from memory: the request it was last given, the event of each one, and a count of the hides. */
+export function fakeWindows(initial: SettingsRequest = { requestId: 1, target: '/settings?category=general', visible: true }): FakeWindows {
+  const listeners = new Set<(request: SettingsRequest) => void>();
+  const windows: FakeWindows = {
+    calls: { hide: 0, state: 0 },
+    state: initial,
+    failHide: false,
+    emit: (request) => {
+      windows.state = request;
+      for (const listener of [...listeners]) {
+        listener(request);
+      }
+    },
+    client: {
+      state: async () => {
+        windows.calls.state += 1;
+        return windows.state;
+      },
+      onState: (listener) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      hide: async () => {
+        windows.calls.hide += 1;
+        if (windows.failHide) {
+          throw new Error('the host could not hide it');
+        }
+      },
+    },
+  };
+  return windows;
 }

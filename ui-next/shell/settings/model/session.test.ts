@@ -178,6 +178,27 @@ describe('a setting that is typed', () => {
   });
 });
 
+describe('refresh', () => {
+  it('asks the host again and gives the form what it holds now, as when a hidden window is shown', async () => {
+    const { session, host, clock } = await rig();
+    host.values.set('editor.fontSize', 19);
+    session.refresh();
+    await clock.flush();
+    expect(host.calls.snapshot).toBe(2);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(19);
+  });
+
+  it('does nothing before the first load has finished', async () => {
+    const host = fakeHost();
+    const clock = manualClock();
+    const first = deferred<HostSnapshot>();
+    host.next.snapshot = async () => first.promise;
+    const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
+    session.refresh();
+    expect(host.calls.snapshot).toBe(1);
+  });
+});
+
 describe('what a screen reader is told', () => {
   it('is a new error raised on commit, once, as "Field: message" (S127), in the session\'s own live message', async () => {
     const { session, host, clock } = await rig();

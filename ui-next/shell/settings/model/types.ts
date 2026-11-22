@@ -54,3 +54,17 @@ export type SettingsClient = {
   /** Listens for a change of the host's settings that someone made (this window or another). Answers the function that stops it. */
   readonly onChanged: (listener: () => void) => () => void;
 };
+
+/** What the host's window service says of the Settings window (`backend/window/types.go`: `SettingsState`): the request to show it (a new `requestId` for each new target) and whether it is shown. */
+export type SettingsRequest = {
+  readonly requestId: number;
+  readonly target: string;
+  readonly visible: boolean;
+};
+
+/** The host's window service as the Settings window uses it: what it was last asked, the event of each request and each show or hide, and hiding it (the window is kept, `HideSettings`). */
+export type SettingsWindowClient = {
+  readonly state: () => Promise<SettingsRequest>;
+  readonly onState: (listener: (request: SettingsRequest) => void) => () => void;
+  readonly hide: () => Promise<void>;
+};
