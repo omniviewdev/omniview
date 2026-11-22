@@ -72,6 +72,18 @@
 //      history (the first time the history is read from it), the window restores it: the bell has no dot, the restored records raised no toast and no announcement, and a restored record's Retry is not offered: its row says
 //      `Retry is unavailable. Not available after restart.`
 //
+//   t  the Plugins page (PL1): the host's own page for the plugins that are installed, opened as a person opens it (the palette's command Plugins, no hash), on a host of its own whose fixture plugin has a PROCESS (as in n and p) and whose copy has none, and in a
+//      second page, which is a second window in server mode, opened the same way and never reloaded. The list is the host's inventory (`ListPlugins`: the rows, their versions and their order, and the count the heading and the footer say). Each action
+//      is read from the host's EVENTS, in the host's order, with the page's own call held on its way to the host (the page says that the work is going on and nothing of its result) or on its way back (the host has done it and told its events,
+//      and the row has followed them with the call still open). RELOAD: `plugin/unloaded` (reloaded), then `plugin/state_change` (Running); the row and the header show the work and Starting again; the rail agrees. DISABLE: the row says Disabled
+//      from `plugin/enablement_changed`. ENABLE is two host calls (`SetPluginEnabled(true)`, then `ReloadPlugin`): the half-way state is read, and so is the end of an Enable whose second call fails (the binary has lost its execute bit): the plugin is on
+//      and did not start, and the row, the rail and the host's own record say so in the host's words and never in its text (the raw answer, the crash's error and the reasons of the events are nowhere in either window), with a sticky notice of the
+//      host and a Retry that starts the plugin and does not turn it on again. KILL: the pid the host names (never a pattern), the row says Stopped with the host's sentence for a crash and offers Retry, the host gives up its recovery and the cause stands, and
+//      Retry from the page asks the host and the plugin runs. UNINSTALL, behind the browser's own confirm (the page's words for what it erases and keeps; Cancel and Escape close it, give the focus back to the control that opened it and call nothing of
+//      the host): the row and the rail entry leave on `plugin/unloaded` (uninstalled) with the call still open, the plugin's directory is gone, and the second window loses the row with no reload. SEAM_SHOTS=<dir> writes WebKit's
+//      `plugins-page-<state>-webkit-void-1440x900.png`. SEAM_ONLY=plugins-page runs t alone; SEAM_CONTROL=plugins-page runs it alone with every perturbation of its controls (PAGE_CONTROLS) made in turn just before the assertion each must trip (one run
+//      serves them all); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
+//
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
 //
@@ -80,7 +92,7 @@
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,6 +100,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
 import { buildProcess, writeAll, writePlugin } from '../fixture/build.mjs';
+import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const server = path.join(root, 'bin/Omniview-server');
@@ -148,14 +161,39 @@ const FAILED_CONTROLS = {
   'rail-back': /the rail names the plugin that runs again, with no word of its failure/,
   'one-of-all': /after the retry that runs: one page, one sidebar entry, one tool/,
 };
+// The negative controls of scenario t, the Plugins page (PL1). As in n and p each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no other.
+// One run serves them all (SEAM_CONTROL=plugins-page); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
+const PAGE_CONTROLS = {
+  'list-inventory': /the list is the host's inventory/,
+  'reload-told': /the window was told the reload in the host's order/,
+  'reload-progress': /the row and the header show the reload in progress and then the plugin running/,
+  'reload-state': /after the reload the row says the plugin runs, with no word of its state/,
+  'reload-rail': /after the reload the rail agrees with the row/,
+  'disable-word': /Disable: the row says Disabled from the host's events while the call is still open/,
+  'enable-runs': /Enable: the row goes from Disabled through Stopped and Starting to running/,
+  'enable-half': /an Enable that could not start the plugin: the row says it is on and did not start/,
+  'enable-notice': /an Enable that could not start the plugin: a sticky notice of the host/,
+  'raw-text': /nothing the page draws holds the host's own words for an error/,
+  'stopped-word': /a plugin whose process was killed: the row says it stopped/,
+  'confirm-words': /the confirm says what an uninstall does, in the page's words/,
+  'confirm-focus': /closing the confirm gives the focus back to the control that opened it/,
+  'uninstall-gone': /Uninstall: the row and the rail entry leave on the host's event while the call is still open/,
+  'second-list': /the second window's list lost the row with no reload/,
+};
 const FAILED_GROUP = 'failed-load';
+const PAGE_GROUP = 'plugins-page';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 const REMOVE = process.env.SEAM_REMOVE ?? '';
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS)].join(', ')}`);
+// SEAM_ONLY=plugins-page runs scenario t alone, with no perturbation, held to the allow-list of failed requests as in a full run.
+const ONLY = process.env.SEAM_ONLY ?? '';
+if (ONLY !== '' && ONLY !== PAGE_GROUP) {
+  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), RUNTIME_CONTROL].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== PAGE_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS)].join(', ')}`);
+}
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 async function freePort() {
@@ -290,6 +328,11 @@ const RUNTIME_ALLOW = [
     phases: ['process', 'failed-load'],
     reason: 'scenarios n and p take the plugin\'s process down or make its load fail; the page asks for the plugin\'s connections and the host answers with the load failure',
     test: (failure) => failure.status === 422 && failure.answered.includes('omniview:plugin/load-failed'),
+  },
+  {
+    phases: ['plugins-page'],
+    reason: 'scenario t presses Enable on a plugin whose binary has lost its execute bit: the second call of Enable, ReloadPlugin, is refused with the load failure, which is the half-done state the scenario asserts (the host answers 422)',
+    test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(PLUGIN_SERVICE, 'ReloadPlugin'))},`) && failure.answered.includes('omniview:plugin/load-failed'),
   },
 ];
 
@@ -982,7 +1025,7 @@ async function checkPalette(page, base, engine) {
   await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
   assert.deepEqual(
     await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
-    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs'],
+    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs', 'Command: Plugins, Window'],
     `${engine}: the commands are the host's, and only those`,
   );
   await shot('commands');
@@ -2421,6 +2464,757 @@ async function checkFailedLoad(browser, engine, binary, work) {
 }
 
 /**
+ * What the Plugins page DID, as a window sees it, kept from the first script of every document (a read-only observer, as `WATCH_NOTICES` is): a state that lasts a frame is a state that was drawn, and the check, which polls, would
+ * miss it. `rows` has one entry for each change of a row of the list (its plugin's id, the state the page says, the chip's word and whether it is busy), `rail` one for each change of the names the rail lists, and `head`
+ * one for each change of the header of the detail (the plugin it is of, the progress it shows and the chip of its state).
+ */
+const WATCH_PLUGINS = `(() => {
+  window.__plSeen = { rows: [], rail: [], head: [] };
+  const last = { rows: new Map(), rail: '', head: '' };
+  const note = () => {
+    const at = performance.now();
+    const present = new Set();
+    for (const row of document.querySelectorAll('[data-pl-part="row"]')) {
+      const id = row.getAttribute('data-pl-id') ?? '';
+      present.add(id);
+      const seen = { id, state: row.getAttribute('data-pl-state') ?? '', chip: row.querySelector('[data-pl-part="row-chip"]')?.textContent ?? '', busy: row.getAttribute('aria-busy') === 'true' };
+      const key = JSON.stringify(seen);
+      if (last.rows.get(id) !== key) {
+        last.rows.set(id, key);
+        window.__plSeen.rows.push({ at, ...seen });
+      }
+    }
+    for (const [id, key] of last.rows) {
+      if (!present.has(id) && key !== 'gone') {
+        last.rows.set(id, 'gone');
+        window.__plSeen.rows.push({ at, id, gone: true });
+      }
+    }
+    const rail = JSON.stringify([...document.querySelectorAll('[data-shell-part="rail"] button')].map((button) => button.getAttribute('aria-label')));
+    if (rail !== last.rail) {
+      last.rail = rail;
+      window.__plSeen.rail.push({ at, names: JSON.parse(rail) });
+    }
+    const detail = document.querySelector('[data-pl-part="detail"]');
+    const head = JSON.stringify({ name: detail?.getAttribute('aria-label') ?? '', progress: detail?.querySelector('[data-pl-part="head-progress"]')?.textContent ?? '', chip: detail?.querySelector('[data-pl-part="head-chip"]')?.textContent ?? '' });
+    if (head !== last.head) {
+      last.head = head;
+      window.__plSeen.head.push({ at, ...JSON.parse(head) });
+    }
+  };
+  new MutationObserver(note).observe(document, { childList: true, subtree: true, attributes: true, characterData: true });
+})()`;
+
+/** The id the host's bindings give a method (`$Call.ByID`): the 32-bit FNV-1a hash of its full name. A call the page makes carries that and not the name, so a check that counts or holds the page's calls says it the same way. */
+function methodIdOf(service, method) {
+  let hash = 0x811c9dc5;
+  for (const byte of Buffer.from(`${service}.${method}`)) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  return hash;
+}
+
+/** The calls of the host's plugin service that the Plugins page makes, by the id its call carries: what it asks of the host. */
+const PLUGIN_CALLS = new Map(['ReloadPlugin', 'RetryFailedPlugin', 'SetPluginEnabled', 'UninstallPlugin'].map((method) => [methodIdOf(PLUGIN_SERVICE, method), method]));
+
+/**
+ * Holds the next call `target` makes of `method` of the host's plugin service, so that what the page shows while a call is open is a state that lasts and can be read (the host answers in tens of milliseconds). `before`: the call waits on its way
+ * to the host, which has done nothing, so the page can say only that its work is going on. `after`: the host has done it and its answer waits, so the host's events have been told and the page must have followed them with its call still open.
+ * `held()` says the call is held; `release()` lets it go on and gives the page back as it was.
+ */
+async function holdCall(target, method, when) {
+  const methodID = methodIdOf(PLUGIN_SERVICE, method);
+  const gate = Promise.withResolvers();
+  const done = Promise.withResolvers();
+  let held = false;
+  let taken = false;
+  const handler = async (route) => {
+    if (taken || JSON.parse(route.request().postData() ?? 'null')?.args?.methodID !== methodID) {
+      await route.continue();
+      return;
+    }
+
+    taken = true;
+    if (when === 'before') {
+      held = true;
+      await gate.promise;
+      await route.continue();
+    } else {
+      const response = await route.fetch();
+      held = true;
+      await gate.promise;
+      await route.fulfill({ response });
+    }
+
+    done.resolve();
+  };
+  await target.route('**/wails/runtime', handler);
+  return {
+    held: () => held,
+    release: async () => {
+      gate.resolve();
+      await done.promise;
+      await target.unroute('**/wails/runtime', handler);
+    },
+  };
+}
+
+/** `wanted` is in `list` in that order, with anything between. */
+function inOrder(list, wanted) {
+  let at = 0;
+  for (const item of list) if (item === wanted[at]) at += 1;
+  return at === wanted.length;
+}
+
+/**
+ * t. The Plugins page (PL1) over the real host, on a host of its own whose fixture plugin `OK` has a PROCESS (the Go program of `fixture/process`, as in n and p) and whose copy `DUP` has none: `OK` is the one that is killed, and `DUP` is the one that is
+ * turned off, turned on and uninstalled. The page is opened as a person opens it, from the palette's command; a second page, which is a second window in server mode, opens it too and stays open and is never reloaded. What the list says is the
+ * host's inventory, and what each action came to is what the host's EVENTS said (the frames of the window's event socket are read, and the page's own calls are held on their way to the host or on their way back, so that what it shows while
+ * a call is open can be read): never what the page hoped. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; PAGE_CONTROLS).
+ */
+async function checkPluginsPage(browser, engine, binary, work) {
+  const dir = await mkdtemp(path.join(work, `plugins-page-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async (plugins) => [await writePlugin(plugins, OK, binary), await writePlugin(plugins, DUP)]);
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  const { asserting, verdict } = withControls(PAGE_GROUP, PAGE_CONTROLS);
+  const errors = [];
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const second = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  for (const target of [page, second]) {
+    target.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+    await target.addInitScript(WATCH_PLUGINS);
+  }
+
+  /** What the host tells a window: every `plugin/*` event that reaches its event socket, as the host sent it. */
+  const hear = (target) => {
+    const heard = [];
+    target.on('websocket', (socket) => {
+      socket.on('framereceived', ({ payload }) => {
+        try {
+          const message = JSON.parse(String(payload));
+          if (typeof message?.name === 'string' && message.name.startsWith('plugin/')) heard.push({ name: message.name, data: message.data });
+        } catch {
+          // not an event
+        }
+      });
+    });
+    return heard;
+  };
+  const frames = hear(page);
+  const framesSecond = hear(second);
+  // What the first page asks of the host (its calls of the plugin service, by name and with their arguments, in the order it asks) and what the host answers when it refuses one.
+  const calls = [];
+  const refused = [];
+  page.on('request', (request) => {
+    if (!request.url().endsWith('/wails/runtime')) return;
+    try {
+      const { args } = JSON.parse(request.postData() ?? 'null') ?? {};
+      const method = PLUGIN_CALLS.get(args?.methodID);
+      if (method !== undefined) calls.push([method, ...args.args]);
+    } catch {
+      // not a call
+    }
+  });
+  page.on('response', async (response) => {
+    if (response.url().endsWith('/wails/runtime') && response.status() >= 400) refused.push(await response.text().catch(() => ''));
+  });
+
+  const CRASHED = "The plugin process stopped unexpectedly, so its pages can't load data.";
+  const COULD_NOT_START = "The plugin could not start, so its pages can't load data.";
+  const binaryPath = path.join(stateRoot(dir), 'plugins', OK, 'bin', 'plugin');
+  const layer = page.locator('[data-notices-part="layer"]');
+  const progress = page.locator('[data-pl-part="head-progress"]');
+  /** SEAM_SHOTS=<dir> writes WebKit's pictures of the states (theme void, 1440 x 900). */
+  const shot = async (name) => {
+    if (!process.env.SEAM_SHOTS || engine !== 'webkit') return;
+    await page.mouse.move(2, 2);
+    await mkdir(process.env.SEAM_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SEAM_SHOTS, `plugins-page-${name}-webkit-void-1440x900.png`) });
+  };
+  /** Opens the page as a person does: the palette's chord, the word Plugins, and Enter on the command that says it. The tab it opens is the singleton `host:plugins`; no hash names it. */
+  const openPlugins = async (target) => {
+    await open(target, host.base);
+    await target.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    const palette = target.getByRole('dialog', { name: 'Search' });
+    await target.keyboard.press(`${(await target.evaluate(() => navigator.platform.includes('Mac'))) ? 'Meta' : 'Control'}+KeyK`);
+    await palette.waitFor();
+    await target.keyboard.type('Plugins', { delay: 20 });
+    const command = palette.getByRole('option', { name: 'Command: Plugins, Window' });
+    await command.waitFor();
+    assert.equal(await command.getAttribute('aria-selected'), 'true', `${engine}: the command Plugins is the active row of the palette`);
+    await target.keyboard.press('Enter');
+    await palette.waitFor({ state: 'detached' });
+    await target.getByRole('tab', { name: 'Plugins', exact: true }).waitFor({ timeout: 15_000 });
+    await target.getByRole('region', { name: 'Installed plugins' }).waitFor({ timeout: 15_000 });
+    await target.locator('[data-pl-part="row"]').first().waitFor({ timeout: 15_000 });
+  };
+  const row = (target, id) => target.locator(`[data-pl-part="row"][data-pl-id="${id}"]`);
+  /** The row of a plugin once it says `state`: the page says it from the host's events, so the check waits for it and never for a time. */
+  const saying = (target, id, state) => row(target, id).and(target.locator(`[data-pl-state="${state}"]`));
+  const rail = (target, name) => target.locator(`[data-shell-part="rail"] button[aria-label="${name}"]`);
+  const rowsOf = async (target) =>
+    target.locator('[data-pl-part="row"]').evaluateAll((rows) =>
+      rows.map((element) => ({
+        id: element.getAttribute('data-pl-id'),
+        name: element.querySelector('[data-pl-part="row-name"]')?.textContent ?? '',
+        version: element.querySelector('[data-pl-part="row-version"]')?.textContent ?? '',
+        state: element.getAttribute('data-pl-state'),
+        chip: element.querySelector('[data-pl-part="row-chip"]')?.textContent ?? '',
+        sentence: element.querySelector('[data-pl-part="row-sentence"]')?.textContent ?? '',
+        busy: element.getAttribute('aria-busy') === 'true',
+        selected: element.getAttribute('aria-current') === 'true',
+      })),
+    );
+  const railOf = async (target) => target.locator('[data-shell-part="rail"] button').evaluateAll((buttons) => buttons.map((button) => ({ name: button.getAttribute('aria-label'), tip: button.getAttribute('data-ov-tip') })));
+  /** What the rail should list for the plugins the rows show, in the rail's own order: the plugins that run, in the order each declares (the fixture's two), then the ones that stopped, by name, with the row's word for them in lower case. A plugin that is turned off has no entry. */
+  const railFor = (rows) => {
+    const fixtures = [OK, DUP].map((id) => rows.find((entry) => entry.id === id)).filter((entry) => entry !== undefined);
+    return [
+      ...fixtures.filter((entry) => entry.state === 'running').map((entry) => entry.name),
+      ...fixtures.filter((entry) => entry.state === 'failed' || entry.state === 'starting').map((entry) => `${entry.name}, ${entry.chip.toLowerCase()}`).sort(),
+    ];
+  };
+  const lane = async (target) => (await target.locator('[data-pl-part="lane"]').innerText()).replace(/\s+/g, ' ').trim();
+  const marks = async (target) => target.evaluate(() => ({ rows: window.__plSeen.rows.length, rail: window.__plSeen.rail.length, head: window.__plSeen.head.length }));
+  const seenSince = async (target, from) => target.evaluate((start) => ({ rows: window.__plSeen.rows.slice(start.rows), rail: window.__plSeen.rail.slice(start.rail), head: window.__plSeen.head.slice(start.head) }), from);
+  /** What the host told this window of one plugin, from the frame `from` on. */
+  const toldOf = (heard, id, from = 0) => heard.slice(from).filter((frame) => frame.data?.pluginID === id);
+  const causesOf = (heard, id, from = 0) => toldOf(heard, id, from).filter((frame) => frame.name === 'plugin/unloaded').map((frame) => frame.data.cause);
+  const ranAgain = (heard, id, from = 0) => toldOf(heard, id, from).some((frame) => frame.name === 'plugin/state_change' && frame.data.to === 'Running');
+  const decoy = async (target, html) => target.evaluate((markup) => document.body.insertAdjacentHTML('beforeend', markup), html);
+  const undecoy = async (target) => target.evaluate(() => document.querySelectorAll('[data-decoy]').forEach((element) => element.remove()));
+  /** A row of the uninstalled plugin that is still drawn: a twin of another row under the removed plugin's id. */
+  const stale = async (target) =>
+    row(target, OK).evaluate((element, id) => {
+      const twin = element.cloneNode(true);
+      twin.setAttribute('data-pl-id', id);
+      twin.setAttribute('data-decoy', '');
+      element.parentElement?.append(twin);
+    }, DUP);
+  /** The words of the host that the page must never draw: the free text its events carry (the crash's error and the reasons of a state change), what it answered when it refused a call (the title and the detail of its error, with paths in them), and the words of the operating system. */
+  const rawTexts = () => {
+    const found = ['not executable', 'permission denied', 'fork/exec', 'exit status', 'signal: killed', 'plugin process exited', 'max crash recovery', 'failed validation', path.basename(dir)];
+    for (const frame of frames) for (const text of [frame.data?.error, frame.data?.reason]) if (typeof text === 'string' && text.length >= 12) found.push(text);
+    for (const body of refused) {
+      try {
+        const inner = JSON.parse(JSON.parse(body).message);
+        for (const text of [inner.title, inner.detail]) if (typeof text === 'string' && text !== '') found.push(text);
+      } catch {
+        // the answer is not an error of the host's own kind
+      }
+    }
+
+    return found;
+  };
+  /** The raw texts that the window draws: in its words, its attributes (the rail's tip) and its notices. */
+  const rawIn = async (target) => {
+    const drawn = await target.evaluate(() => `${document.body.innerText}\n${document.body.textContent}\n${document.documentElement.outerHTML}`);
+    return rawTexts().filter((text) => drawn.includes(text));
+  };
+  const plain = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  /** The order of the list: by name as plain text, then by id (the host's own order is a map's, and a machine's locale moves nothing). */
+  const byName = (a, b) => plain(a.metadata.name.toLowerCase(), b.metadata.name.toLowerCase()) || plain(a.metadata.name, b.metadata.name) || plain(a.id, b.id);
+  /** The primary action of the header (Retry, Enable, Start) by its name. */
+  const primary = (name) => page.locator('[data-pl-part="slot-primary"]').getByRole('button', { name, exact: true });
+  const gone = async () => page.waitForFunction(() => document.querySelector('[data-pl-part="head-progress"]') === null);
+  try {
+    await forgetSession(host.base);
+    await openPlugins(page);
+    assert.deepEqual(await page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.textContent)), ['Plugins'], `${engine}: the command opened one tab, the page's`);
+    // The second window opens on a window with nothing saved, as the first did: what the first saved is forgotten, so that it opens the page itself, from the palette. It is never reloaded: the marker is how the check knows.
+    await forgetSession(host.base);
+    await openPlugins(second);
+    await second.evaluate(() => {
+      window.__plSameDocument = true;
+    });
+
+    // 2. THE LIST is the host's inventory: the rows, their versions and their order, and the count the heading and the footer say, in both windows.
+    const inventory = await callBound(host.base, PLUGIN_SERVICE, 'ListPlugins');
+    const builtins = inventory.filter((entry) => entry.origin === 'builtin');
+    assert.ok(builtins.length > 0 && builtins.every((entry) => entry.phase === 'Installed' && entry.enabled), `${engine}: the host holds its own plugins, which no window has started: ${JSON.stringify(builtins.map((entry) => [entry.id, entry.phase]))}`);
+    assert.deepEqual(
+      inventory.filter((entry) => entry.origin !== 'builtin').map((entry) => [entry.id, entry.phase, entry.enabled]).sort(),
+      [[OK, 'Running', true], [DUP, 'Running', true]],
+      `${engine}: and the two fixture plugins, which run`,
+    );
+    for (const [target, which] of [[page, 'first'], [second, 'second']]) {
+      assert.deepEqual(
+        (await rowsOf(target)).map((entry) => [entry.id, entry.state, entry.chip, entry.selected]),
+        inventory.toSorted(byName).map((entry, index) => [entry.id, entry.origin === 'builtin' ? 'stopped' : 'running', entry.origin === 'builtin' ? 'Stopped' : '', index === 0]),
+        `${engine}: the rows say what the host's phases mean (a plugin nobody started is Stopped, one that runs says nothing) and the first is the one shown (${which} window)`,
+      );
+      assert.equal(await target.locator('[data-shell-part="rail"] [aria-current="true"]').count(), 0, `${engine}: no entry of the rail is current on the Plugins page, which is no plugin's (${which} window)`);
+    }
+
+    let dropped;
+    await asserting(
+      'list-inventory',
+      async () => {
+        dropped = inventory.pop();
+      },
+      async () => {
+        inventory.push(dropped);
+      },
+      async () => {
+        const expected = inventory.toSorted(byName).map((entry) => ({ id: entry.id, name: entry.metadata.name, version: entry.metadata.version }));
+        for (const [target, which] of [[page, 'first'], [second, 'second']]) {
+          assert.deepEqual((await rowsOf(target)).map(({ id, name, version }) => ({ id, name, version })), expected, `${engine}: the list is the host's inventory: its rows, their versions and their order (${which} window)`);
+          assert.equal(await target.locator('[data-pl-part="list-head"]').textContent(), `Installed${String(expected.length)}`, `${engine}: the list is the host's inventory: the count in its heading (${which} window)`);
+          assert.equal(await target.locator('[data-pl-part="list-foot"]').textContent(), `${String(expected.length)} plugins`, `${engine}: the list is the host's inventory: the count in its footer (${which} window)`);
+        }
+      },
+    );
+    await row(page, OK).click();
+    await page.getByRole('region', { name: 'Seam Fixture', exact: true }).waitFor();
+    await shot('running');
+
+    // 3. RELOAD, through the page. The call is held on its way to the host, which has done nothing yet: the page says that the work is going on and says nothing of its result. Then it is let through, and what the page shows is
+    // what the host's events say, in the host's order.
+    const waiting = await holdCall(page, 'ReloadPlugin', 'before');
+    const reloadAt = frames.length;
+    const reloadCalls = calls.length;
+    const reloadSeen = await marks(page);
+    const reloadSeenSecond = await marks(second);
+    await page.getByRole('button', { name: 'Reload', exact: true }).click();
+    await waitUntil('the page to ask the host to reload the plugin', waiting.held, 15_000);
+    const waits = 'while the call waits for the host the page says the work is going on and nothing of its result';
+    assert.equal(await progress.innerText(), 'Reloading…', `${engine}: ${waits} (the header's progress)`);
+    assert.equal(await row(page, OK).getAttribute('aria-busy'), 'true', `${engine}: ${waits} (the row is busy)`);
+    assert.deepEqual((await rowsOf(page)).filter((entry) => entry.id === OK).map(({ state, chip }) => ({ state, chip })), [{ state: 'running', chip: '' }], `${engine}: ${waits} (the row says what the host last said)`);
+    assert.deepEqual(toldOf(frames, OK, reloadAt), [], `${engine}: ${waits} (the host has told nothing)`);
+    await waiting.release();
+    await waitUntil('the host to say that the plugin runs again', () => ranAgain(frames, OK, reloadAt), 30_000);
+    await Promise.all([rail(page, 'Seam Fixture').waitFor(), rail(second, 'Seam Fixture').waitFor(), gone()]);
+    assert.deepEqual(calls.slice(reloadCalls), [['ReloadPlugin', OK]], `${engine}: the page asked the host for one thing, to reload the plugin`);
+
+    let forged;
+    let forgedAt = -1;
+    await asserting(
+      'reload-told',
+      async () => {
+        forgedAt = frames.findIndex((frame, index) => index >= reloadAt && frame.name === 'plugin/unloaded' && frame.data?.pluginID === OK);
+        [forged] = frames.splice(forgedAt, 1);
+      },
+      async () => {
+        frames.splice(forgedAt, 0, forged);
+      },
+      async () => {
+        const told = toldOf(frames, OK, reloadAt);
+        const order = "the window was told the reload in the host's order: the plugin stopped serving (unloaded: reloaded) and then ran again (state_change: Running)";
+        assert.deepEqual(told.filter((frame) => frame.name === 'plugin/unloaded').map((frame) => frame.data), [{ pluginID: OK, cause: 'reloaded' }], `${engine}: ${order} (the cause, and no other member)`);
+        assert.ok(told.findIndex((frame) => frame.name === 'plugin/unloaded') < told.findLastIndex((frame) => frame.name === 'plugin/state_change' && frame.data.to === 'Running'), `${engine}: ${order} (the order)`);
+        assert.equal(told.at(-1)?.name === 'plugin/state_change' && told.at(-1)?.data.to === 'Running', true, `${engine}: ${order} (the last thing it was told)`);
+      },
+    );
+    const reloaded = await seenSince(page, reloadSeen);
+    let seenRows;
+    await asserting(
+      'reload-progress',
+      async () => {
+        seenRows = reloaded.rows;
+        reloaded.rows = seenRows.filter((entry) => entry.chip !== 'Starting again');
+      },
+      async () => {
+        reloaded.rows = seenRows;
+      },
+      async () => {
+        const mine = reloaded.rows.filter((entry) => entry.id === OK);
+        const shown = 'the row and the header show the reload in progress and then the plugin running';
+        assert.ok(mine.some((entry) => entry.state === 'starting' && entry.chip === 'Starting again' && entry.busy), `${engine}: ${shown} (the row says Starting again while the call is open)`);
+        assert.deepEqual([mine.at(-1)?.state, mine.at(-1)?.chip, mine.at(-1)?.busy], ['running', '', false], `${engine}: ${shown} (and ends running, with no word and no work)`);
+        assert.ok(reloaded.head.some((entry) => entry.name === 'Seam Fixture' && entry.progress === 'Reloading…'), `${engine}: ${shown} (the header says Reloading)`);
+        assert.deepEqual([reloaded.head.at(-1)?.progress, reloaded.head.at(-1)?.chip], ['', 'Running'], `${engine}: ${shown} (and the header ends with no progress and the chip Running)`);
+      },
+    );
+    await asserting(
+      'reload-state',
+      async () => {
+        await row(page, OK).locator('[data-pl-part="row-line2"]').evaluate((line) => line.insertAdjacentHTML('afterbegin', '<span data-pl-part="row-chip" data-decoy>Starting again</span>'));
+      },
+      async () => undecoy(page),
+      async () => {
+        const says = 'after the reload the row says the plugin runs, with no word of its state';
+        const mine = (await rowsOf(page)).find((entry) => entry.id === OK);
+        assert.deepEqual({ state: mine.state, chip: mine.chip, sentence: mine.sentence, busy: mine.busy }, { state: 'running', chip: '', sentence: '', busy: false }, `${engine}: ${says} (the row)`);
+        assert.equal(await page.locator('[data-pl-part="head-chip"]').innerText(), 'Running', `${engine}: ${says} (the header's chip says Running: the header always says the state, the list says nothing of a plugin that runs)`);
+        assert.equal(await lane(page), 'Seam Fixture is running The plugin is running. Its pages open as usual.', `${engine}: ${says} (the lane)`);
+        assert.equal(await primary('Retry').count(), 0, `${engine}: ${says} (no Retry)`);
+        assert.equal(await page.getByRole('button', { name: 'Reload', exact: true }).count(), 1, `${engine}: ${says} (Reload is there again)`);
+      },
+    );
+    await asserting(
+      'reload-rail',
+      async () => {
+        await rail(page, 'Seam Fixture').evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture, starting again'));
+      },
+      async () => {
+        await rail(page, 'Seam Fixture, starting again').evaluate((button) => button.setAttribute('aria-label', 'Seam Fixture'));
+      },
+      async () => {
+        const agrees = 'after the reload the rail agrees with the row: the plugin is listed by its name alone, as a plugin that runs is';
+        assert.deepEqual((await railOf(page)).map((entry) => entry.name), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: ${agrees} (the names)`);
+        assert.deepEqual((await railOf(page)).map((entry) => entry.name), railFor(await rowsOf(page)), `${engine}: ${agrees} (the rows)`);
+        assert.ok(reloaded.rail.some((entry) => entry.names.includes('Seam Fixture, starting again')), `${engine}: ${agrees} (it said Starting again while the row did)`);
+        assert.deepEqual(reloaded.rail.at(-1)?.names, ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: ${agrees} (and it ends listing the plugin by its name)`);
+      },
+    );
+    // The second window was told the same, and followed with no reload of its page.
+    assert.deepEqual(causesOf(framesSecond, OK, 0).slice(-1), ['reloaded'], `${engine}: the second window was told the reload too`);
+    const reloadedSecond = await seenSince(second, reloadSeenSecond);
+    assert.ok(inOrder(reloadedSecond.rows.filter((entry) => entry.id === OK).map((entry) => entry.state), ['starting', 'running']), `${engine}: the second window's row went through Starting again to running`);
+    assert.deepEqual((await rowsOf(second)).find((entry) => entry.id === OK), { id: OK, name: 'Seam Fixture', version: '0.0.1', state: 'running', chip: '', sentence: '', busy: false, selected: false }, `${engine}: after the reload the second window's row says the plugin runs`);
+    assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: and its rail lists the plugin by its name alone`);
+    assert.equal(await second.evaluate(() => window.__plSameDocument === true), true, `${engine}: and the second window was never reloaded`);
+
+    // 4. DISABLE, then ENABLE, the copy. The host's answer to the disabling is held after the host did it: the row says Disabled from the host's events while the call is still open.
+    await row(page, DUP).click();
+    const off = await holdCall(page, 'SetPluginEnabled', 'after');
+    const offAt = frames.length;
+    const offCalls = calls.length;
+    await page.getByRole('button', { name: 'More actions for Seam Fixture Copy', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Disable', exact: true }).click();
+    await waitUntil('the host to have turned the plugin off', off.held, 15_000);
+    await saying(page, DUP, 'disabled').waitFor();
+    await saying(second, DUP, 'disabled').waitFor();
+    await asserting(
+      'disable-word',
+      async () => {
+        await row(page, DUP).evaluate((element) => element.setAttribute('data-pl-state', 'running'));
+      },
+      async () => {
+        await row(page, DUP).evaluate((element) => element.setAttribute('data-pl-state', 'disabled'));
+      },
+      async () => {
+        const says = 'Disable: the row says Disabled from the host\'s events while the call is still open';
+        const mine = (await rowsOf(page)).find((entry) => entry.id === DUP);
+        assert.deepEqual({ state: mine.state, chip: mine.chip, busy: mine.busy }, { state: 'disabled', chip: 'Disabled', busy: true }, `${engine}: ${says} (the row)`);
+        assert.equal(await progress.innerText(), 'Disabling…', `${engine}: ${says} (the header still shows the work)`);
+        assert.equal(await page.locator('[data-pl-part="head-chip"]').innerText(), 'Disabled', `${engine}: ${says} (the header's chip)`);
+        assert.equal(await lane(page), 'Seam Fixture Copy is disabled Enable it to open its pages.', `${engine}: ${says} (the lane)`);
+        assert.deepEqual((await railOf(page)).map((entry) => entry.name), ['Seam Fixture'], `${engine}: ${says} (the rail's entry left)`);
+        assert.deepEqual(toldOf(frames, DUP, offAt).filter((frame) => frame.name !== 'plugin/state_change').map((frame) => [frame.name, frame.data]), [['plugin/enablement_changed', { pluginID: DUP, enabled: false }], ['plugin/unloaded', { pluginID: DUP, cause: 'disabled' }]], `${engine}: ${says} (the host's events)`);
+        assert.deepEqual((await rowsOf(second)).find((entry) => entry.id === DUP)?.chip, 'Disabled', `${engine}: ${says} (the second window)`);
+        assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture'], `${engine}: ${says} (the second window's rail)`);
+      },
+    );
+    await off.release();
+    await gone();
+    assert.deepEqual(calls.slice(offCalls), [['SetPluginEnabled', DUP, false]], `${engine}: the page asked the host for one thing, to turn the plugin off`);
+    assert.equal((await callBound(host.base, PLUGIN_SERVICE, 'ListPlugins')).find((entry) => entry.id === DUP)?.enabled, false, `${engine}: and the host says the plugin is turned off`);
+    assert.equal(await row(page, DUP).getAttribute('aria-busy'), null, `${engine}: the call ended and the row is still Disabled, not busy`);
+    await shot('disabled');
+
+    // ENABLE is two calls (the host's `SetPluginEnabled(true)` only persists the choice): the second is held, so the half-way state, the plugin on and not started, is on screen to be read.
+    const middle = await holdCall(page, 'ReloadPlugin', 'before');
+    const onAt = frames.length;
+    const onCalls = calls.length;
+    const onSeen = await marks(page);
+    await primary('Enable').click();
+    await waitUntil('the page to ask the host to start the plugin it turned on', middle.held, 15_000);
+    await Promise.all([rail(page, 'Seam Fixture Copy').waitFor(), rail(second, 'Seam Fixture Copy').waitFor()]);
+    const half = 'the first call of Enable is done: the host says the plugin is on and does not run, and the row says Stopped, with the work still going on';
+    assert.deepEqual((await rowsOf(page)).filter((entry) => entry.id === DUP).map(({ state, chip, busy }) => ({ state, chip, busy })), [{ state: 'stopped', chip: 'Stopped', busy: true }], `${engine}: ${half} (the row)`);
+    assert.equal(await progress.innerText(), 'Enabling…', `${engine}: ${half} (the header)`);
+    const record = await callBound(host.base, PLUGIN_SERVICE, 'GetPlugin', DUP);
+    assert.deepEqual([record.enabled, record.phase], [true, 'Installed'], `${engine}: ${half} (the host's record)`);
+    await middle.release();
+    await Promise.all([saying(page, DUP, 'running').waitFor({ timeout: 30_000 }), saying(second, DUP, 'running').waitFor({ timeout: 30_000 }), rail(page, 'Seam Fixture Copy').waitFor(), gone()]);
+    const enabled = await seenSince(page, onSeen);
+    let seenOn;
+    await asserting(
+      'enable-runs',
+      async () => {
+        seenOn = enabled.rows;
+        enabled.rows = seenOn.filter((entry) => entry.state !== 'starting');
+      },
+      async () => {
+        enabled.rows = seenOn;
+      },
+      async () => {
+        const runs = 'Enable: the row goes from Disabled through Stopped and Starting to running, and the host says so in its own order';
+        assert.ok(inOrder(enabled.rows.filter((entry) => entry.id === DUP).map((entry) => entry.state), ['disabled', 'stopped', 'starting', 'running']), `${engine}: ${runs} (the row)`);
+        assert.ok(inOrder(enabled.head.map((entry) => entry.progress), ['Enabling…', '']), `${engine}: ${runs} (the header's progress, to its end)`);
+        const told = toldOf(frames, DUP, onAt).map((frame) => (frame.name === 'plugin/enablement_changed' ? `enabled:${String(frame.data.enabled)}` : frame.name === 'plugin/unloaded' ? `unloaded:${frame.data.cause}` : `phase:${frame.data.to}`));
+        assert.ok(inOrder(told, ['enabled:true', 'unloaded:reloaded', 'phase:Running']), `${engine}: ${runs} (the host's events: ${JSON.stringify(told)})`);
+      },
+    );
+    assert.deepEqual(calls.slice(onCalls), [['SetPluginEnabled', DUP, true], ['ReloadPlugin', DUP]], `${engine}: Enable is two calls of the host: turn it on, then start it`);
+    assert.deepEqual((await railOf(page)).map((entry) => entry.name), railFor(await rowsOf(page)), `${engine}: after Enable the rail lists the plugin again, as its row says`);
+    assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: and so does the second window's`);
+
+    // The same two calls on the plugin with a process, whose binary cannot start (it has lost its execute bit): the first call succeeds and the second fails. The plugin is ON and does NOT run, and the row says exactly that.
+    await row(page, OK).click();
+    await page.getByRole('button', { name: 'More actions for Seam Fixture', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Disable', exact: true }).click();
+    await saying(page, OK, 'disabled').waitFor();
+    await gone();
+    await chmod(binaryPath, 0o644);
+    const failing = await holdCall(page, 'ReloadPlugin', 'before');
+    const halfAt = frames.length;
+    const halfCalls = calls.length;
+    await primary('Enable').click();
+    await waitUntil('the page to ask the host to start the plugin it turned on', failing.held, 15_000);
+    // Both windows have the plugin's interface by now (the inventory is read again when the host says a plugin was turned on), so each is told what follows in the same state.
+    await Promise.all([rail(page, 'Seam Fixture').waitFor(), rail(second, 'Seam Fixture').waitFor()]);
+    await failing.release();
+    const notice = layer.getByRole('alert', { name: "Error: Couldn't enable Seam Fixture" });
+    await notice.waitFor({ timeout: 30_000 });
+    await Promise.all([saying(page, OK, 'failed').waitFor(), saying(second, OK, 'failed').waitFor({ timeout: 15_000 }), gone()]);
+    assert.deepEqual(calls.slice(halfCalls), [['SetPluginEnabled', OK, true], ['ReloadPlugin', OK]], `${engine}: Enable asked the host twice, as it always does`);
+    const hostSays = await callBound(host.base, PLUGIN_SERVICE, 'GetPlugin', OK);
+    assert.deepEqual([hostSays.enabled, hostSays.phase], [true, 'Failed'], `${engine}: the host says the plugin is turned on and failed to start`);
+    assert.equal(toldOf(frames, OK, halfAt).some((frame) => frame.name === 'plugin/state_change' && frame.data.to === 'Running'), false, `${engine}: and it did not run`);
+    assert.equal(causesOf(frames, OK, halfAt).at(-1), 'failed', `${engine}: the host told the window that the load failed`);
+    await shot('did-not-start');
+    await asserting(
+      'enable-half',
+      async () => {
+        await row(page, OK).evaluate((element) => element.setAttribute('data-pl-state', 'disabled'));
+      },
+      async () => {
+        await row(page, OK).evaluate((element) => element.setAttribute('data-pl-state', 'failed'));
+      },
+      async () => {
+        const says = 'an Enable that could not start the plugin: the row says it is on and did not start, in the host\'s words, and offers Retry';
+        for (const [target, which] of [[page, 'first'], [second, 'second']]) {
+          const mine = (await rowsOf(target)).find((entry) => entry.id === OK);
+          assert.deepEqual({ state: mine.state, chip: mine.chip, sentence: mine.sentence, busy: mine.busy }, { state: 'failed', chip: 'Did not start', sentence: COULD_NOT_START, busy: false }, `${engine}: ${says} (the row, ${which} window)`);
+        }
+
+        assert.equal(await page.locator('[data-pl-part="head-chip"]').innerText(), 'Did not start', `${engine}: ${says} (the header's chip)`);
+        assert.equal(await lane(page), `Seam Fixture didn't start ${COULD_NOT_START}`, `${engine}: ${says} (the lane)`);
+        assert.equal(await primary('Retry').count(), 1, `${engine}: ${says} (the Retry)`);
+        await page.getByRole('button', { name: 'More actions for Seam Fixture', exact: true }).click();
+        assert.deepEqual(await page.getByRole('menuitem').evaluateAll((items) => items.map((item) => item.textContent)), ['Disable', 'Uninstall…'], `${engine}: ${says} (the menu offers Disable: the plugin is on)`);
+        await page.keyboard.press('Escape');
+        assert.deepEqual((await railOf(page)).map((entry) => entry.name), ['Seam Fixture Copy', 'Seam Fixture, did not start'], `${engine}: ${says} (the rail, first window)`);
+        assert.equal((await railOf(page))[1].tip, `Seam Fixture, did not start\n${COULD_NOT_START}`, `${engine}: ${says} (the rail's tip)`);
+        assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture Copy', 'Seam Fixture, did not start'], `${engine}: ${says} (the rail, second window)`);
+      },
+    );
+    await asserting(
+      'enable-notice',
+      async () => {
+        await page.evaluate(() => document.querySelector('[data-notices-part="toast"]')?.removeAttribute('data-sticky'));
+      },
+      async () => {
+        await page.evaluate(() => document.querySelector('[data-notices-part="toast"]')?.setAttribute('data-sticky', ''));
+      },
+      async () => {
+        const says = 'an Enable that could not start the plugin: a sticky notice of the host, worded by the class of the error, with a Retry';
+        assert.equal(await layer.locator('[data-notices-part="toast"]').count(), 1, `${engine}: ${says} (one notice)`);
+        assert.equal(await notice.getAttribute('data-severity'), 'error', `${engine}: ${says} (an error)`);
+        assert.notEqual(await notice.getAttribute('data-sticky'), null, `${engine}: ${says} (sticky)`);
+        assert.equal((await notice.innerText()).replace(/\s+/g, ' ').trim(), "Error: Couldn't enable Seam Fixture The host couldn't stop it or start it. Retry", `${engine}: ${says} (its words)`);
+        assert.equal(await notice.getByRole('button', { name: 'Retry', exact: true }).count(), 1, `${engine}: ${says} (the Retry)`);
+      },
+    );
+    assert.match(refused.join('\n'), /not executable/, `${engine}: the host's own answer to the second call holds the raw reason that the page must not draw`);
+    await asserting(
+      'raw-text',
+      async () => decoy(page, '<p data-decoy>resource plugin binary is not executable</p>'),
+      async () => undecoy(page),
+      async () => {
+        assert.deepEqual(await rawIn(page), [], `${engine}: nothing the page draws holds the host's own words for an error (the first window)`);
+        assert.deepEqual(await rawIn(second), [], `${engine}: nothing the page draws holds the host's own words for an error (the second window)`);
+      },
+    );
+
+    // The binary is back, and the Retry of the notice starts the plugin: it is on already, so it does not turn it on again.
+    await chmod(binaryPath, 0o755);
+    const retryAt = frames.length;
+    const retryCalls = calls.length;
+    await notice.getByRole('button', { name: 'Retry', exact: true }).click();
+    await Promise.all([saying(page, OK, 'running').waitFor({ timeout: 30_000 }), saying(second, OK, 'running').waitFor({ timeout: 30_000 })]);
+    await Promise.all([rail(page, 'Seam Fixture').waitFor(), rail(second, 'Seam Fixture').waitFor(), gone()]);
+    assert.equal(calls.slice(retryCalls).some(([method]) => method === 'SetPluginEnabled'), false, `${engine}: the Retry of the notice did not turn the plugin on again`);
+    assert.equal(calls.slice(retryCalls).filter(([method]) => method === 'RetryFailedPlugin' || method === 'ReloadPlugin').length, 1, `${engine}: it asked the host once to start it`);
+    assert.equal(ranAgain(frames, OK, retryAt), true, `${engine}: and the host said the plugin runs`);
+    assert.equal(await layer.locator('[data-notices-part="toast"]').count(), 0, `${engine}: the notice is gone`);
+    assert.deepEqual((await railOf(page)).map((entry) => entry.name), railFor(await rowsOf(page)), `${engine}: and the rail agrees with the row`);
+
+    // 5. KILL BY PID. The process is the host's to name: it reports each plugin's pid with the executable behind it, and the check kills what the host reported and nothing it found by a name. With its execute bit off the host's recovery
+    // cannot start the plugin again, which is what makes the state under test hold still.
+    const owned = (await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot')).processes.find((candidate) => candidate.key === `plugin:${OK}`);
+    assert.ok(owned?.ownership === 'verified' && owned.identity?.pid > 0 && owned.identity.executable.endsWith(`/plugins/${OK}/bin/plugin`), `${engine}: the host names the plugin's process, with the executable it runs: ${JSON.stringify(owned)}`);
+    const { pid } = owned.identity;
+    process.kill(pid, 0);
+    await chmod(binaryPath, 0o644);
+    const killAt = frames.length;
+    const killSeen = await marks(page);
+    process.kill(pid, 'SIGKILL');
+    await waitUntil(`the host to see process ${String(pid)} end`, () => host.output().includes(`id=${String(pid)} error="signal: killed"`), 15_000);
+    // The host's health check finds it (up to 30 s) and tells the window.
+    await Promise.all([saying(page, OK, 'failed').waitFor({ timeout: 75_000 }), saying(second, OK, 'failed').waitFor({ timeout: 75_000 })]);
+    assert.equal(causesOf(frames, OK, killAt)[0], 'crashed', `${engine}: the host said the plugin crashed`);
+    await asserting(
+      'stopped-word',
+      async () => {
+        await row(page, OK).evaluate((element) => element.setAttribute('data-pl-state', 'running'));
+      },
+      async () => {
+        await row(page, OK).evaluate((element) => element.setAttribute('data-pl-state', 'failed'));
+      },
+      async () => {
+        const says = 'a plugin whose process was killed: the row says it stopped, in the host\'s words, and offers Retry';
+        for (const [target, which] of [[page, 'first'], [second, 'second']]) {
+          const mine = (await rowsOf(target)).find((entry) => entry.id === OK);
+          assert.deepEqual({ state: mine.state, chip: mine.chip, sentence: mine.sentence, busy: mine.busy }, { state: 'failed', chip: 'Stopped', sentence: CRASHED, busy: false }, `${engine}: ${says} (the row, ${which} window)`);
+        }
+
+        assert.equal(await page.locator('[data-pl-part="head-chip"]').innerText(), 'Stopped', `${engine}: ${says} (the header's chip)`);
+        assert.equal(await lane(page), `Seam Fixture stopped ${CRASHED}`, `${engine}: ${says} (the lane)`);
+        assert.equal(await primary('Retry').count(), 1, `${engine}: ${says} (the Retry)`);
+        assert.deepEqual((await railOf(page)).map((entry) => entry.name), ['Seam Fixture Copy', 'Seam Fixture, stopped'], `${engine}: ${says} (the rail)`);
+        assert.equal((await railOf(page))[1].tip, `Seam Fixture, stopped\n${CRASHED}`, `${engine}: ${says} (the rail's tip)`);
+        assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture Copy', 'Seam Fixture, stopped'], `${engine}: ${says} (the second window's rail)`);
+      },
+    );
+    assert.deepEqual(await rawIn(page), [], `${engine}: the crash's own text is nowhere on the page (the first window)`);
+    assert.deepEqual(await rawIn(second), [], `${engine}: the crash's own text is nowhere on the page (the second window)`);
+    await shot('stopped');
+    // The host's recovery reloads the plugin and fails, three times, and gives up; the cause the plugin went away with stands. Then the binary is back and Retry, from the page, asks the host to start it.
+    await waitUntil('the host to give up the recovery', () => host.output().includes('max crash recovery attempts reached'), 45_000);
+    await waitUntil("the window to be told that the recovery's last load failed", () => causesOf(frames, OK, killAt).at(-1) === 'failed', 15_000);
+    assert.equal((await rowsOf(page)).find((entry) => entry.id === OK)?.chip, 'Stopped', `${engine}: the first cause stands while the host gives up: the row still says Stopped`);
+    await chmod(binaryPath, 0o755);
+    const restartAt = frames.length;
+    const restartCalls = calls.length;
+    const restartSeen = await marks(page);
+    await primary('Retry').click();
+    await Promise.all([saying(page, OK, 'running').waitFor({ timeout: 30_000 }), saying(second, OK, 'running').waitFor({ timeout: 30_000 })]);
+    await Promise.all([rail(page, 'Seam Fixture').waitFor(), rail(second, 'Seam Fixture').waitFor(), gone()]);
+    assert.deepEqual(calls.slice(restartCalls), [['RetryFailedPlugin', OK]], `${engine}: Retry asked the host for one thing, the retry the rail's failed page offers`);
+    assert.ok(ranAgain(frames, OK, restartAt), `${engine}: the host said the plugin runs`);
+    assert.ok(inOrder((await seenSince(page, restartSeen)).rows.filter((entry) => entry.id === OK).map((entry) => entry.state), ['starting', 'running']), `${engine}: the row went through Starting again to running`);
+    assert.deepEqual((await railOf(page)).map((entry) => entry.name), railFor(await rowsOf(page)), `${engine}: and the rail agrees with the row`);
+    assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture', 'Seam Fixture Copy'], `${engine}: and so does the second window's`);
+    assert.equal((await rowsOf(second)).find((entry) => entry.id === OK)?.chip, '', `${engine}: the second window's row says nothing of a state: the plugin runs`);
+    assert.equal(killSeen.rows < (await marks(page)).rows, true, `${engine}: the first window's page drew each change, in order`);
+
+    // 6. UNINSTALL the copy. The confirm is the browser's own dialog, with the page's words for what an uninstall does; Cancel and Escape each close it, give the focus back to the control that opened it and call nothing of the host.
+    await row(page, DUP).click();
+    const trigger = page.getByRole('button', { name: 'More actions for Seam Fixture Copy', exact: true });
+    const words = uninstallWords('Seam Fixture Copy', false, 0);
+    const confirm = page.getByRole('dialog', { name: words.title });
+    const uninstallCalls = calls.length;
+    const opens = async () => {
+      await trigger.click();
+      await page.getByRole('menuitem', { name: 'Uninstall…', exact: true }).click();
+      await confirm.waitFor();
+    };
+    await opens();
+    await asserting(
+      'confirm-words',
+      async () => {
+        await confirm.locator('[data-pl-part="confirm-section"] p').last().evaluate((text) => {
+          text.textContent = 'The settings it declares are erased with it.';
+        });
+      },
+      async () => {
+        await confirm.locator('[data-pl-part="confirm-section"] p').last().evaluate((text, said) => {
+          text.textContent = said;
+        }, words.sections.at(-1).text);
+      },
+      async () => {
+        const says = "the confirm says what an uninstall does, in the page's words: files, connection profiles and credentials erased, the settings it declares kept";
+        const shown = await confirm.evaluate((dialog) => ({
+          title: dialog.querySelector('[data-pl-part="confirm-title"]')?.textContent,
+          version: dialog.querySelector('[data-pl-part="confirm-version"]')?.textContent,
+          intro: dialog.querySelector('[data-pl-part="confirm-body"]')?.textContent,
+          sections: [...dialog.querySelectorAll('[data-pl-part="confirm-section"]')].map((section) => ({ heading: section.querySelector('h3')?.textContent, text: section.querySelector('p')?.textContent })),
+          buttons: [...dialog.querySelectorAll('button')].map((button) => button.textContent),
+          inputs: dialog.querySelectorAll('input, select, textarea').length,
+        }));
+        assert.deepEqual(shown, { title: words.title, version: '0.0.1', intro: words.intro, sections: words.sections, buttons: ['', 'Cancel', words.confirm], inputs: 0 }, `${engine}: ${says} (the words, the buttons and no choice)`);
+        assert.match(shown.intro, /its files are removed\.$/, `${engine}: ${says} (its files)`);
+        assert.match(shown.sections[1].text, /connection profiles and the credentials it saved are erased/, `${engine}: ${says} (its profiles and credentials)`);
+        assert.match(shown.sections[2].text, /settings it declares are kept/, `${engine}: ${says} (its settings)`);
+      },
+    );
+    assert.equal(await confirm.evaluate((dialog) => dialog.open && document.activeElement === dialog.querySelector('[data-pl-part="confirm-cancel"]')), true, `${engine}: the confirm is open and the keyboard is on Cancel, never on the destructive button`);
+    await shot('uninstall');
+    for (const [way, close] of [['Cancel', async () => confirm.getByRole('button', { name: 'Cancel', exact: true }).click()], ['Escape', async () => page.keyboard.press('Escape')]]) {
+      await close();
+      await confirm.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => document.activeElement?.getAttribute('data-pl-part') === 'head-more');
+      const closes = `closing the confirm gives the focus back to the control that opened it (${way})`;
+      if (way === 'Cancel') {
+        await asserting(
+          'confirm-focus',
+          async () => {
+            await page.evaluate(() => document.activeElement?.blur());
+          },
+          async () => trigger.focus(),
+          async () => {
+            assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'More actions for Seam Fixture Copy', `${engine}: ${closes}`);
+          },
+        );
+      } else {
+        assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'More actions for Seam Fixture Copy', `${engine}: ${closes}`);
+      }
+
+      assert.equal(await row(page, DUP).count(), 1, `${engine}: and the plugin is still listed (${way})`);
+      assert.deepEqual(calls.slice(uninstallCalls), [], `${engine}: and nothing was asked of the host (${way})`);
+      await opens();
+    }
+
+    // Confirmed. The host's answer is held after the host did it: the row and the rail entry LEAVE on `plugin/unloaded` (uninstalled), with the call still open, and the second window's list loses the row with no reload.
+    const remaining = inventory.filter((entry) => entry.id !== DUP).toSorted(byName);
+    const removing = await holdCall(page, 'UninstallPlugin', 'after');
+    const removeAt = frames.length;
+    await confirm.getByRole('button', { name: words.confirm, exact: true }).click();
+    await waitUntil('the host to have uninstalled the plugin', removing.held, 30_000);
+    await Promise.all([row(page, DUP).waitFor({ state: 'detached' }), row(second, DUP).waitFor({ state: 'detached' })]);
+    await asserting(
+      'uninstall-gone',
+      async () => stale(page),
+      async () => undecoy(page),
+      async () => {
+        const leaves = 'Uninstall: the row and the rail entry leave on the host\'s event while the call is still open';
+        assert.equal(removing.held(), true, `${engine}: ${leaves} (the call is still held)`);
+        assert.deepEqual((await rowsOf(page)).map((entry) => entry.id), remaining.map((entry) => entry.id), `${engine}: ${leaves} (the row)`);
+        assert.deepEqual((await railOf(page)).map((entry) => entry.name), ['Seam Fixture'], `${engine}: ${leaves} (the rail's entry)`);
+        assert.equal(await page.locator('[data-pl-part="list-head"]').textContent(), `Installed${String(remaining.length)}`, `${engine}: ${leaves} (the count)`);
+        assert.deepEqual(toldOf(frames, DUP, removeAt).filter((frame) => frame.name !== 'plugin/state_change').map((frame) => [frame.name, frame.data?.cause]), [['plugin/unloaded', 'uninstalled']], `${engine}: ${leaves} (the host's event)`);
+        assert.equal(frames.slice(removeAt).some((frame) => frame.name === 'plugin/inventory_changed'), true, `${engine}: ${leaves} (and it says the inventory changed)`);
+      },
+    );
+    await asserting(
+      'second-list',
+      async () => stale(second),
+      async () => undecoy(second),
+      async () => {
+        const lost = "the second window's list lost the row with no reload, and its rail lost the entry";
+        assert.deepEqual((await rowsOf(second)).map((entry) => entry.id), remaining.map((entry) => entry.id), `${engine}: ${lost} (the row)`);
+        assert.equal(await second.locator('[data-pl-part="list-foot"]').textContent(), `${String(remaining.length)} plugins`, `${engine}: ${lost} (the count)`);
+        assert.deepEqual((await railOf(second)).map((entry) => entry.name), ['Seam Fixture'], `${engine}: ${lost} (the rail)`);
+        assert.equal(await second.evaluate(() => window.__plSameDocument === true), true, `${engine}: ${lost} (the page was never reloaded)`);
+        assert.deepEqual(causesOf(framesSecond, DUP, 0).slice(-1), ['uninstalled'], `${engine}: ${lost} (it was told by the host's event)`);
+      },
+    );
+    await removing.release();
+    await page.waitForTimeout(500);
+    assert.deepEqual(calls.slice(uninstallCalls), [['UninstallPlugin', DUP]], `${engine}: the page asked the host for one thing, to uninstall the plugin`);
+    assert.deepEqual((await callBound(host.base, PLUGIN_SERVICE, 'ListPlugins')).map((entry) => entry.id).sort(), remaining.map((entry) => entry.id).sort(), `${engine}: the host no longer lists the plugin`);
+    assert.deepEqual((await rowsOf(page)).map((entry) => entry.id), remaining.map((entry) => entry.id), `${engine}: and the page, whose call has ended and which read the inventory again, does not bring it back`);
+    await assert.rejects(stat(path.join(stateRoot(dir), 'plugins', DUP)), { code: 'ENOENT' }, `${engine}: the plugin's directory is gone from the host's plugins directory`);
+    const shown = await page.locator('[data-pl-part="detail"]').getAttribute('aria-label');
+    assert.ok(remaining.some((entry) => entry.metadata.name === shown), `${engine}: the detail moved on to a plugin that is still listed (${String(shown)})`);
+    await shot('uninstalled');
+
+    assert.deepEqual(await rawIn(page), [], `${engine}: at the end nothing the page draws holds the host's own words for an error (the first window)`);
+    assert.deepEqual(await rawIn(second), [], `${engine}: at the end nothing the page draws holds the host's own words for an error (the second window)`);
+    assert.deepEqual(errors, [], `${engine}: the whole scenario wrote no page error`);
+    console.log(`${engine}: the Plugins page followed the host through a reload, a disable and an enable, an enable that left a plugin on and not started, a process killed by its pid and an uninstall (${String(frames.length)} plugin events told); the second window agreed with no reload`);
+    verdict(engine);
+  } finally {
+    await page.close();
+    await second.close();
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+  }
+}
+
+/**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
  * back. Then what is saved is made unusable in the ways that matter, through the window service the shell uses: a tab of a plugin that is not installed (the tab stays, and says so), a session of a
@@ -2917,6 +3711,18 @@ try {
         continue;
       }
 
+      if (ONLY === PAGE_GROUP || CONTROL === PAGE_GROUP || PAGE_CONTROLS[CONTROL] !== undefined) {
+        // Scenario t alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkPluginsPage`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase(PAGE_GROUP, name, async () => checkPluginsPage(browser, name, await processFixture(), work));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
       if (CONTROL === FAILED_GROUP || FAILED_CONTROLS[CONTROL] !== undefined) {
         // The negative controls of scenario p: it runs alone, once, with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkFailedLoad`).
         try {
@@ -2993,7 +3799,8 @@ try {
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout)`);
+      await phase('plugins-page', name, async () => checkPluginsPage(browser, name, await processFixture(), work));
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen)`);
     } finally {
       await browser.close();
     }

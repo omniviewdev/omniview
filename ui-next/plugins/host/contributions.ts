@@ -3,6 +3,7 @@ import type { Contributions, Description, Route, RouteInput } from '../../shell'
 import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
 import { failureWords } from '../loader/failure';
 import { ConnectionNames, laneNameOf, pathSaid, restoredFace } from './connectionName';
+import { hostPageOf } from './hostPages';
 import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
 
@@ -124,6 +125,12 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
 
   return {
     describe: (route): Description | undefined => {
+      // A page of the host's own (the Plugins page): a singleton tab of no plugin, so it says no scope, no path and no plugin name (ch16 S9, X7).
+      const hosted = hostPageOf(route);
+      if (hosted !== undefined) {
+        return { title: hosted.title, icon: hosted.icon, singleton: true, path: [] };
+      }
+
       const entry = entryOf(route.plugin);
       if (entry === undefined) {
         return undefined;
@@ -170,6 +177,10 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
       };
     },
     availability: (route) => {
+      if (hostPageOf(route) !== undefined) {
+        return { state: 'available' };
+      }
+
       const entry = entryOf(route.plugin);
       if (entry === undefined) {
         return { state: 'unavailable', reason: 'This plugin is not installed, or is turned off.' };

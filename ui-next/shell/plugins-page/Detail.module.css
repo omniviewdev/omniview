@@ -1,0 +1,28 @@
+/* The detail pane (ch16 S133): an island surface over the window's colour, 12 px inside, scrolling on its own when the window is short. The pane takes the focus programmatically only (tabindex -1), as the place to land when the control that
+   held it is gone; it has no ring of its own. Host composition, so it sits in ov.shell. */
+@layer ov.shell {
+  .pane {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding: var(--ov-spacing-12);
+    overflow: auto;
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg);
+  }
+
+  .pane:focus {
+    outline: 0;
+  }
+
+  /* The kit's empty body sits at the start of its box; a grid with its tracks centred puts it in the middle of the pane. */
+  .empty {
+    display: grid;
+    flex: 1 1 auto;
+    place-content: center;
+    min-inline-size: 0;
+  }
+}

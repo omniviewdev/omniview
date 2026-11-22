@@ -22,6 +22,7 @@ import { readKeywords } from '../contract/sidebarKeywords';
 import type { ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { laneNameOf } from './connectionName';
 import { connectionOf, routeKey, type PluginSource } from './contributions';
+import { allHostPages, HOST_PLUGIN } from './hostPages';
 import { commandOf, providersOf, runCommand } from './paletteProviders';
 import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
@@ -422,6 +423,20 @@ function commandsOf({ tabs, panel, platform, onCloseWindow }: HostPaletteDeps): 
     { id: 'host.tab.next', title: 'Next tab', context: 'Tabs', icon: 'arrow-right', unavailable: others, run: () => outcomeOf(tabs.next()) },
     { id: 'host.tab.previous', title: 'Previous tab', context: 'Tabs', icon: 'arrow-left', unavailable: others, run: () => outcomeOf(tabs.previous()) },
   );
+  // The host's own pages (the Plugins page): each opens in its singleton tab wherever the person is (ch16 S9, S26), and is shown, as any other tab, if it is already open.
+  for (const page of allHostPages()) {
+    commands.push({
+      id: `host.${page.id}`,
+      title: page.title,
+      context: 'Window',
+      icon: page.icon,
+      run: () => {
+        const opened = tabs.open({ route: { plugin: HOST_PLUGIN, contribution: page.id } }, { how: 'smart', source: 'command' });
+        return opened.status === 'refused' ? { ok: false, reason: opened.message } : true;
+      },
+    });
+  }
+
   return commands;
 }
 

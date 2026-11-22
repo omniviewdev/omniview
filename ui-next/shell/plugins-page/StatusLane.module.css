@@ -1,0 +1,85 @@
+/* The status lane (ch16 S133; the mock's `.plug-lane`): 80 px at least, 12 px of margin above and below and 12 px inside, whatever it says and in either look, so a state change moves nothing under it. A notice has the 1 px edge and the fill of
+   its tone, and a glyph. The quiet lane (a plugin that runs or is on its way) has the inline fill and muted 12 px words in two lines of 24 px, 4 px apart (the mock's lines are as tall as the link button some of them hold), and no edge or glyph.
+   Host composition, so it sits in ov.shell. */
+@layer ov.shell {
+  .lane {
+    --_bg: var(--ov-info-bg);
+    --_border: var(--ov-info-border);
+    --_icon: var(--ov-link);
+
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    min-block-size: 80px;
+    margin-block: var(--ov-spacing-12);
+    padding: var(--ov-spacing-12);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_bg);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .lane[data-pl-tone='error'] {
+    --_bg: var(--ov-error-bg);
+    --_border: var(--ov-error-border);
+    --_icon: var(--ov-error-fg);
+  }
+
+  .lane[data-pl-tone='warning'] {
+    --_bg: var(--ov-warning-bg);
+    --_border: var(--ov-warning-border);
+    --_icon: var(--ov-warning-fg);
+  }
+
+  /* The quiet lane: nothing to flag, so no edge and no glyph, and the words are the muted words of the page, one line each. It follows the tone rules above, so its fill stands over a tone's. */
+  .lane[data-pl-quiet='true'] {
+    --_bg: var(--ov-bg-inline);
+
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--ov-spacing-4);
+    border-width: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+
+  .lane > svg {
+    flex: none;
+    color: var(--_icon);
+  }
+
+  .text {
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .title {
+    display: block;
+    color: var(--ov-fg);
+    font-weight: 600;
+  }
+
+  /* A line of the quiet lane is 24 px high whatever it holds, as the mock's are, so a lane that gains or loses a control on a line moves no text. */
+  .line {
+    min-block-size: var(--ov-lh-24);
+    margin: 0;
+    line-height: var(--ov-lh-24);
+    overflow-wrap: anywhere;
+  }
+
+  .line > strong {
+    color: var(--ov-fg);
+    font-weight: 600;
+  }
+}

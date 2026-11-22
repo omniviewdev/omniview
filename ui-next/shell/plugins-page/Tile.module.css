@@ -1,0 +1,53 @@
+/* The tile of a plugin (ch16 S133; the mock's `H.avatar`, drawn as a square): the glyph, 16 px and centred (4 px in a 24 px box, 6 px in a 28 px one), in the hue the plugin's contribution names (the rail's own: the brand roles
+   the kit's tile and the sidebar's tree take), over a tint of that hue (the mock's 24% of the hue over the island). A plugin with no hue is the mock's neutral avatar, in the muted text colour. */
+@layer ov.shell {
+  .tile {
+    --_tone: var(--ov-fg-muted);
+    /* stylelint-disable-next-line function-disallowed-list -- the tile's fill is the mock's own tint of its hue over the island (24%), which the token scale does not carry */
+    --_fill: color-mix(in srgb, var(--_tone) 24%, var(--ov-bg-island));
+
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    inline-size: 24px;
+    block-size: 24px;
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_fill);
+    color: var(--_tone);
+  }
+
+  .tile[data-size='28'] {
+    inline-size: 28px;
+    block-size: 28px;
+  }
+
+  .tile[data-accent='orange'] {
+    --_tone: var(--ov-brand-orange);
+  }
+
+  .tile[data-accent='green'] {
+    --_tone: var(--ov-brand-green);
+  }
+
+  .tile[data-accent='blue'] {
+    --_tone: var(--ov-brand-blue);
+  }
+
+  .tile[data-accent='purple'] {
+    --_tone: var(--ov-brand-purple);
+  }
+
+  .tile[data-accent='pink'] {
+    --_tone: var(--ov-brand-pink);
+  }
+
+  .tile[data-accent='red'] {
+    --_tone: var(--ov-brand-red);
+  }
+
+  .tile[data-accent='teal'] {
+    --_tone: var(--ov-brand-teal);
+  }
+}
