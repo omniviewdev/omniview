@@ -201,6 +201,34 @@ func TestPublishedVerificationRefusesReleasesBelowTheFloorAndNonReleases(t *test
 	}
 }
 
+// The refusal of a release names the one command that fixes the consumer's own go.mod, with
+// the floor as the version: whoever reads it (a plugin author whose workspace is refused the
+// day the floor moves) does not have to find it in a document. The controller's own rebuild
+// stays one of the ways forward, for a release newer than the table.
+func TestReleaseRefusalNamesTheCommandThatFixesTheConsumer(t *testing.T) {
+	remedy := "go get " + devsdk.Module + "@" + devsdk.FloorVersion + " && go mod tidy"
+	for version, cause := range map[string]string{
+		"v0.16.0":                               "below the accepted floor",
+		"v0.17.1-0.20261108000000-abcdefabcdef": "not a released tag",
+		"v0.99.0":                               "not a release this controller has reviewed",
+	} {
+		t.Run(version, func(t *testing.T) {
+			world := sdktest.New(t)
+			sdk := world.PublishSDK(version, nil)
+			uuid := world.PublishPinned("github.com/google/uuid")
+			f := fixture{world: world, sdk: sdk, uuid: uuid, consumer: world.Consumer("consumer", sdk, uuid)}
+
+			_, err := verifier()(context.Background(), f.request())
+
+			typed := refusal(t, err)
+			require.Equal(t, devsdk.CodeReleaseUntrusted, typed.Code, typed.Message)
+			require.Contains(t, typed.Message, cause)
+			require.Contains(t, typed.Message, remedy)
+			require.Contains(t, typed.Message, "rebuild the controller from a host checkout that adopts this release")
+		})
+	}
+}
+
 // Anchoring: a tag at or above the floor is not enough. The controller admits
 // the releases it has reviewed, with exactly the checksums it has reviewed.
 func TestPublishedVerificationAdmitsOnlyReviewedReleases(t *testing.T) {

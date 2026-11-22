@@ -27,9 +27,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/devdiag"
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/instance"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkconfig "github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 const (
@@ -722,7 +722,7 @@ func (gw *goWatcherProcess) transferBinary() error {
 // provenance. Only the binary produced from this build's verified SDK snapshot
 // may stamp installed metadata; launch still requires the independent host record.
 func (gw *goWatcherProcess) syncPluginYaml() error {
-	metadata, err := pluginmeta.Load(gw.devPath)
+	metadata, err := sdktypes.LoadPluginMetadata(gw.devPath)
 	if err != nil {
 		return err
 	}

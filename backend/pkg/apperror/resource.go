@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -133,7 +132,7 @@ func ForResource(err error, requestID string) *AppError {
 	case errors.Is(err, context.DeadlineExceeded):
 		code = "TIMEOUT"
 	case errors.As(err, &roe):
-		code, title, detail, suggestions = roe.Code, roe.Title, providerSentence(err, roe), roe.Suggestions
+		code, title, detail, suggestions = roe.Code, roe.Title, providerSentence(roe), roe.Suggestions
 	case errors.As(err, &app):
 		code, title, detail, suggestions = codeFromType(app), app.Title, app.Detail, app.Suggestions
 	default:
@@ -196,36 +195,22 @@ func ForResource(err error, requestID string) *AppError {
 	return out
 }
 
-// sdkPlaceholders are the texts the SDK's client puts in Message when the status it
-// read carried no sentence (plugin-sdk, resource/v2/plugin: codec.go for a call,
-// ancillary_stream.go for an action event). They stand for "no text": taken as a
-// sentence they would replace the class's own, which says more.
-var sdkPlaceholders = map[string]bool{"resource operation failed": true, "action operation failed": true}
+// actionPlaceholder is the text the SDK puts in Message where an action event's error
+// has no sentence (plugin-sdk, resource/v2/plugin: ancillary_stream.go). It stands
+// for "no text": taken as a sentence it would replace the class's own, which says
+// more. A call that fails has no placeholder: its Message is empty when the plugin
+// sent no sentence (codec.go).
+const actionPlaceholder = "action operation failed"
 
 // providerSentence returns the sentence a provider attached to its error, or "".
-// Two generations of SDK client reach this host. One restores the sentence into
-// Message and leaves Message empty when there was none. The older one puts a
-// placeholder in Message and keeps the status, with the sentence if the plugin
-// sent one, in Err; the sentence is then read from the status here.
-func providerSentence(err error, roe *resource.ResourceOperationError) string {
-	if !sdkPlaceholders[roe.Message] {
-		return roe.Message
-	}
-	return statusSentence(err)
-}
-
-// statusSentence returns the English LocalizedMessage a plugin built on an SDK that
-// carries provider sentences (plugin-sdk, resource/v2/plugin: codec.go) attached to
-// the gRPC status behind err, or "".
-func statusSentence(err error) string {
-	st, ok := status.FromError(err)
-	if !ok {
+// The SDK client restores it into Message (plugin-sdk, resource/v2/plugin:
+// codec.go), only for a reviewed class and only when it is valid UTF-8 and at most
+// MaxErrorMessageBytes (2048) bytes: Message is empty when the plugin sent none,
+// built its error on an SDK that does not carry one, or sent one the SDK does not
+// carry. What the SDK did not carry is not looked for in the status behind the error.
+func providerSentence(roe *resource.ResourceOperationError) string {
+	if roe.Message == actionPlaceholder {
 		return ""
 	}
-	for _, detail := range st.Details() {
-		if message, ok := detail.(*errdetails.LocalizedMessage); ok && message.GetLocale() == "en" {
-			return message.GetMessage()
-		}
-	}
-	return ""
+	return roe.Message
 }

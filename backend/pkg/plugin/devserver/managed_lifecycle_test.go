@@ -16,8 +16,8 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsdk"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devsource"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -125,7 +125,7 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	root := appstate.NewTestService(t).Plugins()
 	gw := &goWatcherProcess{pluginID: "metadata", devPath: source, pluginsRoot: root}
 	require.NoError(t, gw.syncPluginYaml())
-	installed, err := pluginmeta.Load(root.ResolvePath("metadata"))
+	installed, err := sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
 	require.Nil(t, installed.StateIsolation)
 	gw.buildRelativePath = filepath.Join("metadata", ".test-build", "plugin")
@@ -138,7 +138,7 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	require.NoError(t, err)
 	gw.sdk = selected
 	require.NoError(t, gw.syncPluginYaml())
-	installed, err = pluginmeta.Load(root.ResolvePath("metadata"))
+	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
 	evidence, _ := selected.Source()
 	require.NoError(t, installed.StateIsolation.VerifyArtifact(
@@ -153,7 +153,7 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	require.NoError(t, err)
 	gw.sdk = published
 	require.NoError(t, gw.syncPluginYaml())
-	installed, err = pluginmeta.Load(root.ResolvePath("metadata"))
+	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
 	require.Nil(t, installed.StateIsolation)
 	original, err := os.ReadFile(path)

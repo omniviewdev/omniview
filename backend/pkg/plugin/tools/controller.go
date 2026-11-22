@@ -229,7 +229,11 @@ func (c *controller) OnPluginStart(
 			}
 		}
 		if !declared {
-			return resourcev2.NewError("GRANT_DENIED", "Cross-plugin connection access is not permitted.")
+			// The reason is the host's own, and it is why this plugin did not load: an AppError
+			// carries it to the plugin's page as made. A typed provider error would be taken for
+			// the plugin's sentence and worded by the gate (GRANT_DENIED is no class it shows).
+			return apperror.New(apperror.TypePluginLoadFailed, http.StatusForbidden, "Cross-plugin connection access is not permitted",
+				fmt.Sprintf("The tool %q names a connection owner that this plugin does not declare in requires.connections.", descriptor.Name))
 		}
 	}
 

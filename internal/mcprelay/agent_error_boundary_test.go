@@ -15,6 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
+	grpcplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -46,7 +47,7 @@ func TestPluginErrorTextNeverReachesAnAgent(t *testing.T) {
 	typed := &resourcev2.ResourceOperationError{Code: "TIMEOUT", Title: "PLUGIN-TITLE", Message: pluginSentence}
 	normalised := apperror.ForResource(typed, "req-1")
 	require.Contains(t, normalised.Error(), "PLUGIN-SENTENCE", "the premise: the user is given the sentence")
-	restored, err := status.New(codes.Aborted, "resource operation failed").WithDetails(
+	wire, err := status.New(codes.Aborted, "resource operation failed").WithDetails(
 		&errdetails.ErrorInfo{Reason: "CONFLICT", Domain: "omniview.resource.v2"},
 		&errdetails.LocalizedMessage{Locale: "en", Message: pluginSentence},
 	)
@@ -57,12 +58,12 @@ func TestPluginErrorTextNeverReachesAnAgent(t *testing.T) {
 		err  error
 		want string
 	}{
-		"the normalised error":               {normalised, failed},
-		"the normalised error, wrapped":      {fmt.Errorf("read: %w", normalised), failed},
-		"the typed error":                    {typed, failed},
-		"an older client's error and status": {&resourcev2.ResourceOperationError{Err: restored.Err(), Code: "CONFLICT", Message: "resource operation failed"}, failed},
-		"a governance denial with text":      {&resourcev2.ResourceOperationError{Code: "GRANT_DENIED", Message: pluginSentence}, "GRANT_DENIED: Cross-plugin connection access is not permitted."},
-		"a plain error with text":            {fmt.Errorf("%s", pluginSentence), failed},
+		"the normalised error":              {normalised, failed},
+		"the normalised error, wrapped":     {fmt.Errorf("read: %w", normalised), failed},
+		"the typed error":                   {typed, failed},
+		"the SDK client's error and status": {grpcplugin.ResourceDomainError(wire.Err()), failed},
+		"a governance denial with text":     {&resourcev2.ResourceOperationError{Code: "GRANT_DENIED", Message: pluginSentence}, "GRANT_DENIED: Cross-plugin connection access is not permitted."},
+		"a plain error with text":           {fmt.Errorf("%s", pluginSentence), failed},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t)

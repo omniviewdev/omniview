@@ -1,0 +1,133 @@
+plugin SDK = the SDK the plugin (server) is built on; host SDK = the SDK + host code the host (client) is built on. old = v0.20.0 + base host, new = ae56fb09 + this change.
+
+== OK
+  plugin old / host old: ok, catalog type native::Pod
+  plugin old / host new: ok, catalog type native::Pod
+  plugin new / host old: ok, catalog type native::Pod
+  plugin new / host new: ok, catalog type native::Pod
+== NOT_FOUND
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [NOT_FOUND] 'The requested resource was not found.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [NOT_FOUND] 'The requested resource was not found.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [NOT_FOUND] 'The requested resource or API group was not found.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The requested resource or API group was not found.'
+                           envelope [NOT_FOUND] 'The requested resource or API group was not found.'
+== FORBIDDEN
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [FORBIDDEN] 'The operation is not permitted.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [FORBIDDEN] 'The operation is not permitted.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [FORBIDDEN] 'The operation is not permitted.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'You do not have permission to perform this resource operation.'
+                           envelope [FORBIDDEN] 'The operation is not permitted.'
+== CONFLICT
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [CONFLICT] 'The operation conflicts with current state.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [CONFLICT] 'The operation conflicts with current state.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [CONFLICT] 'The resource operation conflicts with the current cluster state.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The resource operation conflicts with the current cluster state.'
+                           envelope [CONFLICT] 'The resource operation conflicts with the current cluster state.'
+== TIMEOUT
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [TIMEOUT] 'The operation exceeded its deadline.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [TIMEOUT] 'The operation exceeded its deadline.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [TIMEOUT] 'The cluster did not complete the request in time.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster did not complete the request in time.'
+                           envelope [TIMEOUT] 'The cluster did not complete the request in time.'
+== UNAUTHORIZED
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [UNAUTHORIZED] 'The provider requires authentication.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [UNAUTHORIZED] 'The provider requires authentication.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [UNAUTHORIZED] 'The provider requires authentication.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster could not authenticate the request.'
+                           envelope [UNAUTHORIZED] 'The provider requires authentication.'
+== INVALID_REQUEST
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [INVALID_REQUEST] 'The request is invalid.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [INVALID_REQUEST] 'The request is invalid.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [INVALID_REQUEST] 'The cluster rejected the resource request.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster rejected the resource request.'
+                           envelope [INVALID_REQUEST] 'The cluster rejected the resource request.'
+== UNSUPPORTED
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [UNSUPPORTED] 'This operation is not supported.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [UNSUPPORTED] 'This operation is not supported.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [UNSUPPORTED] 'The cluster does not support this resource operation.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster does not support this resource operation.'
+                           envelope [UNSUPPORTED] 'The cluster does not support this resource operation.'
+== CONTINUATION_EXPIRED
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [CONTINUATION_EXPIRED] 'Restart the traversal.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [CONTINUATION_EXPIRED] 'Restart the traversal.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [CONTINUATION_EXPIRED] 'The resource listing continuation has expired. Start a new listing.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The resource listing continuation has expired. Start a new listing.'
+                           envelope [CONTINUATION_EXPIRED] 'The resource listing continuation has expired. Start a new listing.'
+== RESOURCE_LIMIT
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [RESOURCE_LIMIT] 'The operation exceeds a host resource limit.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [RESOURCE_LIMIT] 'The operation exceeds a host resource limit.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [RESOURCE_LIMIT] 'The request exceeded a cluster resource or rate limit.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The request exceeded a cluster resource or rate limit.'
+                           envelope [RESOURCE_LIMIT] 'The request exceeded a cluster resource or rate limit.'
+== UNAVAILABLE
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [UNAVAILABLE] 'The source is unavailable.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [UNAVAILABLE] 'The source is unavailable.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [UNAVAILABLE] 'The cluster is temporarily unavailable.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster is temporarily unavailable.'
+                           envelope [UNAVAILABLE] 'The cluster is temporarily unavailable.'
+== CONNECTION_ERROR
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [CONNECTION_ERROR] 'The source is unavailable.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [CONNECTION_ERROR] 'The source is unavailable.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [CONNECTION_ERROR] 'Unable to connect to the cluster.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'Unable to connect to the cluster.'
+                           envelope [CONNECTION_ERROR] 'Unable to connect to the cluster.'
+== CERTIFICATE_ERROR
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [CERTIFICATE_ERROR] 'The provider connection could not be verified.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [CERTIFICATE_ERROR] 'The provider connection could not be verified.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [CERTIFICATE_ERROR] 'The cluster certificate could not be verified.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster certificate could not be verified.'
+                           envelope [CERTIFICATE_ERROR] 'The cluster certificate could not be verified.'
+== PROVIDER_ERROR
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+  plugin new / host old: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'resource operation failed'
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+  plugin new / host new: wire details ['ErrorInfo', 'LocalizedMessage'], client Message 'The cluster could not complete the request.'
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+== untyped
+  plugin old / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+  plugin old / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+  plugin new / host old: wire details ['ErrorInfo'], client Message 'resource operation failed'
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'
+  plugin new / host new: wire details ['ErrorInfo'], client Message None
+                           envelope [PROVIDER_ERROR] 'The provider could not complete the operation.'

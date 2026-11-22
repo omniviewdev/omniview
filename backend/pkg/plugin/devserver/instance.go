@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/appstate"
-	"github.com/omniviewdev/omniview/internal/pluginmeta"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 // emitStatusFunc is the callback type for emitting status updates.
@@ -114,7 +114,7 @@ func NewDevServerInstance(
 func (inst *DevServerInstance) Start() error {
 	inst.logger.Infow(context.Background(), "starting dev server instance")
 
-	metadata, err := pluginmeta.Load(inst.devPath)
+	metadata, err := sdktypes.LoadPluginMetadata(inst.devPath)
 	if err != nil {
 		return fmt.Errorf("load source capabilities: %w", err)
 	}
