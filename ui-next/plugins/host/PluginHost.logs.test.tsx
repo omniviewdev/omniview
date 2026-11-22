@@ -130,6 +130,8 @@ describe('the Logs tool of the host', () => {
   it('is in the panel\'s strip without any plugin bringing it, and says how a session arrives: no button, no `+`', async () => {
     const { user } = mount({ plugins: () => [{ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution: acme() }] });
     await user.click(toggle());
+    // The Terminal tool is first (the mock's order, 10) and is the one on screen until the person chooses another.
+    await user.click(tab('Logs'));
     expect(tab('Logs')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('No log sessions')).toBeInTheDocument();
     expect(screen.getByText('Open the logs of a resource to follow them here.')).toBeInTheDocument();

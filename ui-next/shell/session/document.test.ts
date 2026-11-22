@@ -5,10 +5,10 @@ import { boot as bootTabs, cloudPage, stackPage } from '../core/tabs/testing';
 import { MIGRATIONS, readSession, serialiseSession, SESSION_VERSION } from './document';
 
 // The saved session as a document: what is written, and how a text is read back into one. The tab model and the panel model each own their part (their own version, `migrate` and repairs);
-// this document wraps the two with the rail's choice and has a version of its own, so a change of the wrapper is migrated here and a change of a part is migrated in the part.
+// this document wraps the two with the rail's choice and the Terminal tool's screen reader choice, and has a version of its own, so a change of the wrapper is migrated here and a change of a part is migrated in the part.
 
 describe('what the session writes', () => {
-  it('is plain JSON that starts with its version, and holds the tabs, the rail and the panel as their models save them', () => {
+  it('is plain JSON that starts with its version, and holds the tabs, the rail and the panel as their models save them, and the Terminal\'s screen reader choice as the person made it', () => {
     const tabs = bootTabs({ home: false });
     tabs.open(cloudPage('instances'));
     tabs.open(stackPage('services'), { how: 'new' });
@@ -16,22 +16,24 @@ describe('what the session writes', () => {
     panel.store.resize({ size: 333 });
     panel.store.show({ tool: 'logs' });
 
-    const document = serialiseSession({ tabs: tabs.state(), panel: panel.snapshot(), rail: 'stack' });
-    expect(Object.keys(document)).toEqual(['version', 'tabs', 'rail', 'panel']);
+    const document = serialiseSession({ tabs: tabs.state(), panel: panel.snapshot(), rail: 'stack', terminalScreenReader: true });
+    expect(Object.keys(document)).toEqual(['version', 'tabs', 'rail', 'panel', 'terminalScreenReader']);
     expect(document.version).toBe(SESSION_VERSION);
     expect(document.tabs).toEqual(tabs.store.serialise());
     expect(document.panel).toEqual(panel.store.serialise());
     expect(document.rail).toBe('stack');
+    expect(document.terminalScreenReader).toBe(true);
     expect(JSON.parse(JSON.stringify(document))).toEqual(document);
   });
 
   it('says that no rail entry was chosen with null, and a window with nothing in it still writes a whole document', () => {
-    const document = serialiseSession({ tabs: bootTabs({ home: false }).state(), panel: createPanelStore().getSnapshot(), rail: null });
+    const document = serialiseSession({ tabs: bootTabs({ home: false }).state(), panel: createPanelStore().getSnapshot(), rail: null, terminalScreenReader: false });
     expect(document).toEqual({
       version: SESSION_VERSION,
       tabs: { version: 1, active: null, tabs: [] },
       rail: null,
       panel: { version: 1, open: false, height: null, tool: null, active: {}, sessions: [] },
+      terminalScreenReader: false,
     });
   });
 
@@ -44,7 +46,7 @@ describe('what the session writes', () => {
     panel.store.openSession(panelSession('logs', 'cloud', 'worker'));
     panel.store.setSessionState('s1', { state: 'running' });
 
-    const text = JSON.stringify(serialiseSession({ tabs: tabs.state(), panel: panel.snapshot(), rail: 'cloud' }));
+    const text = JSON.stringify(serialiseSession({ tabs: tabs.state(), panel: panel.snapshot(), rail: 'cloud', terminalScreenReader: false }));
     for (const word of ['scroll', 'unsaved', 'attention', 'running', 'since', 'cause', 'mounted', 'reveal', 'pageState']) {
       expect(text).not.toContain(word);
     }
@@ -52,19 +54,27 @@ describe('what the session writes', () => {
 });
 
 describe('a text that is read', () => {
-  const document = (extra: Record<string, unknown> = {}) => JSON.stringify({ version: SESSION_VERSION, tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1 }, ...extra });
+  const document = (extra: Record<string, unknown> = {}) => JSON.stringify({ version: SESSION_VERSION, tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1 }, terminalScreenReader: true, ...extra });
 
   it('is nothing when nothing was saved, and a document when it is one: its parts still as saved, for their own models to read', () => {
     expect(readSession(undefined)).toEqual({ kind: 'none' });
     expect(readSession('null')).toEqual({ kind: 'none' });
-    expect(readSession(document())).toEqual({ kind: 'saved', tabs: { version: 1, active: null, tabs: [] }, panel: { version: 1 }, rail: 'cloud' });
+    expect(readSession(document())).toEqual({ kind: 'saved', tabs: { version: 1, active: null, tabs: [] }, panel: { version: 1 }, rail: 'cloud', terminalScreenReader: true });
   });
 
   it('has no rail choice when the saved one is not an id, and parts that are absent are absent', () => {
     expect(readSession(document({ rail: null }))).toMatchObject({ kind: 'saved', rail: undefined });
     expect(readSession(document({ rail: 5 }))).toMatchObject({ kind: 'saved', rail: undefined });
     expect(readSession(document({ rail: '' }))).toMatchObject({ kind: 'saved', rail: undefined });
-    expect(readSession(JSON.stringify({ version: SESSION_VERSION }))).toEqual({ kind: 'saved', tabs: undefined, panel: undefined, rail: undefined });
+    expect(readSession(JSON.stringify({ version: SESSION_VERSION }))).toEqual({ kind: 'saved', tabs: undefined, panel: undefined, rail: undefined, terminalScreenReader: false });
+  });
+
+  it('has the Terminal\'s screen reader mode off unless the document says it is on: a value that is not true or false is the default, never a reason to refuse the session', () => {
+    expect(readSession(document({ terminalScreenReader: true }))).toMatchObject({ kind: 'saved', terminalScreenReader: true });
+    expect(readSession(document({ terminalScreenReader: false }))).toMatchObject({ kind: 'saved', terminalScreenReader: false });
+    for (const junk of [undefined, null, 'true', 1, {}, []]) {
+      expect(readSession(document({ terminalScreenReader: junk })), JSON.stringify(junk) ?? 'absent').toMatchObject({ kind: 'saved', terminalScreenReader: false });
+    }
   });
 
   it('is unusable, and says why, when it is not JSON, not a document, or has no whole-number version', () => {
@@ -97,7 +107,7 @@ describe('a text that is read', () => {
       },
     };
     const old = JSON.stringify({ version: 1, tabs: { version: 1, active: null, tabs: [] }, railPlugin: 'cloud', panel: { v: { version: 1, open: true } } });
-    expect(readSession(old, { current: 3, steps })).toEqual({ kind: 'saved', tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1, open: true } });
+    expect(readSession(old, { current: 3, steps })).toEqual({ kind: 'saved', tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1, open: true }, terminalScreenReader: false });
 
     expect(readSession(old, { current: 3, steps: { 1: steps[1] } })).toMatchObject({ kind: 'unusable', reason: 'foreign-version', detail: expect.stringContaining('no migration from version 2') as string });
     const broken = { 1: () => {
@@ -108,7 +118,14 @@ describe('a text that is read', () => {
     expect(readSession(old, { current: 3, steps: forgetful })).toMatchObject({ kind: 'unusable', reason: 'unreadable' });
   });
 
-  it('has no migration yet: version 1 is the first', () => {
-    expect(MIGRATIONS).toEqual({});
+  it('has one migration, from version 1 (the first release) to version 2, which adds the Terminal\'s screen reader choice, off', () => {
+    expect(SESSION_VERSION).toBe(2);
+    expect(Object.keys(MIGRATIONS)).toEqual(['1']);
+    expect(MIGRATIONS[1]?.({ version: 1, tabs: { version: 1 }, rail: 'cloud', panel: { version: 1 } })).toEqual({ version: 2, tabs: { version: 1 }, rail: 'cloud', panel: { version: 1 }, terminalScreenReader: false });
+  });
+
+  it('reads a document of version 1, which has no screen reader choice, as a session with it off, and its other parts as they were saved', () => {
+    const old = JSON.stringify({ version: 1, tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1, open: true } });
+    expect(readSession(old)).toEqual({ kind: 'saved', tabs: { version: 1, active: null, tabs: [] }, panel: { version: 1, open: true }, rail: 'cloud', terminalScreenReader: false });
   });
 });

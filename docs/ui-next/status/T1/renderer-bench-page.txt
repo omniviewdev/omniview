@@ -1,0 +1,969 @@
+// T1 renderer bench: the PAGE side. Throwaway harness, never shipped, never compiled by the repo (suffix .txt).
+//
+// How to run (the driver does all of this for you): see the header of renderer-bench.mjs.txt. The driver copies this file to
+// /tmp/t1-bench/page/main.js, builds it with the root's vite (production, esbuild minify) and serves it. Everything here is
+// exposed as window.bench.*; the driver calls those functions with page.evaluate, one fresh page load per experiment.
+//
+// window.__c (counters of setTimeout / setInterval / requestAnimationFrame) is installed by the driver with addInitScript,
+// BEFORE this script runs.
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebglAddon } from '@xterm/addon-webgl';
+import '@xterm/xterm/css/xterm.css';
+
+const params = new URLSearchParams(location.search);
+const LH = Number(params.get('lh') || '1');
+const FONT = "'Int UI Mono', monospace";
+const THEME = { background: '#191A1C', foreground: '#BCBEC4' };
+const HOST_W = 1360;
+const HOST_H = 224;
+const CHUNK = 20480;
+
+const now = () => performance.now();
+const raf = () => new Promise((r) => requestAnimationFrame(r));
+const raf2 = async () => { await raf(); await raf(); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const r2 = (n) => Math.round(n * 100) / 100;
+
+function pct(sorted, p) {
+  if (!sorted.length) return null;
+  const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[i];
+}
+function stats(arr) {
+  const s = [...arr].sort((a, b) => a - b);
+  return { n: s.length, min: r2(s[0] ?? NaN), p50: r2(pct(s, 50) ?? NaN), p95: r2(pct(s, 95) ?? NaN), p99: r2(pct(s, 99) ?? NaN), max: r2(s[s.length - 1] ?? NaN), mean: r2(s.reduce((a, b) => a + b, 0) / (s.length || 1)) };
+}
+
+function baseOpts(o = {}) {
+  return { fontFamily: FONT, fontSize: 12, lineHeight: LH, cursorBlink: false, scrollback: 5000, allowProposedApi: false, theme: THEME, ...o };
+}
+
+function makeHost(w = HOST_W, h = HOST_H, parent = document.getElementById('stage'), css = '') {
+  const host = document.createElement('div');
+  host.style.cssText = `width:${w}px;height:${h}px;overflow:hidden;position:relative;${css}`;
+  parent.appendChild(host);
+  return host;
+}
+
+async function fontReady() {
+  await document.fonts.load('12px "Int UI Mono"');
+}
+
+/** Cell size the renderer settled on (private API, bench only). */
+function cellSize(term) {
+  const d = term._core._renderService.dimensions;
+  return { cssW: d.css.cell.width, cssH: d.css.cell.height, devW: d.device.cell.width, devH: d.device.cell.height };
+}
+
+/** Sum the time xterm spends in its own parse slices (WriteBuffer._innerWrite); bench only. */
+function instrumentParse(term) {
+  const wb = term._core._writeBuffer;
+  const orig = wb._innerWrite.bind(wb);
+  const st = { ms: 0, calls: 0, maxSlice: 0 };
+  wb._innerWrite = (...a) => {
+    const s = now();
+    try { return orig(...a); } finally { const d = now() - s; st.ms += d; st.calls += 1; if (d > st.maxSlice) st.maxSlice = d; }
+  };
+  return st;
+}
+
+async function create({ renderer = 'dom', scrollback = 5000, cursorBlink = false, host, hostW = HOST_W, hostH = HOST_H, theme, opts = {}, fit = true, parse = false } = {}) {
+  await fontReady();
+  host = host || makeHost(hostW, hostH);
+  const term = new Terminal(baseOpts({ scrollback, cursorBlink, ...(theme ? { theme } : {}), ...opts }));
+  term.open(host);
+  const fitA = new FitAddon();
+  term.loadAddon(fitA);
+  if (fit) fitA.fit();
+  let webgl = null;
+  if (renderer === 'webgl') {
+    webgl = new WebglAddon();
+    term.loadAddon(webgl);
+  }
+  const ps = parse ? instrumentParse(term) : null;
+  return { term, fitA, webgl, host, ps };
+}
+
+const live = { cur: null };
+
+function teardown(t) {
+  if (!t) return;
+  try { t.term.dispose(); } catch (e) { /* already disposed */ }
+  t.host.remove();
+}
+
+// ---------------------------------------------------------------- streams
+
+const LINE80 = ('The quick brown fox jumps over the lazy dog 0123456789 ~!@#$%^&*()_+-=[]{}|;:,.<>/? abcdefghijklmnop').slice(0, 80);
+const MARK = 'LAST-LINE-OK';
+const enc = new TextEncoder();
+
+function makeStream(kind, { reuse = false } = {}) {
+  const line = kind === 'W1' ? 'y' : LINE80;
+  const nLines = kind === 'W1' ? 200000 : kind === 'W2' ? 1000000 : kind.startsWith('B') ? Number(kind.slice(1)) : 0;
+  const lineBytes = enc.encode(line + '\r\n');
+  const L = lineBytes.length;
+  const tail = enc.encode(MARK + '\r\n');
+  const bodyLen = L * nLines;
+  const total = bodyLen + tail.length;
+  const base = new Uint8Array(CHUNK + L);
+  for (let i = 0; i < base.length; i += L) base.set(lineBytes.subarray(0, Math.min(L, base.length - i)), i);
+  const chunks = Math.ceil(total / CHUNK);
+  const cache = new Map();
+  const gen = (i) => {
+    const s = i * CHUNK;
+    const e = Math.min(total, s + CHUNK);
+    if (e <= bodyLen && reuse && e - s === CHUNK) { // memory runs: no per-chunk garbage, the same few arrays are written over and over
+      let a = cache.get(s % L);
+      if (!a) { a = base.slice(s % L, (s % L) + CHUNK); cache.set(s % L, a); }
+      return a;
+    }
+    if (e <= bodyLen) return base.slice(s % L, (s % L) + (e - s));
+    const out = new Uint8Array(e - s);
+    if (s < bodyLen) out.set(base.subarray(s % L, (s % L) + (bodyLen - s)), 0);
+    const from = Math.max(s, bodyLen);
+    out.set(tail.subarray(from - bodyLen, e - bodyLen), from - s);
+    return out;
+  };
+  return { gen, chunks, total, lineBytes: L, nLines, line };
+}
+
+/** Frame sampler: rAF timestamps. */
+function frameSampler() {
+  const ts = [];
+  let running = true;
+  const loop = (t) => { ts.push(t); if (running) requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  return {
+    stop() { running = false; return ts; },
+    intervals() { const a = []; for (let i = 1; i < ts.length; i++) a.push(ts[i] - ts[i - 1]); return a; },
+    count() { return ts.length; },
+  };
+}
+
+function longTaskObserver() {
+  const out = { supported: false, count: 0, totalMs: 0, maxMs: 0, durations: [] };
+  try {
+    if (!(PerformanceObserver.supportedEntryTypes || []).includes('longtask')) return { obs: null, out };
+    out.supported = true;
+    const obs = new PerformanceObserver((l) => { for (const e of l.getEntries()) { out.count++; out.totalMs += e.duration; out.durations.push(e.duration); if (e.duration > out.maxMs) out.maxMs = e.duration; } });
+    obs.observe({ type: 'longtask' });
+    return { obs, out };
+  } catch (e) { return { obs: null, out }; }
+}
+
+function counters() { const c = window.__c; return { st: c.setTimeout, si: c.setInterval, raf: c.raf, rafMs: c.rafMs }; }
+function counterDelta(a, b) { return { setTimeout: b.st - a.st, setInterval: b.si - a.si, raf: b.raf - a.raf, rafMs: r2(b.rafMs - a.rafMs) }; }
+
+function mutationCounter() {
+  const m = { records: 0, byType: {}, targets: {} };
+  const mo = new MutationObserver((list) => {
+    for (const r of list) {
+      m.records++;
+      m.byType[r.type] = (m.byType[r.type] || 0) + 1;
+      const t = r.target;
+      const k = (t.nodeType === 1 ? t.tagName.toLowerCase() + (t.className && typeof t.className === 'string' ? '.' + t.className.split(' ')[0] : '') : '#' + t.nodeName) + (r.attributeName ? '[' + r.attributeName + ']' : '');
+      m.targets[k] = (m.targets[k] || 0) + 1;
+    }
+  });
+  mo.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  return { m, stop() { const rest = mo.takeRecords(); for (const r of rest) { m.records++; m.byType[r.type] = (m.byType[r.type] || 0) + 1; } mo.disconnect(); return m; } };
+}
+
+/**
+ * Pump a stream into a terminal.
+ *  mode: 'chunk' (one write per chunk) | 'raf' (everything that arrived since the last frame, concatenated, one write per rAF)
+ *  pace: 'free' (one chunk per MessageChannel macrotask, as fast as the page allows) | 'bp' (same, but at most capBytes written and not yet parsed)
+ *        | 'burst' (every chunk written in one synchronous loop)
+ */
+async function pump(term, stream, { mode, pace, capBytes = 2 * 1024 * 1024 }) {
+  const res = { accepted: 0, discarded: 0, discardedBytes: 0, writes: 0, firstError: null, gaps: [] };
+  let unacked = 0;
+  const pending = [];
+  let pendingLen = 0;
+  let produced = 0;
+  let producerDone = false;
+  let rafOn = false;
+  const t0 = now();
+  const doWrite = (data, ack) => {
+    res.writes++;
+    unacked += data.length;
+    try {
+      term.write(data, () => { unacked -= data.length; if (ack) ack(); });
+      res.accepted++;
+    } catch (e) {
+      res.discarded++; res.discardedBytes += data.length; unacked -= data.length;
+      if (!res.firstError) res.firstError = String(e && e.message || e);
+    }
+  };
+  const mc = new MessageChannel();
+  let posted = false;
+  let resume = null;
+  let lastStart = 0;
+  const post = () => { if (!posted) { posted = true; mc.port2.postMessage(0); } };
+  const flushRaf = () => {
+    if (!pending.length) return;
+    let big;
+    if (pending.length === 1) big = pending[0];
+    else { big = new Uint8Array(pendingLen); let o = 0; for (const c of pending) { big.set(c, o); o += c.length; } }
+    pending.length = 0; pendingLen = 0;
+    doWrite(big, resume);
+  };
+  const rafLoop = () => {
+    flushRaf();
+    if (!producerDone || pending.length) requestAnimationFrame(rafLoop); else rafOn = false;
+  };
+  const canSend = () => pace !== 'bp' || (unacked + pendingLen) < capBytes;
+  const deliver = (chunk) => {
+    if (mode === 'chunk') doWrite(chunk, resume);
+    else { pending.push(chunk); pendingLen += chunk.length; if (!rafOn) { rafOn = true; requestAnimationFrame(rafLoop); } }
+  };
+  const done = new Promise((resolve) => {
+    const finish = () => { producerDone = true; resolve(); };
+    if (pace === 'burst') {
+      for (; produced < stream.chunks; produced++) deliver(stream.gen(produced));
+      finish();
+      return;
+    }
+    resume = () => { if (!producerDone && produced < stream.chunks && !posted && canSend()) post(); };
+    mc.port1.onmessage = () => {
+      posted = false;
+      const s = now();
+      if (lastStart) res.gaps.push(s - lastStart);
+      lastStart = s;
+      deliver(stream.gen(produced++));
+      if (produced >= stream.chunks) { finish(); return; }
+      if (canSend()) post();
+    };
+    post();
+  });
+  res.firstWriteAt = t0;
+  await done;
+  mc.port1.onmessage = null; mc.port1.close(); // a live port with a handler keeps the terminal reachable
+  res.producedAt = now();
+  // a final sentinel write: its callback fires after every earlier byte is parsed (retry while xterm refuses data)
+  while (pending.length) await raf();
+  let sentinelAt = null;
+  for (;;) {
+    try { await new Promise((resolve) => term.write('', resolve)); sentinelAt = now(); break; } catch (e) { await sleep(10); }
+  }
+  res.drainEnd = sentinelAt;
+  res.drainMs = r2(sentinelAt - t0);
+  res.produceMs = r2(res.producedAt - t0);
+  return res;
+}
+
+function lastLineCheck(t) {
+  const term = t.term;
+  const b = term.buffer.active;
+  const lineAt = (y) => b.getLine(y)?.translateToString(true) ?? null;
+  const last = lineAt(b.baseY + b.cursorY - 1);
+  const out = { bufferLength: b.length, baseY: b.baseY, viewportY: b.viewportY, cursorY: b.cursorY, lastBufferLine: last, lastLineOk: last === MARK, atBottom: b.viewportY === b.baseY, rows: term.rows, cols: term.cols };
+  const rowsEl = t.host.querySelector('.xterm-rows');
+  if (rowsEl) {
+    const kids = [...rowsEl.children];
+    const txt = kids.map((k) => k.textContent.replace(/\u00a0/g, ' ').trimEnd());
+    out.domLastRendered = txt.filter((x) => x.length).slice(-1)[0] ?? null;
+    out.domRenderedOk = out.domLastRendered === MARK;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- calibrate
+
+async function calibrate(renderer) {
+  await fontReady();
+  const out = [];
+  for (const lh of [1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4]) {
+    const host = makeHost();
+    const term = new Terminal(baseOpts({ lineHeight: lh }));
+    term.open(host);
+    const f = new FitAddon();
+    term.loadAddon(f);
+    let w = null;
+    if (renderer === 'webgl') { w = new WebglAddon(); term.loadAddon(w); }
+    f.fit();
+    term.write('hello');
+    await raf2();
+    await raf2();
+    const rowEl = host.querySelector('.xterm-rows > div');
+    const c = cellSize(term);
+    out.push({ lh, ...c, domRowH: rowEl ? rowEl.getBoundingClientRect().height : null, cols: term.cols, rows: term.rows });
+    term.dispose();
+    host.remove();
+  }
+  return { renderer, table: out, fontLoaded: document.fonts.check('12px "Int UI Mono"'), dpr: devicePixelRatio };
+}
+
+// ---------------------------------------------------------------- B2 construction
+
+async function construct(renderer, nth = 1) {
+  await fontReady();
+  const res = [];
+  let last = null;
+  for (let i = 1; i <= nth; i++) {
+    teardown(last); last = null;
+    await raf2();
+    const host = makeHost();
+    const T = {};
+    const renders = [];
+    const t0 = now();
+    const term = new Terminal(baseOpts()); T.new = now() - t0;
+    let s = now();
+    term.open(host); T.open = now() - s;
+    const rdr = term.onRender(() => renders.push(now()));
+    s = now();
+    const fit = new FitAddon(); term.loadAddon(fit); T.loadFit = now() - s;
+    s = now();
+    fit.fit(); T.fit = now() - s;
+    let w = null;
+    if (renderer === 'webgl') {
+      s = now(); w = new WebglAddon(); term.loadAddon(w); T.loadWebgl = now() - s;
+      T.colsBeforeRefit = term.cols; T.cellWidthAfterWebgl = cellSize(term).cssW;
+      s = now(); fit.fit(); T.refitAfterWebgl = now() - s; // the WebGL renderer rounds the cell to whole device pixels: the grid may change
+    }
+    const tEnd = now();
+    T.sync = tEnd - t0;
+    const nR = renders.length;
+    await new Promise((resolve) => term.write('first line of output\r\n', resolve));
+    const tCb = now();
+    if (renders.length === nR) await new Promise((r) => { const d = term.onRender(() => { d.dispose(); r(); }); });
+    const tRender = now();
+    await raf();
+    const tPaint = now();
+    T.writeCb = tCb - tEnd; T.render = tRender - tEnd; T.paint = tPaint - tEnd;
+    T.firstFrameTotal = tPaint - t0;
+    T.firstOnRenderSinceOpen = renders.length ? renders[0] - (t0 + T.new) : null;
+    T.cols = term.cols; T.rows = term.rows;
+    rdr.dispose();
+    for (const k of Object.keys(T)) if (typeof T[k] === 'number') T[k] = r2(T[k]);
+    res.push(T);
+    last = { term, host };
+  }
+  teardown(last);
+  return { nth: res[nth - 1], first: res[0], all: res };
+}
+
+// ---------------------------------------------------------------- B3 flood
+
+async function flood(cfg) {
+  const { renderer, kind, mode, pace, scrollback = 5000, capBytes } = cfg;
+  const t = await create({ renderer, scrollback, parse: true });
+  live.cur = t;
+  const { term } = t;
+  await raf2(); await sleep(150); await raf2();
+  const base = frameSampler();
+  await sleep(500);
+  base.stop();
+  const baseline = stats(base.intervals());
+  const stream = makeStream(kind);
+  const { obs, out: lt } = longTaskObserver();
+  const c0 = counters();
+  const mut = mutationCounter();
+  const fs = frameSampler();
+  const g = await pump(term, stream, { mode, pace, capBytes });
+  const c1 = counters();
+  const frameTs = fs.stop();
+  const ivs = fs.intervals();
+  await raf2();
+  const muts = mut.stop();
+  if (obs) { await sleep(120); obs.disconnect(); }
+  const check = lastLineCheck(t);
+  const out = {
+    cfg: { ...cfg, scrollback },
+    stream: { chunks: stream.chunks, bytes: stream.total, lines: stream.nLines },
+    baselineFrameInterval: baseline,
+    frames: frameTs.length,
+    frameInterval: stats(ivs),
+    intervals: ivs.map(r2),
+    framesOver50ms: ivs.filter((x) => x > 50).length,
+    drainMs: g.drainMs, produceMs: g.produceMs,
+    throughputMBs: r2(stream.total / 1e6 / (g.drainMs / 1000)),
+    accepted: g.accepted, discarded: g.discarded, discardedMB: r2(g.discardedBytes / 1e6), firstError: g.firstError,
+    writes: g.writes,
+    parseMs: r2(t.ps.ms), parseSlices: t.ps.calls, maxParseSliceMs: r2(t.ps.maxSlice),
+    loopGap: stats(g.gaps),
+    longTasks: { supported: lt.supported, count: lt.count, totalMs: r2(lt.totalMs), maxMs: r2(lt.maxMs), over100: lt.durations.filter((x) => x > 100).length },
+    counters: counterDelta(c0, c1),
+    mutations: muts.records,
+    check,
+    heapUsedMB: performance.memory ? r2(performance.memory.usedJSHeapSize / 1e6) : null,
+  };
+  return out;
+}
+
+async function floodDispose() { teardown(live.cur); live.cur = null; await raf2(); return true; }
+
+// ---------------------------------------------------------------- B4 memory
+
+const memState = { t: null };
+async function memCreate({ renderer, scrollback }) {
+  memState.t = await create({ renderer, scrollback, parse: true });
+  await raf2(); await sleep(100);
+  return { cols: memState.t.term.cols, rows: memState.t.term.rows };
+}
+async function memFlood({ kind = 'W2', pace = 'bp', mode = 'chunk' }) {
+  const stream = makeStream(kind, { reuse: true });
+  const g = await pump(memState.t.term, stream, { mode, pace });
+  await raf2();
+  return { drainMs: g.drainMs, discarded: g.discarded, check: lastLineCheck(memState.t), parseMs: r2(memState.t.ps.ms) };
+}
+function memDispose() { teardown(memState.t); memState.t = null; return true; }
+async function uaMemory() {
+  if (!performance.measureUserAgentSpecificMemory) return { supported: false };
+  try { const r = await performance.measureUserAgentSpecificMemory(); return { supported: true, bytes: r.bytes, isolated: crossOriginIsolated }; } catch (e) { return { supported: false, error: String(e) }; }
+}
+function pressure(mb, times) { for (let k = 0; k < times; k++) { const x = new ArrayBuffer(mb * 1024 * 1024); new Uint8Array(x).fill(1); } return true; }
+function allocBallast(mb) { window.__ballast = new Uint8Array(mb * 1024 * 1024); window.__ballast.fill(7); return mb; }
+function freeBallast() { window.__ballast = null; return true; }
+
+// ---------------------------------------------------------------- B5 webgl
+
+const lossState = { terms: [], events: [], refDom: null };
+async function ctxLimit({ max = 40, wait = 120 }) {
+  await fontReady();
+  const stage = document.getElementById('stage');
+  stage.style.cssText = 'display:flex;flex-wrap:wrap;';
+  const ev = [];
+  const T0 = now();
+  const created = [];
+  for (let i = 0; i < max; i++) {
+    const host = makeHost(240, 64, stage);
+    const term = new Terminal(baseOpts({ scrollback: 100 }));
+    term.open(host);
+    let w = null; let err = null;
+    try { w = new WebglAddon(); term.loadAddon(w); } catch (e) { err = String(e && e.message || e); }
+    const rec = { idx: i, term, host, w, err, lostAt: null, addonLossAt: null, restoredAt: null };
+    if (w) {
+      for (const cv of host.querySelectorAll('canvas')) { // xterm adds more than one canvas; the event fires on the WebGL one only
+        cv.addEventListener('webglcontextlost', () => { rec.lostAt = now() - T0; ev.push({ type: 'webglcontextlost (canvas event)', idx: i, createdSoFar: created.length, aliveAtThatTime: created.filter((c) => c.w && !c.disposedAt && c.lostAt === null).length, t: r2(now() - T0) }); });
+        cv.addEventListener('webglcontextrestored', () => { rec.restoredAt = now() - T0; ev.push({ type: 'restored', idx: i, t: r2(now() - T0) }); });
+      }
+      w.onContextLoss(() => { rec.addonLossAt = now() - T0; ev.push({ type: 'addon.onContextLoss', idx: i, t: r2(now() - T0) }); });
+    }
+    term.write(`terminal ${i}\r\nline two`);
+    created.push(rec);
+    await sleep(wait);
+    if (err) { ev.push({ type: 'addonError', idx: i, err }); break; }
+  }
+  lossState.terms = created;
+  lossState.events = ev;
+  await sleep(3600); // let xterm's 3 s restoration timer fire onContextLoss
+  const lost = created.filter((c) => c.lostAt !== null).map((c) => c.idx);
+  return { created: created.length, events: ev, lostIdx: lost, addonLossIdx: created.filter((c) => c.addonLossAt !== null).map((c) => c.idx), restoredIdx: created.filter((c) => c.restoredAt !== null).map((c) => c.idx) };
+}
+function lossInspect(idx) {
+  const c = lossState.terms[idx];
+  const canv = [...c.host.querySelectorAll('canvas')].map((x) => ({ cls: x.className, w: x.width, h: x.height, display: getComputedStyle(x).display }));
+  const rows = c.host.querySelector('.xterm-rows');
+  return { canvases: canv, rowsDisplay: rows ? getComputedStyle(rows).display : null, rowsText: rows ? [...rows.children].map((k) => k.textContent.trim()).filter(Boolean).slice(0, 4) : null };
+}
+async function lossWrite(idx) { const c = lossState.terms[idx]; c.term.write('\r\nAFTER-LOSS-WRITE'); await raf2(); await sleep(100); return lossInspect(idx); }
+async function lossDispose(idx) { const c = lossState.terms[idx]; c.w.dispose(); c.disposedAt = now(); await raf2(); await sleep(100); return lossInspect(idx); }
+function lossFocusHost(idx) { const c = lossState.terms[idx]; c.host.scrollIntoView({ block: 'center' }); const r = c.host.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }
+
+/** Control: a DOM-renderer terminal with the same lines, for the pixel comparison. */
+async function lossControl() {
+  const stage = document.getElementById('stage');
+  const host = makeHost(240, 64, stage);
+  const term = new Terminal(baseOpts({ scrollback: 100 }));
+  term.open(host);
+  term.write('terminal 0\r\nline two\r\nAFTER-LOSS-WRITE');
+  await raf2();
+  lossState.refDom = { term, host };
+  host.scrollIntoView({ block: 'center' });
+  const r = host.getBoundingClientRect();
+  return { x: r.x, y: r.y, w: r.width, h: r.height };
+}
+function lossReset() { for (const c of lossState.terms) { try { c.term.dispose(); } catch (e) { /* */ } c.host.remove(); } lossState.terms = []; if (lossState.refDom) { try { lossState.refDom.term.dispose(); } catch (e) { /* */ } lossState.refDom.host.remove(); lossState.refDom = null; } }
+
+// (b) the cost of a WebGL addon that exists only while visible
+const togState = { t: null };
+function fillContent(term, lines) {
+  let s = '';
+  for (let i = 0; i < lines; i++) s += `\x1b[3${i % 8}mline ${String(i).padStart(5, '0')}\x1b[0m the quick brown fox \x1b[1;4${(i + 3) % 8}m jumps \x1b[0m over ${i * 7919 % 100003}\r\n`;
+  return new Promise((r) => term.write(s, r));
+}
+async function togSetup({ lines = 6000, hide = 'visible' }) {
+  teardown(togState.t);
+  const t = await create({ renderer: 'dom', scrollback: 5000 });
+  await fillContent(t.term, lines);
+  t.term.scrollToBottom();
+  await raf2();
+  togState.t = t; togState.hide = hide;
+  return { cols: t.term.cols, rows: t.term.rows, bufferLength: t.term.buffer.active.length };
+}
+function togHide() { const h = togState.t.host; const m = togState.hide; if (m === 'visibility') h.style.visibility = 'hidden'; else if (m === 'displaynone') h.style.display = 'none'; }
+function togShow() { const h = togState.t.host; h.style.visibility = ''; h.style.display = ''; }
+async function togLoad({ revealAfter = false } = {}) {
+  const { term } = togState.t;
+  if (togState.hide !== 'visible') togHide();
+  const renders = []; const d = term.onRender((e) => renders.push(now()));
+  const s = now();
+  let err = null; let w = null;
+  try { w = new WebglAddon(); term.loadAddon(w); } catch (e) { err = String(e && e.message || e); }
+  const sync = now() - s;
+  togState.w = w;
+  if (togState.hide !== 'visible') togShow();
+  const sShown = now();
+  if (!renders.length) await Promise.race([new Promise((r) => { const x = term.onRender(() => { x.dispose(); r(); }); }), sleep(500)]);
+  const toRender = now() - s;
+  await raf();
+  const toPaint = now() - s;
+  d.dispose();
+  return { syncLoadMs: r2(sync), toFirstRenderMs: r2(toRender), toPaintMs: r2(toPaint), err, renderEvents: renders.length };
+}
+async function togDispose() {
+  const { term } = togState.t;
+  const renders = []; const d = term.onRender(() => renders.push(now()));
+  const s = now();
+  togState.w.dispose();
+  const sync = now() - s;
+  togState.w = null;
+  if (!renders.length) await Promise.race([new Promise((r) => { const x = term.onRender(() => { x.dispose(); r(); }); }), sleep(500)]);
+  const toRender = now() - s;
+  await raf();
+  const toPaint = now() - s;
+  d.dispose();
+  return { syncDisposeMs: r2(sync), toFirstRenderMs: r2(toRender), toPaintMs: r2(toPaint), renderEvents: renders.length };
+}
+async function togReps({ n = 20, hide = 'visible' }) {
+  togState.hide = hide;
+  const loads = []; const disps = [];
+  for (let i = 0; i < n; i++) {
+    loads.push(await togLoad());
+    await raf2();
+    disps.push(await togDispose());
+    await raf2();
+  }
+  const col = (a, k) => a.map((x) => x[k]);
+  return {
+    n, hide,
+    loadSyncMs: stats(col(loads, 'syncLoadMs')), loadToPaintMs: stats(col(loads, 'toPaintMs')),
+    disposeSyncMs: stats(col(disps, 'syncDisposeMs')), disposeToPaintMs: stats(col(disps, 'toPaintMs')),
+    loadErrors: loads.filter((x) => x.err).map((x) => x.err).slice(0, 2),
+  };
+}
+function togSnapRect() { const r = togState.t.host.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width - 24, h: r.height }; } // the right 24 px (xterm's scrollbar, which fades) are left out of the pixel comparisons
+async function togFresh() { // a terminal opened with webgl from the start, same content: the reference for "loaded late"
+  teardown(togState.t);
+  const t = await create({ renderer: 'webgl', scrollback: 5000 });
+  await fillContent(t.term, 6000); t.term.scrollToBottom(); await raf2(); await sleep(300);
+  togState.t = t;
+  return true;
+}
+function togHandle() { return togState; }
+
+// (c) open inside a hidden container
+const hidState = { t: null };
+async function hiddenOpen({ variant, preloadFont = true }) {
+  if (preloadFont) await fontReady();
+  const errors = [];
+  const onErr = (e) => errors.push(String(e.message || e.reason || e));
+  window.addEventListener('error', onErr);
+  const info = { variant };
+  const outer = makeHost(HOST_W, HOST_H);
+  let host = outer;
+  if (variant === 'dnpct') { // the host is sized by percentages of a wrapper, like a flex or grid child: display:none on the wrapper leaves it no size at all
+    host = document.createElement('div');
+    host.style.cssText = 'width:100%;height:100%';
+    outer.appendChild(host);
+  }
+  const hideMode = { dn: 'displaynone', dnweb: 'displaynone', dnpct: 'displaynone', vis: 'visibility', ctrl: 'visible', ctrlweb: 'visible' }[variant] || 'visible';
+  if (hideMode === 'displaynone') outer.style.display = 'none';
+  if (hideMode === 'visibility') outer.style.visibility = 'hidden';
+  let term; let fit; let w = null;
+  try {
+    term = new Terminal(baseOpts());
+    term.open(host);
+    fit = new FitAddon();
+    term.loadAddon(fit);
+    info.proposeWhileHidden = fit.proposeDimensions() ?? null;
+    try { fit.fit(); } catch (e) { errors.push('fit: ' + e.message); }
+    if (variant === 'dnweb' || variant === 'ctrlweb') { try { w = new WebglAddon(); term.loadAddon(w); info.webglLoaded = true; } catch (e) { info.webglLoaded = false; errors.push('webgl: ' + e.message); } }
+    info.afterOpenColsRows = [term.cols, term.rows];
+    info.cellWhileHidden = cellSize(term);
+    term.write('0123456789 hidden-open test\r\n\x1b[31mred\x1b[0m \x1b[1mbold\x1b[0m\r\nthird line');
+    await new Promise((r) => term.write('', r));
+    await sleep(100);
+    outer.style.display = ''; outer.style.visibility = '';
+    await raf2(); await sleep(100);
+    info.afterShowColsRows = [term.cols, term.rows];
+    info.cellAfterShow = cellSize(term);
+    info.proposeAfterShow = fit.proposeDimensions() ?? null;
+  } catch (e) { errors.push(String(e && e.stack || e)); }
+  hidState.t = { term, host: outer, inner: host, fit, w };
+  hidState.errors = errors; hidState.info = info; hidState.onErr = onErr;
+  return info;
+}
+async function hiddenRefit() {
+  const { term, fit, host } = hidState.t;
+  fit.fit();
+  term.write('');
+  await raf2(); await sleep(100);
+  const r = host.getBoundingClientRect();
+  return { colsRows: [term.cols, term.rows], cell: cellSize(term), rect: { x: r.x, y: r.y, w: r.width, h: r.height } };
+}
+/** after the font arrived late: does xterm re-measure by itself, and what makes it? */
+async function hiddenRemeasure(how) {
+  const { term, fit } = hidState.t;
+  const before = cellSize(term);
+  if (how === 'fontFamilyReassign') term.options.fontFamily = FONT + ' ';
+  else if (how === 'fontSizeNudge') { term.options.fontSize = 13; term.options.fontSize = 12; }
+  await raf2(); await sleep(100);
+  const mid = cellSize(term);
+  fit.fit();
+  await raf2(); await sleep(100);
+  return { how, before, afterOptionChange: mid, afterFit: cellSize(term), colsRows: [term.cols, term.rows] };
+}
+function hiddenRect() { const r = hidState.t.host.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width - 24, h: r.height }; }
+function hiddenErrors() { window.removeEventListener('error', hidState.onErr); return hidState.errors; }
+function hiddenReset() { teardown(hidState.t); hidState.t = null; }
+async function hiddenRefreshAll() { hidState.t.term.refresh(0, hidState.t.term.rows - 1); await raf2(); await sleep(100); return true; }
+
+// ---------------------------------------------------------------- B6 idle
+
+const idleState = { t: null };
+async function idleSetup({ renderer, focused, blink, none = false }) {
+  idleState.none = none;
+  window.__c.trace = true;
+  if (!none) {
+    const t = await create({ renderer, cursorBlink: blink });
+    t.term.write('\x1b[32muser@host\x1b[0m:~$ ls\r\nfile1  file2  dir/\r\n\x1b[32muser@host\x1b[0m:~$ ');
+    if (focused) t.term.focus(); else { t.term.blur(); document.activeElement && document.activeElement.blur && document.activeElement.blur(); }
+    idleState.t = t;
+  }
+  await raf2(); await sleep(1500); await raf2(); await sleep(800);
+  return { hasFocus: document.hasFocus(), activeIsTextarea: idleState.t ? document.activeElement === idleState.t.term.textarea : null, blinkOpt: idleState.t ? idleState.t.term.options.cursorBlink : null };
+}
+function idleStart() {
+  const c = window.__c;
+  c.sites = {};
+  idleState.c0 = counters();
+  idleState.mut = mutationCounter();
+  idleState.t0 = now();
+  return true;
+}
+function idleStop() {
+  const c1 = counters();
+  const m = idleState.mut.stop();
+  const c = window.__c;
+  return { seconds: r2((now() - idleState.t0) / 1000), counters: counterDelta(idleState.c0, c1), mutations: m, sites: c.sites };
+}
+function idleDispose() { teardown(idleState.t); idleState.t = null; window.__c.trace = false; }
+
+// ---------------------------------------------------------------- B7 hidden cost
+
+const hcState = { t: null, held: [] };
+async function hcSetup({ renderer, hide, scrollback = 5000 }) {
+  teardown(hcState.t);
+  hcState.held = [];
+  const t = await create({ renderer, scrollback, parse: true });
+  hcState.t = t; hcState.hide = hide;
+  t.host.style.cssText += ''; // keep layout
+  await raf2(); await sleep(150);
+  if (hide === 'displaynone') t.host.style.display = 'none';
+  else if (hide === 'visibility') t.host.style.visibility = 'hidden';
+  await raf2(); await sleep(150);
+  return { cols: t.term.cols, rows: t.term.rows, hidden: hide };
+}
+async function hcRun({ kind, pace = 'free', mode = 'chunk' }) {
+  const t = hcState.t;
+  const stream = makeStream(kind);
+  t.ps.ms = 0; t.ps.calls = 0; t.ps.maxSlice = 0;
+  const c0 = counters();
+  const mut = mutationCounter();
+  const g = await pump(t.term, stream, { mode, pace });
+  const c1 = counters();
+  await sleep(200);
+  const muts = mut.stop();
+  const c2 = counters();
+  return { kind, bytes: stream.total, drainMs: g.drainMs, produceMs: g.produceMs, parseMs: r2(t.ps.ms), parseSlices: t.ps.calls, parseShareOfWall: r2(t.ps.ms / g.drainMs), accepted: g.accepted, discarded: g.discarded, counters: counterDelta(c0, c2), countersDuringDrain: counterDelta(c0, c1), mutations: muts.records, mutationTargets: muts.targets, check: lastLineCheck(t) };
+}
+/** The 'hold while hidden' policy: keep the chunks in an array, do not write. */
+async function hcHold({ kind, pace = 'free' }) {
+  const stream = makeStream(kind);
+  const held = hcState.held;
+  const c0 = counters();
+  const s = now();
+  await new Promise((resolve) => {
+    const mc = new MessageChannel(); let i = 0;
+    mc.port1.onmessage = () => { held.push(stream.gen(i++)); if (i < stream.chunks) mc.port2.postMessage(0); else { mc.port1.onmessage = null; mc.port1.close(); resolve(); } };
+    mc.port2.postMessage(0);
+  });
+  const ms = now() - s;
+  let bytes = 0; for (const c of held) bytes += c.length;
+  return { chunks: held.length, bytes, holdMs: r2(ms), counters: counterDelta(c0, counters()) };
+}
+/** Show the terminal and write what was held; measure drain and frames meanwhile. */
+async function hcShowAndWrite({ refit = true }) {
+  const t = hcState.t;
+  t.host.style.display = ''; t.host.style.visibility = '';
+  if (refit) t.fitA.fit();
+  await raf2();
+  t.ps.ms = 0; t.ps.calls = 0; t.ps.maxSlice = 0;
+  const c0 = counters();
+  const { obs, out: lt } = longTaskObserver();
+  const fs = frameSampler();
+  const mut = mutationCounter();
+  const s = now();
+  const held = hcState.held;
+  let accepted = 0; let discarded = 0;
+  await new Promise((resolve) => {
+    const mc = new MessageChannel(); let i = 0;
+    mc.port1.onmessage = () => { try { t.term.write(held[i]); accepted++; } catch (e) { discarded++; } i++; if (i < held.length) mc.port2.postMessage(0); else { mc.port1.onmessage = null; mc.port1.close(); resolve(); } };
+    mc.port2.postMessage(0);
+  });
+  const producedMs = now() - s;
+  await new Promise((resolve) => t.term.write('', resolve));
+  const drainMs = now() - s;
+  fs.stop();
+  await raf2();
+  const muts = mut.stop();
+  if (obs) obs.disconnect();
+  const ivs = fs.intervals();
+  hcState.held = [];
+  return { drainMs: r2(drainMs), producedMs: r2(producedMs), parseMs: r2(t.ps.ms), frames: fs.count(), frameInterval: stats(ivs), framesOver50ms: ivs.filter((x) => x > 50).length, counters: counterDelta(c0, counters()), mutations: muts.records, longTasks: { supported: lt.supported, count: lt.count, maxMs: r2(lt.maxMs) }, accepted, discarded, check: lastLineCheck(t) };
+}
+function hcDispose() { teardown(hcState.t); hcState.t = null; hcState.held = []; return true; }
+
+// ---------------------------------------------------------------- B8 input latency
+
+const latState = { t: null, cur: null, results: [], flood: null };
+async function latSetup({ renderer, floodCap = 0 }) {
+  teardown(latState.t);
+  const t = await create({ renderer, scrollback: 5000, parse: true });
+  latState.t = t; latState.results = [];
+  const { term } = t;
+  term.focus();
+  const mc = new MessageChannel();
+  latState.echoMc = mc;
+  let char = 0;
+  document.addEventListener('keydown', (e) => { if (latState.armed && !latState.cur) latState.cur = { tEv: e.timeStamp, tKey: now(), key: e.key }; }, true);
+  term.onData((d) => {
+    const c = latState.cur; if (!c || c.tData) return;
+    c.tData = now(); c.data = d;
+    mc.port2.postMessage(d);
+  });
+  mc.port1.onmessage = (e) => {
+    const c = latState.cur; if (!c) return;
+    c.tEchoMsg = now();
+    term.write(e.data, () => {
+      c.tCb = now();
+      requestAnimationFrame(() => { c.tR1 = now(); requestAnimationFrame(() => { c.tR2 = now(); latState.done && latState.done(c); }); });
+    });
+  };
+  latState.floodRun = null;
+  if (floodCap) latStartFlood(floodCap);
+  await raf2(); await sleep(300);
+  return { focused: document.activeElement === term.textarea, cols: term.cols, rows: term.rows };
+}
+function latStartFlood(cap) {
+  const t = latState.t; const term = t.term;
+  const stream = makeStream('W1');
+  let unacked = 0; let produced = 0; let stop = false; let posted = false;
+  const mc = new MessageChannel();
+  const st = { chunks: 0, stop() { stop = true; mc.port1.onmessage = null; mc.port1.close(); }, ackMs: [] };
+  const post = () => { if (!posted && !stop) { posted = true; mc.port2.postMessage(0); } };
+  mc.port1.onmessage = () => {
+    posted = false;
+    const chunk = stream.gen(produced++ % (stream.chunks - 1)); // never the tail chunk
+    unacked += chunk.length; st.chunks++;
+    try { term.write(chunk, () => { unacked -= chunk.length; if (unacked < cap) post(); }); } catch (e) { unacked -= chunk.length; }
+    if (unacked < cap) post();
+  };
+  post();
+  latState.flood = st;
+}
+function latArm() {
+  latState.armed = true; latState.cur = null;
+  latState.p = new Promise((resolve) => { latState.done = (c) => { latState.armed = false; resolve(c); }; });
+  return true;
+}
+async function latWait(timeoutMs = 5000) {
+  const c = await Promise.race([latState.p, sleep(timeoutMs).then(() => null)]);
+  latState.armed = false;
+  if (!c) return { timeout: true, partial: latState.cur };
+  const start = c.tEv > 0 && c.tKey - c.tEv >= 0 && c.tKey - c.tEv < 1000 ? c.tEv : c.tKey;
+  return { queueMs: r2(c.tKey - start), keyToData: r2(c.tData - start), dataToCb: r2(c.tCb - c.tData), cbToPaint: r2(c.tR2 - c.tCb), total: r2(c.tR2 - start), totalFromHandler: r2(c.tR2 - c.tKey), data: c.data };
+}
+function latStopFlood() { if (latState.flood) latState.flood.stop(); const n = latState.flood ? latState.flood.chunks : 0; latState.flood = null; return n; }
+function latDispose() { latStopFlood(); if (latState.echoMc) { latState.echoMc.port1.onmessage = null; latState.echoMc.port1.close(); latState.echoMc = null; } teardown(latState.t); latState.t = null; return true; }
+
+// ---------------------------------------------------------------- B9 keyboard
+
+const kb = { t: null, log: [], seq: 0, cfg: null };
+function kbLogPush(e) { kb.log.push({ seq: kb.seq++, ...e }); }
+const kbDocListeners = [];
+function kbClean() {
+  for (const [target, type, fn, cap] of kbDocListeners) target.removeEventListener(type, fn, cap);
+  kbDocListeners.length = 0;
+  teardown(kb.t); kb.t = null; kb.log = []; kb.seq = 0;
+}
+const evInfo = (e) => ({ key: e.key, code: e.code, defaultPrevented: e.defaultPrevented, meta: e.metaKey, ctrl: e.ctrlKey, target: e.target === kb.t?.term.textarea ? 'xterm-textarea' : (e.target.tagName || '') });
+async function kbSetup({ f6Handler = false, captureShortcut = null, captureStop = false, bracketed = false, text = 'HELLOCOPYTEST', renderer = 'dom' }) {
+  kbClean();
+  const t = await create({ renderer });
+  kb.t = t; kb.cfg = { f6Handler, captureShortcut, captureStop };
+  const { term } = t;
+  if (f6Handler) term.attachCustomKeyEventHandler((e) => { kbLogPush({ ph: 'xterm.customKeyHandler', ...evInfo(e), type: e.type }); return !(e.key === 'F6'); });
+  else term.attachCustomKeyEventHandler((e) => { kbLogPush({ ph: 'xterm.customKeyHandler', ...evInfo(e), type: e.type }); return true; });
+  const add = (target, type, fn, cap) => { target.addEventListener(type, fn, cap); kbDocListeners.push([target, type, fn, cap]); };
+  add(document, 'keydown', (e) => {
+    kbLogPush({ ph: 'doc.capture', ...evInfo(e) });
+    if (captureStop && captureShortcut && e.key.toLowerCase() === captureShortcut.key && (e.metaKey || e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); kbLogPush({ ph: 'doc.capture.stopped' }); }
+  }, true);
+  add(document, 'keydown', (e) => kbLogPush({ ph: 'doc.bubble', ...evInfo(e) }), false);
+  add(document, 'keypress', (e) => kbLogPush({ ph: 'doc.keypress', ...evInfo(e) }), false);
+  add(document, 'copy', (e) => kbLogPush({ ph: 'doc.copy.bubble', target: e.target === term.textarea ? 'xterm-textarea' : e.target.tagName, defaultPrevented: e.defaultPrevented, clipboardText: e.clipboardData ? e.clipboardData.getData('text/plain') : null }), false);
+  add(document, 'copy', (e) => kbLogPush({ ph: 'doc.copy.capture', target: e.target === term.textarea ? 'xterm-textarea' : e.target.tagName }), true);
+  add(document, 'paste', (e) => kbLogPush({ ph: 'doc.paste.bubble', target: e.target === term.textarea ? 'xterm-textarea' : e.target.tagName, defaultPrevented: e.defaultPrevented, clipboardText: e.clipboardData ? e.clipboardData.getData('text/plain') : null }), false);
+  add(document, 'paste', (e) => kbLogPush({ ph: 'doc.paste.capture', target: e.target === term.textarea ? 'xterm-textarea' : e.target.tagName }), true);
+  // registered after xterm's own listeners on the same target and in the same phase, so they run after xterm has handled the event and see its preventDefault
+  // (xterm listens to keydown in the capture phase on the textarea; to paste and copy in the bubble phase on the terminal element)
+  add(term.textarea, 'keydown', (e) => kbLogPush({ ph: 'textarea.after-xterm.keydown', ...evInfo(e) }), true);
+  add(term.element, 'paste', (e) => kbLogPush({ ph: 'element.after-xterm.paste', defaultPrevented: e.defaultPrevented, cancelBubble: e.cancelBubble }), false);
+  add(term.element, 'copy', (e) => kbLogPush({ ph: 'element.after-xterm.copy', defaultPrevented: e.defaultPrevented, clipboardText: e.clipboardData ? e.clipboardData.getData('text/plain') : null }), false);
+  add(term.textarea, 'paste', (e) => kbLogPush({ ph: 'textarea.before-xterm.paste', defaultPrevented: e.defaultPrevented }), false);
+  add(term.textarea, 'copy', (e) => kbLogPush({ ph: 'textarea.before-xterm.copy', defaultPrevented: e.defaultPrevented, clipboardText: e.clipboardData ? e.clipboardData.getData('text/plain') : null }), false);
+  term.onData((d) => kbLogPush({ ph: 'onData', data: d, json: JSON.stringify(d) }));
+  term.write(text + '\r\nsecond line');
+  await raf2();
+  if (bracketed) term.write('\x1b[?2004h');
+  await sleep(50);
+  term.focus();
+  term.select(0, 0, 10);
+  kb.log = []; kb.seq = 0;
+  return { focused: document.activeElement === term.textarea, selection: term.getSelection(), bracketedPasteMode: term.modes.bracketedPasteMode, hasFocus: document.hasFocus() };
+}
+function kbTake() { const l = kb.log; kb.log = []; kb.seq = 0; return l; }
+function kbState() { const a = document.activeElement; return { activeIsTextarea: a === kb.t.term.textarea, activeTag: a && a.tagName, selection: kb.t.term.getSelection(), hasSelection: kb.t.term.hasSelection() }; }
+function kbSink() {
+  let el = document.getElementById('sink');
+  if (!el) { el = document.createElement('textarea'); el.id = 'sink'; el.style.cssText = 'position:fixed;right:0;bottom:0;width:200px;height:60px;'; document.body.appendChild(el); }
+  return el;
+}
+function kbSinkSet(text) { const el = kbSink(); el.value = text; el.focus(); el.select(); kb.log = []; kb.seq = 0; return el.value; }
+function kbSinkFocusEmpty() { const el = kbSink(); el.value = ''; el.focus(); kb.log = []; kb.seq = 0; return true; }
+function kbSinkValue() { return kbSink().value; }
+function kbFocusTerm() { kb.t.term.focus(); kb.log = []; kb.seq = 0; return document.activeElement === kb.t.term.textarea; }
+function kbClearSel() { kb.t.term.clearSelection(); kb.t.term.focus(); kb.log = []; kb.seq = 0; return true; }
+function kbReselect() { kb.t.term.focus(); kb.t.term.select(0, 0, 10); kb.log = []; kb.seq = 0; return kb.t.term.getSelection(); }
+
+// ---------------------------------------------------------------- B10 theme
+
+const ANSI_NAMES = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
+const ANSI_HEX = ['#2B2D30', '#F75464', '#5FB865', '#E9B84A', '#548AF7', '#C77DBB', '#42C3C3', '#BCBEC4', '#6F737A', '#F27583', '#7CCF82', '#F2C55C', '#6B9DFF', '#D79CC9', '#5FD3D3', '#DFE1E5'];
+function hexToRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+function themeFrom(fmt) {
+  const t = { background: '#191A1C', foreground: '#BCBEC4', cursor: '#FFFFFF', cursorAccent: '#191A1C', selectionBackground: '#214283' };
+  ANSI_NAMES.forEach((n, i) => { t[n] = ANSI_HEX[i]; });
+  return fmt ? Object.fromEntries(Object.entries(t).map(([k, v]) => [k, fmt(v)])) : t;
+}
+/** Resolve a CSS color string through a custom property and getComputedStyle; and through a 1x1 canvas. */
+function resolveColors(values) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+  document.body.appendChild(el);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  const out = values.map((v) => {
+    el.style.setProperty('--x', v);
+    el.style.color = 'var(--x)';
+    const computed = getComputedStyle(el).color;
+    cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = computed; cx.fillRect(0, 0, 1, 1);
+    const d = cx.getImageData(0, 0, 1, 1).data;
+    cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = v; cx.fillRect(0, 0, 1, 1);
+    const d2 = cx.getImageData(0, 0, 1, 1).data;
+    return { input: v, computed, canvasOfComputed: [d[0], d[1], d[2], d[3]], canvasOfInput: [d2[0], d2[1], d2[2], d2[3]] };
+  });
+  el.remove();
+  return out;
+}
+/** resolve each theme value to the string getComputedStyle gives (what the product would pass) */
+function themeViaComputed(theme) {
+  const keys = Object.keys(theme);
+  const res = resolveColors(keys.map((k) => theme[k]));
+  return Object.fromEntries(keys.map((k, i) => [k, res[i].computed]));
+}
+const patState = { t: null };
+async function themePattern({ renderer, theme, w = 640 }) {
+  teardown(patState.t);
+  const host = makeHost(w, 22 * 16);
+  const t = await create({ renderer, theme, host, cursorBlink: false, opts: { cursorStyle: 'block', cursorInactiveStyle: 'block' }, scrollback: 0 });
+  patState.t = t;
+  const { term } = t;
+  let s = '\x1b[2J\x1b[H';
+  s += 'default fg on default bg\r\n';
+  for (let i = 0; i < 16; i++) s += `\x1b[38;5;${i}mANSI fg ${String(i).padStart(2)} ABCDEFGH\x1b[0m \x1b[48;5;${i}m          \x1b[0m\r\n`;
+  s += 'selected text goes here\r\n';
+  term.write(s);
+  await new Promise((r) => term.write('', r));
+  term.select(0, 18, 14);
+  term.focus();
+  await raf2(); await sleep(250);
+  const r = host.getBoundingClientRect();
+  const c = cellSize(term);
+  return { rect: { x: r.x, y: r.y, w: r.width, h: r.height }, cell: c, cols: term.cols, rows: term.rows, hasFocus: document.hasFocus() };
+}
+function themeDispose() { teardown(patState.t); patState.t = null; }
+/** pixel diff between two PNGs (base64); returns counts of differing pixels and, optionally, the pixel at points of the first */
+function comparePng({ a, c, points = [] }) {
+  const load = async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    return ctx.getImageData(0, 0, img.width, img.height);
+  };
+  return Promise.all([load(a), load(c)]).then(([x, y]) => {
+    if (x.width !== y.width || x.height !== y.height) return { sizeMismatch: [x.width, x.height, y.width, y.height] };
+    let diff = 0; let maxD = 0; let nonBg = 0;
+    const bg = [x.data[0], x.data[1], x.data[2]];
+    for (let i = 0; i < x.data.length; i += 4) {
+      const d = Math.max(Math.abs(x.data[i] - y.data[i]), Math.abs(x.data[i + 1] - y.data[i + 1]), Math.abs(x.data[i + 2] - y.data[i + 2]));
+      if (d > 0) { diff++; if (d > maxD) maxD = d; }
+      if (x.data[i] !== bg[0] || x.data[i + 1] !== bg[1] || x.data[i + 2] !== bg[2]) nonBg++;
+    }
+    const px = points.map(([px0, py0]) => { const i = (py0 * x.width + px0) * 4; return [x.data[i], x.data[i + 1], x.data[i + 2]]; });
+    return { width: x.width, height: x.height, differingPixels: diff, maxChannelDelta: maxD, fractionDiffering: Math.round((diff / (x.width * x.height)) * 1e6) / 1e6, nonBackgroundPixelsA: nonBg, points: px };
+  });
+}
+function pixelsOf({ a, points }) {
+  return (async () => {
+    const img = new Image(); img.src = `data:image/png;base64,${a}`; await img.decode();
+    const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+    const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, img.width, img.height).data;
+    return { width: img.width, height: img.height, points: points.map(([x, y]) => { const i = (y * img.width + x) * 4; return [d[i], d[i + 1], d[i + 2]]; }) };
+  })();
+}
+
+// ---------------------------------------------------------------- misc
+
+function info() {
+  const c = document.createElement('canvas');
+  const gl = c.getContext('webgl2');
+  let renderer = null;
+  if (gl) { const e = gl.getExtension('WEBGL_debug_renderer_info'); renderer = e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); }
+  return { ua: navigator.userAgent, dpr: devicePixelRatio, webgl2: !!gl, glRenderer: renderer, longtaskSupported: (PerformanceObserver.supportedEntryTypes || []).includes('longtask'), perfMemory: typeof performance.memory, crossOriginIsolated, measureUA: typeof performance.measureUserAgentSpecificMemory, innerW: innerWidth, innerH: innerHeight };
+}
+
+window.bench = {
+  info, calibrate, construct, flood, floodDispose,
+  memCreate, memFlood, memDispose, uaMemory, allocBallast, freeBallast, pressure,
+  ctxLimit, lossInspect, lossWrite, lossDispose, lossFocusHost, lossControl, lossReset,
+  togSetup, togLoad, togDispose, togReps, togSnapRect, togFresh, togHandle,
+  hiddenOpen, hiddenRefit, hiddenRemeasure, hiddenRect, hiddenErrors, hiddenReset, hiddenRefreshAll,
+  idleSetup, idleStart, idleStop, idleDispose,
+  hcSetup, hcRun, hcHold, hcShowAndWrite, hcDispose,
+  latSetup, latArm, latWait, latStopFlood, latDispose,
+  kbSetup, kbTake, kbState, kbReselect, kbClearSel, kbClean, kbSinkSet, kbSinkFocusEmpty, kbSinkValue, kbFocusTerm,
+  resolveColors, themeFrom, themeViaComputed, themePattern, themeDispose, comparePng, pixelsOf,
+  ANSI_HEX,
+};
+window.__benchReady = true;

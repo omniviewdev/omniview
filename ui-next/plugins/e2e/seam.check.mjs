@@ -96,6 +96,15 @@
 //      `plugins-page-<state>-webkit-void-1440x900.png`. SEAM_ONLY=plugins-page runs t alone; SEAM_CONTROL=plugins-page runs it alone with every perturbation of its controls (PAGE_CONTROLS) made in turn just before the assertion each must trip (one run
 //      serves them all); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
 //
+//   r  the Terminal tool on the host's own shell (T1), over the real host. Before the first terminal the emulator's code is not requested (no request for its chunk while the panel is open and says `No terminals`); `New terminal` starts a
+//      shell of this machine (the host lists exactly one session), the code is fetched then, the emulator takes the keyboard (the person who pressed the button types) and a command with a known output is run: what the shell printed,
+//      read from the host's own replay of the session (`AttachSession`: the GPU draws on a canvas, there is no text in the page), holds the output line of `echo SEAM_$((6*7))` and not only its echo. `stty size` says the rows and
+//      columns the page measured (the rows exactly, the columns within a cell), and again, with other numbers, after the panel is raised with the End key on its handle: the resize reached the process. A keyboard user can always leave:
+//      Escape stays in the shell, F6 moves the focus out of it, and on a Mac Command J hides the panel and gives the focus back to the page. Closing the running terminal asks (`Terminate session?`, Cancel has the focus, Escape says no
+//      and the host still lists the session), and Terminate session ends it: the host lists nothing, the tool says `No terminals` and the focus is on the tool's tab. A second terminal that runs `exit` is an ENDED session: its lane says
+//      `Input is off. Its output stays readable here.`, the tab stays, closing it asks nothing, and the host has no session left. No request failed and no page error was raised.
+//   (r2 below r: the same terminal against the programs of the machine, `checkTerminalPrograms`, docs/ui-next/status/T1.md section 14.)
+//
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
 //
@@ -269,8 +278,10 @@ async function startHost(work, port, built = undefined, write = writeAll) {
   const logFile = path.join(work, 'host.log');
   // A minimal environment, so nothing ambient (a credential, a config path of the developer's machine) reaches the host or a plugin: only the profile the check built.
   const { PATH, TMPDIR, LANG, USER } = process.env;
+  // SEAM_SHELL=<path> gives the host that SHELL, for a developer who runs the terminal scenarios (`r`, `r2`) against the shell of another machine (the CI image has bash, a Mac has zsh); by default the host picks its own.
+  const shell = process.env.SEAM_SHELL === undefined ? {} : { SHELL: process.env.SEAM_SHELL };
   const child = spawn(server, [], {
-    env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
+    env: { PATH, TMPDIR, LANG, USER, ...shell, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const lines = [];
@@ -763,15 +774,18 @@ async function checkPanel(page, base, engine) {
   await toggle.click();
   await region.waitFor({ state: 'visible' });
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${engine}: the toggle is pressed once it is open`);
-  // The host's own Logs tool comes first and is on screen (it says how a session arrives, and has no `+`); then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
+  // The host's own tools come first: Terminal, which the panel opens on, then Logs; then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Logs', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Logs tool, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
-  assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the Logs tool is on screen`);
+  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Terminal', 'Logs', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Terminal and Logs tools, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
+  assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the Terminal tool is on screen`);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  await tools.nth(1).click();
+  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'true', `${engine}: the Logs tool is on screen once it is chosen`);
   await page.getByText('No log sessions').waitFor();
   assert.equal(await page.locator('[data-shell-part="sessionAdd"]').count(), 0, `${engine}: the Logs tool has no \`+\` (decision A20)`);
   // The rail's first plugin brings the tool the rest of this scenario uses.
-  await tools.nth(1).click();
-  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
+  await tools.nth(2).click();
+  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
   await page.getByText('No sessions').waitFor();
   // The tool's `+` starts a stream; three in turn: running, ended and failed.
   const add = page.getByRole('button', { name: 'New stream' }).first();
@@ -830,31 +844,31 @@ async function checkPanelLate(page, base, engine) {
   await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
   const names = async () => (await tools.allTextContents()).map((text) => text.trim());
-  // The copy is ready and the first plugin is not: the strip has the host's tool and the copy's.
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Logs|Streams copy', null, { timeout: 30_000 });
+  // The copy is ready and the first plugin is not: the strip has the host's tools and the copy's.
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Terminal|Logs|Streams copy', null, { timeout: 30_000 });
   assert.equal(held.length > 0, true, `${engine}: the first plugin's bundle was asked for and is held`);
   // The person is on the copy's tool, with a stream open in it.
-  await tools.nth(1).click();
+  await tools.nth(2).click();
   await page.getByRole('button', { name: 'New stream' }).first().click();
   const stream = page.locator('[data-fixture="stream"][data-session="stream-alpha"]');
   await stream.waitFor();
   const body = await stream.elementHandle();
   const lines = () => stream.evaluate((element) => Number(element.getAttribute('data-lines')));
   const linesBefore = await lines();
-  const copyBefore = (await tools.nth(1).boundingBox())?.x ?? NaN;
-  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
+  const copyBefore = (await tools.nth(2).boundingBox())?.x ?? NaN;
+  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
 
   // The first plugin's bundle is let through: it finishes after the copy.
   released = true;
   for (const route of held.splice(0)) await route.continue();
-  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 3, null, { timeout: 30_000 });
-  assert.deepEqual(await names(), ['Logs', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
-  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
-  assert.equal(await tools.nth(1).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
+  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 4, null, { timeout: 30_000 });
+  assert.deepEqual(await names(), ['Terminal', 'Logs', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
+  assert.equal(await tools.nth(3).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
+  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
   assert.equal(await page.getByRole('tab', { name: 'stream-alpha', selected: true }).count(), 1, `${engine}: the stream is still the session on screen`);
   assert.equal(await body.evaluate((element) => element.isConnected), true, `${engine}: and its body is the same element, not drawn again`);
   assert.ok((await lines()) >= linesBefore, `${engine}: and its count did not start again (${String(linesBefore)} lines, then ${String(await lines())})`);
-  const moved = ((await tools.nth(2).boundingBox())?.x ?? NaN) - copyBefore;
+  const moved = ((await tools.nth(3).boundingBox())?.x ?? NaN) - copyBefore;
   console.log(`${engine}: the copy's tab moved ${moved.toFixed(1)} px to the right when the first plugin's tab arrived ahead of it; the tool, the stream and the body on screen did not change`);
   // The window settles: with every plugin loaded and no tab open it is the empty window, which lists the plugins to open.
   await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
@@ -1071,7 +1085,7 @@ async function checkPalette(page, base, engine) {
   await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
   assert.deepEqual(
     await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
-    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs', 'Command: Plugins, Window'],
+    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs', 'Command: Plugins, Window'],
     `${engine}: the commands are the host's, and only those`,
   );
   await shot('commands');
@@ -3381,7 +3395,7 @@ async function checkSession(browser, getHost, restart, engine) {
   await toggleOf(page).click();
   await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  await tools.nth(2).click();
+  await tools.nth(3).click();
   await page.getByRole('separator', { name: 'Resize panel' }).focus();
   for (let press = 0; press < 3; press += 1) await page.keyboard.press('ArrowUp');
   const left = await look(page);
@@ -3395,7 +3409,7 @@ async function checkSession(browser, getHost, restart, engine) {
   // The host holds it after the quiet moment: the document the window service answers is the session, whole.
   const held = await until('the saved session', async () => (await slots()).session, (text) => typeof text === 'string' && JSON.parse(text)?.panel?.open === true && JSON.parse(text)?.panel?.height !== null && JSON.parse(text)?.rail !== null);
   const saved = JSON.parse(held);
-  assert.deepEqual({ version: saved.version, tabs: saved.tabs.tabs.length, active: saved.tabs.active === saved.tabs.tabs[1]?.id, rail: saved.rail, tool: saved.panel.tool }, { version: 1, tabs: 2, active: true, rail: DUP, tool: `${DUP}:streams` }, `${engine}: what the host holds`);
+  assert.deepEqual({ version: saved.version, tabs: saved.tabs.tabs.length, active: saved.tabs.active === saved.tabs.tabs[1]?.id, rail: saved.rail, tool: saved.panel.tool }, { version: 2, tabs: 2, active: true, rail: DUP, tool: `${DUP}:streams` }, `${engine}: what the host holds`);
 
   // A reload of the whole page: the same tabs, the same one on screen, the same rail and sidebar, the same panel at the same height.
   await page.reload({ waitUntil: 'load' });
@@ -3458,7 +3472,7 @@ async function checkSession(browser, getHost, restart, engine) {
     assert.equal(record.text, text, `${engine}: the text is kept exactly as it was`);
     assert.equal(record.reason, text === newer ? 'foreign-version' : 'unreadable', `${engine}: with its reason`);
     // What the window holds from now on is a session of this version, not the text that was kept: the next start does not find it again.
-    await until('the session replaced', async () => (await slots()).session, (value) => typeof value === 'string' && JSON.parse(value)?.version === 1 && JSON.parse(value)?.tabs?.tabs?.length === 0);
+    await until('the session replaced', async () => (await slots()).session, (value) => typeof value === 'string' && JSON.parse(value)?.version === 2 && JSON.parse(value)?.tabs?.tabs?.length === 0);
   }
 
   // A reload, a closed page and a host that was stopped cut the calls that are in flight, which an engine reports as a page error ("Load failed", "due to access control checks", "Failed to fetch"):
@@ -4651,6 +4665,621 @@ async function checkSettings(browser, engine, work) {
 }
 
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
+/** The sessions the host lists for the exec lane: the ids, as the page's runtime asks for them. */
+const EXEC_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper';
+async function terminalIds(base) {
+  const sessions = await callBound(base, EXEC_SERVICE, 'ListSessions');
+  return (sessions ?? []).map((session) => session.id);
+}
+
+/** What the shell of a session has printed, from the host's replay of it: the last bytes of the session as text. */
+async function transcriptOf(base, id) {
+  const [, bytes] = await callBound(base, EXEC_SERVICE, 'AttachSession', id);
+  return Buffer.from(bytes ?? '', 'base64').toString('utf8');
+}
+
+/**
+ * A transcript as a person reads it: the control sequences a shell writes around its output are taken out, and so are the carriage returns, so that a line of output starts after a line feed whichever shell wrote it. Bash ends
+ * bracketed paste with `ESC [ ? 2004 l CR` right before the output of a command and zsh with a line feed, so a pattern that wants the output at the start of a line sees it in zsh and not in bash: the first CI run of scenario r
+ * timed out on the runner's bash for that reason, where it had passed on a Mac's zsh (the bytes were captured in the CI image: `echo SEAM_$((6*7))` CR LF ESC[?2004l CR SEAM_42 CR LF).
+ */
+const plain = (text) => text.replace(/\u001b\[[0-9;?<>=]*[ -/]*[@-~]/g, '').replaceAll('\r', '');
+async function plainTranscriptOf(base, id) {
+  return plain(await transcriptOf(base, id));
+}
+
+/** SEAM_PLATFORM=linux makes the page say it runs on Linux, so that a Mac can run the Windows and Linux branch of the terminal scenarios (the chords, the Clear button) that the CI image runs. */
+async function spoofPlatform(page) {
+  if (process.env.SEAM_PLATFORM === 'linux') {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux x86_64', configurable: true });
+    });
+  }
+}
+
+/** A test browser refuses the clipboard: the page's copy lands where a check can read it. */
+async function keepCopies(page) {
+  await page.evaluate(() => {
+    window.__copied = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copied.push(text); } } });
+  });
+}
+
+/** What the whole buffer of the emulator holds, scrollback and screen, read as a person copies it: select all, copy. */
+async function bufferOf(page, mac) {
+  await page.evaluate(() => { window.__copied.length = 0; });
+  await page.keyboard.press(mac ? 'Meta+a' : 'Control+Shift+A');
+  await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
+  await waitUntil('the copy of the buffer', () => page.evaluate(() => window.__copied.length > 0), 15_000);
+  return page.evaluate(() => window.__copied.at(-1));
+}
+
+const lineIn = (text, line) => text.split('\n').some((row) => row.trimEnd() === line);
+
+/** Types a line into the terminal the page has the keyboard in, and presses Enter. */
+async function typeLine(page, text) {
+  await page.keyboard.type(text);
+  await page.keyboard.press('Enter');
+}
+
+/**
+ * Turns the Terminal's screen reader mode on or off through its palette command, by the keyboard, as a person does: F6 leaves the terminal (inside it Command K clears the screen on a Mac and Control K is the shell's), the palette's
+ * chord (the page's own platform's: Command K on a Mac, Control K elsewhere) opens the palette, the words find the command and Enter runs it. The keyboard goes back to the terminal.
+ */
+async function switchScreenReader(page, mac) {
+  await page.keyboard.press('F6');
+  await page.keyboard.press(mac ? 'Meta+k' : 'Control+k');
+  const palette = page.getByRole('dialog', { name: 'Search' });
+  await palette.waitFor();
+  await page.keyboard.type('screen reader');
+  await palette.getByRole('option', { name: /^Command: Terminal: Toggle Screen Reader Mode/ }).waitFor();
+  await page.keyboard.press('Enter');
+  await palette.waitFor({ state: 'detached' });
+  await page.locator('.xterm-helper-textarea').focus();
+}
+
+/** The size of the screen the emulator drew, as the page has it: its rows (by the 18 px row of the mock) and its width. */
+function screenSizeOf(page) {
+  return page.evaluate(() => {
+    const box = document.querySelector('.xterm-screen')?.getBoundingClientRect();
+    return box === undefined ? null : { rows: Math.round(box.height / 18), width: box.width, height: box.height };
+  });
+}
+
+/** The rows and columns `stty size` printed last in a transcript (the line of two numbers after the command). */
+function sttyOf(transcript) {
+  const found = [...transcript.matchAll(/\r?\n(\d+) (\d+)\r?\n/g)].at(-1);
+  return found === undefined ? null : { rows: Number(found[1]), cols: Number(found[2]) };
+}
+
+/**
+ * r. The Terminal tool (T1), on the real host: the panel opens on it with no session and no emulator code; New terminal starts ONE shell the host lists and the emulator takes the keyboard; the OUTPUT of a command reaches the
+ * transcript (read from the host's replay of the session: the GPU draws on a canvas); the pty has the rows the page drew and the new rows after the panel is raised; Escape stays in the shell, F6 leaves, Command J hides the
+ * panel; closing a running terminal asks; a shell that exits is an ended session. The screen reader mode is turned on and off through the palette command by the keyboard: a line the shell printed is in the accessibility snapshot of
+ * the screen while it is on and not while it is off, the input's description says which, and the window announces each change. `r2` below is the emulator against the programs of the machine.
+ */
+async function checkTerminal(page, base, engine) {
+  const errors = [];
+  const chunks = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('request', (request) => {
+    if (/xtermEngine/.test(request.url())) chunks.push(request.url());
+  });
+  await spoofPlatform(page);
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+
+  // The panel opens on the Terminal tool, which has no session: its words, and not one byte of the emulator.
+  await page.locator('[data-shell-part="panelToggle"]').click();
+  await page.getByRole('tab', { name: 'Terminal', selected: true }).waitFor({ timeout: 10_000 });
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  assert.deepEqual(await terminalIds(base), [], `${engine}: no shell exists before New terminal`);
+  assert.deepEqual(chunks, [], `${engine}: the emulator's code was not requested before the first terminal`);
+
+  // One press: one shell, the code is fetched, and the emulator has the keyboard.
+  await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
+  await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
+  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  const [id] = await terminalIds(base);
+  assert.ok(chunks.length >= 1, `${engine}: the emulator's code was requested when the terminal was shown`);
+  await waitUntil('the emulator to have the keyboard', () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
+  assert.equal(await page.locator('.xterm-helper-textarea').getAttribute('aria-label'), 'Terminal input, Terminal', `${engine}: the input is named for a person who cannot see the screen`);
+  await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+
+  // A command with a known output: the output line, not only the echo of what was typed.
+  await typeLine(page, 'echo SEAM_$((6*7))');
+  await waitUntil('the output of the command', async () => /\r?\nSEAM_42\r?\n/.test(await plainTranscriptOf(base, id)), 15_000);
+
+  // Screen reader mode. The emulator's printed output is not in the accessibility tree until the person turns the mode on: the words the input is described by say so and name the command, and the command (in the palette, by the
+  // keyboard) turns it on and off. A line the shell printed with the mode on is in the screen's accessibility snapshot; with it off, before and after, it is not.
+  const screenRegion = page.locator('[data-shell-part="terminalScreen"]');
+  const described = () => page.evaluate(() => document.getElementById(document.querySelector('.xterm-helper-textarea')?.getAttribute('aria-describedby') ?? '')?.textContent ?? '');
+  const told = () => page.locator('[data-notices-part="live"]').textContent();
+  const holds = async (text) => (await screenRegion.ariaSnapshot()).includes(text);
+  assert.match(await described(), /The output is not read aloud until screen reader mode is on\..*Terminal: Toggle Screen Reader Mode/, `${engine}: the input is described as not read aloud until the mode is on, and the description names the command`);
+  assert.equal(await holds('SEAM_42'), false, `${engine}: with the mode off a line the shell printed is not in the accessibility tree of the screen`);
+  await switchScreenReader(page, mac);
+  await waitUntil('the window to announce that the mode is on', async () => (await told()) === 'Terminal screen reader mode on.', 10_000);
+  assert.match(await described(), /Screen reader mode is on: the output is read aloud\. To turn it off.*Terminal: Toggle Screen Reader Mode/, `${engine}: with the mode on the input is described as read aloud, with the way to turn it off`);
+  await typeLine(page, 'echo SR_$((6*7))');
+  await waitUntil('SR_42 in the accessibility tree of the screen', async () => (await screenRegion.getByRole('listitem').filter({ hasText: /^SR_42$/ }).count()) === 1, 20_000);
+  assert.ok(await holds('SR_42'), `${engine}: with the mode on the line the shell printed is in the accessibility snapshot of the screen`);
+  await switchScreenReader(page, mac);
+  await waitUntil('the window to announce that the mode is off', async () => (await told()) === 'Terminal screen reader mode off.', 10_000);
+  assert.equal(await screenRegion.getByRole('listitem').count(), 0, `${engine}: with the mode off again the screen has no list items for a screen reader to read`);
+  assert.equal(await holds('SR_42'), false, `${engine}: with the mode off again the line is no longer in the accessibility tree of the screen`);
+  assert.match(await described(), /The output is not read aloud until screen reader mode is on\..*Terminal: Toggle Screen Reader Mode/, `${engine}: with the mode off again the input is described as not read aloud, and names the command`);
+  await typeLine(page, 'echo SR_BACK_$((6*7))');
+  await waitUntil('the output of the command', async () => /\r?\nSR_BACK_42\r?\n/.test(await plainTranscriptOf(base, id)), 15_000);
+
+  // The resize reached the process: the rows the page drew are the rows the pty has, and the columns are the width in cells.
+  await typeLine(page, 'stty size');
+  await waitUntil('stty size to answer', async () => sttyOf(await plainTranscriptOf(base, id)) !== null, 15_000);
+  const before = await screenSizeOf(page);
+  const first = sttyOf(await plainTranscriptOf(base, id));
+  assert.equal(first.rows, before.rows, `${engine}: the pty has the rows the page drew (${String(before.rows)}), it said ${String(first.rows)}`);
+  assert.ok(first.cols >= Math.floor(before.width / 7.3) && first.cols <= Math.ceil(before.width / 6.9), `${engine}: the pty has the width of the screen in cells (${String(Math.round(before.width))} px), it said ${String(first.cols)}`);
+
+  await page.locator('[data-shell-part="panelHandle"]').focus();
+  await page.keyboard.press('End');
+  await waitUntil('the screen to grow', async () => ((await screenSizeOf(page))?.height ?? 0) > before.height + 40, 10_000);
+  await page.waitForTimeout(600);
+  // The emulator had the keyboard and the handle took it: the person goes back to the terminal with the pointer.
+  await page.locator('.xterm-screen').click();
+  const after = await screenSizeOf(page);
+  // A resize reaches the pty in steps (one call in flight, then the newest size), so `stty size` is asked again until the pty has the rows the page draws, and the assertion below is about that size and no intermediate one.
+  const ptyRows = async () => {
+    const from = (await plainTranscriptOf(base, id)).length;
+    await typeLine(page, 'stty size');
+    await waitUntil('stty size to answer', async () => sttyOf((await plainTranscriptOf(base, id)).slice(from)) !== null, 15_000);
+    return sttyOf((await plainTranscriptOf(base, id)).slice(from));
+  };
+  let second = await ptyRows();
+  for (let tries = 0; tries < 10 && second.rows !== after.rows; tries += 1) {
+    await page.waitForTimeout(500);
+    second = await ptyRows();
+  }
+
+  assert.ok(after.rows > before.rows, `${engine}: the panel is taller, so the screen has more rows`);
+  assert.equal(second.rows, after.rows, `${engine}: after the panel was raised the pty has the new rows (${String(after.rows)}), it said ${String(second.rows)}`);
+
+  // A keyboard user can always leave (A14): Escape stays in the shell, F6 leaves, and on a Mac Command J hides the panel.
+  await page.keyboard.press('Escape');
+  assert.ok(await page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), `${engine}: Escape does not leave the terminal`);
+  await page.keyboard.press('F6');
+  assert.ok(await page.evaluate(() => {
+    const element = document.activeElement;
+    return element !== null && element !== document.body && element !== document.documentElement && element.closest('.xterm') === null;
+  }), `${engine}: F6 moves the focus out of the terminal and onto another control (not onto the page's body)`);
+  await page.locator('.xterm-screen').click();
+  if (mac) {
+    await page.keyboard.press('Meta+j');
+    await waitUntil('the panel to hide', () => page.evaluate(() => document.querySelector('[data-shell-part="panel"]') === null || getComputedStyle(document.querySelector('[data-shell-part="panel"]')).display === 'none' || document.querySelector('[data-shell-part="panel"]').getBoundingClientRect().height === 0), 5_000);
+    assert.ok(await page.evaluate(() => !(document.activeElement?.closest('.xterm') ?? null)), `${engine}: Command J gives the focus back to the page`);
+    await page.keyboard.press('Meta+j');
+    await page.locator('.xterm-screen').waitFor({ state: 'visible' });
+  }
+
+  // Closing a running terminal asks. Cancel has the focus; Escape says no and the host still lists the shell.
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  const dialog = page.getByRole('alertdialog', { name: 'Terminate session?' });
+  await dialog.waitFor();
+  assert.ok(await page.evaluate(() => document.activeElement?.textContent === 'Cancel'), `${engine}: Cancel has the focus in the question`);
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  assert.deepEqual(await terminalIds(base), [id], `${engine}: the shell is still there after a no`);
+  // Terminate session ends it: the host lists nothing, the tool says so, and the focus is on the tool's own tab.
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  await dialog.waitFor();
+  await page.getByRole('button', { name: 'Terminate session', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  assert.ok(await page.evaluate(() => document.activeElement?.getAttribute('role') === 'tab' && document.activeElement.textContent?.includes('Terminal')), `${engine}: the focus is on the tool's tab after the last terminal closed`);
+
+  // A shell that exits is an ended session: kept, with its words, and closing it asks nothing.
+  await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
+  await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
+  await waitUntil('the host to list the second shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  const [second_id] = await terminalIds(base);
+  await waitUntil('the second shell to say its prompt', async () => (await transcriptOf(base, second_id)).trim() !== '', 20_000);
+  // The output must outlive the shell: a marker is in the emulator before the exit and still there once the session says it ended.
+  await keepCopies(page);
+  await typeLine(page, 'echo SURVIVES_$((6*7))');
+  await waitUntil('the emulator to hold the marker before the shell exits', async () => lineIn(await bufferOf(page, mac), 'SURVIVES_42'), 20_000);
+  await page.locator('.xterm-screen').click({ position: { x: 3, y: 3 } });
+  await typeLine(page, 'exit');
+  await page.getByText('Input is off. Its output stays readable here.', { exact: true }).waitFor({ timeout: 15_000 });
+  assert.ok(lineIn(await bufferOf(page, mac), 'SURVIVES_42'), `${engine}: the output is still in the emulator once the shell has exited`);
+  assert.equal(await page.locator('[role="tab"][aria-selected="true"][aria-label^="Terminal"]').count(), 1, `${engine}: the ended session's tab stays`);
+  await waitUntil('the host to have no session left', async () => (await terminalIds(base)).length === 0, 10_000);
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  assert.equal(await page.getByRole('alertdialog').count(), 0, `${engine}: closing an ended terminal asks nothing`);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+
+  assert.deepEqual(errors, [], `${engine}: the page raised no error`);
+}
+
+/**
+ * r2. The emulator against the programs of this machine, in the real shell the host starts (T1: the owner's bar for the terminal is "an exceptional functional terminal that does what you would expect in an IDE"). Each block is a
+ * named check that says what it saw. What the PROGRAM saw is read from the host's replay of the pty (the bytes the shell was sent, so what the emulator answered, and the bytes it wrote); what only the EMULATOR knows (its screen
+ * and its scrollback) is read as a person would copy it: select all, copy, into a clipboard that keeps what it is given. A program this machine does not have is named as not run, never skipped without a word. The terminal's
+ * own gaps that belong to the host's backend are printed as GAP and are not asserted here (they are listed for the Go side, docs/ui-next/status/T1.md).
+ */
+async function checkTerminalPrograms(page, base, engine) {
+  const errors = [];
+  const observed = [];
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  await spoofPlatform(page);
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  // The host's own system, for the checks that read the machine and its rendering and not the page's chords (SEAM_PLATFORM makes the page say Linux on a Mac: the chords follow the page, the machine does not change).
+  const hostMac = process.platform === 'darwin';
+  await keepCopies(page);
+  await page.locator('[data-shell-part="panelToggle"]').click();
+  await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
+  await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
+  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  const [id] = await terminalIds(base);
+  await waitUntil('the emulator to have the keyboard', () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
+  await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+
+  const note = (name, text) => observed.push(`${name}: ${text}`);
+  const mark = async () => (await transcriptOf(base, id)).length;
+  const since = async (from) => (await transcriptOf(base, id)).slice(from);
+  /** Types a line, waits for a pattern in what the shell printed after it, and returns that output. */
+  const ask = async (line, pattern, what, ms = 30_000) => {
+    const from = await mark();
+    await typeLine(page, line);
+    // The pattern is tried on the text as a person reads it first (a line of output starts after a line feed in bash and in zsh) and then on the raw bytes, for what is about the control sequences themselves.
+    let output = '';
+    await waitUntil(what, async () => {
+      const raw = await since(from);
+      const read = plain(raw);
+      output = pattern.test(read) ? read : raw;
+      return pattern.test(read) || pattern.test(raw);
+    }, ms);
+    return output;
+  };
+  /** What the whole buffer of the emulator holds, scrollback and screen: select all, copy. */
+  const everything = () => bufferOf(page, mac);
+  const hasLine = lineIn;
+  /** A click on the screen at a prompt: it takes the selection away and keeps the keyboard. */
+  const unselect = () => page.locator('.xterm-screen').click({ position: { x: 3, y: 3 } });
+  /** The pty's size, and the cell of the screen it is drawn in. */
+  const cells = async () => {
+    const size = sttyOf(await ask('stty size', /\r?\n\d+ \d+\r?\n/, 'stty size'));
+    const box = await page.locator('.xterm-screen').boundingBox();
+    return { ...size, box, cellWidth: box.width / size.cols, cellHeight: box.height / size.rows };
+  };
+  const has = async (program) => /\nHAS_YES\r?\n/.test(await ask(`command -v ${program} >/dev/null && echo HAS_YES || echo HAS_NO`, /\nHAS_(YES|NO)\r?\n/, `the answer for ${program}`));
+  const quitAltScreen = (from) => waitUntil('the program to give the alternate screen back', async () => (await since(from)).includes('\u001b[?1049l'), 15_000);
+  /** Control C, and the wait for the shell to say something (its next prompt) before another line is typed: a line typed while the interrupted program is still dying is read by it, and the shell never sees it. */
+  const interrupt = async () => {
+    const before = await mark();
+    await page.keyboard.press('Control+c');
+    await waitUntil('the shell to answer the interrupt', async () => (await mark()) > before, 15_000);
+    await page.waitForTimeout(300);
+  };
+  const reading = (from) => waitUntil('cat to be reading', async () => /READY_2\r?\n/.test(await since(from)), 30_000).catch(async (error) => {
+    throw new Error(`${error.message}; focus is on ${await page.evaluate(() => document.activeElement?.className ?? 'nothing')}; the shell showed ${JSON.stringify((await since(from)).slice(-400))}`);
+  });
+  const pasteText = (text) => page.evaluate((value) => {
+    const area = document.querySelector('.xterm-helper-textarea');
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    area.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+
+  // The environment the shell has, and where it starts: TERM, COLORTERM, the shell, the directory.
+  const first = await cells();
+  const env = await ask('printf \'ENV|%s|%s|%s|%s|%s\\n\' "$TERM" "${COLORTERM-unset}" "$(pwd -P)" "$(cd ~ && pwd -P)" "${ZSH_VERSION:+zsh}${BASH_VERSION:+bash}"', /\nENV\|[^|\r\n%]*\|[^|\r\n%]*\|[^|\r\n%]*\|[^|\r\n%]*\|[^|\r\n%]*\r?\n/, 'the environment line');
+  const [, term, colorterm, cwd, home, shell] = /\nENV\|([^|\r\n%]*)\|([^|\r\n%]*)\|([^|\r\n%]*)\|([^|\r\n%]*)\|([^|\r\n%]*)\r?\n/.exec(env);
+  assert.equal(term, 'xterm-256color', `${engine}: the host sets TERM to xterm-256color`);
+  assert.equal(cwd, home, `${engine}: with no project open a terminal starts in the home directory, not in the host's working directory`);
+  note('env', `TERM=${term} COLORTERM=${colorterm} shell=${shell} cwd=${cwd} (home)`);
+  if (colorterm !== 'truecolor') note('GAP env', `COLORTERM is ${colorterm}: the host does not set COLORTERM=truecolor, so a program that decides on it falls back to 256 colours (backend/pkg/terminal/manager.go:142)`);
+  const login = await ask('if [ -n "$ZSH_VERSION" ]; then [[ -o login ]] && echo LOGIN=yes || echo LOGIN=no; else shopt -q login_shell && echo LOGIN=yes || echo LOGIN=no; fi', /\nLOGIN=(yes|no)\r?\n/, 'the login answer');
+  assert.match(login, /\nLOGIN=yes\r?\n/, `${engine}: the shell is a login shell, so the user's profile files run`);
+  note('login shell', 'yes: the profile files run (the Dock-launched PATH defect needs the packaged app and is not covered here)');
+  if (hostMac) {
+    const paths = await ask('if [ -r /etc/paths ]; then { cat /etc/paths; find /etc/paths.d -type f -exec cat {} + 2>/dev/null; } | while read -r p; do case ":$PATH:" in *":$p:"*) ;; *) echo "PATH_MISSING=$p";; esac; done; echo PATH_CHECKED; else echo PATH_UNREADABLE; fi', /\nPATH_(CHECKED|UNREADABLE)\r?\n/, 'the PATH check');
+    assert.match(paths, /\nPATH_CHECKED\r?\n/, `${engine}: /etc/paths could be read, so the check is about something`);
+    assert.doesNotMatch(paths, /\nPATH_MISSING=\//, `${engine}: every directory of /etc/paths and /etc/paths.d is on the shell's PATH, as in a login shell of Terminal.app`);
+    note('PATH', 'every directory of /etc/paths and /etc/paths.d is on the PATH of the terminal');
+  }
+
+  // The size follows the panel while a program holds the alternate screen: the program is told (SIGWINCH) and sees the rows and columns the page drew.
+  const winch = 'sh -c \'printf "\\033[?1049h"; trap "echo WINCH_SIZE=\\$(stty size)" WINCH; trap "printf \\"\\033[?1049l\\"; exit 0" INT; echo START_SIZE=$(stty size); while :; do sleep 0.2; done\'';
+  const winchFrom = await mark();
+  await typeLine(page, winch);
+  await waitUntil('the program to say its first size', async () => /START_SIZE=\d+ \d+\r?\n/.test(await since(winchFrom)), 15_000);
+  const started = /START_SIZE=(\d+) (\d+)/.exec(await since(winchFrom));
+  assert.equal(Number(started[1]), first.rows, `${engine}: the program started with the rows the page drew`);
+  await page.locator('[data-shell-part="panelHandle"]').focus();
+  await page.keyboard.press('End');
+  await waitUntil('the screen to grow', async () => ((await screenSizeOf(page))?.height ?? 0) > first.box.height + 40, 20_000);
+  await waitUntil('the program to be told of the new size', async () => /WINCH_SIZE=\d+ \d+\r?\n/.test(await since(winchFrom)), 20_000);
+  await page.waitForTimeout(700);
+  const drawn = await screenSizeOf(page);
+  const told = [...(await since(winchFrom)).matchAll(/WINCH_SIZE=(\d+) (\d+)/g)].at(-1);
+  assert.equal(Number(told[1]), drawn.rows, `${engine}: in the alternate screen the program was told the rows the page drew (${String(drawn.rows)}), it saw ${told[1]}`);
+  assert.ok(Number(told[1]) > Number(started[1]) && Number(told[2]) === Number(started[2]), `${engine}: the program saw more rows and the same columns after the panel grew (${started[1]}x${started[2]} to ${told[1]}x${told[2]})`);
+  await page.locator('.xterm-screen').click();
+  await page.keyboard.press('Control+c');
+  await quitAltScreen(winchFrom);
+  note('resize in the alternate screen', `the program saw ${started[1]}x${started[2]} then ${told[1]}x${told[2]} (rows x columns), the page drew ${String(drawn.rows)} rows`);
+
+  // Control C interrupts a running program, and the shell takes the next command at once.
+  await typeLine(page, 'sleep 60');
+  await page.waitForTimeout(700);
+  await interrupt();
+  await ask('echo AFTER_INT_$((4+5))', /\nAFTER_INT_9\r?\n/, 'the shell to answer long before sleep 60 would have ended', 20_000);
+  note('Control C', 'interrupted sleep 60 and the shell answered the next command');
+
+  // Keys a person expects to reach the shell: read as the bytes `cat -v` shows, a dot after each key.
+  const keys = mac
+    ? [['Control+a', '^A'], ['Control+e', '^E'], ['Control+l', '^L'], ['ArrowLeft', '^[[D'], ['ArrowRight', '^[[C'], ['ArrowUp', '^[[A'], ['ArrowDown', '^[[B'], ['Home', '^[[H'], ['End', '^[[F'], ['Delete', '^[[3~'], ['Alt+ArrowLeft', '^[b'], ['Alt+ArrowRight', '^[f'], ['Meta+ArrowLeft', '^A'], ['Meta+ArrowRight', '^E'], ['Alt+Backspace', '^W'], ['Meta+Backspace', '^U'], ['Control+ArrowLeft', '^[[1;5D']]
+    : [['Control+a', '^A'], ['Control+e', '^E'], ['Control+l', '^L'], ['ArrowLeft', '^[[D'], ['ArrowRight', '^[[C'], ['ArrowUp', '^[[A'], ['ArrowDown', '^[[B'], ['Home', '^[[H'], ['End', '^[[F'], ['Delete', '^[[3~'], ['Control+ArrowLeft', '^[[1;5D'], ['Control+ArrowRight', '^[[1;5C'], ['Alt+ArrowLeft', '^[[1;3D']];
+  const keysFrom = await mark();
+  await typeLine(page, 'stty -icanon -echo; echo READY_$((1+1)); cat -v');
+  await reading(keysFrom);
+  for (const [key] of keys) {
+    await page.keyboard.press(key);
+    await page.keyboard.type('.');
+  }
+
+  const wanted = keys.map(([, shown]) => `${shown}.`).join('');
+  await waitUntil('every key to arrive', async () => (await since(keysFrom)).includes(wanted), 30_000).catch(async (error) => {
+    throw new Error(`${error.message}; wanted ${JSON.stringify(wanted)}, got ${JSON.stringify((await since(keysFrom)).split('READY_2').at(-1))}`);
+  });
+  await interrupt();
+  await ask('stty sane; echo KEYS_DONE_$((1+1))', /KEYS_DONE_2\r?\n/, 'the terminal modes to be restored');
+  note('keys', `${keys.map(([key, shown]) => `${key} -> ${shown}`).join(', ')} (${mac ? 'macOS: Option as Meta is off, so Option types characters; the IDE sequences are VS Code\'s' : 'Windows and Linux'})`);
+
+  // Bracketed paste: a program that asks for it gets the text wrapped, in one piece; the shell does not run a pasted line before Enter.
+  const pasteFrom = await mark();
+  await typeLine(page, 'printf \'\\033[?2004h\'; stty -icanon -echo; echo READY_$((1+1)); cat -v');
+  await reading(pasteFrom);
+  // The emulator draws and parses a frame after the host has the bytes, so on a slow runner it may not have taken the program's request for bracketed paste yet: the paste is repeated until it arrives wrapped.
+  let pastedAt = 0;
+  await waitUntil('the wrapped paste', async () => {
+    if (Date.now() - pastedAt > 3_000) {
+      pastedAt = Date.now();
+      await pasteText('one\ntwo');
+    }
+
+    return /\^\[\[200~one\r?\ntwo\^\[\[201~/.test(await since(pasteFrom));
+  }, 30_000);
+  await interrupt();
+  await ask('stty sane; echo PASTE_DONE_$((1+1))', /PASTE_DONE_2\r?\n/, 'the terminal modes to be restored');
+  const shellPaste = await mark();
+  await pasteText('echo PASTE_ONE\necho PASTE_TWO');
+  await page.waitForTimeout(900);
+  assert.doesNotMatch(plain(await since(shellPaste)), /\nPASTE_(ONE|TWO)\r?\n/, `${engine}: a multi-line paste at the prompt is not run line by line`);
+  // Nothing ran before Enter; with it both pasted lines run, in order: a paste the terminal dropped or cut fails here, where "nothing ran" alone would pass.
+  await page.keyboard.press('Enter');
+  await waitUntil('both pasted lines to run, in order', async () => /\nPASTE_ONE\n(?:[\s\S]*\n)?PASTE_TWO\n/.test(plain(await since(shellPaste))), 30_000).catch(async (error) => {
+    throw new Error(`${String(error.message)}; the shell's output since the paste ends with ${JSON.stringify(plain(await since(shellPaste)).slice(-600))}`);
+  });
+  note('bracketed paste', 'a program that asked for it got ESC[200~ one LF two ESC[201~ in one piece; the shell prompt took the two pasted lines without running them, and both ran in order at Enter');
+
+  // Mouse reporting: on while a program asks for it (a click is reported at its cell), off otherwise, so that a selection works.
+  const mouse = await cells();
+  const mouseFrom = await mark();
+  await typeLine(page, 'printf \'\\033[?1000h\\033[?1006h\'; stty -icanon -echo; echo READY_$((1+1)); cat -v');
+  await reading(mouseFrom);
+  // The same for the mouse mode: a click before the emulator has it is a selection, so the click is repeated until it is reported.
+  let clickedAt = 0;
+  await waitUntil('the click to be reported', async () => {
+    if (Date.now() - clickedAt > 3_000) {
+      clickedAt = Date.now();
+      await page.mouse.click(mouse.box.x + mouse.cellWidth * 9.5, mouse.box.y + mouse.cellHeight * 2.5);
+    }
+
+    return /\^\[\[<0;\d+;\d+M\^\[\[<0;\d+;\d+m/.test(await since(mouseFrom));
+  }, 30_000);
+  const reported = /\^\[\[<0;(\d+);(\d+)M/.exec(await since(mouseFrom));
+  assert.ok(Math.abs(Number(reported[1]) - 10) <= 1 && Math.abs(Number(reported[2]) - 3) <= 1, `${engine}: a click on column 10, row 3 was reported at ${reported[1]},${reported[2]}`);
+  await interrupt();
+  await ask('printf \'\\033[?1000l\\033[?1006l\'; stty sane; echo MOUSE_DONE_$((1+1))', /MOUSE_DONE_2\r?\n/, 'the mouse mode to be restored');
+  note('mouse reporting', `on while asked: a click on column 10, row 3 was reported at ${reported[1]},${reported[2]} (SGR); off once the program stops asking (selection is checked below)`);
+
+  // 24-bit colour is DRAWN as itself where the engine's screenshot carries the GPU canvas (a Mac's WebKit and Chromium). The runner's Linux WebKit read 0 px of the colour in the first CI run of this check (software GL): off a Mac the
+  // pixels are recorded and not asserted. (An attempt to ask the emulator for its attributes with DECRQSS answered `0m` only and was dropped.) And the bell is shown and not heard.
+  await ask('printf \'\\033[48;2;255;100;0m                \\033[0m\\n\'', /\u001b\[48;2;255;100;0m/, 'the 24-bit colour');
+  await page.waitForTimeout(400);
+  const orange = await page.evaluate(async ({ data }) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], { type: 'image/png' }));
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(bitmap, 0, 0);
+    const { data: pixels } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let count = 0;
+    for (let at = 0; at < pixels.length; at += 4) if (Math.abs(pixels[at] - 255) <= 4 && Math.abs(pixels[at + 1] - 100) <= 4 && Math.abs(pixels[at + 2]) <= 4) count += 1;
+    return count;
+  }, { data: (await page.locator('.xterm-screen').screenshot()).toString('base64') });
+  if (hostMac) assert.ok(orange >= 16 * 6 * 16, `${engine}: 24-bit colour 255,100,0 is drawn as itself: ${String(orange)} px of it on the screen (a 16 cell run is about ${String(16 * 7 * 18)})`);
+  note('24-bit colour', hostMac ? `rgb(255,100,0) drawn exactly: ${String(orange)} px` : `${String(orange)} px of rgb(255,100,0) in this engine's screenshot, recorded and not asserted off a Mac (the runner's Linux WebKit read 0 in its first run)`);
+  await typeLine(page, 'printf \'\\a\'');
+  await page.locator('[data-shell-part="terminalScreen"][data-bell]').waitFor({ timeout: 5_000 });
+  note('bell', 'BEL marks the screen (a short fade, no sound: the emulator plays none)');
+
+  // Wide, emoji and combining characters: the column the emulator reports (CSI 6n, which the shell asks for and reads) is the column the shell counts.
+  // UTF-8 as bytes, so that it does not depend on the shell's locale (a bash in the C locale prints `\u4f60` as it is): 4 CJK characters, an emoji, and a family of three emoji joined by ZWJ.
+  const wide = '\\xe4\\xbd\\xa0\\xe5\\xa5\\xbd\\xe4\\xb8\\x96\\xe7\\x95\\x8c\\xf0\\x9f\\x98\\x80\\xf0\\x9f\\x91\\xa8\\xe2\\x80\\x8d\\xf0\\x9f\\x91\\xa9\\xe2\\x80\\x8d\\xf0\\x9f\\x91\\xa7';
+  const widthOut = await ask(`stty -icanon -echo; printf '\\r${wide}\\033[6n'; read -r -d R pos; stty sane; echo; echo "CPR_COL=\${pos#*;}"; s=$(printf '${wide}'); [ -n "$ZSH_VERSION" ] && eval 'echo SHELL_WIDTH=\${(m)#s}'; echo WIDE_DONE_$((1+1))`, /\nWIDE_DONE_2\r?\n/, 'the column of the cursor after wide characters');
+  const column = Number(/\nCPR_COL=(\d+)\r?\n/.exec(widthOut)?.[1]);
+  const believed = /\nSHELL_WIDTH=(\d+)\r?\n/.exec(widthOut)?.[1];
+  // 4 CJK (8 cells), one emoji (2) and a family of three emoji joined by ZWJ (2 + 0 + 2 + 0 + 2): 16 cells, so the cursor is in column 17.
+  assert.equal(column, believed === undefined ? 17 : Number(believed) + 1, `${engine}: after 4 CJK, an emoji and a ZWJ family the cursor is in column ${String(column)}; the shell counts ${believed === undefined ? '16 (the wcwidth tables; this shell has no width function)' : believed} cells`);
+  const combining = await ask('stty -icanon -echo; printf \'\\re\\xcc\\x81x\\033[6n\'; read -r -d R pos; stty sane; echo; echo "CPR_COMB=${pos#*;}"', /\nCPR_COMB=\d+\r?\n/, 'the column after a combining mark');
+  assert.match(combining, /\nCPR_COMB=3\r?\n/, `${engine}: a combining accent takes no cell of its own`);
+  note('wide characters', `after 4 CJK + 1 emoji + a ZWJ family the cursor is in column ${String(column)}, the shell counts ${believed ?? '16 by wcwidth'} cells; a combining accent adds none (column 3 after e + accent + x)`);
+
+  // Full-screen programs: the alternate screen, the prior output and the scrollback come back, the program sees keys and mouse.
+  const unseen = [];
+  await ask('printf \'MARK_%s\\n\' $(seq 1 80); echo ALT_BEFORE', /\nALT_BEFORE\r?\n/, 'the lines before the programs');
+  const after = async (name, text) => {
+    await ask(`echo BACK_${name}_$((3+4))`, new RegExp(`\\nBACK_${name}_7\\r?\\n`), `the prompt back after ${name}`);
+    // The emulator draws a frame after the host has the bytes: the buffer is read until it has caught up.
+    const wanted = ['ALT_BEFORE', 'MARK_80', 'MARK_1', `BACK_${name}_7`];
+    let buffer = '';
+    let missing = wanted;
+    await waitUntil(`the buffer after ${name}`, async () => {
+      buffer = await everything();
+      missing = wanted.filter((line) => !hasLine(buffer, line));
+      return missing.length === 0;
+    }, 15_000).catch((error) => {
+      throw new Error(`${engine}: after ${name} the prior output, the prompt and the scrollback (MARK_1 of 80 lines) are not all back (${error.message}): missing ${JSON.stringify(missing)}; the buffer began ${JSON.stringify(buffer.slice(0, 200))} and ended ${JSON.stringify(buffer.slice(-400))}`);
+    });
+    await unselect();
+    assert.ok(!text.test(buffer), `${engine}: nothing of ${name}'s screen is left in the buffer`);
+  };
+
+  if (await has('less')) {
+    const lessFrom = await mark();
+    await typeLine(page, 'seq 1 500 | less');
+    await waitUntil('less to take the alternate screen', async () => (await since(lessFrom)).includes('\u001b[?1049h'), 15_000);
+    await page.waitForTimeout(600);
+    const top = await everything();
+    assert.ok(hasLine(top, '1') && !hasLine(top, 'MARK_80'), `${engine}: less shows its own screen, not the shell's`);
+    await page.keyboard.press('Space');
+    let next = top;
+    await waitUntil('less to draw the next page', async () => {
+      next = await everything();
+      return !hasLine(next, '1') && next !== top;
+    }, 20_000);
+    assert.ok(!hasLine(next, '1') && next !== top, `${engine}: Space moved less by a page`);
+    await page.keyboard.press('q');
+    await quitAltScreen(lessFrom);
+    await after('less', /(^|\n)\d+(\n|$)/);
+    note('less', 'alternate screen taken, Space paged, q quit; the prior output, the prompt and the scrollback came back');
+  } else {
+    unseen.push('less');
+  }
+
+  if (await has('vim')) {
+    const vimFrom = await mark();
+    const view = await cells();
+    await typeLine(page, 'printf \'L%02d\\n\' $(seq 1 30) > "$HOME/seam-vim.txt"; vim -u NONE -N -n -c \'set mouse=a ruler\' "$HOME/seam-vim.txt"');
+    await waitUntil('vim to take the alternate screen and ask for the mouse', async () => /\u001b\[\?1049h/.test(await since(vimFrom)) && /\u001b\[\?(1000|1002|1003)h/.test(await since(vimFrom)), 30_000);
+    await page.waitForTimeout(700);
+    const screen = await everything();
+    assert.ok(hasLine(screen, 'L01'), `${engine}: vim drew the file`);
+    let clickedVim = 0;
+    let clicked = '';
+    await waitUntil('vim to put its cursor on the clicked line', async () => {
+      if (Date.now() - clickedVim > 3_000) {
+        clickedVim = Date.now();
+        await page.mouse.click(view.box.x + view.cellWidth * 2.5, view.box.y + view.cellHeight * 5.5);
+      }
+
+      await page.waitForTimeout(500);
+      clicked = await everything();
+      return /\b6,\d+\s/.test(clicked);
+    }, 30_000).catch((error) => {
+      throw new Error(`${engine}: a click on row 6 did not move the cursor of vim to line 6 (mouse reporting is on while vim asks): ${error.message}`);
+    });
+    await page.keyboard.type(':q');
+    await page.keyboard.press('Enter');
+    await quitAltScreen(vimFrom);
+    assert.match(await since(vimFrom), /\u001b\[\?(1000|1002|1003)l/, `${engine}: vim turned the mouse mode off when it left`);
+    await after('vim', /(^|\n)L\d\d(\n|$)/);
+    note('vim', 'alternate screen taken, mouse mode on (a click moved its cursor to the clicked line), :q left, mouse mode off, the prior output and the scrollback came back');
+  } else {
+    unseen.push('vim');
+  }
+
+  if (await has('top')) {
+    const topFrom = await mark();
+    await typeLine(page, 'top');
+    // macOS' top takes the alternate screen and procps' (the CI image's, read there: it sends no `ESC [ ? 1049 h`) draws on the main one: both are redraw programs, and what comes back differs.
+    await waitUntil('top to draw its screen', async () => /Processes:|Tasks:/.test(plain(await since(topFrom))), 20_000);
+    const alternate = (await since(topFrom)).includes('\u001b[?1049h');
+    // procps' top redraws every 3 s and macOS' every second: the redraw is waited for after the first draw.
+    await page.waitForTimeout(1_000);
+    const drawnAt = (await since(topFrom)).length;
+    await waitUntil('top to redraw its screen', async () => (await since(topFrom)).length > drawnAt, 15_000);
+    const redrawn = (await since(topFrom)).length - drawnAt;
+    const running = await everything();
+    assert.match(running, /Processes:|Tasks:|PID/, `${engine}: top drew its screen`);
+    await page.keyboard.press('q');
+    if (alternate) {
+      await quitAltScreen(topFrom);
+      await after('top', /Processes:|Tasks:/);
+    } else {
+      // A program that draws on the main screen leaves what it drew there, as in any terminal: only the prompt coming back is asked.
+      await ask('echo BACK_top_$((3+4))', /\nBACK_top_7\r?\n/, 'the prompt back after top');
+      await unselect();
+    }
+
+    note('top (a full-screen redraw program)', `${alternate ? 'took the alternate screen' : 'drew on the main screen (procps)'}, drew its screen and kept redrawing it (${String(redrawn)} bytes after the first draw), q quit${alternate ? ', the prior output and the scrollback came back' : ' and the prompt came back'}`);
+  } else {
+    unseen.push('top');
+  }
+
+  note('htop', (await has('htop')) ? 'present but not driven: top is the redraw program here' : 'not installed on this machine, not run');
+  if (unseen.length > 0) note('programs not run', unseen.join(', '));
+
+  // Clear and select: the toolbar button always, Command K on a Mac while the terminal has the focus (it is also the palette's chord: it must not open it); a double click selects a word and copies it.
+  await ask('echo CLEAR_ME_$((1+2))', /\nCLEAR_ME_3\r?\n/, 'the line to clear');
+  // The host has the line before the emulator has drawn it (a frame later): it is read back before the clear, or the clear could run first and the line be drawn after it.
+  await waitUntil('the emulator to hold the marker and the line before they are cleared', async () => {
+    const before = await everything();
+    return hasLine(before, 'CLEAR_ME_3') && hasLine(before, 'MARK_1');
+  }, 15_000);
+  await unselect();
+  if (mac) {
+    await page.keyboard.press('Meta+k');
+  } else {
+    await page.locator('[data-terminal-tool="clear"]').click();
+    await page.locator('.xterm-screen').click();
+  }
+
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('dialog[data-palette-part="scrim"][open]').count(), 0, `${engine}: ${mac ? 'Command K in the terminal did not open the palette' : 'Clear did not open the palette'}`);
+  await waitUntil('the screen and the scrollback to be cleared', async () => {
+    const buffer = await everything();
+    return !hasLine(buffer, 'CLEAR_ME_3') && !hasLine(buffer, 'MARK_1');
+  }, 15_000);
+  await unselect();
+  await ask('echo ZZ_ONE ZZ_TWO', /\nZZ_ONE ZZ_TWO\r?\n/, 'the word line');
+  await waitUntil('the emulator to have drawn the word line', async () => hasLine(await everything(), 'ZZ_ONE ZZ_TWO'), 15_000);
+  await unselect();
+  const place = await cells();
+  await page.mouse.dblclick(place.box.x + place.cellWidth * 2.5, place.box.y + place.cellHeight * 1.5);
+  await page.evaluate(() => { window.__copied.length = 0; });
+  await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
+  await waitUntil('the copy of the word', () => page.evaluate(() => window.__copied.length > 0), 15_000);
+  assert.equal(await page.evaluate(() => window.__copied.at(-1)), 'ZZ_ONE', `${engine}: a double click selected the word and the copy chord copied it`);
+  note('selection and copy', 'a double click selected a word (mouse reporting is off at the prompt) and the copy chord put it on the clipboard');
+  if (mac) {
+    // The palette is still the chord of everything that is not a terminal.
+    await page.locator('[data-shell-part="panelHandle"]').focus();
+    await page.keyboard.press('Meta+k');
+    await page.locator('dialog[data-palette-part="scrim"][open]').waitFor({ timeout: 5_000 });
+    await page.keyboard.press('Escape');
+    await page.locator('dialog[data-palette-part="scrim"][open]').waitFor({ state: 'detached', timeout: 5_000 });
+    await page.locator('.xterm-screen').click();
+    note('Command K', 'clears the focused terminal (VS Code and JetBrains agree) and does not open the palette; with the focus anywhere else it opens the palette');
+  }
+
+  // Control D at an empty prompt ends the shell: the session says so and the host has none.
+  await unselect();
+  await page.keyboard.press('Control+d');
+  await page.getByText('Input is off. Its output stays readable here.', { exact: true }).waitFor({ timeout: 15_000 });
+  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 20_000);
+  note('Control D', 'ended the shell: the session says so and the host lists none');
+
+  assert.deepEqual(errors, [], `${engine}: the page raised no error`);
+  console.log(`terminal-programs ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
+}
+
 let host;
 try {
   const port = await freePort();
@@ -4739,6 +5368,22 @@ try {
         continue;
       }
 
+      // SEAM_TERMINAL_REPEAT=<n> runs scenario r alone, n times in a row, for a developer who works on the Terminal tool (each run starts two shells of this machine and ends them).
+      if (process.env.SEAM_TERMINAL_REPEAT !== undefined) {
+        const repeats = Number(process.env.SEAM_TERMINAL_REPEAT);
+        if (!Number.isSafeInteger(repeats) || repeats < 1) {
+          throw new Error(`SEAM_TERMINAL_REPEAT must be a positive whole number, it is ${JSON.stringify(process.env.SEAM_TERMINAL_REPEAT)}`);
+        }
+
+        for (let run = 0; run < repeats; run += 1) {
+          await phase('terminal', name, async () => checkTerminal(await freshPage(browser, host.base), host.base, name));
+          await phase('terminal-programs', name, async () => checkTerminalPrograms(await freshPage(browser, host.base), host.base, name));
+          console.log(`terminal ${name} run ${String(run)} ok`);
+        }
+
+        continue;
+      }
+
       if (CONTROL === FAILED_GROUP || FAILED_CONTROLS[CONTROL] !== undefined) {
         // The negative controls of scenario p: it runs alone, once, with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkFailedLoad`).
         try {
@@ -4813,6 +5458,8 @@ try {
       await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
       await phase('centre', name, async () => checkCentre(await freshPage(browser, host.base), host.base, name));
       await phase('settings', name, async () => checkSettings(browser, name, work));
+      await phase('terminal', name, async () => checkTerminal(await freshPage(browser, host.base), host.base, name));
+      await phase('terminal-programs', name, async () => checkTerminalPrograms(await freshPage(browser, host.base), host.base, name));
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));

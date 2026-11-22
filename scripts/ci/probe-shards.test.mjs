@@ -506,9 +506,9 @@ test('negative control: the split is seen to lose a probe, a control, an env ent
 });
 
 // N25: the panel probe's controls were one unit of 480 s on the runner (run 44929041191), over the 432 s a shard may hold. They are three units and the fourteen controls are the same fourteen, each once, in the same order.
-const PANEL_CONTROLS = ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled', 'twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'];
+const PANEL_CONTROLS = ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled', 'twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name', 'late-early'];
 
-test('the 480 s unit of the panel probe (run 44929041191) is three units that each fit, hold the same fourteen controls once each, in the same order, and the controls have no env', () => {
+test('the 480 s unit of the panel probe (run 44929041191) is three units that each fit, hold the same fourteen controls once each and the late-tool control (#660) last, in the same order, and the controls have no env', () => {
   const parts = UNITS.filter((entry) => entry.script === 'ui-next/shell/probes/panel-probe.mjs' && entry.controls !== undefined);
   assert.deepEqual(idsOf(parts), ['panel-controls-frame', 'panel-controls-held', 'panel-controls-twins']);
   assert.deepEqual(parts.flatMap((entry) => entry.controls), PANEL_CONTROLS);
@@ -976,7 +976,7 @@ test('negative control: a unit that failed, that ran twice, that lacked a contro
   const holding = (reports, id) => reports.flatMap((report) => report.units).find((entry) => entry.id === id);
   assert.deepEqual(edit((reports) => { holding(reports, 'panel').ok = false; }).map((message) => message.replace(/ in shard \d+/, '')), ['the unit "panel" did not pass']);
   assert.match(edit((reports) => { reports[0].units.push(structuredClone(holding(reports, 'panel'))); })[0], /^the unit "panel" ran in 2 shards \(\d+ and \d+\): a unit runs once$/);
-  assert.match(edit((reports) => { holding(reports, 'panel-controls-twins').controls.pop(); })[0], /^the unit "panel-controls-twins" ran in shard \d+ without the control scope-name$/);
+  assert.match(edit((reports) => { holding(reports, 'panel-controls-twins').controls.pop(); })[0], /^the unit "panel-controls-twins" ran in shard \d+ without the control late-early$/);
   assert.match(edit((reports) => { holding(reports, 'panel-controls-frame').controls = []; })[0], /without the controls panel-height, session-gap, toggle, tab-padding, shift, root-write$/);
   assert.ok(edit((reports) => { holding(reports, 'kit').runs = 2; }).some((message) => /^the unit "kit" made 2 runs in shard \d+ and the table has 1$/.test(message)));
   assert.ok(edit((reports) => { holding(reports, 'panel-controls-frame').runs = 5; }).some((message) => /^the unit "panel-controls-frame" made 5 runs in shard \d+ and the table has 6$/.test(message)));

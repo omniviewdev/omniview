@@ -42,7 +42,7 @@ export const units = [
     id: 'panel-controls-twins',
     name: 'Probe that the panel probe sees a panel that is wrong (the scope of a tab)',
     script: 'ui-next/shell/probes/panel-probe.mjs',
-    controls: ['twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'],
-    seconds: 115,
+    controls: ['twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name', 'late-early'],
+    seconds: 135,
   },
 ];

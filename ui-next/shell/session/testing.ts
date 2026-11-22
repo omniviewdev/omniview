@@ -1,4 +1,4 @@
-import type { SessionStorage } from './types';
+import type { FlagSource, SessionStorage } from './types';
 
 // Test support only: nothing in the session module imports this file. A place to keep the session that is a string in memory, with the calls it was asked for written down, so a test can
 // say what was read, written and kept aside, and make any of the three fail.
@@ -81,6 +81,31 @@ export function memoryStorage(initial?: string): Memory {
           held?.(answer);
         },
       };
+    },
+  };
+}
+
+/** A yes or no the window holds that no model owns, made as the host makes it (`FlagSource`): a test sets it, and the session listens to it. */
+export type Flag = FlagSource & { readonly set: (on: boolean) => void };
+
+export function flag(initial = false): Flag {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => current,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set: (on) => {
+      if (on !== current) {
+        current = on;
+        for (const listener of [...listeners]) {
+          listener();
+        }
+      }
     },
   };
 }

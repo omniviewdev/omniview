@@ -1,10 +1,10 @@
 import { isIconName } from '@omniviewdev/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPanelStore, createTabsStore, seedChips, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
+import { createPanelStore, createTabsStore, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
 import type { FrameV1, PaletteCommandV1, PaletteJsonV1, PaletteMatchProviderV1, PaletteRowV1, PaletteSearchProviderV1, PaletteV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, widgetPage } from '../testing';
 import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
-import { createHostPalette, type HostPalette } from './palette';
+import { createHostPalette, type HostPalette, type HostPaletteDeps } from './palette';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
 
@@ -151,6 +151,8 @@ type Setup = {
   readonly report?: (problem: { readonly provider: string; readonly message: string }) => void;
   /** What each plugin may ask of the bottom panel. */
   readonly panelHosts?: (plugin: string) => PanelHostV1;
+  /** The Terminal tool's screen reader switch: what the command toggles and where it says the result. */
+  readonly terminalScreenReader?: HostPaletteDeps['terminalScreenReader'];
 };
 
 /** What a test holds of the palette it built: the palette and its store, the tab store, what the plugins and the published values are, and the handles that change them. */
@@ -194,7 +196,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader });
   return {
     palette,
     store: palette.store,
@@ -1268,6 +1270,41 @@ describe('the commands', () => {
       expect(isIconName(row.tile?.icon ?? '')).toBe(true);
     }
   });
+
+  it('offers the Terminal\'s screen reader switch only when the window has the Terminal tool: titled as the tool\'s own words have it, in the Panel context, with the tool\'s glyph, and with no chord, which none is bound to', () => {
+    const without = build({ platform: 'mac', panel: createPanelStore() });
+    without.open(at('acme', 'widgets'));
+    without.store.open({ kind: 'commands' });
+    expect(titlesOf(without, 'commands')).toEqual(['Close tab', 'Toggle panel']);
+
+    const w = build({ platform: 'mac', panel: createPanelStore(), terminalScreenReader: { toggle: () => true, say: vi.fn() } });
+    w.open(at('acme', 'widgets'));
+    w.open(at('beta', 'items'));
+    w.store.open({ kind: 'commands' });
+    expect(titlesOf(w, 'commands')).toEqual(['Close tab', 'Toggle panel', 'Terminal: Toggle Screen Reader Mode', 'Next tab', 'Previous tab']);
+    expect(SCREEN_READER_COMMAND).toBe('Terminal: Toggle Screen Reader Mode');
+    const row = rowTitled(w, SCREEN_READER_COMMAND);
+    expect({ context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, kind: row.kind, state: row.availability.state, command: row.action.type === 'run' ? row.action.command.id : row.action.type }).toEqual({
+      context: 'Panel',
+      icon: TERMINAL_TOOL.icon,
+      shortcut: undefined,
+      kind: 'command',
+      state: 'available',
+      command: 'host.terminal.toggleScreenReader',
+    });
+  });
+
+  it('finds the screen reader switch by the words a person would type for it, and offers it whichever platform: the chords are not its own', () => {
+    for (const platform of ['mac', 'other'] as const) {
+      const w = build({ platform, panel: createPanelStore(), terminalScreenReader: { toggle: () => true, say: vi.fn() } });
+      w.open(at('acme', 'widgets'));
+      w.store.open();
+      for (const query of ['screen reader', 'reader mode', 'terminal toggle']) {
+        w.store.setQuery(query);
+        expect(titlesOf(w, 'commands'), `${platform}: ${query}`).toEqual([SCREEN_READER_COMMAND]);
+      }
+    }
+  });
 });
 
 describe('running a command', () => {
@@ -1397,6 +1434,34 @@ describe('running a command', () => {
     expect(w.store.activate(rowTitled(w, 'Close window').id)).toMatchObject({ status: 'ran', outcome: 'done' });
     expect(onCloseWindow).toHaveBeenCalledTimes(1);
     expect(w.store.getSnapshot().open).toBe(false);
+  });
+
+  it('flips the Terminal\'s screen reader choice once, and says what it came to once, a task later: the palette that ran the command is a modal dialog until then, and a live region that is not in the accessibility tree is not heard', () => {
+    const toggle = vi.fn(() => true);
+    const say = vi.fn();
+    const w = build({ platform: 'mac', panel: createPanelStore(), terminalScreenReader: { toggle, say } });
+    w.store.open({ kind: 'commands' });
+
+    expect(w.store.activate(rowTitled(w, SCREEN_READER_COMMAND).id)).toMatchObject({ status: 'ran', outcome: 'done' });
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(w.store.getSnapshot().open).toBe(false);
+    expect(say).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(0);
+    expect(say).toHaveBeenCalledTimes(1);
+    expect(say).toHaveBeenCalledWith('Terminal screen reader mode on.');
+    vi.advanceTimersByTime(5_000);
+    expect(say).toHaveBeenCalledTimes(1);
+  });
+
+  it('says off when the choice came to off: what is said is what the choice is now, not what the command was asked', () => {
+    const say = vi.fn();
+    const w = build({ platform: 'other', panel: createPanelStore(), terminalScreenReader: { toggle: () => false, say } });
+    w.store.open({ kind: 'commands' });
+
+    expect(w.store.activate(rowTitled(w, SCREEN_READER_COMMAND).id)).toMatchObject({ status: 'ran', outcome: 'done' });
+    vi.advanceTimersByTime(0);
+    expect(say).toHaveBeenCalledTimes(1);
+    expect(say).toHaveBeenCalledWith('Terminal screen reader mode off.');
   });
 });
 
