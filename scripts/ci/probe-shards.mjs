@@ -55,29 +55,35 @@ export const MANIFEST = 'scripts/ci/probe-units.manifest.json';
 /** Probe scripts CI does not run: each is run by hand, and is listed here, with the reason, so that "no unit runs it" is a decision someone wrote down and not something nobody noticed. Empty since N24 K2. */
 export const BY_HAND = [];
 
-/** The wall time a shard job is held to: 9 minutes, the job (its setup and its probes) from start to end. */
+/** The wall time a shard job is held to when it is PLANNED: 9 minutes, the job (its setup and its units) from start to end. */
 export const WALL_BUDGET_SECONDS = 540;
-/** The 90th percentile of a shard job's setup (the job minus its probes' step) on the 70 shard jobs of 7 runs (median 87.5 s, maximum 137 s; docs/ui-next/status/N24-K3.md and N25.md). */
+/** The 90th percentile of a shard job's setup (the job minus its units' step) on the 70 shard jobs of 7 runs (median 87.5 s; docs/ui-next/status/N24-K3.md and N25.md). */
 export const SETUP_P90_SECONDS = 108;
+/** The slowest setup of those 70 shard jobs: what the job's timeout must leave room for when a shard runs to its ceiling (the workflow test pins that). */
+export const SETUP_MAX_SECONDS = 137;
 /** The most unit seconds a shard may be PLANNED to hold: the budget less the setup, so that a shard at its seconds and a slow (90th percentile) setup is a job of 9 minutes. It moves only with that data, never to make a table fit. */
 export const LIMIT_SECONDS = WALL_BUDGET_SECONDS - SETUP_P90_SECONDS;
 
 /**
- * A unit that took more than this over its `seconds` fails its shard (a quarter of them)...
- * ...and more than this many seconds more. The two together are the margin: a quarter of the unit's seconds or this many seconds, whichever is more. Seven runs of 2026-11-21 and 22 (4,364 to 4,471 s of units, 235 unit runs)
- * against the seconds of run 44929041191: the most any unit took over them was 45 s (the controls of the log view on a slow machine, 166 s for 121 s; a unit is many short runs that each build the fixtures), and the floor is that
- * and a third: 60 s. With 45 s none fails and the nearest is at the margin; with 30 s two do (docs/ui-next/status/N25.md has the data; probe-shards.test.mjs replays it).
+ * A unit fails its shard when it took more than DRIFT_RATIO of its `seconds` over them (a quarter) AND more than DRIFT_FLOOR_SECONDS over them: that is, past its seconds plus the larger of the two, `max(ratio x seconds, floor)`, not
+ * their sum. The same margin under only warns. Seven runs of 2026-11-21 and 22 (4,364 to 4,471 s of units, 235 unit runs) against the seconds of run 44929041191: the most any unit took over them was 45 s (the controls of the log
+ * view on a slow machine, 166 s for 121 s; a unit is many short runs that each build the fixtures), and the floor is that and a third: 60 s. With 45 s none fails and the nearest is at the margin; with 30 s two do
+ * (docs/ui-next/status/N25.md has the data; probe-shards.test.mjs replays it).
  */
 export const DRIFT_RATIO = 0.25;
 export const DRIFT_FLOOR_SECONDS = 60;
 
 /**
- * The most the real seconds of ALL the units of a shard may add up to, whatever each unit's own margin allowed: the limit a shard is planned to (432 s) and a third more. Units that are each just inside their margin add up to 866 s in a
- * shard of 386 s (the independent review of #656, `drift-bounds.mjs`); this is what stops that. From the data: the most a shard's units took, against what they were planned to, was +29 percent in 70 shard jobs of seven runs of the ten-shard table
- * (569 s of units for 441 s on a slow machine), and +12 percent in the runs of this table (452 s for 407 s); a shard planned at the limit on a machine 29 percent slow is 557 s. The job is at most 600 s of units and 137 s of setup
- * (the slowest of 70): 12.3 minutes, 61 percent of the 20 minutes its timeout allows (which the workflow test pins).
+ * The ceiling on the real seconds of a whole SHARD, which no unit's own margin can bound: units that are each just inside it add up to 866 s in a shard planned at 386 s (the independent review of #656, `drift-bounds.mjs`).
+ * It is DERIVED from the runner, not picked. The seven runs of scripts/ci/probe-shards.runs.json hold the 70 real shard jobs of the ten-shard table, each job's units on one machine; the real seconds of a job over the table's
+ * seconds for the units it held says how slow that machine was: median 1.003, 95th percentile 1.099, worst 1.292 (shard 3 of run 44932913868, 567 s for 439 s; the second worst is 1.222, the step from one to the other is 5.7
+ * percent). A shard planned at the limit (432 s) on the worst machine takes 558 s; the margin is 10 percent more, over that step, so that a machine as much slower than the worst as the worst is than the second still passes: 614 s.
+ * Every one of the 70 jobs, scaled to a shard planned at the limit, passes it (probe-shards.test.mjs replays them). The job's timeout leaves a shard at the ceiling, on the slowest setup, time to end and say why it failed
+ * (SETUP_MAX_SECONDS; the workflow test pins it).
  */
-export const SHARD_CEILING_SECONDS = 600;
+export const SHARD_SLOWDOWN_WORST = 1.292;
+export const SHARD_CEILING_MARGIN = 0.1;
+export const SHARD_CEILING_SECONDS = Math.ceil(LIMIT_SECONDS * SHARD_SLOWDOWN_WORST * (1 + SHARD_CEILING_MARGIN));
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Which files are probe scripts
@@ -662,7 +668,19 @@ export async function main(
       else err(`probe-shards: ${message}\n`);
     }
     if (problems.length > 0) return 1;
-    out(`probe-shards: ok (${units.length} units and ${controlsOf} controls ran once and passed, in ${read.reports.length} shards)\n`);
+    const probes = units.filter((unit) => unit.controls === undefined).length;
+    const what = `${probes} probes and ${controlsOf} controls, in ${units.length} units, ran once and passed, in ${read.reports.length} shards`;
+    out(`probe-shards: ok (${what})\n`);
+    // The verdict's own summary: what was required and what each shard ran, so that a reader of the check sees the run was whole without opening a shard.
+    if (env.GITHUB_STEP_SUMMARY) {
+      const rows = [...read.reports].sort((a, b) => a.shard - b.shard).map((report) => `| ${report.shard} | ${report.units.map((entry) => entry.id).join(', ')} |`);
+      try {
+        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Kit probes\n\nEvery probe and every control of the table ran once and passed: ${what}.\n\n| Shard | Units that ran |\n|---|---|\n${rows.join('\n')}\n\n`);
+      } catch (error) {
+        err(`probe-shards: could not write the summary: ${firstLine(error.message)}\n`);
+        return 1;
+      }
+    }
     return 0;
   }
 
