@@ -843,6 +843,16 @@ export type SelectProps = {
 // @public
 export type SelectWidth = 'normal' | 'fill';
 
+// @public
+export function Sheet(input: SheetProps): JSX.Element;
+
+// @public (undocumented)
+export type SheetProps = {
+    readonly title: string;
+    readonly onClose: () => void;
+    readonly children: ReactNode;
+} & DataAttributes;
+
 // @public (undocumented)
 export type SpacingStep = 2 | 4 | 6 | 8 | 12 | 16 | 20 | 24;
 

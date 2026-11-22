@@ -29,6 +29,7 @@ export * from './components/SearchField';
 export * from './components/SecretInput';
 export * from './components/SectionCard';
 export * from './components/Select';
+export * from './components/Sheet';
 export * from './components/Stack';
 export * from './components/Status';
 export * from './components/StatusSummary';
