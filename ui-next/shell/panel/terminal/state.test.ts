@@ -112,7 +112,7 @@ describe('the question a close asks (S115, L12: a close with a process running a
   it('asks for a running session whose producer does not say what runs in it: the shell itself is a running process, and "may be running" is the truthful answer until the producer knows', () => {
     expect(closeQuestionOf(snap('running'))).toEqual({
       title: 'Terminate session?',
-      body: 'This ends the terminal session. The shell and the programs running in it are stopped.',
+      body: 'This ends the terminal session. Programs it left running in the background may keep running.',
       confirm: 'Terminate session',
     });
   });

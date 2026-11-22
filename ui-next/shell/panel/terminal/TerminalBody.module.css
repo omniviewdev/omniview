@@ -47,9 +47,9 @@
     outline-offset: -2px;
   }
 
+  /* The mock's screen insets its text by 12 px on all four sides (measured: screen rect [45,639,1390,201], text inset 12). The emulator's fit subtracts its own padding, so the cells it proposes already fit. */
   .screen :global(.xterm) {
-    padding-block-start: var(--ov-spacing-4);
-    padding-inline-start: var(--ov-spacing-12);
+    padding: var(--ov-spacing-12);
   }
 
   .screen :global(.xterm .xterm-viewport) {

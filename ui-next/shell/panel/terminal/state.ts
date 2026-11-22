@@ -97,7 +97,7 @@ export function closeQuestionOf(snapshot: TerminalFeedSnapshot | undefined): Clo
   const title = 'Terminate session?';
   const confirm = 'Terminate session';
   if (foreground === undefined) {
-    return { title, body: 'This ends the terminal session. The shell and the programs running in it are stopped.', confirm };
+    return { title, body: 'This ends the terminal session. Programs it left running in the background may keep running.', confirm };
   }
 
   const who = foreground.name === undefined || foreground.name.trim() === '' ? 'A program' : foreground.name.trim();
