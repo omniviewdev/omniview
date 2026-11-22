@@ -1,4 +1,4 @@
-import { readValue, type FieldKind, type FieldSpec, type FormSchema, type Json, type Option, type SectionSpec } from '../../core/fields';
+import { readValue, type Constraints, type FieldKind, type FieldSpec, type FormSchema, type Json, type Option, type RemoteValidation, type SectionSpec } from '../../core/fields';
 import type { HostCategory, HostSetting, HostSnapshot } from './types';
 
 // The adapter: what the host's settings service declares (its snapshot: categories of typed settings) written as the form model's schema, so that the Settings sheet draws each field by its kind from DECLARED data and no
@@ -93,15 +93,8 @@ function specOf(id: string, setting: HostSetting, drawn: Drawn): FieldSpec {
   const { kind } = drawn;
   const secret = kind === 'secret';
   const fallback = secret ? undefined : readValue(kind, setting.default, false);
-  const extra: { constraints?: Record<string, unknown>; mono?: boolean } = {};
-  if (kind === 'number' && setting.type === 'integer') {
-    extra.constraints = { integer: true };
-  }
-
-  if (kind === 'path') {
-    extra.constraints = { pathKind: setting.fileSelection?.allowFolders === true ? 'directory' : 'file' };
-    extra.mono = true;
-  }
+  const constraints: Constraints | undefined = kind === 'number' && setting.type === 'integer' ? { integer: true } : kind === 'path' ? { pathKind: setting.fileSelection?.allowFolders === true ? 'directory' : 'file' } : undefined;
+  const validate: RemoteValidation | undefined = kind === 'text' || kind === 'path' || kind === 'number' ? { remote: 'host' } : undefined;
 
   return {
     id,
@@ -112,10 +105,11 @@ function specOf(id: string, setting: HostSetting, drawn: Drawn): FieldSpec {
     ...(fallback?.ok === true && fallback.value !== undefined ? { default: fallback.value } : {}),
     ...(drawn.options === undefined ? {} : { options: drawn.options }),
     ...(setting.requiresRestart === true ? { restart: true } : {}),
-    // A typed value is asked of the host on commit; a chosen one is one of the host's own options, and a secret is never asked.
-    ...(kind === 'text' || kind === 'path' || kind === 'number' ? { validate: { remote: 'host' } } : {}),
-    ...extra,
-  } as FieldSpec;
+    // A typed value is asked of the host on commit; a chosen one is one of the host's own options, and a secret is never asked (`validate` above).
+    ...(validate === undefined ? {} : { validate }),
+    ...(constraints === undefined ? {} : { constraints }),
+    ...(kind === 'path' ? { mono: true } : {}),
+  };
 }
 
 function orderOf(categories: HostSnapshot['categories']): readonly HostCategory[] {

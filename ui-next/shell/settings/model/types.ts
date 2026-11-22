@@ -1,8 +1,8 @@
 // What the host's settings service answers, as far as the Settings sheet reads it (`backend/pkg/settings/service.go`: `GetSnapshot`, `Validate`, `Commit`; the SDK's `settings` package: `Category`, `Setting`). Structural
 // types, not the generated classes: the model below is plain TypeScript over plain data, so a test builds a snapshot as an object and the generated classes satisfy these as they are.
 
-/** The SDK's setting types (`settings.SettingType`), as the wire says them. A type this build does not know is read as an unknown string. */
-export type HostSettingType = 'text' | 'select' | 'multiselect' | 'integer' | 'float' | 'toggle' | 'color' | 'datetime' | 'password' | (string & {});
+/** The SDK's setting types (`settings.SettingType`), as the wire says them: `text`, `select`, `multiselect`, `integer`, `float`, `toggle`, `color`, `datetime`, `password`. A type this build does not know is read as it is. */
+export type HostSettingType = string;
 
 export type HostOption = { readonly value: unknown; readonly label: string; readonly description?: string | undefined };
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { deferred } from '../core/fields/testing';
 import { createSettingsControl, type SurfaceModule } from './host';
-import type { SettingsSession } from './model/session';
+import { fakeHost, fakeSession } from './model/testing';
 import type { SettingsClient } from './model/types';
 
 // The control is the part of Settings that is always loaded: whether the sheet is open, the page it was last on, and the loading of everything else. A closed sheet is a store that holds nothing, so that the
@@ -22,7 +22,7 @@ function moduleOf(): Rig {
     createSession: (client) => {
       const dispose = vi.fn();
       sessions.push({ client, dispose });
-      return { dispose } as unknown as SettingsSession;
+      return fakeSession(dispose);
     },
   };
   return { module, sessions };
@@ -45,8 +45,8 @@ describe('open', () => {
   it('loads the sheet\'s code once, and the sheet is open when it has arrived, with a session made for it', async () => {
     const { module, sessions } = moduleOf();
     const loading = deferred<SurfaceModule>();
-    const load = vi.fn(() => loading.promise);
-    const client = {} as SettingsClient;
+    const load = vi.fn(async () => loading.promise);
+    const { client } = fakeHost();
     const control = createSettingsControl({ load, client });
     const heard = vi.fn();
     control.subscribe(heard);
@@ -123,7 +123,7 @@ describe('close', () => {
   it('while the code is still loading, cancels the opening: it does not open when it arrives', async () => {
     const { module, sessions } = moduleOf();
     const loading = deferred<SurfaceModule>();
-    const control = createSettingsControl({ load: () => loading.promise });
+    const control = createSettingsControl({ load: async () => loading.promise });
     control.open();
     control.close();
     loading.resolve(module);

@@ -25,7 +25,7 @@ async function goTo(m: Mounted, title: string): Promise<void> {
 describe('the sheet', () => {
   it('is a dialog named Settings, loading first with nothing to change and a Close that works', async () => {
     const gate = deferred<HostSnapshot>();
-    const m = await mount({ first: () => gate.promise });
+    const m = await mount({ first: async () => gate.promise });
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByText('Loading settings…')).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).toBeNull();
@@ -258,7 +258,7 @@ describe('a secret', () => {
 
 describe('a sheet that cannot load', () => {
   it('says so, offers Retry with the keyboard on it, and Retry asks the host again', async () => {
-    const m = await mount({ first: () => Promise.reject(new Error('down')) });
+    const m = await mount({ first: async () => Promise.reject(new Error('down')) });
     expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t load settings');
     expect(screen.getByRole('button', { name: 'Retry' })).toHaveFocus();
     await m.user.click(screen.getByRole('button', { name: 'Retry' }));

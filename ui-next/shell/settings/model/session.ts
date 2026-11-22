@@ -156,13 +156,11 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
 
   /** Gives the form what the host holds now: a field with no draft follows, one with a draft keeps it, and says it was changed under it. */
   const follow = (form: FormStore, model: SettingsModel): void => {
-    const next = { ...notes };
+    const next: Record<string, Json> = {};
     for (const [id, value] of Object.entries(model.initial)) {
       const dirty = form.field(id)?.dirty === true;
-      if (dirty && !sameValue(applied[id], value)) {
-        next[id] = value;
-      } else if (!dirty) {
-        delete next[id];
+      if (dirty && (!sameValue(applied[id], value) || Object.hasOwn(notes, id))) {
+        next[id] = !sameValue(applied[id], value) ? value : (notes[id] ?? value);
       }
     }
 

@@ -53,7 +53,7 @@ describe('loading', () => {
 
   it('fails when the host does not answer, and Retry asks again', async () => {
     const host = fakeHost();
-    host.next.snapshot = () => Promise.reject(new Error('down'));
+    host.next.snapshot = async () => Promise.reject(new Error('down'));
     const clock = manualClock();
     const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
     await clock.flush();
@@ -78,7 +78,7 @@ describe('loading', () => {
   it('refetches when the host says something changed while it was loading, so what it shows is not older than the event', async () => {
     const host = fakeHost();
     const first = deferred<HostSnapshot>();
-    host.next.snapshot = () => first.promise;
+    host.next.snapshot = async () => first.promise;
     const clock = manualClock();
     createSettingsSession({ client: host.client, scheduler: clock.scheduler });
     host.change('editor.fontSize', 20);
@@ -140,7 +140,7 @@ describe('a setting that is typed', () => {
 
   it('says "Couldn\'t check" with Retry when the host cannot be asked, and applies nothing', async () => {
     const { session, host, clock } = await rig();
-    host.next.validate = () => Promise.reject(new Error('unreachable'));
+    host.next.validate = async () => Promise.reject(new Error('unreachable'));
     const { form } = ready(session);
     form.setValue('developer.gopath', '/usr/local/go/bin/go');
     await form.commit('developer.gopath');
@@ -151,7 +151,7 @@ describe('a setting that is typed', () => {
 
   it('keeps the typed text and offers Retry when the host cannot save it, in words that are never the host\'s raw text', async () => {
     const { session, host, clock } = await rig();
-    host.next.commit = () => Promise.reject(new Error('Settings could not be saved. Check the values and try again.'));
+    host.next.commit = async () => Promise.reject(new Error('Settings could not be saved. Check the values and try again.'));
     const { form } = ready(session);
     form.setValue('terminal.defaultShell', '/bin/fish');
     await form.commit('terminal.defaultShell');
@@ -279,7 +279,7 @@ describe('a change made elsewhere while the sheet is open', () => {
     const { session, host, clock } = await rig();
     const { form } = ready(session);
     const stale = deferred<HostSnapshot>();
-    host.next.snapshot = () => stale.promise;
+    host.next.snapshot = async () => stale.promise;
     host.change('editor.fontSize', 12);
     // The person commits another value while the host's answer is on its way.
     form.setValue('developer.marketplace_url', 'https://mkt.example.com');
@@ -336,7 +336,7 @@ describe('disposing', () => {
     const host = fakeHost();
     const clock = manualClock();
     const late = deferred<HostSnapshot>();
-    host.next.snapshot = () => late.promise;
+    host.next.snapshot = async () => late.promise;
     const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
     expect(host.listeners()).toBe(1);
     session.dispose();

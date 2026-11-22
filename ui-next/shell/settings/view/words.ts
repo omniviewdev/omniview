@@ -36,7 +36,7 @@ function said(value: Json | undefined, room: number): string {
     return `“${value ? 'on' : 'off'}”`;
   }
 
-  const text = String(value);
+  const text = typeof value === 'string' || typeof value === 'number' ? String(value) : JSON.stringify(value);
   return `“${text.length > room ? `${text.slice(0, room - 1).trimEnd()}…` : text}”`;
 }
 

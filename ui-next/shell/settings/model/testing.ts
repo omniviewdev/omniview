@@ -1,3 +1,4 @@
+import type { SettingsSession } from './session';
 import type { HostCategory, HostCommit, HostOption, HostSetting, HostSettingType, HostSnapshot, HostValidation, SettingsClient } from './types';
 
 // Test support only: nothing in the model imports this file. A host snapshot built as plain data, with the host's own categories as the Go side declares them today (`internal/settings/{general,appearance,terminal,
@@ -66,13 +67,13 @@ export const EDITOR = category('editor', 'Editor', 'Change settings within the c
   setting('formatOnPaste', 'toggle', 'Format On Paste', 'Enable format on paste. Defaults to false.', false),
   setting('formatOnType', 'toggle', 'Format On Type', 'Enable format on type. Defaults to false.', false),
   setting('lineHeight', 'integer', 'Line Height', 'The line height.', 1),
-  setting('lineNumbers', 'text', 'Line Numbers', "Control the rendering of line numbers. Defaults to 'on'.", 'on', { options: opts(['on', 'On'], ['off', 'Off'], ['relative', 'Relative'], ['interval', 'Interval']) }),
+  setting('lineNumbers', 'text', 'Line Numbers', 'Control the rendering of line numbers. Defaults to \'on\'.', 'on', { options: opts(['on', 'On'], ['off', 'Off'], ['relative', 'Relative'], ['interval', 'Interval']) }),
   setting('lineNumbersMinChars', 'integer', 'Line Number Width', 'Control the width of line numbers, by reserving horizontal space for rendering at least an amount of digits. Defaults to 5.', 5),
-  setting('minimapEnabled', 'toggle', 'Minimap Enabled', "Enable the rendering of the minimap. Defaults to 'true'", true),
+  setting('minimapEnabled', 'toggle', 'Minimap Enabled', 'Enable the rendering of the minimap. Defaults to \'true\'', true),
   setting('minimapScale', 'integer', 'Minimap Scale', 'Relative size of the font in the minimap. Defaults to 1.', 1),
-  setting('minimapShowSlider', 'text', 'Minimap Slider', "Control the rendering of the minimap slider. Defaults to 'mouseover'.", 'mouseover', { options: opts(['mouseover', 'Mouseover'], ['always', 'Always']) }),
-  setting('minimapSide', 'text', 'Minimap Side', "Control the side of the minimap in editor. Defaults to 'right'", 'right', { options: opts(['right', 'Right'], ['left', 'Left']) }),
-  setting('minimapSize', 'text', 'Minimap Size', "Control the minimap rendering mode. Defaults to 'actual'.", 'actual', { options: opts(['actual', 'Actual'], ['proportional', 'Proportional'], ['fill', 'Fill'], ['fit', 'Fit']) }),
+  setting('minimapShowSlider', 'text', 'Minimap Slider', 'Control the rendering of the minimap slider. Defaults to \'mouseover\'.', 'mouseover', { options: opts(['mouseover', 'Mouseover'], ['always', 'Always']) }),
+  setting('minimapSide', 'text', 'Minimap Side', 'Control the side of the minimap in editor. Defaults to \'right\'', 'right', { options: opts(['right', 'Right'], ['left', 'Left']) }),
+  setting('minimapSize', 'text', 'Minimap Size', 'Control the minimap rendering mode. Defaults to \'actual\'.', 'actual', { options: opts(['actual', 'Actual'], ['proportional', 'Proportional'], ['fill', 'Fill'], ['fit', 'Fit']) }),
 ]);
 
 export const DEVELOPER = category('developer', 'Developer Settings', 'Settings for developing or writing plugins within Omniview', 'LuBeaker', [
@@ -135,7 +136,7 @@ export function hostSnapshot(overrides: Readonly<Record<string, unknown>> = {}, 
       const sensitive = one.sensitive === true || one.type === 'password';
       settings[id] = sensitive || !Object.hasOwn(overrides, key) ? one : { ...one, value: overrides[key] };
       if (sensitive) {
-        facts[key] = stored[key] === true;
+        facts[key] = stored[key] ?? false;
       }
     }
 
@@ -149,7 +150,7 @@ export type FakeHost = {
   readonly client: SettingsClient;
   /** What the host holds now, by the id a commit takes (a secret's value is here and nowhere a snapshot reaches). */
   readonly values: Map<string, unknown>;
-  readonly calls: { readonly snapshot: number; readonly validate: Array<readonly [string, unknown]>; readonly commit: Array<Readonly<Record<string, unknown>>> };
+  readonly calls: { snapshot: number; readonly validate: Array<readonly [string, unknown]>; readonly commit: Array<Readonly<Record<string, unknown>>> };
   /** Someone else changes a setting (another window, an agent): the host says so to every listener. */
   readonly change: (id: string, value: unknown) => void;
   /** The listeners that are registered now. */
@@ -240,5 +241,17 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
     listeners: () => listeners.size,
     next,
     pendingRestart,
+  };
+}
+
+/** A session that does nothing and can be disposed: what a test of the control (which only makes and disposes one) holds. */
+export function fakeSession(dispose: () => void = () => undefined): SettingsSession {
+  return {
+    getState: () => ({ phase: 'loading' }),
+    subscribe: () => () => undefined,
+    load: () => undefined,
+    elsewhere: { getSnapshot: () => ({}), subscribe: () => () => undefined },
+    announcements: { getSnapshot: () => ({ text: '', serial: 0 }), subscribe: () => () => undefined },
+    dispose,
   };
 }

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Gear } from './Gear';
 import { SettingsProvider } from './context';
 import { createSettingsControl, type SettingsControl, type SurfaceModule, type SurfaceProps } from './host';
-import type { SettingsSession } from './model/session';
+import { fakeSession } from './model/testing';
 import { Settings } from './Settings';
 
 // The always-loaded part of Settings in a window: the chord, the gear, and the sheet's mounting while it is open. The sheet itself is a stand-in here (a dialog with a Close): what it draws is `view/`'s, and what a modal does in a real
@@ -28,7 +28,7 @@ function Stand({ onClose }: SurfaceProps) {
   );
 }
 
-const module: SurfaceModule = { Surface: Stand, createSession: () => ({ dispose: vi.fn() }) as unknown as SettingsSession };
+const module: SurfaceModule = { Surface: Stand, createSession: () => fakeSession() };
 
 function mount(platform = 'MacIntel'): { readonly control: SettingsControl; readonly opener: HTMLButtonElement } {
   vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);

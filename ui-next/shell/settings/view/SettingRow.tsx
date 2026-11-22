@@ -10,7 +10,7 @@ import { elsewhereNote, laneOf, resetLabel } from './words';
 // in one field draws that one row.
 
 /** What the field model holds for a number, as the text a person would have typed. */
-const numberText = (value: Json | undefined): string => (value === undefined || value === null ? '' : String(value));
+const numberText = (value: Json | undefined): string => (typeof value === 'number' || typeof value === 'string' ? String(value) : '');
 
 /** The text typed into a number field stays in the field while the model's value is what it reads as: the model holds `1` for `1.` and `001`, and the part must not take a character away from a person who is typing. */
 function NumberControl({ field, form }: { readonly field: FieldState; readonly form: FormStore }) {
@@ -60,7 +60,7 @@ function Control({ field, form }: { readonly field: FieldState; readonly form: F
       const options = (field.options ?? []).map((option) => ({ value: String(option.value), label: option.label }));
       return (
         <Select
-          value={field.value === undefined || field.value === null ? '' : String(field.value)}
+          value={typeof field.value === 'string' || typeof field.value === 'number' || typeof field.value === 'boolean' ? String(field.value) : ''}
           options={options}
           placeholder="Choose a value"
           width="normal"
@@ -93,7 +93,15 @@ function Control({ field, form }: { readonly field: FieldState; readonly form: F
           }}
         />
       );
-    default:
+    case 'color':
+    case 'list':
+    case 'multiselect':
+    case 'unsupported':
+      // The adapter draws none of these in this slice (`NOT_DRAWN`, `drawnAs`).
+      return null;
+    case 'text':
+    case 'path':
+    case 'url':
       return (
         <TextInput
           value={typeof field.value === 'string' ? field.value : ''}
