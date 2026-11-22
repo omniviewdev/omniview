@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# INV4: like host.sh, but the throwaway HOME is created once and KEPT across stops, so a restart is a restart.
+#   hostkeep.sh start <name> <hostbin> <plugin-dir> <kubeconfig>     prints the port it bound itself
+#   hostkeep.sh stop <name>
+# State lives in $WORK/hosts/<name>: home/ (kept), host.pid, port, log-path, host-<time>.log. WORK is $INV4_WORK, else ${TMPDIR:-/tmp}/inv4-work.
+# Same rules as host.sh: a validated one-component name, no second start of a name whose host runs, a signal only to the process it started and can still tell is that host (pid, start time and
+# command, recorded in host.pid), a host that does not answer is stopped, and the HOME is initialised whole or not at all (an incomplete one is removed, so the next start tries again).
+# It removes only the plugin directory inside the HOME and an incomplete HOME it made itself. The port is found by binding and closing, which can race with another process.
+set -euo pipefail
+WORK="${INV4_WORK:-${TMPDIR:-/tmp}/inv4-work}"
+channel=feature-ui-next
+free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
+
+valid_name() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; }
+started_at() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
+# host.pid is three lines: the pid, the process's start time, the command it was started with.
+pid_of() { sed -n 1p "$1"; }
+alive_same() { # the recorded process is alive and began when it was recorded
+  local f="$1" pid when
+  [[ -f "$f" ]] || return 1
+  pid="$(pid_of "$f")"; when="$(sed -n 2p "$f")"
+  [[ "$pid" =~ ^[0-9]+$ && -n "$when" ]] && kill -0 "$pid" 2>/dev/null && [[ "$(started_at "$pid")" == "$when" ]]
+}
+is_host() { # alive_same, and its command is still the host binary: the identity that is checked before a signal
+  local f="$1" bin
+  alive_same "$f" || return 1
+  bin="$(sed -n 3p "$f")"
+  [[ -n "$bin" && "$(ps -o command= -p "$(pid_of "$f")" 2>/dev/null)" == *"$bin"* ]]
+}
+terminate() { # TERM, up to 10 s, then KILL, each only while the process is still the host that was started
+  local f="$1" pid
+  pid="$(pid_of "$f")"
+  is_host "$f" || { echo "pid $pid is not the host that was started (it exited, or its pid was reused): not signalling" >&2; return 1; }
+  kill "$pid" 2>/dev/null || true
+  for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || return 0; sleep 0.2; done
+  if is_host "$f"; then kill -KILL "$pid" 2>/dev/null || true; fi
+}
+
+case "${1:-}" in
+  start)
+    [[ $# -eq 5 ]] || { echo "usage: hostkeep.sh start <name> <hostbin> <plugin-dir> <kubeconfig>" >&2; exit 2; }
+    name="$2" hostbin="$3" plugin="$4" kubeconfig="$5"
+    valid_name "$name" || { echo "invalid host name '$name': one path component of letters, digits, '.', '_' and '-'" >&2; exit 2; }
+    [[ -x "$hostbin" ]] || { echo "$hostbin is not an executable host" >&2; exit 2; }
+    [[ -f "$plugin/plugin.yaml" ]] || { echo "$plugin holds no plugin.yaml" >&2; exit 2; }
+    dir="$WORK/hosts/$name"; home="$dir/home"
+    if is_host "$dir/host.pid"; then echo "host $name already runs (pid $(pid_of "$dir/host.pid")): stop it first" >&2; exit 1; fi
+    if [[ ! -d "$home" ]]; then
+      [[ -f "$kubeconfig" ]] || { echo "no kubeconfig at $kubeconfig" >&2; exit 2; }
+      mkdir -p "$dir"; init="$(mktemp -d "$dir/home-init.XXXXXX")"
+      trap 'rm -rf -- "$init"' EXIT
+      mkdir -p "$init/.kube"; cp "$kubeconfig" "$init/.kube/config"; chmod 600 "$init/.kube/config"
+      KUBECONFIG="$init/.kube/config" kubectl config rename-context "$(KUBECONFIG="$init/.kube/config" kubectl config current-context)" kind-inv4 >/dev/null
+      mv "$init" "$home"; trap - EXIT
+    fi
+    port="$(free_port)"
+    installed="$home/.omniview-$channel/plugins/kubernetes"
+    rm -rf -- "$installed"; mkdir -p "$installed"; cp -R "$plugin/." "$installed/"
+    log="$dir/host-$(date +%s).log"
+    env -i PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-en_US.UTF-8}" USER="${USER:-}" HOME="$home" OMNIVIEW_CHANNEL="$channel" WAILS_SERVER_HOST=127.0.0.1 WAILS_SERVER_PORT="$port" \
+      nohup "$hostbin" >"$log" 2>&1 &
+    pid=$!
+    { echo "$pid"; started_at "$pid"; echo "$hostbin"; } >"$dir/host.pid"; echo "$port" >"$dir/port"; echo "$log" >"$dir/log-path"
+    for _ in $(seq 1 120); do
+      if ! alive_same "$dir/host.pid"; then echo "host $name exited during start" >&2; tail -n 20 "$log" >&2; rm -f "$dir/host.pid"; exit 1; fi
+      if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null; then echo "$port"; exit 0; fi
+      sleep 0.5
+    done
+    echo "host $name did not answer in 60 s: stopping it" >&2
+    tail -n 20 "$log" >&2
+    terminate "$dir/host.pid" || true
+    rm -f "$dir/host.pid"; exit 1 ;;
+  stop)
+    [[ $# -eq 2 ]] || { echo "usage: hostkeep.sh stop <name>" >&2; exit 2; }
+    valid_name "$2" || { echo "invalid host name '$2'" >&2; exit 2; }
+    pidfile="$WORK/hosts/$2/host.pid"; [[ -f "$pidfile" ]] || { echo "no pid file for $2"; exit 0; }
+    pid="$(pid_of "$pidfile")"
+    if is_host "$pidfile"; then terminate "$pidfile" && echo "host $2 (pid $pid) stopped"; else echo "host $2: pid $pid is not a running host (it exited, or its pid was reused): nothing signalled"; fi
+    rm -f "$pidfile" ;;
+  *) echo "usage: hostkeep.sh start|stop ..." >&2; exit 2 ;;
+esac

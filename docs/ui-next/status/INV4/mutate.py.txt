@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+# INV4 mutation runner. It applies one fault to a scratch copy of the plugin's package (never to a worktree), runs the tests named for the faults and says whether the fault is CAUGHT.
+# The rule (docs/ui-next/AGENTS.md 28: a negative control must trip the assertion it is named for, and the same fault must pass undetected when that assertion is removed):
+#   1. The baseline runs first, on the unmutated copy: every selected test must pass, twice. A red baseline stops the run and nothing is counted (a test that fails WITHOUT the fault cannot detect it).
+#   2. A fault is CAUGHT only by tests that pass at the baseline and fail with the fault, and that fail again when only they are run again with it (a test that fails once on a fault and passes on the same fault is noise).
+#   3. A fault that does not apply, breaks the build, passes every test, or is seen only by tests that EXPECT does not name for it is NOT caught, and the run exits 1.
+#   4. The converse (--converse) must first see the fault trip an assertion of a test named for it. It then removes exactly the one-line assertions that tripped, round by round, and the run with them removed must pass.
+# Usage (INV4_MUT_BASE is a copy of go.mod, go.sum, pkg/ and ui/src/kinds/ of the plugin under test; INV4_WORK holds the scratch copies; INV4_MUT_OUT, if set, is a JSON file for the results):
+#   python3 mutate.py                 every fault          python3 mutate.py M35 M36        these faults          python3 mutate.py --converse M1 M2        the converse of these          python3 mutate.py --baseline
+import json, os, re, shutil, subprocess, sys, tempfile
+WORK = os.environ.get('INV4_WORK', os.path.join(os.environ.get('TMPDIR', '/tmp'), 'inv4-work'))
+BASE = os.environ.get('INV4_MUT_BASE', os.path.join(WORK, 'mut', 'base'))
+SCRATCH = os.path.join(WORK, 'mut')
+RUN = 'NativeHeal|NativeRefresh|NativeExplicitRefresh|NativeBuiltinGroup|NativeStart|NativeConnectionFact|NativeClipGroupVersion|NativeBuiltinGroups|NativeHung|NativeExtension|NativeGroupReadBound|NativeStopping|NativeConnectionWith|NativeForbidden|NativeUnavailableReason|NativeDiscovery|NativeAggregated|NativeHTTP|NativeSchemaSupportRefresh'
+R = 'pkg/plugin/resource/'
+MUTANTS = {
+ 'M1 built-in union off': (R+'native_catalog_merge.go', 'old != nil && nativeBuiltinVersion(list.GroupVersion) {', 'old != nil && false {'),
+ 'M2 built-in lists not kept': (R+'native_catalog_merge.go', 'didNotAnswer || nativeBuiltinVersion(old.GroupVersion) {', 'didNotAnswer {'),
+ 'M3 unavailable lists not kept': (R+'native_catalog_merge.go', 'didNotAnswer || nativeBuiltinVersion(old.GroupVersion) {', 'nativeBuiltinVersion(old.GroupVersion) {\n\t\t\t_ = didNotAnswer'),
+ 'M4 gone lists kept': (R+'native_catalog_merge.go', 'didNotAnswer || nativeBuiltinVersion(old.GroupVersion) {', 'didNotAnswer || true {'),
+ 'M5 fact freezes (unavailable from previous)': (R+'native_catalog.go', 'return nativeSupport{bindings: bindings, unavailable: unavailable, discovery: used}, nil', 'if previous != nil && len(previous.unavailable) != 0 {\n\t\tunavailable = previous.unavailable\n\t}\n\treturn nativeSupport{bindings: bindings, unavailable: unavailable, discovery: used}, nil'),
+ 'M6 refresh does not follow the heal': (R+'native_catalog_refresh.go', '\t\t\tp.followCatalogHealLocked(ctx, connectionID, snapshot)\n', ''),
+ 'M7 refresh does not invalidate the fact': (R+'native_catalog_refresh.go', '\t\tp.invalidateConnectionFacts(ctx, connectionID)\n', ''),
+ 'M8 empty discovery accepted': (R+'native_catalog.go', 'if !read.listsKinds() {', 'if false {'),
+ 'M9 fact unbounded': (R+'native_catalog_heal.go', 'listed := unavailable[:min(len(unavailable), unavailableGroupsListed)]', 'listed := unavailable'),
+ 'M10 fact names not clipped': (R+'native_catalog_heal.go', '"groupVersion": clipGroupVersion(group.GroupVersion)', '"groupVersion": group.GroupVersion'),
+ 'M11 builtin list lacks lifecycle': (R+'native_catalog.go', '"lifecycle.k8s.io": {}, ', ''),
+ 'M12 refresh resets the backoff': (R+'native_catalog_heal.go', '\tif p.catalogHeals[connectionID] != nil {\n\t\treturn\n\t}\n\tsession, _ :=', '\tsession, _ :='),
+ 'M13 merge only when the catalog lacked a group': (R+'native_catalog.go', 'if previous != nil && (len(previous.unavailable) != 0 || len(unavailable) != 0) {', 'if previous != nil && len(previous.unavailable) != 0 {'),
+ 'M14 merge on every refresh': (R+'native_catalog.go', 'if previous != nil && (len(previous.unavailable) != 0 || len(unavailable) != 0) {', 'if previous != nil {'),
+ 'M15 heal does not re-arm': (R+'native_catalog_heal.go', '\t\t\tp.armCatalogHealLocked(connectionID, heal.session, heal.attempt+1)\n\t\t} else {', '\t\t\tdelete(p.catalogHeals, connectionID)\n\t\t} else {'),
+ 'M16 attempt ignores that it is no longer pending': (R+'native_catalog_heal.go', '\tif !pending {\n\t\treturn\n\t}\n', '\t_ = pending\n'),
+ 'M17 complete catalog leaves the heal pending': (R+'native_catalog_heal.go', '\t\tp.stopCatalogHealLocked(connectionID)\n\t\treturn\n\t}\n\tif p.catalogHeals', '\t\treturn\n\t}\n\tif p.catalogHeals'),
+ 'M18 built-in group that does not answer is unavailable': (R+'native_catalog.go', 'if err := nativeBuiltinFailure(failed); err != nil {', 'if err := nativeBuiltinFailure(failed); err != nil && false {'),
+ 'M20 clip counts bytes, not JSON': (R+'native_catalog_merge.go', 'size += jsonStringBytes(character, width)', 'size += width'),
+ 'M21 clip keeps a name that is not UTF-8': (R+'native_catalog_merge.go', 'if character == utf8.RuneError && width == 1 {\n\t\t\treturn groupVersion[:i]\n\t\t}\n', ''),
+ 'M22 clip cuts the longest legal name': (R+'native_catalog_merge.go', 'if size > nativeGroupVersionMaxBytes {', 'if size >= nativeGroupVersionMaxBytes {'),
+ 'M23 clip counts a six-byte escape as seven': (R+'native_catalog_merge.go', '\t\treturn 6\n\t}\n\treturn width\n', '\t\treturn 7\n\t}\n\treturn width\n'),
+ 'M24 clip counts a quote, a backslash and a newline as one byte': (R+'native_catalog_merge.go', '\t\treturn 2\n', '\t\treturn 1\n'),
+ 'M25 clip does not count <, > and & as escaped': (R+'native_catalog_merge.go', "character == '<', character == '>', character == '&', character == '\\u2028'", "character == '\\u2028'"),
+ 'M26 clip does not count U+2028 and U+2029 as escaped': (R+'native_catalog_merge.go', ", character == '\\u2028', character == '\\u2029':", ':'),
+ 'M27 extension reads go through a pool of four': [(R+'native_discovery.go', '\tbound := nativeGroupReadBound(ctx)\n', '\tbound := nativeGroupReadBound(ctx)\n\textensionSlots := make(chan struct{}, 4)\n'), (R+'native_discovery.go', '\t\t\t\treadCtx, stopReading := context.WithTimeout(workCtx, bound)\n', '\t\t\t\textensionSlots <- struct{}{}\n\t\t\t\tdefer func() { <-extensionSlots }()\n\t\t\t\treadCtx, stopReading := context.WithTimeout(workCtx, bound)\n')],
+ 'M28 an extension read has no bound': (R+'native_discovery.go', 'readCtx, stopReading := context.WithTimeout(workCtx, bound)', 'readCtx, stopReading := context.WithTimeout(workCtx, bound+24*time.Hour)'),
+ 'M29 a built-in read has the bound too': (R+'native_discovery.go', '\t\t\t\tread(index, workCtx)\n', '\t\t\t\tboundedCtx, stopBounded := context.WithTimeout(workCtx, bound)\n\t\t\t\tread(index, boundedCtx)\n\t\t\t\tstopBounded()\n'),
+ 'M30 the bound is all that is left, not half': (R+'native_discovery.go', 'bound = min(bound, time.Until(deadline)/2)', 'bound = min(bound, time.Until(deadline))'),
+ 'M31 the bound has no cap': (R+'native_discovery.go', 'bound := nativeGroupReadMaximum\n', 'bound := 24 * time.Hour\n'),
+ 'M32 an extension read is not cancelled with the acquisition': (R+'native_discovery.go', 'context.WithTimeout(workCtx, bound)', 'context.WithTimeout(context.Background(), bound)'),
+ 'M33 the bound is half as long as it should be': (R+'native_discovery.go', 'bound := nativeGroupReadBound(ctx)\n', 'bound := nativeGroupReadBound(ctx) / 2\n'),
+ 'M34 a timed out read is not a timeout': (R+'native_catalog.go', 'errors.Is(cause, context.DeadlineExceeded) || ', ''),
+ 'M35 custom.metrics.k8s.io is built-in': (R+'native_catalog.go', '"lifecycle.k8s.io": {}, ', '"lifecycle.k8s.io": {}, "custom.metrics.k8s.io": {}, '),
+ 'M36 apiregistration.k8s.io is not built-in': (R+'native_catalog.go', '"apiregistration.k8s.io": {}, ', ''),
+ 'M37 an index that lists no known extension group removes their kinds': (R+'native_catalog.go', '\t\tunavailable = withAbsentNativeExtensions(previous, read, unavailable)\n', '\t\t_ = withAbsentNativeExtensions\n'),
+ 'M38 a wrong extension document is not validated': (R+'native_discovery.go', '\tlists = withoutInvalidNativeVersions(lists, failed)\n', ''),
+ 'M39 every index is degraded': (R+'native_catalog_invalid.go', 'return unavailable // the index lists a group the catalog knew: it is believed', 'break'),
+ 'M40 versions that disagree on namespaced are not invalid': (R+'native_catalog_invalid.go', 'if len(versions[true]) == 0 || len(versions[false]) == 0 {', 'if true {'),
+ 'M41 a resource twice is not invalid': (R+'native_catalog_invalid.go', 'if _, twice := says[api.Name]; twice {', 'if _, twice := says[api.Name]; twice && false {'),
+ 'M42 a resource without a name or kind is not invalid': (R+'native_catalog_invalid.go', 'if api.Name == "" || api.Kind == "" {', 'if false {'),
+ 'M43 a wrong built-in document is made unavailable too': [(R+'native_catalog_invalid.go', 'return gv.Group, err == nil && !nativeBuiltinGroup(gv.Group)', 'return gv.Group, err == nil'), (R+'native_catalog.go', 'if nativeBuiltinGroup(gv.Group) && (first == nil || gv.String() < first.String()) {', 'if nativeBuiltinGroup(gv.Group) && !errors.Is(failed.Groups[gv], errNativeDocumentInvalid) && (first == nil || gv.String() < first.String()) {')],
+ 'M44 the heal keeps naming a down group nobody serves any more': [(R+'native_catalog_invalid.go', '\tif len(kept) == 0 {\n\t\treturn unavailable\n\t}\n', ''), (R+'native_catalog_invalid.go', '\t\t\tknownGroups[name] = struct{}{}\n\t\t}\n\t}\n\tfor _, group := range previous.discovery.groups {', '\t\t\tknownGroups[name] = struct{}{}\n\t\t\tkept[group.GroupVersion] = struct{}{}\n\t\t}\n\t}\n\tfor _, group := range previous.discovery.groups {')],
+ 'M45 the absent rule applies to a refresh of a complete catalog too': [(R+'native_catalog.go', '\tif previous != nil && (len(previous.unavailable) != 0 || len(unavailable) != 0) {\n\t\tunavailable = withAbsentNativeExtensions(previous, read, unavailable)\n\t\tused = mergeNativeDiscovery(previous.discovery, read, unavailable)\n\t}\n', '\tif previous != nil {\n\t\tunavailable = withAbsentNativeExtensions(previous, read, unavailable)\n\t}\n\tif previous != nil && (len(previous.unavailable) != 0 || len(unavailable) != 0) {\n\t\tused = mergeNativeDiscovery(previous.discovery, read, unavailable)\n\t}\n')],
+ 'M19 401/403 of a group version is unavailable': (R+'native_catalog.go', '\t\t\t\tif k8serrors.IsForbidden(cause) || k8serrors.IsUnauthorized(cause) {\n\t\t\t\t\treturn nativeDiscovery{}, nil, cause\n\t\t\t\t}', '\t\t\t\tif false {\n\t\t\t\t\treturn nativeDiscovery{}, nil, cause\n\t\t\t\t}'),
+}
+# The tests named for each fault (the first names of the table in INV4.md, without their TestNative prefix): a fault must be caught by at least one of them. An attribution the run does not confirm is a finding.
+EXPECT = {
+ 'M1': ['HealMixedCase', 'HealNeverTakesABuiltInKindAway'], 'M2': ['HealMixedCase', 'HealNeverTakesABuiltInKindAway'],
+ 'M3': ['HealFactNamesWhatIsUnavailableNow', 'HealKeepsWhatIsListedButDoesNotAnswerAndAddsWhatAnswers'], 'M4': ['HealFactNamesWhatIsUnavailableNow', 'HealFollowsTheServerForWhatItNoLongerLists'],
+ 'M5': ['ConnectionFactNamesTheUnavailableGroupsAndFollowsTheirRecovery', 'ExplicitRefreshUpdatesTheFactAndEndsTheHeal'], 'M6': ['ExplicitRefreshUpdatesTheFactAndEndsTheHeal', 'RefreshThatCannotReadAGroupKeepsItsKinds'],
+ 'M7': ['ConnectionFactNamesTheUnavailableGroupsAndFollowsTheirRecovery', 'ExplicitRefreshUpdatesTheFactAndEndsTheHeal'], 'M8': ['HealRefusesADiscoveryThatListsNothing', 'StartDrawsTheLineBetweenAnUnavailableGroupAndAClusterThatCannotBeRead'],
+ 'M9': ['ConnectionFactFitsTheSDKLimitWithNamesOfTheLongestLegalLength', 'ConnectionFactNamesAtMostThirtyTwoGroupsAndCountsTheRest'], 'M10': ['ConnectionFactBoundsTheJSONOfGroupNamesNotTheirLength', 'ConnectionFactClipsAGroupNameNoServerCouldLegallySend'],
+ 'M11': ['BuiltinGroupsHoldEveryGroupClientGoServes'], 'M12': ['RefreshKeepsThePendingHealAndItsBackoff'],
+ 'M13': ['RefreshThatCannotReadAGroupKeepsItsKinds', 'SchemaSupportRefreshPreservesAndRetiresExactDemand'], 'M14': ['RefreshOfACompleteCatalogFollowsTheServer'],
+ 'M15': ['HealFactNamesWhatIsUnavailableNow', 'HealFollowsTheServerForWhatItNoLongerLists'], 'M16': ['HealOfAnEarlierStartCannotRunAfterARestart'], 'M17': ['ExplicitRefreshUpdatesTheFactAndEndsTheHeal'],
+ 'M18': ['BuiltinGroupFailureKeepsItsCause', 'StartDrawsTheLineBetweenAnUnavailableGroupAndAClusterThatCannotBeRead'], 'M19': ['ForbiddenGroupVersionIsARefusedClusterNotAnUnavailableGroup', 'StartDoesNotRetryAuthenticationOrAuthorization'],
+ 'M20': ['ClipGroupVersionBoundsTheJSONAndNeverCutsACharacter', 'ConnectionFactBoundsTheJSONOfGroupNamesNotTheirLength'], 'M21': ['ClipGroupVersionCutsBeforeABytePastUTF8'],
+ 'M22': ['ClipGroupVersionBoundsTheJSONAndNeverCutsACharacter'], 'M23': ['ClipGroupVersionBoundsTheJSONAndNeverCutsACharacter'], 'M24': ['ClipGroupVersionBoundsTheJSONAndNeverCutsACharacter'],
+ 'M25': ['ClipGroupVersionBoundsTheJSONAndNeverCutsACharacter'], 'M26': ['ClipGroupVersionBoundsTheJSONAndNeverCutsACharacter'],
+ 'M27': ['DiscoveryParallelRequests', 'HungExtensionGroupsCostOneBoundInTotal'], 'M28': ['ExtensionGroupThatAnswersInsideTheBoundIsNotNamed', 'HealKeepsTheKindsOfAGroupThatNowHangs'],
+ 'M29': ['StartFailsWhenTheIndexOrABuiltInGroupVersionDoesNotAnswerBeforeTheDeadline'], 'M30': ['GroupReadBoundIsHalfWhatIsLeftOfTheDeadlineAtMostFiveSeconds', 'StartNamesAnExtensionGroupThatDoesNotAnswerWithinTheBoundAndProceeds'],
+ 'M31': ['GroupReadBoundIsHalfWhatIsLeftOfTheDeadlineAtMostFiveSeconds'], 'M32': ['DiscoveryParallelRequests', 'StoppingTheConnectionEndsAHealAttemptWaitingOnAHungGroup'],
+ 'M33': ['ExtensionGroupThatAnswersInsideTheBoundIsNotNamed', 'HealOfAGroupThatHangsCostsOneBoundAndKeepsTheLoop'], 'M34': ['ExtensionGroupThatAnswersInsideTheBoundIsNotNamed', 'HealOfAGroupThatHangsCostsOneBoundAndKeepsTheLoop'],
+ 'M35': ['BuiltinGroupsAreExactlyTheGroupsTheAPIServerServesInProcess'], 'M36': ['BuiltinGroupsAreExactlyTheGroupsTheAPIServerServesInProcess'],
+ 'M37': ['HealKeepsEveryExtensionKindWhenTheIndexListsNoneOfThem'], 'M38': ['StartNamesAnExtensionGroupWhoseDocumentIsWrongInsteadOfFailing'],
+ 'M39': ['ConnectionFactNamesTheUnavailableGroupsAndFollowsTheirRecovery', 'ExplicitRefreshUpdatesTheFactAndEndsTheHeal'], 'M40': ['StartNamesAnExtensionGroupWhoseDocumentIsWrongInsteadOfFailing'],
+ 'M41': ['StartNamesAnExtensionGroupWhoseDocumentIsWrongInsteadOfFailing'], 'M42': ['StartNamesAnExtensionGroupWhoseDocumentIsWrongInsteadOfFailing'],
+ 'M43': ['StartNamesAnExtensionGroupWhoseDocumentIsWrongInsteadOfFailing', 'HealKeepsEveryExtensionKindWhenTheIndexListsNoneOfThem'], 'M44': ['HealEndsWhenTheOnlyExtensionGroupTheCatalogKnewIsDeleted', 'HealKeepsEveryExtensionKindWhenTheIndexListsNoneOfThem'],
+ 'M45': ['RefreshOfACompleteCatalogFollowsAnIndexThatListsNoExtensionGroup'],
+}
+ENV = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local', GOFLAGS='')
+def short(name): return name.replace('TestNative', '', 1)
+def ident(key): return key.split(' ')[0]
+def copy_base(prefix):
+    os.makedirs(SCRATCH, exist_ok=True)
+    d = tempfile.mkdtemp(prefix=prefix, dir=SCRATCH)
+    shutil.copytree(BASE, d, dirs_exist_ok=True)
+    return d
+def apply(d, spec):
+    """Applies the fault to the copy. None when it applied, else why it did not."""
+    for path, old, new in (spec if isinstance(spec, list) else [spec]):
+        s = open(os.path.join(d, path)).read()
+        if old not in s: return f'{path}: the text to replace is not there'
+        open(os.path.join(d, path), 'w').write(s.replace(old, new, 1))
+    return None
+def go_test(d, pattern, count=1):
+    p = subprocess.run(['go', 'test', './pkg/plugin/resource/', f'-count={count}', '-timeout', '8m', '-v', '-run', pattern], cwd=d, env=ENV, capture_output=True, text=True, errors='replace', timeout=1200)
+    return p.returncode, p.stdout + p.stderr
+def built(out): return '[build failed]' not in out and '[setup failed]' not in out
+def verdicts(out):
+    """The top-level tests that passed and that failed (a subtest is indented and belongs to its test)."""
+    return set(re.findall(r'^--- PASS: (\S+)', out, re.M)), set(re.findall(r'^--- FAIL: (\S+)', out, re.M))
+def only(names): return '^(' + '|'.join(re.escape(n) for n in sorted(names)) + ')$'
+def baseline():
+    """The unmutated copy: every selected test must pass, twice. Returns the tests that passed and the problems (none when the baseline is green)."""
+    d = copy_base('base-')
+    try:
+        rc, out = go_test(d, RUN, count=2)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    if not built(out): return set(), ['the baseline does not build']
+    passed, failed = verdicts(out)
+    problems = []
+    if failed: problems.append('the baseline is red: ' + ', '.join(sorted(short(t) for t in failed)))
+    elif rc != 0: problems.append(f'the baseline exits {rc}')
+    if not passed: problems.append('the baseline ran no test')
+    return passed, problems
+def run(key, spec, passed_at_baseline):
+    """-> (status, the tests that caught the fault, the tests that failed and were dropped as noise)."""
+    d = copy_base('mut-')
+    try:
+        why = apply(d, spec)
+        if why: return 'DID NOT APPLY: ' + why, [], []
+        rc, out = go_test(d, RUN)
+        if not built(out): return 'BUILD ERROR: ' + '; '.join(re.findall(r'^\S+\.go:\d+:\d+: .*$', out, re.M))[:200], [], []
+        _, failed = verdicts(out)
+        if not failed: return ('NOT CAUGHT: every selected test passes' if rc == 0 else f'ERROR: exit {rc} and no test is reported as failed (a timeout or a crash)'), [], []
+        # The noise filter: a test counts only if it passed at the baseline, fails again when only it is run again with the fault, and passes on a pristine copy (twice).
+        stay = {t for t in failed if t in passed_at_baseline}
+        dropped = sorted(failed - stay)
+        if stay:
+            _, again = verdicts(go_test(d, only(stay))[1])
+            dropped += sorted(stay - again)
+            stay &= again
+        if stay:
+            b = copy_base('pristine-')
+            try:
+                _, fails_without = verdicts(go_test(b, only(stay), count=2)[1])
+            finally:
+                shutil.rmtree(b, ignore_errors=True)
+            dropped += sorted(stay & fails_without)
+            stay -= fails_without
+        if not stay: return 'NOT CAUGHT: the tests that failed are noise (they fail without the fault, or do not fail again with it)', [], dropped
+        return 'CAUGHT', sorted(stay), dropped
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+def converse(key, rounds=6):
+    """The converse run: the same fault with exactly the assertions that tripped removed. The fault must first trip an assertion of a test named for it; the run with them removed must then pass. -> (status, the assertions removed)."""
+    d = copy_base('conv-')
+    try:
+        why = apply(d, MUTANTS[key])
+        if why: return 'DID NOT APPLY: ' + why, []
+        named = set(EXPECT.get(ident(key), []))
+        removed = []
+        for i in range(rounds + 1):
+            rc, out = go_test(d, RUN)
+            if not built(out): return 'BUILD ERROR', removed
+            _, failed = verdicts(out)
+            if i == 0:
+                if rc == 0 and not failed: return 'NOT CAUGHT: the fault passes every test, so there is no assertion to remove', []
+                if named and not ({short(t) for t in failed} & named): return 'the first failure is in no test named for the fault: ' + ', '.join(sorted(short(t) for t in failed))[:160], []
+            elif rc == 0:
+                return f'ok (passes with the {len(removed)} assertion(s) that tripped removed)', removed
+            trips = sorted({(m.group(1), int(m.group(2))) for m in re.finditer(r'Error Trace:\s+(?:\S*/)?(\S+_test\.go):(\d+)', out)})
+            if not trips: return 'a failure that is not a testify assertion: ' + '; '.join(sorted(failed))[:160], removed
+            for f, ln in trips:
+                fp = os.path.join(d, R + f)
+                lines = open(fp).read().split('\n')
+                l = lines[ln - 1]
+                m = re.match(r'^(\s*)(?:require|assert)\.\w+\(\s*t,\s*(.*)\)\s*$', l)
+                if not m: return f'cannot remove {f}:{ln} (not a one-line assertion): {l.strip()[:80]}', removed
+                # the arguments stay evaluated (no unused-variable build error); only the check goes
+                lines[ln - 1] = m.group(1) + '_ = []any{' + m.group(2) + '} // assertion removed'
+                open(fp, 'w').write('\n'.join(lines))
+                removed.append(f'{f}:{ln}')
+        return f'still failing after {rounds} rounds', removed
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+def pick(n): return next(k for k in MUTANTS if k.startswith(n + ' ') or k == n)
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    passed, problems = baseline()
+    if problems:
+        print('BASELINE: ' + '; '.join(problems) + '. Nothing is counted.', flush=True)
+        sys.exit(2)
+    print(f'BASELINE: green, {len(passed)} tests passed, twice', flush=True)
+    if args[:1] == ['--baseline']: sys.exit(0)
+    bad, results = [], {}
+    if args[:1] == ['--converse']:
+        for n in args[1:]:
+            key = pick(n)
+            status, removed = converse(key)
+            results[ident(key)] = {'fault': key, 'status': status, 'removed': removed}
+            print(f'{key} CONVERSE: {status}; assertions removed ({len(removed)}): ' + ', '.join(removed), flush=True)
+            if not status.startswith('ok'): bad.append(key)
+    else:
+        for n in sorted((a.split(' ')[0] for a in (args or list(MUTANTS))), key=lambda m: int(m[1:])):
+            key = pick(n)
+            status, caught, dropped = run(key, MUTANTS[key], passed)
+            named = set(EXPECT.get(ident(key), []))
+            if status == 'CAUGHT' and named and not ({short(t) for t in caught} & named): status = 'CAUGHT, BUT NOT BY A TEST NAMED FOR IT'
+            results[ident(key)] = {'fault': key, 'status': status, 'caught_by': [short(t) for t in caught], 'dropped_as_noise': [short(t) for t in dropped], 'named': sorted(named)}
+            print(f'{key}: {status}; failing tests ({len(caught)}): ' + ', '.join(short(t) for t in caught) + (f'; dropped as noise: ' + ', '.join(short(t) for t in dropped) if dropped else ''), flush=True)
+            if status != 'CAUGHT': bad.append(key)
+    if os.environ.get('INV4_MUT_OUT'):
+        with open(os.environ['INV4_MUT_OUT'], 'w') as f: json.dump(results, f, indent=1)
+    if bad:
+        print('NOT CAUGHT, or not by a test named for the fault, or its converse did not pass: ' + '; '.join(bad), flush=True)
+        sys.exit(1)

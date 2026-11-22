@@ -1,0 +1,25 @@
+// Shared by the browser probes. They need a host checkout that has Playwright installed (its node_modules) and the generated bindings: INV4_HOST_CHECKOUT, else the directory a probe is run from.
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+export const HOST_CHECKOUT = path.resolve(process.env.INV4_HOST_CHECKOUT ?? process.cwd());
+export const require = createRequire(path.join(HOST_CHECKOUT, 'package.json'));
+let playwright;
+try { playwright = require('playwright'); } catch (error) { throw new Error(`playwright is not installed in ${HOST_CHECKOUT} (set INV4_HOST_CHECKOUT to a host checkout with its node_modules): ${error.message}`); }
+export const { webkit, chromium } = playwright;
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The numeric method ids the page calls the host with, named: from the host's generated bindings of the resource service.
+export function methodNames() {
+  const file = path.join(HOST_CHECKOUT, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper.ts');
+  const ids = new Map();
+  for (const m of readFileSync(file, 'utf8').matchAll(/export function (\w+)\([^)]*\)[^{]*\{\s*return \$Call\.ByID\((\d+)/g)) ids.set(Number(m[2]), m[1]);
+  return ids;
+}
+const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
+// Nothing saved for the host's main window, so that a page is a first load. A reset the host refuses stops the probe: a restored session would look like a fresh load.
+export async function forgetSession(base) {
+  await sleep(1200);
+  const response = await fetch(`${base}/wails/runtime`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': 'inv4' }, signal: AbortSignal.timeout(30000),
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `inv4-forget-${Date.now()}`, methodName: `${WINDOW_SERVICE}.SaveState`, args: ['main', 'session', 'null'] } }) });
+  if (!response.ok) throw new Error(`the window's saved session could not be forgotten: ${response.status} ${await response.text()}`);
+}

@@ -1,0 +1,100 @@
+// INV4 (3): the same flow in both engines against two hosts (own HOME, own port) on one cluster whose aggregated APIs are stale at start:
+// first load, sidebar and palette; then the groups heal; the catalog grows without a reconnect; sidebar, palette, a second list and the open list after it.
+//   KUBECONFIG_PATH=<the cluster's kubeconfig> BASE_WK=http://127.0.0.1:<port> BASE_CR=http://127.0.0.1:<port> node ui-heal.mjs        (INV4_HOST_CHECKOUT: see ui-lib.mjs)
+// Pickup is recorded only when the healed group's types are in the catalog AND the fact that names the unavailable groups has cleared (a catalog that keeps earlier types is not the group healing), and a failed
+// removal of the extra APIService stops the run: a group that stays unavailable would make the result about something else.
+import { webkit, chromium, forgetSession, sleep, methodNames } from './ui-lib.mjs';
+import { execFileSync } from 'node:child_process';
+import { call, unavailableFact } from './lib.mjs';
+
+const KC = process.env.KUBECONFIG_PATH;
+if (!KC || !process.env.BASE_WK || !process.env.BASE_CR) { console.error('KUBECONFIG_PATH, BASE_WK and BASE_CR are required'); process.exit(2); }
+const kc = (...a) => execFileSync('kubectl', ['--kubeconfig', KC, ...a], { encoding: 'utf8' });
+const ids = methodNames();
+const engines = [{ name: 'webkit', type: webkit, base: process.env.BASE_WK }, { name: 'chromium', type: chromium, base: process.env.BASE_CR }];
+const t0 = Date.now(); const at = () => `+${((Date.now() - t0) / 1000).toFixed(0).padStart(3)} s`;
+const log = (e, ...a) => console.log(at(), `[${e.name}]`, ...a);
+
+async function open(e) {
+  await forgetSession(e.base);
+  e.browser = await e.type.launch();
+  e.page = await (await e.browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  e.rpc = []; e.bad = []; e.console = [];
+  e.page.on('request', (rq) => { if (rq.url().endsWith('/wails/runtime') && rq.method() === 'POST') { try { const b = JSON.parse(rq.postData()); e.rpc.push({ id: b.args?.['call-id'], m: b.args?.methodName?.split('.').pop() ?? ids.get(b.args?.methodID ?? b.method) ?? `id:${b.args?.methodID ?? b.method}`, t: at() }); } catch {} } });
+  e.page.on('response', async (rs) => { if (rs.url().endsWith('/wails/runtime') && rs.status() >= 400) { let body = ''; try { body = (await rs.text()).replace(/\s+/g, ' ').slice(0, 120); } catch {} try { const b = JSON.parse(rs.request().postData()); const x = e.rpc.find((r) => r.id === b.args?.['call-id']); e.bad.push(`${x?.m ?? '?'} ${rs.status()} ${at()} ${body}`); } catch { e.bad.push(`? ${rs.status()} ${body}`); } } });
+  e.page.on('console', (m) => { if (m.type() === 'error') e.console.push(m.text().slice(0, 140)); });
+  e.page.on('pageerror', (err) => e.console.push(`pageerror ${String(err).slice(0, 140)}`));
+}
+const state = (e) => e.page.evaluate(() => ({ state: document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') ?? null, alert: document.querySelector('[role=alert]')?.innerText.replace(/\s+/g, ' ') ?? null, footer: document.querySelector('[data-ov-part=footer]')?.innerText.replace(/\s+/g, ' ') ?? null }));
+const tree = (e) => e.page.evaluate(() => [...document.querySelectorAll('nav [role=treeitem]')].map((i) => i.innerText.replace(/\s+/g, ' ').trim()));
+async function palette(e, query) {
+  await e.page.keyboard.press('Meta+k');
+  const input = e.page.locator('dialog[open] input[role=combobox]');
+  await input.waitFor({ timeout: 10000 });
+  await input.fill(query); await sleep(700);
+  const text = await e.page.evaluate(() => document.querySelector('dialog[open]')?.innerText.replace(/\s+/g, ' ').trim().slice(0, 260));
+  await e.page.keyboard.press('Escape'); await sleep(300);
+  return text;
+}
+// The catalog as the host serves it, and the fact that names the unavailable groups: 'named' while it is there, 'absent' once it has cleared, `ERR ...` when the host did not answer.
+const catalog = async (e) => {
+  const l = await call(e.base, 'ListConnections', 'kubernetes');
+  if (!l.ok || !Array.isArray(l.body) || l.body.length === 0) return { err: `ListConnections ${l.status}` };
+  const id = l.body[0].id;
+  const c = await call(e.base, 'Catalog', 'kubernetes', { route: { connection: id }, refresh: false });
+  const f = await unavailableFact(e.base, 'kubernetes', id);
+  return { id, cov: c.body?.coverage?.kind, types: c.body?.types?.length, metrics: !!c.body?.types?.some((x) => x.type.startsWith('k8s:metrics.k8s.io')), fact: f.ok ? (f.fact ? 'named' : 'absent') : `ERR ${f.error}` };
+};
+
+async function phaseA(e) {
+  await e.page.goto(e.base + '/');
+  await e.page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ }).click();
+  await e.page.waitForFunction(() => ['ready', 'error'].includes(document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') ?? ''), undefined, { timeout: 60000 }).catch(() => undefined);
+  await sleep(2500);
+  e.a = { first: await state(e), start: e.rpc.filter((r) => r.m === 'StartConnection').length, tree: await tree(e), palPod: await palette(e, 'pod'), palMetrics: await palette(e, 'metrics'), cat: await catalog(e) };
+  e.rpcMark = e.rpc.length; e.badMark = e.bad.length; e.consoleMark = e.console.length;
+  log(e, 'A first load:', JSON.stringify(e.a.first), '| catalog', JSON.stringify(e.a.cat));
+}
+async function phaseB(e) {
+  await e.page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('focus')); });
+  await sleep(2500);
+  const afterTree = await tree(e);
+  const palPod = await palette(e, 'pod'), palMetrics = await palette(e, 'metrics');
+  await e.page.locator('nav').getByRole('treeitem', { name: /^Deployments(\s|$)/ }).click();
+  await e.page.waitForFunction(() => document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') === 'ready', undefined, { timeout: 30000 }).catch(() => undefined);
+  await sleep(1500);
+  const second = await state(e);
+  await e.page.locator('nav').getByRole('treeitem', { name: /^Pods(\s|$)/ }).click();
+  await e.page.waitForFunction(() => document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') === 'ready', undefined, { timeout: 30000 }).catch(() => undefined);
+  await sleep(1500);
+  const pods = await state(e);
+  e.b = { tree: afterTree, palPod, palMetrics, second, pods, cat: await catalog(e), startsAfter: e.rpc.slice(e.rpcMark).filter((r) => r.m === 'StartConnection').length, bad: e.bad.slice(e.badMark), console: e.console.slice(e.consoleMark) };
+}
+
+await Promise.all(engines.map(open));
+await Promise.all(engines.map(phaseA));
+for (const e of engines) console.log(`   [${e.name}] StartConnection calls in the first load: ${e.rpc.filter((r) => r.m === 'StartConnection').map((r) => r.t).join(', ') || 'none'}; failed requests: ${JSON.stringify(e.bad)}; console errors: ${JSON.stringify(e.console)}`);
+console.log(at(), 'HEAL: metrics-server up, extra APIService removed');
+kc('-n', 'kube-system', 'scale', 'deploy/metrics-server', '--replicas=1');
+kc('delete', 'apiservice', 'v1beta1.demo.example.com', '--ignore-not-found'); // absent is fine; any other failure stops the run
+const healedAt = Date.now();
+await Promise.all(engines.map(async (e) => {
+  for (let i = 0; i < 80; i++) { const c = await catalog(e); if (c.metrics && c.fact === 'absent') { e.pickup = ((Date.now() - healedAt) / 1000).toFixed(0); return; } await sleep(5000); }
+}));
+for (const e of engines) log(e, `catalog picked up the healed group ${e.pickup ?? 'NEVER'} s after the heal began (the group's types in it and the fact cleared)`);
+await Promise.all(engines.map(phaseB));
+const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+for (const e of engines) {
+  const strip = (items) => items.map((s) => s.replace(/\s+\d+$/, '').replace(/\s+~?\d+$/, ''));
+  console.log(`\n=== ${e.name}`);
+  console.log('first load                :', JSON.stringify(e.a.first), `StartConnection calls: ${e.a.start}`);
+  console.log('sidebar before / after    :', e.a.tree.length, 'items /', e.b.tree.length, 'items; same kinds:', same(strip(e.a.tree), strip(e.b.tree)));
+  console.log('sidebar after             :', JSON.stringify(e.b.tree.slice(0, 12)));
+  console.log('palette "pod" before/after:', JSON.stringify(e.a.palPod?.slice(0, 120)), '/', JSON.stringify(e.b.palPod?.slice(0, 120)));
+  console.log('palette "metrics" before  :', JSON.stringify(e.a.palMetrics?.slice(0, 160)));
+  console.log('palette "metrics" after   :', JSON.stringify(e.b.palMetrics?.slice(0, 160)));
+  console.log('Deployments list after    :', JSON.stringify(e.b.second), '| Pods list again:', JSON.stringify(e.b.pods));
+  console.log('catalog (API)             :', JSON.stringify(e.a.cat), '->', JSON.stringify(e.b.cat), '| StartConnection after heal:', e.b.startsAfter);
+  console.log('failed requests after heal:', JSON.stringify(e.b.bad), '| console errors after heal:', JSON.stringify(e.b.console));
+  await e.browser.close();
+}

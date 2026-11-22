@@ -1,0 +1,108 @@
+A PROPOSAL for the resource track (INV4, docs/ui-next/status/INV4.md, "Decisions for the lead", item 1); it is not applied by any pull request. Plugin #281 made it unnecessary for the Kubernetes plugin.
+
+KNOWN DEFECT (a review finding, CodeRabbit on the docs PR, verified by reading the code at the host's origin/main 7471b52f): the binding limit check this patch leaves in place, `authority.go:143`
+(`len(r.bindings)-len(previous)+len(catalog.Types) > maxAuthorityBindings`), counts only `catalog.Types`. The loop this patch adds keeps every route of `previous` that the partial observation did not
+see, AFTER that check, so the committed map can exceed `maxAuthorityBindings` (65536) and can grow across partial observations. `persist()` checks the size in bytes, not the number of entries, and the
+reader refuses a store of more than `maxAuthorityBindings` entries (`authority.go:101-103`), so a store written above the limit fails to load after a restart. THE FIX, to be made before this is applied:
+build `next` with the retained routes first, then refuse when `len(r.bindings)-len(previous)+len(next) > maxAuthorityBindings`, ahead of the commit (`authority.go:189-197`); and add a test with a catalog
+near the limit whose partial observation would retain routes past it. Everything below is the patch as it was written; its tests do not cover the limit.
+
+diff --git a/backend/pkg/plugin/resource/authority.go b/backend/pkg/plugin/resource/authority.go
+index aae7a9d3..29babf3d 100644
+--- a/backend/pkg/plugin/resource/authority.go
++++ b/backend/pkg/plugin/resource/authority.go
+@@ -186,6 +186,14 @@ func (r *AuthorityResolver) ObserveCatalog(pluginID, connectionID string, catalo
+ 			results[resourceType] = authorityResult(authority, existed && old.Authority != authority)
+ 		}
+ 	}
++	if catalog.Coverage.Kind != "complete" {
++		// Partial discovery cannot prove that a type it did not observe is gone: what is bound for it stays, and the type keeps its authority when it returns.
++		for route, binding := range previous {
++			if _, observed := next[route]; !observed && route.Provider == catalog.Provider {
++				next[route] = binding
++			}
++		}
++	}
+ 	if maps.Equal(previous, next) {
+ 		return results, nil
+ 	}
+diff --git a/backend/pkg/plugin/resource/authority_test.go b/backend/pkg/plugin/resource/authority_test.go
+index 2c827260..fa0ca000 100644
+--- a/backend/pkg/plugin/resource/authority_test.go
++++ b/backend/pkg/plugin/resource/authority_test.go
+@@ -298,3 +298,32 @@ func TestAuthorityRestartProofRequiresMoreThanPersistedHints(t *testing.T) {
+ 	require.NoError(t, restarted.InvalidateConnection("p", "route"))
+ 	require.False(t, restarted.hasUnprovenRestartBindings("p", "route"))
+ }
++
++// Partial discovery cannot prove that a type it did not observe is gone: an observation whose coverage is not complete retires nothing, so a type that returns keeps its authority even without a hint.
++func TestAuthorityPartialObservationRetiresNothing(t *testing.T) {
++	store, err := appstate.NewTestService(t).PluginStore("test")
++	require.NoError(t, err)
++	resolver, err := NewAuthorityResolver(store)
++	require.NoError(t, err)
++	both := authorityTestCatalog("p", map[string]*resourcev2.NativeAuthorityHint{"one": nil, "two": nil})
++	first, err := resolver.ObserveCatalog("plugin", "route", both)
++	require.NoError(t, err)
++
++	partial := authorityTestCatalog("p", map[string]*resourcev2.NativeAuthorityHint{"two": nil})
++	partial.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{}, Reason: "A group did not answer."}
++	seen, err := resolver.ObserveCatalog("plugin", "route", partial)
++	require.NoError(t, err)
++	require.Equal(t, first["two"].Authority, seen["two"].Authority)
++	require.NotContains(t, seen, "one", "only what was observed is resolved")
++	require.True(t, resolver.Matches("plugin", "route", "p", "one", first["one"].Authority), "the type the partial observation did not see keeps its binding")
++
++	returned, err := resolver.ObserveCatalog("plugin", "route", both)
++	require.NoError(t, err)
++	require.Equal(t, first["one"].Authority, returned["one"].Authority, "the returning type is the same authority, not a new one")
++	require.False(t, returned["one"].Changed)
++
++	// Control: a complete observation that lacks the type does retire it, as before.
++	_, err = resolver.ObserveCatalog("plugin", "route", authorityTestCatalog("p", map[string]*resourcev2.NativeAuthorityHint{"two": nil}))
++	require.NoError(t, err)
++	require.False(t, resolver.Matches("plugin", "route", "p", "one", first["one"].Authority))
++}
+diff --git a/backend/pkg/plugin/resource/connection_admission.go b/backend/pkg/plugin/resource/connection_admission.go
+index ac56d356..a00b07cc 100644
+--- a/backend/pkg/plugin/resource/connection_admission.go
++++ b/backend/pkg/plugin/resource/connection_admission.go
+@@ -24,8 +24,9 @@ func (c *controller) admitConnectionCatalogCurrent(parent context.Context, plugi
+ 	if err == nil {
+ 		err = resourcev2.ValidateCatalog(catalog)
+ 	}
+-	if err == nil && catalog.Coverage.Kind != "complete" {
+-		err = resourcev2.NewError("UNAVAILABLE", "Connection admission requires complete discovered support.")
++	// Partial coverage is admitted: every later operation serves such a catalog already, and refusing only the start left the plugin's connection started. A coverage the plugin could not state is refused.
++	if err == nil && catalog.Coverage.Kind != "complete" && catalog.Coverage.Kind != "partial" {
++		err = resourcev2.NewError("UNAVAILABLE", "Connection admission requires discovered support that is complete or partial.")
+ 	}
+ 	if err != nil {
+ 		return catalogAdmission{}, resourcev2.Catalog{}, err
+diff --git a/backend/pkg/plugin/resource/connection_admission_test.go b/backend/pkg/plugin/resource/connection_admission_test.go
+index 7ec336a3..5fcb1d40 100644
+--- a/backend/pkg/plugin/resource/connection_admission_test.go
++++ b/backend/pkg/plugin/resource/connection_admission_test.go
+@@ -153,3 +153,22 @@ func TestBlockedConnectionAdmissionCannotRetireReplacement(t *testing.T) {
+ 	}
+ 	requireCurrentAuthoritySurvivesRestart(t, ctrl, route, catalog, current.Authority, disk)
+ }
++
++// The plugin starts a connection whose discovery could not read one group and says so: a partial catalog. The host admits it: after admission every other operation already serves a partial catalog, and refusing only the start left the plugin's connection started.
++func TestConnectionAdmissionAdmitsPartialCatalog(t *testing.T) {
++	ctrl, _ := newTestControllerWithEmitter(t)
++	catalog := admissionTestCatalog(t, "accepted")
++	catalog.Coverage = resourcev2.Coverage{Kind: "partial", Paths: []string{}, Reason: "A group did not answer."}
++	registerMockPlugin(ctrl, "p1", &mockProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return catalog, nil }})
++	route := resourcev2.AccessRoute{Connection: "opaque/route"}
++	_, observed, err := ctrl.admitConnectionCatalog(testInvocationContext(), "p1", route)
++	require.NoError(t, err)
++	require.Equal(t, "partial", observed.Coverage.Kind)
++
++	// Control: coverage the plugin could not state is still refused.
++	unknown := admissionTestCatalog(t, "accepted")
++	unknown.Coverage = resourcev2.Coverage{Kind: "unknown", Paths: []string{}, Reason: "Not known."}
++	registerMockPlugin(ctrl, "p2", &mockProvider{CatalogFunc: func(context.Context, resourcev2.CatalogRequest) (resourcev2.Catalog, error) { return unknown, nil }})
++	_, _, err = ctrl.admitConnectionCatalog(testInvocationContext(), "p2", route)
++	require.Error(t, err)
++}

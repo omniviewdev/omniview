@@ -1,0 +1,53 @@
+// INV4 (2): what happens to the grant (host authority) of a type whose group is down at START of a session.
+//   node authority-probe.mjs 1    healthy cluster: remember the authority of a core and of an extension (metrics.k8s.io) type
+//   node authority-probe.mjs 2a   after a host RESTART on the same HOME, extension group down: is the binding retired? is the old grant dead?
+//   node authority-probe.mjs 2b   after the group healed and the catalog grew (no reconnect): what is granted, and what is not?
+// BASE=http://127.0.0.1:<port>; the state of phase 1 is $INV4_WORK/authority-state.json (INV4_WORK, else ${TMPDIR:-/tmp}/inv4-work). Phase 1 saves it only when the connection started and BOTH targets resolved:
+// an incomplete state would make phase 2 test a missing target as an old grant, and its denial would prove nothing about a grant retired.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { call, short } from './lib.mjs';
+const base = process.env.BASE, P = 'kubernetes';
+const STATE = path.join(process.env.INV4_WORK ?? path.join(process.env.TMPDIR ?? '/tmp', 'inv4-work'), 'authority-state.json');
+const phase = process.argv[2];
+const fail = (message) => { console.error(message); process.exit(1); };
+if (!base || !['1', '2a', '2b'].includes(phase)) fail('usage: BASE=http://127.0.0.1:<port> node authority-probe.mjs 1|2a|2b');
+const l = await call(base, 'ListConnections', P);
+if (!l.ok || !Array.isArray(l.body) || l.body.length === 0) fail(`no connection to probe: ${l.status} ${short(l.body)}`);
+const id = l.body[0].id;
+const PODS = 'k8s:/pods', METRICS = 'k8s:metrics.k8s.io/nodes';
+const detail = (r) => short(r.body?.cause?.detail ?? r.body?.message ?? r.body, 160);
+const resolve = async (type) => { const r = await call(base, 'ResolveTarget', P, { route: { connection: id }, type }); return { ok: r.ok, target: r.ok ? (r.body.target ?? r.body) : undefined, err: r.ok ? undefined : detail(r) }; };
+const list = async (target) => { const r = await call(base, 'Enumerate', P, { targetId: 'probe', request: { target, pageSize: 3 } }); return r.ok ? `ALLOWED (${r.body?.records?.length ?? '?'} records)` : `DENIED: ${detail(r)}`; };
+const cat = async () => { const r = await call(base, 'Catalog', P, { route: { connection: id }, refresh: false }); return r.ok ? { cov: r.body.coverage.kind, types: r.body.types.length, metrics: r.body.types.some((x) => x.type === METRICS) } : { err: detail(r) }; };
+const say = (k, v) => console.log(`${k.padEnd(52)} ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+if (phase === '1') {
+  const s = await call(base, 'StartConnection', P, id); say('S1 StartConnection', s.ok ? s.body.status : `ERR ${detail(s)}`);
+  say('S1 catalog', await cat());
+  const pods = await resolve(PODS), met = await resolve(METRICS);
+  say('S1 authority of core pods', pods.target?.authority ?? pods.err);
+  say('S1 authority of metrics.k8s.io nodes (NodeMetrics)', met.target?.authority ?? met.err);
+  say('S1 list pods with its own authority', pods.ok ? await list(pods.target) : 'n/a');
+  say('S1 list NodeMetrics with its own authority', met.ok ? await list(met.target) : 'n/a');
+  if (!s.ok || !pods.ok || !met.ok) fail(`phase 1 is incomplete (StartConnection ${s.ok ? 'ok' : 'failed'}, core pods ${pods.ok ? 'resolved' : 'not resolved'}, NodeMetrics ${met.ok ? 'resolved' : 'not resolved'}): the state is NOT saved, and any earlier state is left as it is`);
+  mkdirSync(path.dirname(STATE), { recursive: true });
+  writeFileSync(STATE, JSON.stringify({ id, pods: pods.target, metrics: met.target }));
+} else {
+  let old;
+  try { old = JSON.parse(readFileSync(STATE, 'utf8')); } catch (error) { fail(`no state of phase 1 at ${STATE}: ${error.message}`); }
+  if (!old.pods || !old.metrics) fail(`the state at ${STATE} is not that of a complete phase 1: run phase 1 again`);
+  if (phase === '2a') {
+    const s = await call(base, 'StartConnection', P, id); say('S2 StartConnection (extension group down)', s.ok ? s.body.status : `ERR ${detail(s)}`);
+    say('S2 catalog', await cat());
+  } else say('S2 catalog after the group answered', await cat());
+  const pods = await resolve(PODS), met = await resolve(METRICS);
+  say('S2 core pods: authority now', pods.target?.authority ?? pods.err);
+  say('S2 core pods: same authority as in S1?', String(pods.target?.authority === old.pods?.authority));
+  say('S2 list pods with the S1 authority (old grant)', await list(old.pods));
+  say('S2 list pods with the S2 authority', pods.ok ? await list(pods.target) : 'n/a');
+  say('S2 metrics.k8s.io nodes: resolve', met.ok ? `GRANTED authority ${met.target.authority}` : `NOT RESOLVED (${met.err})`);
+  say('S2 NodeMetrics: same authority as in S1?', met.ok ? String(met.target.authority === old.metrics?.authority) : 'n/a');
+  say('S2 NodeMetrics: same authority as core pods now?', met.ok ? String(met.target.authority === pods.target?.authority) : 'n/a');
+  say('S2 list NodeMetrics with the S1 authority (old grant)', await list(old.metrics));
+  say('S2 list NodeMetrics with the S2 authority', met.ok ? await list(met.target) : 'n/a');
+}

@@ -1,0 +1,35 @@
+// Calls the host's own services as its page does: POST /wails/runtime, by method name. Every call is bounded: a host that never answers gives { ok: false, status: 0, timedOut: true }, never a hang.
+export const RESOURCE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const CALL_TIMEOUT_MS = Number(process.env.INV4_CALL_TIMEOUT_MS ?? 30000);
+export async function call(base, method, ...args) {
+  const t0 = Date.now();
+  let response, text;
+  try {
+    response = await fetch(`${base}/wails/runtime`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-wails-client-id': 'inv4' },
+      body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `inv4-${method}-${Date.now()}-${Math.random().toString(36).slice(2)}`, methodName: `${RESOURCE}.${method}`, args } }),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    });
+    text = await response.text();
+  } catch (error) {
+    const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    return { ok: false, status: 0, ms: Date.now() - t0, timedOut, body: timedOut ? `no answer in ${CALL_TIMEOUT_MS} ms` : String(error?.cause ?? error) };
+  }
+  const ms = Date.now() - t0;
+  let body = null; try { body = text === '' ? null : JSON.parse(text); } catch { body = text; }
+  return { ok: response.ok, status: response.status, ms, body };
+}
+export const short = (v, n = 300) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) + '…' : s; };
+
+// The connection fact in which the plugin names the API groups it could not read, read as the host's `useConnectionMetadata` reads it: the SDK's facts are under `snapshot.entries` of the host's envelope
+// (backend/pkg/plugin/resource/connection_metadata.go). { ok: false, error } when the host did not answer or answered without facts: an error is never a fact that cleared. `fact` is undefined when the fact is absent.
+export const FACT = 'kubernetes.unavailable_api_groups';
+export async function unavailableFact(base, pluginID, connectionID) {
+  const m = await call(base, 'GetConnectionMetadata', pluginID, connectionID);
+  if (!m.ok) return { ok: false, error: `GetConnectionMetadata ${m.status}: ${short(m.body, 160)}` };
+  const entries = m.body?.snapshot?.entries;
+  if (entries === null || typeof entries !== 'object') return { ok: false, error: `no snapshot.entries in the host's answer: ${short(m.body, 160)}` };
+  return { ok: true, fact: entries[FACT] };
+}

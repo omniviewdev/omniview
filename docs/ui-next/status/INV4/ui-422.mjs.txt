@@ -1,0 +1,23 @@
+// Which request answers 4xx in a first load, and with what body? One fresh host, one engine (ENGINE=chromium, the default, or ENGINE=webkit); the caller makes N fresh hosts of one variant.
+//   BASE=http://127.0.0.1:<port> [ENGINE=webkit] node ui-422.mjs        (INV4_HOST_CHECKOUT: see ui-lib.mjs)
+import { chromium, webkit, forgetSession, sleep, methodNames } from './ui-lib.mjs';
+const ids = methodNames();
+const base = process.env.BASE;
+await forgetSession(base);
+const engine = process.env.ENGINE === 'webkit' ? webkit : chromium;
+const browser = await engine.launch();
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+const bad = [];
+page.on('response', async (rs) => {
+  if (rs.url().endsWith('/wails/runtime') && rs.status() >= 400) {
+    let name = '?'; try { const b = JSON.parse(rs.request().postData()); name = b.args?.methodName?.split('.').pop() ?? ids.get(b.args?.methodID ?? b.method) ?? 'id'; } catch {}
+    let body = ''; try { body = (await rs.text()).replace(/\s+/g, ' ').slice(0, 260); } catch {}
+    bad.push(`${name} ${rs.status()} ${body}`);
+  }
+});
+await page.goto(base + '/');
+await page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ }).click();
+await page.waitForFunction(() => ['ready', 'error'].includes(document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state') ?? ''), undefined, { timeout: 60000 }).catch(() => undefined);
+await sleep(2500);
+console.log(JSON.stringify({ state: await page.evaluate(() => document.querySelector('[data-ov-state]')?.getAttribute('data-ov-state')), bad }));
+await browser.close();
