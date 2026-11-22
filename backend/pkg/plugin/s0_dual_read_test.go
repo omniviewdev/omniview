@@ -109,6 +109,8 @@ func s0Calls(t *testing.T, pm *pluginManager, controller hostresource.Controller
 
 func TestS0OneHostRunsTwoSDKGenerationsAtOnce(t *testing.T) {
 	pm, controller := newInstalledNativeManager(t)
+	recorder := &testRecordingEmitter{}
+	pm.emitter = recorder
 	for _, g := range s0Generations {
 		s0InstallPrebuilt(t, pm, g.id, s0Fixture(t, g.id), 0)
 		_, err := pm.LoadPlugin(g.id, nil)
@@ -127,6 +129,15 @@ func TestS0OneHostRunsTwoSDKGenerationsAtOnce(t *testing.T) {
 			"%s: the new member arrives from the wire-4 plugin and is absent (not required) from the wire-3 ones", g.id)
 		assert.Equal(t, "Welcome to resource plugins", record.Body.Map["title"].String, g.id)
 	}
+	// A side effect of CurrentProtocolVersion becoming 2: EventDeprecatedProtocol, unreachable while the host offered only 1,
+	// now fires for every protocol-1 plugin on every start (denied to the window by internal/auditgate/policy.json, but logged and emitted).
+	deprecated := 0
+	for _, event := range recorder.getEvents() {
+		if event.event == EventDeprecatedProtocol {
+			deprecated++
+		}
+	}
+	assert.Equal(t, 2, deprecated, "the two protocol-1 plugins, not the protocol-2 one")
 }
 
 // The protocol number is only a proxy for the wire: the SDK lets the manifest's sdk_protocol_version override
