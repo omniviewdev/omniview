@@ -185,6 +185,12 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 	if output.Line != nil {
 		c.bufferLine(output.SessionID, *output.Line)
 	} else if output.Event != nil {
+		if output.Event.Type == logs.StreamEventUnknown {
+			// The SDK decodes a kind it has no name for (a newer plugin's) to this value. No window can use it, and the
+			// legacy viewer's bounded event history and the runtime's backlog would each spend a place on it.
+			c.logger.Debugw(context.Background(), "dropped log event of a kind this host does not know", "sessionID", output.SessionID)
+			return
+		}
 		// Serialize publication with session retirement.
 		c.batchMux.Lock()
 		defer c.batchMux.Unlock()
@@ -414,8 +420,10 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 					case logs.StreamEventStreamEnded:
 						logger.Debugw(streamCtx, "log session stream ended", "sessionID", output.SessionID, "closeReason", "normal")
 					case logs.StreamEventSourceAdded, logs.StreamEventSourceRemoved,
-						logs.StreamEventReconnecting, logs.StreamEventReconnected, logs.StreamEventSessionReady:
-						// These event types need no additional diagnostics.
+						logs.StreamEventReconnecting, logs.StreamEventReconnected, logs.StreamEventSessionReady,
+						logs.StreamEventSourceCaughtUp, logs.StreamEventUnknown:
+						// These event types need no additional diagnostics: the host asks for no replay markers, and
+						// handleOutput drops a kind it does not know.
 					}
 				}
 				select {

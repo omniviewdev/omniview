@@ -61,10 +61,12 @@ export function PrepareSessionEvents(sessionId: string) {
     onEvent(data) {
       try {
         const event = decodePayload(data);
+        // A kind the SDK does not know (-1, since v0.22.0) and SOURCE_CAUGHT_UP (7, sent only to a reader that asked for replay markers) are read by
+        // no consumer of this buffer: they take no slot among the events it keeps, or the ones that matter would be evicted.
+        if (!event || typeof event !== 'object' || !('type' in event) || typeof event.type !== 'number'
+          || !Number.isInteger(event.type) || event.type < 0 || event.type > 6) return;
         const entry = { data: event, order: order++ };
-        if (event && typeof event === 'object' && 'source_id' in event && event.source_id === ''
-          && 'type' in event && typeof event.type === 'number' && Number.isInteger(event.type)
-          && event.type >= 0 && event.type <= 6) {
+        if ('source_id' in event && event.source_id === '') {
           lifecycle.set(event.type, entry);
         } else {
           events.push(entry);

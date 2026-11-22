@@ -1,0 +1,6 @@
+package logs
+
+import sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
+
+// v0.21.0: the SDK has no ReplayCount; a plain handler.
+func declareReplayCount(*sdklogs.Handler) {}

@@ -1,0 +1,11 @@
+package logs
+
+import (
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
+)
+
+// v0.22.0: the plugin declares ReplayCount (two of three lines are replay); this host never asks.
+func declareReplayCount(h *sdklogs.Handler) {
+	h.ReplayCount = func(*sdktypes.PluginContext, sdklogs.LogStreamRequest) (int64, error) { return 2, nil }
+}

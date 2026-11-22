@@ -62,6 +62,14 @@ export const StreamEventType = {
   SESSION_READY: 6,
 } as const;
 
+/**
+ * Whether the viewer reads this event kind. The SDK sends -1 for a kind it does not know and 7 (SOURCE_CAUGHT_UP) only to a reader that asked for
+ * replay markers, which this viewer does not; a viewer drops both rather than keep them in the bounded history of events it does read.
+ */
+export function isKnownStreamEventType(type: unknown): boolean {
+  return typeof type === 'number' && Number.isInteger(type) && type >= StreamEventType.SOURCE_ADDED && type <= StreamEventType.SESSION_READY;
+}
+
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 
 export const LOG_LEVELS: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace'];
