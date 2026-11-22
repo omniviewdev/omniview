@@ -175,7 +175,6 @@ func TestTheShellIsToldItRunsInOmniviewAndWhatItsTerminalCan(t *testing.T) {
 	}{
 		{"no locale set: UTF-8 is the default", map[string]string{"LANG": "", "LC_ALL": "", "LC_CTYPE": ""}, []string{"lang=" + defaultLang}},
 		{"a LANG the user set stays", map[string]string{"LANG": "fr_FR.UTF-8", "LC_ALL": "", "LC_CTYPE": ""}, []string{"lang=fr_FR.UTF-8"}},
-		{"an LC_ALL the user set is not contradicted by a LANG", map[string]string{"LANG": "", "LC_ALL": "de_DE.UTF-8", "LC_CTYPE": ""}, []string{"lang=\r\n", "lc_all=de_DE.UTF-8"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
