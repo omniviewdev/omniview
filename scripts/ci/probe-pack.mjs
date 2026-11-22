@@ -147,14 +147,14 @@ const squares = (sorted, bins) => bins.reduce((sum, bin) => sum + loadOf(sorted,
  * The shards of `items` (`{ id, seconds }`, whole positive seconds, each at most `limit`): `[{ units, seconds }]`, the fewest there can be under `limit`, as even as that allows, numbered from the longest, the units of a
  * shard longest first. An empty list for no units. A unit over the limit is an error naming it.
  */
-export function pack(items, limit) {
+export function pack(items, limit, searchBudget = SEARCH_BUDGET) {
   validate(items, limit);
   if (items.length === 0) return [];
   const sorted = [...items].sort(byLongest);
   const fit = firstFit(sorted, limit);
 
   let chosen = fit;
-  const budget = { left: SEARCH_BUDGET };
+  const budget = { left: searchBudget };
   for (let count = lowerBound(sorted, limit); count < fit.length; count += 1) {
     const found = search(sorted, count, limit, budget);
     if (found === undefined) break;

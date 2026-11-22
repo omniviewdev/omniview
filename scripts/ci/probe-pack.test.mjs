@@ -166,3 +166,14 @@ test('a large instance gets a valid packing (every unit once, none over the limi
   assert.deepEqual(first.flatMap((shard) => shard.units.map((entry) => entry.id)).sort(), many.map((entry) => entry.id).sort());
   for (const shard of first) assert.ok(shard.seconds <= 10000);
 });
+
+test('a search that runs out of its budget gives up and the first fit answer stands: valid, every unit once, one shard more than the fewest, and the same on every call', () => {
+  const sizes = [12, 12, 11, 10, 10, 9, 8, 8, 5, 5];
+  const items = sizes.map((seconds, index) => ({ id: `u${index}`, seconds }));
+  assert.equal(pack(items, 23).length, 4, 'with its budget the search finds the fewest');
+  const starved = pack(items, 23, 1);
+  assert.deepEqual(pack(items, 23, 1), starved);
+  assert.equal(starved.length, 5, 'first fit decreasing packs this instance in one shard more than the fewest');
+  assert.deepEqual(ids(starved).flat().sort(), items.map((entry) => entry.id).sort());
+  for (const shard of starved) assert.ok(shard.seconds <= 23);
+});
