@@ -1,0 +1,32 @@
+// Adds `shards` to each run of scripts/ci/probe-shards.runs.json: the units each real shard job of that run held (new unit ids), from the shard summaries of the run's logs (the parsed rows of /tmp/n25/run-<id>-parsed.json).
+import { readFileSync, writeFileSync } from 'node:fs';
+import { loadUnits } from '/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n25-probe-controls/scripts/ci/probe-shards.mjs';
+const root = '/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n25-probe-controls';
+const file = `${root}/scripts/ci/probe-shards.runs.json`;
+const runs = JSON.parse(readFileSync(file, 'utf8'));
+const { units } = await loadUnits(root);
+const byKey = new Map();
+for (const u of units) { if (u.controls === undefined) byKey.set(`${u.script}|`, u); else for (const c of u.controls) byKey.set(`${u.script}|${c}`, u); }
+const out = [];
+for (const run of runs) {
+  const parsed = JSON.parse(readFileSync(`/tmp/n25/run-${run.run}-parsed.json`, 'utf8'));
+  const shards = new Map();
+  const seconds = {};
+  for (const [shard, , secs, script, control] of parsed.rows) {
+    const unit = byKey.get(`${script}|${control}`);
+    if (!unit) throw new Error(`no unit for ${script} ${control}`);
+    if (!shards.has(shard)) shards.set(shard, new Set());
+    shards.get(shard).add(unit.id);
+    seconds[unit.id] = (seconds[unit.id] ?? 0) + secs;
+  }
+  // the unit seconds must be those already in the file
+  for (const [id, secs] of Object.entries(run.seconds)) if (seconds[id] !== secs) throw new Error(`run ${run.run} ${id}: file ${secs}, rows ${seconds[id]}`);
+  for (const id of Object.keys(seconds)) if (run.seconds[id] === undefined) throw new Error(`run ${run.run}: ${id} in rows, not in file`);
+  const listsOfShards = [...shards].sort((a, b) => a[0] - b[0]).map(([, ids]) => [...ids].sort());
+  const flat = listsOfShards.flat();
+  if (new Set(flat).size !== flat.length || flat.length !== Object.keys(run.seconds).length) throw new Error(`run ${run.run}: the shards do not partition the units`);
+  out.push({ run: run.run, head: run.head, event: run.event, shards: listsOfShards, seconds: run.seconds });
+}
+const line = (entry) => `  ${JSON.stringify(entry).replace(/^\{"run":("[^"]*"),"head":("[^"]*"),"event":("[^"]*"),"shards":/, '{ "run": $1, "head": $2, "event": $3, "shards": ').replace(/,"seconds":/, ', "seconds": ')}`;
+writeFileSync(file, `[\n${out.map(line).join(',\n')}\n]\n`);
+console.log('ok', out.length, 'runs;', out.map((r) => r.shards.length).join(','), 'shards each');

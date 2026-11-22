@@ -1,0 +1,30 @@
+"""collected.json (collect_centre.py) -> ui-next/shell/probes/runner-centre-open.json: one entry for each (run, attempt) that printed the notices probe's `centre open` lines,
+newest first, the four reads of each (engine and viewport) with their nine samples and their median."""
+import json, sys
+src, out = sys.argv[1], sys.argv[2]
+seen = {}
+for x in json.load(open(src)):
+    for c in x['centre']:
+        key = (x['run'], x['attempt'], c['engine'], c['viewport'])
+        seen.setdefault(key, {**c, 'run': x['run'], 'attempt': x['attempt'], 'event': x['event'], 'created': x['createdAt'], 'head': x['sha']})
+runs = {}
+for (run, attempt, engine, viewport), c in seen.items():
+    e = runs.setdefault((run, attempt), {'run': str(run), 'attempt': attempt, 'event': c['event'], 'head': c['head'], 'created': c['created'], 'centre': {}})
+    e['centre'][f'{engine} {viewport}'] = {'median': c['median'], 'samples': c['samples']}
+rows = sorted(runs.values(), key=lambda r: (r['created'], r['attempt']), reverse=True)
+for r in rows:
+    r['centre'] = dict(sorted(r['centre'].items()))
+doc = {
+    'what': "The notices probe's `centre open` read on the CI runner: the nine samples (ms) of the page's work from a real click on the bell to the layout of the popover over 500 records, and their median, for every run of ui-next-kit-probes.yml whose job logs have them, in the probe's own step (not its negative controls). The bound of `OPEN_BOUND_MS` in notices-probe.mjs is held to the worst median here (scripts/ci/probe-shards.test.mjs).",
+    'source': "`gh api repos/omniviewdev/omniview/actions/runs/<run>/attempts/<attempt>/logs`, the line `centre open <engine> <viewport>: [<samples>] ms, median <median> ms` under the group 'Probe the toast layer against the pinned mock reference'. Run 44932365922 attempt 1 is the one that failed pull request #650 (a slow virtual machine: WebKit 38 and 35 ms against a bound of 33.3); its attempt 2 passed.",
+    'runs': rows,
+}
+def fmt(v, indent=0):
+    return json.dumps(v)
+lines = ['{', f'  "what": {json.dumps(doc["what"])},', f'  "source": {json.dumps(doc["source"])},', '  "runs": [']
+for i, r in enumerate(rows):
+    centre = ', '.join(f'{json.dumps(k)}: {{ "median": {v["median"]}, "samples": {json.dumps(v["samples"])} }}' for k, v in r['centre'].items())
+    lines.append(f'    {{ "run": {json.dumps(r["run"])}, "attempt": {r["attempt"]}, "event": {json.dumps(r["event"])}, "head": {json.dumps(r["head"])}, "created": {json.dumps(r["created"])}, "centre": {{ {centre} }} }}' + (',' if i < len(rows) - 1 else ''))
+lines += ['  ]', '}']
+open(out, 'w').write('\n'.join(lines) + '\n')
+print('runs', len(rows), 'attempts; medians', sum(len(r['centre']) for r in rows))

@@ -3,17 +3,27 @@ name: UI next kit probes
 # Slice 1a, PRs 1a.4d and 1a.3c (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the shell's probes at 1440 x 900 and
 # 1280 x 800; tracker row N23 moves the first to the second), against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json for the parts and mock-table.json for the table, measured
 # from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs, which writes where each came from into the file; the design lab is private and is never needed here).
-# Each probe fails its job on a difference. They are listed in scripts/ci/probe-shards.mjs, each with what it checks, its negative controls and the shard that runs it.
+# Each probe fails its job on a difference. They are listed in scripts/ci/probe-units (one file for each probe), each with what it checks, its negative controls and the seconds they take.
 #
-# THE SHARDS (N24, steps K1 and K2). The probes took 26 to 33 minutes one after the other in one job. They now run in as many jobs at the same time as scripts/ci/probe-shards.mjs has shards (`Kit probes shard 1` to the last), each one the
-# probes (and negative controls) that table gives it, and the job named `Kit probes` waits for them and is green only when every one is. A probe is a Node process on its own VM, as it was on the one VM: nothing is shared between probes
-# but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its probes reads it. A probe's negative controls may run in another shard than the probe (K2): the table says which, and the job summary of a shard names
-# the probe script and the control of every run. To add a probe, add a unit to the table (the check below fails, naming the file, when a probe script is in no shard); to move one, move its unit.
+# THE SHARDS (N24 K1 to K3, N25). The probes took 26 to 33 minutes one after the other in one job. They run in as many jobs at the same time as the plan below says (`Kit probes shard 1` to the last), each one the units the plan gives
+# it, and the job named `Kit probes` waits for them and is green only when the plan and every shard are, and when what the shards say they ran is every unit of the table. A probe is a Node process on its own VM, as it was on the one VM:
+# nothing is shared between probes but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its units reads it. The units are the files of scripts/ci/probe-units (one for each probe: the probe, and its
+# negative controls in units of their own); no unit names a shard. To add a probe, add its file (the check below fails, naming the file, when a probe script is in no unit); to slow a probe down, change its `seconds` (the shard that
+# ran it fails, with the number, when they differ).
+#
+# EVERY PROBE AND EVERY CONTROL RUNS ON EVERY RUN: every pull request, every push to main and every dispatch. N25 tried to run the controls by the paths a pull request changed and dropped it after an independent review
+# (docs/ui-next/status/N25.md): a control can go inert through a path no unit lists while the probe stays green, and the one run that would notice had no reader.
+#
+# THE PLAN (N25). `Kit probes plan` runs first, on a plain runner, checks the table (every probe script is in a unit, the manifest's probes and controls are still there, every unit has whole seconds under the limit) and packs every unit
+# into the fewest shards under the limit (scripts/ci/probe-pack.mjs). It writes the matrix the shard jobs read and the number of shards; a plan of no shard is an error, so an empty matrix is never emitted.
+#
+# THE VERDICT. `Kit probes` runs whatever happened (`always()`), with the repository checked out: it requires the plan and every shard to have succeeded, then downloads what each shard wrote about itself and compares it with the units
+# of its own checkout: every unit and every control of it ran once and passed, in as many shards as the plan made.
 #
 # THE IMAGE (N24, step B1). Each shard runs in the CI image, pinned by digest (.github/ci/image.lock), and installs neither Node, pnpm, Task, the Playwright browsers nor the system libraries of WebKit: the install step
 # (and its bounded retry, #557) is gone because there is nothing left to hang. The browsers of the probes are the image's, in /ms-playwright, of the Playwright version pnpm-lock.yaml resolves. Moving to a newer image
 # is a change of the digest here and in .github/ci/image.lock (ci-image.yml writes both: `image-lock.patch`); `scripts/ci/check-image.mjs` fails on two digests and on a lock behind the repository. Numbers:
-# docs/ui-next/status/N24-B1.md.
+# docs/ui-next/status/N24-B1.md. The plan job does not pull the image (it is on the critical path of every shard): it needs Node, and takes it from .tool-versions, the one home of the pin.
 #
 # NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
 # request blocks the merge. The lead makes `Kit probes` (the aggregating job, whose name does not change) required in the branch protection settings once it has been green for a while.
@@ -27,6 +37,8 @@ on:
       - "pnpm-lock.yaml"
       - "scripts/ci/probe-shards.mjs"
       - "scripts/ci/probe-shards.test.mjs"
+      - "scripts/ci/probe-*"
+      - "scripts/ci/probe-units/**"
       - ".github/workflows/ui-next-kit-probes.yml"
   push:
     branches: [main]
@@ -37,6 +49,8 @@ on:
       - "pnpm-lock.yaml"
       - "scripts/ci/probe-shards.mjs"
       - "scripts/ci/probe-shards.test.mjs"
+      - "scripts/ci/probe-*"
+      - "scripts/ci/probe-units/**"
       - ".github/workflows/ui-next-kit-probes.yml"
   workflow_dispatch:
 
@@ -51,14 +65,40 @@ env:
   OMNIVIEW_UI: next
 
 jobs:
+  # The plan: the table is checked (every probe script is in a unit, the manifest's probes and controls are still there, every unit has whole seconds under the limit) and every unit is packed into shards. It writes the
+  # matrix the shard jobs read and the number of shards, which `Kit probes` compares with what the shards report. It fails when it would plan no shard.
+  plan:
+    name: Kit probes plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - name: Check the table and pack the shards
+        id: plan
+        run: |
+          node scripts/ci/probe-shards.mjs check
+          node scripts/ci/probe-shards.mjs plan
+
   shard:
     name: Kit probes shard ${{ matrix.shard }}
+    needs: plan
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # A shard takes 8 to 9 minutes (setup 88 s median, probes at most 432 s of table seconds: scripts/ci/probe-shards.mjs, LIMIT_SECONDS; the table's balance note has the seconds of each unit), so 20 is more than twice the longest. The 30 it had
-    # was for the bounded browser install of #557 (a first attempt killed after 15 minutes, then a second): the browsers are in the image now, there is no install to hang, and a pull that hangs is what this limit is for.
-    timeout-minutes: 20
+    # A shard is planned at 432 s of units (scripts/ci/probe-shards.mjs, LIMIT_SECONDS) plus a setup of 88 s (median), and fails past 614 s of units (SHARD_CEILING_SECONDS, derived from the runner's own 70 shard jobs). The job must be
+    # able to take that ceiling and the slowest setup seen (137 s) to the end, so that a slow shard says what it is: 751 s, 13 minutes. 15 is the wall for a shard that hangs, and a test pins both. The 30 it had was for the bounded
+    # browser install of #557 (a first attempt killed after 15 minutes, then a second), which the image made unnecessary.
+    timeout-minutes: 15
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
     # them. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private: the job token
     # reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do. `--init` is theirs too.
@@ -77,9 +117,8 @@ jobs:
     strategy:
       # Every shard runs to the end: a shard that fails does not stop the others, so one push shows every failing probe, and `Kit probes` below needs all of them.
       fail-fast: false
-      matrix:
-        # The shards of scripts/ci/probe-shards.mjs, one line: `check` fails when this list and the table differ, so a shard that is in one and not the other cannot go unnoticed.
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      # The plan's matrix: `{ include: [{ shard, units, seconds, dist }] }`. The shards are numbered from 1, the longest first; `units` are the ids of scripts/ci/probe-units; `dist` says whether a unit reads the ui-next build.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
       - name: Match checkout directory ownership to container user
@@ -107,16 +146,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Before anything is built: the check (every probe script of the probe directories is in exactly one shard, every shard is in the matrix above), then the tests of the check and of the job below, then what
-      # this shard runs. The check comes first so that a probe that is in no shard fails here, in every shard, in a few seconds, with its path on the error line and nothing before it.
-      - name: Check the shard table and plan this shard
-        id: plan
-        env:
-          SHARD: ${{ matrix.shard }}
+      # Before anything is built: the check (every probe script of the probe directories is run by a unit, the manifest's probes and controls are still there, every unit has whole seconds under the limit), then the tests of the
+      # check, the packing and this workflow. The check comes first so that a probe that is in no unit fails here, in every shard, in a few seconds, with its path on the error line and nothing before it.
+      - name: Check the units and the tests of the engine
         run: |
           node scripts/ci/probe-shards.mjs check
-          node --test scripts/ci/probe-shards.test.mjs
-          node scripts/ci/probe-shards.mjs plan "$SHARD"
+          node --test scripts/ci/probe-*.test.mjs
 
       - name: Build the workspace packages (the kit among them)
         run: |
@@ -124,50 +159,72 @@ jobs:
           # `task packages` rewrites this tracked shim (docs/ui-next/AGENTS.md, Commands); it is not part of the change under test.
           git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
 
-      # The kit's probes (parts, table, fonts, tooltip, log view) read one production build of ui-next, made here once; the shell's probes build their own fixtures, so a shard that has none of the first skips this step.
-      # The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
-      - name: Build ui-next once, for the probes of this shard that read it
-        if: steps.plan.outputs.dist == 'true'
+      # The kit's probes (parts, table, fonts, tooltip, log view) read one production build of ui-next, made here once; the shell's probes build their own fixtures, so a shard that has none of the first skips this step
+      # (the plan says so: `dist`). The `runner` context does not exist in a workflow-level `env`, so the directory is exported from a step.
+      - name: Build ui-next once, for the units of this shard that read it
+        if: matrix.dist == true
         run: |
           echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
           OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
 
-      # Every probe of the shard, with its negative controls, one after the other, as the single job ran them (scripts/ci/probe-shards.mjs: the same scripts, the same env, FONT_DELAY_MS=40 included). All of them run even
-      # when one fails, so that a push shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, and writes the seconds of every probe to the job summary.
-      - name: Run the probes of this shard
+      # Every unit of the shard, one after the other, as the single job ran them (scripts/ci/probe-shards.mjs: the same scripts, the same env, FONT_DELAY_MS=40 included). All of them run even when one fails, so that a push
+      # shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, writes the seconds of every probe to the job summary, FAILS when a unit took more than its `seconds`
+      # plus the larger of a quarter of them and 60 s, or the shard took more than 614 s of units (naming the numbers), and writes ran-<shard>-probe.json, which `Kit probes` compares with the table. The matrix reaches the command
+      # through env, never through the text of the command.
+      - name: Run the units of this shard
         env:
           SHARD: ${{ matrix.shard }}
-        run: node scripts/ci/probe-shards.mjs run "$SHARD"
+          UNITS: ${{ matrix.units }}
+        run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"
 
+      # The probes' reports and what the shard says it ran (`ran-<shard>-probe.json`): `Kit probes` downloads them all.
       - name: Keep the reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kit-probe-reports-${{ matrix.shard }}
+          # A re-run of a shard (or of the run) uploads the same name again: replace what the earlier attempt left, or the upload fails and the verdict reads a stale file.
+          overwrite: true
           path: ${{ runner.temp }}/*-probe.json
           if-no-files-found: ignore
 
-  # The check that keeps the name `Kit probes`. Green only when every shard succeeded: a shard that failed, timed out (cancelled) or was skipped fails it, and so does an empty or unknown result; a cancelled run does not run it,
-  # as before. The matrix's result is one word for all its shards, so the shards that did not succeed are named from the job list of this run (the token reads it with `actions: read`).
+  # The check that keeps the name `Kit probes`. It runs whatever happened (`always()`: a cancelled run leaves a check, not an absence), with the repository checked out. First it requires the plan and every shard to have succeeded:
+  # a plan that failed (no shard could run: the shards are skipped), a shard that failed, timed out (cancelled) or was skipped fails it, and so does an empty or unknown result; the matrix's result is one word for all its shards,
+  # so the shards that did not succeed are named from the job list of this run (the token reads it with `actions: read`). Then, whatever the shards' own results said, it requires every unit of the table of this checkout and every
+  # control of it to have run once and passed, from what the shards wrote: a plan that was short, a shard that never reported and a unit that dropped out of the matrix are red.
   probes:
     name: Kit probes
-    needs: shard
-    if: ${{ !cancelled() }}
+    needs: [plan, shard]
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       actions: read
+      contents: read
     steps:
-      - name: Require every probe shard to have succeeded
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - name: Require the plan and every probe shard to have succeeded
         env:
-          RESULT: ${{ needs.shard.result }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          SHARD_RESULT: ${{ needs.shard.result }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$RESULT" = success ]; then
-            echo "Every probe shard succeeded."
+          if [ "$PLAN_RESULT" = success ] && [ "$SHARD_RESULT" = success ]; then
+            echo "The plan and every probe shard succeeded."
             exit 0
           fi
-          echo "::error title=Kit probes::the probe shards finished as '${RESULT:-unknown}', not as success: a shard that failed, was cancelled or was skipped fails this check"
+          if [ "$PLAN_RESULT" != success ]; then
+            echo "::error title=Kit probes::the plan job finished as '${PLAN_RESULT:-unknown}', not as success: no shard could run (the table failed its check, or the plan could not be written): see the job 'Kit probes plan'"
+            exit 1
+          fi
+          echo "::error title=Kit probes::the probe shards finished as '${SHARD_RESULT:-unknown}', not as success: a shard that failed, was cancelled or was skipped fails this check"
           if listed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
               --jq '.jobs[] | select(.name | startswith("Kit probes shard ")) | select(.conclusion != "success") | "::error title=Kit probes::\(.name) finished as \(.conclusion // .status): \(.html_url)"' 2>&1); then
             if [ -n "$listed" ]; then printf '%s\n' "$listed"; fi
@@ -175,3 +232,11 @@ jobs:
             echo "::warning title=Kit probes::could not list the shards of this run: $listed"
           fi
           exit 1
+
+      - name: Require every unit of the table to have run and passed
+        env:
+          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --pattern 'kit-probe-reports-*' --dir "$RUNNER_TEMP/reports"
+          node scripts/ci/probe-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"

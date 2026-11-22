@@ -1,0 +1,208 @@
+{
+  "packages/kit/probes/fonts-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "packages/kit/probes/form-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "face-height",
+      "mono-font",
+      "lane-offset",
+      "track-width",
+      "stepper-pad",
+      "label-for",
+      "switch-pressable",
+      "step-tab-stop",
+      "select-unblocked",
+      "secret-attribute"
+    ]
+  },
+  "packages/kit/probes/kit-probe-bc.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "packages/kit/probes/kit-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "packages/kit/probes/log-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "row-height",
+      "time-column",
+      "filter-shift",
+      "strip-height",
+      "copy",
+      "keys",
+      "axe",
+      "source-tip"
+    ]
+  },
+  "packages/kit/probes/row-menu-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "trigger-not-expanded",
+      "expanded-twice"
+    ]
+  },
+  "packages/kit/probes/table-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "packages/kit/probes/tooltip-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/page/probes/detail-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/page/probes/page-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/logs-open-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "fresh"
+    ]
+  },
+  "ui-next/shell/probes/logs-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "feed-stopped",
+      "source-label",
+      "column-moves",
+      "kept-leak",
+      "close-twice",
+      "kept-lines",
+      "second-stream",
+      "lone-scope",
+      "same-name",
+      "axe-name",
+      "over-lines",
+      "toolbar-moved",
+      "pause-leaks",
+      "copy-no-source",
+      "clear-miscount",
+      "state-lost",
+      "more-missing",
+      "pause-commits",
+      "toolbar-timer"
+    ]
+  },
+  "ui-next/shell/probes/notices-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "toast-width",
+      "gap",
+      "retry-paint",
+      "no-alert",
+      "no-live",
+      "told-twice",
+      "steals-focus",
+      "f6-first",
+      "no-restore",
+      "sticky-closes",
+      "no-hold",
+      "hover-stuck",
+      "modal-leaks",
+      "timer-left",
+      "layout-shift",
+      "no-avoid",
+      "covers",
+      "yield-stop",
+      "yield-expires",
+      "yield-drops-focus",
+      "centre-width",
+      "centre-row",
+      "centre-dot",
+      "centre-bell-number",
+      "centre-menu-offset",
+      "centre-no-name",
+      "centre-escape",
+      "centre-focus",
+      "centre-outside",
+      "centre-two-stops",
+      "centre-listener-left",
+      "centre-timer-left",
+      "centre-second-commit",
+      "centre-slow-open"
+    ]
+  },
+  "ui-next/shell/probes/palette-plugins-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "slow-blocks",
+      "quick-late",
+      "focus-moves",
+      "extra-commit",
+      "plugin-shift",
+      "closed-work",
+      "stale-shown",
+      "alias-ignored",
+      "alias-loose",
+      "connection-key",
+      "connection-key-face"
+    ]
+  },
+  "ui-next/shell/probes/palette-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "frame-width",
+      "row-height",
+      "foot-height",
+      "search-place",
+      "foot-gap",
+      "paint",
+      "hover-steals",
+      "no-restore"
+    ]
+  },
+  "ui-next/shell/probes/panel-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "panel-height",
+      "session-gap",
+      "toggle",
+      "tab-padding",
+      "shift",
+      "root-write",
+      "held-hidden",
+      "held-done-hidden",
+      "held-moved",
+      "held-enabled",
+      "twin-moved",
+      "twin-lone-scope",
+      "twin-scope-kept",
+      "scope-name"
+    ]
+  },
+  "ui-next/shell/probes/rail-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/shell-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/strip-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "slot-width",
+      "slot-undeclared"
+    ]
+  },
+  "ui-next/shell/probes/tour-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "slot-wide",
+      "names-no-tip",
+      "title-cut",
+      "twin-lone",
+      "twin-hidden",
+      "memory-lost"
+    ]
+  }
+}

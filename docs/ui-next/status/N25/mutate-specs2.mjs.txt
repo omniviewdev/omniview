@@ -1,0 +1,30 @@
+const ENGINE = 'scripts/ci/probe-shards.mjs';
+const WF = '.github/workflows/ui-next-kit-probes.yml';
+const e = (id, find, replace) => ({ id: `E2-${id}`, area: 'engine', file: ENGINE, find, replace });
+const w = (id, find, replace, extra = {}) => ({ id: `W2-${id}`, area: 'workflow', file: WF, find, replace, ...extra });
+import first from './mutate-specs.mjs';
+export default [
+  // the two survivors of the first sweep
+  ...first.filter((spec) => ['E-matrix-dist', 'W-image-guard-late'].includes(spec.id)),
+  e('ran-shard-number', 'shard: Number.isInteger(Number(shard)) ? Number(shard) : shard,', 'shard,'),
+  e('readreports-recursion', 'if (entry.isDirectory()) walk(file);\n      else if (/^ran-', 'if (false) walk(file);\n      else if (/^ran-'),
+  e('plan-numbering', 'shard: index + 1, units: shard.units', 'shard: index, units: shard.units'),
+  e('plan-dist', 'dist: shard.units.some((entry) => dist.has(entry.id)) }', 'dist: true }'),
+  e('verify-plan-parse', '/^\\d+$/.test(String(shards))', 'true'),
+  e('verify-summary-rows', '| ${report.shard} | ${report.units.map((entry) => entry.id).join(', ')} |', '| ${report.shard} | |'),
+  e('plan-summary-write', 'if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\\n`);', ''),
+  e('check-manifest-listed-in-title', "'Kit probe manifest');\n    }\n  }\n  return problems;", "'Kit probe units');\n    }\n  }\n  return problems;"),
+  e('slowdown-worst', 'export const SHARD_SLOWDOWN_WORST = 1.292;', 'export const SHARD_SLOWDOWN_WORST = 1.4;'),
+  e('ceiling-margin', 'export const SHARD_CEILING_MARGIN = 0.1;', 'export const SHARD_CEILING_MARGIN = 0.3;'),
+  e('setup-max', 'export const SETUP_MAX_SECONDS = 137;', 'export const SETUP_MAX_SECONDS = 300;'),
+  e('drift-ratio', 'export const DRIFT_RATIO = 0.25;', 'export const DRIFT_RATIO = 0.5;'),
+  e('drift-floor', 'export const DRIFT_FLOOR_SECONDS = 60;', 'export const DRIFT_FLOOR_SECONDS = 30;'),
+  w('aggregator-gh-token', '          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}\n          GH_TOKEN: ${{ github.token }}\n', '          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}\n'),
+  w('aggregator-contents', '    permissions:\n      actions: read\n      contents: read\n', '    permissions:\n      actions: read\n'),
+  w('plan-outputs-matrix', '      matrix: ${{ steps.plan.outputs.matrix }}\n', '      matrix: ${{ steps.plan.outputs.matrix }}x\n'),
+  w('run-step-env-shard', '          SHARD: ${{ matrix.shard }}\n          UNITS', '          SHARD: 1\n          UNITS'),
+  w('guard-if', '      - name: The image is not stale\n        run:', '      - name: The image is not stale\n        if: false\n        run:'),
+  w('plan-step-if', '      - name: Check the table and pack the shards\n        id: plan\n', '      - name: Check the table and pack the shards\n        id: plan\n        if: false\n'),
+  w('run-step-if', '      - name: Run the units of this shard\n        env:', "      - name: Run the units of this shard\n        if: matrix.shard != 1\n        env:"),
+  w('verify-step-if', '      - name: Require every unit of the table to have run and passed\n        env:', "      - name: Require every unit of the table to have run and passed\n        if: github.event_name != 'push'\n        env:"),
+];

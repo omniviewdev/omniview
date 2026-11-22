@@ -1,0 +1,121 @@
+// The mutants of N25's engine, plan, verify and workflow (area: engine | workflow | floor).
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+const origin = '/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n25-probe-controls';
+const ENGINE = 'scripts/ci/probe-shards.mjs';
+const WF = '.github/workflows/ui-next-kit-probes.yml';
+const e = (id, find, replace, extra = {}) => ({ id: `E-${id}`, area: 'engine', file: ENGINE, find, replace, ...extra });
+const w = (id, find, replace, extra = {}) => ({ id: `W-${id}`, area: 'workflow', file: WF, find, replace, ...extra });
+
+const engine = [
+  e('verify-dup-unit', 'if (found.length > 1) problems.push(', 'if (found.length > 99) problems.push('),
+  e('verify-unit-failed', 'if (entry.ok !== true) problems.push(', 'if (false) problems.push('),
+  e('verify-missing-shard', 'for (let n = 1; n <= planned; n += 1) if (!seen.has(n)) missing.push(n);', 'for (let n = 1; n <= planned; n += 1) if (false) missing.push(n);'),
+  e('verify-plan-zero', 'planned < 1) problems.push(', 'planned < 0) problems.push('),
+  e('verify-control-missing', 'if (lacking.length > 0) problems.push(', 'if (lacking.length > 99) problems.push('),
+  e('verify-runs-count', 'if (entry.runs !== expected) problems.push(', 'if (false) problems.push('),
+  e('verify-unknown-unit', 'for (const id of where.keys()) if (!known.has(id)) problems.push(', 'for (const id of where.keys()) if (false) problems.push('),
+  e('verify-extra-shard', 'for (const n of seen.keys()) if (n > planned) problems.push(', 'for (const n of seen.keys()) if (false) problems.push('),
+  e('verify-report-twice', 'if (seen.has(report.shard)) problems.push(', 'if (false) problems.push('),
+  e('verify-trusts-reports', 'verifyRan({ units, reports: read.reports, shards: planned })', 'verifyRan({ units, reports: read.reports, shards: String(read.reports.length) })'),
+  e('verify-unit-not-run', 'if (found.length === 0) {\n      problems.push(', 'if (found.length === -1) {\n      problems.push('),
+  e('main-problems-ignored', 'if (loaded.problems.length > 0) {\n    for (const problem of loaded.problems) err(', 'if (false) {\n    for (const problem of loaded.problems) err('),
+  e('plan-zero-shards', "if (packed.length === 0) throw", 'if (false) throw'),
+  e('plan-limit-ignored', 'seconds: unit.seconds })), limit);', 'seconds: unit.seconds })), limit + 100);'),
+  e('matrix-dist', 'dist: shard.dist })) };', 'dist: false })) };'),
+  e('matrix-units', "units: shard.units.map((entry) => entry.id).join(',')", "units: shard.units.slice(1).map((entry) => entry.id).join(',')"),
+  e('plan-output-shards', 'shards=${matrix.include.length}', 'shards=${matrix.include.length - 1}'),
+  e('ceiling-off', 'if (took > ceiling) {', 'if (took > ceiling + 100000) {'),
+  e('ceiling-default', 'ceiling = SHARD_CEILING_SECONDS } = {}', 'ceiling = Number.POSITIVE_INFINITY } = {}'),
+  e('ceiling-excludes-failed', 'const took = whole(results.reduce((sum, result) => sum + result.seconds, 0));\n  const planned', 'const took = whole(results.filter((result) => result.ok).reduce((sum, result) => sum + result.seconds, 0));\n  const planned'),
+  e('margin-min', 'const margin = Math.max(floor, ratio * unit.seconds);', 'const margin = Math.min(floor, ratio * unit.seconds);'),
+  e('margin-sum', 'const margin = Math.max(floor, ratio * unit.seconds);', 'const margin = floor + ratio * unit.seconds;'),
+  e('drift-boundary', "const verdict = delta > margin ? 'slower'", "const verdict = delta >= margin ? 'slower'"),
+  e('drift-failed-unit-counts', 'if (!entry.ok) continue;', 'if (false) continue;'),
+  e('drift-unknown-unit', 'if (unit === undefined) {\n      failures.push(', 'if (false) {\n      failures.push('),
+  e('report-ok', 'runs: 0, controls: [] };\n    entry.ok &&= result.ok;', 'runs: 0, controls: [] };'),
+  e('report-controls', 'if (result.control !== null && result.control !== undefined) entry.controls.push(result.control);', ''),
+  e('reports-regex', '/^ran-\\d+-probe\\.json$/.test(entry.name)', '/probe\\.json$/.test(entry.name)'),
+  e('floor-probe', 'if (entry.probe && !mine.some((unit) => unit.controls === undefined)) add(', 'if (false) add('),
+  e('floor-control', 'if (!have.has(control)) add(', 'if (false) add('),
+  e('floor-manifest-shape', 'if (bad) add(', 'if (false) add('),
+  e('floor-skipped-when-null', 'if (manifest !== null) {', 'if (manifest !== null && false) {'),
+  e('expand-negative-control', 'env: { ...env, NEGATIVE_CONTROL: control } }', 'env: { ...env } }'),
+  e('wall-budget', 'export const WALL_BUDGET_SECONDS = 540;', 'export const WALL_BUDGET_SECONDS = 600;'),
+  e('run-exit-drift', 'return results.every((result) => result.ok) && found.failures.length === 0 ? 0 : 1;', 'return results.every((result) => result.ok) ? 0 : 1;'),
+  e('run-no-report', 'writeFileSync(path.join(env.RUNNER_TEMP, `ran-${shard}-probe.json`), ', 'void (path.join(env.RUNNER_TEMP, `ran-${shard}-probe.json`), '),
+  e('run-result-unit', "...(await runOne(run, { id, root, env, out, node })), unit: unit.id }", '...(await runOne(run, { id, root, env, out, node })) }'),
+  e('check-id', "if (typeof unit.id !== 'string' || !ID.test(unit.id)) {", "if (typeof unit.id !== 'string') {"),
+  e('check-seconds', 'if (!Number.isInteger(unit.seconds) || unit.seconds < 1) add(', 'if (false) add('),
+  e('check-seconds-limit', 'else if (unit.seconds > LIMIT_SECONDS) add(', 'else if (false) add('),
+  e('check-paths', "if ('paths' in unit) add(", 'if (false) add('),
+  e('check-forgotten-probe', 'if (!scriptUnits.has(file) && !held.has(file)) {', 'if (false) {'),
+  e('check-control-twice', 'if (list.length > 1) {\n      const [script, control] = key.split', 'if (list.length > 99) {\n      const [script, control] = key.split'),
+  e('find-node-modules', "if (entry.name === 'node_modules') continue;", ''),
+  e('env-empty', "if (got === undefined || got === '') throw", 'if (got === undefined) throw'),
+  e('reads-dist', '\\$(?:\\{PROBE_DIST\\}|PROBE_DIST\\b)', '\\$(?:\\{PROBE_DIST\\})'),
+];
+
+const workflow = [
+  w('aggregator-needs', 'needs: [plan, shard]', 'needs: shard'),
+  w('aggregator-if', 'if: ${{ always() }}', 'if: ${{ success() }}'),
+  w('aggregator-skipped-ok', '[ "$SHARD_RESULT" = success ]; then', '[ "$SHARD_RESULT" != failure ]; then'),
+  w('aggregator-plan-result', '          PLAN_RESULT: ${{ needs.plan.result }}\n', '          PLAN_RESULT: success\n'),
+  w('aggregator-no-verify', '          gh run download "$GITHUB_RUN_ID" --pattern \'kit-probe-reports-*\' --dir "$RUNNER_TEMP/reports"\n          node scripts/ci/probe-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"\n', '          echo verified\n'),
+  w('aggregator-shards-env', '          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}\n', '          PLAN_SHARDS: 1\n'),
+  w('aggregator-shards-flag', '--shards "$PLAN_SHARDS"', '--shards 1'),
+  w('aggregator-pattern', "--pattern 'kit-probe-reports-*'", "--pattern 'kit-probe-x-*'"),
+  w('aggregator-no-checkout', '      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n\n      - uses: actions/setup-node@v4\n        with:\n          node-version-file: .tool-versions\n\n      - name: Require the plan and every probe shard', '      - name: Require the plan and every probe shard'),
+  w('aggregator-timeout', '    timeout-minutes: 10\n    permissions:\n      actions: read', '    timeout-minutes: 100\n    permissions:\n      actions: read'),
+  w('aggregator-actions-read', '    permissions:\n      actions: read\n      contents: read\n', '    permissions:\n      contents: read\n'),
+  w('shard-continue-on-error', '    timeout-minutes: 15\n', '    timeout-minutes: 15\n    continue-on-error: true\n'),
+  w('plan-continue-on-error', '    name: Kit probes plan\n    runs-on: ubuntu-24.04\n', '    name: Kit probes plan\n    continue-on-error: true\n    runs-on: ubuntu-24.04\n'),
+  w('shard-or-true', 'run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"', 'run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS" || true'),
+  w('shard-timeout', '    timeout-minutes: 15\n', '    timeout-minutes: 120\n'),
+  w('shard-timeout-short', '    timeout-minutes: 15\n', '    timeout-minutes: 8\n'),
+  w('plan-if', '    name: Kit probes plan\n    runs-on: ubuntu-24.04\n', "    name: Kit probes plan\n    if: github.event_name != 'workflow_dispatch'\n    runs-on: ubuntu-24.04\n"),
+  w('plan-no-check', '          node scripts/ci/probe-shards.mjs check\n          node scripts/ci/probe-shards.mjs plan', '          node scripts/ci/probe-shards.mjs plan'),
+  w('plan-output-shards', '      shards: ${{ steps.plan.outputs.shards }}\n', ''),
+  w('matrix-hand-written', 'matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}', 'matrix: ${{ fromJSON(\'{"include":[{"shard":1,"units":"rail","seconds":17,"dist":false}]}\') }}'),
+  w('fail-fast', 'fail-fast: false', 'fail-fast: true'),
+  w('shard-needs', '    needs: plan\n', ''),
+  w('shard-units-env', '          UNITS: ${{ matrix.units }}\n', '          UNITS: kit\n'),
+  w('shard-dist', 'if: matrix.dist == true', 'if: matrix.dist == false'),
+  w('shard-no-check', '          node scripts/ci/probe-shards.mjs check\n          node --test scripts/ci/probe-*.test.mjs', '          node --test scripts/ci/probe-*.test.mjs'),
+  w('shard-tests-subset', 'node --test scripts/ci/probe-*.test.mjs', 'node --test scripts/ci/probe-shards.test.mjs'),
+  w('upload-overwrite', '          overwrite: true\n', ''),
+  w('upload-if', '        if: always()\n        uses: actions/upload-artifact@v4', '        if: success()\n        uses: actions/upload-artifact@v4'),
+  w('upload-name', 'name: kit-probe-reports-${{ matrix.shard }}', 'name: kit-probe-reports'),
+  w('upload-path', 'path: ${{ runner.temp }}/*-probe.json', 'path: ${{ runner.temp }}/kit-probe.json'),
+  w('node-pin', 'node-version-file: .tool-versions', 'node-version: 22', { nth: 1 }),
+  w('paths-pr-units', '      - "scripts/ci/probe-units/**"\n', '', { nth: 1 }),
+  w('paths-push-units', '      - "scripts/ci/probe-units/**"\n', '', { nth: 2 }),
+  w('paths-probe-star', '      - "scripts/ci/probe-*"\n', '', { nth: 1 }),
+  w('cancel-in-progress', 'cancel-in-progress: true', 'cancel-in-progress: false'),
+  w('trigger-dispatch', '  workflow_dispatch:\n', ''),
+  w('image-guard-late', '      - name: The image is not stale\n', '      - name: The image is not stale (late)\n        if: false\n'),
+];
+
+// The floor: every control of every unit file taken out, and every unit.
+const floor = [];
+const dir = 'scripts/ci/probe-units';
+for (const name of readdirSync(path.join(origin, dir)).filter((n) => n.endsWith('.mjs')).sort()) {
+  const file = `${dir}/${name}`;
+  const text = readFileSync(path.join(origin, file), 'utf8');
+  const count = (s) => text.split(s).length - 1;
+  // every `controls: [...]` list (a list may wrap over lines): its quoted names
+  for (const match of text.matchAll(/controls:\s*\[([^\]]*)\]/g)) {
+    for (const nameMatch of match[1].matchAll(/'([^']+)'/g)) {
+      const control = nameMatch[1];
+      const list = match[0];
+      const without = list.replace(new RegExp(`'${control.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}',?\\s*`), '').replace(/,\s*\]$/, ']');
+      if (without === list || count(list) !== 1) continue;
+      floor.push({ id: `F-control-${name.replace('.mjs', '')}-${control}`, area: 'floor', file, find: list, replace: without });
+    }
+  }
+  // every unit object
+  for (const match of text.matchAll(/\n  \{\n    id: '([^']+)',[\s\S]*?\n  \},?(?=\n)/g)) {
+    floor.push({ id: `F-unit-${match[1]}`, area: 'floor', file, find: match[0], replace: '' });
+  }
+}
+export default [...engine, ...workflow, ...floor];

@@ -1,0 +1,88 @@
+"""Collects the notices probe's `centre open` lines (the probe's own step, not its controls) from the runner's logs
+of every completed run of ui-next-kit-probes.yml (every attempt), newest first.
+usage: python3 collect_centre.py <how many runs> <out.json>"""
+import json, re, subprocess, sys, zipfile, io, os
+from concurrent.futures import ThreadPoolExecutor
+
+R = 'omniviewdev/omniview'
+GROUP = 'Probe the toast layer against the pinned mock reference'
+LINE = re.compile(r'centre open (\w+) (\d+x\d+): \[([^\]]*)\] ms, median ([\d.]+) ms')
+GROUP_LINE = re.compile(r'##\[group\](.*)$')
+STAMP = re.compile(r'^\ufeff?\d{4}-\d\d-\d\dT[\d:.]+Z ')
+
+
+def gh(*args, binary=False):
+    p = subprocess.run(['gh', *args], capture_output=True)
+    return p.returncode, p.stdout if binary else p.stdout.decode('utf8', 'replace'), p.stderr.decode('utf8', 'replace')
+
+
+def list_runs(n):
+    runs = []
+    page = 1
+    while len(runs) < n:
+        code, out, err = gh('api', f'repos/{R}/actions/workflows/ui-next-kit-probes.yml/runs?per_page=100&status=completed&page={page}', '--jq', '.workflow_runs[] | {id, run_attempt, event, created_at, head_sha, head_branch, conclusion}')
+        if code != 0:
+            print('list failed', err, file=sys.stderr)
+            break
+        got = [json.loads(line) for line in out.splitlines() if line.strip()]
+        if not got:
+            break
+        runs += got
+        page += 1
+    return runs[:n]
+
+
+def one(args):
+    run, attempt = args
+    code, data, err = gh('api', f'repos/{R}/actions/runs/{run["id"]}/attempts/{attempt}/logs', binary=True)
+    if code != 0 or not data:
+        return {'run': run['id'], 'attempt': attempt, 'error': (err or 'empty')[:200], 'centre': []}
+    found = []
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except Exception as e:
+        return {'run': run['id'], 'attempt': attempt, 'error': f'not a zip: {e}', 'centre': []}
+    for name in zf.namelist():
+        if name.count('/') < 1 and not name.endswith('.txt'):
+            continue
+        text = zf.read(name).decode('utf8', 'replace')
+        if 'centre open' not in text:
+            continue
+        group = None
+        for raw in text.splitlines():
+            line = STAMP.sub('', raw)
+            m = GROUP_LINE.match(line)
+            if m:
+                group = m.group(1)
+                continue
+            if line.startswith('##[endgroup]'):
+                group = None
+                continue
+            m = LINE.match(line)
+            if m and group == GROUP:
+                found.append({'engine': m.group(1), 'viewport': m.group(2), 'median': float(m.group(4)), 'samples': [float(x) for x in m.group(3).split(',') if x.strip()], 'job': name.split('/')[0]})
+    return {'run': run['id'], 'attempt': attempt, 'centre': found}
+
+
+def main():
+    n = int(sys.argv[1])
+    out = sys.argv[2]
+    runs = list_runs(n)
+    print('runs', len(runs), file=sys.stderr)
+    jobs = []
+    meta = {}
+    for r in runs:
+        meta[r['id']] = r
+        for attempt in range(1, (r.get('run_attempt') or 1) + 1):
+            jobs.append((r, attempt))
+    results = []
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for res in ex.map(one, jobs):
+            m = meta[res['run']]
+            res.update({'event': m['event'], 'createdAt': m['created_at'], 'sha': m['head_sha'][:8], 'branch': m['head_branch'], 'conclusion': m['conclusion'], 'latestAttempt': m['run_attempt']})
+            results.append(res)
+            print(res['run'], res['attempt'], len(res['centre']), res.get('error', ''), file=sys.stderr, flush=True)
+    json.dump(results, open(out, 'w'), indent=1)
+
+
+main()

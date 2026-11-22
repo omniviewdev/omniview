@@ -1,0 +1,10 @@
+const ENGINE = 'scripts/ci/probe-shards.mjs';
+const e = (id, find, replace, extra = {}) => ({ id: `E3-${id}`, area: 'engine', file: ENGINE, find, replace, ...extra });
+export default [
+  e('verify-summary-rows', '| ${report.shard} | ${report.units.map((entry) => entry.id).join(\', \')} |', '| ${report.shard} | |'),
+  e('verify-plan-parse', '/^\\d+$/.test(String(shards))', 'true'),
+  e('manifest-probe-title', ", script, 'Kit probe manifest');", ", script, 'Kit probe units');", { nth: 1 }),
+  e('manifest-probe-file', ", script, 'Kit probe manifest');", ', undefined, \'Kit probe manifest\');', { nth: 1 }),
+  e('manifest-control-file', ", script, 'Kit probe manifest');", ', undefined, \'Kit probe manifest\');', { nth: 2 }),
+  e('manifest-control-title', ", script, 'Kit probe manifest');", ", script, 'Kit probe units');", { nth: 2 }),
+];

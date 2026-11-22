@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+// Mutation harness for N25's engine, plan, verify and workflow (the test suite of scripts/ci/probe-*.test.mjs against each mutant).
+//   node mutate-run.mjs --specs <mutate-specs.mjs> --out <results.jsonl> --clones <dir,dir,...> --origin <a pristine copy made by mutate-clone.sh> [--only id,id]
+// specs.mjs default-exports [{ id, edits: [{ file, find, replace, nth?, all? }] }] (single-edit shorthand: { id, file, find, replace }), `file` relative to a clone's root. `find` must occur exactly once (or `nth` picks the n-th of several, 1-based).
+// A clone is a directory that holds scripts/ci, .github, packages/kit/probes, ui-next/{shell,page}/probes and node_modules (see clone.sh); each mutant is applied to the clone's file, detected, and the file is restored from the clone's pristine copy.
+// Detection is what CI runs in every shard: `probe-shards.mjs check`, then `node --test scripts/ci/probe-*.test.mjs` (a mutant is killed by the first of them that fails; `by` says which).
+import { spawn } from 'node:child_process';
+import { appendFileSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const args = process.argv.slice(2);
+const opt = (name) => { const i = args.indexOf(`--${name}`); return i === -1 ? undefined : args[i + 1]; };
+const specs = (await import(pathToFileURL(path.resolve(opt('specs'))).href)).default;
+const out = path.resolve(opt('out'));
+const clones = opt('clones').split(',').map((dir) => path.resolve(dir));
+const only = opt('only')?.split(',');
+const origin = path.resolve(opt('origin'));
+const normal = (spec) => ({ id: spec.id, area: spec.area ?? '', edits: spec.edits ?? [{ file: spec.file, find: spec.find, replace: spec.replace, nth: spec.nth, all: spec.all }] });
+let todo = specs.map(normal);
+if (only) todo = todo.filter((spec) => only.includes(spec.id));
+
+function run(cwd, nodeArgs, timeout = 300000) {
+  return new Promise((resolve) => {
+    const child = spawn('node', nodeArgs, { cwd, env: { ...process.env, GITHUB_ACTIONS: '', NODE_NO_WARNINGS: '1', FONT_DELAY_MS: '', NEGATIVE_CONTROL: '' } });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.stderr.on('data', (c) => { stderr += c; });
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeout);
+    child.on('close', (status, signal) => { clearTimeout(timer); resolve({ status, signal, stdout, stderr }); });
+  });
+}
+const failedOf = (r) => [...new Set([...r.stdout.matchAll(/^\s*not ok \d+ - (.*?)(?: # .*)?$/gm)].map((m) => m[1]))];
+
+async function detect(clone) {
+  const check = await run(clone, ['scripts/ci/probe-shards.mjs', 'check'], 60000);
+  if (check.status !== 0) return { killed: true, by: 'check', note: (check.stderr || check.stdout).trim().split('\n')[0].slice(0, 200) };
+  for (const file of ['probe-pack.test.mjs', 'probe-shards.test.mjs']) {
+    const r = await run(clone, ['--test', '--test-reporter=tap', `scripts/ci/${file}`]);
+    if (r.status !== 0) return { killed: true, by: file, tests: failedOf(r).slice(0, 3), note: r.signal ? 'killed by signal' : undefined };
+  }
+  return { killed: false, by: 'none' };
+}
+
+function apply(clone, edits) {
+  for (const edit of edits) {
+    const file = path.join(clone, edit.file);
+    const text = readFileSync(file, 'utf8');
+    const count = text.split(edit.find).length - 1;
+    if (edit.nth !== undefined) {
+      if (count < edit.nth) throw new Error(`find occurs ${count} times in ${edit.file}, wanted the ${edit.nth}th: ${JSON.stringify(edit.find).slice(0, 100)}`);
+      let at = -1;
+      for (let i = 0; i < edit.nth; i += 1) at = text.indexOf(edit.find, at + 1);
+      writeFileSync(file, text.slice(0, at) + edit.replace + text.slice(at + edit.find.length));
+    } else {
+      if (edit.all ? count < 1 : count !== 1) throw new Error(`find occurs ${count} times in ${edit.file} (wanted ${edit.all ? '>= 1' : '1'}): ${JSON.stringify(edit.find).slice(0, 100)}`);
+      writeFileSync(file, edit.all ? text.split(edit.find).join(edit.replace) : text.replace(edit.find, () => edit.replace));
+    }
+  }
+}
+
+let next = 0;
+async function worker(clone) {
+  while (next < todo.length) {
+    const spec = todo[next++];
+    let line;
+    try {
+      apply(clone, spec.edits);
+      line = { id: spec.id, area: spec.area, ...(await detect(clone)) };
+    } catch (error) {
+      line = { id: spec.id, area: spec.area, killed: null, by: 'error', note: String(error.message) };
+    } finally {
+      for (const edit of spec.edits) copyFileSync(path.join(origin, edit.file), path.join(clone, edit.file));
+    }
+    appendFileSync(out, `${JSON.stringify(line)}\n`);
+    console.error(`${line.killed === null ? 'ERR ' : line.killed ? 'kill' : 'LIVE'} ${spec.id} ${line.by}`);
+  }
+}
+writeFileSync(out, '');
+// baseline: the tests pass on every clone before anything is mutated
+for (const clone of clones) {
+  const base = await detect(clone);
+  if (base.killed) { console.error(`BASELINE FAILS in ${clone}: ${JSON.stringify(base)}`); process.exit(2); }
+}
+await Promise.all(clones.map((clone) => worker(clone)));
+console.error(`done: ${todo.length} mutants`);
