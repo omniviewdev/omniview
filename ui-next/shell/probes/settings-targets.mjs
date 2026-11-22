@@ -20,7 +20,7 @@ export const PARTS = [
   { name: 'rowText', mock: '.settings-page .setting-row .setting-row__text', shell: '[data-settings-row] [data-ov-part="text"]' },
   { name: 'page', mock: '.settings-page', shell: '[data-settings-part="page"]' },
   { name: 'heading', mock: '.settings-page .heading', shell: '[data-settings-part="page"] > header' },
-  { name: 'title', mock: '.settings-page .heading h1', shell: '[data-settings-part="page"] > header > h3' },
+  { name: 'title', mock: '.settings-page .heading h1', shell: '[data-settings-part="page"] > header > :first-child' },
   { name: 'subtitle', mock: '.settings-page .heading .subtitle', shell: '[data-settings-part="page"] > header > p' },
   // The mock groups rows in sections with a title each (`H.section`); the host declares none, so the shell's list follows the heading at once.
   { name: 'sectionHead', mock: '.settings-page .form-section__head', shell: '[data-settings-part="never"]' },

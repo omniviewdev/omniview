@@ -23,13 +23,6 @@ const SCROLL = (top) => {
   );
 };
 
-/** What a repaired Settings window has: the page's title at level 2, under the caption's h1 (the heading order axe finds), kept as the pages change. Runs in the page. */
-const HEADING_LEVEL = () => {
-  const apply = () => document.querySelectorAll('[data-settings-part="page"] > header > h3').forEach((heading) => heading.setAttribute('aria-level', '2'));
-  apply();
-  new MutationObserver(apply).observe(document.body, { childList: true, subtree: true });
-};
-
 export const PERTURBATIONS = {
   // ---------------------------------------------------------------- window
   'win-sidebar': {
@@ -102,7 +95,6 @@ export const PERTURBATIONS = {
     parts: ['group'],
     says: /^page\.group\.size /,
     fault: 'the group\'s label is 12 px muted in a 28 px row, as it is today, not the mock\'s 13 px in the text colour in a 24 px row',
-    base: { css: '[data-settings-part="nav"] > [aria-hidden="true"] { font-size: var(--ov-fs-13) !important; color: var(--ov-fg) !important; padding-block: 4px !important; }' },
     plant: { css: '[data-settings-part="nav"] > [aria-hidden="true"] { font-size: var(--ov-fs-12) !important; color: var(--ov-fg-muted) !important; padding-block: 6px !important; }' },
   },
   'group-tabbable': {
@@ -117,22 +109,20 @@ export const PERTURBATIONS = {
     parts: ['heading'],
     says: /^page\.heading\.lane /,
     fault: 'the heading has a 24 px title lane and no gap under it, as it does today, not the mock\'s 28 px lane and 4 px gap',
-    base: { css: '[data-settings-part="page"] > header > h3 { padding-block: 2px !important; } [data-settings-part="page"] > header { row-gap: 4px !important; }' },
-    plant: { css: '[data-settings-part="page"] > header > h3 { padding-block: 0 !important; } [data-settings-part="page"] > header { row-gap: 0 !important; }' },
+    plant: { css: '[data-settings-part="page"] > header > :first-child { min-block-size: 24px !important; } [data-settings-part="page"] > header { gap: 0 !important; }' },
   },
   'heading-type': {
     section: 'page',
     parts: ['heading'],
     says: /^page\.heading\.type /,
     fault: 'the page title is 22 px',
-    plant: { css: '[data-settings-part="page"] > header > h3 { font-size: 22px !important; }' },
+    plant: { css: '[data-settings-part="page"] > header > :first-child { font-size: 22px !important; }' },
   },
   'heading-oneline': {
     section: 'page',
     parts: ['heading'],
     says: /^page\.heading\.oneline /,
     fault: 'the description wraps where it is long, as it does today, and is not cut to one line with an ellipsis',
-    base: { css: '[data-settings-part="page"] > header > p { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }' },
     plant: { css: '[data-settings-part="page"] > header > p { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }' },
   },
   'list-start': {
@@ -211,7 +201,6 @@ export const PERTURBATIONS = {
     parts: ['scroll'],
     says: /^page\.scroll\.reset /,
     fault: 'a page opens where the page before it was scrolled to (175 px), as it does today, not at the top',
-    base: { js: SCROLL, arg: 0 },
     plant: { js: SCROLL, arg: 175 },
   },
   'scroll-fits': {
@@ -254,7 +243,6 @@ export const PERTURBATIONS = {
     parts: ['states'],
     says: /^page\.states\.type /,
     fault: 'the alert\'s sentence is 13 px, as it is today, not the mock\'s 12 px, and its text is not centred',
-    base: { css: '[data-settings-state="failed"] > :nth-child(2) { font-size: var(--ov-fs-12) !important; } [data-settings-state="failed"] { text-align: center !important; }' },
     plant: { css: '[data-settings-state="failed"] > :nth-child(2) { font-size: var(--ov-fs-13) !important; } [data-settings-state="failed"] { text-align: start !important; }' },
   },
   'paint-token': {
@@ -467,14 +455,9 @@ export const PERTURBATIONS = {
     section: 'a11y',
     parts: ['pages'],
     says: /^a11y\.axe /,
-    // The page's title is an h3 in a window whose caption is an h1 (the heading order axe finds in the Settings window): the clean run is the page with its titles at level 2, which is what a repaired window has.
-    base: { js: HEADING_LEVEL },
     fault: 'Close has no accessible name',
     plant: {
       js: () => {
-        const apply = () => document.querySelectorAll('[data-settings-part="page"] > header > h3').forEach((heading) => heading.setAttribute('aria-level', '2'));
-        apply();
-        new MutationObserver(apply).observe(document.body, { childList: true, subtree: true });
         document.querySelector('dialog [data-ov-part="close"], [data-settings-part="caption"] button').removeAttribute('aria-label');
       },
     },
@@ -483,10 +466,8 @@ export const PERTURBATIONS = {
     section: 'a11y',
     parts: ['pages'],
     says: /^a11y\.axe /,
-    // The page's title is an h3 in a window whose caption is an h1 (the heading order axe finds in the Settings window): the clean run is the page with its titles at level 2, which is what a repaired window has.
     fault: 'the page\'s description is drawn almost in the colour of its background (an exact match is hidden text, which axe asks a person to review, not a violation)',
-    base: { js: HEADING_LEVEL },
-    plant: { css: '[data-settings-part="page"] > header > p { color: color-mix(in srgb, var(--ov-bg-dialog) 85%, var(--ov-fg)) !important; }', js: HEADING_LEVEL },
+    plant: { css: '[data-settings-part="page"] > header > p { color: color-mix(in srgb, var(--ov-bg-dialog) 85%, var(--ov-fg)) !important; }' },
   },
 
   // ---------------------------------------------------------------- perf

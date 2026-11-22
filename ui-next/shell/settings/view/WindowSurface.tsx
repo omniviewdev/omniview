@@ -50,7 +50,7 @@ export function WindowSurface({ session, page, onClose, request, visible }: Wind
         <IconButton icon="close" label="Close" variant="ghost" size="row" onClick={onClose} />
       </header>
       <div className={styles.body}>
-        <Body key={request} session={session} page={page} />
+        <Body key={request} session={session} page={page} headingLevel="h2" />
       </div>
     </div>
   );

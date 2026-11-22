@@ -6,14 +6,29 @@
     padding: var(--ov-spacing-16) var(--ov-spacing-24) var(--ov-spacing-24);
   }
 
+  /* The title has a 28 px lane and the description starts 4 px under it (S124); the description is one line and ends in an ellipsis. */
   .header {
     display: flex;
     flex-direction: column;
+    gap: var(--ov-spacing-4);
     margin-block-end: var(--ov-spacing-12);
   }
 
   .header > * {
     margin: 0;
+  }
+
+  .header > :first-child {
+    display: flex;
+    align-items: center;
+    min-block-size: 28px;
+  }
+
+  .header > p {
+    min-inline-size: 0;
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .rows {

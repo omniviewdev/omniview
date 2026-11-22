@@ -9,7 +9,7 @@ import { Body } from './Body';
 export function Surface({ session, page, onClose }: SurfaceProps) {
   return (
     <Sheet title="Settings" onClose={onClose} data-settings-part="sheet">
-      <Body session={session} page={page} />
+      <Body session={session} page={page} headingLevel="h3" />
     </Sheet>
   );
 }

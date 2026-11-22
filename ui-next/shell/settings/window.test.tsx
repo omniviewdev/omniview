@@ -42,6 +42,12 @@ describe('the window', () => {
     expect(within(screen.getByRole('navigation', { name: 'Settings pages' })).getAllByRole('button').length).toBeGreaterThan(3);
   });
 
+  it('puts the page\'s heading one level under the window\'s own title, which is the document\'s h1', async () => {
+    await mountWindow({ requestId: 1, target: '/settings?category=terminal', visible: true });
+    expect(screen.getByRole('heading', { level: 2, name: 'Terminal' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
+  });
+
   it('opens on the page the host\'s request names, and on the first page when the request names none', async () => {
     await mountWindow({ requestId: 1, target: '/settings?category=terminal', visible: true });
     expect(selectedPage()).toBe('Terminal');

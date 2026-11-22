@@ -45,6 +45,22 @@ describe('the sheet', () => {
   });
 });
 
+describe('the pages, by the keyboard', () => {
+  it('follow the focus: an arrow moves to a page and shows it, and Home and End do the same', async () => {
+    const m = await mount();
+    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveFocus();
+    await m.user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('button', { name: 'General' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'General' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('region', { name: 'General' })).toBeInTheDocument();
+    await m.user.keyboard('{End}');
+    expect(screen.getByRole('region', { name: 'Developer Settings' })).toBeInTheDocument();
+    await m.user.keyboard('{Home}');
+    expect(screen.getByRole('region', { name: 'Appearance' })).toBeInTheDocument();
+    expect(m.page.last()).toBe('appearance');
+  });
+});
+
 describe('the pages', () => {
   it('are the host\'s categories in the design\'s order, as one named navigation of buttons, the first on screen', async () => {
     await mount();
@@ -175,6 +191,24 @@ describe('a change', () => {
     expect(field).toHaveAccessibleDescription(/Enter a whole-number port from 0 to 65535\./);
     expect(m.host.calls.commit).toEqual([]);
     expect(screen.getAllByRole('status').some((region) => region.textContent === 'Host profiling port: Enter a whole-number port from 0 to 65535.')).toBe(true);
+  });
+
+  it('does not keep a refused draft for the way back: the page is entered from what the host applied (S125, no draft outlives its field)', async () => {
+    const m = await mount();
+    await goTo(m, 'Developer Settings');
+    m.host.next.validate = () => ({ valid: false, code: 'port_range', message: 'Enter a whole-number port from 0 to 65535.' });
+    const refused = screen.getByRole('spinbutton', { name: 'Host profiling port' });
+    await m.user.clear(refused);
+    await m.user.type(refused, '70000');
+    await m.user.keyboard('{Enter}');
+    await settle(m.clock);
+    expect(refused).toHaveAttribute('aria-invalid', 'true');
+    await goTo(m, 'Terminal');
+    await goTo(m, 'Developer Settings');
+    const back = screen.getByRole('spinbutton', { name: 'Host profiling port' });
+    expect(back).toHaveValue('6060');
+    expect(back).not.toHaveAttribute('aria-invalid', 'true');
+    expect(m.host.calls.commit).toEqual([]);
   });
 
   it('puts the applied value back on Escape in a field that has a draft, and the sheet stays open', async () => {

@@ -442,7 +442,7 @@ const READ_TOKENS = () => {
   const q = (selector) => document.querySelector(selector);
   const selected = getComputedStyle(q('[data-settings-part="nav"] [aria-current="page"]'));
   const group = getComputedStyle(q('[data-settings-part="nav"] > [aria-hidden="true"]'));
-  const title = getComputedStyle(q('[data-settings-part="page"] > header > h3'));
+  const title = getComputedStyle(q('[data-settings-part="page"] > header > :first-child'));
   const subtitle = getComputedStyle(q('[data-settings-part="page"] > header > p'));
   const rows = [...document.querySelectorAll('[data-settings-row]')];
   const frame = getComputedStyle(q('dialog [data-ov-part="frame"]') ?? q('[data-settings-part="window"]'));
@@ -450,7 +450,7 @@ const READ_TOKENS = () => {
     selectedFill: [selected.backgroundColor, resolve('background-color', 'var(--ov-selection-inactive)')],
     title: [title.color, resolve('color', 'var(--ov-fg)')],
     subtitle: [subtitle.color, resolve('color', 'var(--ov-fg-muted)')],
-    group: [group.color, resolve('color', 'var(--ov-fg-muted)')],
+    group: [group.color, resolve('color', 'var(--ov-fg)')],
     separator: [rows[1] === undefined ? 'none' : getComputedStyle(rows[1]).boxShadow.replace(/^(.*?\)).*$/, '$1'), resolve('color', 'var(--ov-border-subtle)')],
     frame: [frame.backgroundColor, resolve('background-color', 'var(--ov-bg-dialog)')],
   };

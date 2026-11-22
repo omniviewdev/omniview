@@ -5,10 +5,11 @@ import type { PageMemory } from '../host';
 import type { SettingsModel } from '../model/adapter';
 import type { SettingsSession } from '../model/session';
 import { Nav } from './Nav';
-import { Page } from './Page';
+import { Page, type HeadingLevel } from './Page';
 import styles from './Body.module.css';
 
 type ReadyProps = {
+  readonly headingLevel: HeadingLevel;
   readonly model: SettingsModel;
   readonly form: FormStore;
   readonly session: SettingsSession;
@@ -21,7 +22,17 @@ function firstPage(model: SettingsModel, memory: PageMemory): string | undefined
   return model.pages.some((page) => page.id === last) ? last : model.pages[0]?.id;
 }
 
-function Ready({ model, form, session, memory }: ReadyProps) {
+/** A refused draft does not outlive its field (S125): the page being entered starts from what the host has applied, so a value the host refused when the page was left is not found waiting on the way back. */
+function dropRefused(form: FormStore, ids: readonly string[]): void {
+  for (const id of ids) {
+    const field = form.field(id);
+    if (field?.dirty === true && field.validation === 'invalid') {
+      form.revert(id);
+    }
+  }
+}
+
+function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
   const [selected, setSelected] = useState(() => firstPage(model, memory));
   const layout = useRef<HTMLDivElement>(null);
   const page = model.pages.find((candidate) => candidate.id === selected) ?? model.pages[0];
@@ -44,12 +55,19 @@ function Ready({ model, form, session, memory }: ReadyProps) {
         pages={model.pages}
         selected={page.id}
         onSelect={(id) => {
+          const entered = model.pages.find((candidate) => candidate.id === id);
+          if (entered === undefined || entered.id === page.id) {
+            return;
+          }
+
+          dropRefused(form, entered.fields);
           setSelected(id);
           memory.set(id);
         }}
       />
-      <div className={styles.content} data-settings-part="content">
-        <Page key={page.id} page={page} form={form} session={session} />
+      {/* Keyed by the page, so that each page opens at its top: the pane that scrolls is a new element. */}
+      <div key={page.id} className={styles.content} data-settings-part="content">
+        <Page page={page} form={form} session={session} headingLevel={headingLevel} />
       </div>
     </div>
   );
@@ -65,7 +83,9 @@ function Failed({ session }: { readonly session: SettingsSession }) {
   return (
     <div ref={state} className={styles.state} role="alert" data-settings-part="state" data-settings-state="failed">
       <Text variant="title">Couldn’t load settings</Text>
-      <Text tone="muted">Omniview didn’t answer. Try again.</Text>
+      <Text tone="muted" variant="caption">
+        Omniview didn’t answer. Try again.
+      </Text>
       <Button
         icon="refresh"
         data-settings-part="retry"
@@ -82,19 +102,21 @@ function Failed({ session }: { readonly session: SettingsSession }) {
 export type BodyProps = {
   readonly session: SettingsSession;
   readonly page: PageMemory;
+  /** The level of the page's heading: the one under the container's own title (the sheet's is an h2, the window's an h1). */
+  readonly headingLevel: HeadingLevel;
 };
 
 /**
  * What Settings is, in whichever container holds it (the sheet in a window with no native windows, the Settings window where there are): the pages on the left and the page on the right, or loading, or failed with Retry, or
  * nothing to show, from the session; and a polite live region of its own that says what the form announces (S127). One component, so that the two containers cannot differ in what they draw.
  */
-export function Body({ session, page: memory }: BodyProps) {
+export function Body({ session, page: memory, headingLevel }: BodyProps) {
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const said = useSyncExternalStore(session.announcements.subscribe, session.announcements.getSnapshot);
   return (
     <div className={styles.body}>
       {state.phase === 'ready' ? (
-        <Ready model={state.model} form={state.form} session={session} memory={memory} />
+        <Ready headingLevel={headingLevel} model={state.model} form={state.form} session={session} memory={memory} />
       ) : state.phase === 'failed' ? (
         <Failed session={session} />
       ) : (

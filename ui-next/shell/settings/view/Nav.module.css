@@ -10,16 +10,15 @@
     overflow-y: auto;
     padding: var(--ov-spacing-8) var(--ov-spacing-6) var(--ov-spacing-12);
     border-inline-end: 1px solid var(--ov-border-subtle);
-    background-color: var(--ov-bg-window);
   }
 
-  /* The group's label (the mock's `.tree__row` of a group: muted, 12 px). It names nothing for assistive technology: the group is named by the list. */
+  /* The group's label (the mock's `.tree__row` of a group: 13 px, 600, the text colour, in a 24 px row). It names nothing for assistive technology: the group is named by the list. */
   .group {
-    padding: var(--ov-spacing-6) var(--ov-spacing-8);
-    color: var(--ov-fg-muted);
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    color: var(--ov-fg);
     font-family: var(--ov-font-ui);
     font-feature-settings: var(--ov-font-features);
-    font-size: var(--ov-fs-12);
+    font-size: var(--ov-fs-13);
     font-synthesis: none;
     font-weight: 600;
     letter-spacing: normal;

@@ -1,14 +1,14 @@
 // Section `keys` of the Settings probe: the keyboard, with real key presses, in both containers (the sheet, and the Settings window's content, which is the same body under another frame), on the real Settings over a host in memory.
 //
-//   nav       the pages are a list of buttons that is ONE Tab stop (the page on screen); the arrows, Home and End move the focus between them and stop at the ends (the kit's roving group: `Nav.tsx`); the arrows choose nothing,
-//             Enter and Space choose the page that has the focus, and the focus stays on it                                                                                           keys.nav
+//   nav       the pages are a list of buttons that is ONE Tab stop (the page on screen); the arrows, Home and End move the focus between them and stop at the ends (the kit's roving group: `Nav.tsx`); the page follows the focus (the editors this is
+//             modelled on do the same), and Enter and Space on it keep it chosen with the focus on it                                                                                           keys.nav
 //   reach     on every page, Tab goes from Close to the page on screen and then through the controls of every row in the order of the page, and every control a row has is a Tab stop and none else is: no control that cannot be
 //             reached, no stop that belongs to no row                                                                                                                                 keys.reach
 //   operate   each kind of row works from the keyboard alone: a switch (Space), a whole number (typed, Enter; the arrow steps), a text (typed, Enter, asked of the host first), a secret (typed, Enter, said Saved and shown
 //             nowhere), Reset (Enter, and the focus goes to the row's control), Retry (Enter, after a refused save)                                                                    keys.operate
 //   select    the kit's Select is the engine's own: type-ahead picks a value inside the dialog and applies it                                                                           keys.select
-//   draft     what a page change does to what a person typed (docs/ui-next/status/ST1.md and the form model: apply on change, a value the host refuses stays with its error): a draft that is valid is applied when the focus
-//             leaves the field (the press on another page), and one the host refused stays in its field with its error when the page is left and come back to                           keys.draft
+//   draft     what a page change does to what a person typed (S125: apply on change, and no draft outlives its field): a draft that is valid is applied when the focus
+//             leaves the field (the press on another page), and one the host refused is gone when the page is come back to: the field shows what the host applied                           keys.draft
 import {
   check,
   fail,
@@ -64,14 +64,14 @@ async function navPart(env, container) {
       check((await page.evaluate(WHO)) === expectedFocus, where, 'keys.nav', `${why}: the focus is on ${await page.evaluate(WHO)}, wanted ${expectedFocus}`);
     };
     await press('ArrowDown', 'General', 'ArrowDown from the first page');
-    check((await current(page)) === 'Appearance' && (await region(page)) === 'Appearance', where, 'keys.nav', `an arrow chose a page: ${await current(page)} is on screen, the arrows only move the focus`);
+    check((await current(page)) === 'General' && (await region(page)) === 'General', where, 'keys.nav', `an arrow moved the focus to General and ${await current(page)} is on screen (region ${await region(page)}): the page follows the focus, as in VS Code's settings contents and JetBrains' settings tree`);
     for (let index = 0; index < 4; index += 1) await page.keyboard.press('ArrowDown');
     await press('ArrowDown', 'Developer Settings', 'ArrowDown to the last page');
     await press('ArrowDown', 'Developer Settings', 'ArrowDown past the last page (it does not wrap)');
     await press('Home', 'Appearance', 'Home');
     await press('ArrowUp', 'Appearance', 'ArrowUp past the first page (it does not wrap)');
     await press('End', 'Developer Settings', 'End');
-    // Enter chooses the page that has the focus, and the focus stays on its button, which is now the Tab stop.
+    // Enter and Space on the page that has the focus keep it chosen, and the focus stays on its button, which is the Tab stop.
     await press('Home', 'Appearance', 'Home');
     for (let index = 0; index < 3; index += 1) await page.keyboard.press('ArrowDown');
     await press('Enter', 'Terminal', 'Enter on Terminal');
@@ -270,7 +270,7 @@ async function draftPart(env) {
     check(JSON.stringify(await commits(page)) === JSON.stringify([{ 'terminal.defaultShell': '/bin/zshx' }]), where, 'keys.draft', `leaving a page with a valid draft sent ${JSON.stringify(await commits(page))}, wanted {terminal.defaultShell: /bin/zshx}: the draft is applied when the focus leaves`);
     await goToPage(page, 'terminal');
     check((await page.getByRole('textbox', { name: 'Default Shell' }).inputValue()) === '/bin/zshx', where, 'keys.draft', 'the applied value is not what the page shows when it is come back to');
-    // A draft the host refuses stays in its field with its error: the form lives as long as the sheet, and the page only draws it.
+    // A draft the host refuses stays in its field with its error while the page is on screen, and does not outlive its field (S125): the page is entered from what the host applied.
     await goToPage(page, 'developer');
     await page.evaluate(() => {
       window.__host.next.validate = () => ({ valid: false, code: 'port_range', message: 'Enter a whole-number port from 0 to 65535.' });
@@ -288,10 +288,13 @@ async function draftPart(env) {
     await sleep(120);
     const again = page.getByRole('spinbutton', { name: 'Host profiling port' });
     const lane = await again.evaluate((element) => (element.getAttribute('aria-describedby') ?? '').split(' ').map((id) => document.getElementById(id)?.textContent ?? '').join(' '));
-    check((await again.inputValue()) === '70000' && (await again.getAttribute('aria-invalid')) === 'true' && /whole-number port/.test(lane), where, 'keys.draft', `a draft the host refused is ${JSON.stringify(await again.inputValue())} (invalid ${await again.getAttribute('aria-invalid')}) after the page was left and come back to, wanted 70000 with the host's words`);
+    check((await again.inputValue()) === '6060' && (await again.getAttribute('aria-invalid')) !== 'true' && !/whole-number port/.test(lane), where, 'keys.draft', `a draft the host refused is ${JSON.stringify(await again.inputValue())} (invalid ${await again.getAttribute('aria-invalid')}, lane ${JSON.stringify(lane)}) after the page was left and come back to, wanted the applied 6060 with no error: no draft outlives its field (S125)`);
     check((await commits(page)).length === sent, where, 'keys.draft', 'leaving the page with a refused draft sent it again');
-    // Escape takes the applied value back.
-    await again.focus();
+    // Escape takes the applied value back from a draft that is on screen.
+    await again.click();
+    await selectAll(page);
+    await page.keyboard.type('70000');
+    await sleep(100);
     await page.keyboard.press('Escape');
     check((await again.inputValue()) === '6060', where, 'keys.draft', `Escape in the field gives ${await again.inputValue()}, wanted the applied 6060`);
   } finally {
