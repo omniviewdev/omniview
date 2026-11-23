@@ -9,8 +9,28 @@ import styles from './ClosePrompt.module.css';
 
 // The question a close of a running terminal asks (ch16 S115, decision L12): a modal dialog with the question as its title, a sentence of what it does, and two buttons, Cancel (which has the keyboard, so
 // Enter on it is "no" and a key that is pressed twice by mistake ends nothing) and Terminate session. It is the browser's own modal (`showModal`), as the palette is: the top layer, the rest of the window
-// inert, Escape and a press outside it say no, and the focus goes back where it was. After a yes the focus goes where the shell's own close paths send it: the neighbouring tab, or the tool's tab when
+// inert, Escape and a press outside it say no, and the focus goes back where it was when that is a real control (a keyboard close left it on the tab or in the emulator); when it was on the pointer-only close
+// button of the tab, or on something that is gone, it goes to the session's tab instead. After a yes the focus goes where the shell's own close paths send it: the neighbouring tab, or the tool's tab when
 // it was the last session.
+
+/**
+ * Whether the element that had the focus is a real control, one the focus may come back to: it is still in the document, it is not disabled, it is not hidden or inert, and it is neither `aria-hidden` nor
+ * inside a subtree that is (the pointer-only aids of the shell, such as the close button of a tab, are all three of "out of the tab order", "nameless" and `aria-hidden`: a focus on one reaches no one
+ * who uses a keyboard or a screen reader). A `tabindex` of -1 alone does not decide it: the tabs of a strip that is not on its tab stop have it and are controls.
+ */
+function isRealControl(element: HTMLElement | null): element is HTMLElement {
+  return (
+    element !== null &&
+    element.isConnected &&
+    element.closest('[aria-hidden="true"], [inert], [hidden]') === null &&
+    !element.matches(':disabled')
+  );
+}
+
+/** Whether the panel draws a tab for the session now: the question may outlive the tab it was about. */
+function hasSessionTab(session: string): boolean {
+  return [...document.querySelectorAll<HTMLElement>('[data-shell-part="sessionTabs"] [role="tab"]')].some((tab) => tab.dataset.tabId === session);
+}
 
 type PromptDialogProps = { readonly guard: CloseGuard; readonly prompt: Prompt };
 
@@ -49,10 +69,24 @@ function PromptDialog({ guard, prompt }: PromptDialogProps) {
           return;
         }
 
-        restoreFocus(remembered);
+        if (isRealControl(remembered.element)) {
+          restoreFocus(remembered);
+          return;
+        }
+
+        // What had the focus is not a place to come back to (the close button of a tab, which a mouse press reaches and no key or screen reader does; or an element that is gone). Nothing else has taken the
+        // focus meanwhile: the session's tab takes it, or the tool's own tab when the session has none.
+        const { activeElement } = document;
+        if (activeElement === null || activeElement === document.body || activeElement === document.documentElement) {
+          if (hasSessionTab(prompt.session)) {
+            focusTab('sessionTabs', prompt.session);
+          } else {
+            focusTab('panelTools', TERMINAL_TOOL_ID);
+          }
+        }
       });
     };
-  }, []);
+  }, [prompt.session]);
 
   return (
     <dialog

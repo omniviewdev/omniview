@@ -96,13 +96,21 @@
 //      `plugins-page-<state>-webkit-void-1440x900.png`. SEAM_ONLY=plugins-page runs t alone; SEAM_CONTROL=plugins-page runs it alone with every perturbation of its controls (PAGE_CONTROLS) made in turn just before the assertion each must trip (one run
 //      serves them all); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
 //
-//   r  the Terminal tool on the host's own shell (T1), over the real host. Before the first terminal the emulator's code is not requested (no request for its chunk while the panel is open and says `No terminals`); `New terminal` starts a
+//   r  the Terminal tool on the host's own shell (T1, T2a), over the real host. Before the first terminal the emulator's code is not requested (no request for its chunk while the panel is open and says `No terminals`); `New terminal` starts a
 //      shell of this machine (the host lists exactly one session), the code is fetched then, the emulator takes the keyboard (the person who pressed the button types) and a command with a known output is run: what the shell printed,
-//      read from the host's own replay of the session (`AttachSession`: the GPU draws on a canvas, there is no text in the page), holds the output line of `echo SEAM_$((6*7))` and not only its echo. `stty size` says the rows and
-//      columns the page measured (the rows exactly, the columns within a cell), and again, with other numbers, after the panel is raised with the End key on its handle: the resize reached the process. A keyboard user can always leave:
-//      Escape stays in the shell, F6 moves the focus out of it, and on a Mac Command J hides the panel and gives the focus back to the page. Closing the running terminal asks (`Terminate session?`, Cancel has the focus, Escape says no
-//      and the host still lists the session), and Terminate session ends it: the host lists nothing, the tool says `No terminals` and the focus is on the tool's tab. A second terminal that runs `exit` is an ENDED session: its lane says
-//      `Input is off. Its output stays readable here.`, the tab stays, closing it asks nothing, and the host has no session left. No request failed and no page error was raised.
+//      read from the host's own replay of the session (`AttachSession`: the GPU draws on a canvas, there is no text in the page), holds the output line of `echo SEAM_$((6*7))` and not only its echo. The session's tab is called by the shell
+//      (`zsh`, `bash`: what the host answered to the call that started it, checked against what the shell says it is) and never Terminal, the emulator's input is `Terminal input, <name>` and the tool's own tab stays Terminal. The terminal starts
+//      at the size the person sees: the call that starts it carries the rows and columns of the screen, the pty has them (`stty size` right after the first prompt) and they are the grid the emulator itself counts (asked of it with a cursor position report:
+//      the rows exactly, the columns within one), and the page sends no resize after it
+//      (no ResizeTerminal in the 90 frames after the first prompt); then the panel is raised with the End key on its handle and dragged shorter with the pointer, and each new size goes in a ResizeTerminal call. The page's input and size are ORDERED
+//      calls on the wire: WriteTerminal and ResizeTerminal, never the legacy WriteSession and ResizeSession, with one sequence number for each call that counts up from 1 for each terminal, writes and resizes together. A keyboard user can always leave:
+//      Escape stays in the shell, F6 moves the focus out of it, and on a Mac Command J hides the panel and gives the focus back to the page. Flow control, which the host paces the shell by (the page acknowledges every byte it parses, shown or hidden):
+//      a flood of about 8 MB completes in the terminal that is on screen and the page's acknowledgements are the bytes of the flood; a flood of 50 MB completes with the panel HIDDEN (the hidden screen goes on reading, parsing and acknowledging, and
+//      draws nothing): the shell is back at its prompt, the page acknowledged what it parsed, the host's own replay holds the end, shown again the end is in the emulator, and the shell answers a new command. A terminal that runs `sleep 60` asks when
+//      it is closed (`Terminate session?`, naming the program as the host spells it once the host says `sleep`, Cancel has the focus); Cancel and Escape, whether the close was pressed with the pointer on the tab's close button or with Delete on the tab,
+//      keep the session and the process and give the focus to the tab of that terminal (never to the close button, which only the pointer reaches); Terminate session ends both. A terminal at its prompt closes with no question (by the close button, and
+//      by Delete, the page asking the host once what runs in it) and the focus goes to the tab that is left or to the tool's tab. A second terminal that runs `exit 3` is an ENDED session: its lane says `Exited with code 3` and `Input is off. Its output
+//      stays readable here.`, the last line of the emulator is `[Process exited with code 3]`, its tab is announced as ended and stays, closing it asks nothing, and the host has no session left. No request failed and no page error was raised.
 //   (r2 below r: the same terminal against the programs of the machine, `checkTerminalPrograms`, docs/ui-next/status/T1.md section 14.)
 //
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
@@ -4820,22 +4828,513 @@ function sttyOf(transcript) {
 }
 
 /**
- * r. The Terminal tool (T1), on the real host: the panel opens on it with no session and no emulator code; New terminal starts ONE shell the host lists and the emulator takes the keyboard; the OUTPUT of a command reaches the
- * transcript (read from the host's replay of the session: the GPU draws on a canvas); the pty has the rows the page drew and the new rows after the panel is raised; Escape stays in the shell, F6 leaves, Command J hides the
- * panel; closing a running terminal asks; a shell that exits is an ended session. The screen reader mode is turned on and off through the palette command by the keyboard: a line the shell printed is in the accessibility snapshot of
- * the screen while it is on and not while it is off, the input's description says which, and the window announces each change. `r2` below is the emulator against the programs of the machine.
+ * The calls of the exec lane that the Terminal tool makes of the host, by the id each call of the page carries: `CreateTerminal` starts the shell and answers which one it is, `AckTerminal` tells the host how much of the output the screen has parsed (the
+ * credit the host paces the shell by), `IsBusy` asks what runs in the terminal, `WriteTerminal` and `ResizeTerminal` are the input and the size with a sequence number for each call (the host applies them in the order they were sent, whatever order the
+ * transport delivers them in), and `WriteSession` and `ResizeSession` are the legacy calls, which the page does not make.
+ */
+const EXEC_CALLS = new Map(['CreateTerminal', 'AckTerminal', 'IsBusy', 'WriteTerminal', 'ResizeTerminal', 'WriteSession', 'ResizeSession'].map((method) => [methodIdOf(EXEC_SERVICE, method), method]));
+
+/**
+ * Records what a page asks of the host in those calls, in the order it asks, and what the host answers: the arguments, when it asked and when the answer came (two marks of one counter, so that "after the answer" can be said), the status, whether the
+ * answer has come and the answer itself (`null` for a call that answers nothing). The checks about the host's facts (the shell's name, what runs in it, the credit that paces it, the order of the input) read the wire, so that each says what the page was
+ * told and what it did with it.
+ */
+function watchExecCalls(page) {
+  const calls = [];
+  const asked = new Map();
+  let tick = 0;
+  page.on('request', (request) => {
+    const method = EXEC_CALLS.get(calledMethod(request));
+    if (method === undefined) return;
+    tick += 1;
+    const call = { method, args: JSON.parse(request.postData() ?? '{}').args?.args ?? [], askedAt: tick, answeredAt: 0, status: 0, answered: false, answer: null };
+    asked.set(request, call);
+    calls.push(call);
+  });
+  page.on('response', async (response) => {
+    const call = asked.get(response.request());
+    if (call === undefined) return;
+    tick += 1;
+    call.answeredAt = tick;
+    call.status = response.status();
+    try {
+      call.answer = JSON.parse(await response.text());
+    } catch {
+      call.answer = null;
+    }
+
+    call.answered = true;
+  });
+  return { calls, of: (method) => calls.filter((call) => call.method === method) };
+}
+
+/** What the host says to "what runs in this terminal?": the `IsBusy` the page asks when a terminal is closed, asked here by the check. */
+const busyOf = async (base, id) => callBound(base, EXEC_SERVICE, 'IsBusy', id);
+
+/**
+ * Waits until the host says that a program of this name holds the terminal, and returns the host's answer. Between the fork of a command and its exec the foreground group is the shell's own child and the host names it for what it is then (`bash` for a `sleep`
+ * that has not executed yet: the first CI run of this scenario read that name and failed), so the name is waited for and never read once.
+ */
+async function busyWith(base, id, name, engine) {
+  let said;
+  await waitUntil(`the host to say that ${name} holds the terminal`, async () => {
+    said = await busyOf(base, id);
+    return said.state === 'busy' && said.name === name;
+  }, 60_000).catch((error) => {
+    throw new Error(`${engine}: the host names the program that holds the terminal: ${String(error.message)} (the host's last answer was ${JSON.stringify(said)})`);
+  });
+  return said;
+}
+
+/** Whether a process exists: signal 0 reaches it and does nothing. A process of another user exists too (EPERM). */
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+/**
+ * What the shell says it is called, asked of the shell and read from the host's replay: the name of its process from `ps` (the directory and a login shell's dash taken off) and the name it was started under (`$0`, the same way). A bash and a
+ * zsh say it alike; `ps` is the better witness where a name is a link to another program (a `sh` that is dash), `$0` where there is no `ps`.
+ */
+async function askShellName(page, base, id) {
+  await typeLine(page, 'printf \'SEAM_SHELL|%s|%s\\n\' "$(ps -p $$ -o comm= | sed \'s,.*/,,; s/^-//\')" "$(n=${0##*/}; echo ${n#-})"');
+  let said = null;
+  await waitUntil('the shell to say its name', async () => {
+    said = /\nSEAM_SHELL\|([^|\n%]*)\|([^|\n%]*)\n/.exec(await plainTranscriptOf(base, id));
+    return said !== null;
+  }, 20_000);
+  return { ps: said[1].trim(), zero: said[2].trim() };
+}
+
+/**
+ * The grid the emulator has, asked of the emulator itself through the terminal protocol (as scenario r2 asks it where the cursor is after wide characters): the cursor is sent as far right and as far down as it goes (CSI 999 C and CSI 999 B stop at the edges)
+ * and asked where it is (CSI 6 n), and the answer is the row and the column of the last cell, which are the rows and the columns of the screen. The shell reads the answer and prints it with the control characters made into underscores. This is the emulator's
+ * own count, not a measure of its pixels: a width in pixels says only about how many cells a font may draw.
+ */
+async function emulatorGridOf(page, base, id) {
+  await typeLine(page, 'stty -icanon -echo; printf \'\\033[999C\\033[999B\\033[6n\'; read -r -d R pos; stty sane; echo; echo "EMU_GRID=$(printf %s "$pos" | tr -c \'0-9;\' \'_\')"');
+  let found = null;
+  await waitUntil('the emulator to say how many rows and columns it has', async () => {
+    found = [...(await plainTranscriptOf(base, id)).matchAll(/\nEMU_GRID=_*(\d+);(\d+)\n/g)].at(-1) ?? null;
+    return found !== null;
+  }, 20_000);
+  return { rows: Number(found[1]), cols: Number(found[2]) };
+}
+
+/** The bytes of the lines `seq 1 n` writes on a pty: each number and its line end, which the line discipline makes two bytes (CR LF). */
+function seqBytes(n) {
+  let bytes = 0;
+  for (let digits = 1, from = 1; from <= n; digits += 1, from *= 10) bytes += (Math.min(n, from * 10 - 1) - from + 1) * (digits + 2);
+  return bytes;
+}
+
+/** The lines of a text that are a whole number each, as numbers and in the order they come: what `seq` wrote. */
+const numbersOf = (text) =>
+  text
+    .split('\n')
+    .map((row) => row.trim())
+    .filter((row) => /^\d+$/.test(row))
+    .map(Number);
+
+/** Where a list of numbers stops counting up by one (a number lost, repeated or out of order), or `undefined` when it never does. */
+function firstBreak(numbers) {
+  const at = numbers.findIndex((number, index) => index > 0 && number !== numbers[index - 1] + 1);
+  return at < 0 ? undefined : { at, before: numbers[at - 1], after: numbers[at] };
+}
+
+/** The last line of a text that is not blank: what a person sees last. */
+const lastLineOf = (text) =>
+  text
+    .split('\n')
+    .map((row) => row.trimEnd())
+    .filter((row) => row !== '')
+    .at(-1);
+
+/** Reads the emulator's buffer until it holds a line, every half second: a read selects everything and copies it, which a screen that is busy answers a frame later. Returns the buffer that holds it. */
+async function untilLine(page, mac, line, what, ms) {
+  const deadline = Date.now() + ms;
+  let buffer = await bufferOf(page, mac);
+  while (!lineIn(buffer, line)) {
+    if (Date.now() > deadline) throw new Error(`timed out after ${String(ms)} ms waiting for ${what}; the buffer ends ${JSON.stringify(buffer.trimEnd().slice(-120))}`);
+    await page.waitForTimeout(500);
+    buffer = await bufferOf(page, mac);
+  }
+
+  return buffer;
+}
+
+/** Counts, from now on, the questions the window asks (the close prompt is a modal dialog the page mounts): one that is asked and taken back within a frame is counted all the same, which a look at the page could miss. */
+async function watchQuestions(page) {
+  await page.evaluate(() => {
+    window.__questions = 0;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof Element && (node.matches('[data-shell-part="closePrompt"], [role="alertdialog"]') || node.querySelector('[data-shell-part="closePrompt"], [role="alertdialog"]') !== null)) window.__questions += 1;
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  return async () => page.evaluate(() => window.__questions);
+}
+
+/**
+ * Starts a terminal with the button that starts one (the empty state's, or the `+` of the strip) and returns its id once its shell is at the prompt: the host lists it, the emulator has the keyboard, and the host says that nothing
+ * but the shell holds the terminal.
+ */
+async function startTerminal(page, base, button) {
+  const known = await terminalIds(base);
+  await button.click();
+  await waitUntil('the host to list the new shell', async () => (await terminalIds(base)).length === known.length + 1, 30_000);
+  const id = (await terminalIds(base)).find((one) => !known.includes(one));
+  await waitUntil('the emulator to have the keyboard', async () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 30_000);
+  await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+  await waitUntil('the host to say the shell is at its prompt', async () => (await busyOf(base, id)).state === 'idle', 15_000);
+  return id;
+}
+
+/**
+ * Puts the keyboard in the emulator with a click at its top left corner, where the click takes a selection away and meets no program's mouse mode, and waits until the emulator has it and a frame after, so that what is typed next goes to the
+ * emulator and not to the control the focus was on.
+ */
+async function takeKeyboard(page) {
+  await page.locator('.xterm-screen').click({ position: { x: 3, y: 3 } });
+  await waitUntil('the emulator to have the keyboard', async () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
+  await afterFrames(page);
+}
+
+/** Drags the panel's splitter by `dy` pixels with the real pointer: down on the handle, twelve moves, up (the panel probe drags it the same way). A positive `dy` moves the pointer down and makes the panel shorter. */
+async function dragHandle(page, dy) {
+  const box = await page.locator('[data-shell-part="panelHandle"]').boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + dy, { steps: 12 });
+  await page.mouse.up();
+}
+
+/**
+ * Where the focus is, as the checks of the close question read it: on the tab of that session in the panel's strip of sessions (found by its id), on the close button of a tab (the pointer's own aid: out of the tab order and hidden from the accessibility tree),
+ * or inside anything that is hidden from the accessibility tree; and what it is, for the message.
+ */
+async function focusOf(page, tab) {
+  return page.evaluate((id) => {
+    const element = document.activeElement;
+    const part = (node) => `${node.tagName.toLowerCase()}${node.getAttribute('role') === null ? '' : `[role=${node.getAttribute('role')}]`}${node.getAttribute('data-shell-part') === null ? '' : `[data-shell-part=${node.getAttribute('data-shell-part')}]`}`;
+    return {
+      onTab: element !== null && element.matches(`[data-shell-region="panel"] [data-shell-part="sessionTabs"] [role="tab"][data-tab-id="${id}"]`),
+      onClose: element !== null && element.matches('[data-shell-part="sessionClose"]'),
+      hidden: element !== null && element.closest('[aria-hidden="true"]') !== null,
+      what: element === null ? 'nothing' : part(element),
+    };
+  }, tab);
+}
+
+/**
+ * After a question was answered no, the focus is on the tab of the terminal it was about, a control a keyboard and a screen reader reach. It is not on the close button of the tab, which a mouse press reaches and nothing else does (the page gave the focus back to the
+ * button the pointer had pressed), and not inside anything hidden from the accessibility tree. The focus is waited for: it lands a moment after the dialog is gone.
+ */
+async function assertFocusOnSessionTab(page, tab, engine, after) {
+  let focus;
+  await waitUntil('the focus to settle on the session\'s tab', async () => {
+    focus = await focusOf(page, tab);
+    return focus.onTab;
+  }, 5_000).catch(() => undefined);
+  assert.ok(focus.onTab, `${engine}: after ${after} the focus is on the tab of the terminal that was asked about, in the panel's strip of sessions (it is on ${focus.what})`);
+  assert.equal(focus.onClose, false, `${engine}: after ${after} the focus is not on the close button of a tab, which only the pointer reaches`);
+  assert.equal(focus.hidden, false, `${engine}: after ${after} the focus is not inside anything hidden from the accessibility tree`);
+}
+
+/** The page's ordered calls for each terminal it started, in the order it made them: `WriteTerminal(id, seq, data)` and `ResizeTerminal(id, seq, rows, cols)`, which count with one counter. */
+function orderedCallsOf(wire) {
+  const sessions = new Map();
+  for (const call of wire.calls) {
+    if (call.method !== 'WriteTerminal' && call.method !== 'ResizeTerminal') continue;
+    sessions.set(call.args[0], [...(sessions.get(call.args[0]) ?? []), call]);
+  }
+
+  return sessions;
+}
+
+/**
+ * What the page says to the host about a terminal's input and size is ORDERED (T2a, docs/ui-next/status/T1-go.md 2.4): it makes `WriteTerminal` and `ResizeTerminal` calls and never the legacy `WriteSession` and `ResizeSession`, and for each terminal the
+ * sequence numbers of both kinds together count up from 1, one for each call, in the order the page made them, the first after the call that started the terminal had answered. The host applies them in that order whatever order the transport delivers them in.
+ */
+function assertOrderedCalls(wire, engine) {
+  const legacy = wire.calls.filter((call) => call.method === 'WriteSession' || call.method === 'ResizeSession');
+  assert.deepEqual(legacy.map((call) => call.method), [], `${engine}: the page makes no call of the legacy WriteSession or ResizeSession: its input and its size go in WriteTerminal and ResizeTerminal`);
+  const sessions = orderedCallsOf(wire);
+  assert.ok(sessions.size >= 1, `${engine}: the page made ordered calls (WriteTerminal, ResizeTerminal) for the terminals it started`);
+  for (const [session, calls] of sessions) {
+    const seqs = calls.map((call) => call.args[1]);
+    assert.deepEqual(seqs, seqs.map((_, index) => index + 1), `${engine}: for terminal ${String(session)} the sequence numbers of WriteTerminal and ResizeTerminal count up from 1, one counter for writes and resizes, in the order the page made the calls (${String(seqs.length)} calls, the first ${JSON.stringify(seqs.slice(0, 30))})`);
+    const started = wire.of('CreateTerminal').find((call) => call.args[0]?.id === session);
+    assert.ok(started !== undefined && started.answeredAt > 0 && calls[0].askedAt > started.answeredAt, `${engine}: the first ordered call for terminal ${String(session)} was made after the call that started it had answered`);
+  }
+}
+
+/**
+ * Flow control on the real host, in a terminal that is on screen (T2a). A flood of about 8 MB (`seq 1 999999`: 7,888,887 bytes on the pty, where each line ends in CR LF) must complete in the emulator: the page turned the host's flow
+ * control on with its first acknowledgement and acknowledges every byte it parses, so the host never stops reading for good. The end of it is looked for in the emulator's buffer and never in the host's replay: reading the replay (an
+ * attach) makes the host forget what it is owed, and would let a page that acknowledges nothing through.
+ */
+async function terminalFlowVisible({ page, base, engine, mac, wire, note }, id) {
+  const lines = 999_999;
+  const bytes = seqBytes(lines);
+  const calls = () => wire.of('AckTerminal');
+  const from = calls().length;
+  const acked = () => calls().slice(from).reduce((sum, call) => sum + (Number(call.args[1]) || 0), 0);
+  await takeKeyboard(page);
+  const started = Date.now();
+  await typeLine(page, `seq 1 ${String(lines)}; echo FLOW_END_$((6*7))`);
+  let buffer;
+  try {
+    buffer = await untilLine(page, mac, 'FLOW_END_42', 'the end of the flood in the emulator', 120_000);
+  } catch (error) {
+    throw new Error(`${engine}: a flood of ${String(bytes)} bytes completes in the terminal that is on screen (the page acknowledges what it parses, so the host never stops reading for good): ${String(error.message)}; ${String(acked())} bytes were acknowledged in ${String(calls().length - from)} calls`);
+  }
+
+  const took = Date.now() - started;
+  await waitUntil('the last acknowledgement of the flood', async () => acked() >= bytes, 15_000).catch(() => undefined);
+  assert.ok(acked() >= bytes && acked() <= bytes + 65_536, `${engine}: the page acknowledged the bytes of the flood once each: ${String(acked())} bytes in ${String(calls().length - from)} calls for a flood of ${String(bytes)}`);
+  const tail = numbersOf(buffer);
+  const broken = firstBreak(tail);
+  assert.ok(tail.length >= 4_000 && tail.at(-1) === lines && broken === undefined, `${engine}: the lines the emulator holds at the end of the flood are in order and the last one is ${String(lines)} (${String(tail.length)} lines, the last ${String(tail.at(-1))}, ${broken === undefined ? 'in order' : `out of order at ${JSON.stringify(broken)}`})`);
+  await takeKeyboard(page);
+  await typeLine(page, 'echo AFTER_FLOW_$((6*7))');
+  await waitUntil('the shell to answer a new command after the flood (flow control does not leave it paused)', async () => /\nAFTER_FLOW_42\n/.test(await plainTranscriptOf(base, id)), 20_000);
+  note('flood on screen', `${String(bytes)} bytes completed in the emulator in ${(took / 1000).toFixed(1)} s; the page acknowledged ${String(acked())} bytes in ${String(calls().length - from)} calls; the last ${String(tail.length)} lines were in order`);
+}
+
+/**
+ * Flow control on the real host, with the panel hidden (T2a). A hidden screen goes on reading, parsing and acknowledging what the host sends and draws nothing, so a hidden terminal does not stall its shell: a flood of 50 MB, about fifty times the mark at which
+ * the host stops reading a pty that nobody acknowledges (1 MiB), completes with the panel hidden. The shell is made to wait for a line before it floods, so that the panel is hidden BEFORE the flood starts, and the check writes the line itself, through the host,
+ * once the panel is hidden. The end of the flood is looked for in the host's replay (what the host read from the pty) only after the shell is back at its prompt, which `IsBusy` says and which has no effect on the credit: reading the replay (an attach) makes the
+ * host forget what it is owed, so a read while the flood ran could let a page that acknowledges nothing through. That the PAGE credited the host is read from the wire: its acknowledgements while the panel was hidden are the bytes of the flood, all but what
+ * the host may still be owed at its mark. Shown again, the end of the flood is in the emulator and the shell answers a new command.
+ */
+async function terminalFlowHidden({ page, base, engine, mac, wire, note }, id) {
+  const flood = 50_000_000;
+  // What the host may still be owed when the shell is done: its mark (1 MiB), the read it was in (at most 20,480 bytes) and the kernel's buffer of the pty, which the host has not read yet.
+  const owed = 1_048_576 + 20_480 + 65_536;
+  const acked = () => wire.of('AckTerminal').filter((call) => call.args[0] === id).reduce((sum, call) => sum + (Number(call.args[1]) || 0), 0);
+  const hidden = async (want) => page.evaluate((state) => document.querySelector('[data-shell-part="panel"]')?.hidden === state, want);
+  const toggle = page.locator('[data-shell-part="panelToggle"]');
+  await takeKeyboard(page);
+  await typeLine(page, `echo GATE_READY_$((6*7)); read -r go; head -c ${String(flood)} /dev/zero | tr '\\0' y; echo; echo HIDDEN_END_$((6*7))`);
+  await waitUntil('the shell to wait for its line', async () => /\nGATE_READY_42\n/.test(await plainTranscriptOf(base, id)), 30_000);
+  await toggle.click();
+  await waitUntil('the panel to be hidden', async () => hidden(true), 5_000);
+  await afterFrames(page);
+  const from = acked();
+  const started = Date.now();
+  await callBound(base, EXEC_SERVICE, 'WriteSession', id, Buffer.from('\n').toString('base64'));
+  await waitUntil('the flood to hold the terminal', async () => (await busyOf(base, id)).state === 'busy', 30_000);
+  // The shell is back at its prompt when the host says idle again. A flood whose acknowledgements do not grow for a minute is a stalled flood and says so; one that goes on has five minutes.
+  let last = { at: Date.now(), acked: acked() };
+  try {
+    await waitUntil('the flood to complete with the panel hidden', async () => {
+      const now = acked();
+      if (now !== last.acked) last = { at: Date.now(), acked: now };
+      if (Date.now() - last.at > 60_000) throw new Error(`the flood made no progress for a minute: the page acknowledged ${String(now - from)} bytes and the host still says the flood holds the terminal`);
+      return (await busyOf(base, id)).state === 'idle';
+    }, 300_000);
+  } catch (error) {
+    throw new Error(`${engine}: with the panel hidden a flood of ${String(flood)} bytes completes (the hidden screen goes on reading, parsing and acknowledging, so the host never stops reading the shell): ${String(error.message)}`);
+  }
+
+  const took = Date.now() - started;
+  const whileHidden = acked() - from;
+  assert.equal(await hidden(true), true, `${engine}: the panel was hidden the whole time the flood ran`);
+  assert.ok(whileHidden >= flood - owed, `${engine}: the page acknowledged what it parsed while the panel was hidden: ${String(whileHidden)} of the ${String(flood)} bytes of the flood (the host may be owed the last ${String(owed)})`);
+  // The flood is over: the host's replay can be read now. The shell writes its marker a moment after it takes the terminal back, so the replay is read until it holds it.
+  let replay = '';
+  await waitUntil('the end of the flood in the host\'s own read of the pty', async () => {
+    replay = await plainTranscriptOf(base, id);
+    return replay.includes('\nHIDDEN_END_42\n');
+  }, 60_000).catch(() => undefined);
+  assert.ok(/y{1000}\nHIDDEN_END_42\n/.test(replay), `${engine}: the end of the flood is in what the host read from the pty with the panel hidden: its replay ends in the flood and the marker (it ends ${JSON.stringify(replay.slice(-80))})`);
+  await toggle.click();
+  await waitUntil('the panel to be shown', async () => hidden(false), 5_000);
+  await takeKeyboard(page);
+  const shownAt = Date.now();
+  let buffer;
+  try {
+    buffer = await untilLine(page, mac, 'HIDDEN_END_42', 'the end of the flood in the emulator', 180_000);
+  } catch (error) {
+    throw new Error(`${engine}: shown again, the end of the flood is in the emulator (nothing was lost and the shell went on): ${String(error.message)}`);
+  }
+
+  const arrived = Date.now() - shownAt;
+  await waitUntil('the last acknowledgement of the flood', async () => acked() - from >= flood, 30_000).catch(() => undefined);
+  const total = acked() - from;
+  assert.ok(total >= flood && total <= flood + 65_536, `${engine}: the page acknowledged the bytes of the flood once each, hidden and shown: ${String(total)} bytes for a flood of ${String(flood)}`);
+  assert.ok(lineIn(buffer, 'HIDDEN_END_42'), `${engine}: shown again, the emulator holds the end of the flood`);
+  await takeKeyboard(page);
+  await typeLine(page, 'echo AFTER_HIDDEN_$((6*7))');
+  await waitUntil('the shell to answer a new command after the flood (it is not left blocked)', async () => /\nAFTER_HIDDEN_42\n/.test(await plainTranscriptOf(base, id)), 30_000);
+  note('flood with the panel hidden', `${String(flood)} bytes completed with the panel hidden in ${(took / 1000).toFixed(1)} s, the host said busy until then and idle after; the page acknowledged ${String(whileHidden)} bytes while it was hidden and ${String(total)} in all; the host's replay held the end; shown again the end was in the emulator after ${(arrived / 1000).toFixed(1)} s and the shell answered`);
+}
+
+/**
+ * Closing a terminal with a program running (T2a): the host says what holds the terminal (`IsBusy`) and the question names it, as the host spells it. The check first waits for the host to say `sleep` (between the fork of a command and its exec the host names the
+ * foreground group for the shell: the first CI run of this scenario read `bash` and failed). Cancel and Escape, whether the close was pressed with the pointer on the tab's close button or with Delete on the tab, keep the session and the process, and the focus goes
+ * to the tab of that terminal: not to the close button, which only the pointer reaches. Terminate session ends both: the host lists no session, the process is gone (by its process group, which the host names) and the focus is on the tool's own tab, the last
+ * terminal being closed.
+ */
+async function terminalCloseBusy({ page, base, engine, note }, id, shell) {
+  const dialog = page.getByRole('alertdialog', { name: 'Terminate session?' });
+  const tab = page.locator('[data-shell-part="sessionTabs"] [role="tab"][aria-selected="true"]');
+  const tabId = await tab.getAttribute('data-tab-id');
+  const close = page.locator('[data-shell-part="sessionClose"]').first();
+  const question = async () =>
+    page.evaluate(() => {
+      const element = document.querySelector('[data-shell-part="closePrompt"]');
+      return element === null ? null : { body: document.getElementById(element.getAttribute('aria-describedby') ?? '')?.textContent ?? '', session: element.querySelector('p')?.textContent ?? '', focus: document.activeElement?.textContent ?? '' };
+    });
+  await takeKeyboard(page);
+  await typeLine(page, 'sleep 60');
+  const busy = await busyWith(base, id, 'sleep', engine);
+  assert.ok(Number.isInteger(busy.pgid) && busy.pgid > 1, `${engine}: the host names the process group that holds the terminal (IsBusy says ${JSON.stringify(busy)})`);
+  const stays = async (what) => {
+    for (let turn = 0; turn < 5; turn += 1) await afterFrames(page);
+    assert.deepEqual(await terminalIds(base), [id], `${engine}: the session is still there after ${what}`);
+    assert.ok(alive(busy.pgid) && (await busyOf(base, id)).state === 'busy', `${engine}: sleep is still running after ${what}`);
+  };
+
+  // The pointer: the close button of the tab, then Cancel; again, then Escape.
+  await close.click();
+  await dialog.waitFor();
+  const asked = await question();
+  assert.equal(asked?.body, `${String(busy.name)} is running in this terminal. This ends the terminal session and stops it.`, `${engine}: the question names the program the host says holds the terminal, as the host spells it`);
+  assert.equal(asked?.session, shell, `${engine}: the question says which session it is about`);
+  assert.equal(asked?.focus, 'Cancel', `${engine}: Cancel has the focus in the question`);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await stays('Cancel');
+  await assertFocusOnSessionTab(page, tabId, engine, 'Cancel, the close button of the tab having been pressed with the pointer');
+  await close.click();
+  await dialog.waitFor();
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'detached' });
+  await stays('Escape');
+  await assertFocusOnSessionTab(page, tabId, engine, 'Escape, the close button of the tab having been pressed with the pointer');
+  // The keyboard: Delete on the tab asks, and Enter on Cancel (which has the keyboard) says no; the focus is back on the tab it was on.
+  await tab.focus();
+  await page.keyboard.press('Delete');
+  await dialog.waitFor();
+  await page.keyboard.press('Enter');
+  await dialog.waitFor({ state: 'detached' });
+  await stays('Enter on Cancel, Delete having been pressed on the tab');
+  await assertFocusOnSessionTab(page, tabId, engine, 'Enter on Cancel, Delete having been pressed on the tab');
+  await close.click();
+  await dialog.waitFor();
+  await page.getByRole('button', { name: 'Terminate session', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
+  await waitUntil('sleep to be gone', async () => !alive(busy.pgid), 15_000).catch(() => undefined);
+  assert.equal(alive(busy.pgid), false, `${engine}: Terminate session ended the program as well as the session: process group ${String(busy.pgid)} is gone`);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  const onToolTab = async () => page.evaluate(() => document.activeElement?.getAttribute('role') === 'tab' && document.activeElement.closest('[data-shell-part="panelTools"]') !== null && (document.activeElement.textContent ?? '').includes('Terminal'));
+  await waitUntil('the focus to reach the tool\'s tab', onToolTab, 5_000).catch(() => undefined);
+  assert.ok(await onToolTab(), `${engine}: the focus is on the tool's tab after the last terminal closed`);
+  note('close with a program running', `IsBusy said ${JSON.stringify(busy)}; the question named it; Cancel, Escape and Enter on Cancel (the close pressed with the pointer, then Delete on the tab) kept the session and the process and the focus went to the tab each time; Terminate session ended both`);
+}
+
+/**
+ * Closing a terminal that is at its prompt (T2a): the host says that nothing but the shell holds it (`IsBusy`: idle), and the page asks nothing of the person. The close is made by the pointer, on the tab's close button, as the question's
+ * own is. The window is watched for a question for a second after the press, longer than the host needs to answer, and a question that is asked and taken back within a frame is counted all the same. The page asks the host once.
+ */
+async function terminalCloseIdle({ page, base, engine, wire, questions, note }) {
+  const id = await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
+  let idle;
+  await waitUntil('the host to say that nothing but the shell holds the terminal', async () => {
+    idle = await busyOf(base, id);
+    return idle.state === 'idle';
+  }, 15_000).catch(() => undefined);
+  assert.equal(idle.state, 'idle', `${engine}: the host says that nothing but the shell holds a terminal at its prompt (IsBusy says ${JSON.stringify(idle)})`);
+  const before = { asked: wire.of('IsBusy').length, questions: await questions() };
+  await page.locator('[data-shell-part="sessionClose"]').first().click();
+  await page.waitForTimeout(1_000);
+  assert.equal(await questions(), before.questions, `${engine}: closing a terminal with nothing running asks nothing: no dialog was mounted in the second after the press`);
+  assert.equal(await page.getByRole('alertdialog').count(), 0, `${engine}: closing a terminal with nothing running asks nothing: no dialog is on screen`);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  assert.equal(await questions(), before.questions, `${engine}: closing a terminal with nothing running asks nothing: no dialog was mounted until the tab went`);
+  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
+  const asked = wire.of('IsBusy').slice(before.asked);
+  await waitUntil('the answer of the host to the page', async () => asked[0]?.answered === true, 5_000).catch(() => undefined);
+  assert.equal(asked.length, 1, `${engine}: closing asks the host what runs in the terminal once, and does not poll`);
+  assert.equal(asked[0].answer?.state, 'idle', `${engine}: what the host answered the page for the terminal at its prompt is idle (${JSON.stringify(asked[0].answer)})`);
+  note('close at the prompt', `IsBusy said ${JSON.stringify(idle)}; the page asked the host once and the host answered ${JSON.stringify(asked[0].answer)}; no dialog, the tab went and the host listed no shell`);
+}
+
+/**
+ * Closing with the keyboard (T2a): Delete on the focused tab of a terminal at its prompt asks nothing and closes it, and the focus goes where a close puts it: with another terminal open, to the tab that is left (not the one that closed), and when it was the last, to
+ * the tool's own tab. It never falls to the page's body, which a close that waits for the host's answer could do if it forgot where the focus was.
+ */
+async function terminalCloseKeys({ page, base, engine, questions, note }) {
+  await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
+  await startTerminal(page, base, page.locator('[data-shell-part="sessionAdd"]').getByRole('button', { name: 'New terminal', exact: true }));
+  const selected = page.locator('[data-shell-part="sessionTabs"] [role="tab"][aria-selected="true"]');
+  const focused = async () =>
+    page.evaluate(() => {
+      const element = document.activeElement;
+      return { role: element?.getAttribute('role') ?? null, selected: element?.getAttribute('aria-selected') ?? null, tab: element?.getAttribute('data-tab-id') ?? null, name: element?.getAttribute('aria-label') ?? element?.textContent ?? '', inSessions: Boolean(element?.closest('[data-shell-part="sessionTabs"]')), inTools: Boolean(element?.closest('[data-shell-part="panelTools"]')) };
+    });
+  const before = await questions();
+  const closing = await selected.getAttribute('data-tab-id');
+  await selected.focus();
+  await page.keyboard.press('Delete');
+  await waitUntil('the host to list one shell', async () => (await terminalIds(base)).length === 1, 10_000);
+  await waitUntil('the focus to reach the tab that is left', async () => {
+    const now = await focused();
+    return now.role === 'tab' && now.inSessions && now.tab !== closing;
+  }, 10_000).catch(() => undefined);
+  const neighbour = await focused();
+  assert.ok(neighbour.role === 'tab' && neighbour.inSessions && neighbour.selected === 'true' && neighbour.tab !== closing, `${engine}: after Delete closed a terminal with nothing running the focus is on the tab that is left, and not on the page's body (it is on ${JSON.stringify(neighbour)})`);
+  assert.equal(await page.locator('[data-shell-part="sessionTabs"] [role="tab"]').count(), 1, `${engine}: the tab of the closed terminal is gone and the other stays`);
+  await page.keyboard.press('Delete');
+  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
+  await page.getByText('No terminals', { exact: true }).waitFor();
+  await waitUntil('the focus to reach the tool\'s tab', async () => {
+    const now = await focused();
+    return now.role === 'tab' && now.inTools;
+  }, 10_000).catch(() => undefined);
+  const tool = await focused();
+  assert.ok(tool.role === 'tab' && tool.inTools && tool.name.includes('Terminal'), `${engine}: after Delete closed the last terminal the focus is on the tool's own tab, and not on the page's body (it is on ${JSON.stringify(tool)})`);
+  assert.equal(await questions(), before, `${engine}: closing two terminals at their prompts with Delete asked nothing`);
+  note('close with Delete', 'a terminal at its prompt closed with no dialog; the focus went to the tab that was left, then to the tool\'s tab');
+}
+
+/**
+ * r. The Terminal tool (T1, T2a), on the real host: the panel opens on it with no session and no emulator code; New terminal starts ONE shell the host lists and the emulator takes the keyboard; the session's tab is called by the shell (what the host answered to the
+ * call that starts it, checked against what the shell says it is) and not Terminal; the terminal starts at the size the person sees (the call that starts it carries it, the pty has it and no resize follows); the OUTPUT of a command reaches the transcript (read from
+ * the host's replay of the session: the GPU draws on a canvas); the page's input and size are ordered calls (WriteTerminal and ResizeTerminal with one counter from 1, never the legacy calls); the pty has the new rows after the panel is raised with the keyboard and
+ * dragged shorter with the pointer; Escape stays in the shell, F6 leaves, Command J hides the panel. The screen reader mode is turned on and off through the palette command by the keyboard: a line the shell printed is in the accessibility snapshot of the screen while it
+ * is on and not while it is off, the input's description says which, and the window announces each change. Flow control (the host paces the shell by what the page acknowledges, shown or hidden): a flood of about 8 MB completes in the terminal that is on screen, and a flood
+ * of 50 MB completes with the panel hidden. Closing: a terminal at its prompt closes with no question, by the pointer and by Delete, the focus staying in the panel; with `sleep 60` running the question names it, Cancel and Escape keep both and the focus goes to the tab, and
+ * Terminate session ends them. A shell that runs `exit 3` is an ended session that says `Exited with code 3`. `r2` below is the emulator against the programs of the machine.
  */
 async function checkTerminal(page, base, engine) {
   const errors = [];
   const chunks = [];
+  const observed = [];
+  const note = (name, text) => observed.push(`${name}: ${text}`);
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('request', (request) => {
     if (/xtermEngine/.test(request.url())) chunks.push(request.url());
   });
+  const wire = watchExecCalls(page);
   await spoofPlatform(page);
   await open(page, base);
   await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
   const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await keepCopies(page);
 
   // The panel opens on the Terminal tool, which has no session: its words, and not one byte of the emulator.
   await page.locator('[data-shell-part="panelToggle"]').click();
@@ -4847,12 +5346,47 @@ async function checkTerminal(page, base, engine) {
   // One press: one shell, the code is fetched, and the emulator has the keyboard.
   await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
   await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
-  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 30_000);
   const [id] = await terminalIds(base);
   assert.ok(chunks.length >= 1, `${engine}: the emulator's code was requested when the terminal was shown`);
   await waitUntil('the emulator to have the keyboard', () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
-  assert.equal(await page.locator('.xterm-helper-textarea').getAttribute('aria-label'), 'Terminal input, Terminal', `${engine}: the input is named for a person who cannot see the screen`);
   await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
+
+  // The terminal started at the size the person sees (T2a): the first size the view tells the feed starts the shell, and it is told only once the GPU renderer is in place, so the call that starts the terminal carries the final size and the page sends no resize after it.
+  // The wait is a count of frames (90: 1.5 s at 60 Hz, longer on a slower machine), past the settling of a size (100 ms) and the answer of the host. Then the shell says its size: the pty has what the call carried, and that is the grid the emulator itself counts
+  // (asked of the emulator with a cursor position report, `emulatorGridOf`): the rows exactly, the columns within one.
+  const created = wire.of('CreateTerminal');
+  await waitUntil('the answer of the host to the call that started the terminal', async () => created[0]?.answered === true, 10_000);
+  const launch = created[0].args[1];
+  assert.ok(Number.isInteger(launch?.cols) && Number.isInteger(launch?.rows) && launch.cols > 0 && launch.rows > 0, `${engine}: the call that starts the terminal carries the size of the screen (it carried ${JSON.stringify(launch)})`);
+  for (let turn = 0; turn < 45; turn += 1) await afterFrames(page);
+  assert.deepEqual(wire.calls.filter((call) => call.method === 'ResizeTerminal' || call.method === 'ResizeSession').map((call) => [call.method, ...call.args]), [], `${engine}: the page sends no resize after the terminal started: the call that started it carried the size the person sees (${JSON.stringify(launch)}) and no ResizeTerminal (nor the legacy ResizeSession) followed it in the 90 frames after the shell's first prompt`);
+  await typeLine(page, 'stty size');
+  await waitUntil('stty size to answer', async () => sttyOf(await plainTranscriptOf(base, id)) !== null, 15_000);
+  const born = sttyOf(await plainTranscriptOf(base, id));
+  const seen = await screenSizeOf(page);
+  const grid = await emulatorGridOf(page, base, id);
+  assert.ok(born.rows === launch.rows && born.cols === launch.cols, `${engine}: the pty has the size the call that started the terminal carried: ${JSON.stringify(launch)}, it said ${JSON.stringify(born)}`);
+  assert.equal(born.rows, seen.rows, `${engine}: right after the first prompt the pty has the rows the emulator drew (${String(seen.rows)}), it said ${String(born.rows)}`);
+  assert.equal(born.rows, grid.rows, `${engine}: right after the first prompt the pty has the rows the emulator counts (the emulator says ${String(grid.rows)}), it said ${String(born.rows)}`);
+  assert.ok(Math.abs(born.cols - grid.cols) <= 1, `${engine}: right after the first prompt the pty has the columns the emulator counts, to within one (the emulator says ${String(grid.cols)}), it said ${String(born.cols)}`);
+
+  // The session's tab is called by the shell (T2a): the host's answer to the call that started the terminal names the shell it started (`zsh`, `bash`), the tab says that and not Terminal, the emulator's input is named for it, and the tool's
+  // own tab in the strip of tools stays Terminal. The shell is asked what it is called, so that the name is proved against the shell and not only against the host's own word for it; what the host answered is read from the wire.
+  const said = await askShellName(page, base, id);
+  const named = created[0].answer?.shell?.name;
+  const tabNames = async () => page.locator('[data-shell-part="sessionTabs"] [role="tab"]').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')));
+  await waitUntil('the session tab to be called by the shell', async () => !/^Terminal\b/.test((await tabNames())[0] ?? 'Terminal'), 10_000).catch(() => undefined);
+  const shell = (await tabNames())[0];
+  assert.notEqual(shell, 'Terminal', `${engine}: the session's tab is not called Terminal, it is called by the shell the host started (the host answered ${JSON.stringify(created[0].answer?.shell)})`);
+  assert.ok([said.ps, said.zero].includes(shell), `${engine}: the session's tab is called by the name the shell says it has (the tab: ${JSON.stringify(shell)}; the shell: ps ${JSON.stringify(said.ps)}, $0 ${JSON.stringify(said.zero)})`);
+  assert.equal(shell, named, `${engine}: the session's tab says what the host answered to the call that started the terminal (the host answered ${JSON.stringify(created[0].answer?.shell)})`);
+  assert.equal(await page.locator('[data-shell-part="panelTools"]').getByRole('tab', { name: 'Terminal', exact: true }).count(), 1, `${engine}: the tool's own tab in the strip of tools is still called Terminal`);
+  const inputName = () => page.locator('.xterm-helper-textarea').getAttribute('aria-label');
+  await waitUntil('the emulator\'s input to be named for the shell', async () => (await inputName()) === `Terminal input, ${String(shell)}`, 10_000).catch(() => undefined);
+  assert.equal(await inputName(), `Terminal input, ${String(shell)}`, `${engine}: the input is named for a person who cannot see the screen, with the shell's name`);
+  assert.equal(wire.of('AckTerminal')[0]?.args[0], id, `${engine}: the page turned the host's flow control on when the terminal started: its first call of AckTerminal names the session`);
+  note('shell name', `ps said ${JSON.stringify(said.ps)}, $0 said ${JSON.stringify(said.zero)}; the host answered ${JSON.stringify(created[0].answer?.shell)}; the tab is ${JSON.stringify(shell)}, the input is "Terminal input, ${String(shell)}", the tool's tab is Terminal; the first AckTerminal was for ${String(wire.of('AckTerminal')[0]?.args[1])} bytes`);
 
   // A command with a known output: the output line, not only the echo of what was typed.
   await typeLine(page, 'echo SEAM_$((6*7))');
@@ -4864,29 +5398,32 @@ async function checkTerminal(page, base, engine) {
   const described = () => page.evaluate(() => document.getElementById(document.querySelector('.xterm-helper-textarea')?.getAttribute('aria-describedby') ?? '')?.textContent ?? '');
   const told = () => page.locator('[data-notices-part="live"]').textContent();
   const holds = async (text) => (await screenRegion.ariaSnapshot()).includes(text);
+  const NOT_READ = /The output is not read aloud until screen reader mode is on\..*Terminal: Toggle Screen Reader Mode/;
+  const READ = /Screen reader mode is on: the output is read aloud\. To turn it off.*Terminal: Toggle Screen Reader Mode/;
+  /** The description of the emulator's input once it says what is wanted (it follows the mode a moment after the window announces it): what it says then, or what it says after 10 s. */
+  const describedAs = async (pattern) => {
+    await waitUntil('the description of the input to follow the mode', async () => pattern.test(await described()), 10_000).catch(() => undefined);
+    return described();
+  };
   assert.match(await described(), /The output is not read aloud until screen reader mode is on\..*Terminal: Toggle Screen Reader Mode/, `${engine}: the input is described as not read aloud until the mode is on, and the description names the command`);
   assert.equal(await holds('SEAM_42'), false, `${engine}: with the mode off a line the shell printed is not in the accessibility tree of the screen`);
   await switchScreenReader(page, mac);
   await waitUntil('the window to announce that the mode is on', async () => (await told()) === 'Terminal screen reader mode on.', 10_000);
-  assert.match(await described(), /Screen reader mode is on: the output is read aloud\. To turn it off.*Terminal: Toggle Screen Reader Mode/, `${engine}: with the mode on the input is described as read aloud, with the way to turn it off`);
+  assert.match(await describedAs(READ), READ, `${engine}: with the mode on the input is described as read aloud, with the way to turn it off`);
   await typeLine(page, 'echo SR_$((6*7))');
   await waitUntil('SR_42 in the accessibility tree of the screen', async () => (await screenRegion.getByRole('listitem').filter({ hasText: /^SR_42$/ }).count()) === 1, 20_000);
   assert.ok(await holds('SR_42'), `${engine}: with the mode on the line the shell printed is in the accessibility snapshot of the screen`);
   await switchScreenReader(page, mac);
   await waitUntil('the window to announce that the mode is off', async () => (await told()) === 'Terminal screen reader mode off.', 10_000);
+  await waitUntil('the list items of the screen to go', async () => (await screenRegion.getByRole('listitem').count()) === 0, 10_000).catch(() => undefined);
   assert.equal(await screenRegion.getByRole('listitem').count(), 0, `${engine}: with the mode off again the screen has no list items for a screen reader to read`);
   assert.equal(await holds('SR_42'), false, `${engine}: with the mode off again the line is no longer in the accessibility tree of the screen`);
-  assert.match(await described(), /The output is not read aloud until screen reader mode is on\..*Terminal: Toggle Screen Reader Mode/, `${engine}: with the mode off again the input is described as not read aloud, and names the command`);
+  assert.match(await describedAs(NOT_READ), NOT_READ, `${engine}: with the mode off again the input is described as not read aloud, and names the command`);
   await typeLine(page, 'echo SR_BACK_$((6*7))');
   await waitUntil('the output of the command', async () => /\r?\nSR_BACK_42\r?\n/.test(await plainTranscriptOf(base, id)), 15_000);
 
-  // The resize reached the process: the rows the page drew are the rows the pty has, and the columns are the width in cells.
-  await typeLine(page, 'stty size');
-  await waitUntil('stty size to answer', async () => sttyOf(await plainTranscriptOf(base, id)) !== null, 15_000);
-  const before = await screenSizeOf(page);
-  const first = sttyOf(await plainTranscriptOf(base, id));
-  assert.equal(first.rows, before.rows, `${engine}: the pty has the rows the page drew (${String(before.rows)}), it said ${String(first.rows)}`);
-  assert.ok(first.cols >= Math.floor(before.width / 7.3) && first.cols <= Math.ceil(before.width / 6.9), `${engine}: the pty has the width of the screen in cells (${String(Math.round(before.width))} px), it said ${String(first.cols)}`);
+  // The resize reaches the process: the screen is raised with the End key on its handle, the page tells the host with ResizeTerminal, and the pty has the rows the page draws then (the size the terminal started at is `seen`, above).
+  const before = seen;
 
   await page.locator('[data-shell-part="panelHandle"]').focus();
   await page.keyboard.press('End');
@@ -4910,6 +5447,28 @@ async function checkTerminal(page, base, engine) {
 
   assert.ok(after.rows > before.rows, `${engine}: the panel is taller, so the screen has more rows`);
   assert.equal(second.rows, after.rows, `${engine}: after the panel was raised the pty has the new rows (${String(after.rows)}), it said ${String(second.rows)}`);
+  // The page told the host the new size in a ResizeTerminal call (ROWS, then COLUMNS), and the last one it sent is the rows it drew: this is also the check's proof that it can see a resize.
+  const sent = () => wire.of('ResizeTerminal').filter((call) => call.args[0] === id);
+  assert.ok(sent().length >= 1, `${engine}: when the panel was raised the page sent the new size in a ResizeTerminal call`);
+  assert.equal(sent().at(-1)?.args[2], after.rows, `${engine}: the last ResizeTerminal says the rows the page drew (${String(after.rows)}): it was ${JSON.stringify(sent().at(-1)?.args)}`);
+  // The pointer: dragging the splitter shorter is a resize too, sent with a later number, and the pty follows.
+  const raised = sent().length;
+  await dragHandle(page, 120);
+  await waitUntil('the screen to shrink', async () => ((await screenSizeOf(page))?.height ?? 0) < after.height - 40, 10_000);
+  await page.waitForTimeout(600);
+  await takeKeyboard(page);
+  const shrunk = await screenSizeOf(page);
+  let third = await ptyRows();
+  for (let tries = 0; tries < 10 && third.rows !== shrunk.rows; tries += 1) {
+    await page.waitForTimeout(500);
+    third = await ptyRows();
+  }
+
+  assert.ok(shrunk.rows < after.rows, `${engine}: the panel dragged shorter has a screen with fewer rows`);
+  assert.equal(third.rows, shrunk.rows, `${engine}: after the panel was dragged shorter the pty has the new rows (${String(shrunk.rows)}), it said ${String(third.rows)}`);
+  assert.ok(sent().length > raised && sent().at(-1).args[2] === shrunk.rows, `${engine}: the drag was sent in ResizeTerminal calls: ${String(sent().length - raised)} more, the last for ${String(sent().at(-1)?.args[2])} rows, the screen drew ${String(shrunk.rows)}`);
+  assert.ok(sent().every((call, index) => index === 0 || call.args[1] > sent()[index - 1].args[1]), `${engine}: the ResizeTerminal calls carry increasing sequence numbers (${JSON.stringify(sent().map((call) => call.args[1]))})`);
+  note('size', `the call that started the terminal carried ${JSON.stringify(launch)} and the pty said ${JSON.stringify(born)}; the emulator counted ${String(grid.rows)} rows and ${String(grid.cols)} columns (its screen: ${String(seen.rows)} rows, ${String(Math.round(seen.width))} px); no ResizeTerminal in the 90 frames after the first prompt; the End key sent ${String(raised)} (the last for ${String(after.rows)} rows) and the drag ${String(sent().length - raised)} more (the last for ${String(shrunk.rows)} rows), numbers ${JSON.stringify(sent().map((call) => call.args[1]))}`);
 
   // A keyboard user can always leave (A14): Escape stays in the shell, F6 leaves, and on a Mac Command J hides the panel.
   await page.keyboard.press('Escape');
@@ -4928,44 +5487,65 @@ async function checkTerminal(page, base, engine) {
     await page.locator('.xterm-screen').waitFor({ state: 'visible' });
   }
 
-  // Closing a running terminal asks. Cancel has the focus; Escape says no and the host still lists the shell.
-  await page.locator('[data-shell-part="sessionClose"]').first().click();
-  const dialog = page.getByRole('alertdialog', { name: 'Terminate session?' });
-  await dialog.waitFor();
-  assert.ok(await page.evaluate(() => document.activeElement?.textContent === 'Cancel'), `${engine}: Cancel has the focus in the question`);
-  await page.keyboard.press('Escape');
-  await dialog.waitFor({ state: 'detached' });
-  assert.deepEqual(await terminalIds(base), [id], `${engine}: the shell is still there after a no`);
-  // Terminate session ends it: the host lists nothing, the tool says so, and the focus is on the tool's own tab.
-  await page.locator('[data-shell-part="sessionClose"]').first().click();
-  await dialog.waitFor();
-  await page.getByRole('button', { name: 'Terminate session', exact: true }).click();
-  await dialog.waitFor({ state: 'detached' });
-  await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
-  await page.getByText('No terminals', { exact: true }).waitFor();
-  assert.ok(await page.evaluate(() => document.activeElement?.getAttribute('role') === 'tab' && document.activeElement.textContent?.includes('Terminal')), `${engine}: the focus is on the tool's tab after the last terminal closed`);
+  // The Escape pressed above went to the shell, and a shell keeps an Escape as the first half of a key sequence: bash and zsh read the next key as Meta-<key>, however long after it comes (the first character of the flood was swallowed and the
+  // shell ran `eq`). Control C ends that line, and the check goes on when the shell has shown a fresh prompt.
+  await takeKeyboard(page);
+  const afterEscape = (await transcriptOf(base, id)).length;
+  await page.keyboard.press('Control+c');
+  await waitUntil('the shell to show a fresh prompt after Control C', async () => (await transcriptOf(base, id)).length > afterEscape, 10_000);
+  await typeLine(page, 'echo SYNC_$((6*7))');
+  await waitUntil('the shell to answer after Control C', async () => /\nSYNC_42\n/.test(await plainTranscriptOf(base, id)), 20_000);
 
-  // A shell that exits is an ended session: kept, with its words, and closing it asks nothing.
+  // Flow control on the real host (T2a): a flood in the terminal that is on screen completes, and so does a flood of 50 MB with the panel hidden (the hidden screen goes on reading, parsing and acknowledging), and the shell answers after each.
+  const questions = await watchQuestions(page);
+  const c = { page, base, engine, mac, wire, note, questions };
+  await terminalFlowVisible(c, id);
+  await terminalFlowHidden(c, id);
+
+  // Closing (T2a). With a program running the host says so and the question names it; a terminal at its prompt asks nothing, whichever way it is closed. The terminal of the checks above is the one that is closed with a program running.
+  await terminalCloseBusy(c, id, shell);
+  await terminalCloseIdle(c);
+  await terminalCloseKeys(c);
+
+  // A shell that exits is an ended session, with how it ended in the host's own words (the typed end of the session is an object): kept, its output readable, its tab announced as ended, and closing it asks nothing.
   await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
   await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
-  await waitUntil('the host to list the second shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  await waitUntil('the host to list the second shell', async () => (await terminalIds(base)).length === 1, 30_000);
   const [second_id] = await terminalIds(base);
   await waitUntil('the second shell to say its prompt', async () => (await transcriptOf(base, second_id)).trim() !== '', 20_000);
   // The output must outlive the shell: a marker is in the emulator before the exit and still there once the session says it ended.
-  await keepCopies(page);
   await typeLine(page, 'echo SURVIVES_$((6*7))');
   await waitUntil('the emulator to hold the marker before the shell exits', async () => lineIn(await bufferOf(page, mac), 'SURVIVES_42'), 20_000);
-  await page.locator('.xterm-screen').click({ position: { x: 3, y: 3 } });
-  await typeLine(page, 'exit');
+  await takeKeyboard(page);
+  await typeLine(page, 'exit 3');
   await page.getByText('Input is off. Its output stays readable here.', { exact: true }).waitFor({ timeout: 15_000 });
-  assert.ok(lineIn(await bufferOf(page, mac), 'SURVIVES_42'), `${engine}: the output is still in the emulator once the shell has exited`);
-  assert.equal(await page.locator('[role="tab"][aria-selected="true"][aria-label^="Terminal"]').count(), 1, `${engine}: the ended session's tab stays`);
+  const laneText = async () => ((await page.locator('[data-shell-part="terminalLane"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+  await waitUntil('the lane to say how the shell ended', async () => (await laneText()) === 'Exited with code 3 Input is off. Its output stays readable here.', 10_000).catch(() => undefined);
+  const lane = await laneText();
+  assert.equal(lane, 'Exited with code 3 Input is off. Its output stays readable here.', `${engine}: the lane under the screen says how the shell ended, in the host's words: the code it exited with, and that the input is off`);
+  let ended = '';
+  await waitUntil('the emulator to hold the end of the process', async () => {
+    ended = await bufferOf(page, mac);
+    return lastLineOf(ended) === '[Process exited with code 3]';
+  }, 15_000).catch(() => undefined);
+  assert.equal(lastLineOf(ended), '[Process exited with code 3]', `${engine}: the last line the emulator holds says how the process ended`);
+  assert.ok(lineIn(ended, 'SURVIVES_42'), `${engine}: the output is still in the emulator once the shell has exited`);
+  await waitUntil('the tab to be announced as ended', async () => (await tabNames()).join('|') === `${String(shell)}, ended`, 10_000).catch(() => undefined);
+  assert.deepEqual(await tabNames(), [`${String(shell)}, ended`], `${engine}: the ended session's tab stays and is announced as ended`);
   await waitUntil('the host to have no session left', async () => (await terminalIds(base)).length === 0, 10_000);
+  const asked = wire.of('IsBusy').length;
   await page.locator('[data-shell-part="sessionClose"]').first().click();
   assert.equal(await page.getByRole('alertdialog').count(), 0, `${engine}: closing an ended terminal asks nothing`);
   await page.getByText('No terminals', { exact: true }).waitFor();
+  assert.equal(wire.of('IsBusy').length, asked, `${engine}: closing an ended terminal does not ask the host what runs in it`);
+  note('exit 3', `the lane said ${JSON.stringify(lane)}; the last line of the emulator was ${JSON.stringify(lastLineOf(ended))}; the tab was announced as ${JSON.stringify(`${String(shell)}, ended`)}`);
+
+  // The page's input and size were ordered calls the whole time, for every terminal it started (T2a): the legacy calls were never made and the sequence numbers count up from 1 for each terminal.
+  assertOrderedCalls(wire, engine);
+  note('ordered calls', [...orderedCallsOf(wire).values()].map((calls) => `${String(calls.filter((call) => call.method === 'WriteTerminal').length)} WriteTerminal and ${String(calls.filter((call) => call.method === 'ResizeTerminal').length)} ResizeTerminal (numbers 1 to ${String(calls.length)})`).join('; ') + '; no WriteSession or ResizeSession');
 
   assert.deepEqual(errors, [], `${engine}: the page raised no error`);
+  console.log(`terminal ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
 /**
@@ -4988,7 +5568,7 @@ async function checkTerminalPrograms(page, base, engine) {
   await page.locator('[data-shell-part="panelToggle"]').click();
   await page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }).click();
   await page.locator('.xterm-helper-textarea').waitFor({ timeout: 30_000 });
-  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 15_000);
+  await waitUntil('the host to list the shell', async () => (await terminalIds(base)).length === 1, 30_000);
   const [id] = await terminalIds(base);
   await waitUntil('the emulator to have the keyboard', () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
   await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
@@ -5435,7 +6015,7 @@ try {
         continue;
       }
 
-      // SEAM_TERMINAL_REPEAT=<n> runs scenario r alone, n times in a row, for a developer who works on the Terminal tool (each run starts two shells of this machine and ends them).
+      // SEAM_TERMINAL_REPEAT=<n> runs scenarios r and r2 alone, n times in a row, for a developer who works on the Terminal tool (each run starts several shells of this machine and ends them).
       if (process.env.SEAM_TERMINAL_REPEAT !== undefined) {
         const repeats = Number(process.env.SEAM_TERMINAL_REPEAT);
         if (!Number.isSafeInteger(repeats) || repeats < 1) {

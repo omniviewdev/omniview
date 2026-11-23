@@ -118,6 +118,34 @@ export function setSessionState(state: PanelState, id: SessionId, change: StateC
 }
 
 /**
+ * Gives a session another title: what its tab is called once its owner knows more than it did when it opened it (the name of the shell its host resolved, a title the program set). The title is cut as an opened
+ * session's is. Only the title changes, so the state, the time, the place and the choices of the session are as they were; the tab's name, its twins and its ordinal follow from the snapshot (`selectors`). The same
+ * title changes nothing. A held session (A21) is over and never changes again, so it is refused like a change of its state.
+ */
+export function retitleSession(state: PanelState, id: SessionId, title: string): Step<PanelResult> {
+  const session = own(state.sessions, id);
+  if (session === undefined) {
+    return refuse(state, 'missing', `There is no session ${id}.`);
+  }
+
+  if (session.held === true) {
+    return refuse(state, 'held', `The session ${id} ended when its plugin was unloaded and is kept as it is until it is closed.`);
+  }
+
+  const cut = text(title);
+  if (cut === '') {
+    return refuse(state, 'invalid', 'A session needs a title.');
+  }
+
+  if (cut === session.title) {
+    return unchanged(state);
+  }
+
+  const next: Session = Object.freeze({ ...session, title: cut });
+  return { state: settle(patch(state, { sessions: Object.freeze({ ...state.sessions, [id]: next }) })), result: { status: 'done' } };
+}
+
+/**
  * Closes a session: its tab and its body go, and the session on screen passes to the one after it in its tool's strip, else the one before (as a closed tab does). The panel stays as it
  * is: a tool with no session left shows its empty state. Whoever owns the session's work stops it when its body unmounts (the host's viewer, or the plugin's body).
  */

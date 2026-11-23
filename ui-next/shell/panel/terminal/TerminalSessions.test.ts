@@ -92,9 +92,9 @@ describe('opening a session for a target', () => {
   it('keeps what it was told of the target for the card: the id, the resource and the status the feed has now', () => {
     const { sessions, target } = harness({ plugins: ['acme'] });
     const { target: given, feed } = target({ plugin: 'acme', id: 'item/web-0/app', resource: { label: 'Item web-0', kind: 'Item' } });
-    feed.set({ foreground: false });
+    feed.set({ program: 'zsh' });
     const opened = sessions.open(given);
-    expect(sessions.recordOf(opened?.id ?? '')).toMatchObject({ id: 'item/web-0/app', plugin: 'acme', resource: { label: 'Item web-0', kind: 'Item' }, snapshot: { state: 'running', foreground: false } });
+    expect(sessions.recordOf(opened?.id ?? '')).toMatchObject({ id: 'item/web-0/app', plugin: 'acme', resource: { label: 'Item web-0', kind: 'Item' }, snapshot: { state: 'running', program: 'zsh' } });
     expect(sessions.recordOf('nobody')).toBeUndefined();
   });
 
@@ -195,7 +195,7 @@ describe('what the session says while its feed runs', () => {
     feed.set({ state: 'running' });
     expect(read()).toMatchObject({ state: 'running', since: 2_000 });
     clock = 3_000;
-    feed.set({ state: 'running', foreground: false });
+    feed.set({ state: 'running', program: 'zsh' });
     expect(read()).toMatchObject({ state: 'running', since: 2_000 });
     clock = 4_000;
     feed.set({ state: 'ended', exit: { code: 0 } });
@@ -531,5 +531,106 @@ describe('a feed that was written badly', () => {
     };
     const opened = sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => lagging });
     expect(store.getSnapshot().sessions[opened?.id ?? '']?.state).toBe('running');
+  });
+});
+
+describe('naming the tab by what the producer says it runs', () => {
+  const named = (status: { readonly program?: string | undefined }): string | undefined => status.program;
+
+  it('keeps the title the target gave until the feed names a program, then renames the session to what the target says, and nothing else about it changes', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named });
+    const opened = sessions.open(given);
+    const id = opened?.id ?? '';
+    const before = store.getSnapshot().sessions[id];
+    expect(before?.title).toBe('Terminal');
+    clock = 2_000;
+    feed.set({ program: 'zsh' });
+    const after = store.getSnapshot().sessions[id];
+    expect(after).toMatchObject({ title: 'zsh', tool: 'terminal', plugin: HOST, state: 'running', since: before?.since });
+    expect(store.selectors.sessionItem(store.getSnapshot(), id)?.name).toBe('zsh');
+  });
+
+  it('renames a session whose feed already names its program when the session opens: the first status is the session\'s now', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named });
+    feed.set({ program: 'bash' });
+    const opened = sessions.open(given);
+    expect(store.getSnapshot().sessions[opened?.id ?? '']?.title).toBe('bash');
+  });
+
+  it('renames once per change and tells the panel once for each: a flood of wake-ups with the same program is no commit', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named });
+    sessions.open(given);
+    const heard = vi.fn();
+    store.subscribe(heard);
+    feed.set({ program: 'zsh' });
+    const afterFirst = heard.mock.calls.length;
+    expect(afterFirst).toBeGreaterThan(0);
+    feed.wake();
+    feed.wake();
+    feed.set({ program: 'zsh', state: 'running' });
+    expect(heard).toHaveBeenCalledTimes(afterFirst);
+    feed.set({ program: 'fish' });
+    expect(heard.mock.calls.length).toBeGreaterThan(afterFirst);
+  });
+
+  it('keeps the title when the target does not say how to retitle, whatever the feed says: a plugin names its own tabs', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target();
+    const opened = sessions.open(given);
+    feed.set({ program: 'zsh' });
+    expect(store.getSnapshot().sessions[opened?.id ?? '']?.title).toBe('Terminal');
+  });
+
+  it('keeps the title when what the target says is nothing, or white space, or its own title', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: (status) => (status.program === 'blank' ? '   ' : status.program === 'same' ? 'Terminal' : undefined) });
+    const opened = sessions.open(given);
+    for (const program of ['blank', 'same', 'other']) {
+      feed.set({ program });
+    }
+
+    expect(store.getSnapshot().sessions[opened?.id ?? '']?.title).toBe('Terminal');
+  });
+
+  it('makes two shells of one name twins, as two sessions of one title are (A22): the strip tells them apart', () => {
+    const { store, sessions, target } = harness();
+    const first = target({ retitle: named });
+    const second = target({ retitle: named });
+    const one = sessions.open(first.target);
+    const two = sessions.open(second.target);
+    first.feed.set({ program: 'zsh' });
+    second.feed.set({ program: 'zsh' });
+    const strip = [one, two].map((opened) => store.selectors.sessionItem(store.getSnapshot(), opened?.id ?? '')?.name);
+    expect(new Set(strip).size).toBe(2);
+    expect(store.getSnapshot().sessions[one?.id ?? '']?.title).toBe('zsh');
+    expect(store.getSnapshot().sessions[two?.id ?? '']?.title).toBe('zsh');
+  });
+
+  it('does not rename a session its plugin\'s unload kept: a kept session never changes again (A21)', () => {
+    const { store, sessions, target } = harness({ plugins: ['acme'] });
+    const { target: given, feed } = target({ plugin: 'acme', retitle: named });
+    const opened = sessions.open(given);
+    store.syncPlugins([]);
+    feed.set({ program: 'zsh' });
+    expect(store.getSnapshot().sessions[opened?.id ?? '']?.title).toBe('Terminal');
+  });
+});
+
+describe('the members a feed must have', () => {
+  it('refuses a feed that cannot take an acknowledgement: the host paces a terminal by what its reader took in, and a feed that ignored the count would stall the shell', () => {
+    const { sessions, warn } = harness();
+    const without = { ...fakeTerminalFeed(), ack: undefined } as unknown as FakeTerminalFeed;
+    expect(sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => without })).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not need a way to ask what runs in it: that is optional, and a close then asks the general question', () => {
+    const { sessions } = harness();
+    const feed = fakeTerminalFeed();
+    expect('busy' in feed).toBe(false);
+    expect(sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => feed })).toBeDefined();
   });
 });

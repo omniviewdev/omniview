@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Platform } from '../../core/chords';
 import type { EngineAppearance } from './engine';
-import { FLOW, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
+import { FLOW, HIDDEN_TICK_MS, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngine, type FakeEngineLoader, type FakeTerminalFeed } from './testing';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It loads the emulator when the session is first SHOWN and not before, draws what the feed
-// holds one frame at a time and never more than the emulator can parse, follows the size of its host (one measure per frame, and a message to the feed only for a size that changed), and, while it is hidden, does
-// nothing at all: no listener on the feed, no frame, no observer, no GPU context, so the output of a hidden terminal is held by the feed and costs the main thread a push. Against a fake emulator and a fake clock.
+// holds one frame at a time and never more than the emulator can parse, follows the size of its host (one measure per frame, and a message to the feed only for a size that changed, and only once the GPU renderer is in
+// place, so that the process starts at the size the person sees), and, while it is hidden, goes on reading, parsing and acknowledging (a build in a session that is not shown is never stalled by the view) in frames of a
+// smaller share and draws nothing: no observer, no GPU context, no measure, and no frame once the feed has nothing more. A timer stands beside every frame it asks for, shown or hidden, for a window whose frames are
+// suspended. Against a fake emulator and a fake clock.
 
 const APPEARANCE: EngineAppearance = {
   theme: { background: '#000', foreground: '#fff', cursor: '#fff', cursorAccent: '#000', selectionBackground: '#222', selectionInactiveBackground: '#111', palette: Array.from({ length: 16 }, () => '#888') },
@@ -25,6 +27,10 @@ type Rig = {
   /** Runs the animation frames that were asked for, as one frame of the browser does. */
   readonly frame: () => void;
   readonly frames: () => { readonly asked: number; readonly pending: number; readonly cancelled: number };
+  /** Runs the timers that were asked for, as the clock reaching `HIDDEN_TICK_MS` does, with no frame: a window whose frames are suspended. */
+  readonly tick: () => void;
+  /** The timers the screen asked for (its `later`), with the delay each was asked for. */
+  readonly timers: () => { readonly asked: number; readonly pending: number; readonly cancelled: number; readonly delays: readonly number[] };
   readonly observers: () => { readonly alive: number; readonly started: number };
   /** The host's size changed: what a ResizeObserver tells. */
   readonly resized: () => void;
@@ -37,13 +43,15 @@ type Rig = {
   readonly fonts: { readonly release: () => void; readonly asked: () => readonly string[] };
 };
 
-function rig(options: { readonly platform?: Platform; readonly deferred?: boolean; readonly auto?: boolean; readonly fontsHeld?: boolean; readonly rendererReady?: Promise<void>; readonly copy?: (text: string) => Promise<boolean>; readonly screenReader?: boolean } = {}): Rig {
+function rig(options: { readonly platform?: Platform; readonly deferred?: boolean; readonly auto?: boolean; readonly fontsHeld?: boolean; readonly rendererReady?: Promise<void>; readonly copy?: (text: string) => Promise<boolean>; readonly screenReader?: boolean; readonly defaultTimer?: boolean } = {}): Rig {
   const feed = fakeTerminalFeed();
   const loader = fakeEngineLoader({ deferred: options.deferred === true, auto: options.auto ?? true, rendererReady: options.rendererReady });
   const host = document.createElement('div');
   const queue: Array<(() => void) | undefined> = [];
   let asked = 0;
   let cancelled = 0;
+  const laterQueue: Array<{ readonly callback: () => void; readonly ms: number; live: boolean }> = [];
+  let laterCancelled = 0;
   const observed = new Set<() => void>();
   let started = 0;
   const copied: string[] = [];
@@ -81,6 +89,17 @@ function rig(options: { readonly platform?: Platform; readonly deferred?: boolea
         if (queue[at] !== undefined) {
           queue[at] = undefined;
           cancelled += 1;
+        }
+      };
+    },
+    // `defaultTimer`: the screen is given no clock and uses the plain timer.
+    later: options.defaultTimer === true ? undefined : (callback, ms) => {
+      const timer = { callback, ms, live: true };
+      laterQueue.push(timer);
+      return () => {
+        if (timer.live) {
+          timer.live = false;
+          laterCancelled += 1;
         }
       };
     },
@@ -123,6 +142,15 @@ function rig(options: { readonly platform?: Platform; readonly deferred?: boolea
       }
     },
     frames: () => ({ asked, pending: queue.filter((callback) => callback !== undefined).length, cancelled }),
+    tick: () => {
+      for (const timer of laterQueue.filter((one) => one.live)) {
+        if (timer.live) {
+          timer.live = false;
+          timer.callback();
+        }
+      }
+    },
+    timers: () => ({ asked: laterQueue.length, pending: laterQueue.filter((one) => one.live).length, cancelled: laterCancelled, delays: laterQueue.map((one) => one.ms) }),
     observers: () => ({ alive: observed.size, started }),
     resized: () => {
       for (const callback of [...observed]) {
@@ -412,13 +440,75 @@ describe('what the process writes', () => {
     expect(r.engine().writes).toHaveLength(pieces * 2);
   });
 
-  it('says how many bytes were skipped before it draws what is left, in the muted words of the transcript: the output past the feed\'s bound is not lost without a word', async () => {
-    const { feed, engine, frame } = await shown();
-    feed.drop(150_000);
-    feed.push('tail');
-    frame();
-    expect(engine().text()).toMatch(/^\u001b\[0m\r\n\u001b\[90m\[150 KB of output were skipped\]\u001b\[0m\r\n.*tail$/s);
-    expect(engine().text().endsWith('tail')).toBe(true);
+  it('tells the feed how many bytes the emulator PARSED, and only then: not when it reads them, not when it hands them over, but when the emulator says it has parsed them (the host paces the shell on this count)', async () => {
+    const r = rig({ auto: false });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.feed.push('hello');
+    r.frame();
+    expect(r.engine().writes).toHaveLength(1);
+    expect(r.feed.acks()).toEqual([]);
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([5]);
+  });
+
+  it('acknowledges every byte it read exactly once, in the pieces it handed over, each when it is parsed: the sum is what the feed gave', async () => {
+    const r = rig({ auto: false });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    const sizes = [FLOW.slice, FLOW.slice, 1_234];
+    for (const size of sizes) {
+      r.feed.push(new Uint8Array(size));
+    }
+
+    r.frame();
+    r.engine().complete(1);
+    expect(r.feed.acks()).toEqual([FLOW.slice]);
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([FLOW.slice, FLOW.slice, 1_234]);
+    expect(r.feed.acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(sizes.reduce((sum, bytes) => sum + bytes, 0));
+  });
+
+  it('acknowledges what the emulator parses after the screen was hidden: it took those bytes while it was shown, and the shell waits for their credit', async () => {
+    const r = rig({ auto: false });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.feed.push('abc');
+    r.frame();
+    r.screen.hide();
+    expect(r.feed.acks()).toEqual([]);
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([3]);
+  });
+
+  it('writes why no shell started into the screen, muted, so that what the host tried can be read and copied: the typed words, then the producer\'s own, once', async () => {
+    const r = rig();
+    r.feed.set({ state: 'failed', cause: { stage: 'start', code: 'SHELL_UNAVAILABLE', message: 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none": not found' } });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe('\u001b[0m\r\n\u001b[90m[No shell could be started]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none": not found]\u001b[0m\r\n');
+    r.feed.wake();
+    r.frame();
+    expect(r.engine().writes).toHaveLength(2);
+  });
+
+  it('names the input again when the tab is renamed (the shell said its name): the emulator hears the new label, and one that is made after it is made with it', async () => {
+    const r = rig({ deferred: true });
+    r.screen.mount(r.host);
+    r.screen.show();
+    r.screen.rename('Terminal input, zsh');
+    r.loader.release();
+    await r.settle();
+    expect(r.engine().labels).toEqual([['Terminal input, zsh', 'hint-1']]);
+    r.screen.rename('Terminal input, bash');
+    expect(r.engine().labels.at(-1)).toEqual(['Terminal input, bash', 'hint-1']);
+    r.screen.rename('Terminal input, bash');
+    expect(r.engine().labels).toHaveLength(2);
   });
 });
 
@@ -428,55 +518,98 @@ describe('while it is hidden', () => {
     r.screen.mount(r.host);
     r.screen.show();
     await r.settle();
+    r.frame();
     return r;
   }
 
-  it('lets go of everything: no listener on the feed, no frame asked for or waiting, no observer, no GPU context', async () => {
-    const { screen, feed, engine, frames, observers } = await shown();
-    feed.push('a');
-    expect(frames().pending).toBe(1);
+  const taken = (r: Rig) => r.feed.acks().reduce((sum, bytes) => sum + bytes, 0);
+
+  it('lets go of what only a screen on show needs, the observer and the GPU context, and keeps its one listener on the feed: a hidden terminal goes on reading', async () => {
+    const { screen, feed, engine, observers } = await shown();
+    expect(feed.listeners()).toBe(1);
     screen.hide();
-    expect(feed.listeners()).toBe(0);
-    expect(frames().pending).toBe(0);
     expect(observers().alive).toBe(0);
     expect(engine().renderers.at(-1)).toBe('dom');
-  });
-
-  it('costs the main thread a push for output that comes while it is hidden: no read, no write, no frame, no measure', async () => {
-    const { screen, feed, engine, frames, frame, resized } = await shown();
-    screen.hide();
-    const asked = frames().asked;
-    const reads = feed.reads();
-    const writes = engine().writes.length;
-    for (let index = 0; index < 100; index += 1) {
-      feed.push('y\r\n');
-    }
-
-    resized();
-    frame();
-    expect(frames().asked).toBe(asked);
-    expect(feed.reads()).toBe(reads);
-    expect(engine().writes).toHaveLength(writes);
-  });
-
-  it('draws what the feed held, once, when it is shown again, and takes the GPU renderer back', async () => {
-    const { screen, feed, engine, frame } = await shown();
-    screen.hide();
-    feed.push('while hidden\r\n');
-    screen.show();
-    await Promise.resolve();
-    frame();
-    expect(engine().text()).toBe('while hidden\r\n');
-    expect(engine().renderers).toEqual(['gpu', 'dom', 'gpu']);
     expect(feed.listeners()).toBe(1);
   });
 
+  it('goes on reading, parsing and acknowledging what the process writes while it is hidden, and draws nothing itself: a build in a session that is not shown is never stalled by the view (VS Code writes every chunk into the emulator and acknowledges it from the write callback whether or not the terminal is shown)', async () => {
+    const r = await shown();
+    r.screen.hide();
+    r.feed.push('while hidden, one');
+    r.feed.push('while hidden, two');
+    r.frame();
+    expect(r.engine().text()).toBe('while hidden, onewhile hidden, two');
+    expect(taken(r)).toBe(34);
+    expect(r.engine().renderers).toEqual(['gpu', 'dom']);
+  });
+
+  it('takes a smaller share of what the feed holds in a frame than it does when shown, and asks for the next frame while the feed holds more: a hidden flood costs the main thread a bounded part of every frame', async () => {
+    const r = await shown();
+    r.screen.hide();
+    expect(FLOW.hiddenFrame).toBeLessThan(FLOW.frame);
+    const piece = new Uint8Array(FLOW.slice);
+    const total = (FLOW.hiddenFrame / FLOW.slice) * 3;
+    for (let index = 0; index < total; index += 1) {
+      r.feed.push(piece);
+    }
+
+    const asked = r.frames().asked;
+    r.frame();
+    expect(taken(r)).toBeGreaterThanOrEqual(FLOW.hiddenFrame);
+    expect(taken(r)).toBeLessThanOrEqual(FLOW.hiddenFrame + FLOW.slice);
+    expect(r.frames().asked).toBe(asked + 1);
+    r.frame();
+    r.frame();
+    expect(taken(r)).toBe(total * FLOW.slice);
+  });
+
+  it('asks for no frame once the feed has nothing more: a hidden terminal at rest costs no timer and no frame', async () => {
+    const r = await shown();
+    r.screen.hide();
+    r.feed.push('y\r\n');
+    r.frame();
+    const asked = r.frames().asked;
+    r.frame();
+    r.frame();
+    expect(r.frames().asked).toBe(asked);
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+  });
+
+  it('measures nothing and tells the feed no size while it is hidden: the panel has none', async () => {
+    const r = await shown();
+    r.screen.hide();
+    const sizes = r.feed.sizes().length;
+    r.engine().measured({ cols: 100, rows: 30 });
+    r.resized();
+    r.feed.push('y\r\n');
+    r.frame();
+    expect(r.engine().resizes).toEqual([]);
+    expect(r.feed.sizes()).toHaveLength(sizes);
+  });
+
+  it('has what came while it was hidden in the emulator when it is shown again, written once and not drawn twice, and takes the GPU renderer back', async () => {
+    const r = await shown();
+    r.screen.hide();
+    r.feed.push('while hidden\r\n');
+    r.frame();
+    const writes = r.engine().writes.length;
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe('while hidden\r\n');
+    expect(r.engine().writes).toHaveLength(writes);
+    expect(r.engine().renderers).toEqual(['gpu', 'dom', 'gpu']);
+    expect(r.feed.listeners()).toBe(1);
+  });
+
   it('measures again when it is shown: the panel may have been another size when it left', async () => {
-    const { screen, feed, engine } = await shown();
+    const { screen, feed, engine, settle } = await shown();
     screen.hide();
     engine().measured({ cols: 100, rows: 30 });
     screen.show();
-    await Promise.resolve();
+    await settle();
     expect(engine().resizes).toEqual([[100, 30]]);
     expect(feed.sizes().at(-1)).toEqual([100, 30]);
   });
@@ -487,6 +620,219 @@ describe('while it is hidden', () => {
     screen.show();
     expect(loader.engines).toHaveLength(1);
     expect(engine().disposed()).toBe(0);
+  });
+});
+
+// A frame is what a window that draws gives, and a window that is minimized or covered gives none (the browser suspends its animation frames), whether the screen is shown or hidden. So the screen asks for a timer beside every
+// frame it asks for, and whichever comes first runs the pump once and cancels the other: a build in a session must not stall for a window that cannot draw. The share is the one a frame of the screen takes: the shown one
+// while it is shown, the smaller one while it is hidden.
+describe('a timer beside every frame, for a window whose frames are suspended (minimized, covered): a build must not stall for it, shown or hidden', () => {
+  async function shown() {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    return r;
+  }
+
+  const taken = (r: Rig) => r.feed.acks().reduce((sum, bytes) => sum + bytes, 0);
+
+  it('asks for ONE timer beside its frame while it is shown, however many chunks come, and the frame that comes first runs the pump once and cancels it', async () => {
+    const r = await shown();
+    const before = r.timers();
+    r.feed.push('a');
+    r.feed.push('b');
+    r.feed.wake();
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers()).toMatchObject({ asked: before.asked + 1, pending: 1, cancelled: before.cancelled });
+    expect(r.timers().delays.at(-1)).toBe(HIDDEN_TICK_MS);
+    r.frame();
+    expect(r.engine().writes).toHaveLength(1);
+    expect(r.engine().text()).toBe('ab');
+    expect(r.timers()).toMatchObject({ pending: 0, cancelled: before.cancelled + 1 });
+    // The timer that was not needed does not come, and nothing is parsed twice.
+    const reads = r.feed.reads();
+    r.tick();
+    expect(r.feed.reads()).toBe(reads);
+    expect(r.engine().writes).toHaveLength(1);
+  });
+
+  it('drains from the timer alone when the frames of a SHOWN screen are suspended: a shown share each time, in order, every byte acknowledged, and nothing pending at the end', async () => {
+    const r = await shown();
+    const piece = new Uint8Array(FLOW.slice);
+    const total = (FLOW.frame / FLOW.slice) * 3;
+    for (let index = 0; index < total; index += 1) {
+      r.feed.push(piece);
+    }
+
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers().pending).toBe(1);
+    const dropped = r.frames().cancelled;
+    r.tick();
+    // The share of a frame while shown is more than the hidden one.
+    expect(taken(r)).toBeGreaterThanOrEqual(FLOW.frame);
+    expect(taken(r)).toBeLessThanOrEqual(FLOW.frame + FLOW.slice);
+    // The frame that waited beside the timer is cancelled, and the feed holds more: a new frame and a new timer.
+    expect(r.frames().cancelled).toBe(dropped + 1);
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers().pending).toBe(1);
+    let before = taken(r);
+    for (let guard = 0; guard < 20 && r.timers().pending > 0; guard += 1) {
+      r.tick();
+      expect(taken(r) - before).toBeLessThanOrEqual(FLOW.frame + FLOW.slice);
+      before = taken(r);
+    }
+
+    expect(taken(r)).toBe(total * FLOW.slice);
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+  });
+
+  it('asks for no frame and no timer at rest while it is shown: nothing is held, so nothing waits, and what is parsed leaves nothing behind', async () => {
+    const r = await shown();
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+    r.feed.push('y\r\n');
+    r.frame();
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+  });
+
+  it('has ONE timer pending beside its frame while it is hidden and the feed holds output, and when only the timer comes it parses the hidden share, drops the frame that waited, and asks for both again: at the end nothing is pending', async () => {
+    const r = await shown();
+    r.screen.hide();
+    const before = r.timers();
+    const piece = new Uint8Array(FLOW.slice);
+    const total = (FLOW.hiddenFrame / FLOW.slice) * 3;
+    for (let index = 0; index < total; index += 1) {
+      r.feed.push(piece);
+    }
+
+    // However many chunks came: one frame and one timer.
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers()).toMatchObject({ asked: before.asked + 1, pending: 1, cancelled: before.cancelled });
+    expect(r.timers().delays.at(-1)).toBe(HIDDEN_TICK_MS);
+    // The frames never come; the timer does, and it takes the share a hidden frame takes.
+    const dropped = r.frames().cancelled;
+    r.tick();
+    expect(taken(r)).toBeGreaterThanOrEqual(FLOW.hiddenFrame);
+    expect(taken(r)).toBeLessThanOrEqual(FLOW.hiddenFrame + FLOW.slice);
+    // The frame that waited beside it is cancelled, and the feed holds more: a new frame and a new timer.
+    expect(r.frames().cancelled).toBe(dropped + 1);
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers()).toMatchObject({ asked: before.asked + 2, pending: 1 });
+    // Every share after it is the same, and the whole flood is parsed from the timer alone.
+    let last = taken(r);
+    for (let guard = 0; guard < 20 && r.timers().pending > 0; guard += 1) {
+      r.tick();
+      expect(taken(r) - last).toBeLessThanOrEqual(FLOW.hiddenFrame + FLOW.slice);
+      last = taken(r);
+    }
+
+    expect(taken(r)).toBe(total * FLOW.slice);
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+  });
+
+  it('keeps the timer that stood beside its frame when it is hidden: the frame was asked for while it was shown, and a window that suspends its frames may never run it, so the timer comes alone and takes the hidden share', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.feed.push('x');
+    r.screen.show();
+    await r.settle();
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers()).toMatchObject({ asked: 1, pending: 1, delays: [HIDDEN_TICK_MS] });
+    r.screen.hide();
+    // Hiding asks for nothing: the pair that was asked for while it was shown is still the one.
+    expect(r.timers()).toMatchObject({ asked: 1, pending: 1 });
+    expect(r.frames().pending).toBe(1);
+    r.tick();
+    expect(r.engine().text()).toBe('x');
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+  });
+
+  it('runs the pump once when the frame comes first while it is hidden, and the timer that stood beside it is cancelled: a frame and a timer for the same output are one parse', async () => {
+    const r = await shown();
+    r.screen.hide();
+    const before = r.timers();
+    r.feed.push('while hidden');
+    expect(r.timers().pending).toBe(1);
+    r.frame();
+    expect(r.engine().writes).toHaveLength(1);
+    expect(r.engine().text()).toBe('while hidden');
+    expect(r.timers()).toMatchObject({ pending: 0, cancelled: before.cancelled + 1 });
+    const reads = r.feed.reads();
+    r.tick();
+    expect(r.feed.reads()).toBe(reads);
+    expect(r.engine().writes).toHaveLength(1);
+    expect(taken(r)).toBe(12);
+  });
+
+  it('asks for no frame and no timer at rest while it is hidden: nothing is held, so nothing waits, and what is parsed leaves nothing behind', async () => {
+    const r = await shown();
+    r.screen.hide();
+    const before = r.timers();
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+    r.feed.push('y\r\n');
+    r.frame();
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers()).toMatchObject({ asked: before.asked + 1, pending: 0, cancelled: before.cancelled + 1 });
+  });
+
+  it('keeps the frame and its timer when it is shown again: they are the same pair, nothing is asked for or cancelled, and the frame that comes draws and cancels the timer', async () => {
+    const r = await shown();
+    r.screen.hide();
+    r.feed.push('x');
+    const before = r.timers();
+    expect(before.pending).toBe(1);
+    r.screen.show();
+    expect(r.timers()).toMatchObject({ asked: before.asked, pending: 1, cancelled: before.cancelled });
+    expect(r.frames().pending).toBe(1);
+    r.frame();
+    expect(r.engine().text()).toBe('x');
+    expect(r.timers()).toMatchObject({ pending: 0, cancelled: before.cancelled + 1 });
+  });
+
+  it.each(['shown', 'hidden'] as const)('leaves neither a frame nor a timer behind when it is disposed while it is %s', async (state) => {
+    const r = await shown();
+    if (state === 'hidden') {
+      r.screen.hide();
+    }
+
+    r.feed.push('x');
+    expect(r.frames().pending).toBe(1);
+    expect(r.timers().pending).toBe(1);
+    r.screen.dispose();
+    expect(r.frames().pending).toBe(0);
+    expect(r.timers().pending).toBe(0);
+  });
+
+  it.each(['shown', 'hidden'] as const)('is a plain timer when the screen is not given a clock: it goes on from it after HIDDEN_TICK_MS, with no frame, while it is %s', async (state) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const r = rig({ defaultTimer: true });
+      r.screen.mount(r.host);
+      r.screen.show();
+      await r.settle();
+      r.frame();
+      if (state === 'hidden') {
+        r.screen.hide();
+      }
+
+      r.feed.push('output');
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(HIDDEN_TICK_MS - 1);
+      expect(r.engine().text()).toBe('');
+      vi.advanceTimersByTime(1);
+      expect(r.engine().text()).toBe('output');
+      expect(vi.getTimerCount()).toBe(0);
+      expect(r.frames().pending).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -590,15 +936,18 @@ describe('the end of the process', () => {
     expect(two.engine().text()).toBe('a');
   });
 
-  it('writes the line a session already ended when it is shown: a terminal that ended while hidden says so when it comes back', async () => {
-    const { screen, feed, engine, frame } = await shown();
+  it('writes the last line of a session that ended while it was hidden when it ends, not when the panel comes back: the scrollback already tells how it ended, and it is not written twice', async () => {
+    const { screen, feed, engine, frame, settle } = await shown();
     screen.hide();
     feed.push('last\r\n');
     feed.set({ state: 'ended', exit: { code: 0 } });
-    screen.show();
-    await Promise.resolve();
     frame();
-    expect(engine().text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 0]\u001b[0m\r\n');
+    const line = 'last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 0]\u001b[0m\r\n';
+    expect(engine().text()).toBe(line);
+    screen.show();
+    await settle();
+    frame();
+    expect(engine().text()).toBe(line);
   });
 });
 
@@ -832,19 +1181,23 @@ describe('the end of the screen', () => {
 });
 
 describe('the GPU renderer', () => {
-  it('is followed by a new measure of the host once it is in place: its cells are not the DOM\'s, and the size the feed was told must be the one the person sees', async () => {
+  it('is followed by a new measure of the host once it is in place, and the feed is told nothing before it: its cells are not the DOM\'s, and the first size the feed gets, which starts the process, is the one the person sees', async () => {
     const ready = Promise.withResolvers<void>();
-    const { screen, host, feed, engine, settle } = rig({ rendererReady: ready.promise });
+    const { screen, host, feed, engine, resized, settle } = rig({ rendererReady: ready.promise });
     screen.mount(host);
     screen.show();
     await settle();
-    expect(feed.sizes()).toEqual([[80, 24]]);
+    // The observer ticks and the emulator measures the DOM's cells while the renderer is on its way: neither the emulator nor the feed is given that size (a process started at it would be resized a moment later).
+    engine().measured({ cols: 187, rows: 9 });
+    resized();
+    expect(feed.sizes()).toEqual([]);
+    expect(engine().resizes).toEqual([]);
     // The GPU rounds its cells to whole device pixels: the host now fits another count.
-    engine().measured({ cols: 192, rows: 14 });
+    engine().measured({ cols: 193, rows: 9 });
     ready.resolve();
     await settle();
-    expect(engine().resizes).toEqual([[192, 14]]);
-    expect(feed.sizes().at(-1)).toEqual([192, 14]);
+    expect(engine().resizes).toEqual([[193, 9]]);
+    expect(feed.sizes()).toEqual([[193, 9]]);
   });
 
   it('is not measured for when the screen was hidden before it was in place', async () => {
@@ -858,7 +1211,7 @@ describe('the GPU renderer', () => {
     ready.resolve();
     await settle();
     expect(engine().resizes).toEqual([]);
-    expect(feed.sizes()).toEqual([[80, 24]]);
+    expect(feed.sizes()).toEqual([]);
   });
 });
 

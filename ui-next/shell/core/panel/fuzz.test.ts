@@ -35,7 +35,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
     return drawn;
   };
 
-  const roll = next() % 18;
+  const roll = next() % 19;
   tick();
   let name: string;
   switch (roll) {
@@ -151,6 +151,19 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
       break;
     }
 
+    case 18:
+      // The host learns a session's real name (the shell it resolved to, a title the program set): a title from the same few the sessions open with, so twins form and break up, sometimes padded with white space.
+      if (ids.length > 0) {
+        const title = pick(TITLES);
+        const result = store.retitleSession(pick(ids), next() % 4 === 0 ? `  ${title} ` : title);
+        count(tally, `retitle:${result.status}`);
+        name = 'retitleSession';
+      } else {
+        name = 'retitleSession (no session)';
+      }
+
+      break;
+
     default:
       store.toggle();
       name = 'toggle';
@@ -161,7 +174,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
 }
 
 /** Every operation the generator can draw, as `step` names it when it acted. */
-const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'openSession', 'setSessionState', 'closeSession', 'activateSession', 'syncPlugins', 'registerTool', 'unregisterTool', 'fitHeight', 'toggle', 'pluginLeaves', 'pluginReturns', 'openFromPlugin'];
+const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'openSession', 'setSessionState', 'closeSession', 'activateSession', 'syncPlugins', 'registerTool', 'unregisterTool', 'fitHeight', 'toggle', 'pluginLeaves', 'pluginReturns', 'openFromPlugin', 'retitleSession'];
 
 /** The sessions of a state that are held. */
 const heldOf = (state: PanelState): Array<PanelState['sessions'][string]> => Object.values(state.sessions).filter((session) => session.held === true);
@@ -287,6 +300,11 @@ describe('the panel under random operations', () => {
     // The held sessions are what this is for: a run that never made one, never saw its plugin come back while it was held, or never closed one, proves nothing about them.
     for (const event of ['held:made', 'held:returned', 'held:closed']) {
       expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(100);
+    }
+
+    // A retitle that changes a title, one that changes nothing (the title it has) and one that is refused (a held session) must all have been drawn: a run that only ever renamed, or never met a held session, proves nothing about the others.
+    for (const event of ['retitle:done', 'retitle:noop', 'retitle:refused']) {
+      expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(20);
     }
 
     // The tabs are what this part is for: a run in which no tab ever drew a scope, an ordinal, or a skipped number, or in which every tab did, proves nothing about the rule.

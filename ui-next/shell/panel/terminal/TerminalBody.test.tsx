@@ -27,7 +27,7 @@ type Rig = {
 
 let counter = 0;
 
-function mount(options: { readonly focus?: boolean; readonly visible?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly screenReader?: boolean } = {}): Rig {
+function mount(options: { readonly focus?: boolean; readonly visible?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly screenReader?: boolean; readonly retitle?: boolean; readonly name?: string } = {}): Rig {
   counter = 0;
   const store = createPanelStore({ now: () => 1_000, newId: () => `s${String(++counter)}` });
   store.registerTool(TERMINAL_TOOL);
@@ -48,11 +48,11 @@ function mount(options: { readonly focus?: boolean; readonly visible?: boolean; 
       };
     },
   };
-  const target: TerminalTarget = { plugin: HOST, id: 'local', title: 'Terminal', open: () => feed };
+  const target: TerminalTarget = { plugin: HOST, id: 'local', title: 'Terminal', open: () => feed, ...(options.retitle === true ? { retitle: (status: TerminalFeedSnapshot) => status.program } : {}) };
   const opened = sessions.open(target, { focus: options.focus === true });
   const id = opened?.id ?? '';
   const session = () => store.getSnapshot().sessions[id];
-  const ui = (visible: boolean) => <TerminalBody sessions={sessions} session={session()} visible={visible} load={loader.load} screenReader={counted} />;
+  const ui = (visible: boolean) => <TerminalBody sessions={sessions} session={session()} visible={visible} load={loader.load} screenReader={counted} {...(options.name === undefined ? {} : { name: options.name })} />;
   const view = render(ui(options.visible ?? true));
   return {
     store,
@@ -121,17 +121,20 @@ describe('a session with a feed', () => {
     expect(loader.engines[0]?.host()).toBe(document.querySelector('[data-shell-part="terminalScreen"]'));
   });
 
-  it('shows and hides the emulator with the panel: hidden, the screen lets go of the feed and of the GPU context', async () => {
+  it('shows and hides the emulator with the panel: hidden, the lane lets go of the feed and the screen of the GPU context, and the screen keeps reading the feed (a hidden session goes on parsing and acknowledging)', async () => {
     const { loader, feed, show } = mount();
     await flush();
-    expect(feed.listeners()).toBeGreaterThanOrEqual(1);
+    // The registry's own listener, the screen's, and the lane's.
+    expect(feed.listeners()).toBe(3);
     const engine = loader.engines[0];
     show(false);
     await flush();
     expect(engine?.renderers.at(-1)).toBe('dom');
+    expect(feed.listeners()).toBe(2);
     show(true);
     await flush();
     expect(engine?.renderers.at(-1)).toBe('gpu');
+    expect(feed.listeners()).toBe(3);
     expect(loader.engines).toHaveLength(1);
   });
 
@@ -155,6 +158,26 @@ describe('a session with a feed', () => {
     expect(hint).not.toBeNull();
     expect(hint?.textContent).toMatch(/Escape and Tab go to the shell/);
     expect(hint?.textContent).toMatch(/F6/);
+  });
+
+  it('names the input again when the shell says its name and the tab is renamed: the label the emulator was given follows the title, and the description it points to stays the same', async () => {
+    const { loader, feed, show, session } = mount({ retitle: true });
+    await flush();
+    const [first, hintId] = loader.engines[0]?.labels[0] ?? ['', ''];
+    expect(first).toBe('Terminal input, Terminal');
+    act(() => {
+      feed.set({ program: 'zsh' });
+    });
+    expect(session().title).toBe('zsh');
+    show(true);
+    await flush();
+    expect(loader.engines[0]?.labels.at(-1)).toEqual(['Terminal input, zsh', hintId]);
+  });
+
+  it('names the input as the tab is named when the panel gives the name: a twin is `zsh (2)`, and the input says which terminal it is', async () => {
+    const { loader } = mount({ name: 'zsh (2)' });
+    await flush();
+    expect(loader.engines[0]?.labels[0]?.[0]).toBe('Terminal input, zsh (2)');
   });
 
   it('says in words, while screen reader mode is off, that the output is not read aloud until it is on and which command turns it on: the description the terminal\'s input points to', async () => {

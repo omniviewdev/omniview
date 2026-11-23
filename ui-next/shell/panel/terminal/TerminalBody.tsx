@@ -17,8 +17,10 @@ import { TERMINAL_GONE, TERMINAL_ICON } from './tool';
 import styles from './TerminalBody.module.css';
 
 // The body of a terminal session in the panel (docs/ui-next/status/T1.md, "The body"): the toolbar, the screen over its fixed status lane, and the words a person who cannot see them is told. The panel keeps
-// every body mounted from the first time it is shown until its session closes, so what a body does while it is NOT on screen is decided here and in `screen.ts`: nothing. The emulator's state (its screen, its
-// scrollback) stays; its listener on the feed, its frames, its observer and its GPU context are released while it is hidden, and the feed holds the output meanwhile, bound and counted.
+// every body mounted from the first time it is shown until its session closes, so what a body does while it is NOT on screen is decided here and in `screen.ts`: it draws nothing, and it does not stop reading. The
+// emulator's state (its screen, its scrollback) stays, and so does the screen's own listener on the feed: a hidden screen goes on reading, parsing and acknowledging what the process writes, in frames of a smaller share,
+// so that a build in a session that is not shown is never stalled by the view (docs/ui-next/status/T2a.md). What is released while it is hidden is what only a screen on show needs: the lane's listener on the feed, the
+// size observer and the measure, and the GPU context.
 
 /** How long Copy confirms itself with a check (the mock's `confirmCopy`, and the Logs toolbar's). */
 const CONFIRM_MS = 2_000;
@@ -89,19 +91,21 @@ type TerminalBodyProps = {
   readonly load?: EngineLoader | undefined;
   /** The window's one screen reader choice (`screenReader.ts`): the emulator is made in it and follows it, and the description says which it is. */
   readonly screenReader: ScreenReaderSource;
+  /** The session as its tab names it, with the ordinal of a twin (`zsh (2)`: the panel's rule): the emulator's input is named by it. Absent, the title and the scope are. */
+  readonly name?: string | undefined;
 };
 
 /**
  * The body of a Terminal session. A session with no feed (restored from the last run: the host keeps no output across a restart) has nothing to draw: it says that the earlier output is gone and how to get a
  * shell again, in the empty state the panel has for it.
  */
-export function TerminalBody({ sessions, session, visible, load, screenReader }: TerminalBodyProps) {
+export function TerminalBody({ sessions, session, visible, load, screenReader, name }: TerminalBodyProps) {
   const feed = sessions.feedOf(session.id);
   if (feed === undefined) {
     return <EmptyState icon={TERMINAL_ICON} title={TERMINAL_GONE.title} hint={TERMINAL_GONE.hint} />;
   }
 
-  return <TerminalView sessions={sessions} session={session} feed={feed} visible={visible} load={load ?? loadXtermEngine} screenReader={screenReader} />;
+  return <TerminalView sessions={sessions} session={session} feed={feed} visible={visible} load={load ?? loadXtermEngine} screenReader={screenReader} name={name} />;
 }
 
 type TerminalViewProps = {
@@ -111,13 +115,14 @@ type TerminalViewProps = {
   readonly visible: boolean;
   readonly load: EngineLoader;
   readonly screenReader: ScreenReaderSource;
+  readonly name: string | undefined;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, name }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const platform = platformOf(navigator);
-  const label = session.scope === '' ? session.title : `${session.title} · ${session.scope}`;
+  const label = name ?? (session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
   const [screen] = useState(() =>
     createScreen({
       feed,
@@ -135,7 +140,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader }: 
     }),
   );
   const view = useSyncExternalStore(screen.subscribe, screen.getSnapshot);
-  // The lane reads the feed's status: only while the body is on screen, so a hidden body holds no listener on the feed besides the registry's.
+  // The lane reads the feed's status only while the body is on screen: this listener is the lane's, and it is released while the body is hidden. The screen keeps its own (it goes on reading and acknowledging while hidden), besides the registry's.
   const status = useSyncExternalStore(visible ? feed.subscribe : nothing, feed.getSnapshot);
   // The description says whether the output is read aloud: the same rule as the lane, so a hidden body holds no listener on the window's choice, and reads it again when it is shown.
   const reading = useSyncExternalStore(visible ? screenReader.subscribe : nothing, screenReader.getSnapshot);
@@ -156,7 +161,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader }: 
     };
   }, [screen]);
 
-  // On screen or not: the screen shows itself the first time (it makes the emulator then), and lets go of everything while it is hidden.
+  // On screen or not: the screen shows itself the first time (it makes the emulator then), and while it is hidden it lets go of what only a screen on show needs (the observer, the measure, the GPU context) and goes on reading the feed.
   useEffect(() => {
     if (visible) {
       screen.show();
@@ -164,6 +169,11 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader }: 
       screen.hide();
     }
   }, [screen, visible]);
+
+  // The shell said its name and the tab was renamed: the emulator's input is named again, so that what a screen reader says for it is what the tab says.
+  useEffect(() => {
+    screen.rename(`Terminal input, ${label}`);
+  }, [screen, label]);
 
   // A new theme, a new text size or a new density is a new look: the root says so by its attributes, and the screen reads its swatches again.
   useEffect(() => {

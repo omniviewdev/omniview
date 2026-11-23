@@ -3,7 +3,7 @@ import { Session, type SessionOptions } from './bindings/github.com/omniviewdev/
 import { encodeRequestJSON } from './resource/v2/requestJSON';
 
 export {
-  AttachSession, CloseSession, CreateTerminal, DetachSession, GetHandler,
+  AckTerminal, AttachSession, CloseSession, CreateTerminal, DetachSession, GetHandler,
   GetHandlers, GetNativeTerminalSupport, GetPluginHandlers, GetSession, HasPlugin, IsBusy, ListPlugins,
   ListSessions, ResizeSession, ResizeTerminal, WriteSession, WriteTerminal,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';

@@ -1,7 +1,7 @@
 import { activateSession, activateTool, fitHeight, hide, resize, revealSession, setHeight, show, type ShowOptions } from './arrange';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
-import { closeSession, openSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
+import { closeSession, openSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
 import { emptyPanel, type Context, type Step } from './state';
 import { registerTool, syncPlugins, unregisterTool, type PluginTools } from './tools';
 import type { CloseResult, OpenResult, PanelResult, PanelState, PersistedPanel, Resize, Selectors, SessionId, SessionInput, ToolId, ToolInput } from './types';
@@ -54,6 +54,8 @@ export type PanelStore = {
   readonly openSession: (input: SessionInput, options?: OpenOptions) => OpenResult;
   /** What a session came to. */
   readonly setSessionState: (id: SessionId, change: StateChange) => PanelResult;
+  /** Gives a session another title (the shell's real name once the host has it): one change, and the tab's name, twins and ordinal follow from the snapshot. The same title changes nothing; a held session is refused. */
+  readonly retitleSession: (id: SessionId, title: string) => PanelResult;
   readonly closeSession: (id: SessionId) => CloseResult;
 
   /** What the session saves; see `restorePanel` for the way back and `createSaver` for the writing. */
@@ -141,6 +143,7 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
 
     openSession: (input, openOptions) => run(openSession(state, input, ctx, openOptions)),
     setSessionState: (id, change) => run(setSessionState(state, id, change, ctx.now())),
+    retitleSession: (id, title) => run(retitleSession(state, id, title)),
     closeSession: (id) => run(closeSession(state, id)),
 
     serialise: () => serialise(state),

@@ -105,6 +105,23 @@ describe('a session that is read back', () => {
       expect(serialise(result.state)).toEqual({ ...first, open: false });
     }
   });
+
+  it('saves a retitled session with its new title and reads it back with it, the scope and the choices as they were', () => {
+    const h = boot({ hostTools: [tool('logs', 'Logs', 20)], plugins: { acme: [] } });
+    h.store.openSession(session('logs', 'acme', 'Terminal', { scope: 'dev', state: 'running' }));
+    h.store.openSession(session('logs', 'acme', 'other'));
+    h.store.retitleSession('s1', '  zsh ');
+    const first = h.store.serialise();
+    expect(first.sessions.map((one) => one.title)).toEqual(['zsh', 'other']);
+    expect(first.sessions[0]).toMatchObject({ id: 's1', scope: 'dev' });
+    const result = restore(JSON.parse(JSON.stringify(first)));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repaired).toBe(false);
+      expect(result.state.sessions.s1).toMatchObject({ title: 'zsh', scope: 'dev', state: 'ended' });
+      expect(serialise(result.state)).toEqual({ ...first, open: false });
+    }
+  });
 });
 
 // A21: what a plugin's unload ended in a tool of the host is held, listed and readable until its tab closes. Held is a fact of this run: the panel saves what a session IS (its identity), never what it was doing or

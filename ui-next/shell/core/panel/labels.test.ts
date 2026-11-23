@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { restorePanel } from './persist';
-import { boot, session, tool, type Harness } from './testing';
+import { boot, session, tabProblems, tool, type Harness } from './testing';
 import type { SessionItem } from './types';
 
 // What a session tab says of itself (SCT1, TI1; the mock's `labelParts`, shell-panel.js:207-221): its title, an ordinal for the second and later session of one title and one scope, and its scope ONLY
@@ -239,5 +239,101 @@ describe('a name of its own for every tab, drawn and heard (CodeRabbit, #609, se
     h.store.openSession(session('logs', 'host', 'build job', { scope: 'dev', state: 'running' }));
     const heard = heardOf(h, 'logs').map((name) => name.replace(/\s+/g, ' ').trim());
     expect(heard).toEqual(['build job', 'build job (2)']);
+  });
+});
+
+// A retitle (`retitleSession`: the host learns the shell's name once its create call answers) changes what the tabs are derived from, the title, and the tabs follow with no code of their own: twins, scope, ordinal and the
+// name no two tabs share are read from the snapshot (A22).
+describe('the tabs after a session is retitled', () => {
+  it('makes twins of two sessions that have one title after it, and the scope the model says appears; retitling back takes it away', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh', { scope: 'dev', state: 'running' }));
+    h.store.openSession(session('terminal', 'host', 'Terminal', { scope: 'prod', state: 'running' }));
+    expect(namesOf(h, 'terminal')).toEqual(['zsh', 'Terminal']);
+    expect(scopesOf(h, 'terminal')).toEqual(['', '']);
+    h.store.retitleSession('s2', 'zsh');
+    expect(namesOf(h, 'terminal')).toEqual(['zsh · dev', 'zsh · prod']);
+    expect(scopesOf(h, 'terminal')).toEqual(['dev', 'prod']);
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    h.store.retitleSession('s2', 'Terminal');
+    expect(namesOf(h, 'terminal')).toEqual(['zsh', 'Terminal']);
+    expect(scopesOf(h, 'terminal')).toEqual(['', '']);
+  });
+
+  it('numbers the later of two sessions of one scope that come to share a title: the second is `(2)`, in the order they were opened', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'Terminal'));
+    h.store.openSession(session('terminal', 'host', 'bash'));
+    h.store.openSession(session('terminal', 'host', 'Terminal'));
+    expect(namesOf(h, 'terminal')).toEqual(['Terminal', 'bash', 'Terminal (2)']);
+    h.store.retitleSession('s3', 'bash');
+    h.store.retitleSession('s1', 'bash');
+    expect(namesOf(h, 'terminal')).toEqual(['bash', 'bash (2)', 'bash (3)']);
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+  });
+
+  it('ends the twin treatment of two twins when one is retitled to another title: the ordinal goes, and the scope with it', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    expect(namesOf(h, 'terminal')).toEqual(['zsh', 'zsh (2)']);
+    h.store.retitleSession('s2', 'bash');
+    expect(namesOf(h, 'terminal')).toEqual(['zsh', 'bash']);
+    expect(tabsOf(h, 'terminal').map((item) => item.tail)).toEqual(['', '']);
+
+    const scoped = boot({ hostTools: HOST_TOOLS });
+    scoped.store.openSession(session('terminal', 'host', 'zsh', { scope: 'dev' }));
+    scoped.store.openSession(session('terminal', 'host', 'zsh', { scope: 'prod' }));
+    expect(scopesOf(scoped, 'terminal')).toEqual(['dev', 'prod']);
+    scoped.store.retitleSession('s1', 'bash');
+    expect(scopesOf(scoped, 'terminal')).toEqual(['', '']);
+    expect(namesOf(scoped, 'terminal')).toEqual(['bash', 'zsh']);
+    expect(tabProblems(scoped.snapshot(), scoped.store.selectors)).toEqual([]);
+  });
+
+  it('hands the plain name to the next twin when the first of three twins is retitled: the others move up', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    for (let i = 0; i < 3; i += 1) {
+      h.store.openSession(session('terminal', 'host', 'zsh'));
+    }
+
+    h.store.retitleSession('s1', 'bash');
+    expect(namesOf(h, 'terminal')).toEqual(['bash', 'zsh', 'zsh (2)']);
+  });
+
+  it('leaves no two tabs heard alike when a retitle makes two titles collide, including a title that reads like another session\'s name and state', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('logs', 'host', 'task', { scope: 'north', state: 'ended' }));
+    h.store.openSession(session('logs', 'host', 'other', { scope: 'south', state: 'running' }));
+    h.store.retitleSession('s2', 'task, ended');
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    expect(heardOf(h, 'logs')).toEqual(['task, ended', 'task, ended (2)']);
+    // And the other way: the one that is heard as a name and a state is retitled to the plain name, in the strip's other order.
+    h.store.retitleSession('s2', 'task');
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    expect(namesOf(h, 'logs')).toEqual(['task · north', 'task · south']);
+    // A title that looks like an ordinal, and one that differs from another only by white space.
+    h.store.retitleSession('s2', 'task (2)');
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    h.store.openSession(session('logs', 'host', 'build  job', { scope: 'dev', state: 'running' }));
+    h.store.openSession(session('logs', 'host', 'x', { scope: 'dev', state: 'running' }));
+    h.store.retitleSession('s4', 'build job');
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    expect(heardOf(h, 'logs').slice(2).map((name) => name.replace(/\s+/g, ' ').trim())).toEqual(['build job', 'build job (2)']);
+  });
+
+  it('draws the retitled name the way a session that opened with it is drawn: the strip of a retitle and the strip of an open are the same strip', () => {
+    const retitled = boot({ hostTools: HOST_TOOLS });
+    retitled.store.openSession(session('terminal', 'host', 'Terminal', { scope: 'dev', state: 'running' }));
+    retitled.store.openSession(session('terminal', 'host', 'Terminal', { scope: 'prod', state: 'ended' }));
+    retitled.store.openSession(session('terminal', 'host', 'bash', { state: 'running' }));
+    retitled.store.retitleSession('s1', 'zsh');
+    retitled.store.retitleSession('s2', 'zsh');
+    retitled.store.retitleSession('s3', 'zsh');
+    const opened = boot({ hostTools: HOST_TOOLS });
+    opened.store.openSession(session('terminal', 'host', 'zsh', { scope: 'dev', state: 'running' }));
+    opened.store.openSession(session('terminal', 'host', 'zsh', { scope: 'prod', state: 'ended' }));
+    opened.store.openSession(session('terminal', 'host', 'zsh', { state: 'running' }));
+    expect(tabsOf(retitled, 'terminal')).toEqual(tabsOf(opened, 'terminal'));
   });
 });

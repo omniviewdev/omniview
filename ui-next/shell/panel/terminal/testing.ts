@@ -1,5 +1,6 @@
 import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer } from './engine';
-import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput } from './feed';
+import type { ExecTransport } from './execFeed';
+import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -19,8 +20,8 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly set: (change: Partial<TerminalFeedSnapshot>) => void;
   /** Holds bytes for the reader (the text as UTF-8, or the bytes as they are), and wakes the listeners once, until the next read. */
   readonly push: (output: string | Uint8Array) => void;
-  /** Says the bound dropped this many bytes before the next read (the reader is told once), and wakes the listeners like `push`. */
-  readonly drop: (bytes: number) => void;
+  /** The byte count of every `ack`, in order: what the screen told the feed it had parsed. */
+  readonly acks: () => readonly number[];
   /** Tells the listeners without changing anything: what a feed does when held output became readable. */
   readonly wake: () => void;
 };
@@ -29,6 +30,8 @@ export type FakeTerminalFeedOptions = {
   readonly state?: TerminalFeedSnapshot['state'] | undefined;
   /** What `close` does; default: nothing. */
   readonly close?: (() => Promise<void> | void) | undefined;
+  /** What the feed answers when it is asked what runs in it; default: the feed cannot tell (it has no such member). */
+  readonly busy?: (() => Promise<TerminalBusy>) | undefined;
 };
 
 /** A feed that is `running` (or in the state asked for) and holds nothing. */
@@ -39,9 +42,11 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   let reads = 0;
   let status: TerminalFeedSnapshot = { state: options.state ?? 'running' };
   let held: Uint8Array[] = [];
-  let dropped = 0;
+  const acks: number[] = [];
   let woken = false;
   const typed: string[] = [];
+  /** The calls of the typing that the feed took: what `inputs` says. */
+  let taken = 0;
   const sizes: Array<readonly [number, number]> = [];
 
   const tell = () => {
@@ -79,12 +84,14 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
 
       const chunks = held.slice(0, count);
       held = held.slice(count);
-      const lost = dropped;
-      dropped = 0;
-      return { chunks, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0), dropped: lost };
+      return { chunks, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0) };
     },
     write: (text) => {
       typed.push(text);
+      // A real feed takes what is typed while the process starts or runs, and not a call with nothing in it, nor anything once it was closed or the session is over.
+      if (text !== '' && closed === 0 && (status.state === 'starting' || status.state === 'running')) {
+        taken += 1;
+      }
     },
     resize: (cols, rows) => {
       sizes.push([cols, rows]);
@@ -93,24 +100,23 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       closed += 1;
       return options.close?.();
     },
+    ack: (bytes) => {
+      acks.push(bytes);
+    },
+    ...(options.busy === undefined ? {} : { busy: options.busy }),
     listeners: () => subscribed,
     closed: () => closed,
     reads: () => reads,
     typed: () => typed,
+    inputs: () => taken,
     sizes: () => sizes,
+    acks: () => acks,
     set: (change) => {
       status = { ...status, ...change };
       tell();
     },
     push: (output) => {
       held.push(typeof output === 'string' ? new TextEncoder().encode(output) : output);
-      if (!woken) {
-        woken = true;
-        tell();
-      }
-    },
-    drop: (bytes) => {
-      dropped += bytes;
       if (!woken) {
         woken = true;
         tell();
@@ -362,5 +368,167 @@ export function fakeEngineLoader(config: FakeEngineOptions & { readonly deferred
         one.reject(error);
       }
     },
+  };
+}
+
+// ---- a host with the credit flow control, for the tests of the whole data path ---------------------------------------------------------------------------------------------------------------------------
+//
+// What backend/pkg/terminal/flow.go does, as far as a page can tell (docs/ui-next/status/T1-go.md 2.8.6): the host counts the bytes it delivered that nobody has credited; at the high mark it STOPS READING the pty, so
+// the shell waits in its own write; it reads again when the count is down to the low mark. Until the client's first acknowledgement the transport credits what it took (here: at once, the page takes every event); from
+// the first on only the client's acknowledgements credit. The bytes the shell writes are a counting sequence (0, 1, ... 250, 0, ...), so a test can tell that every byte arrived, once, in order.
+// What the page types and the sizes it sends are recorded with their call numbers (`inputs`): the host puts them in order by the number, whatever order they reach it in, and nothing here changes their order.
+
+/** An input call the page made, with the number it carried: a write as the text the host's pty would read, a size as the binding takes it (rows, then columns). */
+export type HostInput =
+  | { readonly kind: 'write'; readonly seq: number; readonly text: string }
+  | { readonly kind: 'resize'; readonly seq: number; readonly rows: number; readonly cols: number };
+
+export type CreditHost = {
+  readonly transport: ExecTransport;
+  /** The shell writes this many more bytes. What the host may read now it delivers (reads of at most 20,480 bytes); the rest waits in the pty. */
+  readonly produce: (bytes: number) => void;
+  /** Bytes the shell wrote that the host has not read: the shell, blocked in its own write. */
+  readonly waiting: () => number;
+  /** Bytes the host delivered to the page. */
+  readonly delivered: () => number;
+  /** Bytes it delivered that nobody credited, now, and the most that count ever was. */
+  readonly unacked: () => number;
+  readonly mostUnacked: () => number;
+  /** The client's acknowledgements are the only credit: it made its first call. */
+  readonly explicit: () => boolean;
+  /** The host stopped reading the pty. */
+  readonly paused: () => boolean;
+  /** The count of every `AckTerminal` call, in order. */
+  readonly acks: () => readonly number[];
+  /** The byte a sequence has at this offset: what the shell wrote at it. */
+  readonly byteAt: (offset: number) => number;
+  /** Every input call the page made, in the order it made them, with its number. */
+  readonly inputs: () => readonly HostInput[];
+};
+
+export type CreditHostOptions = {
+  readonly high?: number;
+  readonly low?: number;
+  /** The size of one pty read. */
+  readonly read?: number;
+};
+
+function base64Of(bytes: Uint8Array): string {
+  let text = '';
+  for (let at = 0; at < bytes.length; at += 4_096) {
+    text += String.fromCharCode(...bytes.subarray(at, at + 4_096));
+  }
+
+  return btoa(text);
+}
+
+export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
+  const high = options.high ?? 1_048_576;
+  const low = options.low ?? 262_144;
+  const readSize = options.read ?? 20_480;
+  const listeners = new Map<string, Set<(data: unknown) => void>>();
+  const acks: number[] = [];
+  const inputs: HostInput[] = [];
+  let session: string | undefined;
+  let queued = 0;
+  let delivered = 0;
+  let unacked = 0;
+  let most = 0;
+  let explicit = false;
+  let paused = false;
+  let pumping = false;
+
+  const byteAt = (offset: number): number => offset % 251;
+
+  const pump = () => {
+    // An acknowledgement that comes while the host is delivering (the page parses in the listener) is credited by the loop that is running.
+    if (pumping) {
+      return;
+    }
+
+    pumping = true;
+    while (queued > 0 && !paused && session !== undefined) {
+      const size = Math.min(readSize, queued);
+      const chunk = new Uint8Array(size);
+      for (let index = 0; index < size; index += 1) {
+        chunk[index] = byteAt(delivered + index);
+      }
+
+      queued -= size;
+      unacked += size;
+      most = Math.max(most, unacked);
+      delivered += size;
+      for (const listener of [...(listeners.get(`core/exec/stream/stdout/${session}`) ?? [])]) {
+        listener(base64Of(chunk));
+      }
+
+      // Until the client takes over the credit, the transport's is what counts, and the page took the event.
+      if (!explicit) {
+        unacked = Math.max(0, unacked - size);
+      }
+
+      if (unacked >= high) {
+        paused = true;
+      }
+    }
+
+    pumping = false;
+  };
+
+  const transport: ExecTransport = {
+    create: async (id) => {
+      session = id;
+      pump();
+      return Promise.resolve({ id, pid: 4242, shell: { path: '/bin/sh', name: 'sh' }, cwd: '/home/u', cols: 80, rows: 24 });
+    },
+    write: async (_id, seq, base64) => {
+      inputs.push({ kind: 'write', seq, text: new TextDecoder().decode(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))) });
+      return Promise.resolve();
+    },
+    resize: async (_id, seq, rows, cols) => {
+      inputs.push({ kind: 'resize', seq, rows, cols });
+      return Promise.resolve();
+    },
+    close: async () => Promise.resolve(),
+    ack: async (_id, bytes) => {
+      explicit = true;
+      acks.push(bytes);
+      unacked = Math.max(0, unacked - bytes);
+      if (paused && unacked <= low) {
+        paused = false;
+      }
+
+      pump();
+      return Promise.resolve();
+    },
+    busy: async () => Promise.resolve({ state: 'idle' }),
+    on: (name, listener) => {
+      const set = listeners.get(name) ?? new Set();
+      set.add(listener);
+      listeners.set(name, set);
+      return () => {
+        set.delete(listener);
+      };
+    },
+    describe: (error) => (error instanceof Error ? error.message : String(error)),
+    isGone: () => false,
+    codeOf: () => undefined,
+  };
+
+  return {
+    transport,
+    produce: (bytes) => {
+      queued += bytes;
+      pump();
+    },
+    waiting: () => queued,
+    delivered: () => delivered,
+    unacked: () => unacked,
+    mostUnacked: () => most,
+    explicit: () => explicit,
+    paused: () => paused,
+    acks: () => acks,
+    inputs: () => inputs,
+    byteAt,
   };
 }

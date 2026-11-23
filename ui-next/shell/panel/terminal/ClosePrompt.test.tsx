@@ -122,6 +122,173 @@ describe('the dialog of the close question', () => {
     field.remove();
   });
 
+  describe('after a no, the focus lands on a real control', () => {
+    /** The session tab as the panel draws it (a tab in the session strip, found by its id), and its close button, which is a pointer-only aid: out of the tab order and hidden from the accessibility tree. */
+    function drawStrip(id: string) {
+      const strip = document.createElement('div');
+      strip.dataset.shellPart = 'sessionTabs';
+      strip.innerHTML = `<div><button type="button" role="tab" data-tab-id="${id}" aria-label="one"></button><button type="button" tabindex="-1" aria-hidden="true" data-shell-part="sessionClose"></button></div>`;
+      document.body.append(strip);
+      const tab = strip.querySelector<HTMLElement>('[role="tab"]');
+      const close = strip.querySelector<HTMLElement>('[data-shell-part="sessionClose"]');
+      // The real `focusTab` focuses the tab once React has drawn the strip.
+      vi.mocked(focusTab).mockImplementation((_strip, wanted) => {
+        queueMicrotask(() => {
+          if (wanted === id) {
+            tab?.focus();
+          }
+        });
+      });
+      return { strip, tab, close };
+    }
+
+    const asks = (rig: Rig) => {
+      act(() => {
+        rig.guarded.closeSession(rig.ids[0] ?? '');
+      });
+    };
+
+    const nos = {
+      Cancel: async () => userEvent.setup().click(screen.getByRole('button', { name: 'Cancel' })),
+      Escape: async () => {
+        screen.getByRole('alertdialog').dispatchEvent(new Event('cancel', { cancelable: true }));
+      },
+      'a press on the scrim': async () => userEvent.setup().click(screen.getByRole('alertdialog')),
+    } as const;
+
+    afterEach(() => {
+      document.querySelector('[data-shell-part="sessionTabs"]')?.remove();
+      vi.mocked(focusTab).mockReset();
+    });
+
+    it.each(Object.entries(nos))('goes to the session\'s tab, and not to the close button the mouse pressed, on %s', async (_name, no) => {
+      const rig = mount();
+      const { tab, close } = drawStrip(rig.ids[0] ?? '');
+      close?.focus();
+      expect(close).toHaveFocus();
+      asks(rig);
+      await act(no);
+      await flush();
+      expect(focusTab).toHaveBeenCalledWith('sessionTabs', rig.ids[0]);
+      expect(tab).toHaveFocus();
+      expect(document.activeElement?.closest('[aria-hidden="true"]')).toBeNull();
+    });
+
+    it('goes to the session\'s tab when what had the focus sits inside a subtree that is hidden from the accessibility tree', async () => {
+      const rig = mount();
+      const { tab } = drawStrip(rig.ids[0] ?? '');
+      const hidden = document.createElement('div');
+      hidden.setAttribute('aria-hidden', 'true');
+      const inner = document.createElement('button');
+      hidden.append(inner);
+      document.body.append(hidden);
+      inner.focus();
+      asks(rig);
+      await act(nos.Cancel);
+      await flush();
+      expect(focusTab).toHaveBeenCalledWith('sessionTabs', rig.ids[0]);
+      expect(tab).toHaveFocus();
+      hidden.remove();
+    });
+
+    it('goes to the session\'s tab when what had the focus is gone from the document', async () => {
+      const rig = mount();
+      const { tab } = drawStrip(rig.ids[0] ?? '');
+      const gone = document.createElement('button');
+      document.body.append(gone);
+      gone.focus();
+      asks(rig);
+      gone.remove();
+      await act(nos.Escape);
+      await flush();
+      expect(focusTab).toHaveBeenCalledWith('sessionTabs', rig.ids[0]);
+      expect(tab).toHaveFocus();
+    });
+
+    it('goes to the tool\'s own tab when the session\'s tab is gone too', async () => {
+      const rig = mount();
+      const close = document.createElement('button');
+      close.setAttribute('aria-hidden', 'true');
+      document.body.append(close);
+      close.focus();
+      asks(rig);
+      await act(nos.Cancel);
+      await flush();
+      expect(focusTab).toHaveBeenCalledTimes(1);
+      expect(focusTab).toHaveBeenCalledWith('panelTools', TERMINAL_TOOL_ID);
+      close.remove();
+    });
+
+    it('goes to the tab when nothing had the focus', async () => {
+      const rig = mount();
+      drawStrip(rig.ids[0] ?? '');
+      (document.activeElement as HTMLElement | null)?.blur();
+      asks(rig);
+      await act(nos.Cancel);
+      await flush();
+      expect(focusTab).toHaveBeenCalledWith('sessionTabs', rig.ids[0]);
+    });
+
+    it.each(Object.entries(nos))('gives the focus back to a real control, the emulator\'s input and the tab a keyboard close was pressed on, on %s', async (_name, no) => {
+      const rig = mount();
+      const { tab } = drawStrip(rig.ids[0] ?? '');
+      const input = document.createElement('textarea');
+      document.body.append(input);
+      for (const real of [input, tab]) {
+        real?.focus();
+        asks(rig);
+        await act(no);
+        await flush();
+        expect(real).toHaveFocus();
+        expect(document.activeElement?.closest('[aria-hidden="true"]')).toBeNull();
+      }
+
+      expect(focusTab).not.toHaveBeenCalled();
+      input.remove();
+    });
+
+    it('does not take a focus that was sent elsewhere while the question closed', async () => {
+      const rig = mount();
+      drawStrip(rig.ids[0] ?? '');
+      const close = document.createElement('button');
+      close.setAttribute('aria-hidden', 'true');
+      document.body.append(close);
+      close.focus();
+      asks(rig);
+      const elsewhere = document.createElement('button');
+      document.body.append(elsewhere);
+      await act(async () => {
+        elsewhere.focus();
+        rig.guard.cancel();
+      });
+      await flush();
+      expect(elsewhere).toHaveFocus();
+      expect(focusTab).not.toHaveBeenCalled();
+      close.remove();
+      elsewhere.remove();
+    });
+  });
+
+  it('asks about a second session only when the first is answered: the question on screen stays the first, and what the person then answers is for the session the dialog names', async () => {
+    const { guarded, guard, ids } = mount();
+    act(() => {
+      guarded.closeSession(ids[0] ?? '');
+      guarded.closeSession(ids[1] ?? '');
+    });
+    expect(screen.getByText('one')).toBeInTheDocument();
+    expect(screen.queryByText('two')).toBeNull();
+    await act(async () => userEvent.setup().click(screen.getByRole('button', { name: 'Cancel' })));
+    await flush();
+    expect(screen.getByText('two')).toBeInTheDocument();
+    expect(screen.getByRole('alertdialog')).toHaveAttribute('open');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await act(async () => userEvent.setup().click(screen.getByRole('button', { name: 'Terminate session' })));
+    await flush();
+    expect(Object.keys(guardedSessions(guarded))).toEqual([ids[0]]);
+    expect(guard.getSnapshot()).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
   it('closes the session on Terminate session, and sends the focus to the neighbouring tab', async () => {
     const { guarded, ids } = mount();
     act(() => {

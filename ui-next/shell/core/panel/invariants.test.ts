@@ -181,4 +181,18 @@ describe('the rules of the tabs', () => {
     const problems = tabProblems(h.snapshot(), seenWith(h, 's2', (item) => ({ ...item, name: 'build job' })));
     expect(problems.join('\n')).toContain('are both heard as');
   });
+
+  it('are met after a retitle that makes a title read like another session\'s name and state, and see the tab that kept the name it had before the retitle', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('logs', 'host', 'task', { scope: 'north', state: 'ended' }));
+    h.store.openSession(session('logs', 'host', 'other', { scope: 'south', state: 'running' }));
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    h.store.retitleSession('s2', 'task, ended');
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+    expect(tabProblems(h.snapshot(), h.store.selectors)).toEqual([]);
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's2')?.name).toBe('task, ended (2)');
+    // A strip that drew the retitled tab with the title alone would have two tabs heard as `task, ended`.
+    const problems = tabProblems(h.snapshot(), seenWith(h, 's2', (item) => ({ ...item, name: 'task, ended', tail: '' })));
+    expect(problems.join('\n')).toContain('the tabs of s1 and s2 are both heard as "task, ended"');
+  });
 });
