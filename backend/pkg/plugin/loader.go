@@ -29,16 +29,8 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
-	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	ep "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
-	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
-	lp "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
-	mp "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
-	np "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
-	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
-	tp "github.com/omniviewdev/plugin-sdk/pkg/v1/tools"
 )
 
 // pluginProcessLogOutput is where go-plugin writes the log of a plugin process: the
@@ -332,6 +324,12 @@ func (pm *pluginManager) startBackend(
 	if createErr != nil {
 		pm.storeFailedRecord(id, record, createErr)
 		pm.observeManagedLifecycle(id, record.DevPath, generation, false, false, createErr)
+		if _, refused := plugintypes.IncompatibilityOf(createErr); refused {
+			// Nothing is broken: the plugin and this Omniview speak different protocols. The error keeps the host's own sentence, which names both, as its detail.
+			return nil, apperror.Wrap(
+				createErr, apperror.TypePluginLoadFailed, http.StatusUnprocessableEntity, "Plugin is not compatible with this version of Omniview",
+			).WithInstance(id)
+		}
 		return nil, apperror.Wrap(
 			createErr, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to initialize plugin RPC",
 		).WithInstance(id)
@@ -417,11 +415,16 @@ func validateForLoad(id string, metadata config.PluginMeta, location string, isD
 	return nil
 }
 
-// storeFailedRecord marks record as failed with cause and stores it under id.
+// storeFailedRecord marks record as failed with cause and stores it under id. A cause that is the host's refusal of the plugin's protocol (a typed IncompatibleError, found by type) leaves its two numbers on the
+// record, which the inventory lists and the window words; any other cause leaves none.
 func (pm *pluginManager) storeFailedRecord(id string, record *plugintypes.PluginRecord, cause error) {
 	pm.recordsMu.Lock()
 	record.LastError = cause.Error()
 	record.Phase = lifecycle.PhaseFailed
+	record.Incompatible = nil
+	if facts, refused := plugintypes.IncompatibilityOf(cause); refused {
+		record.Incompatible = &facts
+	}
 	pm.records[id] = record
 	machine := record.StateMachine
 	pm.recordsMu.Unlock()
@@ -578,18 +581,8 @@ func (pm *pluginManager) createBackend(
 
 	pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
-		VersionedPlugins: map[int]goplugin.PluginSet{
-			1: {
-				"resource":  &resourceplugin.GRPCPlugin{},
-				"exec":      &ep.Plugin{Plugin: nil, Impl: nil},
-				"networker": &np.Plugin{Plugin: nil, Impl: nil},
-				"log":       &lp.Plugin{Plugin: nil, Impl: nil},
-				"metric":    &mp.Plugin{Plugin: nil, Impl: nil},
-				"settings":  &sp.SettingsPlugin{Plugin: nil, Impl: nil},
-				"tools":     &tp.Plugin{Plugin: nil, Impl: nil},
-				"lifecycle": &lc.Plugin{Plugin: nil, Impl: nil},
-			},
-		},
+		// Every protocol number up to a ceiling, so that go-plugin names the protocol of any plugin instead of refusing it with a string, and the host decides from the number (protocol.go).
+		VersionedPlugins: versionedPlugins(),
 		// Reuse the process listener for callback services. Separate broker
 		// listeners use the host's TMPDIR, whose profile-scoped path can exceed
 		// Unix socket limits even when the plugin has a verified short socket root.
@@ -624,15 +617,28 @@ func (pm *pluginManager) createBackend(
 	})
 
 	started := time.Now()
-	rpcClient, err := pluginClient.Client()
+	rpcClient, err := handshake(pluginClient, cmd)
 	if err != nil {
+		if _, refused := plugintypes.IncompatibilityOf(err); refused {
+			// The handshake ended the plugin's process without a word to it and awaited its reaping: there is nothing to Kill (go-plugin's Kill asks the plugin to stop, on a channel it would have to be dialled for), and
+			// the refusal is the host's own decision, never a timeout, however long the plugin took to answer.
+			return nil, err
+		}
 		// A plugin that neither said it was ready nor ended within the start timeout is a timeout, whatever go-plugin calls it (startTimeoutError).
 		overran := time.Since(started) >= pm.loaderStartTimeout()
 		// Client errors do not imply process exit. Kill waits for go-plugin's
 		// runner before deferred cleanup may remove a Windows executable.
 		pluginClient.Kill()
-		if overran {
+		var refusedByGoPlugin handshakeError
+		isHandshake := errors.As(err, &refusedByGoPlugin)
+		switch {
+		case overran && isHandshake:
+			// go-plugin's own words for it ("timeout while waiting for plugin to start") are fixed, and the legacy page says them.
+			err = startTimeoutError{err: refusedByGoPlugin.cause}
+		case overran:
 			err = startTimeoutError{err: err}
+		case isHandshake:
+			pm.logger.Warnw(pm.lifecycleCtx(id), "go-plugin refused the handshake of the plugin's process", "pluginID", id, "error", refusedByGoPlugin.cause)
 		}
 		return nil, err
 	}
@@ -698,7 +704,7 @@ func (pm *pluginManager) reloadPluginLocked(id string) (plugintypes.PluginInfo, 
 	info, err := pm.loadPluginLocked(id, opts)
 	if err != nil && !pm.holds(id) {
 		// The load was refused before it began (a recovery that is pending, a source the workspace does not select): it stored no failed record, and the window was just told the plugin starts again, so it is told that it will not.
-		emitUnloaded(pm.emitter, id, loadFailureCause(err))
+		emitLoadFailed(pm.emitter, id, err)
 	}
 	return info, err
 }

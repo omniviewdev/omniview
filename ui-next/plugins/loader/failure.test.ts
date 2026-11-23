@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BundleTimeoutError, ContractError, IncompatibleBundleError, UNLOAD_CAUSES, classify, failureWords, unloadedFailure } from './failure';
+import { BundleTimeoutError, ContractError, IncompatibleBundleError, UNLOAD_CAUSES, canRetry, classify, failureWords, incompatibleFailure, readIncompatibility, unloadedFailure, type Incompatibility } from './failure';
 
 // Each thing that can go wrong between the host and a plugin's bundle is one of five kinds, and the page says the same sentence for a kind whatever
 // the words of the loader's own error were. SystemJS's messages are quoted as it writes them (systemjs 6.15: errors 3, 7 and 8).
@@ -57,7 +57,7 @@ describe('classify', () => {
   });
 });
 
-// A plugin that was loaded and then stopped (PU1), or whose load failed (PU2), has no bundle that failed: the host said it stopped or could not start, in one of six words, and the page words each itself.
+// A plugin that was loaded and then stopped (PU1), or whose load failed (PU2), has no bundle that failed: the host said it stopped or could not start, in one of its words, and the page words each itself.
 
 describe('unloadedFailure', () => {
   it('says a crashed plugin stopped unexpectedly, in the words of the mock\'s failed plugin (ch16 S89)', () => {
@@ -80,9 +80,92 @@ describe('unloadedFailure', () => {
   });
 });
 
-describe('the six causes', () => {
-  it('are the host\'s six words: what the event of backend/pkg/plugin/events.go can carry', () => {
-    expect([...UNLOAD_CAUSES]).toEqual(['crashed', 'reloaded', 'uninstalled', 'disabled', 'failed', 'timeout']);
+describe('the seven causes', () => {
+  it('are the host\'s seven words: what the event of backend/pkg/plugin/events.go can carry', () => {
+    expect([...UNLOAD_CAUSES]).toEqual(['crashed', 'reloaded', 'uninstalled', 'disabled', 'failed', 'timeout', 'incompatible']);
+  });
+});
+
+// A plugin the host refused because its process speaks a plugin protocol this Omniview does not run (S4): the host's sentence, and the two numbers it decided on. The same sentence is held by a Go test of the host's own words
+// (`TestTheRefusalIsTypedAndItsFactsAreFoundByTypeAnywhereInTheChain`, backend/pkg/plugin/loader_protocol_test.go), which writes it out the same way.
+
+const SENTENCE = 'This plugin was built for a different version of Omniview.';
+const PROTOCOL_TWO: Incompatibility = { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } };
+
+describe('incompatibleFailure', () => {
+  it('says the host\'s sentence and then the two versions: the plugin\'s protocol and the one this Omniview accepts', () => {
+    expect(incompatibleFailure(PROTOCOL_TWO)).toEqual({
+      kind: 'unloaded',
+      cause: 'incompatible',
+      message: `${SENTENCE} It uses plugin protocol 2; this Omniview accepts protocol 1.`,
+      incompatibility: PROTOCOL_TWO,
+    });
+  });
+
+  it('says a range when the host accepts more than one protocol, and says the same in both directions: the sentence names no direction', () => {
+    expect(incompatibleFailure({ pluginProtocol: 4, accepted: { oldest: 2, newest: 3 } }).message).toBe(`${SENTENCE} It uses plugin protocol 4; this Omniview accepts protocols 2 to 3.`);
+    expect(incompatibleFailure({ pluginProtocol: 1, accepted: { oldest: 2, newest: 3 } }).message).toBe(`${SENTENCE} It uses plugin protocol 1; this Omniview accepts protocols 2 to 3.`);
+  });
+
+  it('offers no action and no word the window cannot stand behind: no update is promised, no retry is named', () => {
+    const { message } = incompatibleFailure(PROTOCOL_TWO);
+
+    expect(message).not.toMatch(/update|retry|try again|restart/i);
+  });
+});
+
+describe('failureWords of a plugin the host refused', () => {
+  it('says update required, as the mock words an incompatible plugin (ch16 S88), and calls it a fault: it is not on its way back', () => {
+    expect(failureWords(incompatibleFailure(PROTOCOL_TWO))).toEqual({ label: 'update required', caption: 'Update required', faulted: true });
+  });
+});
+
+describe('canRetry', () => {
+  it('is false for a plugin the host refused for the protocol it speaks: the same process would say the same number', () => {
+    expect(canRetry(incompatibleFailure(PROTOCOL_TWO))).toBe(false);
+  });
+
+  it.each(['crashed', 'reloaded', 'failed', 'timeout'] as const)('is true for a plugin that is gone for %s, and for a bundle that did not load', (cause) => {
+    expect(canRetry(unloadedFailure(cause))).toBe(true);
+    for (const kind of ['missing', 'incompatible', 'broken', 'timeout', 'contract'] as const) {
+      expect(canRetry({ kind, message: 'x' })).toBe(true);
+    }
+  });
+});
+
+describe('readIncompatibility', () => {
+  it('reads the plugin\'s protocol and the range the host accepts, as whole numbers from 1', () => {
+    expect(readIncompatibility({ pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } })).toEqual(PROTOCOL_TWO);
+    expect(readIncompatibility({ pluginProtocol: 16, accepted: { oldest: 2, newest: 5 } })).toEqual({ pluginProtocol: 16, accepted: { oldest: 2, newest: 5 } });
+  });
+
+  it('reads the numbers and nothing else of the object: no word of the plugin\'s or of go-plugin\'s gets in', () => {
+    const read = readIncompatibility({ pluginProtocol: 2, accepted: { oldest: 1, newest: 1, text: 'SECRET' }, error: 'incompatible API version with plugin', text: 'abc123' });
+
+    expect(read).toEqual(PROTOCOL_TWO);
+    expect(JSON.stringify(read)).not.toMatch(/SECRET|abc123|go-plugin|API version/);
+  });
+
+  it.each([
+    ['nothing', undefined],
+    ['null', null],
+    ['text', 'protocol 2'],
+    ['a list', [2, 1, 1]],
+    ['an empty object', {}],
+    ['no protocol', { accepted: { oldest: 1, newest: 1 } }],
+    ['a protocol that is text', { pluginProtocol: '2', accepted: { oldest: 1, newest: 1 } }],
+    ['a protocol that is zero', { pluginProtocol: 0, accepted: { oldest: 1, newest: 1 } }],
+    ['a protocol that is negative', { pluginProtocol: -2, accepted: { oldest: 1, newest: 1 } }],
+    ['a protocol that is not whole', { pluginProtocol: 2.5, accepted: { oldest: 1, newest: 1 } }],
+    ['a protocol that is not finite', { pluginProtocol: Number.POSITIVE_INFINITY, accepted: { oldest: 1, newest: 1 } }],
+    ['no range', { pluginProtocol: 2 }],
+    ['a range that is text', { pluginProtocol: 2, accepted: '1' }],
+    ['a range with no newest', { pluginProtocol: 2, accepted: { oldest: 1 } }],
+    ['a range with no oldest', { pluginProtocol: 2, accepted: { newest: 1 } }],
+    ['a range that runs backwards', { pluginProtocol: 2, accepted: { oldest: 3, newest: 1 } }],
+    ['a range that starts at zero', { pluginProtocol: 2, accepted: { oldest: 0, newest: 1 } }],
+  ])('reads nothing from %s: a refusal without the numbers it decided on says nothing true', (_name, value) => {
+    expect(readIncompatibility(value)).toBeUndefined();
   });
 });
 

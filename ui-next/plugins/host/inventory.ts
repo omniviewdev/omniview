@@ -1,15 +1,18 @@
+import { readIncompatibility } from '../loader/failure';
 import type { PluginDescriptor } from './pluginStore';
 
-// What the window reads of the host's inventory of plugins (`PluginManager.ListPlugins`, read by `useInstalledPlugins`): which plugins have an interface to load, under what name, and which the host already holds as failed. The phase is read
-// and nothing else of the plugin's state: the inventory carries the text of its last error (`lastError`), which is the plugins page's to show and never this window's, so no word of a plugin or of its process reaches a page by this way.
+// What the window reads of the host's inventory of plugins (`PluginManager.ListPlugins`, read by `useInstalledPlugins`): which plugins have an interface to load, under what name, which the host already holds as failed, and which it
+// refused because their process speaks a plugin protocol this Omniview does not run (`incompatible`: two numbers). The phase is read and nothing else of the plugin's state: the inventory carries the text of its last error
+// (`lastError`), which is the plugins page's to show and never this window's, so no word of a plugin or of its process reaches a page by this way.
 
-/** The members of an inventory entry (`PluginInfo`) that the window reads. */
+/** The members of an inventory entry (`PluginInfo`) that the window reads. `incompatible` is read as numbers or not at all (`readIncompatibility`). */
 export type InstalledPlugin = {
   readonly id: string;
   readonly origin: string;
   readonly enabled: boolean;
   readonly phase: string;
   readonly metadata: { readonly name: string };
+  readonly incompatible?: unknown;
 };
 
 /**
@@ -24,6 +27,14 @@ export function describePlugins(plugins: readonly InstalledPlugin[]): readonly P
     plugins
       // Product-owned frontends and plugins the user turned off have no bundle to load here.
       .filter((plugin) => plugin.origin !== 'builtin' && plugin.enabled)
-      .map((plugin): PluginDescriptor => ({ id: plugin.id, name: plugin.metadata.name === '' ? plugin.id : plugin.metadata.name, ...(FAILED_PHASES.has(plugin.phase) ? { failed: true } : {}) }))
+      .map((plugin): PluginDescriptor => {
+        const incompatible = readIncompatibility(plugin.incompatible);
+        return {
+          id: plugin.id,
+          name: plugin.metadata.name === '' ? plugin.id : plugin.metadata.name,
+          ...(FAILED_PHASES.has(plugin.phase) ? { failed: true } : {}),
+          ...(incompatible === undefined ? {} : { incompatible }),
+        };
+      })
   );
 }

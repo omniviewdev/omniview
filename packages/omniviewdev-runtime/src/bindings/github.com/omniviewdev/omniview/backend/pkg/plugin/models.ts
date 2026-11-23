@@ -256,7 +256,7 @@ export class StateWriteErrorPayload {
 }
 
 /**
- * UnloadCause says why a plugin is not serving the window. It is one of the six words below and nothing else: the window words each for the person itself, so no text of the plugin, of
+ * UnloadCause says why a plugin is not serving the window. It is one of the seven words below and nothing else: the window words each for the person itself, so no text of the plugin, of
  * its process or of an error ever travels with the event (docs/development-plugin-lifecycle.md, "What the window is told when a plugin stops").
  */
 export enum UnloadCause {
@@ -295,14 +295,22 @@ export enum UnloadCause {
      * UnloadTimedOut: the load ran out of time: the plugin's process did not answer within the loader's own start timeout (pluginStartTimeout).
      */
     UnloadTimedOut = "timeout",
+
+    /**
+     * UnloadIncompatible: the plugin's process speaks a plugin protocol this host does not run. Decided from the NUMBER the handshake negotiated (admitProtocol), never from go-plugin's text, before the host dispenses anything
+     * from the plugin. Retrying cannot help: the window offers no Retry for it, and the crash recovery does not try again. The two numbers ride the event and the plugin's inventory entry (types.Incompatibility).
+     */
+    UnloadIncompatible = "incompatible",
 };
 
 /**
- * UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. It has no other member, and a member that carried text would put the plugin's words in the window's hands.
+ * UnloadedPayload is sent with EventUnloaded: the plugin and why it stopped. Its only other member is the facts of a refusal by protocol number (Incompatibility, set for the cause `incompatible` and for no other): two public-safe
+ * numbers. A member that carried text would put the plugin's words in the window's hands.
  */
 export class UnloadedPayload {
     "pluginID": string;
     "cause": UnloadCause;
+    "incompatibility"?: types$0.Incompatibility | null;
 
     /** Creates a new UnloadedPayload instance. */
     constructor($$source: Partial<UnloadedPayload> = {}) {
@@ -320,7 +328,11 @@ export class UnloadedPayload {
      * Creates a new UnloadedPayload instance from a string or object.
      */
     static createFrom($$source: any = {}): UnloadedPayload {
+        const $$createField2_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("incompatibility" in $$parsedSource) {
+            $$parsedSource["incompatibility"] = $$createField2_0($$parsedSource["incompatibility"]);
+        }
         return new UnloadedPayload($$parsedSource as Partial<UnloadedPayload>);
     }
 }
@@ -386,3 +398,5 @@ const $$createType0 = types$0.PluginStateRecord.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = registry$0.PluginChannel.createFrom;
 const $$createType3 = $Create.Array($$createType2);
+const $$createType4 = types$0.Incompatibility.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);

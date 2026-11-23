@@ -26,7 +26,7 @@ export function actionsOf(installed: Installed, state: State, op: Operation | nu
   const gate = (allowed: boolean, why: string): Availability => (working !== undefined ? { available: false, reason: working } : allowed ? CAN : { available: false, reason: why });
   const reloadWhy = !installed.enabled ? 'Enable it first.' : state.kind === 'failed' ? 'Use Retry.' : 'It is not running.';
   return {
-    retry: gate(state.kind === 'failed', 'It has not failed.'),
+    retry: gate(state.kind === 'failed', state.kind === 'incompatible' ? 'The host will not run it, and asking again cannot help.' : 'It has not failed.'),
     reload: gate(reloadable(installed, state), reloadWhy),
     enable: gate(!installed.enabled, 'It is already enabled.'),
     disable: gate(installed.enabled, 'It is already disabled.'),

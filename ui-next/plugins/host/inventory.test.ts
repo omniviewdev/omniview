@@ -26,6 +26,31 @@ describe('describePlugins', () => {
     expect(describePlugins([plugin({ id: 'acme', phase })])).toEqual([{ id: 'acme', name: 'Name of acme' }]);
   });
 
+  it('says the host refused a plugin for the protocol it speaks, with the two numbers it decided on, and nothing of its text', () => {
+    const refused = plugin({ id: 'acme', phase: 'Failed', incompatible: { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } } });
+
+    expect(describePlugins([refused])).toEqual([{ id: 'acme', name: 'Name of acme', failed: true, incompatible: { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } } }]);
+  });
+
+  it('reads the numbers and nothing else of what the host sent as incompatible', () => {
+    const refused = plugin({ id: 'acme', phase: 'Failed', incompatible: { pluginProtocol: 2, accepted: { oldest: 1, newest: 1, text: 'SECRET' }, error: 'incompatible API version with plugin: token=abc123' } });
+
+    const described = describePlugins([refused]);
+
+    expect(described[0]?.incompatible).toEqual({ pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } });
+    expect(JSON.stringify(described)).not.toMatch(/SECRET|abc123|API version/);
+  });
+
+  it.each([
+    ['nothing', undefined],
+    ['null', null],
+    ['text', 'protocol 2'],
+    ['numbers that are text', { pluginProtocol: '2', accepted: { oldest: 1, newest: 1 } }],
+    ['a range that is not one', { pluginProtocol: 2, accepted: { oldest: 2, newest: 1 } }],
+  ])('says nothing of a refusal for an inventory entry whose incompatible is %s: the plugin is described as it would be without it', (_name, incompatible) => {
+    expect(describePlugins([plugin({ id: 'acme', phase: 'Failed', incompatible })])).toEqual([{ id: 'acme', name: 'Name of acme', failed: true }]);
+  });
+
   it('reads no text of the plugin\'s state into what it describes', () => {
     const listed: InstalledPlugin & { readonly lastError: string } = { ...plugin({ id: 'acme', phase: 'Failed' }), lastError: 'panic at /Users/me/.omniview/plugins/acme: token=abc123' };
 

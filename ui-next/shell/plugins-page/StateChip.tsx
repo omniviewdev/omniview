@@ -19,6 +19,7 @@ export function roleOf(state: State): StatusRole {
     case 'stopped':
       return 'stopped';
     case 'failed':
+    case 'incompatible':
       return 'error';
   }
 }

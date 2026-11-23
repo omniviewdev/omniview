@@ -231,13 +231,36 @@ func TestAFirstInstallFromAnArchiveTellsNoOne(t *testing.T) {
 }
 
 func TestTheEventIsAPluginIDAndACauseCodeAndNothingElse(t *testing.T) {
-	// The wire is written out: the name the window listens to, and the two keys of the payload. A third member would be text, and the window must not be handed a plugin's words.
+	// The wire is written out: the name the window listens to, and the keys of the payload: the id and the cause, and for a refusal by protocol number the two numbers the host decided on. Anything else would be text, and the
+	// window must not be handed a plugin's words.
 	assert.Equal(t, "plugin/unloaded", EventUnloaded)
-	assert.Equal(t, 2, reflect.TypeOf(UnloadedPayload{}).NumField())
+	assert.Equal(t, 3, reflect.TypeOf(UnloadedPayload{}).NumField())
 	raw, err := json.Marshal(UnloadedPayload{PluginID: "acme", Cause: UnloadCrashed})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"pluginID":"acme","cause":"crashed"}`, string(raw))
-	for _, cause := range []UnloadCause{UnloadCrashed, UnloadReloaded, UnloadUninstalled, UnloadDisabled} {
+	assert.JSONEq(t, `{"pluginID":"acme","cause":"crashed"}`, string(raw), "a cause that is not a refusal carries no facts: the member is left out")
+	for _, cause := range []UnloadCause{UnloadCrashed, UnloadReloaded, UnloadUninstalled, UnloadDisabled, UnloadFailed, UnloadTimedOut, UnloadIncompatible} {
 		assert.Regexp(t, `^[a-z]+$`, string(cause), "a cause is one lower-case word")
 	}
+	// The one member beside them is numbers all the way down: not one string, so no word of a plugin or of go-plugin can travel in it.
+	var numbersOnly func(reflect.Type) bool
+	numbersOnly = func(kind reflect.Type) bool {
+		if kind.Kind() == reflect.Pointer {
+			return numbersOnly(kind.Elem())
+		}
+		if kind.Kind() == reflect.Int {
+			return true
+		}
+		if kind.Kind() != reflect.Struct {
+			return false
+		}
+		for i := range kind.NumField() {
+			if !numbersOnly(kind.Field(i).Type) {
+				return false
+			}
+		}
+		return true
+	}
+	member, found := reflect.TypeOf(UnloadedPayload{}).FieldByName("Incompatibility")
+	require.True(t, found)
+	assert.True(t, numbersOnly(member.Type), "the facts of a refusal are two integers and a range of integers, and nothing that could hold text")
 }

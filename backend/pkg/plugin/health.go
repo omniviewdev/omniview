@@ -514,6 +514,9 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 			hc.logger.Errorw(hc.pm.ctx, "crash recovery attempt failed",
 				"pluginID", pluginID, "attempt", attempt, "error", err,
 				"errorClass", telemetryutil.ErrorClass(err))
+			if hc.refusedForGood(pluginID, err) {
+				return
+			}
 			continue
 		}
 
@@ -524,6 +527,20 @@ func (hc *HealthChecker) handleCrashWithBackoff(pluginID string, expected *probe
 		hc.pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 		return
 	}
+}
+
+// refusedForGood reports whether a failed recovery attempt ends the recovery, and says so: a plugin the host refused by protocol number (a typed IncompatibleError) speaks a protocol this host does not run, and the next
+// attempt would read the same number from the same process, so no attempt, backoff or timer follows. The plugin keeps the failed record the refused load stored, with its facts; EventCrashRecoveryFailed carries the host's
+// own sentence for the refusal, which is composed from two numbers and holds no word of the plugin's or go-plugin's.
+func (hc *HealthChecker) refusedForGood(pluginID string, err error) bool {
+	facts, refused := plugintypes.IncompatibilityOf(err)
+	if !refused {
+		return false
+	}
+	hc.logger.Errorw(hc.pm.ctx, "crash recovery stopped: the plugin speaks a protocol this host does not run",
+		"pluginID", pluginID, "pluginProtocol", facts.PluginProtocol)
+	hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{PluginID: pluginID, Error: facts.String()})
+	return true
 }
 
 // recoveryRecord identifies the exact lifecycle state left by a failed reload.

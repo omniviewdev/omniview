@@ -8,7 +8,7 @@ import type { ContextV1, ContributionV1, LogSessionV1, PanelBodyPropsV1 } from '
 import { acme, answering, fakeEvents, startedOn, widgetPage, WIDGETS, type FakeEvents } from '../testing';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
-import { MAX_CONCURRENT_LOADS, PluginStore, type HostRetry } from './pluginStore';
+import { MAX_CONCURRENT_LOADS, PluginStore, type HostRetry, type PluginDescriptor } from './pluginStore';
 import { NO_ROUTE } from './route';
 
 // A plugin whose load fails (PU2, findings PU1-01 and PU1-02), through the real chain: what the host says (`plugin/unloaded` with the cause `reloaded`, then `failed` or `timeout`) is delivered to the window's listener, which hands
@@ -32,6 +32,9 @@ dialog.showModal ??= function showModal(this: HTMLDialogElement) {
 const COULD_NOT_START = 'The plugin could not start, so its pages can\'t load data.';
 const TOOK_TOO_LONG = 'The plugin took too long to start, so its pages can\'t load data.';
 const CRASHED = 'The plugin process stopped unexpectedly, so its pages can\'t load data.';
+const INCOMPATIBLE = 'This plugin was built for a different version of Omniview. It uses plugin protocol 2; this Omniview accepts protocol 1.';
+/** What the host decided on and says of a plugin whose process speaks protocol 2 (`Incompatibility`, backend/pkg/plugin/types/protocol.go). */
+const PROTOCOL_TWO = { pluginProtocol: 2, accepted: { oldest: 1, newest: 1 } };
 
 function StreamBody({ session }: PanelBodyPropsV1) {
   return <p>{`the body of ${session.title}`}</p>;
@@ -44,8 +47,8 @@ type Behaviour = (id: string, host: Host) => Promise<boolean>;
 
 /** The host's side as a test plays it: the events it sends and the retries it was asked for. */
 type Host = {
-  /** The host says a plugin stopped, or that its load failed. */
-  readonly unloaded: (id: string, cause: string) => void;
+  /** The host says a plugin stopped, or that its load failed; with the cause `incompatible` it says the two numbers it decided on. */
+  readonly unloaded: (id: string, cause: string, incompatibility?: unknown) => void;
   /** The host says a plugin runs: the window reads its files again. */
   readonly running: (id: string) => Promise<void>;
 };
@@ -66,7 +69,7 @@ type Mounted = RenderResult &
   };
 
 /** The window over two plugins read through the real store, with the host's events a table the test calls. It opens on Acme's page, or empty (the window of a person who closed every tab) when `tab` is false. */
-async function mount(tab = true): Promise<Mounted> {
+async function mount(tab = true, acmeAs: Partial<PluginDescriptor> = {}): Promise<Mounted> {
   const events = fakeEvents();
   const seen: Seen = { context: undefined };
   const imported = new Map<string, number>();
@@ -88,9 +91,9 @@ async function mount(tab = true): Promise<Mounted> {
   };
   const behaviour: { current: Behaviour } = { current: async () => true };
   const host: Host = {
-    unloaded: (id, cause) => {
+    unloaded: (id, cause, incompatibility) => {
       act(() => {
-        events.emit('plugin/unloaded', { pluginID: id, cause });
+        events.emit('plugin/unloaded', { pluginID: id, cause, ...(incompatibility === undefined ? {} : { incompatibility }) });
       });
     },
     running: async (id) => {
@@ -121,7 +124,7 @@ async function mount(tab = true): Promise<Mounted> {
     MAX_CONCURRENT_LOADS,
     askHost,
   );
-  await store.load({ id: 'acme', name: 'Acme plugin' });
+  await store.load({ id: 'acme', name: 'Acme plugin', ...acmeAs });
   await store.load({ id: 'beta', name: 'Beta plugin' });
   listenForLifecycle(store, events.source);
   const panel = createPanelStore();
@@ -245,6 +248,110 @@ describe('a reload whose load fails', () => {
     expect(faces()).toEqual(['Acme plugin']);
     expect(within(screen.getByRole('alert')).getByText(COULD_NOT_START)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+});
+
+// A plugin whose process speaks a plugin protocol this Omniview does not run (S4): the host refuses it by the number the handshake negotiated and says so with the cause `incompatible` and two numbers. Asking again cannot help, so
+// the page says why, with the two versions, and offers no Retry; nothing in the window asks the host to start it.
+describe('a plugin the host refused for the protocol it speaks', () => {
+  it('says so in the rail, in the tab and in the palette\'s words, with the two versions and no Retry: its sidebar goes, the other plugin stays, and no spinner is left', async () => {
+    const { unloaded, store, retries } = await mount();
+    unloaded('acme', 'reloaded');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+
+    unloaded('acme', 'incompatible', PROTOCOL_TWO);
+
+    expect(rail()).toEqual(['Beta', 'Acme plugin, update required']);
+    expect(within(screen.getByRole('group', { name: 'Plugins' })).getByRole('button', { name: 'Acme plugin, update required' })).toHaveAttribute('data-ov-tip', `Acme plugin, update required\n${INCOMPATIBLE}`);
+    expect(screen.queryByRole('navigation', { name: 'Acme navigation' })).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Beta navigation' })).toBeInTheDocument();
+    expect(faces()).toEqual(['Acme plugin']);
+    const notice = screen.getByRole('alert');
+    expect(within(notice).getByText(/Couldn't load Acme plugin/)).toBeInTheDocument();
+    expect(notice).toHaveTextContent(INCOMPATIBLE);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(spinners()).toBe(0);
+    expect(screen.queryByRole('heading', { name: 'Widgets' })).toBeNull();
+    expect(phases(store)).toEqual(['acme:failed', 'beta:ready']);
+    expect(retries).toEqual([]);
+  });
+
+  it('says the same in a window that opens after the refusal, from the inventory, which the host\'s events did not reach', async () => {
+    const { retries, user } = await mount(false, { failed: true, incompatible: PROTOCOL_TWO });
+
+    expect(rail()).toEqual(['Beta', 'Acme plugin, update required']);
+    await user.click(within(screen.getByRole('region', { name: 'Plugins you can open' })).getByRole('button', { name: /Acme plugin/ }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(INCOMPATIBLE);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(spinners()).toBe(0);
+    expect(retries).toEqual([]);
+  });
+
+  it('is listed in the empty window with a caption that says it needs an update, and its row opens the tab with the two versions and no Retry', async () => {
+    const { unloaded, user } = await mount(false);
+    unloaded('acme', 'incompatible', PROTOCOL_TWO);
+
+    const row = within(screen.getByRole('region', { name: 'Plugins you can open' })).getByRole('button', { name: /Acme plugin/ });
+    expect(row).toHaveTextContent('Update required');
+    await user.click(row);
+
+    expect(faces()).toEqual(['Acme plugin']);
+    expect(screen.getByRole('alert')).toHaveTextContent(INCOMPATIBLE);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('is the end of a crash the host stopped recovering: the tab that said it stopped unexpectedly, with a Retry, says why the plugin is not coming back, and the Retry is gone', async () => {
+    const { unloaded } = await mount();
+    unloaded('acme', 'crashed');
+    expect(screen.getByText(CRASHED)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+
+    unloaded('acme', 'reloaded');
+    unloaded('acme', 'incompatible', PROTOCOL_TWO);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(INCOMPATIBLE);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(rail()).toEqual(['Beta', 'Acme plugin, update required']);
+  });
+
+  it('reads the two numbers and nothing else of what the host sends: no word of go-plugin\'s or of the plugin\'s is on the page', async () => {
+    const { events } = await mount();
+
+    act(() => {
+      events.emit('plugin/unloaded', { pluginID: 'acme', cause: 'incompatible', incompatibility: { ...PROTOCOL_TWO, text: 'SECRET' }, error: 'incompatible API version with plugin. Plugin version: 2, Client versions: [1]' });
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(INCOMPATIBLE);
+    expect(document.body.textContent).not.toMatch(/SECRET|Client versions|API version/);
+  });
+
+  it('shows no refusal, and leaves the plugin as it was, when the host says it without its numbers', async () => {
+    const { unloaded, store } = await mount();
+
+    unloaded('acme', 'incompatible');
+
+    expect(phases(store)).toEqual(['acme:ready', 'beta:ready']);
+    expect(screen.getByRole('heading', { name: 'Widgets' })).toBeInTheDocument();
+  });
+
+  it('is back on its page, with no reload of the window, when the host says the plugin runs: an update to a protocol this Omniview runs is read from its files, and one of everything is on screen', async () => {
+    const world = await mount();
+    const { unloaded, store, imported } = world;
+    unloaded('acme', 'reloaded');
+    unloaded('acme', 'incompatible', PROTOCOL_TWO);
+
+    await world.running('acme');
+
+    await waitFor(() => {
+      expect(phases(store)).toEqual(['acme:ready', 'beta:ready']);
+    });
+    expect(imported.get('acme')).toBe(2);
+    expect(rail()).toEqual(['Acme', 'Beta']);
+    expect(faces()).toEqual(['Widgets']);
+    expect(screen.getAllByRole('heading', { name: 'Widgets' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(spinners()).toBe(0);
   });
 });
 

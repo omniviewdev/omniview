@@ -1,6 +1,6 @@
 import { admitOrThrow } from '../contract/admit';
 import type { ContributionV1 } from '../contract/v1';
-import { classify, unloadedFailure, type GoneCause, type LoadFailure, type UnloadCause } from '../loader/failure';
+import { canRetry, classify, incompatibleFailure, unloadedFailure, type GoneCause, type Incompatibility, type LoadFailure, type UnloadCause } from '../loader/failure';
 
 // What the host knows about each installed plugin's interface: loading, ready with its contribution, or failed with why. Framework-free (React reads it
 // through `useSyncExternalStore`), and the loader is injected, so the rules here (bounded parallel loads, one load per plugin at a time, a retry that
@@ -16,6 +16,11 @@ export type PluginDescriptor = {
    * plugin that did not start has no process behind its pages, and the host's events do not reach a window that was not open.
    */
   readonly failed?: boolean | undefined;
+  /**
+   * The host refused the plugin because its process speaks a plugin protocol this Omniview does not run (`inventory.ts`): the two numbers it decided on. The entry says so from the first, in the words of `incompatibleFailure`, and no
+   * Retry is offered: the host's events do not reach a window that was not open, so this is how a window that opens after the refusal learns it.
+   */
+  readonly incompatible?: Incompatibility | undefined;
 };
 
 /** What an entry says of the plugin it is for: the identity of its descriptor and no more. */
@@ -69,17 +74,20 @@ export const productionRetry: HostRetry = async (id) => {
 
 /**
  * Whether what the host says of a plugin that is already gone replaces what its entry says. The first cause of a crash stands against what follows it, which is the host recovering the plugin (a reload, and each attempt that
- * fails): the plugin still stopped unexpectedly. A reload that is under way ends in what the host says of its load; a load that failed gives way to the next attempt when the host reloads the plugin again; what the host says twice
- * changes nothing.
+ * fails): the plugin still stopped unexpectedly, until the host says it refused the plugin (`incompatible`: the recovery stops there, so nothing is coming back). A reload that is under way ends in what the host says of its load; a load
+ * that failed, or was refused, gives way to the next attempt when the host reloads the plugin again; what the host says twice changes nothing.
  */
 function supersedes(told: GoneCause, held: GoneCause | undefined): boolean {
   switch (held) {
     case 'reloaded':
-      return told === 'failed' || told === 'timeout';
+      return told === 'failed' || told === 'timeout' || told === 'incompatible';
     case 'failed':
     case 'timeout':
+    case 'incompatible':
       return told !== 'crashed' && told !== held;
     case 'crashed':
+      // The one thing that ends a crash's standing is the host saying why the plugin will not come back: it refused it, and its recovery does not try again.
+      return told === 'incompatible';
     case undefined:
       return false;
   }
@@ -111,10 +119,16 @@ export class PluginStore {
 
   /**
    * Starts loading a plugin that is not known yet. A plugin that is loading, ready or failed is left alone: retry is explicit. A plugin the host holds as failed (`PluginDescriptor.failed`) is a failed entry of the kind `unloaded` from the
-   * first and its interface is not read: `revive` loads it when the host says it runs, and `retry` asks the host to start it.
+   * first and its interface is not read: `revive` loads it when the host says it runs, and `retry` asks the host to start it. One the host refused by protocol number (`PluginDescriptor.incompatible`) is the same, in the words of
+   * its refusal, with nothing to retry.
    */
   async load(descriptor: PluginDescriptor): Promise<void> {
     if (this.entries.has(descriptor.id)) {
+      return Promise.resolve();
+    }
+
+    if (descriptor.incompatible !== undefined) {
+      this.set({ ...named(descriptor), phase: 'failed', failure: incompatibleFailure(descriptor.incompatible) });
       return Promise.resolve();
     }
 
@@ -128,10 +142,15 @@ export class PluginStore {
 
   /**
    * The Retry of a plugin that did not come up. A plugin the host says is not there (it crashed, or its load failed or ran out of time: the kind `unloaded`) is the host's to start again, so the host is asked and the entry says it is
-   * starting again until the host answers (`restart`). Any other plugin that did not load had an interface that failed, which is read again from its files.
+   * starting again until the host answers (`restart`). Any other plugin that did not load had an interface that failed, which is read again from its files. A plugin the host refused by protocol number is asked for nothing: the same
+   * process would say the same number (`canRetry`).
    */
   async retry(descriptor: PluginDescriptor): Promise<void> {
     const entry = this.entries.get(descriptor.id);
+    if (entry?.phase === 'failed' && !canRetry(entry.failure)) {
+      return Promise.resolve();
+    }
+
     if (entry?.phase === 'failed' && entry.failure.kind === 'unloaded') {
       // A plugin the host is already starting again is not asked twice: two presses of the Retry in a frame are one request.
       return entry.failure.cause === 'reloaded' ? Promise.resolve() : this.restart(descriptor);
@@ -145,9 +164,10 @@ export class PluginStore {
    * are dropped. A plugin whose process crashed, one that is reloading and one whose load failed or ran out of time are plugins the window will want again, so they stay as a failed entry of the kind `unloaded` that says why in the
    * host's own words (`revive` loads it when it runs, `retry` asks the host to start it). What an entry already says gives way to what the host says next only where that is news (`supersedes`): the first cause of a crash stands until the
    * plugin runs, so the recovery of a crash, which reloads the plugin, does not turn "stopped unexpectedly" into "reloading" or into "did not start". A plugin that was uninstalled or turned off is not a failure: the store forgets it, as it would
-   * not have it if the window had opened now, and what loads it again is the inventory. A load that was on its way is dropped, and a plugin the store has no entry for has nothing to drop.
+   * not have it if the window had opened now, and what loads it again is the inventory. A load that was on its way is dropped, and a plugin the store has no entry for has nothing to drop. A plugin the host refused (`incompatible`)
+   * stays as a failed entry that says so with the host's two numbers, which come with that cause and no other: a refusal told without them says nothing true and is not taken for one.
    */
-  unload(id: string, cause: UnloadCause): void {
+  unload(id: string, cause: UnloadCause, incompatibility?: Incompatibility): void {
     const entry = this.entries.get(id);
     if (entry === undefined) {
       return;
@@ -159,12 +179,17 @@ export class PluginStore {
       return;
     }
 
+    const failure = cause === 'incompatible' ? (incompatibility === undefined ? undefined : incompatibleFailure(incompatibility)) : unloadedFailure(cause);
+    if (failure === undefined) {
+      return;
+    }
+
     if (entry.phase === 'failed' && entry.failure.kind === 'unloaded' && !supersedes(cause, entry.failure.cause)) {
       return;
     }
 
     this.supersede(id);
-    this.set({ id, name: entry.name, phase: 'failed', failure: unloadedFailure(cause) });
+    this.set({ id, name: entry.name, phase: 'failed', failure });
   }
 
   /**
@@ -183,7 +208,8 @@ export class PluginStore {
   /**
    * The host starts a plugin that is gone again. The entry says it is starting again from the moment the Retry is pressed, so there is progress to see and no second Retry to press, and it ends in what the host says: that the plugin runs (the call
    * answers it, and `plugin/state_change` says it; whichever comes first loads the interface, `revive` once), or that its load failed again (`plugin/unloaded`, told while the call is in flight). When the host says neither, the end of the call is the
-   * exit: a call that fails or answers that the plugin does not run is a load that failed. The words of a failed call are the log's, never the entry's.
+   * exit: a call that fails or answers that the plugin does not run is a load that failed. The words of a failed call are the log's, never the entry's. What the host said while the call was in flight (that it refused the plugin, that its load
+   * failed) is what it said last, so an answer that the plugin runs loads the interface only of the entry this Retry made, and never of one the host has told over since.
    */
   private async restart(descriptor: PluginDescriptor): Promise<void> {
     const { id } = descriptor;
@@ -195,12 +221,13 @@ export class PluginStore {
       this.deps.log(`plugin "${id}" did not start again`, { error });
     }
 
+    const entry = this.entries.get(id);
+    const restarting = entry?.phase === 'failed' && entry.failure.kind === 'unloaded' && entry.failure.cause === 'reloaded';
     if (runs) {
-      return this.revive(id);
+      return restarting ? this.revive(id) : undefined;
     }
 
-    const entry = this.entries.get(id);
-    if (entry?.phase === 'failed' && entry.failure.kind === 'unloaded' && entry.failure.cause === 'reloaded') {
+    if (entry !== undefined && restarting) {
       this.set({ id, name: entry.name, phase: 'failed', failure: unloadedFailure('failed') });
     }
   }

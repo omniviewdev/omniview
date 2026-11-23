@@ -26,6 +26,19 @@ func (e startTimeoutError) Unwrap() error { return e.err }
 // Timeout reports that the error is a timeout, which is what loadFailureCause reads.
 func (startTimeoutError) Timeout() bool { return true }
 
+// handshakeSentence is the one sentence the host says of a plugin whose process started and whose handshake go-plugin refused: it ended before it said anything, or said what is not go-plugin's handshake line, or speaks a
+// protocol the host does not offer at all (past offeredProtocolCeiling, where the number of the protocol exists only in the library's error text, which the host never reads). It is the host's own words: go-plugin's are
+// about a process the host refused to run, can quote what that process wrote, and list the protocols the host offered in the order of a map, which changes from one run to the next. They go to the host's log and nowhere else.
+const handshakeSentence = "The plugin started, but its process did not complete the handshake with Omniview. The details are in the host log."
+
+// handshakeError is a failure of go-plugin's handshake with a process that started (the host's decision to refuse a protocol it recognises is an IncompatibleError, and never this). Its text is the host's own sentence, a
+// fixed one; the library's error is what it wraps, for a reader of a type in it (a timeout) and for the log.
+type handshakeError struct{ cause error }
+
+func (handshakeError) Error() string { return handshakeSentence }
+
+func (e handshakeError) Unwrap() error { return e.cause }
+
 // loaderStartTimeout is how long a plugin's process may take to start: the loader's one timeout, pluginStartTimeout. A manager of a test may hold a shorter one.
 func (pm *pluginManager) loaderStartTimeout() time.Duration {
 	if pm.startTimeout > 0 {
@@ -34,9 +47,13 @@ func (pm *pluginManager) loaderStartTimeout() time.Duration {
 	return pluginStartTimeout
 }
 
-// loadFailureCause is the code the window is told for a load that ended in err: UnloadTimedOut when something in it ran out of time (the plugin's process within the start timeout, a call of the host to the plugin
-// within its deadline), else UnloadFailed. Nothing of err's text is read or sent.
+// loadFailureCause is the code the window is told for a load that ended in err: UnloadIncompatible when the host refused the plugin's protocol by number (a typed IncompatibleError), UnloadTimedOut when something in it
+// ran out of time (the plugin's process within the start timeout, a call of the host to the plugin within its deadline), else UnloadFailed. Nothing of err's text is read or sent: the plugin's own words, and
+// go-plugin's, may say anything, so a cause is always read from a type or from what timed out.
 func loadFailureCause(err error) UnloadCause {
+	if _, refused := plugintypes.IncompatibilityOf(err); refused {
+		return UnloadIncompatible
+	}
 	var overran interface{ Timeout() bool }
 	if errors.As(err, &overran) && overran.Timeout() {
 		return UnloadTimedOut
@@ -67,7 +84,7 @@ func (pm *pluginManager) failedLoad(id string, opts *LoadPluginOptions, metadata
 		pm.storeFailedRecord(id, record, err)
 	}
 
-	emitUnloaded(pm.emitter, id, loadFailureCause(err))
+	emitLoadFailed(pm.emitter, id, err)
 }
 
 // namedBy is the metadata a failed load names its plugin by: what the plugin's files said of it, else what the caller held.

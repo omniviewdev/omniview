@@ -14,6 +14,8 @@ type PluginInfo struct {
 	Origin         string `json:"origin"`
 	FrontendModule string `json:"frontendModule"`
 	ReleaseChannel string `json:"releaseChannel"`
+	// Incompatible is set on a plugin the host refused because its process speaks a plugin protocol the host does not run: the two numbers the window words itself, and no text.
+	Incompatible *Incompatibility `json:"incompatible,omitempty"`
 }
 
 // PluginRecord is the host-side runtime state for a managed plugin.
@@ -38,6 +40,8 @@ type PluginRecord struct {
 	Backend         PluginBackend                 `json:"-"`
 	Capabilities    []sdktypes.Capability         `json:"-"`
 	ProtocolVersion int                           `json:"-"`
+	// Incompatible is why the host refused the plugin's protocol, when it did: set when the failed record is stored, never persisted (the next load decides again).
+	Incompatible *Incompatibility `json:"-"`
 }
 
 // ToInfo converts the host-side record to a frontend-safe PluginInfo.
@@ -50,7 +54,7 @@ func (r *PluginRecord) ToInfo() PluginInfo {
 	if origin == "" {
 		origin = "external"
 	}
-	return PluginInfo{Origin: origin, FrontendModule: r.FrontendModule, ReleaseChannel: r.ReleaseChannel, PluginInfo: sdktypes.PluginInfo{
+	info := PluginInfo{Origin: origin, FrontendModule: r.FrontendModule, ReleaseChannel: r.ReleaseChannel, Incompatible: nil, PluginInfo: sdktypes.PluginInfo{
 		ID:           r.ID,
 		Metadata:     r.Metadata,
 		Phase:        phase,
@@ -60,6 +64,11 @@ func (r *PluginRecord) ToInfo() PluginInfo {
 		Capabilities: r.Capabilities,
 		LastError:    r.LastError,
 	}}
+	if r.Incompatible != nil {
+		facts := *r.Incompatible
+		info.Incompatible = &facts
+	}
+	return info
 }
 
 // NewPluginRecord creates a new PluginRecord with a state machine.
@@ -78,6 +87,7 @@ func NewPluginRecord(id string, meta config.PluginMeta, initialPhase lifecycle.P
 		Backend:         nil,
 		Capabilities:    nil,
 		ProtocolVersion: 0,
+		Incompatible:    nil,
 	}
 }
 

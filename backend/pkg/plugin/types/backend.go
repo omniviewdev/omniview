@@ -1,9 +1,5 @@
 package types
 
-// CurrentProtocolVersion is the latest SDK protocol version supported by the engine.
-// Bump this when adding a new protocol version.
-const CurrentProtocolVersion = 1
-
 // PluginBackend abstracts access to a plugin's capability providers.
 // ExternalBackend uses a subprocess; InProcessBackend dispatches directly.
 type PluginBackend interface {
