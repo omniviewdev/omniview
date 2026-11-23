@@ -8,14 +8,14 @@ import { createHeldOutput } from './heldOutput';
 //   - what the process writes is held exactly as it came (base64 text, bounded, nothing decoded until a view reads) and wakes a listener once between two reads, so a flood costs a push per event and a
 //     hidden terminal costs no more;
 //   - what the user types goes in order with ONE call in flight (what is typed meanwhile is the next call);
-//   - the size is settled: the first size of a running session goes at once, every later one once it stood still (`settleMs`), one call in flight and the newest wins, ROWS before COLUMNS;
+//   - the size STARTS the process and is then settled: the process starts at the first size the view measured, so the shell lays out its first prompt for it and nothing is resized after it started (a session whose view never measures never starts); every later size goes once it stood still (`settleMs`), one call in flight and the newest wins, ROWS before COLUMNS;
 //   - a close ends the process exactly once, and every listener is released on every way out (docs/ui-next/optimisations.md HLT-28).
 //
 // What a backend is, as far as this file is concerned, is `ExecTransport`: the host's local shell is `localShell.ts`, and a plugin's exec target is another transport over the same feed.
 
 export type ExecTransport = {
-  /** Starts the process under `id`. */
-  readonly create: (id: string) => Promise<unknown>;
+  /** Starts the process under `id` on a pty of `size`, the size the view measured: the shell lays out its first prompt for it. */
+  readonly create: (id: string, size: Size) => Promise<unknown>;
   /** Writes what the user typed, as base64. */
   readonly write: (id: string, base64: string) => Promise<unknown>;
   /** ROWS then COLUMNS, as the binding takes them (the old terminal had them swapped once, host #54). */
@@ -92,7 +92,7 @@ function signalMessage(data: unknown): string {
   return parts.map((part, index) => (index < parts.length - 1 && !/[.!?]$/.test(part) ? `${part}.` : part)).join(' ');
 }
 
-type Size = { readonly cols: number; readonly rows: number };
+export type Size = { readonly cols: number; readonly rows: number };
 
 export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const { transport } = options;
@@ -113,6 +113,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let delivered: Size | undefined;
   let resizing = false;
   let settling: ReturnType<typeof setTimeout> | undefined;
+  let starting: Promise<void> | undefined;
 
   const closed = (): boolean => closing !== undefined;
 
@@ -228,8 +229,14 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     );
   };
 
-  const outcome = async (): Promise<void> =>
-    transport.create(id).then(
+  /** Starts the process on a pty of the size the view measured, so that nothing is resized after it started. Once. */
+  const start = (size: Size) => {
+    if (starting !== undefined || closed()) {
+      return;
+    }
+
+    delivered = size;
+    starting = transport.create(id, size).then(
       () => {
         created = true;
         if (closed() || status.state !== 'starting') {
@@ -238,6 +245,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
         status = { state: 'running' };
         tell();
+        // A size that came while the process was starting is a later size: it is sent now, as one more call.
         sendSize();
         flushTyped();
       },
@@ -247,6 +255,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         }
       },
     );
+  };
 
   // Every listener first, then the process.
   stops.push(
@@ -259,7 +268,6 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       over({ state: 'failed', cause: { stage: 'session', message: signalMessage(data) } });
     }),
   );
-  const starting = outcome();
 
   return {
     id,
@@ -299,12 +307,13 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
 
       wanted = size;
-      if (!created || status.state !== 'running') {
+      // The first size starts the process.
+      if (starting === undefined) {
+        start(size);
         return;
       }
 
-      if (delivered === undefined && !resizing) {
-        sendSize();
+      if (!created || status.state !== 'running') {
         return;
       }
 
@@ -324,7 +333,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       stopSettling();
       held.clear();
       typed.length = 0;
-      closing = starting.then(async () => {
+      closing = (starting ?? Promise.resolve()).then(async () => {
         // A process that never started, or that ended on its own, has nothing to end.
         if (!created || status.state === 'ended') {
           return;
