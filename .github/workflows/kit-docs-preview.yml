@@ -1,0 +1,40 @@
+name: Kit documentation preview
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/kit-docs/**'
+      - 'packages/kit/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/kit-docs-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.tool-versions'
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: 'false'
+          install: false
+      - run: pnpm --filter @omniviewdev/kit-docs... install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @omniviewdev/kit-docs build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit-docs-${{ github.sha }}
+          path: packages/kit-docs/dist/
+          if-no-files-found: error
+          retention-days: 7
