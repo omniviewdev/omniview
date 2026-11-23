@@ -1,0 +1,157 @@
+#!/bin/bash
+# Negative controls for T2-go: each fault is put into a SCRATCH copy of one source file and built with
+# `go test -overlay`; the worktree is never edited. A control passes when the test named for it turns red.
+# ROOT is the worktree (default: the current directory); ONLY=<regexp> runs the controls whose name matches.
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+M=${MDIR:-/tmp/t2go-mut}
+ONLY=${ONLY:-.}
+rm -rf "$M" && mkdir -p "$M"
+cd "$WT" || exit 2
+
+# name | package | file | sed expression | test regexp
+run() {
+  name="$1"; pkg="$2"; file="$3"; expr="$4"; test="$5"
+  echo "$name" | grep -Eq "$ONLY" || return
+  cp "$WT/$file" "$M/$name.go"
+  sed -i '' -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out=$(go test -overlay="$M/$name.json" "$pkg" -run "$test" -count=1 -timeout 150s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"
+  elif [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"
+  else echo "CONTROL $name: RED  $failed"; fi
+}
+
+T=./backend/pkg/terminal/
+X=./backend/pkg/plugin/exec/
+
+run lease-generation-ignored $T backend/pkg/terminal/reattach.go \
+  's/if gen != s.leaseGen || !s.detached/if !s.detached/' \
+  '^TestTheExpiryOfALeaseThatWasEnded'
+
+run attach-leaves-the-terminal-detached $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) takeOverLocked/,/^}/{s/^\ts.detached = false$/\t_ = 0/;s/^\t\ts.leaseTimer.Stop()$/\t\t_ = 0/;}' \
+  '^TestAnAttachBeforeTheLeaseEnds'
+
+run detach-does-not-hold-the-flow $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) detachLocked/,/^}/ s/^\ts.flow.hold()$/\t_ = 0/' \
+  '^TestADetachedTerminalHoldsItsFlood|^TestAStormOfAttaches'
+
+run attach-does-not-restart-the-flow $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) takeOver(/,/^}/ s/^\t\ts.flow.restart()$/\t\t_ = 0/' \
+  '^TestAnAttachHandsOver'
+
+run offsets-off-by-one $T backend/pkg/terminal/reattach.go \
+  's/^\toffset := s.ring.end$/\toffset := s.ring.end + 1/' \
+  '^TestTheOutputOfATerminalWithAPageKey'
+
+run replay-ignores-from-offset $T backend/pkg/terminal/replay.go \
+  's/start = max(first, \*from)/start = first/' \
+  '^TestTheRingReplaysFromTheOffset'
+
+run ring-front-not-at-a-boundary $T backend/pkg/terminal/replay.go \
+  's/(r.kept > r.limit || !r.chunks\[0\].ground)/(r.kept > r.limit)/' \
+  '^TestTheRingStartsWhereTheOutputIsAtABoundary|^TestTheRingStartsAtABoundaryAlsoWhenATitle'
+
+run size-never-logged $T backend/pkg/terminal/pty.go \
+  's/^\t\td.applied(rows, cols)$/\t\t_ = rows/' \
+  '^TestAnAttachSaysTheSize'
+
+run tombstone-never-kept $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) keepTombstone/,/^}/ s/if s.pageKey == "" || end.Reason == EndClosed {/if true {/' \
+  '^TestATerminalThatEndsWhileNoPageIsAttached'
+
+run key-not-checked $T backend/pkg/terminal/reattach.go \
+  's/return s.holdsKey(key) || (caller != nil \&\& s.owner != nil \&\& s.owner == caller)/return true/' \
+  '^TestOnlyTheKeyOrTheOwningWindow'
+
+run empty-key-opens-a-terminal-without-one $T backend/pkg/terminal/reattach.go \
+  's/return s.pageKey != "" \&\& subtle/return subtle/' \
+  '^TestATerminalWithoutAPageKey'
+
+run lease-timer-outlives-the-terminal $T backend/pkg/terminal/manager.go \
+  's/^\ts.stopLease()$/\t_ = 0/' \
+  '^TestTheHostQuittingEndsTheDetachedTerminalsToo|^TestAfterEverythingSettles'
+
+run release-ends-a-keyed-terminal $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) release/,/^}/ s/if s.pageKey == "" {/if true {/' \
+  '^TestAWindowGoingAwayDetaches'
+
+run detach-keeps-the-owner $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) detachLocked/,/^}/ s/^\ts.owner = nil$/\t_ = 0/' \
+  '^TestOnlyTheKeyOrTheOwningWindow|^TestAStormOfAttaches'
+
+run credit-source-forgotten-at-attach $T backend/pkg/terminal/flow.go \
+  '/^func (f \*flowControl) restart/,/^}/ s/^\tf.held = false$/\tf.held = false; f.explicit = false/' \
+  '^TestAHeldFlowStays'
+
+run ring-smaller-than-the-credit-window $T backend/pkg/terminal/types.go \
+  's/ReplayBytes = FlowHighBytes + FlowLowBytes/ReplayBytes = FlowLowBytes/' \
+  '^TestAReloadUnderAFlood'
+
+run owner-checked-by-type-only $T backend/pkg/terminal/reattach.go \
+  's/!reflect.ValueOf(owner).Comparable()/!reflect.TypeOf(owner).Comparable()/' \
+  '^TestAnOwnerThatCannotBeCompared'
+
+run keyed-output-on-the-old-event $X backend/pkg/plugin/exec/terminal.go \
+  's/s.emitOutput(localOffsetOutputEvent+sessionID,/s.emitOutput(localOutputEvent+sessionID,/' \
+  '^TestTheOutputEventOfATerminalWithAPageKey'
+
+run a-failed-create-never-closes-its-terminal $X backend/pkg/plugin/exec/service_wrapper.go \
+  's/^\t\ts.Ctrl.CloseTerminalUnlessTakenOver(session.ID, owner)$/\t\t_ = session/' \
+  '^TestAWindowRetiredBetweenTheStartAndTheAnswer'
+
+run a-failed-create-closes-what-another-window-took-over $X backend/pkg/plugin/exec/service_wrapper.go \
+  's/s.Ctrl.CloseTerminalUnlessTakenOver(session.ID, owner)/_ = s.Ctrl.CloseSession(session.ID)/' \
+  '^TestAFailedCreateDoesNotEndATerminalAnotherWindowTookOver'
+
+run an-attach-to-a-retired-window-stays-attached $X backend/pkg/plugin/exec/service_wrapper.go \
+  's/s.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)/_ = owner/' \
+  '^TestAWindowRetiredBetweenTheTakeOver'
+
+# The review of #674 (ReviewHost658): S1 to S4 and the tombstone timer.
+
+run detach-by-a-displaced-page-allowed $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) detach(/,/^}/ s/case s.owner != nil \&\& s.owner != caller:/case false:/' \
+  '^TestAPageThatWasDisplaced'
+
+run the-reader-does-not-hold-up-an-attach $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) deliver/,/^}/ s/if s.pageKey != "" {/if false {/' \
+  '^TestAnAttachDoesNotAnswerWhile'
+
+run a-takeover-does-not-tell-the-page-that-held-it $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) takeOverLocked/,/^}/ s/if s.heldLocked() {/if false {/' \
+  '^TestAPageIsToldWhen'
+
+run a-window-retirement-does-not-tell-the-page $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) release/,/^}/ {s/_, left := s.detachLocked(s.lease, DetachedByWindow)/s.detachLocked(s.lease, DetachedByWindow)/;s/return releaseDetached, left/return releaseDetached, nil/;}' \
+  '^TestAPageIsToldWhen'
+
+run a-detach-does-not-tell-the-page $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) Detach(/,/^}/ s/^\tm.told(s, left)$/\t_ = left/' \
+  '^TestAPageIsToldWhen'
+
+run the-attachment-is-not-counted $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) takeOverLocked/,/^}/ s/^\ts.attachment++$/\t_ = 0/' \
+  '^TestAPageIsToldWhen'
+
+run the-tombstone-timer-is-never-armed $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) armTombstoneTimerLocked/,/^}/ s/if m.closing.Load() || len(m.tombs) == 0 {/if true {/' \
+  '^TestTombstonesThatExpired'
+
+run the-shutdown-leaves-the-tombstone-timer $T backend/pkg/terminal/manager.go \
+  's/^\tm.armTombstoneTimerLocked(time.Now())$/\t_ = 0/' \
+  '^TestTombstonesThatExpired'
+
+run the-policy-allows-attach-terminal . internal/auditgate/policy.json \
+  '/exec.ServiceWrapper.AttachTerminal"/ s/"decision": "deny"/"decision": "allow"/' \
+  '^TestDangerousMethodsStayDenied'
+
+# CodeRabbit of the review-fix push: the cleanup of a failed create leaves a terminal another window attached.
+
+run a-failed-create-ends-a-terminal-another-window-attached-and-released $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) CloseUnlessTakenOver/,/^}/ s/ || s.attachment != 0//' \
+  '^TestTheCleanupOfAFailedCreate'

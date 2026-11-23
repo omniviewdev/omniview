@@ -33,7 +33,8 @@ import * as exec$0 from "../../../../../plugin-sdk/pkg/v1/exec/models.js";
  * byte, paced by what its transport took (docs/ui-next/status/T1-go.md, 2.8.6). A session that is ending, or
  * is one of the last 256 that ended, takes the acknowledgement and answers success, because there is nothing
  * left to credit and the last acknowledgement of an exiting shell races its CLOSE; an older session is not
- * remembered and is not found, as one that never existed.
+ * remembered and is not found, as one that never existed. After an attach the replay is not acknowledged, nor
+ * is an event whose offset is below the replay's end: the attach forgot what was owed for it.
  */
 export function AckTerminal(sessionID: string, n: number): $CancellablePromise<void> {
     return $Call.ByID(3740379753, sessionID, n);
@@ -44,6 +45,26 @@ export function AttachSession(sessionID: string): $CancellablePromise<[exec$0.Se
         $result[0] = $$createType1($result[0]);
         $result[1] = $Create.ByteSlice($result[1]);
         return $result;
+    });
+}
+
+/**
+ * AttachTerminal takes a terminal over for the calling window and hands it what the page lacks, in one step:
+ * request.page_key is the key the terminal was opened with (a window that owns the terminal needs none) and
+ * request.from_offset is the offset of the first byte the page does not have (absent: the page has nothing).
+ * The answer's replay is exactly the output from there to replay.end, with the size and the modes that
+ * output was written under and the ones now; the terminal's events continue at replay.end, with no byte lost
+ * at or above it. An event below it is already in the replay, was handed to the transport before the answer,
+ * and may still reach the page after it: the page drops every event at or below what it has, held or live. The
+ * page listens first, then attaches. It acknowledges what it takes in from events and never the replay. The
+ * answer's attachment is the number of this attachment: the page that held the terminal before is told, on
+ * core/exec/signal/DETACHED/<id>, that its attachment ended. A terminal that ended while no page was attached
+ * answers its replay and how it ended. A caller that may not attach is told what is told of a terminal that
+ * is not there.
+ */
+export function AttachTerminal(sessionID: string, request: terminal$0.AttachRequest): $CancellablePromise<terminal$0.Attached | null> {
+    return $Call.ByID(3070378093, sessionID, request).then(($result: any) => {
+        return $$createType3($result);
     });
 }
 
@@ -65,14 +86,17 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
  * directory it started in and the size that was applied. Every terminal is paced by credit: the host stops
  * reading a shell whose client does not take its output (T1-go.md, 2.8.6).
  * 
- * The shell belongs to the window and ends with it: when the window closes, or the page it served is
- * gone (the realm says so for both), the window's terminals are ended, and a tab restored in a new page
- * says they ended. A call that comes from no window starts nothing: a terminal that nothing could ever
- * retire would outlive everything.
+ * The shell belongs to the window. Without launch.page_key it ends with the window: when the window closes,
+ * or the page it served is gone (the realm says so for both), and a tab restored in a new page says it ended.
+ * With a page key it is detached instead, and kept for a lease (launch.lease_ms; five minutes, at most
+ * thirty): the page that comes back lists its terminals with ListTerminals and takes one over with
+ * AttachTerminal, and what the shell wrote meanwhile is replayed (docs/ui-next/status/T2-go.md). Its output
+ * then arrives on core/exec/stream/output/<id> with an offset. A call that comes from no window starts
+ * nothing: a terminal that nothing could ever retire would outlive everything.
  */
 export function CreateTerminal(opts: exec$0.SessionOptions, launch: terminal$0.Launch): $CancellablePromise<terminal$0.Session | null> {
     return $Call.ByID(4182196712, opts, launch).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -83,25 +107,40 @@ export function DetachSession(sessionID: string): $CancellablePromise<exec$0.Ses
 }
 
 /**
+ * DetachTerminal leaves a terminal waiting for a page, as the window going away does, without waiting for the
+ * realm to notice: a page that is leaving says so, and the shell is held at once. request.lease_ms is how
+ * long to keep it (zero: the terminal's own lease; more than thirty minutes is cut to it) and the answer says
+ * the lease that applies and when it ends. A terminal that is already detached stays as it is. The window that
+ * owns the terminal detaches it; the key detaches only a terminal that no window owns, so that a tab that was
+ * displaced by a copy of it (which shares the key) cannot detach what the other tab shows: it is told what is
+ * told of a terminal that is not there.
+ */
+export function DetachTerminal(sessionID: string, request: terminal$0.DetachRequest): $CancellablePromise<terminal$0.Detached | null> {
+    return $Call.ByID(3844471071, sessionID, request).then(($result: any) => {
+        return $$createType7($result);
+    });
+}
+
+/**
  * GetCwd says which directory a terminal's shell is in now: the shell's own current working directory,
  * read from the system when asked, or why it cannot be read (see terminal.Directory). A session of a plugin
  * runs on another machine and answers unknown.
  */
 export function GetCwd(sessionID: string): $CancellablePromise<terminal$0.Directory> {
     return $Call.ByID(3534704186, sessionID).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType8($result);
     });
 }
 
 export function GetHandler(plugin: string, resource: string): $CancellablePromise<exec$0.Handler | null> {
     return $Call.ByID(1779192716, plugin, resource).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType10($result);
     });
 }
 
 export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: exec$0.Handler } }> {
     return $Call.ByID(4033362541).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType12($result);
     });
 }
 
@@ -110,7 +149,7 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
  */
 export function GetNativeTerminalApplications(): $CancellablePromise<nativeapps$0.Application[]> {
     return $Call.ByID(2940999236).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType14($result);
     });
 }
 
@@ -120,7 +159,7 @@ export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
 
 export function GetPluginHandlers(plugin: string): $CancellablePromise<{ [_ in string]?: exec$0.Handler }> {
     return $Call.ByID(2619212338, plugin).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType11($result);
     });
 }
 
@@ -140,19 +179,32 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
  */
 export function IsBusy(sessionID: string): $CancellablePromise<terminal$0.Foreground> {
     return $Call.ByID(2676831401, sessionID).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType15($result);
     });
 }
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3006426324).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType16($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType17($result);
+    });
+}
+
+/**
+ * ListTerminals says which terminals the calling page may attach: those of its window that have a page key,
+ * and those that carry the page key it gives (a server-mode reload is a new window: the key is how the page
+ * finds its terminals again). A terminal without a key is not listed, and nothing lists another page's
+ * terminals or any key. A terminal that ended by itself while no page was attached is listed with how it
+ * ended, for what is left of its lease. A call that comes from no window lists nothing, and is refused.
+ */
+export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.Listed[]> {
+    return $Call.ByID(867361533, pageKey).then(($result: any) => {
+        return $$createType19($result);
     });
 }
 
@@ -191,15 +243,21 @@ export function WriteTerminal(sessionID: string, seq: number, data: string): $Ca
 // Private type creation functions
 const $$createType0 = exec$0.Session.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = terminal$0.Session.createFrom;
+const $$createType2 = terminal$0.Attached.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = terminal$0.Directory.createFrom;
-const $$createType5 = exec$0.Handler.createFrom;
-const $$createType6 = $Create.Nullable($$createType5);
-const $$createType7 = $Create.Map($Create.Any, $$createType5);
-const $$createType8 = $Create.Map($Create.Any, $$createType7);
-const $$createType9 = nativeapps$0.Application.createFrom;
-const $$createType10 = $Create.Array($$createType9);
-const $$createType11 = terminal$0.Foreground.createFrom;
-const $$createType12 = $Create.Array($Create.Any);
-const $$createType13 = $Create.Array($$createType1);
+const $$createType4 = terminal$0.Session.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = terminal$0.Detached.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = terminal$0.Directory.createFrom;
+const $$createType9 = exec$0.Handler.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = $Create.Map($Create.Any, $$createType9);
+const $$createType12 = $Create.Map($Create.Any, $$createType11);
+const $$createType13 = nativeapps$0.Application.createFrom;
+const $$createType14 = $Create.Array($$createType13);
+const $$createType15 = terminal$0.Foreground.createFrom;
+const $$createType16 = $Create.Array($Create.Any);
+const $$createType17 = $Create.Array($$createType1);
+const $$createType18 = terminal$0.Listed.createFrom;
+const $$createType19 = $Create.Array($$createType18);

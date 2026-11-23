@@ -75,8 +75,25 @@ func (m *Manager) DetachSession(_ string) (*sdkexec.Session, error) { return nil
 // CloseSession is not supported.
 func (m *Manager) CloseSession(_ string) error { return unsupportedError() }
 
-// CloseOwned ends nothing: no session can exist.
-func (m *Manager) CloseOwned(_ Owner, _ ClosedBy) int { return 0 }
+// ReleaseOwned releases nothing: no session can exist.
+func (m *Manager) ReleaseOwned(_ Owner, _ ClosedBy) Released { return Released{Detached: 0, Ended: 0} }
+
+// Attach is not supported.
+func (m *Manager) Attach(_ string, _ Owner, _ AttachRequest) (*Attached, error) {
+	return nil, unsupportedError()
+}
+
+// Detach is not supported.
+func (m *Manager) Detach(_ string, _ Owner, _ DetachRequest) (Detached, error) {
+	var none Detached
+	return none, unsupportedError()
+}
+
+// List lists nothing: no session can exist. It is an empty list, as on any platform, and not none.
+func (m *Manager) List(_ Owner, _ string) []Listed { return []Listed{} }
+
+// CloseUnlessTakenOver ends nothing: no session can exist.
+func (m *Manager) CloseUnlessTakenOver(_ string, _ Owner) bool { return false }
 
 // Shutdown ends nothing: no session can exist.
 func (m *Manager) Shutdown() {}

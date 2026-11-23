@@ -104,10 +104,13 @@ func (s *ServiceWrapper) GetNativeTerminalApplications() (_ []nativeapps.Applica
 // directory it started in and the size that was applied. Every terminal is paced by credit: the host stops
 // reading a shell whose client does not take its output (T1-go.md, 2.8.6).
 //
-// The shell belongs to the window and ends with it: when the window closes, or the page it served is
-// gone (the realm says so for both), the window's terminals are ended, and a tab restored in a new page
-// says they ended. A call that comes from no window starts nothing: a terminal that nothing could ever
-// retire would outlive everything.
+// The shell belongs to the window. Without launch.page_key it ends with the window: when the window closes,
+// or the page it served is gone (the realm says so for both), and a tab restored in a new page says it ended.
+// With a page key it is detached instead, and kept for a lease (launch.lease_ms; five minutes, at most
+// thirty): the page that comes back lists its terminals with ListTerminals and takes one over with
+// AttachTerminal, and what the shell wrote meanwhile is replayed (docs/ui-next/status/T2-go.md). Its output
+// then arrives on core/exec/stream/output/<id> with an offset. A call that comes from no window starts
+// nothing: a terminal that nothing could ever retire would outlive everything.
 func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.SessionOptions, launch terminal.Launch) (*terminal.Session, error) {
 	if opts.HasResourceIntent() {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.")
@@ -119,16 +122,19 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 	}
 	session, err := s.Ctrl.CreateTerminal(ctx, owner, terminal.Options{
 		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd,
-		Labels: opts.Labels, Params: opts.Params,
+		PageKey: launch.PageKey, LeaseMs: launch.LeaseMs, Labels: opts.Labels, Params: opts.Params,
 	})
 	if err != nil {
 		return nil, err
 	}
 	// The window can be retired while the shell starts, and a retirement that came before the session was
-	// registered found nothing to end. The realm refuses a retired window, so asking it again now that the
-	// session is registered closes the gap: a retirement after this point finds the session.
+	// registered found nothing to release. The realm refuses a retired window, so asking it again now that the
+	// session is registered closes the gap: a retirement after this point finds the session. A terminal that
+	// no page can know about is ended whatever its key says: a detached one would wait for a page that never
+	// heard of it. One that another window took over meanwhile (a page with the same key, which chose the id) is
+	// not this call's to end.
 	if _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {
-		s.Ctrl.CloseOwnedTerminals(owner, terminal.ClosedByWindow)
+		s.Ctrl.CloseTerminalUnlessTakenOver(session.ID, owner)
 		return nil, admitErr
 	}
 	return session, nil
@@ -146,7 +152,7 @@ func (s *ServiceWrapper) terminalOwner(window application.Window) (invocation.Wi
 	// Subscribed before the first session is made, so no retirement can fall before it.
 	s.retire.Do(func() {
 		s.Realm.OnRetire(func(key invocation.WindowIdentity) {
-			s.Ctrl.CloseOwnedTerminals(key, terminal.ClosedByWindow)
+			s.Ctrl.ReleaseOwnedTerminals(key, terminal.ClosedByWindow)
 		})
 	})
 	return invocation.IdentityOf(window), nil
@@ -190,6 +196,67 @@ func (s *ServiceWrapper) ResizeTerminal(sessionID string, seq uint64, rows, cols
 func (s *ServiceWrapper) IsBusy(sessionID string) (terminal.Foreground, error) {
 	return s.Ctrl.IsBusy(sessionID)
 }
+
+// ListTerminals says which terminals the calling page may attach: those of its window that have a page key,
+// and those that carry the page key it gives (a server-mode reload is a new window: the key is how the page
+// finds its terminals again). A terminal without a key is not listed, and nothing lists another page's
+// terminals or any key. A terminal that ended by itself while no page was attached is listed with how it
+// ended, for what is left of its lease. A call that comes from no window lists nothing, and is refused.
+func (s *ServiceWrapper) ListTerminals(ctx context.Context, pageKey string) ([]terminal.Listed, error) {
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	owner, err := s.terminalOwner(window)
+	if err != nil {
+		return nil, err
+	}
+	return s.Ctrl.ListTerminals(owner, pageKey), nil
+}
+
+// AttachTerminal takes a terminal over for the calling window and hands it what the page lacks, in one step:
+// request.page_key is the key the terminal was opened with (a window that owns the terminal needs none) and
+// request.from_offset is the offset of the first byte the page does not have (absent: the page has nothing).
+// The answer's replay is exactly the output from there to replay.end, with the size and the modes that
+// output was written under and the ones now; the terminal's events continue at replay.end, with no byte lost
+// at or above it. An event below it is already in the replay, was handed to the transport before the answer,
+// and may still reach the page after it: the page drops every event at or below what it has, held or live. The
+// page listens first, then attaches. It acknowledges what it takes in from events and never the replay. The
+// answer's attachment is the number of this attachment: the page that held the terminal before is told, on
+// core/exec/signal/DETACHED/<id>, that its attachment ended. A terminal that ended while no page was attached
+// answers its replay and how it ended. A caller that may not attach is told what is told of a terminal that
+// is not there.
+func (s *ServiceWrapper) AttachTerminal(ctx context.Context, sessionID string, request terminal.AttachRequest) (*terminal.Attached, error) {
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	owner, err := s.terminalOwner(window)
+	if err != nil {
+		return nil, err
+	}
+	attached, err := s.Ctrl.AttachTerminal(ctx, owner, sessionID, request)
+	if err != nil {
+		return nil, err
+	}
+	// The window can be retired while it attaches, and a retirement that came before the terminal was its own
+	// found nothing to release: asking the realm again closes the gap, as for a new terminal.
+	if _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {
+		s.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)
+		return nil, admitErr
+	}
+	return attached, nil
+}
+
+// DetachTerminal leaves a terminal waiting for a page, as the window going away does, without waiting for the
+// realm to notice: a page that is leaving says so, and the shell is held at once. request.lease_ms is how
+// long to keep it (zero: the terminal's own lease; more than thirty minutes is cut to it) and the answer says
+// the lease that applies and when it ends. A terminal that is already detached stays as it is. The window that
+// owns the terminal detaches it; the key detaches only a terminal that no window owns, so that a tab that was
+// displaced by a copy of it (which shares the key) cannot detach what the other tab shows: it is told what is
+// told of a terminal that is not there.
+func (s *ServiceWrapper) DetachTerminal(ctx context.Context, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error) {
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	owner, err := s.terminalOwner(window)
+	if err != nil {
+		return nil, err
+	}
+	return s.Ctrl.DetachTerminal(ctx, owner, sessionID, request)
+}
 func (s *ServiceWrapper) GetHandler(plugin, resource string) *execsdk.Handler {
 	return s.Ctrl.GetHandler(plugin, resource)
 }
@@ -222,7 +289,8 @@ func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
 // byte, paced by what its transport took (docs/ui-next/status/T1-go.md, 2.8.6). A session that is ending, or
 // is one of the last 256 that ended, takes the acknowledgement and answers success, because there is nothing
 // left to credit and the last acknowledgement of an exiting shell races its CLOSE; an older session is not
-// remembered and is not found, as one that never existed.
+// remembered and is not found, as one that never existed. After an attach the replay is not acknowledged, nor
+// is an event whose offset is below the replay's end: the attach forgot what was owed for it.
 func (s *ServiceWrapper) AckTerminal(sessionID string, n int) error {
 	return s.Ctrl.AckTerminal(sessionID, n)
 }

@@ -39,6 +39,10 @@ type flowControl struct {
 	explicit bool
 	released bool
 	paused   bool
+	// held pauses the reader whatever the credit says, for as long as nobody is attached: the shell is held in
+	// its own write, the host reads and buffers nothing, and no credit that comes (or that the watchdog gives)
+	// lets it go. restart ends it.
+	held bool
 	// stepped is what the watchdog has given since real credit last came.
 	stepped int
 	stall   time.Duration
@@ -50,7 +54,7 @@ type flowControl struct {
 // watchdog steps (zero: never); onStep is told, with the total stepped so far, each time it does.
 func newFlowControl(stall time.Duration, onStep func(stepped int)) *flowControl {
 	return &flowControl{
-		mu: sync.Mutex{}, unacked: 0, explicit: false, released: false, paused: false, stepped: 0,
+		mu: sync.Mutex{}, unacked: 0, explicit: false, released: false, paused: false, held: false, stepped: 0,
 		stall: stall, onStep: onStep, wake: make(chan struct{}, 1),
 	}
 }
@@ -86,7 +90,7 @@ func (f *flowControl) ack(n int) {
 // unlocks it.
 func (f *flowControl) credit(n int) {
 	f.unacked = max(0, f.unacked-n)
-	resume := f.paused && f.unacked <= FlowLowBytes
+	resume := f.paused && !f.held && f.unacked <= FlowLowBytes
 	f.mu.Unlock()
 	if resume {
 		f.signal()
@@ -103,6 +107,27 @@ func (f *flowControl) reset() {
 	if resume {
 		f.signal()
 	}
+}
+
+// hold pauses the reader until restart or release, whatever credit comes: the client is gone.
+func (f *flowControl) hold() {
+	f.mu.Lock()
+	f.held = true
+	f.mu.Unlock()
+}
+
+// restart is the credit of a client that attaches: the hold ends and the debt is forgotten (the client starts
+// from the replay it was handed, and does not acknowledge it). Who gives credit is not forgotten: a terminal
+// whose client acknowledged keeps on being paced by acknowledgements alone, as it was, so that a page that
+// dies right after it attached, before its first acknowledgement, still leaves the host at the high mark and
+// the replay ring with everything the next page lacks.
+func (f *flowControl) restart() {
+	f.mu.Lock()
+	f.held = false
+	f.unacked = 0
+	f.stepped = 0
+	f.mu.Unlock()
+	f.signal()
 }
 
 // release ends the pacing for good. A session that is closing has to be read: on macOS a process cannot
@@ -126,7 +151,7 @@ func (f *flowControl) signal() {
 // ceiling. A client that acknowledges is never stepped: its pause is its own choice.
 func (f *flowControl) step() {
 	f.mu.Lock()
-	if f.explicit || f.released || f.stepped >= FlowStallCeilingBytes {
+	if f.explicit || f.released || f.held || f.stepped >= FlowStallCeilingBytes {
 		f.mu.Unlock()
 		return
 	}
@@ -148,6 +173,10 @@ func (f *flowControl) check() (bool, bool, bool) {
 	if f.released {
 		f.paused = false
 		return true, false, false
+	}
+	if f.held {
+		f.paused = true
+		return false, true, false
 	}
 	if !f.paused && f.unacked >= FlowHighBytes {
 		f.paused = true

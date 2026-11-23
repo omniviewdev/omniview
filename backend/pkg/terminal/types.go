@@ -24,6 +24,19 @@ type Launch struct {
 	// Cwd is the directory the shell starts in: an absolute path to a directory that exists. Empty: the
 	// user's home. Anything else is refused, naming the field.
 	Cwd string `json:"cwd,omitempty"`
+	// PageKey makes the terminal outlive the page that opened it, and is how a page that comes back finds it: the
+	// page makes one random key (a UUID in its sessionStorage serves), gives it here for every terminal it opens
+	// and gives it again to ListTerminals and AttachTerminal after a reload. A terminal with a key is not ended
+	// when its window goes away: it is detached and kept for LeaseMs (docs/ui-next/status/T2-go.md), its output
+	// carries an offset, and what the shell wrote while the page was away is replayed on attach. A terminal
+	// without one ends with its window, as before, and cannot be attached again. The key is the page's secret:
+	// whoever has it may attach, nothing lists it, and it is 16 to 128 printable ASCII characters (anything else
+	// is refused, naming the field).
+	PageKey string `json:"page_key,omitempty"`
+	// LeaseMs is how long the terminal is kept for a page that comes back once its page is gone, in
+	// milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something only
+	// with a PageKey.
+	LeaseMs int `json:"lease_ms,omitempty"`
 	// There is no flow-control option: every terminal is paced by credit (FlowHighBytes, FlowLowBytes), so
 	// the host never has more than that delivered and not credited for a client. That bounds what the
 	// terminal manager hands on, not what the transport keeps after it credits (docs/ui-next/status/T1-go.md,
@@ -43,6 +56,9 @@ type Options struct {
 	Cols    int
 	Rows    int
 	Cwd     string
+	// PageKey and LeaseMs are the Launch's.
+	PageKey string
+	LeaseMs int
 	// Labels and Params are what the caller attached to the session; the exec lane lists them with it.
 	Labels map[string]string
 	Params map[string]string
@@ -93,6 +109,13 @@ type Limits struct {
 	FlowStallMs           int `json:"flow_stall_ms"`
 	FlowStepBytes         int `json:"flow_step_bytes"`
 	FlowStallCeilingBytes int `json:"flow_stall_ceiling_bytes"`
+	// ReplayBytes is how much of a terminal's output the host keeps to replay for a page that attaches again
+	// (whole chunks, so a little less than this at times): enough for the whole credit window of a client that
+	// acknowledges, so that its attach has no gap. LeaseDefaultMs and LeaseMaxMs are the lease of a detached
+	// terminal (Launch.LeaseMs) and the most a caller may ask for.
+	ReplayBytes    int `json:"replay_bytes"`
+	LeaseDefaultMs int `json:"lease_default_ms"`
+	LeaseMaxMs     int `json:"lease_max_ms"`
 }
 
 // Session is what the host says about a terminal it started.
@@ -112,6 +135,9 @@ type Session struct {
 	Limits Limits `json:"limits"`
 	// Environment says where the shell's environment came from and how the host's login probe went.
 	Environment Environment `json:"environment"`
+	// LeaseMs is how long the terminal is kept for its page once the page is gone, in milliseconds. Zero: it
+	// has no page key and ends with its window.
+	LeaseMs int `json:"lease_ms"`
 }
 
 // EndReason says how a session ended. It is the one field every End has.
@@ -138,6 +164,9 @@ const (
 	ClosedByWindow ClosedBy = "window"
 	// ClosedByShutdown: the host is shutting down.
 	ClosedByShutdown ClosedBy = "shutdown"
+	// ClosedByDetachTimeout: no page attached again before the lease of a terminal its page left ran out. (The
+	// word the exec lane's SDK uses for the same end.)
+	ClosedByDetachTimeout ClosedBy = "detach-timeout"
 )
 
 // FailureStage says where a session failed.
@@ -179,6 +208,10 @@ type End struct {
 	// DroppedBytes is how many bytes the host read after the cap and discarded: a lower bound, because
 	// what the process writes after the host closes the pty is lost to the kernel and cannot be counted.
 	DroppedBytes int `json:"dropped_bytes,omitempty"`
+	// LastOffset is one past the last byte of output the session wrote: the length of its output, in the numbering
+	// that the events of a terminal with a page key and Replay.End use. A page that has taken in LastOffset bytes
+	// has it all.
+	LastOffset uint64 `json:"last_offset"`
 }
 
 // State is the answer to "is something other than the shell in the foreground of the terminal?".
@@ -206,6 +239,8 @@ const (
 	ReasonQueryFailed UnknownReason = "query-failed"
 	// ReasonRemote: the session runs on another machine; the host holds no terminal for it.
 	ReasonRemote UnknownReason = "remote"
+	// ReasonEnded: the terminal ended; there is no shell to ask.
+	ReasonEnded UnknownReason = "ended"
 )
 
 // Foreground is the fact "what holds the terminal now". It is a snapshot: it can change the moment
@@ -259,6 +294,29 @@ type DeliveryReporter interface {
 	ReportsDelivery()
 }
 
+// OffsetSink is a Sink that is also told where each output lies in the session's one sequence of bytes: its
+// offset is the number of bytes the session wrote before it. The manager calls OutputAt, and not Output, for a
+// terminal that has a page key; any other terminal's output goes to Output as before. Every OutputAt of a
+// session is contiguous with the one before it: offset is the previous offset plus its length.
+//
+// The manager holds a lock an attach waits for while it calls OutputAt, so that the events below the end of an
+// attach's replay are all out before the attach answers: OutputAt must return without waiting for anything an
+// attach does (a queue that takes the event at once, as the exec lane's does).
+type OffsetSink interface {
+	Sink
+	// OutputAt delivers bytes the shell wrote, which start at offset. The slice belongs to the receiver.
+	OutputAt(sessionID string, offset uint64, data []byte)
+}
+
+// DetachmentSink is a Sink that is also told when a page lost a terminal it had attached (Detachment). The
+// call comes from the call that changed hands (Attach, Detach, ReleaseOwned), after it did and with no lock held,
+// so it may be concurrent with the session's output; it must not call back into the Manager for the session.
+type DetachmentSink interface {
+	Sink
+	// Detached says a page lost the terminal and why.
+	Detached(sessionID string, detachment Detachment)
+}
+
 const (
 	// DefaultCols and DefaultRows are the size of a terminal the caller gave none for.
 	DefaultCols = 80
@@ -302,6 +360,21 @@ const (
 	// alive. The CLOSE comes at the cap, with the shell's exit facts.
 	drainCap = 3 * time.Second
 
+	// ReplayBytes is how much of a terminal's output is kept to replay (Limits.ReplayBytes): the whole
+	// credit window of a client that acknowledges (FlowHighBytes, plus one read) and the room that dropping
+	// whole chunks takes, so that a page that left with the host at the high mark finds every byte it lacks.
+	ReplayBytes = FlowHighBytes + FlowLowBytes
+	// LeaseDefault is how long a terminal is kept for the page that left it, and LeaseMax is the most a caller
+	// may ask for.
+	LeaseDefault = 5 * time.Minute
+	LeaseMax     = 30 * time.Minute
+	// MinPageKeyBytes and MaxPageKeyBytes bound a page key: long enough that nobody guesses it.
+	MinPageKeyBytes = 16
+	MaxPageKeyBytes = 128
+	// TombstoneLimit is how many terminals that ended while no page was attached the host remembers, so that the
+	// page that comes back can still read how they ended.
+	TombstoneLimit = 16
+
 	maxIDLength = 128
 )
 
@@ -320,5 +393,8 @@ func defaultLimits() Limits {
 		FlowStallMs:           int(FlowStall / time.Millisecond),
 		FlowStepBytes:         FlowStepBytes,
 		FlowStallCeilingBytes: FlowStallCeilingBytes,
+		ReplayBytes:           ReplayBytes,
+		LeaseDefaultMs:        int(LeaseDefault / time.Millisecond),
+		LeaseMaxMs:            int(LeaseMax / time.Millisecond),
 	}
 }
