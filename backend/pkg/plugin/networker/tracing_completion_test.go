@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
@@ -20,9 +19,11 @@ import (
 func TestPortForwardOpenFailureSpan(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
-	previous := otel.GetTracerProvider()
-	otel.SetTracerProvider(provider)
-	t.Cleanup(func() { otel.SetTracerProvider(previous); _ = provider.Shutdown(context.Background()) })
+	// The package tracer is bound once, to the first global provider ever set: a later SetTracerProvider (the second run of this test
+	// in a process, or any test that set one first) never reaches it and the spans go to the first, shut-down provider. Swap the variable.
+	previous := tracer
+	tracer = provider.Tracer("omniview.networker")
+	t.Cleanup(func() { tracer = previous; _ = provider.Shutdown(context.Background()) })
 
 	controller := NewController(logging.NewNop(), nil, nil)
 	_, err := controller.StartResourcePortForwardingSession(

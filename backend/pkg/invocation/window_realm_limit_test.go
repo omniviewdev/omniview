@@ -67,8 +67,13 @@ func TestWindowRealmRefusesTheNextWindowWithALimitCodeNotAPermissionDenial(t *te
 	require.Equal(t, "RESOURCE_LIMIT", refused.Code)
 	require.Equal(t, apperror.TypeResourceLimit, refused.Type)
 	require.Equal(t, 429, refused.Status)
-	require.NotContains(t, refused.Error(), strconv.Itoa(maxRealmWindows), "the page is told the class, never the host's limit or count")
-	require.NotContains(t, refused.Error(), "scope")
+	// The request id is a random UUID: its digits can spell the limit ("64") with no leak in the host's text, so the claim is made on
+	// every field the host wrote, with the id (checked present, then set aside) left out.
+	require.NotEmpty(t, refused.RequestID)
+	hostText := *refused
+	hostText.RequestID = ""
+	require.NotContains(t, hostText.Error(), strconv.Itoa(maxRealmWindows), "the page is told the class, never the host's limit or count")
+	require.NotContains(t, hostText.Error(), "scope")
 
 	// A permission refusal of a window that has a slot stays FORBIDDEN: the two are told apart by the code.
 	denied := appError(t, admitAs(realm, refusedPage(1), func(Principal, string, Target) error { return errors.New("no") }))

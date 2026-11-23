@@ -33,6 +33,13 @@ func (r *retiredSessions) count() int {
 	return len(r.retired)
 }
 
+// lifetimes is a copy of what the wrapper has told the controller to retire so far.
+func (r *retiredSessions) lifetimes() []context.Context {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]context.Context(nil), r.retired...)
+}
+
 // browserMetricWindow is a server-mode window as Wails builds it: it names its page, and its close event never fires.
 type browserMetricWindow struct {
 	application.Window
@@ -109,11 +116,13 @@ func TestMetricSessionsAreReleasedWhenAServerModePageCloses(t *testing.T) {
 	for id := uint(1); id <= 65; id++ {
 		window := openMetricPage(t, wrapper, pages, id)
 		pages.set(window.client, false)
-		require.Eventually(t, func() bool { return sessionCount(wrapper) == 0 }, 10*time.Second, time.Millisecond,
-			"the metric session of page %d outlived its page", id)
+		// retireWindow frees the slot first, then cancels the lifetime and tells the controller after the lock is released:
+		// the slot being free does not yet mean the page's observations are retired, so wait for both effects (docs/ui-next/status/INV3.md).
+		require.Eventually(t, func() bool { return sessionCount(wrapper) == 0 && ctrl.count() == int(id) }, 10*time.Second, time.Millisecond,
+			"the metric session of page %d outlived its page, or its observations were not retired with it", id)
 	}
 	require.Equal(t, 65, ctrl.count(), "each closed page's observations are retired with it")
-	for _, lifetime := range ctrl.retired {
+	for _, lifetime := range ctrl.lifetimes() {
 		require.Error(t, lifetime.Err(), "a retired session's lifetime is cancelled")
 	}
 }
