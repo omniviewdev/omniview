@@ -5,6 +5,13 @@ export interface AppErrorAction {
   target?: string;
 }
 
+/** A shell the host tried to start for a terminal and why it did not (code SHELL_UNAVAILABLE): where its path came from, the path, and the reason in a few words. */
+export interface AppErrorShellAttempt {
+  source: string;
+  path: string;
+  reason: string;
+}
+
 /** Structured error matching the Go apperror.AppError JSON shape. */
 export interface AppError {
   type: string;
@@ -18,6 +25,8 @@ export interface AppError {
   requestId?: string;
   recovery?: 'correctRequest' | 'refreshContract' | 'restartQuery' | 'reconnect' | 'none';
   location?: { start: number; end: number; unit: 'utf8-byte' };
+  /** The shells a terminal tried before it refused, in the order tried (code SHELL_UNAVAILABLE): one path to a line, no sentence to read. */
+  tried?: AppErrorShellAttempt[];
 }
 
 /** Error type URI constants matching Go apperror/types.go. */

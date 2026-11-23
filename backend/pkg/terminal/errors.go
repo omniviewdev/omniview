@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -81,13 +82,36 @@ func IDInUse(id string) error {
 		"ALREADY_EXISTS")
 }
 
+// shellUnavailableError is the refusal of a shell that is not there, with the shells that were tried, one entry
+// each: the problem a caller reads, plus the list, so that it draws one path to a line without reading the
+// sentence. Its text is the problem as JSON, as AppError's is, so that the list crosses the binding with it.
+type shellUnavailableError struct {
+	*apperror.AppError
+	Tried []shellenv.Attempt `json:"tried"`
+}
+
+func (p *shellUnavailableError) Error() string {
+	encoded, err := json.Marshal(p)
+	if err != nil {
+		return p.AppError.Error()
+	}
+	return string(encoded)
+}
+
+func (p *shellUnavailableError) Unwrap() error { return p.AppError }
+
 // shellError types the refusal of shellenv.Resolve. Any other error is a failure to resolve, and it
 // stays what it was.
 func shellError(err error) error {
 	switch {
 	case errors.Is(err, shellenv.ErrUnavailable):
-		return coded(apperror.WrapWithDetail(err, TypeShellUnavailable, http.StatusUnprocessableEntity, "Shell not found", err.Error()),
+		problem := coded(apperror.WrapWithDetail(err, TypeShellUnavailable, http.StatusUnprocessableEntity, "Shell not found", err.Error()),
 			"SHELL_UNAVAILABLE")
+		var unavailable *shellenv.UnavailableError
+		if errors.As(err, &unavailable) {
+			return &shellUnavailableError{AppError: problem, Tried: unavailable.Tried}
+		}
+		return problem
 	case errors.Is(err, shellenv.ErrUnsupported):
 		return coded(apperror.WrapWithDetail(err, TypeShellUnsupported, http.StatusUnprocessableEntity, "Unsupported shell", err.Error()),
 			"SHELL_UNSUPPORTED")

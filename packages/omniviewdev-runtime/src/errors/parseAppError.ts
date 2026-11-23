@@ -1,4 +1,4 @@
-import type { AppError, AppErrorAction } from './types';
+import type { AppError, AppErrorAction, AppErrorShellAttempt } from './types';
 import { ErrorTypes } from './types';
 import { navigateActivePage } from '../context/windows/activePageNavigator';
 import type { DiagnosticAction, NotificationOptions } from '../activity/types';
@@ -104,6 +104,16 @@ function decode(error: unknown, depth: number): AppError | undefined {
           );
         })
         .slice(0, 8);
+    if (Array.isArray(parsed.tried))
+      result.tried = parsed.tried
+        .map((item): AppErrorShellAttempt | undefined => {
+          const attempt = record(item);
+          return attempt && text(attempt.source, 256) && text(attempt.path, 4096) && text(attempt.reason, 512)
+            ? { source: attempt.source, path: attempt.path, reason: attempt.reason }
+            : undefined;
+        })
+        .filter((item): item is AppErrorShellAttempt => item !== undefined)
+        .slice(0, 16);
     if (
       ['correctRequest', 'refreshContract', 'restartQuery', 'reconnect', 'none'].includes(
         String(parsed.recovery),
