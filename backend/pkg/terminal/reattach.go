@@ -294,18 +294,19 @@ func (m *Manager) ReleaseOwned(owner Owner, by ClosedBy) Released {
 }
 
 // CloseUnlessTakenOver ends a terminal that a call failed to hand to owner's window (the window was retired
-// while the call ran), unless another window took it over meanwhile: a terminal that belongs to another window
-// stays as it is. One that still belongs to owner, or that is detached (the retirement of the failed window
-// found it), is ended the way a close ends it. It says whether it ended the terminal. The ownership is read and
-// the terminal is ended in one step under the session's lock, so that an attach that comes together with it has
-// exactly one winner.
+// while the call ran), unless another window took it over meanwhile: a terminal that has been attached stays as
+// it is, whether that window still has it or has let it go again (it waits for its lease). The window that made
+// the terminal held attachment 0, so one that nobody attached is ended the way a close ends it, whether it still
+// belongs to owner or the retirement of the failed window detached it. It says whether it ended the terminal.
+// The ownership is read and the terminal is ended in one step under the session's lock, so that an attach that
+// comes together with it has exactly one winner.
 func (m *Manager) CloseUnlessTakenOver(sessionID string, owner Owner) bool {
 	s, err := m.live(sessionID)
 	if err != nil || checkOwner(owner) != nil {
 		return false
 	}
 	s.mu.Lock()
-	if (s.owner != nil && s.owner != owner) || s.fate.set || s.ending.Load() {
+	if (s.owner != nil && s.owner != owner) || s.attachment != 0 || s.fate.set || s.ending.Load() {
 		s.mu.Unlock()
 		return false
 	}

@@ -149,3 +149,9 @@ run the-shutdown-leaves-the-tombstone-timer $T backend/pkg/terminal/manager.go \
 run the-policy-allows-attach-terminal . internal/auditgate/policy.json \
   '/exec.ServiceWrapper.AttachTerminal"/ s/"decision": "deny"/"decision": "allow"/' \
   '^TestDangerousMethodsStayDenied'
+
+# CodeRabbit of the review-fix push: the cleanup of a failed create leaves a terminal another window attached.
+
+run a-failed-create-ends-a-terminal-another-window-attached-and-released $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) CloseUnlessTakenOver/,/^}/ s/ || s.attachment != 0//' \
+  '^TestTheCleanupOfAFailedCreate'

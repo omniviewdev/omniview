@@ -201,3 +201,30 @@ func TestTombstonesThatExpiredAreFreedByATimerAndTheTimerStopsWithTheManager(t *
 	assert.False(t, m.tombstoneTimerArmed(), "the shutdown stops it")
 	assert.Zero(t, m.tombstoneCount(), "and the host that quits keeps nothing")
 }
+
+// The cleanup of a create that failed because its window was retired meanwhile ends the terminal that create made
+// when nobody attached it (the retirement detached it), and leaves one that another window attached, even when that
+// window has let it go again before the cleanup runs: the terminal then waits for its lease, and it is not the failed
+// create's to end.
+func TestTheCleanupOfAFailedCreateEndsATerminalNobodyAttachedAndLeavesOneAnotherWindowAttachedAndDetached(t *testing.T) {
+	m, sink := newPageManager(t)
+
+	untaken := m.startKeyed(t, `sleep 30`, "wA", Options{})
+	assert.Equal(t, Released{Detached: 1, Ended: 0}, m.ReleaseOwned("wA", ClosedByWindow), "the retirement of the failed window detached it")
+	assert.True(t, m.CloseUnlessTakenOver(untaken.ID, "wA"), "nobody attached it: the cleanup ends it")
+	assert.Equal(t, ClosedByWindow, sink.waitEnd(t, untaken.ID).ClosedBy)
+
+	taken := m.startKeyed(t, `sleep 30`, "wC", Options{PageKey: otherTestKey})
+	assert.Equal(t, Released{Detached: 1, Ended: 0}, m.ReleaseOwned("wC", ClosedByWindow))
+	_, err := m.Attach(taken.ID, "wB", AttachRequest{PageKey: otherTestKey})
+	require.NoError(t, err)
+	_, err = m.Detach(taken.ID, "wB", DetachRequest{})
+	require.NoError(t, err, "another window took the terminal over and let it go again before the cleanup ran")
+	assert.False(t, m.CloseUnlessTakenOver(taken.ID, "wC"), "it was taken over: it is not the failed create's to end")
+	detached, owner, timer, _ := m.session(t, taken.ID).state()
+	assert.True(t, detached)
+	assert.Nil(t, owner)
+	assert.True(t, timer, "it waits for its lease")
+	assert.False(t, gone(taken.PID))
+	assert.Empty(t, sink.closes(taken.ID))
+}

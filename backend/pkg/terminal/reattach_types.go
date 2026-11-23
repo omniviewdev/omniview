@@ -142,9 +142,10 @@ const (
 // Detachment is what the host tells, on core/exec/signal/DETACHED/<id>, when a page lost a terminal it had
 // attached: By says why and Attachment is the number of the attachment that ended (Attached.Attachment; 0 for the
 // window that opened the terminal). It is sent to every window, as every event is, so a page acts on it only
-// when the number is the one it holds: the page that took the terminal over holds the next number. It is told
-// when a page that held the terminal lost it, and not when a terminal that nobody held changed hands, and the end
-// of the terminal is not one: that is the CLOSE event.
+// when the number is the one it holds: the page that took the terminal over holds the next number. A page does
+// not know its number until its attach has answered, so it holds the events it gets meanwhile (an event and a
+// reply travel apart) and compares them then. It is told when a page that held the terminal lost it, and not
+// when a terminal that nobody held changed hands, and the end of the terminal is not one: that is the CLOSE event.
 type Detachment struct {
 	By         DetachedBy `json:"by"`
 	Attachment uint64     `json:"attachment"`
