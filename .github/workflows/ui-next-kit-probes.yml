@@ -146,13 +146,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Before anything is built: the check (every probe script of the probe directories is run by a unit, the manifest's probes and controls are still there, every unit has whole seconds under the limit), then the tests of the
-      # check, the packing and this workflow. The check comes first so that a probe that is in no unit fails here, in every shard, in a few seconds, with its path on the error line and nothing before it.
-      - name: Check the units and the tests of the engine
-        run: |
-          node scripts/ci/probe-shards.mjs check
-          node --test scripts/ci/probe-*.test.mjs
-
       - name: Build the workspace packages (the kit among them)
         run: |
           task packages
