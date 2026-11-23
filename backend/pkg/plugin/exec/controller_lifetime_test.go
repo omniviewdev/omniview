@@ -94,7 +94,9 @@ func TestNativeExecRetirementDropsQueuedOutput(t *testing.T) {
 	active := start()
 	t.Cleanup(func() { require.NoError(t, ctrl.OnPluginStop(pluginID, config.PluginMeta{})) })
 	ctrl.mu.Lock()
-	ctrl.sessionIndex[sessionID] = sessionIndex{pluginID: pluginID}
+	// A session a window is attached to: its CLOSE is its end for everyone and removes its record. (One that ends with
+	// nobody attached keeps its record for the first attach: ended_session_test.go.)
+	ctrl.sessionIndex[sessionID] = sessionIndex{pluginID: pluginID, attached: true}
 	ctrl.mu.Unlock()
 	muxDone := make(chan struct{})
 	go func() {

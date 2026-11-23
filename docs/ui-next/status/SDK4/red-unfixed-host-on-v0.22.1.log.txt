@@ -1,0 +1,46 @@
+--- FAIL: TestTheOutputOfAShortCommandReachesALateAttach (0.01s)
+    ended_session_native_test.go:188: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/sdk4-host-pin/backend/pkg/plugin/exec/ended_session_native_test.go:188
+        	Error:      	Received unexpected error:
+        	            	{"type":"omniview:session/not-found","title":"Session not found","status":404,"detail":"Session 'f2bfcb03-300e-4f0c-a2eb-346241cb391f' was not found.","instance":"f2bfcb03-300e-4f0c-a2eb-346241cb391f"}
+        	Test:       	TestTheOutputOfAShortCommandReachesALateAttach
+        	Messages:   	the output of a session that ended before the attach is for the first attach
+--- FAIL: TestClosingASessionThatJustEndedInAPluginIsNotAnError (0.01s)
+    ended_session_native_test.go:228: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/sdk4-host-pin/backend/pkg/plugin/exec/ended_session_native_test.go:228
+        	Error:      	Received unexpected error:
+        	            	rpc error: code = NotFound desc = [SESSION_NOT_FOUND] session bbb297de-d3e2-4375-8e72-2a4ad84c7803: session not found
+        	Test:       	TestClosingASessionThatJustEndedInAPluginIsNotAnError
+--- FAIL: TestTheOutputOfASessionThatEndedUnattachedReachesTheFirstAttachOnly (0.00s)
+    ended_session_test.go:291: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/sdk4-host-pin/backend/pkg/plugin/exec/ended_session_test.go:291
+        	Error:      	Not equal: 
+        	            	expected: []string{"short"}
+        	            	actual  : []string{}
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,3 +1,2 @@
+        	            	-([]string) (len=1) {
+        	            	- (string) (len=5) "short"
+        	            	+([]string) {
+        	            	 }
+        	Test:       	TestTheOutputOfASessionThatEndedUnattachedReachesTheFirstAttachOnly
+        	Messages:   	the controller keeps what the plugin keeps: the session's record
+--- FAIL: TestClosingASessionThatJustEndedIsNotAnError (0.00s)
+    --- FAIL: TestClosingASessionThatJustEndedIsNotAnError/as_a_provider_in_the_host's_process_returns_it (0.00s)
+        ended_session_test.go:510: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/sdk4-host-pin/backend/pkg/plugin/exec/ended_session_test.go:510
+            	Error:      	Received unexpected error:
+            	            	[SESSION_NOT_FOUND] session just-ended: session not found
+            	Test:       	TestClosingASessionThatJustEndedIsNotAnError/as_a_provider_in_the_host's_process_returns_it
+    --- FAIL: TestClosingASessionThatJustEndedIsNotAnError/as_a_plugin's_gRPC_server_sends_it (0.00s)
+        ended_session_test.go:510: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/sdk4-host-pin/backend/pkg/plugin/exec/ended_session_test.go:510
+            	Error:      	Received unexpected error:
+            	            	rpc error: code = NotFound desc = [SESSION_NOT_FOUND] session just-ended: session not found
+            	Test:       	TestClosingASessionThatJustEndedIsNotAnError/as_a_plugin's_gRPC_server_sends_it
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/exec	0.054s
+FAIL
