@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
@@ -64,12 +65,34 @@ type Controller interface {
 	ResizeSession(sessionID string, rows, cols uint16) error
 }
 
+const (
+	// endedSessionTTL is how long the host keeps the record of a session that ended by itself with nobody attached: longer
+	// than the plugin keeps the session's output for the first attach (plugin-sdk v0.22.1: a minute), so that the host never
+	// forgets a session whose output is still there.
+	endedSessionTTL = 90 * time.Second
+	// endedSessionLimit is how many such records it keeps, as many as the plugin keeps outputs: the oldest goes first.
+	endedSessionLimit = 32
+)
+
 // make it easy for us to lookup sessions by ID, without having to know
 // the plugin or connection ID.
 type sessionIndex struct {
 	pluginID     string
 	connectionID string
 	local        bool
+
+	// attached says a window has attached to the session and has not detached since: the plugin delivers its output to
+	// the window while it is. A session that ends while attached is over for everyone.
+	attached bool
+	// closing says the host asked the plugin to close the session: the end is the host's, and the plugin keeps no
+	// output of it for an attach.
+	closing bool
+	// ended says the session has sent its CLOSE with nobody attached, so the plugin keeps its output for the first
+	// attach: the record stays until then (see ended_session.go). endedAt dates it and endedSeq orders it among the
+	// others.
+	ended    bool
+	endedAt  time.Time
+	endedSeq uint64
 }
 
 func NewController(
@@ -123,6 +146,11 @@ type controller struct {
 	referenceAdmitter resource.ReferenceAdmitter
 	terminalManager   *terminal.Manager
 	nativeLauncher    nativeTerminalLauncher
+
+	// now is the time the controller reads (nil: the clock of the machine); a test replaces it.
+	now func() time.Time
+	// endedCount numbers the sessions that ended with nobody attached, in the order they did; c.mu guards it.
+	endedCount uint64
 }
 
 type execProviderStream struct {
@@ -140,6 +168,15 @@ type execProviderOutput struct {
 // SetReferenceAdmitter is configured by native composition before startup.
 func (c *controller) SetReferenceAdmitter(admit resource.ReferenceAdmitter) {
 	c.referenceAdmitter = admit
+}
+
+// clock is the time of the controller: what the ended sessions' records are dated and expired by.
+func (c *controller) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+
+	return time.Now()
 }
 
 func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -208,10 +245,9 @@ func (c *controller) dispatchOutput(output exec.StreamOutput) {
 	case exec.StreamSignalClose:
 		c.logger.Debugw(context.Background(), "closing session")
 		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-		// session doesn't exist anymore, remove it from the index
-		c.mu.Lock()
-		delete(c.sessionIndex, output.SessionID)
-		c.mu.Unlock()
+		// The session is over: its record goes, unless it ended by itself with nobody attached, when the plugin
+		// keeps its output for the first attach and so does the host.
+		c.sessionClosed(output.SessionID)
 	case exec.StreamSignalSigint, exec.StreamSignalSigquit, exec.StreamSignalSigterm,
 		exec.StreamSignalSigkill, exec.StreamSignalSighup, exec.StreamSignalSigusr1,
 		exec.StreamSignalSigusr2, exec.StreamSignalSigwinch:
@@ -234,7 +270,7 @@ func (c *controller) runMux() {
 			// holding RLock during a potentially blocking send.
 			var ch chan exec.StreamInput
 			c.mu.RLock()
-			if idx, found := c.sessionIndex[input.SessionID]; found {
+			if idx, found := c.sessionIndex[input.SessionID]; found && !idx.ended {
 				ch = c.inChans[idx.pluginID]
 			}
 			c.mu.RUnlock()
@@ -622,9 +658,14 @@ func (c *controller) CreateSession(
 
 	c.mu.Lock()
 	c.sessionIndex[session.ID] = sessionIndex{
-		local:        false,
 		pluginID:     plugin,
 		connectionID: connectionID,
+		local:        false,
+		attached:     false,
+		closing:      false,
+		ended:        false,
+		endedAt:      time.Time{},
+		endedSeq:     0,
 	}
 	c.mu.Unlock()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
@@ -669,7 +710,7 @@ func (c *controller) lookupSession(sessionID string) (sessionIndex, Provider, bo
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	idx, ok := c.sessionIndex[sessionID]
-	if !ok {
+	if !ok || idx.ended {
 		var zero sessionIndex
 		return zero, nil, false
 	}
@@ -709,7 +750,7 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "AttachSession")
-	index, client, ok := c.lookupSession(sessionID)
+	index, client, ok := c.lookupSessionOrEnded(sessionID)
 	if !ok {
 		return nil, nil, apperror.SessionNotFound(sessionID)
 	}
@@ -721,10 +762,17 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	if client == nil {
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
-	return client.AttachSession(
+	session, output, err := client.AttachSession(
 		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
+	c.attachAnswered(sessionID, err)
+	if index.ended && sessionGone(err) {
+		// What the host said when it forgot the session at its CLOSE. The plugin's own words (an SDK that kept nothing, an
+		// output that expired there before it did here) are its business.
+		return nil, nil, apperror.SessionNotFound(sessionID)
+	}
+	return session, output, err
 }
 
 func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error) {
@@ -733,7 +781,7 @@ func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "DetachSession")
-	index, client, ok := c.lookupSession(sessionID)
+	index, client, ok := c.lookupSessionOrEnded(sessionID)
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
@@ -742,13 +790,24 @@ func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error
 	if index.local {
 		return c.terminalManager.DetachSession(sessionID)
 	}
+	if index.ended {
+		// A window that never attached has nothing to detach from, as after the CLOSE of any session; it is also done with
+		// the output the plugin kept for it.
+		c.forgetSession(sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
+	}
 	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
-	return client.DetachSession(
+	c.detachStarted(sessionID)
+	session, err := client.DetachSession(
 		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
+	if sessionGone(err) {
+		c.forgetSession(sessionID)
+	}
+	return session, err
 }
 
 func (c *controller) WriteSession(
@@ -761,6 +820,7 @@ func (c *controller) WriteSession(
 
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
+	ok = ok && !index.ended
 	var inchan chan exec.StreamInput
 	if ok && !index.local {
 		inchan = c.inChans[index.pluginID]
@@ -791,7 +851,7 @@ func (c *controller) CloseSession(
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
-	index, client, ok := c.lookupSession(sessionID)
+	index, client, ok := c.lookupSessionOrEnded(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
@@ -800,13 +860,27 @@ func (c *controller) CloseSession(
 	if index.local {
 		return c.terminalManager.CloseSession(sessionID)
 	}
+	if index.ended {
+		// It ended by itself and no window attached: there is nothing to close. The output the plugin kept is for an attach
+		// that nobody will make now, and goes with the plugin's own limits.
+		c.forgetSession(sessionID)
+		return nil
+	}
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
-	return client.CloseSession(
+	c.closeStarted(sessionID)
+	err = client.CloseSession(
 		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
 		sessionID,
 	)
+	if err == nil || sessionGone(err) {
+		// A session that ended by itself in the instant before the host heard of it is closed: plugin-sdk v0.22.1 answers
+		// not-found to a close that comes then. That is what the caller asked for, and no failure.
+		c.forgetSession(sessionID)
+		return nil
+	}
+	return err
 }
 
 func (c *controller) ResizeSession(

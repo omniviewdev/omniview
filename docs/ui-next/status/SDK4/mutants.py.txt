@@ -1,0 +1,48 @@
+# THROWAWAY (SDK4), kept here so a reviewer can rerun it: the overlay mutants of the ended-session record. Each entry takes a copy of backend/pkg/plugin/exec/ended_session.go or
+# controller.go with ONE fault put in (an exact-text replacement, asserted to match once), points `go test -overlay` at it and runs the new tests; a mutant is KILLED when a named test fails.
+# Nothing is written into the tree. Run from anywhere as `python3 mutants.py.txt [tag ...]` after changing `root` to the worktree (the file is a Python script; the .txt keeps it out of the build).
+import json, os, subprocess, sys, re
+root = '/Users/joshuapare/Repos/omniviewdev/worktrees/sdk4-host-pin'
+ended = root + '/backend/pkg/plugin/exec/ended_session.go'
+ctrl = root + '/backend/pkg/plugin/exec/controller.go'
+src = {ended: open(ended).read(), ctrl: open(ctrl).read()}
+M = [
+ ('M1 CLOSE always forgets the record (the old behaviour)', ended, 'if record.local || record.attached || record.closing {', 'if true {', 1),
+ ('M2 an attach never marks the session attached', ended, 'record.attached = true\n\t\tc.sessionIndex[sessionID] = record', 'record.attached = false\n\t\tc.sessionIndex[sessionID] = record', 1),
+ ('M3 a detach does not clear attached', ended, 'record.attached = false\n\t\tc.sessionIndex[sessionID] = record\n\t}\n}\n\n// closeStarted', 'record.attached = true\n\t\tc.sessionIndex[sessionID] = record\n\t}\n}\n\n// closeStarted', 1),
+ ('M4a a lookup does not expire a record', ended, 'if record.ended && now.Sub(record.endedAt) > endedSessionTTL {', 'if false && now.Sub(record.endedAt) > endedSessionTTL {', 1),
+ ('M4b a new record does not sweep the expired ones', ended, 'case now.Sub(record.endedAt) > endedSessionTTL:\n\t\t\tdelete(c.sessionIndex, id)', 'case false:\n\t\t\tdelete(c.sessionIndex, id)', 1),
+ ('M5 no limit on the ended records', ended, 'for ; ended >= endedSessionLimit; ended-- {', 'for ; false; ended-- {', 1),
+ ('M6 the newest is evicted instead of the oldest', ended, 'record.endedSeq < seq', 'record.endedSeq > seq', 1),
+ ('M7 an attach leaves the ended record', ended, 'case record.ended, sessionGone(answer):', 'case sessionGone(answer):', 1),
+ ('M9 a close the host asked for is not noted', ended, 'record.closing = true', 'record.closing = false', 1),
+ ('M11 a not-found attach keeps the live record', ended, 'case record.ended, sessionGone(answer):', 'case record.ended:', 1),
+ ('M16 not-found is only the gRPC status', ended, 'errors.Is(err, exec.ErrSessionNotFound) ||', '(false && errors.Is(err, exec.ErrSessionNotFound)) ||', 1),
+ ('M17 not-found is only the SDK error', ended, 'status.Code(err) == codes.NotFound ||', '(false && status.Code(err) == codes.NotFound) ||', 1),
+ ('M8 a close that finds the session gone is an error', ctrl, 'if err == nil || sessionGone(err) {', 'if err == nil {', 1),
+ ('M10 the other calls find an ended session', ctrl, 'if !ok || idx.ended {', 'if !ok {', 1),
+ ('M12 a detach that finds the session gone keeps its record', ctrl, '\tif sessionGone(err) {\n\t\tc.forgetSession(sessionID)\n\t}\n\treturn session, err', '\treturn session, err', 1),
+ ('M18 an attach to an ended record answers in the plugin\'s words', ctrl, 'if index.ended && sessionGone(err) {', 'if false {', 1),
+ ('M19 a write reaches an ended session', ctrl, 'ok = ok && !index.ended', '_ = index.ended', 1),
+ ('M21 a close of an ended record asks the plugin', ctrl, '\tif index.ended {\n\t\t// It ended by itself and no window attached: there is nothing to close. The output the plugin kept is for an attach\n\t\t// that nobody will make now, and goes with the plugin\'s own limits.\n\t\tc.forgetSession(sessionID)\n\t\treturn nil\n\t}\n', '', 1),
+]
+names = 'TestTheOutputOf|TestASessionThatEnded|TestTheRecordOf|TestTheThirtyThird|TestLiveSessionsAreNot|TestUnloadingAPlugin|TestAnAttachRacing|TestAnEndedSessionTakes|TestClosingAnEnded|TestDetachingAnEnded|TestClosingASessionThatJustEnded|TestAFailedClose|TestASessionTheHostClosed|TestAnAttachToAPluginThatKept|TestACommandWhose|TestACallAboutASession'
+only = sys.argv[1:] 
+env = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local', GOFLAGS='')
+survivors = []
+for name, path, old, new, count in M:
+    tag = name.split()[0]
+    if only and tag not in only: continue
+    s = src[path]
+    assert s.count(old) == count, (name, s.count(old))
+    out = '/tmp/sdk4/mut/%s.go' % tag
+    open(out, 'w').write(s.replace(old, new))
+    ov = '/tmp/sdk4/mut/%s.json' % tag
+    json.dump({'Replace': {path: out}}, open(ov, 'w'))
+    r = subprocess.run(['go', 'test', '-count=1', '-overlay=' + ov, './backend/pkg/plugin/exec/', '-run', names, '-v'], cwd=root, env=env, capture_output=True, text=True, timeout=600)
+    failed = sorted(set(re.findall(r'^(?:\s*)--- FAIL: (\S+)', r.stdout, re.M)))
+    top = sorted(set(f.split('/')[0] for f in failed))
+    status = 'KILLED' if r.returncode != 0 and top else ('BUILD-ERR' if 'build failed' in r.stdout + r.stderr or '[build failed]' in r.stdout else 'SURVIVED')
+    if status != 'KILLED': survivors.append(name)
+    print('%-9s %s\n          -> %s' % (status, name, ', '.join(top) if top else (r.stdout + r.stderr)[-300:].strip()))
+print('survivors:', survivors)
