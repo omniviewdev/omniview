@@ -18,6 +18,8 @@ const POPOVER = '#statusitem-bell-popover';
 const BELL = '.statusitem[data-key="bell"]';
 const ROW = `${POPOVER} .notify[data-surface="center"]`;
 
+export const FILTER_MENU = '[role="menu"][aria-label="Filter notifications"]';
+
 /** The parts of the surface. `mock` is relative to the whole document. */
 export const PARTS = [
   { name: 'statusBar', mock: 'footer.statusbar', shell: 'footer[data-shell-region="statusBar"]' },
@@ -54,8 +56,8 @@ export const PARTS = [
   { name: 'centreEmptyIcon', mock: `${POPOVER} .empty2 .bigicon`, shell: '[data-notices-part="centreEmptyIcon"]' },
   { name: 'centreEmptyTitle', mock: `${POPOVER} .empty2 b`, shell: '[data-notices-part="centreEmptyTitle"]' },
   { name: 'centreEmptyHint', mock: `${POPOVER} .empty2 .tiny`, shell: '[data-notices-part="centreEmptyHint"]' },
-  { name: 'centreMenu', mock: `${POPOVER} .menu[role="menu"]`, shell: '[data-notices-part="filterMenu"]' },
-  { name: 'centreMenuItem', all: true, mock: `${POPOVER} .menu[role="menu"] .menu__item`, shell: '[data-notices-part="filterItem"]' },
+  { name: 'centreMenu', mock: `${POPOVER} .menu[role="menu"]`, shell: FILTER_MENU },
+  { name: 'centreMenuItem', all: true, mock: `${POPOVER} .menu[role="menu"] .menu__item`, shell: `${FILTER_MENU} [role^="menuitem"]` },
 ];
 
 const BOX = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];

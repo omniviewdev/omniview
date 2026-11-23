@@ -42,7 +42,7 @@ for (const entry of entries.filter((name) => name.endsWith('.map'))) {
 
 // Each script entry, with the packages it may import besides React: the examples are consumer code and import the kit by name.
 const scripts = [
-  { file: 'dist/index.js', external: [] as string[] },
+  { file: 'dist/index.js', external: ['react-dom'] },
   { file: 'dist/examples.js', external: ['@omniviewdev/kit'] },
 ];
 for (const { file, external } of scripts) {

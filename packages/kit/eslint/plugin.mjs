@@ -7,6 +7,10 @@
  * and there is no passthrough (strategy R7).
  */
 
+import path from 'node:path';
+
+const MENU_DIRECTORY = path.resolve(import.meta.dirname, '../src/components/Menu');
+
 const STATIC_NODE_TYPES = ['Literal'];
 
 /** True when the expression can be evaluated without running the program: a literal, or an operator over literals. */
@@ -97,6 +101,20 @@ function heritageName(node) {
   return '';
 }
 
+function importsMenuTrigger(callee, context) {
+  for (let scope = context.sourceCode.getScope(callee); scope !== null; scope = scope.upper) {
+    const binding = scope.set.get(callee.name);
+    if (binding === undefined) continue;
+    const definition = binding.defs[0];
+    if (binding.defs.length !== 1 || definition?.type !== 'ImportBinding' || definition.node.type !== 'ImportSpecifier') return false;
+    if (definition.node.imported.name !== 'menuTrigger') return false;
+    const source = definition.parent.source.value;
+    return source === '@omniviewdev/kit' ||
+      (source.startsWith('.') && path.resolve(path.dirname(context.physicalFilename), source) === MENU_DIRECTORY);
+  }
+  return false;
+}
+
 /** In the kit: a part's props are closed. No `className`, no `style`, no HTML attribute types, no spread of unknown props onto the DOM. */
 export const closedProps = {
   meta: {
@@ -108,7 +126,7 @@ export const closedProps = {
       attributeTypes:
         'A kit part must not take {{name}}: props are closed. Declare each prop; `data-*` passes through `dataAttributes()`.',
       spread:
-        'Spreading props onto a DOM element lets a caller restyle the part. Only `dataAttributes(...)` may be spread.',
+        'Spreading props lets a caller restyle the part. Only `dataAttributes(...)` and the kit’s `menuTrigger(...)` may be spread.',
     },
     schema: [],
   },
@@ -142,7 +160,8 @@ export const closedProps = {
       JSXSpreadAttribute(node) {
         const argument = unwrap(node.argument);
         const sanctioned =
-          argument?.type === 'CallExpression' && argument.callee.type === 'Identifier' && argument.callee.name === 'dataAttributes';
+          argument?.type === 'CallExpression' && argument.callee.type === 'Identifier' &&
+          (argument.callee.name === 'dataAttributes' || importsMenuTrigger(argument.callee, context));
         if (!sanctioned) context.report({ node, messageId: 'spread' });
       },
     };

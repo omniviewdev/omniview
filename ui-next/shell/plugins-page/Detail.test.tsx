@@ -1,3 +1,4 @@
+import { MenuHost } from '@omniviewdev/kit';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { unloadedFailure } from '../../plugins/loader/failure';
@@ -40,7 +41,7 @@ async function open(entries: readonly InventoryEntry[], id: string | null = entr
     await settle();
   });
   const onUninstall = vi.fn<(id: string) => void>();
-  render(<Detail model={model} id={id} onUninstall={onUninstall} />);
+  render(<Detail model={model} id={id} onUninstall={onUninstall} />, { wrapper: MenuHost });
   return { h, model, onUninstall };
 }
 

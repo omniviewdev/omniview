@@ -1,3 +1,4 @@
+import { MenuHost } from '@omniviewdev/kit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
@@ -135,7 +136,7 @@ async function mount(plugins: readonly InventoryEntry[], options: Options = {}):
     );
   };
 
-  let view = render(draw(onRetry, true));
+  let view = render(draw(onRetry, true), { wrapper: MenuHost });
   await act(async () => {
     await settle();
   });
@@ -151,7 +152,7 @@ async function mount(plugins: readonly InventoryEntry[], options: Options = {}):
     },
     remount: async () => {
       view.unmount();
-      view = render(draw(onRetry, true));
+      view = render(draw(onRetry, true), { wrapper: MenuHost });
       await act(async () => {
         await settle();
       });

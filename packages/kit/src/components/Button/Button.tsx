@@ -23,6 +23,8 @@ export type ButtonProps = {
   readonly busy?: boolean | undefined;
   /** Why the command is unavailable. The button stays focusable with `aria-disabled`, does nothing, and has this as its description. Print the same reason where the user reads the page (design 14 P2, 04 DR1). */
   readonly disabledReason?: string | undefined;
+  /** A dropdown trigger declares its menu through `menuTrigger`. The host owns expanded and controls state. */
+  readonly 'aria-haspopup'?: 'menu' | undefined;
   readonly onClick?: ((event: MouseEvent<HTMLButtonElement>) => void) | undefined;
 } & DataAttributes;
 
@@ -30,7 +32,7 @@ export type ButtonProps = {
  * A command in a native button: a label, an optional icon, three variants, a danger tone, three sizes. Props are closed: no
  * `className`, no `style`; `data-*` passes through. It is never natively disabled and never submits a form.
  */
-export function Button({ children, variant = 'secondary', tone = 'neutral', size = 'standard', icon, busy, disabledReason, onClick, ...rest }: ButtonProps) {
+export function Button({ children, variant = 'secondary', tone = 'neutral', size = 'standard', icon, busy, disabledReason, 'aria-haspopup': hasPopup, onClick, ...rest }: ButtonProps) {
   const command = useCommand({ busy, disabledReason, onClick });
   return (
     <button
@@ -41,6 +43,7 @@ export function Button({ children, variant = 'secondary', tone = 'neutral', size
       data-ov-tone={tone}
       data-ov-size={size}
       aria-disabled={command.reason === undefined ? undefined : 'true'}
+      aria-haspopup={hasPopup}
       aria-busy={busy === true ? 'true' : undefined}
       aria-describedby={command.reason === undefined ? undefined : command.reasonId}
       onClick={command.onClick}

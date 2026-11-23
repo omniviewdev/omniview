@@ -35,6 +35,7 @@ tester.run('closed-props', plugin.rules['closed-props'], {
   valid: [
     { code: 'interface TextProps extends DataAttributes { readonly variant?: string }' },
     { code: 'function Text({ variant, ...rest }: TextProps) { return <span {...dataAttributes(rest)} data-ov-variant={variant} />; }' },
+    { code: 'import { menuTrigger as trigger } from "@omniviewdev/kit"; const a = <button {...trigger("actions")} />;' },
   ],
   invalid: [
     { code: 'interface P { className?: string }', errors: [{ messageId: 'restyleProp' }] },
@@ -48,6 +49,9 @@ tester.run('closed-props', plugin.rules['closed-props'], {
     { code: 'type P = ComponentPropsWithoutRef<"button"> & { a: 1 };', errors: [{ messageId: 'attributeTypes' }] },
     { code: 'function T(props: P) { return <div {...props} />; }', errors: [{ messageId: 'spread' }] },
     { code: 'function T({ a, ...rest }: P) { return <div {...rest} />; }', errors: [{ messageId: 'spread' }] },
+    { code: 'const menuTrigger = () => props; const a = <button {...menuTrigger()} />;', errors: [{ messageId: 'spread' }] },
+    { code: 'import { menuTrigger } from "./Other"; const a = <button {...menuTrigger()} />;', errors: [{ messageId: 'spread' }] },
+    { code: 'import { menuTrigger } from "@omniviewdev/kit"; function A(menuTrigger) { return <button {...menuTrigger()} />; }', errors: [{ messageId: 'spread' }] },
   ],
 });
 

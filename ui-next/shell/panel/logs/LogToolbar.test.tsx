@@ -1,4 +1,4 @@
-import { ThemeProvider } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider } from '@omniviewdev/kit';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Profiler, type ReactElement } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -100,7 +100,7 @@ function mount(options: { readonly state?: 'starting' | 'streaming' | 'ended' | 
       </Profiler>
     </ThemeProvider>
   );
-  const view = render(body(true));
+  const view = render(body(true), { wrapper: MenuHost });
   return {
     store,
     feed,
@@ -607,7 +607,7 @@ describe('a toolbar that is not on screen', () => {
 
 
 // A column that does not fit (the mock's rule, shell-regions.js 298-320): the buttons that do not fit are the LAST ones and stand behind a `⋯` More actions button that takes the last slot, so none is clipped and the
-// column never scrolls. The kit's row menu lists them. jsdom has no layout and no Popover API: the column's height is the test's, the observer is a stub the test calls, and the menu is given what a browser would.
+// column never scrolls. The shared menu lists them. jsdom has no layout and no Popover API: the column's height is the test's, the observer is a stub the test calls, and the menu is given what a browser would.
 describe('a column that does not fit', () => {
   const observers: Array<() => void> = [];
   let popoverRule: HTMLStyleElement;
@@ -697,6 +697,30 @@ describe('a column that does not fit', () => {
     fireEvent.click(within(screen.getByRole('menu', { name: 'Logs actions' })).getByRole('menuitem', { name: 'Clear' }));
     frames(2);
     expect(rowCount()).toBe('1');
+  });
+
+  it('dismisses the old Pause command when the feed pauses independently and offers Resume on reopening', () => {
+    column.height = 79;
+    const { feed, show } = mount();
+    const trigger = button('More actions');
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu', { name: 'Logs actions' });
+    expect(within(menu).getByRole('menuitem', { name: 'Pause log updates' })).toBeInTheDocument();
+
+    show(true);
+    expect(screen.getByRole('menu')).toBe(menu);
+
+    act(() => {
+      feed.set({ state: 'paused', paused: true });
+    });
+    frames(2);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(feed.getSnapshot().paused).toBe(true);
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume log updates' }));
+    expect(feed.getSnapshot().paused).toBe(false);
   });
 
   it('says an item cannot apply, as the button would, and why: Clear and Copy with no line are unavailable in the menu, each with its reason in its text', () => {

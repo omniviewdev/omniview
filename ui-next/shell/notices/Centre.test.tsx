@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { restoreNotices } from '../core/notices';
 import { START } from '../core/notices/testing';
@@ -393,18 +393,17 @@ describe('the Filter menu and the mute of a source', () => {
     expect(within(menu()).queryByRole('menuitem')).toBeNull();
   });
 
-  // The mock's menu is a grid of its own columns (`.menu[data-mark]`, `[data-icon]`, shell-menu.css): a column for the marks of its radios and, when it has a command with a glyph, one for the glyphs, each 20 px, and the menu is
-  // as wide as its longest word.
+  // The shared menu reserves a mark column for its radios and adds an icon column when it shows the source commands.
   it('has a column for the marks of its radios, and one for the glyphs of its commands once a source is chosen', async () => {
     const m = mountWindow();
     await two(m);
     await m.user.click(tool('Filter'));
-    expect(menu().hasAttribute('data-mark')).toBe(true);
-    expect(menu().hasAttribute('data-icon')).toBe(false);
+    expect(menu().querySelector('[data-ov-menu-body][data-ov-mark]')).not.toBeNull();
+    expect(menu().querySelector('[data-ov-menu-body][data-ov-icon]')).toBeNull();
     await m.user.click(within(menu()).getByRole('menuitemradio', { name: 'Cloud (2)' }));
     await m.user.click(tool('Filter'));
-    expect(menu().hasAttribute('data-mark')).toBe(true);
-    expect(menu().hasAttribute('data-icon')).toBe(true);
+    expect(menu().querySelector('[data-ov-menu-body][data-ov-mark]')).not.toBeNull();
+    expect(menu().querySelector('[data-ov-menu-body][data-ov-icon]')).not.toBeNull();
   });
 
   it('marks the chosen source with a dot and no other source, and gives each command its glyph', async () => {
@@ -415,7 +414,7 @@ describe('the Filter menu and the mute of a source', () => {
     await m.user.click(tool('Filter'));
     const marks = within(menu())
       .getAllByRole('menuitemradio')
-      .map((choice) => [choice.textContent, choice.querySelector('[data-dot]') !== null, choice.querySelector('svg') !== null]);
+      .map((choice) => [choice.textContent, choice.querySelector('[data-ov-menu-mark][data-ov-menu-radio]') !== null, choice.querySelector('svg') !== null]);
     expect(marks).toEqual([
       ['All sources', false, false],
       ['Cloud (2)', true, false],
@@ -453,6 +452,9 @@ describe('the Filter menu and the mute of a source', () => {
     expect(titles()).toEqual(['Disk almost full', 'Snapshot created', 'Timed out']);
     expect(m.centre.getSnapshot().source).toBe('');
     expect(dialog().querySelector('[data-notices-part="centreNote"]')).toBeNull();
+    expect(tool('Filter')).toHaveFocus();
+    await m.user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull();
   });
 
   it('offers to mute the chosen source for an hour, and only when one is chosen', async () => {
@@ -482,6 +484,44 @@ describe('the Filter menu and the mute of a source', () => {
     expect(notes.some((text) => text.includes('Cloud is muted until'))).toBe(true);
     expect(titles()).toEqual(['Disk almost full', 'Timed out']);
     expect(bell()).toHaveAccessibleName('Notifications, 1 unread');
+  });
+
+  it('keeps Filter open for an unrelated mute but dismisses the Unmute action when the selected mute expires', async () => {
+    const m = mountWindow();
+    await two(m);
+    m.centre.filter('cloud');
+    m.f.store.mute('cloud', m.clock.now() + 1_000);
+    await m.flush();
+    const filter = tool('Filter');
+    await m.user.click(filter);
+    const opened = menu();
+    expect(within(opened).getByRole('menuitem', { name: 'Unmute Cloud' })).toBeInTheDocument();
+
+    m.f.store.mute('stack');
+    await m.flush();
+    expect(menu()).toBe(opened);
+
+    await m.pass(1_000);
+    await m.flush();
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(filter).toHaveFocus();
+    await m.user.click(filter);
+    expect(within(menu()).getByRole('menuitem', { name: 'Mute Cloud for 1 hour' })).toBeInTheDocument();
+  });
+
+  it('does not announce an Unmute that the store has already applied before publishing its new snapshot', async () => {
+    const m = mountWindow();
+    await two(m);
+    m.centre.filter('cloud');
+    m.f.store.mute('cloud');
+    await m.flush();
+    await m.user.click(tool('Filter'));
+    const unmute = within(menu()).getByRole('menuitem', { name: 'Unmute Cloud' });
+    const announced = m.announcer.polite.getSnapshot();
+    expect(m.f.store.unmute('cloud')).toBe(true);
+    expect(unmute).toBeInTheDocument();
+    fireEvent.click(unmute);
+    expect(m.announcer.polite.getSnapshot()).toBe(announced);
   });
 
   it('unmutes from the note, and says so', async () => {
@@ -520,6 +560,7 @@ describe('the Filter menu and the mute of a source', () => {
     expect(empty?.textContent).toContain('Nothing matches the source you chose.');
     await m.user.click(within(empty as HTMLElement).getByRole('button', { name: 'Clear filters' }));
     expect(titles()).toEqual(['Snapshot created']);
+    expect(tool('Filter')).toHaveFocus();
   });
 
   it('keeps the source it was narrowed to when it is closed and opened again, as the mock does', async () => {

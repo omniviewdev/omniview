@@ -18,7 +18,7 @@
 // Wired as the host wires it (ui-next/plugins/host/notices.ts): while the palette is open the stack waits (`hold('modal')`), and when it closes the stack comes back.
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { Button, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
+import { Button, MenuHost, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { Profiler } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createAnnouncer, createCentre, createNoticesAnnouncer, createNoticesStore, createPaletteStore, type NoticesAnnouncer, type NoticesBindings, type NoticesStore, type PaletteBindings, type PaletteCandidate, type PaletteSource, type ShellRegistration } from '..';
@@ -271,12 +271,14 @@ createRoot(document.getElementById('root')!).render(
         commits.push({ phase, actualDuration });
       }}
     >
-      <StaticShell registration={registration} tabs={tabs} panel={panel} palette={paletteBindings} notices={notices}>
-        <div data-fixture="page">
-          <Button data-fixture="page-control">A control in the page</Button>
-          <Button data-fixture="page-other">Another control</Button>
-        </div>
-      </StaticShell>
+      <MenuHost>
+        <StaticShell registration={registration} tabs={tabs} panel={panel} palette={paletteBindings} notices={notices}>
+          <div data-fixture="page">
+            <Button data-fixture="page-control">A control in the page</Button>
+            <Button data-fixture="page-other">Another control</Button>
+          </div>
+        </StaticShell>
+      </MenuHost>
     </Profiler>
     <TooltipHost />
   </ThemeProvider>,

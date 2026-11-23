@@ -20,6 +20,7 @@ import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import {
   KindTile,
+  MenuHost,
   MiddleEllipsis,
   PageHeader,
   Status,
@@ -520,12 +521,14 @@ const detailStart = (state: string | null): DetailStart => (state === 'loading' 
 
 createRoot(document.getElementById('root')!).render(
   <ThemeProvider>
-    {name === 'detail' ? (
-      <DetailCase start={detailStart(new URLSearchParams(window.location.search).get('state'))} expose={expose} />
-    ) : config === undefined ? (
-      <HeaderCase />
-    ) : (
-      <ListCase config={config} definition={definitionOf(config.words, config.sortable === true)} rows={itemsOf(rowCount)} />
-    )}
+    <MenuHost>
+      {name === 'detail' ? (
+        <DetailCase start={detailStart(new URLSearchParams(window.location.search).get('state'))} expose={expose} />
+      ) : config === undefined ? (
+        <HeaderCase />
+      ) : (
+        <ListCase config={config} definition={definitionOf(config.words, config.sortable === true)} rows={itemsOf(rowCount)} />
+      )}
+    </MenuHost>
   </ThemeProvider>,
 );

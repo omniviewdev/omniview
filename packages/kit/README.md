@@ -25,6 +25,25 @@ Never edit `src/index.ts`, `src/generated/*` or `src/examples.ts` by hand: they 
 
 Never merge a generated file by hand. Resolve the conflicts in your part's files, then run `pnpm --filter @omniviewdev/kit run refresh` and commit the result: both registries and both API reports are rebuilt from the merged directories.
 
+## Action menus
+
+`ui-next` provides one `MenuHost` per window. Register a local definition with `useMenu` **once per owning view**, not once per row. Give each trigger a stable record key. The resolver runs when a trigger opens, not when the table renders.
+
+```tsx
+const menu = useMenu(key => {
+  const record = key === undefined ? undefined : records.get(key);
+  if (!record) return [];
+  return [{ kind: 'action', id: 'inspect', label: 'Inspect', onSelect: () => inspect(record.id) }];
+});
+
+// Inside the row renderer:
+<button {...menuTrigger(menu, record.id)} aria-label={`Actions for ${record.name}`}>…</button>
+```
+
+Use `menuTrigger(menu, record.id, 'context')` on a keyboard-reachable element for secondary click, Shift+F10 and the Menu key. The same definition serves both invocations. Keep commands in the owning view; use `Select` for a form value and a palette for searchable commands.
+
+The **Menu** section of `/?screen=parts` demonstrates toolbar overflow, grouped launch targets, nested commands, tab context actions, checked settings, and a virtualized 20,000-record table.
+
 ## Commands
 
 ```sh

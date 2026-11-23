@@ -16,7 +16,7 @@
 // What the page exposes: `window.__series` (a sample of the strip's text every 250 ms from the moment the producer starts: `[ms since then, text]`) and `window.__feed` (what the feed made so far, and when its producer spoke).
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { ThemeProvider, type LogFeed, type LogFeedBatch, type LogFeedLine, type LogFeedSnapshot, type LogFeedStats } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider, type LogFeed, type LogFeedBatch, type LogFeedLine, type LogFeedSnapshot, type LogFeedStats } from '@omniviewdev/kit';
 import { createRoot } from 'react-dom/client';
 import { LogSession } from '../panel/logs/LogSession';
 
@@ -149,7 +149,9 @@ Reflect.set(window, '__series', series);
 createRoot(document.getElementById('root')!).render(
   <ThemeProvider>
     <div data-fixture="body">
-      <LogSession label="source · app" feed={feed} session="open" />
+      <MenuHost>
+        <LogSession label="source · app" feed={feed} session="open" />
+      </MenuHost>
     </div>
   </ThemeProvider>,
 );

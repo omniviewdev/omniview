@@ -186,6 +186,25 @@ describe('the tools and the Filter menu', () => {
     expect(m.centre.getSnapshot().open).toBe(true);
   });
 
+  it('keeps the menu inside the centre and distinguishes presses inside the centre from presses outside both', async () => {
+    const m = mountWindow();
+    await three(m);
+    await m.user.click(bell());
+    const filter = within(dialog()).getByRole('button', { name: 'Filter' });
+    await m.user.click(filter);
+    expect(dialog()).toContainElement(screen.getByRole('menu', { name: 'Filter notifications' }));
+    await m.user.click(within(dialog()).getByRole('heading', { name: 'Notifications' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(m.centre.getSnapshot().open).toBe(true);
+
+    await m.user.click(filter);
+    const outside = screen.getByRole('button', { name: 'Inside the page' });
+    await m.user.click(outside);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull();
+    expect(outside).toHaveFocus();
+  });
+
   it('chooses a source with Enter, narrows the list, and closes the menu with the focus on Filter', async () => {
     const m = mountWindow();
     await three(m);

@@ -1,0 +1,322 @@
+@layer ov.components {
+  .portal {
+    display: contents;
+  }
+
+  .root {
+    position: fixed;
+    inset: auto;
+    left: var(--_x, 0px);
+    top: var(--_y, 0px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: min(180px, var(--_max-width, calc(100vw - 8px)));
+    max-width: min(360px, var(--_max-width, calc(100vw - 8px)));
+    max-height: var(--_max-height, none);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    cursor: default;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .root[popover]:not(:popover-open) {
+    display: none;
+  }
+
+  .root:not([data-ov-side]) {
+    visibility: hidden;
+  }
+
+  .root:focus {
+    outline: 0;
+  }
+
+  /* All entries, including groups, align on the same tracks: inset, mark, icon, label, metadata, shortcut, arrow, inset. */
+  .body {
+    --_mark: 0px;
+    --_icon: 0px;
+    --_arrow: 0px;
+    --_label-floor: 0px;
+
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: var(--ov-spacing-8) var(--_mark) var(--_icon) minmax(var(--_label-floor), 1fr) fit-content(200px) minmax(0, max-content) var(--_arrow) var(--ov-spacing-8);
+    align-content: start;
+    min-height: 0;
+    padding: var(--ov-spacing-8);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    scroll-padding-block: var(--ov-spacing-8);
+  }
+
+  .root[data-ov-menu-profile='context'] .body {
+    padding-block: var(--ov-spacing-6);
+  }
+
+  .body[data-ov-mark] {
+    --_mark: var(--ov-spacing-20);
+  }
+
+  .body[data-ov-icon] {
+    --_icon: var(--ov-spacing-20);
+  }
+
+  .body[data-ov-arrow] {
+    --_arrow: 22px;
+  }
+
+  .body:has(.metadata) {
+    --_label-floor: min(144px, 35vw);
+  }
+
+  .group,
+  .item {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    min-width: 0;
+  }
+
+  .item {
+    --_glyph: var(--ov-icon);
+    --_secondary: var(--ov-fg-muted);
+
+    align-items: center;
+    box-sizing: border-box;
+    min-height: max(var(--ov-row-target), calc(var(--ov-lh-16) + var(--ov-spacing-4)));
+    column-gap: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    appearance: none;
+    background-color: transparent;
+    color: var(--ov-fg);
+    font: inherit;
+    text-align: start;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .root[data-ov-menu-profile='context'] .item {
+    min-height: max(calc(var(--ov-row-target) + 2px), calc(var(--ov-lh-16) + var(--ov-spacing-6)));
+    border-block: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .item[aria-expanded='true'] {
+    background-color: var(--ov-selection-inactive);
+  }
+
+  .item:focus {
+    --_glyph: var(--ov-fg);
+    --_secondary: var(--ov-fg-editor);
+
+    background-color: var(--ov-selection-active);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+  }
+
+  .item[data-ov-destructive] {
+    --_glyph: var(--ov-error-fg);
+
+    color: var(--ov-error-fg);
+  }
+
+  .item[data-ov-destructive]:focus {
+    --_glyph: var(--ov-fg);
+
+    color: var(--ov-fg);
+  }
+
+  .item[aria-disabled='true'] {
+    --_glyph: var(--ov-icon-disabled);
+    --_secondary: var(--ov-fg-disabled);
+
+    background-color: transparent;
+    color: var(--ov-fg-disabled);
+  }
+
+  .item[aria-disabled='true']:focus {
+    outline-color: currentcolor;
+  }
+
+  @media (forced-colors: active) {
+    .item[aria-disabled='true'] {
+      --_disabled-system: GrayText;
+      --_glyph: currentcolor;
+      --_secondary: currentcolor;
+
+      color: var(--_disabled-system);
+      forced-color-adjust: none;
+    }
+  }
+
+  .mark,
+  .icon,
+  .arrow {
+    display: flex;
+    align-items: center;
+    color: var(--_glyph);
+  }
+
+  .mark {
+    grid-column: 2;
+  }
+
+  .mark[data-ov-menu-radio]::before {
+    width: 0;
+    height: 0;
+    margin-inline-start: var(--ov-spacing-4);
+    border: 3px solid currentcolor;
+    border-radius: 50%;
+    content: '';
+  }
+
+  .icon {
+    grid-column: 3;
+  }
+
+  .label,
+  .metadataText,
+  .shortcut,
+  .title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .label {
+    grid-column: 4;
+  }
+
+  .item:not(:has(.metadata)) .label {
+    grid-column: 4 / 6;
+  }
+
+  .metadata {
+    display: flex;
+    grid-column: 5;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    margin-inline-start: var(--ov-spacing-12);
+    overflow: hidden;
+  }
+
+  .metadata > svg {
+    flex: 0 0 auto;
+  }
+
+  .body[data-ov-metadata-icon] .metadata:not([data-ov-metadata-icon])::before {
+    flex: 0 0 16px;
+    content: '';
+  }
+
+  .metadata,
+  .shortcut {
+    color: var(--_secondary);
+    font-size: var(--ov-fs-12);
+  }
+
+  .shortcut {
+    grid-column: 6;
+    justify-self: end;
+    max-width: 100%;
+    margin-inline-start: var(--ov-spacing-24);
+  }
+
+  .shortcut > kbd {
+    font: inherit;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .arrow {
+    grid-column: 7;
+    justify-self: end;
+  }
+
+  .root[dir='rtl'] .arrow {
+    transform: scaleX(-1);
+  }
+
+  .title {
+    grid-column: 1 / -1;
+    align-content: center;
+    min-height: var(--ov-row-target);
+    padding-inline: var(--ov-spacing-8);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+
+  .separator {
+    grid-column: 1 / -1;
+    height: 0;
+    margin-block: var(--ov-spacing-4);
+    border-block-start: 1px solid var(--ov-border-popup);
+  }
+
+  /* Keep this lane the same size as the widest hint line, so moving focus never shifts a placed panel. */
+  .footer {
+    display: grid;
+    flex: 0 0 auto;
+    padding: var(--ov-spacing-8) var(--ov-spacing-16);
+    overflow: hidden;
+    border-block-start: 1px solid var(--ov-border-popup);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+
+  .footer > span {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+
+  .hintSizes {
+    display: grid;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+
+  .hintLine {
+    min-height: var(--ov-lh-16);
+  }
+
+  .hints,
+  .hint {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--ov-spacing-4);
+    white-space: nowrap;
+  }
+
+  .hints {
+    gap: var(--ov-spacing-12);
+  }
+
+  .hint > kbd {
+    font: inherit;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+}

@@ -2,6 +2,8 @@ import { Stack, Text } from '@omniviewdev/kit';
 import { examples } from '@omniviewdev/kit/examples';
 import styles from './PartsPage.module.css';
 
+const PARTS = Object.entries(examples);
+
 /** `WithIconDisabled` becomes "With icon disabled": the name of an example, in words. */
 function inWords(name: string): string {
   const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
@@ -14,13 +16,16 @@ function inWords(name: string): string {
  * because it ships an examples file (docs/ui-next/AGENTS.md, "The kit"); this page has no list of its own to keep current.
  */
 export function PartsPage() {
+  // Probes can isolate a part from neighboring examples with live streams or timers.
+  const filter = new URLSearchParams(window.location.search).get('part');
+  const parts = filter === null ? PARTS : PARTS.filter(([part]) => part === filter);
   return (
     <Stack gap={16}>
       <Stack gap={4}>
         <Text as="h2" variant="title">Parts</Text>
         <Text variant="caption" tone="muted">Each part in each state it has an example for, from its examples file.</Text>
       </Stack>
-      {Object.entries(examples).map(([part, set]) => (
+      {parts.map(([part, set]) => (
         <Stack key={part} gap={8}>
           <Text as="h3" variant="title">{part}</Text>
           <div className={styles.examples}>

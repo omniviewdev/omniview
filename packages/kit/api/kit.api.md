@@ -33,6 +33,7 @@ export type ButtonProps = {
     readonly icon?: IconName | undefined;
     readonly busy?: boolean | undefined;
     readonly disabledReason?: string | undefined;
+    readonly 'aria-haspopup'?: 'menu' | undefined;
     readonly onClick?: ((event: MouseEvent_2<HTMLButtonElement>) => void) | undefined;
 } & DataAttributes;
 
@@ -107,9 +108,6 @@ export const compactAge: AgeFormatter;
 
 // @public
 export function createLogViewControls(): LogViewControls;
-
-// @public
-export function createRowMenu<TRow>(): RowMenuHandle<TRow>;
 
 // @public
 export type DataAttributes = Readonly<Record<`data-${string}`, string | number | boolean | undefined>>;
@@ -322,7 +320,7 @@ export type IconButtonProps = {
     readonly busy?: boolean | undefined;
     readonly pressed?: boolean | undefined;
     readonly disabledReason?: string | undefined;
-    readonly popup?: 'menu' | undefined;
+    readonly 'aria-haspopup'?: 'menu' | undefined;
     readonly onClick?: ((event: MouseEvent_2<HTMLButtonElement>) => void) | undefined;
 } & DataAttributes;
 
@@ -546,6 +544,109 @@ export type LogViewState = {
     readonly feed: LogFeedState;
 };
 
+// @public (undocumented)
+export type MenuAction = MenuEntry & {
+    readonly kind: 'action';
+    readonly onSelect: () => void;
+};
+
+// @public (undocumented)
+export type MenuCheckbox = MenuEntry & {
+    readonly kind: 'checkbox';
+    readonly checked: boolean | 'mixed';
+    readonly onChange: (checked: boolean) => void;
+};
+
+// @public
+export type MenuDefinition = readonly MenuItem[] | ((contextKey: string | undefined) => readonly MenuItem[] | null | undefined);
+
+// @public (undocumented)
+export type MenuEntry = {
+    readonly id: string;
+    readonly label: string;
+    readonly icon?: IconName | undefined;
+    readonly shortcut?: string | undefined;
+    readonly metadata?: string | MenuMetadata | undefined;
+    readonly disabled?: boolean | string | undefined;
+    readonly destructive?: boolean | undefined;
+    readonly hints?: readonly MenuKeyHint[] | undefined;
+};
+
+// @public (undocumented)
+export type MenuGroup = {
+    readonly kind: 'group';
+    readonly id: string;
+    readonly label?: string | undefined;
+    readonly items: readonly MenuItem[];
+};
+
+// @public
+export function MenuHost(input: MenuHostProps): ReactElement;
+
+// @public (undocumented)
+export type MenuHostProps = {
+    readonly menus?: MenuRegistry | undefined;
+    readonly children?: ReactNode;
+};
+
+// @public (undocumented)
+export type MenuItem = MenuAction | MenuCheckbox | MenuRadioGroup | MenuSubmenu | MenuGroup | MenuSeparator;
+
+// @public (undocumented)
+export type MenuKeyHint = {
+    readonly keys: string;
+    readonly label: string;
+    readonly spokenKeys?: string | undefined;
+};
+
+// @public (undocumented)
+export type MenuMetadata = {
+    readonly text: string;
+    readonly icon?: IconName | undefined;
+};
+
+// @public (undocumented)
+export type MenuRadioGroup = {
+    readonly kind: 'radio';
+    readonly id: string;
+    readonly label?: string | undefined;
+    readonly value: string;
+    readonly options: readonly MenuRadioOption[];
+    readonly onChange: (value: string) => void;
+};
+
+// @public (undocumented)
+export type MenuRadioOption = MenuEntry;
+
+// @public (undocumented)
+export type MenuRegistry = Readonly<Record<string, MenuDefinition>>;
+
+// @public (undocumented)
+export type MenuSeparator = {
+    readonly kind: 'separator';
+    readonly id: string;
+};
+
+// @public (undocumented)
+export type MenuSubmenu = MenuEntry & {
+    readonly kind: 'submenu';
+    readonly items: readonly MenuItem[];
+};
+
+// @public
+export function menuTrigger(id: string, contextKey?: string, mode?: MenuTriggerMode): MenuTriggerAttributes;
+
+// @public (undocumented)
+export type MenuTriggerAttributes = {
+    readonly 'data-ov-menu': string;
+    readonly 'data-ov-menu-key'?: string;
+    readonly 'data-ov-menu-mode': MenuTriggerMode;
+    readonly 'aria-haspopup'?: 'menu';
+};
+
+// @public (undocumented)
+export type MenuTriggerMode = 'dropdown' | 'context';
+
 // @public
 export function MiddleEllipsis(input: MiddleEllipsisProps): JSX.Element;
 
@@ -624,10 +725,10 @@ export type PageHeaderFact = {
     } | undefined;
 };
 
-// Warning: (ae-forgotten-export) The symbol "MenuEntry" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "MenuEntry_2" needs to be exported by the entry point index.d.ts
 //
 // @public
-export type PageHeaderMenuItem = MenuEntry;
+export type PageHeaderMenuItem = MenuEntry_2;
 
 // @public (undocumented)
 export type PageHeaderProps = {
@@ -716,62 +817,6 @@ export type RovingGroupProps = {
     readonly align?: StackAlign | undefined;
     readonly role?: 'group' | 'toolbar' | undefined;
     readonly children?: ReactNode;
-} & DataAttributes;
-
-// @public
-export function RowMenu<TRow>(input: RowMenuProps<TRow>): ReactElement | null;
-
-// @public
-export type RowMenuFocus = 'first' | 'last' | 'menu';
-
-// @public
-export type RowMenuHandle<TRow> = {
-    readonly id: string;
-    readonly open: (anchor: HTMLElement, row: TRow, focus?: RowMenuFocus) => void;
-    readonly toggle: (anchor: HTMLElement, row: TRow, focus?: RowMenuFocus) => void;
-    readonly close: (options?: {
-        readonly restoreFocus?: boolean | undefined;
-    }) => void;
-    readonly subscribe: (listener: () => void) => () => void;
-    readonly getSnapshot: () => RowMenuState<TRow>;
-};
-
-// @public
-export type RowMenuItem<TRow> = {
-    readonly id: string;
-    readonly label: string;
-    readonly onSelect: (row: TRow) => void;
-    readonly disabled?: boolean | undefined;
-    readonly destructive?: boolean | undefined;
-    readonly separatorBefore?: boolean | undefined;
-};
-
-// @public (undocumented)
-export type RowMenuProps<TRow> = {
-    readonly handle: RowMenuHandle<TRow>;
-    readonly label: string;
-    readonly items: (row: TRow) => ReadonlyArray<RowMenuItem<TRow>>;
-} & DataAttributes;
-
-// @public
-export type RowMenuState<TRow> = {
-    readonly open: false;
-} | {
-    readonly open: true;
-    readonly row: TRow;
-    readonly anchor: HTMLElement;
-    readonly focus: RowMenuFocus;
-    readonly epoch: number;
-};
-
-// @public
-export const RowMenuTrigger: <TRow>(props: RowMenuTriggerProps<TRow>) => ReactElement;
-
-// @public (undocumented)
-export type RowMenuTriggerProps<TRow> = {
-    readonly handle: RowMenuHandle<TRow>;
-    readonly row: TRow;
-    readonly label: string;
 } & DataAttributes;
 
 // @public
@@ -1141,6 +1186,9 @@ export function TooltipHost(): JSX.Element;
 
 // @public
 export function useAge(value: string | number | Date | null | undefined, formatter: AgeFormatter): string;
+
+// @public
+export function useMenu(definition: MenuDefinition, revision?: unknown): string;
 
 // @public (undocumented)
 export function useTheme(): ThemeState;

@@ -17,13 +17,13 @@ import * as linkModule from '../components/Link/Link.examples';
 import * as listRowsModule from '../components/ListRows/ListRows.examples';
 import * as logViewModule from '../components/LogView/LogView.examples';
 import * as logViewParityModule from '../components/LogView/LogView.parity.examples';
+import * as menuModule from '../components/Menu/Menu.examples';
 import * as middleEllipsisModule from '../components/MiddleEllipsis/MiddleEllipsis.examples';
 import * as missingValueModule from '../components/MissingValue/MissingValue.examples';
 import * as numberInputModule from '../components/NumberInput/NumberInput.examples';
 import * as pageHeaderModule from '../components/PageHeader/PageHeader.examples';
 import * as quickFiltersModule from '../components/QuickFilters/QuickFilters.examples';
 import * as rovingGroupModule from '../components/RovingGroup/RovingGroup.examples';
-import * as rowMenuModule from '../components/RowMenu/RowMenu.examples';
 import * as searchFieldModule from '../components/SearchField/SearchField.examples';
 import * as secretInputModule from '../components/SecretInput/SecretInput.examples';
 import * as sectionCardModule from '../components/SectionCard/SectionCard.examples';
@@ -56,13 +56,13 @@ export const partExamples = {
   ListRows: listRowsModule,
   LogView: logViewModule,
   LogViewParity: logViewParityModule,
+  Menu: menuModule,
   MiddleEllipsis: middleEllipsisModule,
   MissingValue: missingValueModule,
   NumberInput: numberInputModule,
   PageHeader: pageHeaderModule,
   QuickFilters: quickFiltersModule,
   RovingGroup: rovingGroupModule,
-  RowMenu: rowMenuModule,
   SearchField: searchFieldModule,
   SecretInput: secretInputModule,
   SectionCard: sectionCardModule,

@@ -1,9 +1,11 @@
+import { MenuHost } from '@omniviewdev/kit';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, restorePanel, type ToolInput } from '../core/panel';
 import type { ShellRegistration } from '../registration';
-import { StaticShell } from '../testing';
+import { StaticShell, staticTabs } from '../testing';
+import { LogToolbar } from './logs/LogToolbar';
 import { staticPanel, type StaticPanelOptions, type StaticSession } from './testing';
 
 // The bottom panel in the shell, against invented tools (Terminal, Logs) and sessions: the toggle and where the focus goes when the panel opens and closes, the strips' keyboard, the splitter's
@@ -184,6 +186,49 @@ describe('the session strip', () => {
     await waitFor(() => {
       expect(tab('Terminal')).toHaveFocus();
     });
+  });
+
+  it('closes the log session, not the workspace tab, on Command+W from its overflow menu', () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    const popoverRule = document.createElement('style');
+    // jsdom's popover shim does not enter :popover-open; show the mounted menu for focus and role queries.
+    popoverRule.textContent = '[data-ov-menu-popup][popover] { display: block !important; }';
+    document.head.append(popoverRule);
+    try {
+      const tabs = staticTabs([
+        { title: 'Home', icon: 'box', path: ['Home'] },
+        { title: 'Current page', icon: 'box', path: ['Current page'] },
+      ], 1);
+      const active = tabs.getSnapshot().active;
+      const panel = staticPanel({
+        tools: [LOGS],
+        open: true,
+        sessions: [{ tool: 'logs', title: 'worker/app', state: 'running' }],
+        renderBody: () => (
+          <LogToolbar
+            tools={[
+              { id: 'pause', label: 'Pause log updates', icon: 'pause', pressed: false },
+              { id: 'clear', label: 'Clear', icon: 'eraser' },
+            ]}
+            slots={1}
+            onPress={vi.fn()}
+          />
+        ),
+      });
+      render(<StaticShell registration={registration} panel={panel} tabs={tabs} />, { wrapper: MenuHost });
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }), { detail: 0 });
+      const item = screen.getByRole('menuitem', { name: 'Pause log updates' });
+      expect(region()).toContainElement(item);
+      expect(item).toHaveFocus();
+
+      fireEvent.keyDown(item, { key: 'w', code: 'KeyW', metaKey: true });
+      expect(Object.keys(panel.store.getSnapshot().sessions)).toEqual([]);
+      expect(tabs.getSnapshot().active).toBe(active);
+      expect(screen.getByRole('tab', { name: 'Current page' })).toHaveAttribute('aria-selected', 'true');
+    } finally {
+      popoverRule.remove();
+      platform.mockRestore();
+    }
   });
 });
 

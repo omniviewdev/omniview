@@ -1,4 +1,4 @@
-import { Button, Chip, RowMenu, RowMenuTrigger, Status, Text, type IconName, type RowMenuHandle, type RowMenuItem } from '@omniviewdev/kit';
+import { Button, Chip, IconButton, Status, Text, menuTrigger, useMenu, type IconName, type MenuItem } from '@omniviewdev/kit';
 import { Fragment, useLayoutEffect, useRef } from 'react';
 import type { Availability } from './core/availability';
 import type { PluginsModel, RowView } from './core/model';
@@ -15,8 +15,6 @@ import { Tile } from './Tile';
 export type HeaderProps = {
   readonly row: RowView;
   readonly model: PluginsModel;
-  /** The page's one row menu (`createRowMenu`): made once for the detail, so that every plugin read in it shares one popup. */
-  readonly menu: RowMenuHandle<RowView>;
   /** The person asked to uninstall (or unlink) the plugin: the page confirms before it calls the model. */
   readonly onUninstall: (id: string) => void;
 };
@@ -72,27 +70,32 @@ function verbOf(row: RowView): Verb | undefined {
 }
 
 /** The items of the More menu for a plugin: Disable while it can be, and Uninstall (Unlink for a development link) unless the product ships the plugin. Uninstall stays, unavailable, while work is under way. */
-function itemsOf(row: RowView, model: PluginsModel, onUninstall: (id: string) => void): ReadonlyArray<RowMenuItem<RowView>> {
-  const items: Array<RowMenuItem<RowView>> = [];
+function itemsOf(row: RowView, model: PluginsModel, onUninstall: (id: string) => void): MenuItem[] {
+  const items: MenuItem[] = [];
   if (row.actions.disable.available) {
     items.push({
+      kind: 'action',
       id: 'disable',
       label: 'Disable',
-      onSelect: (opened) => {
-        model.disable(opened.id);
+      onSelect: () => {
+        model.disable(row.id);
       },
     });
   }
 
   if (!row.plugin.builtin) {
+    if (items.length > 0) {
+      items.push({ kind: 'separator', id: 'uninstall-separator' });
+    }
+
     items.push({
+      kind: 'action',
       id: 'uninstall',
       label: row.plugin.devMode ? 'Unlink…' : 'Uninstall…',
       destructive: true,
-      separatorBefore: true,
       disabled: !row.actions.uninstall.available,
-      onSelect: (opened) => {
-        onUninstall(opened.id);
+      onSelect: () => {
+        onUninstall(row.id);
       },
     });
   }
@@ -148,11 +151,15 @@ function Progress({ word, name, claim, leave }: ProgressProps) {
   );
 }
 
-export function Header({ row, model, menu, onUninstall }: HeaderProps) {
+export function Header({ row, model, onUninstall }: HeaderProps) {
   const { plugin, state } = row;
   const busy = row.op !== null || state.busy;
   const verb = verbOf(row);
-  const items = itemsOf(row, model, onUninstall);
+  const hasMore = row.actions.disable.available || !plugin.builtin;
+  const menu = useMenu((key) => {
+    const opened = key === undefined ? undefined : model.row(key);
+    return opened === undefined ? undefined : itemsOf(opened, model, onUninstall);
+  });
   const cluster = useRef<HTMLDivElement>(null);
   // Set by a press on a slot button, read once by the progress that replaces it: a progress that appears on its own (the host says the plugin is starting) takes no focus from anyone.
   const pressed = useRef(false);
@@ -215,7 +222,9 @@ export function Header({ row, model, menu, onUninstall }: HeaderProps) {
             ) : null}
           </div>
           <div className={styles.more} data-pl-part="slot-more">
-            {items.length === 0 ? null : <RowMenuTrigger handle={menu} row={row} label={`More actions for ${plugin.name}`} data-pl-part="head-more" />}
+            {hasMore ? (
+              <IconButton icon="ellipsis" label={`More actions for ${plugin.name}`} variant="ghost" size="row" data-pl-part="head-more" data-ov-menu-label={`Actions for ${plugin.name}`} {...menuTrigger(menu, row.id)} />
+            ) : null}
           </div>
         </div>
       </div>
@@ -246,7 +255,6 @@ export function Header({ row, model, menu, onUninstall }: HeaderProps) {
       <p className={styles.summary} data-pl-part="summary">
         {plugin.description}
       </p>
-      <RowMenu handle={menu} label={`Actions for ${plugin.name}`} items={(opened) => itemsOf(opened, model, onUninstall)} />
     </header>
   );
 }

@@ -46,7 +46,7 @@
 //
 // THE DOCUMENTED DIFFERENCES, each with the number it comes from (everything else is compared at 1 px, or exactly; the 1 px is the repository's for a box compared with a reference that was measured on another platform, as the palette, the shell and the strip
 // probes compare theirs: the mock was measured on macOS and the runner draws its text on Linux, and on the machine that measured it every box here reads 0 px off in both engines):
-//   the More button: the kit's `RowMenuTrigger` is 24 px, the mock's 28 (the kit has no 28 px size): its box is compared with 4 px, the slot (28) with none      the tile's hue: the mock's tone is a name hash over a chart palette (teal rgb(106, 174, 166)); the page's is the
+//   the More button: the kit's row-size IconButton is 24 px, the mock's 28: its box is compared with 4 px, the slot (28) with none      the tile's hue: the mock's tone is a name hash over a chart palette (teal rgb(106, 174, 166)); the page's is the
 //   accent's brand token (teal rgb(1, 168, 141), as the kit's tile, the shell's tree and the rail), so an accented tile is compared with the token and a neutral one with the mock      the state chip's width: its word is not the mock's ("Starting · Service"),
 //   so it is compared where the word is the same (Disabled: 70.59 px)      the second line of a failed plugin's row says the host's sentence, the mock's the summary: its width is not compared there      the quiet lane's line height: the mock's two lines
 //   of facts are on 24 px, the page's headline and sentence on 16: size, weight and colour are compared      the count footer: the kit holds the mock's 33 px with 4 px of padding where the mock has 8: its rectangle and its text are compared      the action cluster
@@ -578,7 +578,7 @@ function geometryHeader(where, M, C, O) {
     }
   }
 
-  // The More button. The mock's is 28 px; the kit's `RowMenuTrigger` is 24 px (it has no 28 px size: PL1.md, "Known visual gaps"), centred in the 28 px slot, so its box is compared with a 4 px tolerance (the difference of the two sizes) and the
+  // The More button. The mock's is 28 px; the kit uses its 24 px row target, centred in the 28 px slot. Its box is compared with a 4 px tolerance (the difference of the two sizes) and the
   // slot, which holds the place, with none.
   insides(S, where, 'more button, centred in its slot (24 px of the 28; tolerance 4 px: the difference of the sizes)', c.more, c.more, rectOf(O.more), rectOf(O.slotMore), [0, 1, 2, 3], 4);
 

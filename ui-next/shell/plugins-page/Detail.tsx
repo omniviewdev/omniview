@@ -1,6 +1,5 @@
-import { createRowMenu, EmptyBody } from '@omniviewdev/kit';
-import { useState } from 'react';
-import type { PluginsModel, RowView } from './core/model';
+import { EmptyBody } from '@omniviewdev/kit';
+import type { PluginsModel } from './core/model';
 import styles from './Detail.module.css';
 import { DetailsCard } from './DetailsCard';
 import { Header } from './Header';
@@ -20,8 +19,6 @@ export type DetailProps = {
 
 export function Detail({ model, id, onUninstall }: DetailProps) {
   const row = useRow(model, id ?? '');
-  // One menu for the pane, made once: the popup is one element however many plugins are read in it.
-  const [menu] = useState(() => createRowMenu<RowView>());
 
   if (id === null || row === undefined) {
     return (
@@ -35,7 +32,7 @@ export function Detail({ model, id, onUninstall }: DetailProps) {
 
   return (
     <section className={styles.pane} aria-label={row.plugin.name} tabIndex={-1} data-pl-part="detail">
-      <Header key={row.id} row={row} model={model} menu={menu} onUninstall={onUninstall} />
+      <Header key={row.id} row={row} model={model} onUninstall={onUninstall} />
       <StatusLane state={row.state} working={row.op !== null} />
       <DetailsCard plugin={row.plugin} />
     </section>

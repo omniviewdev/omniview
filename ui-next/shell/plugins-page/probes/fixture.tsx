@@ -21,7 +21,7 @@
 // `window.__pageCommits` (every commit that rendered something inside the Plugins page), each `{ phase, actualDuration, at }`; the window's commits also say how many rows of the list were in the document at the end of the commit (`rows`).
 import '@omniviewdev/kit/styles.css';
 import '../../../global.css';
-import { ThemeProvider, TooltipHost } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Profiler, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -343,7 +343,9 @@ createRoot(document.getElementById('root')!).render(
           commits.push({ phase, actualDuration, at: performance.now(), rows: document.querySelectorAll('[data-pl-part="row"]').length });
         }}
       >
-        <Screen />
+        <MenuHost>
+          <Screen />
+        </MenuHost>
       </Profiler>
       <TooltipHost />
     </ThemeProvider>

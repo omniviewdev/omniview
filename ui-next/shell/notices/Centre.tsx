@@ -1,14 +1,13 @@
-import { Button, Icon, RovingGroup } from '@omniviewdev/kit';
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
+import { Button, Icon, RovingGroup, menuTrigger, useMenu, type MenuItem } from '@omniviewdev/kit';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import type { NoticesStore, RecordView } from '../core/notices';
 import type { Centre } from './centreControl';
-import { focusInto, idOf, placeBelow, rowsOf, showPopover, type Below, type Place } from './centreDom';
+import { focusInto, idOf, rowsOf, showPopover, type Place } from './centreDom';
 import { listOf, nameOfSource, sourcesOf } from './centreList';
 import { emptyOf, mutedNote, olderLabel, said, undoLabel } from './centreWords';
 import { CentreRow } from './CentreRow';
 import { useNotices } from './context';
 import { DayHeading } from './DayHeading';
-import { FilterMenu, MENU_ANCHOR } from './FilterMenu';
 import styles from './Centre.module.css';
 import { useRows } from './useRows';
 
@@ -63,11 +62,8 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
   const [openedAt] = useState(() => Date.now());
   const [more, setMore] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set<string>());
-  const [menu, setMenu] = useState<Below | null>(null);
-  const menuId = useId();
   const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
-  const filter = useRef<HTMLSpanElement>(null);
   const later = useRef<Later | null>(null);
   const listed = useRef<readonly RecordView[]>([]);
 
@@ -75,11 +71,47 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
   const empty = emptyOf({ total: recent.length, matched: view.matched.length, undo });
   const name = nameOfSource(recent, muted, source);
   const note = mutedNote(muted);
-  const sourceMuted = muted.some((entry) => entry.source === source);
+  const sourceMuted = source !== '' && muted.some((entry) => entry.source === source);
+  const filterRevision = JSON.stringify([source, name, sourceMuted]);
 
   const tell = (text: string): void => {
     announcer.announce(text, { urgent: false });
   };
+
+  const clearFilters = (): void => {
+    centre.filter('');
+    root.current?.querySelector<HTMLButtonElement>('[data-notices-part="filter"]')?.focus({ preventScroll: true });
+  };
+
+  const menuId = useMenu(() => {
+    const items: MenuItem[] = [{ kind: 'radio', id: 'source', label: 'Source', value: source, options: sourcesOf(recent, source), onChange: centre.filter }];
+    if (source !== '') {
+      items.push(
+        { kind: 'separator', id: 'source-actions' },
+        {
+          kind: 'action',
+          id: 'mute',
+          icon: sourceMuted ? 'bell' : 'bell-off',
+          label: sourceMuted ? `Unmute ${name}` : `Mute ${name} for 1 hour`,
+          onSelect: () => {
+            const changed = sourceMuted ? store.unmute(source) : store.mute(source);
+            if (changed) {
+              tell(sourceMuted ? said.unmuted(name) : said.muted(name));
+            }
+          },
+        },
+        {
+          kind: 'action',
+          id: 'clear',
+          icon: 'close',
+          label: 'Clear filters',
+          onSelect: clearFilters,
+        },
+      );
+    }
+
+    return items;
+  }, filterRevision);
 
   const remove = (target: string): void => {
     const element = list.current;
@@ -128,8 +160,8 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
     store.hold('center', true);
     return () => {
       store.hold('center', false);
-      const active = document.activeElement;
-      if (opener !== null && (active === null || active === document.body || element.contains(active))) {
+      const active = element.ownerDocument.activeElement;
+      if (opener !== null && (active === null || active === element.ownerDocument.body || element.contains(active))) {
         opener.focus({ preventScroll: true });
       }
     };
@@ -146,7 +178,7 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
     [store, openedAt],
   );
 
-  // A press outside the centre closes it, as the browser's own light dismiss would: the bell is not outside (its own press toggles), and nothing is listened to while the centre is closed.
+  // The shared Filter popup lives inside this popover, so a press in it is not outside the centre.
   useEffect(() => {
     const element = root.current;
     const opener = invoker.current;
@@ -168,22 +200,6 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
       document.removeEventListener('pointerdown', press, true);
     };
   }, [centre, invoker]);
-
-  // The Filter button is the kit's, whose props are closed: what makes it the opener of a menu is written on it, as the kit's own row menu writes on its triggers.
-  useLayoutEffect(() => {
-    const button = filter.current?.querySelector('button');
-    if (button === null || button === undefined) {
-      return;
-    }
-
-    button.setAttribute('aria-haspopup', 'menu');
-    button.setAttribute('aria-expanded', String(menu !== null));
-    if (menu === null) {
-      button.removeAttribute('aria-controls');
-    } else {
-      button.setAttribute('aria-controls', menuId);
-    }
-  });
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     // Escape closes the centre while the focus is in it (A3: a non-modal surface), and nothing else sees it: the shell's own Escape would take the focus to the page.
@@ -223,27 +239,15 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
     setMore(true);
   };
 
-  const closeMenu = (restore: boolean): void => {
-    setMenu(null);
-    if (restore) {
-      filter.current?.querySelector('button')?.focus({ preventScroll: true });
-    }
-  };
-
   const unmuteNote = (): void => {
     const [only] = muted;
     if (muted.length === 1 && only !== undefined) {
-      store.unmute(only.source);
-      tell(said.unmuted(only.name));
-    } else {
-      store.unmuteAll();
+      if (store.unmute(only.source)) {
+        tell(said.unmuted(only.name));
+      }
+    } else if (store.unmuteAll() > 0) {
       tell(said.unmutedAll);
     }
-  };
-
-  const clearFilters = (): void => {
-    centre.filter('');
-    closeMenu(true);
   };
 
   return (
@@ -313,19 +317,9 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
                 {undoLabel(undo.count)}
               </Button>
             )}
-            <span ref={filter} className={styles.anchor}>
-              <Button
-                variant="ghost"
-                size="compact"
-                icon="list-filter"
-                data-notices-part="filter"
-                onClick={(event) => {
-                  setMenu(menu === null ? placeBelow(event.currentTarget, MENU_ANCHOR) : null);
-                }}
-              >
-                Filter
-              </Button>
-            </span>
+            <Button variant="ghost" size="compact" icon="list-filter" data-notices-part="filter" data-ov-menu-label="Filter notifications" data-ov-menu-pointer-focus="first" {...menuTrigger(menuId)}>
+              Filter
+            </Button>
           </RovingGroup>
           {source === '' ? null : (
             <div className={styles.note} data-notices-part="centreNote" data-note="filtered">
@@ -398,33 +392,6 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
           )}
         </div>
       </div>
-      {menu === null ? null : (
-        <FilterMenu
-          id={menuId}
-          place={menu}
-          choices={sourcesOf(recent, source)}
-          source={source}
-          name={name}
-          muted={sourceMuted}
-          onChoose={(next) => {
-            centre.filter(next);
-            closeMenu(true);
-          }}
-          onMute={() => {
-            if (sourceMuted) {
-              store.unmute(source);
-              tell(said.unmuted(name));
-            } else {
-              store.mute(source);
-              tell(said.muted(name));
-            }
-
-            closeMenu(true);
-          }}
-          onClear={clearFilters}
-          onClose={closeMenu}
-        />
-      )}
     </div>
   );
 }
